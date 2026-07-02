@@ -1,7 +1,7 @@
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using AttendanceQR.Infrastructure.Services;
 
 namespace AttendanceQR.Application.Reporting;
 
@@ -31,10 +31,8 @@ public static class LocationScope
                     : new ScopedSummaryQuery(ReportAccess.Allowed, baseQuery, "All locations");
 
             case EmployeeRole.Manager:
-                var managed = await db.ManagedLocations
-                    .Where(m => m.EmployeeId == requesterId)
-                    .Select(m => m.LocationId)
-                    .ToListAsync(ct);
+                // Same managed-location source as the attendance query — one rule, one query.
+                var managed = await LocationScopeRules.ManagedLocationIdsAsync(db, requesterId, ct);
 
                 if (requestedLocationId is Guid reqLoc)
                 {

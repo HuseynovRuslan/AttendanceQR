@@ -77,7 +77,17 @@ public class DevController : ControllerBase
                 ShiftEnd = new TimeOnly(18, 0),
                 LateThresholdMinutes = 15
             };
-            _db.Locations.AddRange(loc1, loc2);
+            var loc3 = new Location
+            {
+                Name = "Sumqayit Office",
+                Latitude = 40.5897,
+                Longitude = 49.6686,
+                RadiusMeters = 150,
+                ShiftStart = new TimeOnly(9, 0),
+                ShiftEnd = new TimeOnly(18, 0),
+                LateThresholdMinutes = 15
+            };
+            _db.Locations.AddRange(loc1, loc2, loc3);
 
             var passwordHash = _passwordHasher.Hash(SeedPassword);
             var now = DateTime.UtcNow;
@@ -97,7 +107,8 @@ public class DevController : ControllerBase
             var manager = Make("Manager User", "manager@test.com", EmployeeRole.Manager, loc1.Id);
             var emp1 = Make("Employee One", "emp1@test.com", EmployeeRole.Employee, loc1.Id);
             var emp2 = Make("Employee Two", "emp2@test.com", EmployeeRole.Employee, loc2.Id);
-            _db.Employees.AddRange(admin, manager, emp1, emp2);
+            var emp3 = Make("Employee Three", "emp3@test.com", EmployeeRole.Employee, loc3.Id);
+            _db.Employees.AddRange(admin, manager, emp1, emp2, emp3);
 
             DeviceBinding Bind(Guid employeeId, string fingerprint) => new()
             {
@@ -110,17 +121,20 @@ public class DevController : ControllerBase
                 Bind(admin.Id, "admin-dev"),
                 Bind(manager.Id, "mgr-dev"),
                 Bind(emp1.Id, "emp1-dev"),
-                Bind(emp2.Id, "emp2-dev"));
+                Bind(emp2.Id, "emp2-dev"),
+                Bind(emp3.Id, "emp3-dev"));
 
-            // The manager oversees loc1 only (NOT loc2) — lets us prove report scope: 200 for
-            // loc1, 403 for loc2.
-            _db.ManagedLocations.Add(new ManagedLocation { EmployeeId = manager.Id, LocationId = loc1.Id });
+            // The manager oversees loc1 AND loc2 (NOT loc3) — proves the unified scope: access to
+            // employees in loc1/loc2 (reports and attendance alike), 403 for loc3.
+            _db.ManagedLocations.AddRange(
+                new ManagedLocation { EmployeeId = manager.Id, LocationId = loc1.Id },
+                new ManagedLocation { EmployeeId = manager.Id, LocationId = loc2.Id });
 
             await _db.SaveChangesAsync();
         }
 
         // Build the response from the DB so the shape is identical whether we just seeded or not.
-        var emails = new[] { "admin@test.com", "manager@test.com", "emp1@test.com", "emp2@test.com" };
+        var emails = new[] { "admin@test.com", "manager@test.com", "emp1@test.com", "emp2@test.com", "emp3@test.com" };
         var employees = await _db.Employees
             .Where(e => emails.Contains(e.Email))
             .ToListAsync();
@@ -149,18 +163,21 @@ public class DevController : ControllerBase
 
         var location1 = locations[byEmail["emp1@test.com"].LocationId];
         var location2 = locations[byEmail["emp2@test.com"].LocationId];
+        var location3 = locations[byEmail["emp3@test.com"].LocationId];
 
         return Ok(new
         {
             password = SeedPassword,
             location1 = new { id = location1.Id, location1.Latitude, location1.Longitude, location1.RadiusMeters },
             location2 = new { id = location2.Id, location2.Latitude, location2.Longitude, location2.RadiusMeters },
+            location3 = new { id = location3.Id, location3.Latitude, location3.Longitude, location3.RadiusMeters },
             employees = new[]
             {
                 Dto("admin@test.com"),
                 Dto("manager@test.com"),
                 Dto("emp1@test.com"),
-                Dto("emp2@test.com")
+                Dto("emp2@test.com"),
+                Dto("emp3@test.com")
             }
         });
     }

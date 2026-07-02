@@ -16,42 +16,13 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
     public async Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
         Guid targetEmployeeId, Guid requesterId, EmployeeRole requesterRole, CancellationToken ct = default)
     {
-        var allowed = requesterRole switch
-        {
-            EmployeeRole.Admin => true,
-            EmployeeRole.Manager => await CanManagerAccessAsync(requesterId, targetEmployeeId, ct),
-            // Employee: strictly their own records — this is the resource-level check that a plain
-            // [Authorize] cannot express.
-            _ => requesterId == targetEmployeeId
-        };
+        // One central rule (LocationScopeRules) — the same manager scope the reports/export use.
+        var allowed = await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, requesterRole, targetEmployeeId, ct);
 
         if (!allowed)
             return (AttendanceAccess.Forbidden, Array.Empty<AttendanceRecordDto>());
 
         return (AttendanceAccess.Allowed, await QueryRecordsAsync(targetEmployeeId, ct));
-    }
-
-    // A manager sees their own records and their team's — Employees in the same location — but not
-    // peer managers or admins.
-    private async Task<bool> CanManagerAccessAsync(Guid managerId, Guid targetId, CancellationToken ct)
-    {
-        if (managerId == targetId)
-            return true;
-
-        var managerLocation = await _db.Employees
-            .Where(e => e.Id == managerId)
-            .Select(e => (Guid?)e.LocationId)
-            .FirstOrDefaultAsync(ct);
-
-        var target = await _db.Employees
-            .Where(e => e.Id == targetId)
-            .Select(e => new { e.LocationId, e.Role })
-            .FirstOrDefaultAsync(ct);
-
-        if (managerLocation is null || target is null)
-            return false;
-
-        return target.Role == EmployeeRole.Employee && target.LocationId == managerLocation.Value;
     }
 
     private async Task<IReadOnlyList<AttendanceRecordDto>> QueryRecordsAsync(Guid employeeId, CancellationToken ct)
