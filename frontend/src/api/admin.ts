@@ -56,9 +56,11 @@ export interface AdminLocation {
   shiftStart: string // "HH:mm"
   shiftEnd: string // "HH:mm"
   lateThresholdMinutes: number
+  isActive: boolean
 }
 
-export type LocationInput = Omit<AdminLocation, 'id'>
+/** Create/update payload — active state is managed separately via setLocationActive. */
+export type LocationInput = Omit<AdminLocation, 'id' | 'isActive'>
 
 export function getToday() {
   return apiRequest<DayAttendanceRow[]>('/api/reports/today')
@@ -95,6 +97,13 @@ export function updateLocation(id: string, input: LocationInput) {
 export function deleteLocation(id: string) {
   return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/locations/${id}`, {
     method: 'DELETE',
+  })
+}
+
+export function setLocationActive(id: string, isActive: boolean) {
+  return apiRequest<AdminLocation | { error: string }>(`/api/admin/locations/${id}/active`, {
+    method: 'PUT',
+    body: { isActive },
   })
 }
 

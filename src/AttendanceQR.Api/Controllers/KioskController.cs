@@ -30,8 +30,14 @@ public class KioskController : ControllerBase
 
     [HttpGet("token/{locationId:guid}")]
     [AllowAnonymous]
-    public IActionResult Token(Guid locationId)
+    public async Task<IActionResult> Token(Guid locationId)
     {
+        // Only issue a QR for an existing, ACTIVE location. A disabled location shows no QR, so no
+        // check-ins can happen there until it is re-enabled.
+        var isActive = await _db.Locations.AnyAsync(l => l.Id == locationId && l.IsActive);
+        if (!isActive)
+            return NotFound(new { error = "LocationNotFoundOrInactive" });
+
         var token = _qrTokenService.Generate(locationId);
         // Kiosk should refresh a few seconds before the token actually expires.
         var refreshInSeconds = Math.Max(1, _qrTokenOptions.TtlSeconds - 5);
@@ -45,7 +51,7 @@ public class KioskController : ControllerBase
     public async Task<IActionResult> Location(Guid locationId)
     {
         var location = await _db.Locations
-            .Where(l => l.Id == locationId)
+            .Where(l => l.Id == locationId && l.IsActive)
             .Select(l => new { l.Id, l.Name })
             .FirstOrDefaultAsync();
 

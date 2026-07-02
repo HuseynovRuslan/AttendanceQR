@@ -19,5 +19,9 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
         // TimeOnly maps natively to PostgreSQL `time`, DateOnly to `date` (Npgsql 10).
         builder.Property(l => l.ShiftStart);
         builder.Property(l => l.ShiftEnd);
+
+        // Default true so the column backfills existing rows as active on migration, and new
+        // locations are active unless explicitly disabled.
+        builder.Property(l => l.IsActive).HasDefaultValue(true);
     }
 }

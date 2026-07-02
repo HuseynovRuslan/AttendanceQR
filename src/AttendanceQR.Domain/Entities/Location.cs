@@ -22,4 +22,10 @@ public class Location
     public TimeOnly ShiftEnd { get; set; }
 
     public int LateThresholdMinutes { get; set; }
+
+    /// <summary>
+    /// When false the location is temporarily disabled: the kiosk stops issuing QR tokens and
+    /// scans are rejected, but all data (employees, history) is preserved. Defaults to true.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
 }

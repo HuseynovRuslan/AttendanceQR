@@ -12,3 +12,6 @@ public record LocationRequest(
     string ShiftStart,
     string ShiftEnd,
     int LateThresholdMinutes);
+
+/// <summary>Enable/disable a location without deleting it.</summary>
+public record SetActiveRequest(bool IsActive);

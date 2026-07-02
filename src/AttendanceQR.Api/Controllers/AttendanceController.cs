@@ -118,6 +118,11 @@ public class AttendanceController : ControllerBase
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "LocationNotFound", ip);
             return BadRequest(new { error = "LocationNotFound" });
         }
+        if (!location.IsActive)
+        {
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "LocationInactive", ip);
+            return BadRequest(new { error = "LocationInactive" });
+        }
 
         var distanceMeters = GeoCalculator.DistanceMeters(
             request.Latitude, request.Longitude, location.Latitude, location.Longitude);

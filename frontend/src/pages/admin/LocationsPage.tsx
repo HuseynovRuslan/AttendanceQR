@@ -3,6 +3,7 @@ import {
   createLocation,
   deleteLocation,
   getAdminLocations,
+  setLocationActive,
   updateLocation,
   type AdminLocation,
   type LocationInput,
@@ -50,6 +51,7 @@ export function LocationsPage() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
 
   async function refresh() {
     const { status, data } = await getAdminLocations()
@@ -131,6 +133,20 @@ export function LocationsPage() {
       setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
     } else {
       setError('Silinmədi')
+    }
+  }
+
+  async function toggleActive(l: AdminLocation) {
+    setError(null)
+    setOk(null)
+    setTogglingId(l.id)
+    const { status } = await setLocationActive(l.id, !l.isActive)
+    setTogglingId(null)
+    if (status === 200) {
+      setOk(l.isActive ? 'Lokasiya deaktiv edildi' : 'Lokasiya aktiv edildi')
+      await refresh()
+    } else {
+      setError('Status dəyişmədi')
     }
   }
 
@@ -235,34 +251,62 @@ export function LocationsPage() {
               <th className="num">Radius</th>
               <th>Növbə</th>
               <th className="num">Gecikmə</th>
+              <th>Status</th>
               <th style={{ textAlign: 'right' }}>Əməliyyat</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((l) => (
-              <tr key={l.id}>
+              <tr key={l.id} style={{ opacity: l.isActive ? 1 : 0.55 }}>
                 <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{l.name}</td>
                 <td className="mono">{l.latitude.toFixed(4)}, {l.longitude.toFixed(4)}</td>
                 <td className="num mono">{l.radiusMeters} m</td>
                 <td className="mono">{l.shiftStart}–{l.shiftEnd}</td>
                 <td className="num mono">{l.lateThresholdMinutes} dəq</td>
                 <td>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <a
-                      className="btn btn-sm"
-                      href={`/kiosk/${l.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Bu lokasiyanın kiosk QR ekranını yeni tabda aç"
-                    >
-                      <IconQr /> Kiosk aç
-                    </a>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      padding: '2px 10px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: l.isActive ? '#2e7d32' : '#9a3412',
+                      background: l.isActive ? 'rgba(124,179,66,0.15)' : 'rgba(154,52,18,0.12)',
+                    }}
+                  >
+                    {l.isActive ? 'Aktiv' : 'Deaktiv'}
+                  </span>
+                </td>
+                <td>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    {l.isActive && (
+                      <>
+                        <a
+                          className="btn btn-sm"
+                          href={`/kiosk/${l.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Bu lokasiyanın kiosk QR ekranını yeni tabda aç"
+                        >
+                          <IconQr /> Kiosk aç
+                        </a>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => copyKioskLink(l)}
+                          title="Kiosk linkini kopyala"
+                        >
+                          {copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala'}
+                        </button>
+                      </>
+                    )}
                     <button
                       className="btn btn-sm"
-                      onClick={() => copyKioskLink(l)}
-                      title="Kiosk linkini kopyala"
+                      disabled={togglingId === l.id}
+                      onClick={() => toggleActive(l)}
+                      title={l.isActive ? 'Kiosku dayandır (məlumat silinmir)' : 'Yenidən aktiv et'}
                     >
-                      {copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala'}
+                      {l.isActive ? 'Deaktiv et' : 'Aktiv et'}
                     </button>
                     <button className="btn btn-sm" onClick={() => startEdit(l)}>Redaktə</button>
                     <button className="btn btn-danger btn-sm" disabled={deletingId === l.id} onClick={() => onDelete(l)}>
@@ -274,7 +318,7 @@ export function LocationsPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   Hələ lokasiya yoxdur — yuxarıdan əlavə edin
                 </td>
               </tr>

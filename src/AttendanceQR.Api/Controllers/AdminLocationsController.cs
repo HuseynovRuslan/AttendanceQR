@@ -89,6 +89,20 @@ public class AdminLocationsController : ControllerBase
         return Ok(new { deleted = id });
     }
 
+    // Enable/disable without deleting — a disabled location stops issuing kiosk QR and rejects
+    // scans, but keeps its employees and history. Use this instead of delete for in-use locations.
+    [HttpPut("{id:guid}/active")]
+    public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request)
+    {
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
+        if (location is null)
+            return NotFound(new { error = "LocationNotFound" });
+
+        location.IsActive = request.IsActive;
+        await _db.SaveChangesAsync();
+        return Ok(Project(location));
+    }
+
     private static object Project(Location l) => new
     {
         id = l.Id,
@@ -98,7 +112,8 @@ public class AdminLocationsController : ControllerBase
         radiusMeters = l.RadiusMeters,
         shiftStart = l.ShiftStart.ToString("HH:mm"),
         shiftEnd = l.ShiftEnd.ToString("HH:mm"),
-        lateThresholdMinutes = l.LateThresholdMinutes
+        lateThresholdMinutes = l.LateThresholdMinutes,
+        isActive = l.IsActive
     };
 
     private static bool TryValidate(LocationRequest r, out TimeOnly start, out TimeOnly end, out string? error)
