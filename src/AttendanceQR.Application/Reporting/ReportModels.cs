@@ -35,3 +35,15 @@ public sealed record AttendanceReport(
     string ScopeLabel,
     IReadOnlyList<EmployeeReportRow> Rows,
     ReportTotals Totals);
+
+/// <summary>A location the caller may see/filter by (invite + report filter dropdowns).</summary>
+public sealed record LocationDto(Guid Id, string Name);
+
+/// <summary>One employee's live status for a single day (the "today" board).</summary>
+public sealed record DayAttendanceRow(
+    Guid EmployeeId,
+    string EmployeeName,
+    string LocationName,
+    string Status,
+    DateTime? CheckInAtUtc,
+    DateTime? CheckOutAtUtc);

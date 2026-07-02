@@ -78,56 +78,19 @@ public sealed class DailySummaryService : IDailySummaryService
 
     private DailySummary Compute(Guid employeeId, Guid locationId, DateOnly date, AttendanceRecord? record, Location location)
     {
-        var summary = new DailySummary
+        // Shared timezone/late/overtime logic (also used by the live "today" query).
+        var c = AttendanceCalculator.Compute(record, location, _timeZone);
+        return new DailySummary
         {
             EmployeeId = employeeId,
             LocationId = locationId,
-            SummaryDate = date
+            SummaryDate = date,
+            CheckInAtUtc = record?.CheckInAtUtc,
+            CheckOutAtUtc = record?.CheckOutAtUtc,
+            Status = c.Status,
+            WorkedMinutes = c.WorkedMinutes,
+            LateMinutes = c.LateMinutes,
+            OvertimeMinutes = c.OvertimeMinutes,
         };
-
-        // No record → the employee never showed up.
-        if (record is null || record.CheckInAtUtc is null)
-        {
-            summary.Status = DailySummaryStatus.Absent;
-            return summary;
-        }
-
-        summary.CheckInAtUtc = record.CheckInAtUtc;
-        summary.CheckOutAtUtc = record.CheckOutAtUtc;
-
-        // Checked in but never out.
-        if (record.CheckOutAtUtc is null)
-        {
-            summary.Status = DailySummaryStatus.Incomplete;
-            return summary;
-        }
-
-        // Timezone: CheckInAtUtc is a UTC instant; ShiftStart/ShiftEnd are LOCAL wall-clock times.
-        // Convert the instant to local (Asia/Baku = UTC+4) before comparing, otherwise a 05:45Z
-        // check-in would look like it beat a 09:00 shift when it is really 09:45 local (45 min late).
-        var localCheckIn = TimeZoneInfo.ConvertTimeFromUtc(record.CheckInAtUtc.Value, _timeZone);
-        var localCheckOut = TimeZoneInfo.ConvertTimeFromUtc(record.CheckOutAtUtc.Value, _timeZone);
-
-        var minutesAfterStart =
-            (TimeOnly.FromDateTime(localCheckIn).ToTimeSpan() - location.ShiftStart.ToTimeSpan()).TotalMinutes;
-
-        summary.WorkedMinutes = (int)Math.Round((record.CheckOutAtUtc.Value - record.CheckInAtUtc.Value).TotalMinutes);
-
-        if (minutesAfterStart > location.LateThresholdMinutes)
-        {
-            summary.Status = DailySummaryStatus.Late;
-            summary.LateMinutes = (int)Math.Round(minutesAfterStart);
-        }
-        else
-        {
-            summary.Status = DailySummaryStatus.OnTime;
-        }
-
-        var overtimeMinutes =
-            (TimeOnly.FromDateTime(localCheckOut).ToTimeSpan() - location.ShiftEnd.ToTimeSpan()).TotalMinutes;
-        if (overtimeMinutes > 0)
-            summary.OvertimeMinutes = (int)Math.Round(overtimeMinutes);
-
-        return summary;
     }
 }

@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5103'
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5103'
 const TOKEN_KEY = 'attendanceqr.jwt'
 
 // --- JWT storage -----------------------------------------------------------
@@ -50,7 +50,7 @@ export async function apiRequest<T = unknown>(
     if (token) headers.Authorization = `Bearer ${token}`
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,

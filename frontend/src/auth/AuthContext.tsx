@@ -8,10 +8,13 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clearToken, getToken, setToken, setUnauthorizedHandler } from '../api/client'
+import { decodeJwt, type Role } from '../lib/jwt'
 
 interface AuthState {
   token: string | null
   isAuthenticated: boolean
+  role: Role | null
+  email: string | null
   saveToken: (token: string) => void
   logout: () => void
 }
@@ -30,10 +33,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [navigate])
 
-  const value = useMemo<AuthState>(
-    () => ({
+  const value = useMemo<AuthState>(() => {
+    const claims = token ? decodeJwt(token) : null
+    return {
       token,
       isAuthenticated: token !== null,
+      role: claims?.role ?? null,
+      email: claims?.email ?? null,
       saveToken: (t: string) => {
         setToken(t)
         setTokenState(t)
@@ -43,9 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTokenState(null)
         navigate('/login', { replace: true })
       },
-    }),
-    [token, navigate],
-  )
+    }
+  }, [token, navigate])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

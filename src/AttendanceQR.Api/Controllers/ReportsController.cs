@@ -56,6 +56,28 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
+    // Locations the caller may filter by (report filter dropdown). Admin=all, Manager=managed.
+    [HttpGet("my-locations")]
+    public async Task<IActionResult> MyLocations()
+    {
+        if (!TryGetCaller(out var requesterId, out var role))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var locations = await _reports.GetVisibleLocationsAsync(requesterId, role, HttpContext.RequestAborted);
+        return Ok(locations);
+    }
+
+    // Live "today" board (computed from raw records, not DailySummary). Scoped by role.
+    [HttpGet("today")]
+    public async Task<IActionResult> Today()
+    {
+        if (!TryGetCaller(out var requesterId, out var role))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var rows = await _reports.GetTodayAttendanceAsync(requesterId, role, HttpContext.RequestAborted);
+        return Ok(rows);
+    }
+
     private bool TryGetCaller(out Guid id, out EmployeeRole role)
     {
         role = default;
