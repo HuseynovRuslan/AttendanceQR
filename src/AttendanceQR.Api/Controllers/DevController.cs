@@ -112,6 +112,10 @@ public class DevController : ControllerBase
                 Bind(emp1.Id, "emp1-dev"),
                 Bind(emp2.Id, "emp2-dev"));
 
+            // The manager oversees loc1 only (NOT loc2) — lets us prove report scope: 200 for
+            // loc1, 403 for loc2.
+            _db.ManagedLocations.Add(new ManagedLocation { EmployeeId = manager.Id, LocationId = loc1.Id });
+
             await _db.SaveChangesAsync();
         }
 
@@ -157,6 +161,66 @@ public class DevController : ControllerBase
                 Dto("manager@test.com"),
                 Dto("emp1@test.com"),
                 Dto("emp2@test.com")
+            }
+        });
+    }
+
+    // POST /api/dev/seed-attendance → raw AttendanceRecords across two past days covering every
+    // scenario (on-time+overtime, late, incomplete, absent) so DailySummary computation can be
+    // verified. Comments show Baku-local times; stored as UTC (local − 4h). Idempotent.
+    [HttpPost("seed-attendance")]
+    public async Task<IActionResult> SeedAttendance()
+    {
+        if (!_environment.IsDevelopment())
+            return NotFound();
+
+        var emp1 = await _db.Employees.FirstOrDefaultAsync(e => e.Email == "emp1@test.com");
+        var emp2 = await _db.Employees.FirstOrDefaultAsync(e => e.Email == "emp2@test.com");
+        if (emp1 is null || emp2 is null)
+            return BadRequest(new { error = "Run /api/dev/seed first" });
+
+        var dateA = new DateOnly(2026, 6, 30);
+        var dateB = new DateOnly(2026, 6, 29);
+
+        async Task AddIfMissing(Employee e, DateOnly date, DateTime inUtc, DateTime? outUtc, AttendanceStatus status)
+        {
+            if (await _db.AttendanceRecords.AnyAsync(r => r.EmployeeId == e.Id && r.AttendanceDate == date))
+                return;
+            _db.AttendanceRecords.Add(new AttendanceRecord
+            {
+                EmployeeId = e.Id,
+                LocationId = e.LocationId,
+                AttendanceDate = date,
+                CheckInAtUtc = inUtc,
+                CheckOutAtUtc = outUtc,
+                Status = status
+            });
+        }
+
+        // emp1 @ 06-30: in 09:05, out 18:30 local → OnTime, worked 565, overtime 30.
+        await AddIfMissing(emp1, dateA,
+            new DateTime(2026, 6, 30, 5, 5, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 30, 14, 30, 0, DateTimeKind.Utc), AttendanceStatus.OnTime);
+        // emp1 @ 06-29: in 09:45, out 17:00 local → Late, LateMinutes 45, worked 435.
+        await AddIfMissing(emp1, dateB,
+            new DateTime(2026, 6, 29, 5, 45, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 29, 13, 0, 0, DateTimeKind.Utc), AttendanceStatus.Late);
+        // emp2 @ 06-30: in 09:10 local, NO check-out → Incomplete.
+        await AddIfMissing(emp2, dateA,
+            new DateTime(2026, 6, 30, 5, 10, 0, DateTimeKind.Utc), null, AttendanceStatus.OnTime);
+        // emp2 @ 06-29: no record at all → Absent.
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            dates = new[] { dateB.ToString("yyyy-MM-dd"), dateA.ToString("yyyy-MM-dd") },
+            scenarios = new[]
+            {
+                new { email = "emp1@test.com", date = "2026-06-30", expect = "OnTime, worked 565, overtime 30" },
+                new { email = "emp1@test.com", date = "2026-06-29", expect = "Late, LateMinutes 45, worked 435" },
+                new { email = "emp2@test.com", date = "2026-06-30", expect = "Incomplete, worked 0" },
+                new { email = "emp2@test.com", date = "2026-06-29", expect = "Absent (no record)" }
             }
         });
     }

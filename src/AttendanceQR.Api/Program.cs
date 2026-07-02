@@ -1,5 +1,8 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using AttendanceQR.Api.Jobs;
+using AttendanceQR.Application.Common;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -31,6 +34,19 @@ builder.Services.AddSingleton<IJwtService, JwtService>();
 // Business services (use the scoped DbContext, so they are scoped too).
 builder.Services.AddScoped<IDeviceChangeService, DeviceChangeService>();
 builder.Services.AddScoped<IAttendanceQueryService, AttendanceQueryService>();
+
+// App options (time zone for shift/UTC math). Registered as a plain singleton so the
+// Application/Infrastructure layers don't need an Options package reference.
+var appOptions = builder.Configuration.GetSection(AppOptions.SectionName).Get<AppOptions>() ?? new AppOptions();
+builder.Services.AddSingleton(appOptions);
+
+// Reporting: summary generation + query are scoped (DbContext); the Excel writer is stateless.
+builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
+builder.Services.AddScoped<IReportQueryService, ReportQueryService>();
+builder.Services.AddSingleton<IExcelReportExporter, ExcelReportExporter>();
+
+// Nightly summary job (~00:30 local) + startup gap-fill.
+builder.Services.AddHostedService<DailySummaryJob>();
 
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()

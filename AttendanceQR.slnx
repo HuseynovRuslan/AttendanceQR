@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/AttendanceQR.Api/AttendanceQR.Api.csproj" />
+    <Project Path="src/AttendanceQR.Application/AttendanceQR.Application.csproj" />
     <Project Path="src/AttendanceQR.Domain/AttendanceQR.Domain.csproj" />
     <Project Path="src/AttendanceQR.Infrastructure/AttendanceQR.Infrastructure.csproj" />
   </Folder>

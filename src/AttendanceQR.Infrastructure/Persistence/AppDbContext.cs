@@ -16,6 +16,8 @@ public class AppDbContext : DbContext
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<DailySummary> DailySummaries => Set<DailySummary>();
+    public DbSet<ManagedLocation> ManagedLocations => Set<ManagedLocation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
