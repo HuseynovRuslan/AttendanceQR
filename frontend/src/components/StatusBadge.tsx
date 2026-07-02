@@ -1,21 +1,20 @@
-const STYLES: Record<string, string> = {
-  OnTime: 'bg-green-100 text-green-800',
-  Late: 'bg-yellow-100 text-yellow-800',
-  Absent: 'bg-red-100 text-red-800',
-  Incomplete: 'bg-slate-200 text-slate-700',
-}
+import { IconCheck, IconClock, IconX } from './icons'
 
-const LABELS: Record<string, string> = {
-  OnTime: 'Vaxtında',
-  Late: 'Gecikmə',
-  Absent: 'Qaib',
-  Incomplete: 'Yarımçıq',
+// Maps the backend status to the design's badge class, label, and icon.
+const MAP: Record<string, { cls: string; label: string; icon: 'check' | 'clock' | 'x' }> = {
+  OnTime: { cls: 'b-present', label: 'Davamda', icon: 'check' },
+  Late: { cls: 'b-late', label: 'Gecikmə', icon: 'clock' },
+  Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
+  Incomplete: { cls: 'b-permitted', label: 'Yarımçıq', icon: 'clock' },
 }
 
 export function StatusBadge({ status }: { status: string }) {
+  const m = MAP[status] ?? { cls: 'b-absent', label: status, icon: 'x' as const }
+  const Icon = m.icon === 'check' ? IconCheck : m.icon === 'clock' ? IconClock : IconX
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STYLES[status] ?? 'bg-slate-200 text-slate-700'}`}>
-      {LABELS[status] ?? status}
+    <span className={`badge ${m.cls}`}>
+      <Icon />
+      {m.label}
     </span>
   )
 }

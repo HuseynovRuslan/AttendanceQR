@@ -1,55 +1,92 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { BrandLogo } from '../../components/BrandLogo'
+import {
+  IconChart,
+  IconClipboard,
+  IconLogout,
+  IconPhone,
+  IconSend,
+} from '../../components/icons'
+
+const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' }
+const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Ərazi meneceri' }
+
+const PAGE_META: Record<string, { title: string; sub: string }> = {
+  '/admin/today': { title: 'Bugünkü davamiyyət', sub: 'Canlı — hər 30 saniyədə yenilənir' },
+  '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
+  '/admin/invite': { title: 'İşçi dəvəti', sub: 'Yeni işçi qeydiyyatı' },
+  '/admin/device-changes': { title: 'Cihaz təsdiqləri', sub: 'Gözləyən tələblər' },
+}
 
 export function AdminLayout() {
   const { role, email, logout } = useAuth()
+  const location = useLocation()
   const isAdmin = role === 'Admin'
+  const meta = PAGE_META[location.pathname] ?? { title: 'Panel', sub: '' }
 
   const links = [
-    { to: '/admin/today', label: 'Bugünkü davamiyyət' },
-    { to: '/admin/reports', label: 'Hesabat' },
-    ...(isAdmin ? [{ to: '/admin/invite', label: 'İşçi dəvəti' }] : []),
-    ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihaz təsdiqləri' }] : []),
+    { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
+    { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
+    ...(isAdmin ? [{ to: '/admin/invite', label: 'İşçi dəvəti', Icon: IconSend }] : []),
+    ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihaz təsdiqləri', Icon: IconPhone }] : []),
   ]
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-slate-900 text-white">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-6 flex-wrap">
-            <span className="font-bold text-lg">AttendanceQR</span>
-            <nav className="flex gap-1 flex-wrap">
-              {links.map((l) => (
-                <NavLink
-                  key={l.to}
-                  to={l.to}
-                  className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-lg text-sm transition ${
-                      isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800'
-                    }`
-                  }
-                >
-                  {l.label}
-                </NavLink>
-              ))}
-            </nav>
+    <div className="app">
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="logo-mark">
+            <BrandLogo size={34} />
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-slate-400">
-              {email} · {role}
-            </span>
-            <button
-              onClick={logout}
-              className="bg-slate-800 hover:bg-slate-700 rounded-lg px-3 py-1.5"
-            >
-              Çıxış
-            </button>
+          <div className="logo-text">
+            <div className="t1">Bakı Abadlıq</div>
+            <div className="t2">Davamiyyət sistemi</div>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-6xl mx-auto p-4">
-        <Outlet />
+        <div className="sidebar-role">
+          <div className="role-badge">
+            <span className="role-dot" style={{ background: ROLE_DOT[role ?? ''] ?? '#7CB342' }} />
+            <div>
+              <div className="role-name">{email ?? '—'}</div>
+              <div className="role-area">{ROLE_LABEL[role ?? ''] ?? role}</div>
+            </div>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
+          {links.map(({ to, label, Icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+              <Icon />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <button
+            onClick={logout}
+            className="nav-item"
+            style={{ color: 'var(--c400)' }}
+          >
+            <IconLogout />
+            Çıxış
+          </button>
+        </div>
+      </aside>
+
+      <main className="main">
+        <div className="topbar">
+          <div>
+            <div className="topbar-title">{meta.title}</div>
+            <div className="topbar-sub">{meta.sub}</div>
+          </div>
+          <div className="topbar-right" />
+        </div>
+        <div className="content">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

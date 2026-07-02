@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import {
   downloadReportExcel,
   getMyLocations,
@@ -6,6 +6,7 @@ import {
   type AttendanceReport,
   type LocationDto,
 } from '../../api/admin'
+import { IconDownload, IconX } from '../../components/icons'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
@@ -56,88 +57,87 @@ export function ReportsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-800 mb-4">Hesabat</h1>
-
-      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-end gap-3">
-        <Field label="Başlanğıc">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </Field>
-        <Field label="Son">
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </Field>
-        <Field label="Ərazi">
-          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">Hamısı</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 font-medium"
-        >
-          {loading ? 'Yüklənir…' : 'Yüklə'}
-        </button>
-        <button
-          onClick={onExport}
-          disabled={exporting || !report}
-          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 font-medium"
-        >
-          {exporting ? 'Hazırlanır…' : '⬇ Excel export'}
-        </button>
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+          <div>
+            <label className="form-label">Başlanğıc</label>
+            <input className="inp" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Son</label>
+            <input className="inp" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div style={{ minWidth: 180 }}>
+            <label className="form-label">Ərazi</label>
+            <select className="inp" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <option value="">Hamısı</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-primary" onClick={load} disabled={loading}>
+            {loading ? 'Yüklənir…' : 'Yüklə'}
+          </button>
+          <button className="btn" onClick={onExport} disabled={exporting || !report}>
+            <IconDownload />
+            {exporting ? 'Hazırlanır…' : 'Excel export'}
+          </button>
+        </div>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 rounded-lg p-3 mb-3">{error}</div>}
+      {error && (
+        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+          <IconX />
+          <span>{error}</span>
+        </div>
+      )}
 
       {report && (
-        <div className="bg-white rounded-xl shadow overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-left">
+        <div className="tbl-wrap">
+          <table>
+            <thead>
               <tr>
-                <th className="px-4 py-3 font-medium">İşçi</th>
-                <th className="px-4 py-3 font-medium">Ərazi</th>
-                <th className="px-4 py-3 font-medium text-right">İş günləri</th>
-                <th className="px-4 py-3 font-medium text-right">Gecikmə</th>
-                <th className="px-4 py-3 font-medium text-right">Qaib</th>
-                <th className="px-4 py-3 font-medium text-right">Ümumi saat</th>
-                <th className="px-4 py-3 font-medium text-right">Overtime</th>
+                <th>İşçi</th>
+                <th>Ərazi</th>
+                <th className="num">İş günləri</th>
+                <th className="num">Gecikmə</th>
+                <th className="num">Qayıb</th>
+                <th className="num">Ümumi saat</th>
+                <th className="num">Overtime</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {report.rows.map((r) => (
                 <tr key={r.employeeId}>
-                  <td className="px-4 py-3 font-medium text-slate-800">{r.employeeName}</td>
-                  <td className="px-4 py-3 text-slate-600">{r.locationName}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{r.workDays}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{r.lateCount}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{r.absentDays}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{r.totalWorkedHours}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{r.overtimeHours}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</td>
+                  <td>{r.locationName}</td>
+                  <td className="num mono">{r.workDays}</td>
+                  <td className="num mono">{r.lateCount}</td>
+                  <td className="num mono">{r.absentDays}</td>
+                  <td className="num mono">{r.totalWorkedHours}</td>
+                  <td className="num mono">{r.overtimeHours}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                     Bu aralıqda məlumat yoxdur
                   </td>
                 </tr>
               )}
             </tbody>
             {report.rows.length > 0 && (
-              <tfoot className="bg-slate-50 font-semibold text-slate-800">
+              <tfoot>
                 <tr>
-                  <td className="px-4 py-3" colSpan={2}>
-                    CƏM
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{report.totals.workDays}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{report.totals.lateCount}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{report.totals.absentDays}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{report.totals.totalWorkedHours}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{report.totals.overtimeHours}</td>
+                  <td colSpan={2}>CƏM</td>
+                  <td className="num mono">{report.totals.workDays}</td>
+                  <td className="num mono">{report.totals.lateCount}</td>
+                  <td className="num mono">{report.totals.absentDays}</td>
+                  <td className="num mono">{report.totals.totalWorkedHours}</td>
+                  <td className="num mono">{report.totals.overtimeHours}</td>
                 </tr>
               </tfoot>
             )}
@@ -145,14 +145,5 @@ export function ReportsPage() {
         </div>
       )}
     </div>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
-      {children}
-    </label>
   )
 }
