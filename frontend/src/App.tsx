@@ -19,7 +19,8 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* Placeholders — built in later prompts. */}
+      {/* Kiosk: one URL per location. Admin panel is a later prompt. */}
+      <Route path="/kiosk/:locationId" element={<KioskPage />} />
       <Route path="/kiosk" element={<KioskPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<Navigate to="/scan" replace />} />
