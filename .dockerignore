@@ -1,0 +1,19 @@
+# Keep build context small and secret-free (backend image build).
+**/bin/
+**/obj/
+**/.vs/
+
+# Never bake local dev secrets into the image.
+**/appsettings.Development.json
+
+# Frontend has its own image/build — exclude it from the backend context.
+frontend/
+
+# VCS / tooling / local env
+.git/
+.gitignore
+.config/
+.env
+**/*.user
+README.md
+docker-compose.yml

@@ -480,3 +480,9 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local dev secrets — never commit (real values live here for `dotnet run`)
+src/AttendanceQR.Api/appsettings.Development.json
+
+# Docker Compose local env
+/.env

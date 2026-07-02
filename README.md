@@ -93,3 +93,43 @@ npm run dev               # http://localhost:5173
 - Reporting/attendance scope is enforced server-side (Admin = all, Manager = managed locations,
   Employee = self).
 - Real secrets are **never** committed — supply them via env/user-secrets (see above).
+
+## Run the whole stack with Docker
+
+```bash
+cp .env.example .env      # then fill in Jwt__SigningKey / QrToken__Secret (openssl rand …)
+docker compose up --build
+```
+
+- Frontend → http://localhost:8081 · Backend → http://localhost:8080 · Postgres → localhost:15432
+- The backend **applies EF Core migrations automatically on startup** (retries while the DB warms up).
+- Seed/dev endpoints (`/api/dev/*`) are compiled in but **404 outside Development**, so the
+  Docker/production images never expose them.
+
+## Deployment (Coolify)
+
+The app ships as two images (both multi-stage, non-root where applicable) plus a managed Postgres:
+
+| Component | Build pack | Base dir | Dockerfile | Port |
+|-----------|-----------|----------|-----------|------|
+| Backend   | Dockerfile | `/`        | `src/AttendanceQR.Api/Dockerfile` | 8080 |
+| Frontend  | Dockerfile | `/frontend`| `Dockerfile`                      | 80   |
+
+**Backend** environment variables (set as secrets in Coolify):
+
+| Key | Example |
+|-----|---------|
+| `ConnectionStrings__DefaultConnection` | `Host=<pg-host>;Port=5432;Database=attendanceqr;Username=<u>;Password=<p>` |
+| `Jwt__SigningKey`   | output of `openssl rand -base64 64` |
+| `QrToken__Secret`   | output of `openssl rand -base64 48` |
+| `Cors__AllowedOrigins` | `https://<frontend-domain>` (comma-separated for several) |
+
+**Frontend** build argument (build-time — Vite inlines it):
+
+| Key | Example |
+|-----|---------|
+| `VITE_API_URL` | `https://<backend-domain>` |
+
+> Decide the two public subdomains first: the frontend's `VITE_API_URL` must point at the backend
+> domain, and the backend's `Cors__AllowedOrigins` must list the frontend domain. TLS is terminated
+> by Coolify's proxy — the containers speak plain HTTP internally (no `UseHttpsRedirection`).

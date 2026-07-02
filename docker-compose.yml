@@ -1,0 +1,57 @@
+# Local full-stack: PostgreSQL + backend API + frontend (nginx).
+# Bring it all up with:  docker compose up --build
+# Values come from a root .env file (copy from .env.example — it is gitignored).
+#
+#   Frontend  -> http://localhost:8081
+#   Backend   -> http://localhost:8080
+#   Postgres  -> localhost:15432 (host), db:5432 (inside the compose network)
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-attendanceqr}
+    ports:
+      - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-attendanceqr}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: src/AttendanceQR.Api/Dockerfile
+    environment:
+      # ASP.NET Core reads "__" as a nested section separator (Jwt__SigningKey -> Jwt:SigningKey).
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB:-attendanceqr};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}"
+      Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey in .env}
+      QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret in .env}
+      Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost:8081}
+      # Explicitly Production so seed/dev endpoints stay disabled and dev appsettings never loads.
+      ASPNETCORE_ENVIRONMENT: Production
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the SPA at build time — point it at the backend's public URL.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

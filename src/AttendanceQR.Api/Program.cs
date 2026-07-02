@@ -51,6 +51,17 @@ builder.Services.AddHostedService<DailySummaryJob>();
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
+
+// Fail fast if the security secrets weren't supplied (env vars in production, user-secrets or
+// appsettings.Development.json locally). appsettings.json ships with empty placeholders.
+if (string.IsNullOrWhiteSpace(jwt.SigningKey))
+    throw new InvalidOperationException(
+        "Jwt:SigningKey is not configured. Set the 'Jwt__SigningKey' environment variable.");
+var qrToken = builder.Configuration.GetSection(QrTokenOptions.SectionName).Get<QrTokenOptions>()
+              ?? new QrTokenOptions();
+if (string.IsNullOrWhiteSpace(qrToken.Secret))
+    throw new InvalidOperationException(
+        "QrToken:Secret is not configured. Set the 'QrToken__Secret' environment variable.");
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -73,13 +84,16 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
-// CORS so the SPA (Vite dev server / deployed frontend) can call the API cross-origin.
-// Dev-permissive: no cookies are used (JWT travels in the Authorization header), so AllowAnyOrigin
-// is safe here. Tighten to specific origins in production.
+// CORS: the SPA calls the API cross-origin. Allowed origins come from configuration
+// ("Cors:AllowedOrigins", comma-separated) — the Vite dev server locally, the deployed
+// frontend domain in production. No cookies are used (the JWT travels in the Authorization
+// header), so credentials are intentionally NOT allowed.
 const string SpaCorsPolicy = "SpaCors";
+var corsOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? string.Empty)
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(options =>
     options.AddPolicy(SpaCorsPolicy, policy =>
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+        policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
 
 builder.Services
     .AddControllers()
@@ -88,7 +102,30 @@ builder.Services
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
+// Apply pending EF Core migrations at startup so the container is self-sufficient — no manual
+// `dotnet ef database update` step on the server. Single-instance deployment, so there is no
+// migration race. Retry briefly so a database still coming up on a cold start doesn't crash us.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            db.Database.Migrate();
+            break;
+        }
+        catch (Exception ex) when (attempt < 10)
+        {
+            startupLogger.LogWarning(ex, "Database not ready (attempt {Attempt}/10); retrying in 3s…", attempt);
+            Thread.Sleep(TimeSpan.FromSeconds(3));
+        }
+    }
+}
+
+// No UseHttpsRedirection: TLS is terminated by the reverse proxy (Coolify) in production and the
+// container listens on plain HTTP :8080; locally the API is served over HTTP too.
 
 app.UseCors(SpaCorsPolicy);
 
