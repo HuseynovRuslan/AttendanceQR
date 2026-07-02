@@ -74,3 +74,19 @@ export const IconClock = (p: SVGProps<SVGSVGElement>) => (
     <polyline points="12 7 12 12 16 14" />
   </svg>
 )
+
+export const IconMapPin = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+)
+
+export const IconTrash = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </svg>
+)

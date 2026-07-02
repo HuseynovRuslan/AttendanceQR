@@ -33,6 +33,10 @@ services:
       Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey in .env}
       QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret in .env}
       Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost:8081}
+      # First-run admin bootstrap (optional). If set and no Admin exists, one is created at startup.
+      Bootstrap__AdminEmail: ${Bootstrap__AdminEmail:-}
+      Bootstrap__AdminPassword: ${Bootstrap__AdminPassword:-}
+      Bootstrap__AdminFullName: ${Bootstrap__AdminFullName:-Administrator}
       # Explicitly Production so seed/dev endpoints stay disabled and dev appsettings never loads.
       ASPNETCORE_ENVIRONMENT: Production
     ports:

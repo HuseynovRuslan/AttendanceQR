@@ -123,6 +123,8 @@ The app ships as two images (both multi-stage, non-root where applicable) plus a
 | `Jwt__SigningKey`   | output of `openssl rand -base64 64` |
 | `QrToken__Secret`   | output of `openssl rand -base64 48` |
 | `Cors__AllowedOrigins` | `https://<frontend-domain>` (comma-separated for several) |
+| `Bootstrap__AdminEmail`    | `admin@yourco.com` — first-run admin login (see below) |
+| `Bootstrap__AdminPassword` | a strong password for that admin |
 
 **Frontend** build argument (build-time — Vite inlines it):
 
@@ -133,3 +135,13 @@ The app ships as two images (both multi-stage, non-root where applicable) plus a
 > Decide the two public subdomains first: the frontend's `VITE_API_URL` must point at the backend
 > domain, and the backend's `Cors__AllowedOrigins` must list the frontend domain. TLS is terminated
 > by Coolify's proxy — the containers speak plain HTTP internally (no `UseHttpsRedirection`).
+
+### First run — bootstrap the admin
+
+Production has no seed data (the `/api/dev/*` seed endpoints are Development-only). To get in the
+first time, set `Bootstrap__AdminEmail` + `Bootstrap__AdminPassword` on the backend: on startup, if
+no Admin exists, the app creates that admin plus a starter location. It is idempotent — once an
+admin exists it is skipped, so the vars are safe to leave set.
+
+Then log in as that admin and use **Lokasiyalar** (admin panel) to create/edit real locations, and
+**İşçi dəvəti** to invite employees (each gets an activation link to set a password + bind a device).

@@ -5,6 +5,7 @@ import {
   IconChart,
   IconClipboard,
   IconLogout,
+  IconMapPin,
   IconPhone,
   IconSend,
 } from '../../components/icons'
@@ -15,6 +16,7 @@ const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Ərazi me
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/today': { title: 'Bugünkü davamiyyət', sub: 'Canlı — hər 30 saniyədə yenilənir' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
+  '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
   '/admin/invite': { title: 'İşçi dəvəti', sub: 'Yeni işçi qeydiyyatı' },
   '/admin/device-changes': { title: 'Cihaz təsdiqləri', sub: 'Gözləyən tələblər' },
 }
@@ -28,6 +30,7 @@ export function AdminLayout() {
   const links = [
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
+    ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
     ...(isAdmin ? [{ to: '/admin/invite', label: 'İşçi dəvəti', Icon: IconSend }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihaz təsdiqləri', Icon: IconPhone }] : []),
   ]

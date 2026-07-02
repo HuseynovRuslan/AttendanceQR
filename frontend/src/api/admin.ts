@@ -46,6 +46,20 @@ export interface LocationDto {
   name: string
 }
 
+/** Full location shape returned by the admin location-management endpoints. */
+export interface AdminLocation {
+  id: string
+  name: string
+  latitude: number
+  longitude: number
+  radiusMeters: number
+  shiftStart: string // "HH:mm"
+  shiftEnd: string // "HH:mm"
+  lateThresholdMinutes: number
+}
+
+export type LocationInput = Omit<AdminLocation, 'id'>
+
 export function getToday() {
   return apiRequest<DayAttendanceRow[]>('/api/reports/today')
 }
@@ -61,7 +75,27 @@ export function getMyLocations() {
 }
 
 export function getAdminLocations() {
-  return apiRequest<LocationDto[]>('/api/admin/locations')
+  return apiRequest<AdminLocation[]>('/api/admin/locations')
+}
+
+export function createLocation(input: LocationInput) {
+  return apiRequest<AdminLocation | { error: string }>('/api/admin/locations', {
+    method: 'POST',
+    body: input,
+  })
+}
+
+export function updateLocation(id: string, input: LocationInput) {
+  return apiRequest<AdminLocation | { error: string }>(`/api/admin/locations/${id}`, {
+    method: 'PUT',
+    body: input,
+  })
+}
+
+export function deleteLocation(id: string) {
+  return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/locations/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 /** Streams the .xlsx back as a blob and triggers a browser download. */

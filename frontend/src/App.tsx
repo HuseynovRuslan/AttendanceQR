@@ -9,6 +9,7 @@ import { KioskPage } from './pages/KioskPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { TodayPage } from './pages/admin/TodayPage'
 import { ReportsPage } from './pages/admin/ReportsPage'
+import { LocationsPage } from './pages/admin/LocationsPage'
 import { InvitePage } from './pages/admin/InvitePage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 
@@ -42,6 +43,14 @@ export default function App() {
         <Route index element={<Navigate to="today" replace />} />
         <Route path="today" element={<TodayPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route
+          path="locations"
+          element={
+            <AdminOnly>
+              <LocationsPage />
+            </AdminOnly>
+          }
+        />
         <Route
           path="invite"
           element={
