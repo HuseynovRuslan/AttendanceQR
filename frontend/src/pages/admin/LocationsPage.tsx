@@ -7,7 +7,7 @@ import {
   type AdminLocation,
   type LocationInput,
 } from '../../api/admin'
-import { IconCheck, IconMapPin, IconTrash, IconX } from '../../components/icons'
+import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../components/icons'
 
 type FormState = {
   name: string
@@ -49,6 +49,7 @@ export function LocationsPage() {
   const [ok, setOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   async function refresh() {
     const { status, data } = await getAdminLocations()
@@ -133,8 +134,28 @@ export function LocationsPage() {
     }
   }
 
+  async function copyKioskLink(l: AdminLocation) {
+    const url = `${window.location.origin}/kiosk/${l.id}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedId(l.id)
+      setTimeout(() => setCopiedId((c) => (c === l.id ? null : c)), 2000)
+    } catch {
+      // Clipboard blocked (e.g. non-secure context) — show the link so it can be copied by hand.
+      window.prompt('Kiosk linki (kopyalayın):', url)
+    }
+  }
+
   return (
     <div>
+      <div className="fb" style={{ marginBottom: 16, background: 'var(--c50, #f6f8f4)', color: 'var(--c500)' }}>
+        <IconQr />
+        <span>
+          <b>Kiosk</b> — lokasiyada fırlanan QR göstərən ekran (giriş tələb etmir). Cədvəldəki{' '}
+          <b>Kiosk</b> düyməsi ilə açıb tablet/monitorda tam ekran işlədin; işçilər öz telefonu ilə skan edir.
+        </span>
+      </div>
+
       <form onSubmit={onSubmit} className="card card-pad" style={{ marginBottom: 16, maxWidth: 760 }}>
         <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <IconMapPin />
@@ -227,6 +248,22 @@ export function LocationsPage() {
                 <td className="num mono">{l.lateThresholdMinutes} dəq</td>
                 <td>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <a
+                      className="btn btn-sm"
+                      href={`/kiosk/${l.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Bu lokasiyanın kiosk QR ekranını yeni tabda aç"
+                    >
+                      <IconQr /> Kiosk aç
+                    </a>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => copyKioskLink(l)}
+                      title="Kiosk linkini kopyala"
+                    >
+                      {copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala'}
+                    </button>
                     <button className="btn btn-sm" onClick={() => startEdit(l)}>Redaktə</button>
                     <button className="btn btn-danger btn-sm" disabled={deletingId === l.id} onClick={() => onDelete(l)}>
                       <IconTrash /> Sil
