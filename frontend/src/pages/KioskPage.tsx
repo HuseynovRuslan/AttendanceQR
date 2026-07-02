@@ -1,0 +1,12 @@
+export function KioskPage() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center">
+      <div className="text-5xl mb-4">🖥️</div>
+      <h1 className="text-2xl font-bold">Kiosk ekranı</h1>
+      <p className="text-slate-400 mt-2 max-w-sm">
+        Fırlanan QR kodu göstərən kiosk ekranı növbəti mərhələdə hazırlanacaq.
+        (Endpoint hazırdır: <code>GET /api/kiosk/token/{'{locationId}'}</code>)
+      </p>
+    </div>
+  )
+}

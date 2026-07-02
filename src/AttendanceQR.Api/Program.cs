@@ -73,6 +73,14 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// CORS so the SPA (Vite dev server / deployed frontend) can call the API cross-origin.
+// Dev-permissive: no cookies are used (JWT travels in the Authorization header), so AllowAnyOrigin
+// is safe here. Tighten to specific origins in production.
+const string SpaCorsPolicy = "SpaCors";
+builder.Services.AddCors(options =>
+    options.AddPolicy(SpaCorsPolicy, policy =>
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+
 builder.Services
     .AddControllers()
     .AddJsonOptions(options =>
@@ -81,6 +89,8 @@ builder.Services
 var app = builder.Build();
 
 app.UseHttpsRedirection();
+
+app.UseCors(SpaCorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();
