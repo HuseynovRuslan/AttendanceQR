@@ -7,6 +7,11 @@ export interface JwtClaims {
   exp?: number
 }
 
+/** The screen a role lands on after login: staff → admin panel, everyone else → scan. */
+export function roleHome(role: Role | null | undefined): string {
+  return role === 'Admin' || role === 'Manager' ? '/admin' : '/scan'
+}
+
 /** Decodes a JWT payload (no signature check — that's the backend's job). Returns null if malformed. */
 export function decodeJwt(token: string): JwtClaims | null {
   try {

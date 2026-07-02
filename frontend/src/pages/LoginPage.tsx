@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
+import { decodeJwt, roleHome } from '../lib/jwt'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
@@ -10,6 +11,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const { saveToken } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -19,7 +21,10 @@ export function LoginPage() {
       const { status, data } = await login(email, password)
       if (status === 200 && data && 'token' in data) {
         saveToken(data.token)
-        navigate('/scan', { replace: true })
+        // Back to where they were headed, else the role's home (staff → /admin, employee → /scan).
+        const from = (location.state as { from?: string } | null)?.from
+        const role = decodeJwt(data.token)?.role
+        navigate(from ?? roleHome(role), { replace: true })
       } else {
         setError('Email və ya parol yanlışdır')
       }

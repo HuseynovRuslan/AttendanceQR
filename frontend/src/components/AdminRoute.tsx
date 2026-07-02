@@ -1,11 +1,12 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
 
 /** /admin/* — requires Admin or Manager. Employees are sent to their scan screen. */
 export function AdminRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, role } = useAuth()
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const location = useLocation()
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location.pathname }} replace />
   if (role !== 'Admin' && role !== 'Manager') return <Navigate to="/scan" replace />
   return <>{children}</>
 }
