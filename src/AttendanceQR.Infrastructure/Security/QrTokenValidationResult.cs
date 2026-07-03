@@ -6,6 +6,10 @@ public sealed class QrTokenValidationResult
 
     public Guid? LocationId { get; init; }
 
+    /// <summary>The version embedded in the token — the caller compares this against the
+    /// location's current <c>QrVersion</c> to reject revoked (regenerated/invalidated) codes.</summary>
+    public int? Version { get; init; }
+
     public string? FailureReason { get; init; }
 
     /// <summary>
@@ -17,6 +21,6 @@ public sealed class QrTokenValidationResult
     public static QrTokenValidationResult Fail(string reason) =>
         new() { IsValid = false, FailureReason = reason };
 
-    public static QrTokenValidationResult Success(Guid locationId, string nonce) =>
-        new() { IsValid = true, LocationId = locationId, Nonce = nonce };
+    public static QrTokenValidationResult Success(Guid locationId, int version, string nonce) =>
+        new() { IsValid = true, LocationId = locationId, Version = version, Nonce = nonce };
 }

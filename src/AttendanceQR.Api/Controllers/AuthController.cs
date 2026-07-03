@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
@@ -9,21 +10,27 @@ namespace AttendanceQR.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController : ControllerBase
+public partial class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
+    private readonly ILoginLockoutStore _lockoutStore;
 
     // Computed once: a real hash to verify against when an email is unknown / has no password,
     // so login timing does not reveal whether an account exists.
     private static string? _decoyHash;
 
-    public AuthController(AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService)
+    [GeneratedRegex(@"^\d{4}$")]
+    private static partial Regex PinFormat();
+
+    public AuthController(
+        AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
+        _lockoutStore = lockoutStore;
     }
 
     [HttpPost("activate")]
@@ -52,6 +59,11 @@ public class AuthController : ControllerBase
         if (!ActivationToken.VerifyRandomPart(randomPart, employee.InvitationTokenHash))
             return BadRequest(new { error = "InvalidToken" });
 
+        // 5b. The PIN is the account's only credential — enforce the 4-digit format here so it
+        // can never be set to something weaker/different than what login expects.
+        if (!PinFormat().IsMatch(request.Password))
+            return BadRequest(new { error = "PinInvalid" });
+
         var now = DateTime.UtcNow;
 
         // 6. Set the password.
@@ -79,6 +91,11 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
+        // A 4-digit PIN is only 10,000 combinations — without this, an unthrottled attacker could
+        // exhaust the whole space in seconds. Checked before touching the DB/hasher.
+        if (_lockoutStore.IsLockedOut(request.Email))
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "TooManyAttempts" });
+
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Email == request.Email);
 
         // Always perform a verification — against a decoy hash when the account is unknown or
@@ -94,8 +111,12 @@ public class AuthController : ControllerBase
 
         // Identical response for every failure mode (unknown email, wrong password, inactive…).
         if (!canLogin)
+        {
+            _lockoutStore.RecordFailure(request.Email);
             return Unauthorized(new { error = "InvalidCredentials" });
+        }
 
+        _lockoutStore.RecordSuccess(request.Email);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
 }

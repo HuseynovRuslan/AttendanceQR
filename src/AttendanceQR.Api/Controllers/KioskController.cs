@@ -34,11 +34,14 @@ public class KioskController : ControllerBase
     {
         // Only issue a QR for an existing, ACTIVE location. A disabled location shows no QR, so no
         // check-ins can happen there until it is re-enabled.
-        var isActive = await _db.Locations.AnyAsync(l => l.Id == locationId && l.IsActive);
-        if (!isActive)
+        var location = await _db.Locations
+            .Where(l => l.Id == locationId && l.IsActive)
+            .Select(l => new { l.QrVersion })
+            .FirstOrDefaultAsync();
+        if (location is null)
             return NotFound(new { error = "LocationNotFoundOrInactive" });
 
-        var token = _qrTokenService.Generate(locationId);
+        var token = _qrTokenService.Generate(locationId, location.QrVersion);
         // Kiosk should refresh a few seconds before the token actually expires.
         var refreshInSeconds = Math.Max(1, _qrTokenOptions.TtlSeconds - 5);
         return Ok(new { token, locationId, refreshInSeconds });

@@ -19,12 +19,12 @@ export function ActivatePage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password.length < 6) {
-      setError('Parol ən azı 6 simvol olmalıdır')
+    if (!/^\d{4}$/.test(password)) {
+      setError('PIN düz 4 rəqəm olmalıdır')
       return
     }
     if (password !== confirm) {
-      setError('Parollar uyğun gəlmir')
+      setError('PIN-lər uyğun gəlmir')
       return
     }
     setLoading(true)
@@ -41,7 +41,9 @@ export function ActivatePage() {
           ? 'Bu hesab artıq aktivləşdirilib. Zəhmət olmasa daxil olun.'
           : code === 'TokenExpired'
             ? 'Aktivasiya linki köhnəlib. Yeni dəvət tələb edin.'
-            : 'Aktivasiya alınmadı — token yanlışdır.',
+            : code === 'PinInvalid'
+              ? 'PIN düz 4 rəqəm olmalıdır'
+              : 'Aktivasiya alınmadı — token yanlışdır.',
       )
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')
@@ -55,7 +57,7 @@ export function ActivatePage() {
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 space-y-5">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-800">Hesabı aktivləşdir</h1>
-          <p className="text-slate-500 text-sm mt-1">Parol təyin edin və bu cihazı bağlayın</p>
+          <p className="text-slate-500 text-sm mt-1">PIN təyin edin və bu cihazı bağlayın</p>
         </div>
 
         {!token ? (
@@ -69,26 +71,34 @@ export function ActivatePage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Yeni parol</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">4 rəqəmli PIN təyin edin</label>
               <input
                 type="password"
+                inputMode="numeric"
+                pattern="\d{4}"
+                maxLength={4}
                 required
                 autoComplete="new-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ letterSpacing: 8, textAlign: 'center', fontSize: 22 }}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Parolu təsdiqlə</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">PIN-i təkrarlayın</label>
               <input
                 type="password"
+                inputMode="numeric"
+                pattern="\d{4}"
+                maxLength={4}
                 required
                 autoComplete="new-password"
                 value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+                onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ letterSpacing: 8, textAlign: 'center', fontSize: 22 }}
               />
             </div>
 

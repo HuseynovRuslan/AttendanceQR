@@ -107,6 +107,27 @@ export function setLocationActive(id: string, isActive: boolean) {
   })
 }
 
+export interface StaticQrResult {
+  token: string
+  expiresAtUtc: string
+  locationName: string
+}
+
+/** Long-lived (30-day) QR meant to be printed and posted at the location. */
+export function generateStaticQr(locationId: string) {
+  return apiRequest<StaticQrResult | { error: string }>(`/api/admin/locations/${locationId}/static-qr`, {
+    method: 'POST',
+  })
+}
+
+/** Instantly revokes every outstanding QR (kiosk + any printed poster) for this location. */
+export function invalidateLocationQr(locationId: string) {
+  return apiRequest<{ locationId: string; qrVersion: number } | { error: string }>(
+    `/api/admin/locations/${locationId}/invalidate-qr`,
+    { method: 'POST' },
+  )
+}
+
 /** Streams the .xlsx back as a blob and triggers a browser download. */
 export async function downloadReportExcel(from: string, to: string, locationId?: string): Promise<void> {
   const q = new URLSearchParams({ from, to })

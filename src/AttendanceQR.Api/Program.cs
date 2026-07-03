@@ -30,6 +30,7 @@ builder.Services.Configure<InvitationOptions>(
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IQrTokenService, QrTokenService>();
 builder.Services.AddSingleton<INonceStore, MemoryCacheNonceStore>();
+builder.Services.AddSingleton<ILoginLockoutStore, MemoryCacheLoginLockoutStore>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 builder.Services.AddSingleton<IJwtService, JwtService>();
 
@@ -132,6 +133,12 @@ using (var scope = app.Services.CreateScope())
     // created by an admin; seed is Development-only).
     var adminEmail = app.Configuration["Bootstrap:AdminEmail"];
     var adminPassword = app.Configuration["Bootstrap:AdminPassword"];
+    if (!string.IsNullOrWhiteSpace(adminPassword) && !System.Text.RegularExpressions.Regex.IsMatch(adminPassword, @"^\d{4}$"))
+    {
+        startupLogger.LogError(
+            "Bootstrap:AdminPassword must be exactly 4 digits (the PIN format employees log in with) — skipping admin bootstrap.");
+        adminPassword = null;
+    }
     if (!string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword)
         && !await db.Employees.AnyAsync(e => e.Role == EmployeeRole.Admin))
     {

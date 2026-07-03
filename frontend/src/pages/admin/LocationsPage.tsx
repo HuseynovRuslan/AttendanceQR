@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import {
   createLocation,
   deleteLocation,
@@ -298,6 +299,13 @@ export function LocationsPage() {
                         >
                           {copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala'}
                         </button>
+                        <Link
+                          className="btn btn-sm"
+                          to={`/admin/locations/${l.id}/print-qr`}
+                          title="Çap üçün sabit QR (PNG/PDF)"
+                        >
+                          <IconQr /> Çap üçün QR
+                        </Link>
                       </>
                     )}
                     <button

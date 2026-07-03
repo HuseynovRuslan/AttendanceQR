@@ -39,7 +39,8 @@ public class DevController : ControllerBase
         if (!_environment.IsDevelopment())
             return NotFound();
 
-        var token = _qrTokenService.Generate(locationId);
+        // Dev-seeded locations always start at QrVersion 0.
+        var token = _qrTokenService.Generate(locationId, version: 0);
         return Ok(new { locationId, token });
     }
 

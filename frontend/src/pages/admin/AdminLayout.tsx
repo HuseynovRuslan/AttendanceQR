@@ -25,7 +25,8 @@ export function AdminLayout() {
   const { role, email, logout } = useAuth()
   const location = useLocation()
   const isAdmin = role === 'Admin'
-  const meta = PAGE_META[location.pathname] ?? { title: 'Panel', sub: '' }
+  const meta = PAGE_META[location.pathname]
+    ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' } : { title: 'Panel', sub: '' })
 
   const links = [
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },

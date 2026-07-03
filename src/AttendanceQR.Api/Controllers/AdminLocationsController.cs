@@ -2,6 +2,7 @@ using System.Globalization;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,9 +15,20 @@ namespace AttendanceQR.Api.Controllers;
 [Route("api/admin/locations")]
 public class AdminLocationsController : ControllerBase
 {
-    private readonly AppDbContext _db;
+    // A printed poster needs to survive well past its next replacement cycle without becoming a
+    // permanent, un-revocable secret — 30 days balances "rarely needs reprinting" against "an old
+    // photo of the poster doesn't stay scannable forever". QrVersion still lets an admin invalidate
+    // it sooner if needed (a leaked photo, a lost poster, etc).
+    private const int StaticQrTtlSeconds = 30 * 24 * 60 * 60;
 
-    public AdminLocationsController(AppDbContext db) => _db = db;
+    private readonly AppDbContext _db;
+    private readonly IQrTokenService _qrTokenService;
+
+    public AdminLocationsController(AppDbContext db, IQrTokenService qrTokenService)
+    {
+        _db = db;
+        _qrTokenService = qrTokenService;
+    }
 
     [HttpGet]
     public async Task<IActionResult> List()
@@ -101,6 +113,36 @@ public class AdminLocationsController : ControllerBase
         location.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
         return Ok(Project(location));
+    }
+
+    // Long-lived QR meant to be printed and posted at the location (unlike the kiosk's 60s-rotating
+    // one). Same crypto/scan path as the kiosk token — just a longer TTL — so it works with the
+    // employee's existing scan flow with no special-casing.
+    [HttpPost("{id:guid}/static-qr")]
+    public async Task<IActionResult> GenerateStaticQr(Guid id)
+    {
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
+        if (location is null)
+            return NotFound(new { error = "LocationNotFound" });
+
+        var token = _qrTokenService.Generate(id, location.QrVersion, StaticQrTtlSeconds);
+        var expiresAtUtc = DateTime.UtcNow.AddSeconds(StaticQrTtlSeconds);
+        return Ok(new { token, expiresAtUtc, locationName = location.Name });
+    }
+
+    // Instantly revokes every outstanding QR for this location — the kiosk's rotating code AND any
+    // printed static poster — by bumping the version every issued token must match. Use when a
+    // poster is lost/leaked, or just to force a fresh print cycle.
+    [HttpPost("{id:guid}/invalidate-qr")]
+    public async Task<IActionResult> InvalidateQr(Guid id)
+    {
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
+        if (location is null)
+            return NotFound(new { error = "LocationNotFound" });
+
+        location.QrVersion++;
+        await _db.SaveChangesAsync();
+        return Ok(new { locationId = id, qrVersion = location.QrVersion });
     }
 
     private static object Project(Location l) => new

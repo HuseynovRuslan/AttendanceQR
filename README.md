@@ -124,7 +124,7 @@ The app ships as two images (both multi-stage, non-root where applicable) plus a
 | `QrToken__Secret`   | output of `openssl rand -base64 48` |
 | `Cors__AllowedOrigins` | `https://<frontend-domain>` (comma-separated for several) |
 | `Bootstrap__AdminEmail`    | `admin@yourco.com` — first-run admin login (see below) |
-| `Bootstrap__AdminPassword` | a strong password for that admin |
+| `Bootstrap__AdminPassword` | a 4-digit PIN (e.g. `4821`) — same format as employee login |
 
 **Frontend** build argument (build-time — Vite inlines it):
 
@@ -144,4 +144,4 @@ no Admin exists, the app creates that admin plus a starter location. It is idemp
 admin exists it is skipped, so the vars are safe to leave set.
 
 Then log in as that admin and use **Lokasiyalar** (admin panel) to create/edit real locations, and
-**İşçi dəvəti** to invite employees (each gets an activation link to set a password + bind a device).
+**İşçilər** to invite employees (each gets an activation link to set a 4-digit PIN + bind a device).

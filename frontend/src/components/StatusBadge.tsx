@@ -5,7 +5,7 @@ const MAP: Record<string, { cls: string; label: string; icon: 'check' | 'clock' 
   OnTime: { cls: 'b-present', label: 'Davamda', icon: 'check' },
   Late: { cls: 'b-late', label: 'Gecikmə', icon: 'clock' },
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
-  Incomplete: { cls: 'b-permitted', label: 'Yarımçıq', icon: 'clock' },
+  Incomplete: { cls: 'b-permitted', label: 'İşdə', icon: 'clock' },
 }
 
 export function StatusBadge({ status }: { status: string }) {

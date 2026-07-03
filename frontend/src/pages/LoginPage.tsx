@@ -26,8 +26,10 @@ export function LoginPage() {
         const from = (location.state as { from?: string } | null)?.from
         const role = decodeJwt(data.token)?.role
         navigate(from ?? roleHome(role), { replace: true })
+      } else if (status === 429) {
+        setError('Çox sayda cəhd — 15 dəqiqə sonra yenidən cəhd edin')
       } else {
-        setError('Email və ya parol yanlışdır')
+        setError('Email və ya PIN yanlışdır')
       }
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')
@@ -82,14 +84,18 @@ export function LoginPage() {
             />
           </div>
           <div style={{ marginBottom: 18 }}>
-            <label className="form-label">Şifrə</label>
+            <label className="form-label">PIN (4 rəqəm)</label>
             <input
               className="inp"
               type="password"
+              inputMode="numeric"
+              pattern="\d{4}"
+              maxLength={4}
               required
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              style={{ letterSpacing: 6, textAlign: 'center', fontSize: 20 }}
             />
           </div>
 

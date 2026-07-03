@@ -123,6 +123,13 @@ public class AttendanceController : ControllerBase
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "LocationInactive", ip);
             return BadRequest(new { error = "LocationInactive" });
         }
+        // A version mismatch means this QR was revoked (admin "invalidated" it after this token was
+        // issued — e.g. a printed poster after regeneration) — treat it the same as an expired code.
+        if (validation.Version != location.QrVersion)
+        {
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "TokenExpired", ip);
+            return BadRequest(new { error = "TokenExpired" });
+        }
 
         var distanceMeters = GeoCalculator.DistanceMeters(
             request.Latitude, request.Longitude, location.Latitude, location.Longitude);
