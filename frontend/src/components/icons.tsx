@@ -84,6 +84,15 @@ export const IconUsers = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const IconRefresh = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />
+    <path d="M21 3v5h-5" />
+    <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
+    <path d="M3 21v-5h5" />
+  </svg>
+)
+
 export const IconMapPin = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />

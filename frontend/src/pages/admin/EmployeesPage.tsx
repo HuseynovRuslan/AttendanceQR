@@ -5,13 +5,14 @@ import {
   getEmployees,
   invite,
   reinviteEmployee,
+  resetEmployeeAttendance,
   updateEmployee,
   type AdminEmployee,
   type AdminLocation,
   type InviteResult,
 } from '../../api/admin'
 import type { Role } from '../../lib/jwt'
-import { IconCheck, IconPhone, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
+import { IconCheck, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
 
 const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
 
@@ -58,6 +59,7 @@ export function EmployeesPage() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null)
+  const [resettingId, setResettingId] = useState<string | null>(null)
   const [link, setLink] = useState<{ name: string; result: InviteResult } | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -151,6 +153,25 @@ export function EmployeesPage() {
     setOk(null)
     setDeletingId(e.id)
     const { status, data } = await deleteEmployee(e.id)
+
+    // Blocked because this employee has attendance/device-change history — offer to wipe that
+    // history too (common for test accounts) instead of silently failing.
+    if (status === 409 && data && typeof data === 'object' && 'error' in data && data.error === 'EmployeeHasHistory') {
+      const wipe = window.confirm(
+        `"${e.fullName}" işçisinin davamiyyət tarixçəsi var. Tarixçə daxil olmaqla TAM silinsin? Bu geri qaytarılmır.`,
+      )
+      if (wipe) {
+        const forced = await deleteEmployee(e.id, true)
+        setDeletingId(null)
+        if (forced.status === 200) {
+          await refresh()
+        } else {
+          setError('Silinmədi')
+        }
+        return
+      }
+    }
+
     setDeletingId(null)
     if (status === 200) {
       await refresh()
@@ -158,6 +179,26 @@ export function EmployeesPage() {
       setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
     } else {
       setError('Silinmədi')
+    }
+  }
+
+  async function onResetAttendance(e: AdminEmployee) {
+    if (
+      !window.confirm(
+        `"${e.fullName}" üçün BÜTÜN giriş/çıxış tarixçəsi silinsin? Hesab və cihaz bağlantısı qalır — yenidən skan testi edə bilərsiniz.`,
+      )
+    )
+      return
+    setError(null)
+    setOk(null)
+    setResettingId(e.id)
+    const { status, data } = await resetEmployeeAttendance(e.id)
+    setResettingId(null)
+    if (status === 200 && data && 'attendanceRecordsDeleted' in data) {
+      setOk(`Tarixçə sıfırlandı (${data.attendanceRecordsDeleted} qeyd silindi) — yenidən test edə bilərsiniz.`)
+      await refresh()
+    } else {
+      setError('Sıfırlanmadı')
     }
   }
 
@@ -369,6 +410,16 @@ export function EmployeesPage() {
                         title="Qeydiyyat linkini (yenidən) yarat"
                       >
                         <IconSend /> Qeyd. linki
+                      </button>
+                    )}
+                    {e.activated && (
+                      <button
+                        className="btn btn-sm"
+                        disabled={resettingId === e.id}
+                        onClick={() => onResetAttendance(e)}
+                        title="Giriş/çıxış tarixçəsini sil — hesab qalır, yenidən test edin"
+                      >
+                        <IconRefresh /> Sıfırla
                       </button>
                     )}
                     <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>

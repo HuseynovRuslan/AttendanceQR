@@ -182,8 +182,9 @@ export function updateEmployee(id: string, payload: EmployeeUpdatePayload) {
   })
 }
 
-export function deleteEmployee(id: string) {
-  return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/employees/${id}`, {
+export function deleteEmployee(id: string, force = false) {
+  const q = force ? '?force=true' : ''
+  return apiRequest<{ deleted: string; forced: boolean } | { error: string }>(`/api/admin/employees/${id}${q}`, {
     method: 'DELETE',
   })
 }
@@ -192,6 +193,15 @@ export function reinviteEmployee(id: string) {
   return apiRequest<InviteResult | { error: string }>(`/api/admin/employees/${id}/reinvite`, {
     method: 'POST',
   })
+}
+
+/** Testing helper — clears an employee's check-in/check-out history so the same account +
+ * device can be used to re-test the scan flow. Keeps the account and device binding. */
+export function resetEmployeeAttendance(id: string) {
+  return apiRequest<{ attendanceRecordsDeleted: number; summariesDeleted: number } | { error: string }>(
+    `/api/admin/employees/${id}/reset-attendance`,
+    { method: 'POST' },
+  )
 }
 
 // --- device changes --------------------------------------------------------

@@ -123,7 +123,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id)
+    public async Task<IActionResult> Delete(Guid id, [FromQuery] bool force = false)
     {
         Guid.TryParse(User.FindFirstValue("sub"), out var requesterId);
         if (id == requesterId)
@@ -134,17 +134,44 @@ public class AdminController : ControllerBase
             return NotFound(new { error = "EmployeeNotFound" });
 
         // Attendance/summary/device-change FKs are Restrict — refuse to delete an employee with
-        // history (it would fail at the DB anyway). Deactivate such accounts instead.
+        // history (it would fail at the DB anyway) unless the caller explicitly opts into a
+        // force delete (e.g. wiping a test account), which purges that history first.
         var hasHistory = await _db.AttendanceRecords.AnyAsync(a => a.EmployeeId == id)
                          || await _db.DailySummaries.AnyAsync(d => d.EmployeeId == id)
                          || await _db.DeviceChangeRequests.AnyAsync(r => r.EmployeeId == id || r.ReviewedByEmployeeId == id);
-        if (hasHistory)
+        if (hasHistory && !force)
             return Conflict(new { error = "EmployeeHasHistory" });
+
+        if (hasHistory)
+        {
+            await _db.AttendanceRecords.Where(a => a.EmployeeId == id).ExecuteDeleteAsync();
+            await _db.DailySummaries.Where(d => d.EmployeeId == id).ExecuteDeleteAsync();
+            // Own requests are this employee's history — remove them. Requests they merely
+            // reviewed belong to someone else's history — keep the request, just anonymize
+            // the reviewer (mirrors the AuditLogs SetNull behavior on employee delete).
+            await _db.DeviceChangeRequests.Where(r => r.EmployeeId == id).ExecuteDeleteAsync();
+            await _db.DeviceChangeRequests.Where(r => r.ReviewedByEmployeeId == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.ReviewedByEmployeeId, (Guid?)null));
+        }
 
         // DeviceBinding and ManagedLocations cascade; AuditLogs are set null.
         _db.Employees.Remove(employee);
         await _db.SaveChangesAsync();
-        return Ok(new { deleted = id });
+        return Ok(new { deleted = id, forced = hasHistory && force });
+    }
+
+    // Testing/reset helper: clears an employee's check-in/check-out history so the same account +
+    // device can be used to test the scan flow again from a clean slate. Keeps the employee,
+    // activation state and device binding untouched — only attendance data is removed.
+    [HttpPost("{id:guid}/reset-attendance")]
+    public async Task<IActionResult> ResetAttendance(Guid id)
+    {
+        if (!await _db.Employees.AnyAsync(e => e.Id == id))
+            return NotFound(new { error = "EmployeeNotFound" });
+
+        var recordsDeleted = await _db.AttendanceRecords.Where(a => a.EmployeeId == id).ExecuteDeleteAsync();
+        var summariesDeleted = await _db.DailySummaries.Where(d => d.EmployeeId == id).ExecuteDeleteAsync();
+        return Ok(new { attendanceRecordsDeleted = recordsDeleted, summariesDeleted });
     }
 
     // Regenerate the activation link for a not-yet-activated employee (e.g. the original link was
