@@ -127,7 +127,7 @@ export async function downloadReportExcel(from: string, to: string, locationId?:
   URL.revokeObjectURL(url)
 }
 
-// --- invite ----------------------------------------------------------------
+// --- employees -------------------------------------------------------------
 
 export interface InviteResult {
   employeeId: string
@@ -135,10 +135,62 @@ export interface InviteResult {
   activationUrl: string
 }
 
-export function invite(fullName: string, email: string, locationId: string, role: Role) {
+export interface InvitePayload {
+  fullName: string
+  email: string
+  locationId: string
+  role: Role
+  fatherName?: string | null
+  position?: string | null
+  birthYear?: number | null
+}
+
+export interface AdminEmployee {
+  id: string
+  fullName: string
+  fatherName: string | null
+  position: string | null
+  birthYear: number | null
+  email: string
+  role: Role
+  locationId: string
+  locationName: string | null
+  isActive: boolean
+  activated: boolean
+  hasDevice: boolean
+  boundAtUtc: string | null
+  createdAtUtc: string
+}
+
+export type EmployeeUpdatePayload = Omit<InvitePayload, never> & { isActive: boolean }
+
+export function getEmployees() {
+  return apiRequest<AdminEmployee[]>('/api/admin/employees')
+}
+
+export function invite(payload: InvitePayload) {
   return apiRequest<InviteResult | { error: string }>('/api/admin/employees/invite', {
     method: 'POST',
-    body: { fullName, email, locationId, role },
+    body: payload,
+  })
+}
+
+export function updateEmployee(id: string, payload: EmployeeUpdatePayload) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/admin/employees/${id}`, {
+    method: 'PUT',
+    body: payload,
+  })
+}
+
+export function deleteEmployee(id: string) {
+  return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/employees/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+export function reinviteEmployee(id: string) {
+  return apiRequest<InviteResult | { error: string }>(`/api/admin/employees/${id}/reinvite`, {
+    method: 'POST',
   })
 }
 

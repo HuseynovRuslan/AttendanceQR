@@ -7,7 +7,7 @@ import {
   IconLogout,
   IconMapPin,
   IconPhone,
-  IconSend,
+  IconUsers,
 } from '../../components/icons'
 
 const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' }
@@ -17,7 +17,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/today': { title: 'Bugünkü davamiyyət', sub: 'Canlı — hər 30 saniyədə yenilənir' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
-  '/admin/invite': { title: 'İşçi dəvəti', sub: 'Yeni işçi qeydiyyatı' },
+  '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
   '/admin/device-changes': { title: 'Cihaz təsdiqləri', sub: 'Gözləyən tələblər' },
 }
 
@@ -31,7 +31,7 @@ export function AdminLayout() {
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
-    ...(isAdmin ? [{ to: '/admin/invite', label: 'İşçi dəvəti', Icon: IconSend }] : []),
+    ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihaz təsdiqləri', Icon: IconPhone }] : []),
   ]
 

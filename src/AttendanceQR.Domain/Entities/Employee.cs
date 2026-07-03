@@ -14,6 +14,14 @@ public class Employee
 
     public string FullName { get; set; } = string.Empty;
 
+    // Optional profile fields shown in the admin employee list. Nullable so existing rows and
+    // admin/manager accounts that don't need them are unaffected.
+    public string? FatherName { get; set; }
+
+    public string? Position { get; set; }
+
+    public int? BirthYear { get; set; }
+
     public string Email { get; set; } = string.Empty;
 
     public string PasswordHash { get; set; } = string.Empty;

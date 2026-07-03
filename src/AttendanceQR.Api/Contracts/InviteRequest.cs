@@ -6,4 +6,18 @@ public record InviteRequest(
     string FullName,
     string Email,
     Guid LocationId,
-    EmployeeRole Role);
+    EmployeeRole Role,
+    string? FatherName = null,
+    string? Position = null,
+    int? BirthYear = null);
+
+/// <summary>Edit an existing employee's profile, role, location and enabled state.</summary>
+public record EmployeeUpdateRequest(
+    string FullName,
+    string Email,
+    Guid LocationId,
+    EmployeeRole Role,
+    bool IsActive,
+    string? FatherName = null,
+    string? Position = null,
+    int? BirthYear = null);

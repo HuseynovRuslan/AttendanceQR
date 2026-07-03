@@ -10,7 +10,7 @@ import { AdminLayout } from './pages/admin/AdminLayout'
 import { TodayPage } from './pages/admin/TodayPage'
 import { ReportsPage } from './pages/admin/ReportsPage'
 import { LocationsPage } from './pages/admin/LocationsPage'
-import { InvitePage } from './pages/admin/InvitePage'
+import { EmployeesPage } from './pages/admin/EmployeesPage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 
 export default function App() {
@@ -52,10 +52,10 @@ export default function App() {
           }
         />
         <Route
-          path="invite"
+          path="employees"
           element={
             <AdminOnly>
-              <InvitePage />
+              <EmployeesPage />
             </AdminOnly>
           }
         />
