@@ -12,6 +12,9 @@
 # All Coolify API responses are piped straight into python via stdin (never written to a temp
 # file first) — on Windows/git-bash, curl and python disagree on path syntax (/c/... vs C:\...),
 # so file-based handoff breaks silently. Streaming sidesteps that entirely.
+#
+# curl uses --retry so a transient blip (empty/failed response mid-poll) doesn't get treated as
+# terminal — otherwise a single dropped request makes an in-progress-but-fine deploy look failed.
 set -euo pipefail
 
 ENV_FILE="$HOME/.coolify/env"
@@ -23,24 +26,32 @@ fi
 source "$ENV_FILE"
 
 TARGET="${1:-both}"
+CURL="curl -s --retry 3 --retry-delay 2 --retry-connrefused"
 
 deploy_one() {
   local name="$1" uuid="$2"
   echo "==> Deploying $name ($uuid)…"
 
-  local dep_uuid
-  dep_uuid=$(curl -s -X POST "$COOLIFY_URL/api/v1/deploy?uuid=$uuid" \
-    -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Accept: application/json" \
-    | python -c "import json,sys;print(json.load(sys.stdin)['deployments'][0]['deployment_uuid'])" 2>/dev/null || true)
+  local dep_uuid=""
+  for attempt in 1 2 3; do
+    dep_uuid=$($CURL -X POST "$COOLIFY_URL/api/v1/deploy?uuid=$uuid" \
+      -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Accept: application/json" \
+      | python -c "import json,sys;print(json.load(sys.stdin)['deployments'][0]['deployment_uuid'])" 2>/dev/null || true)
+    [ -n "$dep_uuid" ] && break
+    echo "    (queue attempt $attempt failed, retrying…)" >&2
+    sleep 3
+  done
   if [ -z "$dep_uuid" ]; then
-    echo "!! Failed to queue deploy for $name" >&2
+    echo "!! Failed to queue deploy for $name after 3 attempts" >&2
     return 1
   fi
   echo "    deployment_uuid=$dep_uuid — polling…"
 
-  local status="queued"
+  # A single empty/malformed poll response is treated as "still going", not "failed" — only a
+  # real API-reported status (finished/failed) or exhausting all attempts ends the loop.
+  local status="?"
   for _ in $(seq 1 60); do
-    status=$(curl -s "$COOLIFY_URL/api/v1/deployments/$dep_uuid" \
+    status=$($CURL "$COOLIFY_URL/api/v1/deployments/$dep_uuid" \
       -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Accept: application/json" \
       | python -c "import json,sys;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo "?")
     [ "$status" = "finished" ] || [ "$status" = "failed" ] && break
@@ -53,7 +64,7 @@ deploy_one() {
   fi
 
   echo "    ✗ $name deploy status=$status — dumping log:" >&2
-  curl -s "$COOLIFY_URL/api/v1/deployments/applications/$uuid" \
+  $CURL "$COOLIFY_URL/api/v1/deployments/applications/$uuid" \
     -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Accept: application/json" \
     | python -c "
 import json, sys
