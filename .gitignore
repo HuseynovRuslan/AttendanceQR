@@ -486,3 +486,4 @@ src/AttendanceQR.Api/appsettings.Development.json
 
 # Docker Compose local env
 /.env
+.coolify-tmp/
