@@ -84,18 +84,14 @@ export function LoginPage() {
             />
           </div>
           <div style={{ marginBottom: 18 }}>
-            <label className="form-label">PIN (4 rəqəm)</label>
+            <label className="form-label">Şifrə / PIN</label>
             <input
               className="inp"
               type="password"
-              inputMode="numeric"
-              pattern="\d{4}"
-              maxLength={4}
               required
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              style={{ letterSpacing: 6, textAlign: 'center', fontSize: 20 }}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </div>
 

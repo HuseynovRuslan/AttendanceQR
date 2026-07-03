@@ -37,6 +37,10 @@ services:
       Bootstrap__AdminEmail: ${Bootstrap__AdminEmail:-}
       Bootstrap__AdminPassword: ${Bootstrap__AdminPassword:-}
       Bootstrap__AdminFullName: ${Bootstrap__AdminFullName:-Administrator}
+      # Emergency admin PIN reset (optional, leave unset). See Program.cs — fires on every
+      # startup while set, so remove both after use.
+      Ops__ResetAdminEmail: ${Ops__ResetAdminEmail:-}
+      Ops__ResetAdminPassword: ${Ops__ResetAdminPassword:-}
       # Explicitly Production so seed/dev endpoints stay disabled and dev appsettings never loads.
       ASPNETCORE_ENVIRONMENT: Production
     ports:

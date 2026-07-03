@@ -200,6 +200,43 @@ using (var scope = app.Services.CreateScope())
         await db.SaveChangesAsync();
         startupLogger.LogInformation("Bootstrapped first admin account: {Email}", adminEmail.Trim());
     }
+
+    // Emergency admin PIN reset — for when the admin PIN is lost with no other recovery path
+    // (there's no "forgot password" flow, and unlike Bootstrap this fires every startup while the
+    // vars are set, deliberately NOT idempotent-by-admin-existing). Set Ops:ResetAdminEmail +
+    // Ops:ResetAdminPassword, redeploy, confirm the log line below, then remove both vars — leaving
+    // them set means every future restart re-applies this PIN.
+    var resetEmail = app.Configuration["Ops:ResetAdminEmail"];
+    var resetPassword = app.Configuration["Ops:ResetAdminPassword"];
+    if (!string.IsNullOrWhiteSpace(resetEmail) && !string.IsNullOrWhiteSpace(resetPassword))
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(resetPassword, @"^\d{4}$"))
+        {
+            startupLogger.LogError(
+                "Ops:ResetAdminPassword must be exactly 4 digits — skipping admin PIN reset.");
+        }
+        else
+        {
+            var target = await db.Employees
+                .FirstOrDefaultAsync(e => e.Email == resetEmail.Trim() && e.Role == EmployeeRole.Admin);
+            if (target is null)
+            {
+                startupLogger.LogError(
+                    "Ops:ResetAdminEmail {Email} does not match any existing Admin account — skipping reset.",
+                    resetEmail);
+            }
+            else
+            {
+                var resetHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+                target.PasswordHash = resetHasher.Hash(resetPassword);
+                target.TokenVersion++; // also invalidates any outstanding token for this account
+                await db.SaveChangesAsync();
+                startupLogger.LogWarning(
+                    "Ops:ResetAdminPassword applied for {Email} — REMOVE Ops:ResetAdminEmail/ResetAdminPassword now.",
+                    resetEmail);
+            }
+        }
+    }
 }
 
 // No UseHttpsRedirection: TLS is terminated by the reverse proxy (Coolify) in production and the
