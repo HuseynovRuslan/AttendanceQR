@@ -11,8 +11,9 @@ public class JwtOptions
     /// <summary>HMAC-SHA256 signing key; must be at least 256 bits (32 bytes).</summary>
     public string SigningKey { get; set; } = string.Empty;
 
-    // 30 days — employees scan in/out from their own phone daily and shouldn't have to re-login
-    // constantly. There is no revocation/refresh mechanism, so a leaked token stays valid for the
-    // full period; that trade-off is accepted here in exchange for "log in once, stay in".
-    public int ExpiryMinutes { get; set; } = 43_200;
+    // Effectively never expires (~100 years) — log in once, stay in, by explicit request. A JWT
+    // needs *some* exp claim to stay a well-formed, standard token, so this is a very-far-future
+    // date rather than omitting expiry. There is no revocation/refresh mechanism, so a leaked
+    // token stays valid indefinitely; that trade-off is accepted here.
+    public int ExpiryMinutes { get; set; } = 52_560_000;
 }

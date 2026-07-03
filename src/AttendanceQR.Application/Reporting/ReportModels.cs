@@ -43,6 +43,7 @@ public sealed record LocationDto(Guid Id, string Name);
 public sealed record DayAttendanceRow(
     Guid EmployeeId,
     string EmployeeName,
+    Guid LocationId,
     string LocationName,
     string Status,
     DateTime? CheckInAtUtc,

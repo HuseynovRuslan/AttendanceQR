@@ -15,6 +15,11 @@ public class DeviceBinding
 
     public string DeviceFingerprint { get; set; } = string.Empty;
 
+    // Human-friendly device name derived client-side from the User-Agent at activation (e.g.
+    // "Samsung Galaxy", "iPhone") — shown in the admin employee list. Never used for any security
+    // decision; DeviceFingerprint is the only value scan actually matches against.
+    public string? DeviceLabel { get; set; }
+
     public DateTime BoundAtUtc { get; set; }
 
     public bool IsActive { get; set; } = true;

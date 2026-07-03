@@ -4,6 +4,7 @@ import { BrandLogo } from '../../components/BrandLogo'
 import {
   IconChart,
   IconClipboard,
+  IconHome,
   IconLogout,
   IconMapPin,
   IconPhone,
@@ -14,6 +15,7 @@ const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Ərazi meneceri' }
 
 const PAGE_META: Record<string, { title: string; sub: string }> = {
+  '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
   '/admin/today': { title: 'Bugünkü davamiyyət', sub: 'Canlı — hər 30 saniyədə yenilənir' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
@@ -29,6 +31,7 @@ export function AdminLayout() {
     ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' } : { title: 'Panel', sub: '' })
 
   const links = [
+    ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),

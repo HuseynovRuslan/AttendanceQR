@@ -18,11 +18,16 @@ export function login(email: string, password: string) {
   })
 }
 
-/** POST /api/auth/activate — activation token + new password + device fingerprint → JWT. */
-export function activate(activationToken: string, password: string, deviceFingerprint: string) {
+/** POST /api/auth/activate — activation token + new PIN + device fingerprint (+ friendly device name) → JWT. */
+export function activate(
+  activationToken: string,
+  password: string,
+  deviceFingerprint: string,
+  deviceLabel?: string,
+) {
   return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/activate', {
     method: 'POST',
     auth: false,
-    body: { activationToken, password, deviceFingerprint },
+    body: { activationToken, password, deviceFingerprint, deviceLabel },
   })
 }

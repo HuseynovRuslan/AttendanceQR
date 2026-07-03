@@ -16,6 +16,9 @@ public class DeviceBindingConfiguration : IEntityTypeConfiguration<DeviceBinding
             .IsRequired()
             .HasMaxLength(512);
 
+        builder.Property(d => d.DeviceLabel)
+            .HasMaxLength(100);
+
         // 1-to-1: Employee.DeviceBinding <-> DeviceBinding.EmployeeId.
         // HasForeignKey<DeviceBinding> makes EmployeeId the (unique) dependent FK.
         builder.HasOne<Employee>()

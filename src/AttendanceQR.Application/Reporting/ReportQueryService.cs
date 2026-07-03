@@ -145,7 +145,7 @@ public sealed class ReportQueryService : IReportQueryService
             records.TryGetValue(e.Id, out var record);
             var c = AttendanceCalculator.Compute(record, location, _timeZone);
             rows.Add(new DayAttendanceRow(
-                e.Id, e.FullName, location.Name, c.Status.ToString(),
+                e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),
                 record?.CheckInAtUtc, record?.CheckOutAtUtc));
         }
 

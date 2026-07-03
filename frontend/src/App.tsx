@@ -1,12 +1,14 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, AdminOnly } from './components/AdminRoute'
+import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
 import { LoginPage } from './pages/LoginPage'
 import { ActivatePage } from './pages/ActivatePage'
 import { ScanPage } from './pages/ScanPage'
 import { KioskPage } from './pages/KioskPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
+import { DashboardPage } from './pages/admin/DashboardPage'
 import { TodayPage } from './pages/admin/TodayPage'
 import { ReportsPage } from './pages/admin/ReportsPage'
 import { LocationsPage } from './pages/admin/LocationsPage'
@@ -41,7 +43,15 @@ export default function App() {
           </AdminRoute>
         }
       >
-        <Route index element={<Navigate to="today" replace />} />
+        <Route index element={<AdminIndexRedirect />} />
+        <Route
+          path="dashboard"
+          element={
+            <AdminOnly>
+              <DashboardPage />
+            </AdminOnly>
+          }
+        />
         <Route path="today" element={<TodayPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route

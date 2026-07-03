@@ -398,7 +398,7 @@ export function EmployeesPage() {
                 <td>{e.position || '—'}</td>
                 <td>{e.locationName ?? '—'}</td>
                 <td>{ROLE_LABEL[e.role] ?? e.role}</td>
-                <td>{deviceBadge(e.hasDevice)}</td>
+                <td>{deviceBadge(e.hasDevice, e.deviceLabel)}</td>
                 <td>{statusBadge(e.activated)}</td>
                 <td>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -464,10 +464,10 @@ function pill(text: string, color: string, bg: string) {
   )
 }
 
-function deviceBadge(hasDevice: boolean) {
+function deviceBadge(hasDevice: boolean, deviceLabel: string | null) {
   return hasDevice ? (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#2e7d32' }}>
-      <IconPhone /> Bağlı
+      <IconPhone /> {deviceLabel ?? 'Naməlum cihaz'}
     </span>
   ) : (
     pill('Yoxdur', '#9a3412', 'rgba(154,52,18,0.12)')

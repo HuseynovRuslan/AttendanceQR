@@ -49,6 +49,7 @@ public class AdminController : ControllerBase
             isActive = e.IsActive,
             activated = e.ActivatedAtUtc != null,
             hasDevice = e.DeviceBinding != null && e.DeviceBinding.IsActive,
+            deviceLabel = e.DeviceBinding != null ? e.DeviceBinding.DeviceLabel : null,
             boundAtUtc = e.DeviceBinding != null ? e.DeviceBinding.BoundAtUtc : (DateTime?)null,
             createdAtUtc = e.CreatedAtUtc
         });

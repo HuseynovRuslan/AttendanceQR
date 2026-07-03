@@ -2,12 +2,13 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { activate } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
-import { getDeviceFingerprint } from '../lib/device'
+import { getDeviceFingerprint, getFriendlyDeviceName } from '../lib/device'
 
 export function ActivatePage() {
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
   const device = useMemo(() => getDeviceFingerprint(), [])
+  const deviceLabel = useMemo(() => getFriendlyDeviceName(), [])
 
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -29,7 +30,7 @@ export function ActivatePage() {
     }
     setLoading(true)
     try {
-      const { status, data } = await activate(token, password, device)
+      const { status, data } = await activate(token, password, device, deviceLabel)
       if (status === 200 && data && 'token' in data) {
         saveToken(data.token)
         navigate('/scan', { replace: true })

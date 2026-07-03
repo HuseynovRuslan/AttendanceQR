@@ -6,6 +6,7 @@ import type { Role } from '../lib/jwt'
 export interface DayAttendanceRow {
   employeeId: string
   employeeName: string
+  locationId: string
   locationName: string
   status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete'
   checkInAtUtc: string | null
@@ -179,6 +180,7 @@ export interface AdminEmployee {
   isActive: boolean
   activated: boolean
   hasDevice: boolean
+  deviceLabel: string | null
   boundAtUtc: string | null
   createdAtUtc: string
 }

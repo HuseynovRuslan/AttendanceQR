@@ -74,6 +74,7 @@ public partial class AuthController : ControllerBase
         {
             EmployeeId = employee.Id,
             DeviceFingerprint = request.DeviceFingerprint,
+            DeviceLabel = string.IsNullOrWhiteSpace(request.DeviceLabel) ? null : request.DeviceLabel.Trim(),
             BoundAtUtc = now,
             IsActive = true
         });
