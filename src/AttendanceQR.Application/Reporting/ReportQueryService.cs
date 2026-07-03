@@ -112,8 +112,9 @@ public sealed class ReportQueryService : IReportQueryService
     {
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
-        // In-scope active employees.
-        var employeesQuery = _db.Employees.Where(e => e.IsActive && e.ActivatedAtUtc != null);
+        // In-scope active employees. Admins are system operators, not on-site staff — they never
+        // check in/out, so including them here would just show a permanent, meaningless "Qayıb".
+        var employeesQuery = _db.Employees.Where(e => e.IsActive && e.ActivatedAtUtc != null && e.Role != EmployeeRole.Admin);
         if (role == EmployeeRole.Manager)
         {
             var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct);

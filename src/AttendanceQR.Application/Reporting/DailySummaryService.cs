@@ -29,8 +29,10 @@ public sealed class DailySummaryService : IDailySummaryService
 
     public async Task<int> GenerateForDateAsync(DateOnly date, CancellationToken ct = default)
     {
+        // Admins are system operators, not on-site staff — exclude them so they don't accumulate a
+        // permanent, meaningless "Absent" history (mirrors the live "today" board's exclusion).
         var employees = await _db.Employees
-            .Where(e => e.IsActive && e.ActivatedAtUtc != null)
+            .Where(e => e.IsActive && e.ActivatedAtUtc != null && e.Role != EmployeeRole.Admin)
             .Select(e => new { e.Id, e.LocationId })
             .ToListAsync(ct);
 

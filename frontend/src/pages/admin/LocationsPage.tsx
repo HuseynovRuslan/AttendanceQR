@@ -10,6 +10,7 @@ import {
   type LocationInput,
 } from '../../api/admin'
 import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../components/icons'
+import { LocationMapPicker } from '../../components/LocationMapPicker'
 
 type FormState = {
   name: string
@@ -163,6 +164,9 @@ export function LocationsPage() {
     }
   }
 
+  const mapLat = Number(form.latitude)
+  const mapLng = Number(form.longitude)
+
   return (
     <div>
       <div className="fb" style={{ marginBottom: 16, background: 'var(--c50, #f6f8f4)', color: 'var(--c500)' }}>
@@ -195,6 +199,25 @@ export function LocationsPage() {
         <div className="form-row">
           <label className="form-label">Ad</label>
           <input className="inp" required value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="məs. Baş ofis" />
+        </div>
+
+        <div className="form-row">
+          <label className="form-label">Yer və radius</label>
+          <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+            Xəritədə iş yerinin üstünə klikləyin — koordinat avtomatik dolur. Dairə "check-in qəbul
+            olunan" ərazini göstərir. İstəsəniz koordinatı aşağıda əl ilə də yaza bilərsiniz.
+          </p>
+          {Number.isFinite(mapLat) && Number.isFinite(mapLng) && (
+            <LocationMapPicker
+              latitude={mapLat}
+              longitude={mapLng}
+              radiusMeters={Number(form.radiusMeters) || 0}
+              onPick={(lat, lng) => {
+                set('latitude', lat.toFixed(6))
+                set('longitude', lng.toFixed(6))
+              }}
+            />
+          )}
         </div>
 
         <div className="form-row cols2">

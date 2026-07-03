@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { BrandLogo } from '../../components/BrandLogo'
@@ -7,8 +8,10 @@ import {
   IconHome,
   IconLogout,
   IconMapPin,
+  IconMenu,
   IconPhone,
   IconUsers,
+  IconX,
 } from '../../components/icons'
 
 const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' }
@@ -23,12 +26,27 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/device-changes': { title: 'Cihaz təsdiqləri', sub: 'Gözləyən tələblər' },
 }
 
+const MOBILE_BREAKPOINT = 680
+
 export function AdminLayout() {
   const { role, email, logout } = useAuth()
   const location = useLocation()
   const isAdmin = role === 'Admin'
   const meta = PAGE_META[location.pathname]
     ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' } : { title: 'Panel', sub: '' })
+
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Close the drawer on every navigation, and if the window is resized past the mobile
+  // breakpoint while it happens to be open (e.g. rotating a tablet, or a resizable dev window).
+  useEffect(() => setSidebarOpen(false), [location.pathname])
+  useEffect(() => {
+    function onResize() {
+      if (window.innerWidth > MOBILE_BREAKPOINT) setSidebarOpen(false)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const links = [
     ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
@@ -41,7 +59,9 @@ export function AdminLayout() {
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
           <div className="logo-mark">
             <BrandLogo size={34} />
@@ -85,9 +105,18 @@ export function AdminLayout() {
 
       <main className="main">
         <div className="topbar">
-          <div>
-            <div className="topbar-title">{meta.title}</div>
-            <div className="topbar-sub">{meta.sub}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <button
+              className="hamburger-btn"
+              onClick={() => setSidebarOpen((v) => !v)}
+              aria-label={sidebarOpen ? 'Menyunu bağla' : 'Menyunu aç'}
+            >
+              {sidebarOpen ? <IconX /> : <IconMenu />}
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <div className="topbar-title">{meta.title}</div>
+              <div className="topbar-sub">{meta.sub}</div>
+            </div>
           </div>
           <div className="topbar-right" />
         </div>

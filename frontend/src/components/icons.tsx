@@ -9,6 +9,14 @@ const base: SVGProps<SVGSVGElement> = {
   strokeLinejoin: 'round',
 }
 
+export const IconMenu = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <line x1="4" y1="7" x2="20" y2="7" />
+    <line x1="4" y1="12" x2="20" y2="12" />
+    <line x1="4" y1="17" x2="20" y2="17" />
+  </svg>
+)
+
 export const IconHome = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

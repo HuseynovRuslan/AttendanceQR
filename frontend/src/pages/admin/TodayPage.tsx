@@ -39,8 +39,14 @@ export function TodayPage() {
     else counts.incomplete++
   }
 
+  const today = new Date().toLocaleDateString('az-AZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
   return (
     <div>
+      <div className="muted" style={{ fontSize: 13, marginBottom: 12, textTransform: 'capitalize' }}>
+        Bugün: {today}
+      </div>
+
       {locations.length > 1 && (
         <div className="chip-row">
           <span className={`chip${!filterLoc ? ' active' : ''}`} onClick={() => setFilterLoc(null)}>
