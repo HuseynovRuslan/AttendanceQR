@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using AttendanceQR.Api.Jobs;
@@ -83,6 +84,33 @@ builder.Services
             ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = "sub",
             RoleClaimType = "role"
+        };
+
+        // JWTs here are long-lived (~100 years, no refresh flow) with no revocation list, so the
+        // only way to invalidate an outstanding token is to check a version embedded at issuance
+        // against the current DB value on every request. change-password bumps
+        // Employee.TokenVersion, which immediately fails every other previously issued token here.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var sub = context.Principal?.FindFirstValue("sub");
+                var tvClaim = context.Principal?.FindFirstValue("tv");
+                if (!Guid.TryParse(sub, out var employeeId) || !int.TryParse(tvClaim, out var tokenVersion))
+                {
+                    context.Fail("TokenMalformed");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var currentVersion = await db.Employees
+                    .Where(e => e.Id == employeeId)
+                    .Select(e => (int?)e.TokenVersion)
+                    .FirstOrDefaultAsync();
+
+                if (currentVersion is null || currentVersion != tokenVersion)
+                    context.Fail("TokenVersionMismatch");
+            }
         };
     });
 builder.Services.AddAuthorization();

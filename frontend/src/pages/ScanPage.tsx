@@ -1,29 +1,62 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
+import { getMyAttendance, type AttendanceRecord } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
-import { useAuth } from '../auth/AuthContext'
+import { EmployeeNav } from '../components/EmployeeNav'
 
-type Card = { tone: 'green' | 'red' | 'yellow'; title: string; detail?: string }
+type Card = { tone: 'green' | 'red' | 'yellow'; title: string; detail?: string; showDeviceChangeLink?: boolean }
 type Phase = 'scanning' | 'processing' | 'done'
+type TodayInfo =
+  | { kind: 'loading' }
+  | { kind: 'none' }
+  | { kind: 'in-progress'; checkInAtUtc: string }
+  | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string }
 
 const READER_ID = 'reader'
 
 export function ScanPage() {
-  const { logout } = useAuth()
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const busyRef = useRef(false)
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [result, setResult] = useState<Card | null>(null)
+  const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
+
+  // Today's status decides whether the camera should even start — no point opening it if the
+  // day is already complete (the backend would just reject with AlreadyCompleted anyway).
+  useEffect(() => {
+    void loadTodayStatus()
+  }, [])
 
   useEffect(() => {
+    if (today.kind === 'loading') return
+    if (today.kind === 'completed') {
+      void stopCamera()
+      return
+    }
     void startCamera()
     return () => {
       void stopCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [today.kind])
+
+  async function loadTodayStatus() {
+    try {
+      const { status, data } = await getMyAttendance()
+      if (status !== 200 || !Array.isArray(data)) {
+        setToday({ kind: 'none' })
+        return
+      }
+      const todayStr = new Date().toISOString().slice(0, 10)
+      const record = data.find((r) => r.attendanceDate === todayStr)
+      setToday(recordToTodayInfo(record))
+    } catch {
+      setToday({ kind: 'none' })
+    }
+  }
 
   async function startCamera() {
     setCameraError(null)
@@ -73,6 +106,7 @@ export function ScanPage() {
     setPhase('processing')
     await submitScan(text)
     setPhase('done')
+    void loadTodayStatus()
   }
 
   async function submitScan(qrToken: string) {
@@ -122,21 +156,27 @@ export function ScanPage() {
     }
   }
 
-  const showCamera = phase !== 'done' && !cameraError
+  const showCamera = today.kind !== 'loading' && today.kind !== 'completed' && phase !== 'done' && !cameraError
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <span className="font-semibold">AttendanceQR · Skan</span>
-        <button
-          onClick={logout}
-          className="text-sm text-slate-300 hover:text-white bg-slate-800 rounded-lg px-3 py-1.5"
-        >
-          Çıxış
-        </button>
-      </header>
+      <EmployeeNav title="AttendanceQR · Skan" />
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 gap-5">
+        <TodayBanner today={today} />
+
+        {today.kind === 'completed' && (
+          <div className="w-full max-w-sm rounded-2xl p-6 text-center bg-green-500 text-white shadow-lg">
+            <div className="text-6xl font-bold mb-3">✓</div>
+            <h2 className="text-xl font-bold">Bu gün tamamlandı</h2>
+            <p className="mt-2 text-base opacity-90">
+              {fmtTime(today.checkInAtUtc)} – {fmtTime(today.checkOutAtUtc)}
+              {' · '}
+              {formatDuration(minutesBetween(today.checkInAtUtc, today.checkOutAtUtc))}
+            </p>
+          </div>
+        )}
+
         {/* Camera container stays mounted so html5-qrcode can always find it. */}
         <div className={showCamera ? 'w-full max-w-sm' : 'hidden'}>
           <div id={READER_ID} className="w-full overflow-hidden rounded-2xl bg-black" />
@@ -155,6 +195,28 @@ export function ScanPage() {
       </main>
     </div>
   )
+}
+
+// --- today status banner ----------------------------------------------------
+
+function TodayBanner({ today }: { today: TodayInfo }) {
+  if (today.kind === 'loading' || today.kind === 'completed') return null
+  return (
+    <div className="w-full max-w-sm rounded-xl bg-slate-800 text-slate-100 px-4 py-3 text-center text-base">
+      {today.kind === 'none' && 'Bu gün hələ giriş etməmisiniz'}
+      {today.kind === 'in-progress' && (
+        <>
+          Giriş: <b>{fmtTime(today.checkInAtUtc)}</b> — hələ çıxış etməmisiniz
+        </>
+      )}
+    </div>
+  )
+}
+
+function recordToTodayInfo(record: AttendanceRecord | undefined): TodayInfo {
+  if (!record?.checkInAtUtc) return { kind: 'none' }
+  if (!record.checkOutAtUtc) return { kind: 'in-progress', checkInAtUtc: record.checkInAtUtc }
+  return { kind: 'completed', checkInAtUtc: record.checkInAtUtc, checkOutAtUtc: record.checkOutAtUtc }
 }
 
 // --- result card -----------------------------------------------------------
@@ -178,6 +240,14 @@ function ResultCard({ card, onRetry }: { card: Card; onRetry: () => void }) {
       >
         Yenidən skan et
       </button>
+      {card.showDeviceChangeLink && (
+        <Link
+          to="/device-change-request"
+          className="mt-3 block w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
+        >
+          Bu mənim yeni telefonumdur
+        </Link>
+      )}
     </div>
   )
 }
@@ -225,6 +295,16 @@ function statusAz(status?: string): string {
   return status ?? ''
 }
 
+function minutesBetween(startIso: string, endIso: string): number {
+  return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000)
+}
+
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${h} saat ${m} dəqiqə işlədiniz`
+}
+
 // Checkout response carries no duration, so read today's record from /me and compute it.
 async function workedDurationText(recordId: string): Promise<string | undefined> {
   try {
@@ -232,12 +312,7 @@ async function workedDurationText(recordId: string): Promise<string | undefined>
     if (status !== 200 || !Array.isArray(data)) return undefined
     const record = data.find((r) => r.recordId === recordId)
     if (!record?.checkInAtUtc || !record.checkOutAtUtc) return undefined
-    const minutes = Math.round(
-      (new Date(record.checkOutAtUtc).getTime() - new Date(record.checkInAtUtc).getTime()) / 60_000,
-    )
-    const h = Math.floor(minutes / 60)
-    const m = minutes % 60
-    return `${h} saat ${m} dəqiqə işlədiniz`
+    return formatDuration(minutesBetween(record.checkInAtUtc, record.checkOutAtUtc))
   } catch {
     return undefined
   }
@@ -253,7 +328,11 @@ function errorResult(status: number, data: ScanResponse | null): Card {
         detail: data?.distanceMeters != null ? `Məsafə: ${data.distanceMeters} m` : 'Radius xaricindəsiniz',
       }
     case 'DeviceMismatch':
-      return { tone: 'red', title: 'Bu cihaz hesabınıza bağlı deyil' }
+      return {
+        tone: 'red',
+        title: 'Bu cihaz hesabınıza bağlı deyil',
+        showDeviceChangeLink: true,
+      }
     case 'NoDeviceBound':
       return { tone: 'red', title: 'Cihaz hesabınıza bağlı deyil', detail: 'Admin ilə əlaqə saxlayın.' }
     case 'TokenExpired':

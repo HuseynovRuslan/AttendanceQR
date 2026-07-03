@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -27,8 +28,11 @@ public class AdminController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
+        // Admin accounts are system operators, not on-site staff to manage here — hide them
+        // entirely (they don't check in/out and aren't part of the "İşçilər" roster).
         var employees = await _db.Employees
             .Include(e => e.DeviceBinding)
+            .Where(e => e.Role != EmployeeRole.Admin)
             .OrderBy(e => e.FullName)
             .ToListAsync(HttpContext.RequestAborted);
 

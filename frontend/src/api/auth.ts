@@ -31,3 +31,12 @@ export function activate(
     body: { activationToken, password, deviceFingerprint, deviceLabel },
   })
 }
+
+/** POST /api/auth/change-password — current + new PIN → a freshly issued JWT (every other
+ * outstanding token for this account stops working, per the backend's TokenVersion check). */
+export function changePassword(currentPassword: string, newPassword: string) {
+  return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/change-password', {
+    method: 'POST',
+    body: { currentPassword, newPassword },
+  })
+}

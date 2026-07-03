@@ -6,6 +6,9 @@ import { HomeRedirect } from './components/HomeRedirect'
 import { LoginPage } from './pages/LoginPage'
 import { ActivatePage } from './pages/ActivatePage'
 import { ScanPage } from './pages/ScanPage'
+import { HistoryPage } from './pages/HistoryPage'
+import { ProfilePage } from './pages/ProfilePage'
+import { DeviceChangeRequestPage } from './pages/DeviceChangeRequestPage'
 import { KioskPage } from './pages/KioskPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { DashboardPage } from './pages/admin/DashboardPage'
@@ -26,6 +29,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ScanPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/history"
+        element={
+          <ProtectedRoute>
+            <HistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/device-change-request"
+        element={
+          <ProtectedRoute>
+            <DeviceChangeRequestPage />
           </ProtectedRoute>
         }
       />

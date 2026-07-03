@@ -29,7 +29,10 @@ public sealed class JwtService : IJwtService
         {
             new Claim("sub", employee.Id.ToString()),
             new Claim("email", employee.Email),
-            new Claim("role", employee.Role.ToString())
+            new Claim("role", employee.Role.ToString()),
+            // Checked against Employee.TokenVersion on every request (Program.cs
+            // OnTokenValidated) — lets change-password invalidate every other outstanding token.
+            new Claim("tv", employee.TokenVersion.ToString())
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));

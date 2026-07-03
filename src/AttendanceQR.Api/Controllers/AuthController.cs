@@ -1,8 +1,10 @@
+using System.Security.Claims;
 using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -119,5 +121,33 @@ public partial class AuthController : ControllerBase
 
         _lockoutStore.RecordSuccess(request.Email);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId);
+        if (employee is null)
+            return Unauthorized(new { error = "InvalidToken" });
+
+        if (!_passwordHasher.Verify(employee.PasswordHash, request.CurrentPassword))
+            return Unauthorized(new { error = "InvalidCurrentPassword" });
+
+        // Same 4-digit PIN format enforced at activation — a changed password must stay a PIN.
+        if (!PinFormat().IsMatch(request.NewPassword))
+            return BadRequest(new { error = "PinInvalid" });
+
+        employee.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+
+        // Invalidate every other outstanding token (see Program.cs OnTokenValidated) — the token
+        // returned below embeds the new version, so only THIS session survives the change.
+        employee.TokenVersion++;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { token = _jwtService.GenerateToken(employee) });
     }
 }

@@ -26,6 +26,14 @@ public class Employee
 
     public string PasswordHash { get; set; } = string.Empty;
 
+    // Embedded in every issued JWT as the "tv" claim and checked against this value on every
+    // request (see Program.cs OnTokenValidated) — bumping it instantly invalidates every
+    // previously issued token. There is no refresh-token flow in this app (JWTs are long-lived,
+    // ~100 years), so this is how "log out all other sessions" is achieved: change-password bumps
+    // it and returns a freshly issued token carrying the new value, so only that call's session
+    // survives.
+    public int TokenVersion { get; set; }
+
     public EmployeeRole Role { get; set; }
 
     public Guid LocationId { get; set; }
