@@ -11,6 +11,7 @@ import {
   IconMapPin,
   IconMenu,
   IconPhone,
+  IconSun,
   IconUsers,
   IconX,
 } from '../../components/icons'
@@ -24,6 +25,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
+  '/admin/leaves': { title: 'Məzuniyyət / İcazə', sub: 'Təsdiqlənmiş yoxluq qeydləri' },
   '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
   '/admin/device-changes': { title: 'Cihaz təsdiqləri', sub: 'Gözləyən tələblər' },
 }
@@ -56,6 +58,7 @@ export function AdminLayout() {
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
     ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
+    ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
     ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihaz təsdiqləri', Icon: IconPhone }] : []),
   ]

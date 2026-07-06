@@ -9,6 +9,8 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
   Incomplete: { cls: 'b-permitted', label: 'İşdə', icon: 'clock' },
   DayOff: { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' },
+  OnLeave: { cls: 'b-leave', label: 'Məzuniyyət', icon: 'calendar' },
+  Permission: { cls: 'b-permission', label: 'İcazə', icon: 'check' },
 }
 
 export function statusLabel(status: string): string {

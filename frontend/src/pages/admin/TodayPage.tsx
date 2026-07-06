@@ -31,12 +31,14 @@ export function TodayPage() {
 
   const visible = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
 
-  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0 }
+  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of visible) {
     if (r.status === 'OnTime') counts.present++
     else if (r.status === 'Late') counts.late++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'DayOff') counts.dayOff++
+    else if (r.status === 'OnLeave') counts.onLeave++
+    else if (r.status === 'Permission') counts.permission++
     else counts.incomplete++
   }
 
@@ -85,6 +87,14 @@ export function TodayPage() {
         <div className="stat-card purple">
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
           <div className="stat-val">{counts.dayOff}</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
+          <div className="stat-val">{counts.onLeave}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
+          <div className="stat-val">{counts.permission}</div>
         </div>
       </div>
 

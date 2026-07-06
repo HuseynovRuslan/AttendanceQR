@@ -16,6 +16,7 @@ import { TodayPage } from './pages/admin/TodayPage'
 import { ReportsPage } from './pages/admin/ReportsPage'
 import { LocationsPage } from './pages/admin/LocationsPage'
 import { NonWorkingDaysPage } from './pages/admin/NonWorkingDaysPage'
+import { LeavesPage } from './pages/admin/LeavesPage'
 import { PrintQrPage } from './pages/admin/PrintQrPage'
 import { EmployeesPage } from './pages/admin/EmployeesPage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
@@ -95,6 +96,14 @@ export default function App() {
           element={
             <AdminOnly>
               <NonWorkingDaysPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="leaves"
+          element={
+            <AdminOnly>
+              <LeavesPage />
             </AdminOnly>
           }
         />

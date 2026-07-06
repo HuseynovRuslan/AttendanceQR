@@ -11,7 +11,10 @@ public interface IExcelReportExporter
 public sealed class ExcelReportExporter : IExcelReportExporter
 {
     private static readonly string[] Headers =
-        { "Employee", "Location", "Work Days", "Late Count", "Absent Days", "Total Hours", "Overtime Hours" };
+        {
+            "Employee", "Location", "Work Days", "Late Count", "Absent Days", "Total Hours", "Overtime Hours",
+            "Leave Days", "Permission Days"
+        };
 
     public byte[] Build(AttendanceReport report)
     {
@@ -49,6 +52,8 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(r, 5).Value = row.AbsentDays;
             ws.Cell(r, 6).Value = row.TotalWorkedHours;
             ws.Cell(r, 7).Value = row.OvertimeHours;
+            ws.Cell(r, 8).Value = row.LeaveDays;
+            ws.Cell(r, 9).Value = row.PermissionDays;
             for (var c = 1; c <= Headers.Length; c++)
                 ws.Cell(r, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             r++;
@@ -61,6 +66,8 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.Cell(r, 5).Value = report.Totals.AbsentDays;
         ws.Cell(r, 6).Value = report.Totals.TotalWorkedHours;
         ws.Cell(r, 7).Value = report.Totals.OvertimeHours;
+        ws.Cell(r, 8).Value = report.Totals.LeaveDays;
+        ws.Cell(r, 9).Value = report.Totals.PermissionDays;
         var totalRange = ws.Range(r, 1, r, Headers.Length);
         totalRange.Style.Font.Bold = true;
         totalRange.Style.Fill.BackgroundColor = XLColor.LightYellow;

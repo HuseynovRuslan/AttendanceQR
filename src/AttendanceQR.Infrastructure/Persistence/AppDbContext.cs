@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<DailySummary> DailySummaries => Set<DailySummary>();
     public DbSet<ManagedLocation> ManagedLocations => Set<ManagedLocation>();
     public DbSet<NonWorkingDay> NonWorkingDays => Set<NonWorkingDay>();
+    public DbSet<LeaveRecord> LeaveRecords => Set<LeaveRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

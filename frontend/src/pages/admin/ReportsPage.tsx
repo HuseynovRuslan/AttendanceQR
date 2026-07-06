@@ -105,6 +105,8 @@ export function ReportsPage() {
                 <th className="num">İş günləri</th>
                 <th className="num">Gecikmə</th>
                 <th className="num">Qayıb</th>
+                <th className="num">Məzuniyyət</th>
+                <th className="num">İcazə</th>
                 <th className="num">Ümumi saat</th>
                 <th className="num">Overtime</th>
               </tr>
@@ -117,13 +119,15 @@ export function ReportsPage() {
                   <td className="num mono">{r.workDays}</td>
                   <td className="num mono">{r.lateCount}</td>
                   <td className="num mono">{r.absentDays}</td>
+                  <td className="num mono">{r.leaveDays}</td>
+                  <td className="num mono">{r.permissionDays}</td>
                   <td className="num mono">{r.totalWorkedHours}</td>
                   <td className="num mono">{r.overtimeHours}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                  <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                     Bu aralıqda məlumat yoxdur
                   </td>
                 </tr>
@@ -136,6 +140,8 @@ export function ReportsPage() {
                   <td className="num mono">{report.totals.workDays}</td>
                   <td className="num mono">{report.totals.lateCount}</td>
                   <td className="num mono">{report.totals.absentDays}</td>
+                  <td className="num mono">{report.totals.leaveDays}</td>
+                  <td className="num mono">{report.totals.permissionDays}</td>
                   <td className="num mono">{report.totals.totalWorkedHours}</td>
                   <td className="num mono">{report.totals.overtimeHours}</td>
                 </tr>

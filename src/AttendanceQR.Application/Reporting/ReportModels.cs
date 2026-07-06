@@ -17,7 +17,9 @@ public sealed record EmployeeReportRow(
     int AbsentDays,
     int IncompleteDays,
     double TotalWorkedHours,
-    double OvertimeHours);
+    double OvertimeHours,
+    int LeaveDays,
+    int PermissionDays);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(
@@ -26,7 +28,9 @@ public sealed record ReportTotals(
     int AbsentDays,
     int IncompleteDays,
     double TotalWorkedHours,
-    double OvertimeHours);
+    double OvertimeHours,
+    int LeaveDays,
+    int PermissionDays);
 
 /// <summary>The full report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record AttendanceReport(

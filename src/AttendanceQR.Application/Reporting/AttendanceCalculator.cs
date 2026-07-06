@@ -24,6 +24,20 @@ public static class AttendanceCalculator
     public static bool IsWorkingDayOfWeek(int workDaysMask, DayOfWeek dayOfWeek)
         => (workDaysMask & (1 << (int)dayOfWeek)) != 0;
 
+    /// <summary>
+    /// Resolves the status to report when an employee has no check-in for the date, in priority
+    /// order: an approved LeaveRecord beats everything (even a non-working day — being on
+    /// vacation over a weekend still reads as leave, not "day off"), then DayOff on a non-working
+    /// day, then plain Absent. Shared by DailySummaryService and ReportQueryService so the two
+    /// never resolve this differently.
+    /// </summary>
+    public static DailySummaryStatus ResolveNoRecordStatus(bool isWorkingDay, LeaveType? leaveType)
+    {
+        if (leaveType is not null)
+            return leaveType == LeaveType.Permission ? DailySummaryStatus.Permission : DailySummaryStatus.OnLeave;
+        return isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;
+    }
+
     /// <param name="isWorkingDay">
     /// Whether this date is a working day for this location — the location's weekly WorkDaysMask
     /// AND no admin-declared NonWorkingDay for this date/location. Callers compute this (it needs a

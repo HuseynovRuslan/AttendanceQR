@@ -61,12 +61,14 @@ public sealed class ReportQueryService : IReportQueryService
                 g.Key.EmployeeId,
                 g.Key.FullName,
                 g.Select(x => x.LocationName).First(),
-                WorkDays: g.Count(x => x.Status != DailySummaryStatus.Absent && x.Status != DailySummaryStatus.DayOff),
+                WorkDays: g.Count(x => x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete),
                 LateCount: g.Count(x => x.Status == DailySummaryStatus.Late),
                 AbsentDays: g.Count(x => x.Status == DailySummaryStatus.Absent),
                 IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete),
                 TotalWorkedHours: Math.Round(g.Sum(x => x.WorkedMinutes) / 60.0, 2),
-                OvertimeHours: Math.Round(g.Sum(x => x.OvertimeMinutes) / 60.0, 2)))
+                OvertimeHours: Math.Round(g.Sum(x => x.OvertimeMinutes) / 60.0, 2),
+                LeaveDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave),
+                PermissionDays: g.Count(x => x.Status == DailySummaryStatus.Permission)))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 
@@ -76,7 +78,9 @@ public sealed class ReportQueryService : IReportQueryService
             AbsentDays: grouped.Sum(r => r.AbsentDays),
             IncompleteDays: grouped.Sum(r => r.IncompleteDays),
             TotalWorkedHours: Math.Round(grouped.Sum(r => r.TotalWorkedHours), 2),
-            OvertimeHours: Math.Round(grouped.Sum(r => r.OvertimeHours), 2));
+            OvertimeHours: Math.Round(grouped.Sum(r => r.OvertimeHours), 2),
+            LeaveDays: grouped.Sum(r => r.LeaveDays),
+            PermissionDays: grouped.Sum(r => r.PermissionDays));
 
         return (ReportAccess.Allowed, new AttendanceReport(from, to, scoped.Label, grouped, totals));
     }
@@ -150,6 +154,13 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(id => id!.Value)
             .ToHashSet();
 
+        // Same leave/permission resolution as the nightly job, for "today".
+        var leaveByEmployee = await _db.LeaveRecords
+            .Where(l => l.FromDate <= today && l.ToDate >= today && employeeIds.Contains(l.EmployeeId))
+            .GroupBy(l => l.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Type = g.First().Type })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.Type, ct);
+
         var rows = new List<DayAttendanceRow>(employees.Count);
         foreach (var e in employees)
         {
@@ -159,7 +170,8 @@ public sealed class ReportQueryService : IReportQueryService
             var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, today.DayOfWeek)
                                 && !isGloballyNonWorking
                                 && !nonWorkingLocationIdSet.Contains(location.Id);
-            var noRecordStatus = isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;
+            LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
+            var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
             var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus);
             rows.Add(new DayAttendanceRow(
                 e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),

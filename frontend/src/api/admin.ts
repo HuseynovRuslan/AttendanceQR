@@ -8,7 +8,7 @@ export interface DayAttendanceRow {
   employeeName: string
   locationId: string
   locationName: string
-  status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete' | 'DayOff'
+  status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission'
   checkInAtUtc: string | null
   checkOutAtUtc: string | null
 }
@@ -23,6 +23,8 @@ export interface EmployeeReportRow {
   incompleteDays: number
   totalWorkedHours: number
   overtimeHours: number
+  leaveDays: number
+  permissionDays: number
 }
 
 export interface ReportTotals {
@@ -32,6 +34,8 @@ export interface ReportTotals {
   incompleteDays: number
   totalWorkedHours: number
   overtimeHours: number
+  leaveDays: number
+  permissionDays: number
 }
 
 export interface AttendanceReport {

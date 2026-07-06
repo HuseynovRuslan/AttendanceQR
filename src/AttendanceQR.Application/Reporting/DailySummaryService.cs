@@ -57,6 +57,16 @@ public sealed class DailySummaryService : IDailySummaryService
             .Select(id => id!.Value)
             .ToHashSet();
 
+        // Approved leave/permission covering this date, per employee — takes priority over both
+        // Absent and DayOff (defensive GroupBy/First in case an admin ever creates overlapping
+        // ranges for the same employee).
+        var employeeIds = employees.Select(e => e.Id).ToList();
+        var leaveByEmployee = await _db.LeaveRecords
+            .Where(l => l.FromDate <= date && l.ToDate >= date && employeeIds.Contains(l.EmployeeId))
+            .GroupBy(l => l.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Type = g.First().Type })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.Type, ct);
+
         // Existing summaries for the date → upsert (idempotent; the unique index also guards this).
         var existing = await _db.DailySummaries
             .Where(s => s.SummaryDate == date)
@@ -70,7 +80,8 @@ public sealed class DailySummaryService : IDailySummaryService
             var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, date.DayOfWeek)
                                 && !isGloballyNonWorking
                                 && !nonWorkingLocationIdSet.Contains(location.Id);
-            var noRecordStatus = isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;
+            LeaveType? leaveType = leaveByEmployee.TryGetValue(emp.Id, out var lt) ? lt : null;
+            var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(emp.Id, out var record);
             var computed = Compute(emp.Id, emp.LocationId, date, record, location, isWorkingDay, noRecordStatus);

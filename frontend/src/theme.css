@@ -108,6 +108,8 @@ select.inp{cursor:pointer}
 .b-permitted{background:#FFF7ED;color:#C2410C}
 .b-device{background:var(--leaf-bg);color:var(--leaf-d)}
 .b-nodevice{background:var(--clay-bg);color:var(--clay)}
+.b-leave{background:var(--purple-bg);color:var(--purple)}
+.b-permission{background:var(--c100);color:var(--c600)}
 
 /* Feedback */
 .fb{border-radius:var(--r);padding:12px 14px;display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}

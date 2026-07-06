@@ -24,32 +24,36 @@ export function DashboardPage() {
     }
   }, 30_000)
 
-  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0 }
+  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of rows) {
     if (r.status === 'OnTime') counts.present++
     else if (r.status === 'Late') counts.late++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'DayOff') counts.dayOff++
+    else if (r.status === 'OnLeave') counts.onLeave++
+    else if (r.status === 'Permission') counts.permission++
     else counts.incomplete++
   }
   const total = rows.length
-  // Employees on a day off aren't expected to attend — excluding them from the rate's denominator
-  // keeps a weekend/holiday from reading as a bad attendance day.
-  const expected = total - counts.dayOff
+  // Employees not expected to attend today (day off, on leave, or excused) shouldn't drag the
+  // rate down — excluding them from the denominator keeps a weekend/holiday/vacation-heavy day
+  // from reading as a bad attendance day.
+  const notExpected = counts.dayOff + counts.onLeave + counts.permission
+  const expected = total - notExpected
   const overallRate = expected ? Math.round(((counts.present + counts.late) / expected) * 100) : 0
 
   const areaStats = useMemo(() => {
-    const byArea = new Map<string, { name: string; total: number; present: number; dayOff: number }>()
+    const byArea = new Map<string, { name: string; total: number; present: number; notExpected: number }>()
     for (const r of rows) {
-      const entry = byArea.get(r.locationId) ?? { name: r.locationName, total: 0, present: 0, dayOff: 0 }
+      const entry = byArea.get(r.locationId) ?? { name: r.locationName, total: 0, present: 0, notExpected: 0 }
       entry.total++
       if (r.status === 'OnTime' || r.status === 'Late') entry.present++
-      else if (r.status === 'DayOff') entry.dayOff++
+      else if (r.status === 'DayOff' || r.status === 'OnLeave' || r.status === 'Permission') entry.notExpected++
       byArea.set(r.locationId, entry)
     }
     return Array.from(byArea.values())
       .map((a) => {
-        const areaExpected = a.total - a.dayOff
+        const areaExpected = a.total - a.notExpected
         return { ...a, expected: areaExpected, rate: areaExpected ? Math.round((a.present / areaExpected) * 100) : 0 }
       })
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -81,6 +85,14 @@ export function DashboardPage() {
         <div className="stat-card purple">
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
           <div className="stat-val">{counts.dayOff}</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
+          <div className="stat-val">{counts.onLeave}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
+          <div className="stat-val">{counts.permission}</div>
         </div>
       </div>
 

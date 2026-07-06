@@ -12,5 +12,11 @@ public enum DailySummaryStatus
     Incomplete = 3,
     // No record, but the day wasn't a working day (weekend or an admin-declared non-working
     // day) — distinct from Absent so a weekend doesn't read as a missed shift.
-    DayOff = 4
+    DayOff = 4,
+    // No record, but the employee has an approved LeaveRecord (Vacation/Sick/Unpaid) covering
+    // this date.
+    OnLeave = 5,
+    // No record, but the employee has an approved LeaveRecord of type Permission covering this
+    // date — a short excused absence (e.g. the "worked Sunday, off one weekday instead" case).
+    Permission = 6
 }
