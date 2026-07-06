@@ -221,8 +221,10 @@ public sealed class ReportQueryService : IReportQueryService
         var totalWorkedHours = Math.Round(summaries.Sum(s => s.WorkedMinutes) / 60.0, 2);
         var overtimeHours = Math.Round(summaries.Sum(s => s.OvertimeMinutes) / 60.0, 2);
 
-        var rangeStartUtc = from.ToDateTime(TimeOnly.MinValue);
-        var rangeEndUtc = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        // DateOnly.ToDateTime returns Kind=Unspecified; Npgsql refuses anything but Kind=Utc for a
+        // "timestamptz" column (AuditLog.CreatedAtUtc) — SpecifyKind is required, not cosmetic.
+        var rangeStartUtc = DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var rangeEndUtc = DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
         var outsideRadiusCount = await _db.AuditLogs
             .Where(a => a.EventType == AuditEventType.CheckInRejected && a.Reason == "OutsideRadius"
                         && a.CreatedAtUtc >= rangeStartUtc && a.CreatedAtUtc < rangeEndUtc
