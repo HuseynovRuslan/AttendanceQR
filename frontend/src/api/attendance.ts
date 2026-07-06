@@ -24,3 +24,37 @@ export function getMySummary(from: string, to: string) {
 }
 
 export type { AttendanceReport }
+
+// --- admin: view/correct another employee's raw records ------------------
+
+/** GET /api/attendance/employee/{id} — admin/manager view of one employee's full history. */
+export function getEmployeeAttendance(employeeId: string) {
+  return apiRequest<AttendanceRecord[] | { error: string }>(`/api/attendance/employee/${employeeId}`)
+}
+
+export interface AdminAttendanceRecord {
+  recordId: string
+  employeeId: string
+  attendanceDate: string
+  checkInAtUtc: string | null
+  checkOutAtUtc: string | null
+  status: string
+}
+
+/** PUT /api/admin/attendance/{recordId} — correct an existing record's check-in/out (either or
+ * both; omitted fields are left as-is). Recomputes that date's summary immediately. */
+export function adminUpdateRecord(recordId: string, checkInAtUtc?: string, checkOutAtUtc?: string) {
+  return apiRequest<AdminAttendanceRecord | { error: string }>(`/api/admin/attendance/${recordId}`, {
+    method: 'PUT',
+    body: { checkInAtUtc: checkInAtUtc ?? null, checkOutAtUtc: checkOutAtUtc ?? null },
+  })
+}
+
+/** POST /api/admin/attendance — create a record for a day the employee never scanned at all.
+ * checkInAtUtc required; 409 if a record for that (employee, date) already exists. */
+export function adminCreateRecord(employeeId: string, date: string, checkInAtUtc: string, checkOutAtUtc?: string) {
+  return apiRequest<AdminAttendanceRecord | { error: string }>('/api/admin/attendance', {
+    method: 'POST',
+    body: { employeeId, date, checkInAtUtc, checkOutAtUtc: checkOutAtUtc ?? null },
+  })
+}

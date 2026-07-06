@@ -213,8 +213,10 @@ public class AttendanceController : ControllerBase
     /// OnTime unless the current time is past ShiftStart + LateThresholdMinutes.
     /// Note: shift times and server time are treated as the same reference here; a real
     /// deployment would carry a per-location timezone.
+    /// Internal (not private) so AdminAttendanceController can recompute the same way when an
+    /// admin edits/creates a record's check-in time.
     /// </summary>
-    private static AttendanceStatus DetermineStatus(Location location, DateTime nowUtc)
+    internal static AttendanceStatus DetermineStatus(Location location, DateTime nowUtc)
     {
         var lateCutoff = location.ShiftStart.AddMinutes(location.LateThresholdMinutes);
         var nowTime = TimeOnly.FromDateTime(nowUtc);

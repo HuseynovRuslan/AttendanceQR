@@ -8,5 +8,6 @@ public enum AuditEventType
     CheckOutRejected = 3,
     DeviceChangeRequested = 4,
     DeviceChangeApproved = 5,
-    DeviceChangeRejected = 6
+    DeviceChangeRejected = 6,
+    RecordEditedByAdmin = 7
 }

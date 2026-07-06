@@ -11,8 +11,39 @@ import {
   type AdminLocation,
   type InviteResult,
 } from '../../api/admin'
+import {
+  adminCreateRecord,
+  adminUpdateRecord,
+  getEmployeeAttendance,
+  type AttendanceRecord,
+} from '../../api/attendance'
 import type { Role } from '../../lib/jwt'
-import { IconCheck, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
+import { StatusBadge } from '../../components/StatusBadge'
+import { IconCalendar, IconCheck, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
+
+const ATTENDANCE_ERRORS: Record<string, string> = {
+  NothingToUpdate: 'Heç nə dəyişmədi',
+  RecordNotFound: 'Qeyd tapılmadı',
+  LocationNotFound: 'Lokasiya tapılmadı',
+  EmployeeNotFound: 'İşçi tapılmadı',
+  CheckInInFuture: 'Giriş vaxtı gələcəkdə ola bilməz',
+  CheckOutInFuture: 'Çıxış vaxtı gələcəkdə ola bilməz',
+  CheckOutBeforeCheckIn: 'Çıxış girişdən əvvəl ola bilməz',
+  DateInFuture: 'Tarix gələcəkdə ola bilməz',
+  RecordAlreadyExists: 'Bu gün üçün artıq qeyd var',
+}
+
+function toLocalInputValue(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fromLocalInputValue(local: string): string | undefined {
+  if (!local) return undefined
+  return new Date(local).toISOString()
+}
 
 const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
 
@@ -62,6 +93,20 @@ export function EmployeesPage() {
   const [resettingId, setResettingId] = useState<string | null>(null)
   const [link, setLink] = useState<{ name: string; result: InviteResult } | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // Attendance-correction panel (view + fix one employee's raw records).
+  const [attendanceEmployee, setAttendanceEmployee] = useState<AdminEmployee | null>(null)
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
+  const [attendanceLoading, setAttendanceLoading] = useState(false)
+  const [attendanceError, setAttendanceError] = useState<string | null>(null)
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
+  const [editCheckIn, setEditCheckIn] = useState('')
+  const [editCheckOut, setEditCheckOut] = useState('')
+  const [showCreateRecord, setShowCreateRecord] = useState(false)
+  const [createDate, setCreateDate] = useState('')
+  const [createCheckIn, setCreateCheckIn] = useState('')
+  const [createCheckOut, setCreateCheckOut] = useState('')
+  const [savingRecord, setSavingRecord] = useState(false)
 
   async function refresh() {
     const [emp, locs] = await Promise.all([getEmployees(), getAdminLocations()])
@@ -216,6 +261,79 @@ export function EmployeesPage() {
     }
   }
 
+  async function openAttendance(e: AdminEmployee) {
+    setAttendanceEmployee(e)
+    setAttendanceError(null)
+    setEditingRecordId(null)
+    setShowCreateRecord(false)
+    await refreshAttendance(e.id)
+  }
+
+  async function refreshAttendance(employeeId: string) {
+    setAttendanceLoading(true)
+    const { status, data } = await getEmployeeAttendance(employeeId)
+    setAttendanceLoading(false)
+    if (status === 200 && Array.isArray(data)) {
+      setAttendanceRecords(data)
+    } else {
+      setAttendanceError('Tarixçə yüklənmədi')
+    }
+  }
+
+  function closeAttendance() {
+    setAttendanceEmployee(null)
+    setAttendanceRecords([])
+    setEditingRecordId(null)
+    setShowCreateRecord(false)
+  }
+
+  function startEditRecord(r: AttendanceRecord) {
+    setEditingRecordId(r.recordId)
+    setEditCheckIn(toLocalInputValue(r.checkInAtUtc))
+    setEditCheckOut(toLocalInputValue(r.checkOutAtUtc))
+    setAttendanceError(null)
+  }
+
+  async function saveEditRecord() {
+    if (!editingRecordId || !attendanceEmployee) return
+    setSavingRecord(true)
+    setAttendanceError(null)
+    const { status, data } = await adminUpdateRecord(
+      editingRecordId,
+      fromLocalInputValue(editCheckIn),
+      fromLocalInputValue(editCheckOut),
+    )
+    setSavingRecord(false)
+    if (status === 200) {
+      setEditingRecordId(null)
+      await refreshAttendance(attendanceEmployee.id)
+    } else if (data && typeof data === 'object' && 'error' in data) {
+      setAttendanceError(ATTENDANCE_ERRORS[(data as { error: string }).error] ?? 'Yadda saxlanmadı')
+    } else {
+      setAttendanceError('Yadda saxlanmadı')
+    }
+  }
+
+  async function submitCreateRecord() {
+    if (!attendanceEmployee || !createDate || !createCheckIn) return
+    setSavingRecord(true)
+    setAttendanceError(null)
+    const checkIn = fromLocalInputValue(createCheckIn)!
+    const { status, data } = await adminCreateRecord(attendanceEmployee.id, createDate, checkIn, fromLocalInputValue(createCheckOut))
+    setSavingRecord(false)
+    if (status === 200) {
+      setShowCreateRecord(false)
+      setCreateDate('')
+      setCreateCheckIn('')
+      setCreateCheckOut('')
+      await refreshAttendance(attendanceEmployee.id)
+    } else if (data && typeof data === 'object' && 'error' in data) {
+      setAttendanceError(ATTENDANCE_ERRORS[(data as { error: string }).error] ?? 'Yadda saxlanmadı')
+    } else {
+      setAttendanceError('Yadda saxlanmadı')
+    }
+  }
+
   const activationLink = link ? `${window.location.origin}/activate?token=${link.result.activationToken}` : ''
 
   async function copyLink() {
@@ -365,6 +483,139 @@ export function EmployeesPage() {
         </form>
       )}
 
+      {/* attendance view/correction panel */}
+      {attendanceEmployee && (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, color: 'var(--c900)' }}>
+              {attendanceEmployee.fullName} — davamiyyət qeydləri
+            </div>
+            <button className="btn btn-sm" onClick={closeAttendance}>Bağla</button>
+          </div>
+
+          {attendanceError && (
+            <div className="fb fb-err" style={{ marginBottom: 14 }}>
+              <IconX />
+              <span>{attendanceError}</span>
+            </div>
+          )}
+
+          <div style={{ marginBottom: 14 }}>
+            {!showCreateRecord ? (
+              <button className="btn btn-sm" onClick={() => setShowCreateRecord(true)}>
+                <IconCheck /> Yeni qeyd əlavə et
+              </button>
+            ) : (
+              <div className="card card-pad" style={{ background: 'var(--c50, #f6f8f4)' }}>
+                <div className="form-row cols2">
+                  <div>
+                    <label className="form-label">Tarix</label>
+                    <input className="inp" type="date" value={createDate} onChange={(ev) => setCreateDate(ev.target.value)} />
+                  </div>
+                  <div>
+                    <label className="form-label">Giriş vaxtı</label>
+                    <input className="inp" type="datetime-local" value={createCheckIn} onChange={(ev) => setCreateCheckIn(ev.target.value)} />
+                  </div>
+                </div>
+                <div className="form-row cols2">
+                  <div>
+                    <label className="form-label">Çıxış vaxtı (istəyə bağlı)</label>
+                    <input className="inp" type="datetime-local" value={createCheckOut} onChange={(ev) => setCreateCheckOut(ev.target.value)} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={savingRecord || !createDate || !createCheckIn}
+                    onClick={submitCreateRecord}
+                  >
+                    {savingRecord ? 'Yadda saxlanır…' : 'Yadda saxla'}
+                  </button>
+                  <button className="btn btn-sm" onClick={() => setShowCreateRecord(false)} disabled={savingRecord}>
+                    Ləğv et
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {attendanceLoading && <p className="muted">Yüklənir…</p>}
+
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tarix</th>
+                  <th>Status</th>
+                  <th>Giriş</th>
+                  <th>Çıxış</th>
+                  <th style={{ textAlign: 'right' }}>Əməliyyat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceRecords.map((r) => (
+                  <tr key={r.recordId}>
+                    {editingRecordId === r.recordId ? (
+                      <>
+                        <td className="mono">{r.attendanceDate}</td>
+                        <td><StatusBadge status={r.status} /></td>
+                        <td>
+                          <input
+                            className="inp"
+                            type="datetime-local"
+                            value={editCheckIn}
+                            onChange={(ev) => setEditCheckIn(ev.target.value)}
+                            style={{ minWidth: 180 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className="inp"
+                            type="datetime-local"
+                            value={editCheckOut}
+                            onChange={(ev) => setEditCheckOut(ev.target.value)}
+                            style={{ minWidth: 180 }}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button className="btn btn-primary btn-sm" disabled={savingRecord} onClick={saveEditRecord}>
+                              {savingRecord ? 'Saxlanır…' : 'Saxla'}
+                            </button>
+                            <button className="btn btn-sm" disabled={savingRecord} onClick={() => setEditingRecordId(null)}>
+                              Ləğv et
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="mono">{r.attendanceDate}</td>
+                        <td><StatusBadge status={r.status} /></td>
+                        <td className="mono">{r.checkInAtUtc ? new Date(r.checkInAtUtc).toLocaleString('az-AZ') : '—'}</td>
+                        <td className="mono">{r.checkOutAtUtc ? new Date(r.checkOutAtUtc).toLocaleString('az-AZ') : '—'}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="btn btn-sm" onClick={() => startEditRecord(r)}>
+                            {r.status === 'Incomplete' ? 'Çıxışı əlavə et' : 'Düzəlt'}
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {!attendanceLoading && attendanceRecords.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 20 }}>
+                      Qeyd yoxdur
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* employees table */}
       <div className="tbl-wrap">
         <table>
@@ -413,14 +664,23 @@ export function EmployeesPage() {
                       </button>
                     )}
                     {e.activated && (
-                      <button
-                        className="btn btn-sm"
-                        disabled={resettingId === e.id}
-                        onClick={() => onResetAttendance(e)}
-                        title="Giriş/çıxış tarixçəsini sil — hesab qalır, yenidən test edin"
-                      >
-                        <IconRefresh /> Sıfırla
-                      </button>
+                      <>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => openAttendance(e)}
+                          title="Giriş/çıxış qeydlərinə bax, düzəlt və ya əlavə et"
+                        >
+                          <IconCalendar /> Davamiyyət
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          disabled={resettingId === e.id}
+                          onClick={() => onResetAttendance(e)}
+                          title="Giriş/çıxış tarixçəsini sil — hesab qalır, yenidən test edin"
+                        >
+                          <IconRefresh /> Sıfırla
+                        </button>
+                      </>
                     )}
                     <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
                     <button className="btn btn-danger btn-sm" disabled={deletingId === e.id} onClick={() => onDelete(e)}>
