@@ -52,3 +52,39 @@ public sealed record DayAttendanceRow(
     string Status,
     DateTime? CheckInAtUtc,
     DateTime? CheckOutAtUtc);
+
+/// <summary>One date's check-in/check-out counts, for the dashboard trend chart.</summary>
+public sealed record DailyTrendPoint(DateOnly Date, int CheckIns, int CheckOuts);
+
+/// <summary>Check-in/check-out counts summed by day-of-week (0=Sunday..6=Saturday) across the
+/// whole report range, for the "weekday pattern" bar chart.</summary>
+public sealed record WeekdayPoint(int DayOfWeek, int CheckIns, int CheckOuts);
+
+/// <summary>One employee's lateness within the report range, for the TOP-5 late list.</summary>
+public sealed record TopLateRow(Guid EmployeeId, string EmployeeName, int LateCount, int TotalLateMinutes);
+
+/// <summary>The rich dashboard payload — KPI tiles, trend/weekday charts, and a top-late list, all
+/// over the requested date range and scope.</summary>
+public sealed record DashboardReport(
+    DateOnly From,
+    DateOnly To,
+    string ScopeLabel,
+    int TotalCheckIns,
+    int TotalCheckOuts,
+    int LateCount,
+    int AbsentCount,
+    int IncompleteCount,
+    int DayOffCount,
+    int LeaveCount,
+    int PermissionCount,
+    double TotalWorkedHours,
+    double OvertimeHours,
+    int OutsideRadiusCount,
+    int ActiveDeviceCount,
+    double CheckInOutRatio,
+    double LateRate,
+    double OutsideRadiusRate,
+    double AvgDailyOperations,
+    IReadOnlyList<DailyTrendPoint> Trend,
+    IReadOnlyList<WeekdayPoint> WeekdayBreakdown,
+    IReadOnlyList<TopLateRow> TopLate);

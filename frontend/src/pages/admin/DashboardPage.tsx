@@ -1,12 +1,16 @@
-import { useMemo, useState } from 'react'
-import { getToday, type DayAttendanceRow } from '../../api/admin'
+import { useEffect, useMemo, useState } from 'react'
+import { getDashboard, getMyLocations, getToday, type DashboardReport, type DayAttendanceRow, type LocationDto } from '../../api/admin'
 import { usePolling } from '../../lib/usePolling'
 import { STATUS_MAP } from '../../components/StatusBadge'
+import { ChartLegend, TrendChart, WeekdayBarChart } from '../../components/Charts'
 import { IconX } from '../../components/icons'
 
 function rateColor(rate: number): string {
   return rate >= 80 ? 'var(--leaf-d)' : rate >= 50 ? 'var(--amber)' : 'var(--clay)'
 }
+
+const todayIso = () => new Date().toISOString().slice(0, 10)
+const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 
 export function DashboardPage() {
   const [rows, setRows] = useState<DayAttendanceRow[]>([])
@@ -59,6 +63,37 @@ export function DashboardPage() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [rows])
 
+  // --- date-range dashboard (KPIs, trend, weekday pattern, top-5 late) ------
+
+  const [locations, setLocations] = useState<LocationDto[]>([])
+  const [dashFrom, setDashFrom] = useState(daysAgoIso(29))
+  const [dashTo, setDashTo] = useState(todayIso())
+  const [dashLocationId, setDashLocationId] = useState('')
+  const [dashReport, setDashReport] = useState<DashboardReport | null>(null)
+  const [dashLoading, setDashLoading] = useState(false)
+  const [dashError, setDashError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getMyLocations().then(({ status, data }) => {
+      if (status === 200 && Array.isArray(data)) setLocations(data)
+    })
+  }, [])
+
+  async function loadDashboard() {
+    setDashError(null)
+    setDashLoading(true)
+    const { status, data } = await getDashboard(dashFrom, dashTo, dashLocationId || undefined)
+    if (status === 200 && data && 'trend' in data) setDashReport(data)
+    else if (status === 403) setDashError('İcazəniz yoxdur')
+    else setDashError('Məlumat yüklənmədi')
+    setDashLoading(false)
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void loadDashboard()
+  }, [])
+
   return (
     <div>
       <div className="stat-grid">
@@ -103,7 +138,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 28 }}>
         <div className="card card-pad">
           <div className="card-title">Ərazilər üzrə bugün</div>
           {areaStats.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Məlumat yoxdur</p>}
@@ -168,6 +203,148 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* --- date-range dashboard --- */}
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+          <div>
+            <label className="form-label">Başlanğıc</label>
+            <input className="inp" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Son</label>
+            <input className="inp" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
+          </div>
+          <div style={{ minWidth: 180 }}>
+            <label className="form-label">Ərazi</label>
+            <select className="inp" value={dashLocationId} onChange={(e) => setDashLocationId(e.target.value)}>
+              <option value="">Hamısı</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-primary" onClick={loadDashboard} disabled={dashLoading}>
+            {dashLoading ? 'Yüklənir…' : 'Yüklə'}
+          </button>
+        </div>
+      </div>
+
+      {dashError && (
+        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+          <IconX />
+          <span>{dashError}</span>
+        </div>
+      )}
+
+      {dashReport && (
+        <>
+          <div className="stat-grid">
+            <div className="stat-card leaf">
+              <div className="stat-lbl">Toplam girişlər</div>
+              <div className="stat-val">{dashReport.totalCheckIns}</div>
+            </div>
+            <div className="stat-card blue">
+              <div className="stat-lbl">Toplam çıxışlar</div>
+              <div className="stat-val">{dashReport.totalCheckOuts}</div>
+            </div>
+            <div className="stat-card amber">
+              <div className="stat-lbl">Gecikənlər</div>
+              <div className="stat-val">{dashReport.lateCount}</div>
+            </div>
+            <div className="stat-card clay">
+              <div className="stat-lbl">Qayıblar</div>
+              <div className="stat-val">{dashReport.absentCount}</div>
+            </div>
+            <div className="stat-card blue">
+              <div className="stat-lbl">Yarımçıq</div>
+              <div className="stat-val">{dashReport.incompleteCount}</div>
+            </div>
+            <div className="stat-card purple">
+              <div className="stat-lbl">İstirahət</div>
+              <div className="stat-val">{dashReport.dayOffCount}</div>
+            </div>
+            <div className="stat-card purple">
+              <div className="stat-lbl">Məzuniyyət</div>
+              <div className="stat-val">{dashReport.leaveCount}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-lbl">İcazə</div>
+              <div className="stat-val">{dashReport.permissionCount}</div>
+            </div>
+            <div className="stat-card leaf">
+              <div className="stat-lbl">İşlənən saat</div>
+              <div className="stat-val">{dashReport.totalWorkedHours}</div>
+            </div>
+            <div className="stat-card amber">
+              <div className="stat-lbl">Overtime saat</div>
+              <div className="stat-val">{dashReport.overtimeHours}</div>
+            </div>
+            <div className="stat-card clay">
+              <div className="stat-lbl">Koordinat xarici</div>
+              <div className="stat-val">{dashReport.outsideRadiusCount}</div>
+            </div>
+            <div className="stat-card leaf">
+              <div className="stat-lbl">Aktiv cihazlar</div>
+              <div className="stat-val">{dashReport.activeDeviceCount}</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 4, marginBottom: 16 }}>
+            <div className="card card-pad">
+              <div className="card-title">Giriş / Çıxış trendi</div>
+              <ChartLegend />
+              <TrendChart points={dashReport.trend} />
+            </div>
+            <div className="card card-pad">
+              <div className="card-title">Həftənin günləri</div>
+              <ChartLegend />
+              <WeekdayBarChart points={dashReport.weekdayBreakdown} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+            <div className="card card-pad">
+              <div className="card-title">Ən çox gecikənlər (TOP-5)</div>
+              {dashReport.topLate.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Gecikmə qeydə alınmayıb</p>}
+              {dashReport.topLate.map((r, i) => (
+                <div
+                  key={r.employeeId}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 0', borderBottom: '1px solid var(--c50)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ color: 'var(--c400)', fontSize: 12, width: 16 }}>{i + 1}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{r.employeeName}</span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 800, color: 'var(--amber)' }}>{r.totalLateMinutes} dəq</div>
+                    <div style={{ fontSize: 11, color: 'var(--c400)' }}>{r.lateCount} dəfə</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="card card-pad">
+              <div className="card-title">Ümumi baxış</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 10, fontSize: 13 }}>
+                <span className="muted">Seçilmiş tarix aralığı</span>
+                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.from} – {dashReport.to}</span>
+                <span className="muted">Giriş/Çıxış nisbəti</span>
+                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.checkInOutRatio}%</span>
+                <span className="muted">Gecikmə faizi</span>
+                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.lateRate}%</span>
+                <span className="muted">Koordinat xarici faizi</span>
+                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.outsideRadiusRate}%</span>
+                <span className="muted">Orta gündəlik əməliyyat</span>
+                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.avgDailyOperations}</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

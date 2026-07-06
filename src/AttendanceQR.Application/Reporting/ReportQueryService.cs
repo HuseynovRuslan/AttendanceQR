@@ -25,6 +25,13 @@ public interface IReportQueryService
     /// </summary>
     Task<IReadOnlyList<DayAttendanceRow>> GetTodayAttendanceAsync(
         Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
+    /// KPI tiles, trend/weekday charts, and a top-5-late list over a date range — the richer
+    /// dashboard view. Same scope rules as GetSummaryAsync (built on the same DailySummary rows).
+    /// </summary>
+    Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(
+        DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 }
 
 public sealed class ReportQueryService : IReportQueryService
@@ -179,5 +186,89 @@ public sealed class ReportQueryService : IReportQueryService
         }
 
         return rows.OrderBy(r => r.EmployeeName).ToList();
+    }
+
+    public async Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(
+        DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        var baseQuery = _db.DailySummaries.Where(s => s.SummaryDate >= from && s.SummaryDate <= to);
+
+        // Same scope authority as GetSummaryAsync — one rule for every reporting view.
+        var scoped = await LocationScope.ApplyLocationScopeAsync(_db, baseQuery, requesterId, role, locationId, ct);
+        if (scoped.Access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, null);
+
+        var summaries = await scoped.Query
+            .Select(s => new
+            {
+                s.EmployeeId, s.SummaryDate, s.CheckInAtUtc, s.CheckOutAtUtc,
+                s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes
+            })
+            .ToListAsync(ct);
+
+        // Everything below is scoped to exactly these employees — derived from the same
+        // already-scoped DailySummary rows, rather than re-deriving scope rules a second time.
+        var scopedEmployeeIds = summaries.Select(s => s.EmployeeId).Distinct().ToList();
+
+        var totalCheckIns = summaries.Count(s => s.CheckInAtUtc != null);
+        var totalCheckOuts = summaries.Count(s => s.CheckOutAtUtc != null);
+        var lateCount = summaries.Count(s => s.Status == DailySummaryStatus.Late);
+        var absentCount = summaries.Count(s => s.Status == DailySummaryStatus.Absent);
+        var incompleteCount = summaries.Count(s => s.Status == DailySummaryStatus.Incomplete);
+        var dayOffCount = summaries.Count(s => s.Status == DailySummaryStatus.DayOff);
+        var leaveCount = summaries.Count(s => s.Status == DailySummaryStatus.OnLeave);
+        var permissionCount = summaries.Count(s => s.Status == DailySummaryStatus.Permission);
+        var totalWorkedHours = Math.Round(summaries.Sum(s => s.WorkedMinutes) / 60.0, 2);
+        var overtimeHours = Math.Round(summaries.Sum(s => s.OvertimeMinutes) / 60.0, 2);
+
+        var rangeStartUtc = from.ToDateTime(TimeOnly.MinValue);
+        var rangeEndUtc = to.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var outsideRadiusCount = await _db.AuditLogs
+            .Where(a => a.EventType == AuditEventType.CheckInRejected && a.Reason == "OutsideRadius"
+                        && a.CreatedAtUtc >= rangeStartUtc && a.CreatedAtUtc < rangeEndUtc
+                        && a.EmployeeId != null && scopedEmployeeIds.Contains(a.EmployeeId.Value))
+            .CountAsync(ct);
+
+        var activeDeviceCount = await _db.DeviceBindings
+            .Where(d => d.IsActive && scopedEmployeeIds.Contains(d.EmployeeId))
+            .CountAsync(ct);
+
+        var trend = summaries
+            .GroupBy(s => s.SummaryDate)
+            .Select(g => new DailyTrendPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null)))
+            .OrderBy(p => p.Date)
+            .ToList();
+
+        var weekday = summaries
+            .GroupBy(s => (int)s.SummaryDate.DayOfWeek)
+            .Select(g => new WeekdayPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null)))
+            .OrderBy(p => p.DayOfWeek)
+            .ToList();
+
+        var employeeNames = await _db.Employees
+            .Where(e => scopedEmployeeIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var topLate = summaries
+            .Where(s => s.Status == DailySummaryStatus.Late)
+            .GroupBy(s => s.EmployeeId)
+            .Select(g => new TopLateRow(g.Key, employeeNames.GetValueOrDefault(g.Key, "—"), g.Count(), g.Sum(x => x.LateMinutes)))
+            .OrderByDescending(r => r.TotalLateMinutes)
+            .Take(5)
+            .ToList();
+
+        var checkInOutRatio = totalCheckIns > 0 ? Math.Round(totalCheckOuts * 100.0 / totalCheckIns, 1) : 0;
+        var lateRate = totalCheckIns > 0 ? Math.Round(lateCount * 100.0 / totalCheckIns, 1) : 0;
+        var outsideRadiusRate = totalCheckIns > 0 ? Math.Round(outsideRadiusCount * 100.0 / totalCheckIns, 1) : 0;
+        var daySpan = Math.Max(1, to.DayNumber - from.DayNumber + 1);
+        var avgDailyOperations = Math.Round((totalCheckIns + totalCheckOuts) / (double)daySpan, 1);
+
+        var report = new DashboardReport(
+            from, to, scoped.Label,
+            totalCheckIns, totalCheckOuts, lateCount, absentCount, incompleteCount, dayOffCount, leaveCount, permissionCount,
+            totalWorkedHours, overtimeHours, outsideRadiusCount, activeDeviceCount,
+            checkInOutRatio, lateRate, outsideRadiusRate, avgDailyOperations,
+            trend, weekday, topLate);
+
+        return (ReportAccess.Allowed, report);
     }
 }

@@ -51,6 +51,58 @@ export interface LocationDto {
   name: string
 }
 
+// --- reports / dashboard -----------------------------------------------------
+
+export interface DailyTrendPoint {
+  date: string
+  checkIns: number
+  checkOuts: number
+}
+
+export interface WeekdayPoint {
+  dayOfWeek: number // 0=Sunday..6=Saturday
+  checkIns: number
+  checkOuts: number
+}
+
+export interface TopLateRow {
+  employeeId: string
+  employeeName: string
+  lateCount: number
+  totalLateMinutes: number
+}
+
+export interface DashboardReport {
+  from: string
+  to: string
+  scopeLabel: string
+  totalCheckIns: number
+  totalCheckOuts: number
+  lateCount: number
+  absentCount: number
+  incompleteCount: number
+  dayOffCount: number
+  leaveCount: number
+  permissionCount: number
+  totalWorkedHours: number
+  overtimeHours: number
+  outsideRadiusCount: number
+  activeDeviceCount: number
+  checkInOutRatio: number
+  lateRate: number
+  outsideRadiusRate: number
+  avgDailyOperations: number
+  trend: DailyTrendPoint[]
+  weekdayBreakdown: WeekdayPoint[]
+  topLate: TopLateRow[]
+}
+
+export function getDashboard(from: string, to: string, locationId?: string) {
+  const q = new URLSearchParams({ from, to })
+  if (locationId) q.set('locationId', locationId)
+  return apiRequest<DashboardReport | { error: string }>(`/api/reports/dashboard?${q}`)
+}
+
 /** Full location shape returned by the admin location-management endpoints. */
 export interface AdminLocation {
   id: string
