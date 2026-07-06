@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { BrandLogo } from '../../components/BrandLogo'
+import { NotificationBell } from '../../components/NotificationBell'
 import {
   IconCalendar,
   IconChart,
@@ -124,7 +125,7 @@ export function AdminLayout() {
               <div className="topbar-sub">{meta.sub}</div>
             </div>
           </div>
-          <div className="topbar-right" />
+          <div className="topbar-right">{isAdmin && <NotificationBell />}</div>
         </div>
         <div className="content">
           <Outlet />
