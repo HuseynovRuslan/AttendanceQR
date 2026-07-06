@@ -31,11 +31,12 @@ export function TodayPage() {
 
   const visible = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
 
-  const counts = { present: 0, late: 0, absent: 0, incomplete: 0 }
+  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0 }
   for (const r of visible) {
     if (r.status === 'OnTime') counts.present++
     else if (r.status === 'Late') counts.late++
     else if (r.status === 'Absent') counts.absent++
+    else if (r.status === 'DayOff') counts.dayOff++
     else counts.incomplete++
   }
 
@@ -80,6 +81,10 @@ export function TodayPage() {
         <div className="stat-card blue">
           <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
           <div className="stat-val">{counts.incomplete}</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
+          <div className="stat-val">{counts.dayOff}</div>
         </div>
       </div>
 

@@ -36,4 +36,12 @@ public class Location
     /// picks up the new version automatically; any printed poster becomes unscannable immediately.
     /// </summary>
     public int QrVersion { get; set; }
+
+    /// <summary>
+    /// Bitmask of which days of the week are working days, indexed by .NET's DayOfWeek
+    /// (Sunday=0 ... Saturday=6): bit set = working day. Default 126 (0b1111110) = every day
+    /// except Sunday. A day that isn't a working day here (or is listed in NonWorkingDay) shows
+    /// DailySummaryStatus.DayOff instead of Absent when nobody checked in.
+    /// </summary>
+    public int WorkDaysMask { get; set; } = 126;
 }

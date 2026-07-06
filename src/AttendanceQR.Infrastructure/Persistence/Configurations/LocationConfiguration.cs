@@ -23,5 +23,9 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
         // Default true so the column backfills existing rows as active on migration, and new
         // locations are active unless explicitly disabled.
         builder.Property(l => l.IsActive).HasDefaultValue(true);
+
+        // 126 = every day except Sunday — backfills existing rows to the same assumption the app
+        // already made everywhere else, rather than defaulting to 0 (no working days at all).
+        builder.Property(l => l.WorkDaysMask).HasDefaultValue(126);
     }
 }

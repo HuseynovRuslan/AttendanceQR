@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<DailySummary> DailySummaries => Set<DailySummary>();
     public DbSet<ManagedLocation> ManagedLocations => Set<ManagedLocation>();
+    public DbSet<NonWorkingDay> NonWorkingDays => Set<NonWorkingDay>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

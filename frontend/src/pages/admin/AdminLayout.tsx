@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import {
+  IconCalendar,
   IconChart,
   IconClipboard,
   IconHome,
@@ -22,6 +23,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/today': { title: 'Bugünkü davamiyyət', sub: 'Canlı — hər 30 saniyədə yenilənir' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
+  '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
   '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
   '/admin/device-changes': { title: 'Cihaz təsdiqləri', sub: 'Gözləyən tələblər' },
 }
@@ -53,6 +55,7 @@ export function AdminLayout() {
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
+    ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihaz təsdiqləri', Icon: IconPhone }] : []),
   ]

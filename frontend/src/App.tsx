@@ -15,6 +15,7 @@ import { DashboardPage } from './pages/admin/DashboardPage'
 import { TodayPage } from './pages/admin/TodayPage'
 import { ReportsPage } from './pages/admin/ReportsPage'
 import { LocationsPage } from './pages/admin/LocationsPage'
+import { NonWorkingDaysPage } from './pages/admin/NonWorkingDaysPage'
 import { PrintQrPage } from './pages/admin/PrintQrPage'
 import { EmployeesPage } from './pages/admin/EmployeesPage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
@@ -86,6 +87,14 @@ export default function App() {
           element={
             <AdminOnly>
               <LocationsPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="non-working-days"
+          element={
+            <AdminOnly>
+              <NonWorkingDaysPage />
             </AdminOnly>
           }
         />

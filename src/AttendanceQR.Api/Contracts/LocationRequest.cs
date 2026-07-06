@@ -11,7 +11,8 @@ public record LocationRequest(
     int RadiusMeters,
     string ShiftStart,
     string ShiftEnd,
-    int LateThresholdMinutes);
+    int LateThresholdMinutes,
+    int WorkDaysMask);
 
 /// <summary>Enable/disable a location without deleting it.</summary>
 public record SetActiveRequest(bool IsActive);

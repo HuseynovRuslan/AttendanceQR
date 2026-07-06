@@ -61,7 +61,7 @@ public sealed class ReportQueryService : IReportQueryService
                 g.Key.EmployeeId,
                 g.Key.FullName,
                 g.Select(x => x.LocationName).First(),
-                WorkDays: g.Count(x => x.Status != DailySummaryStatus.Absent),
+                WorkDays: g.Count(x => x.Status != DailySummaryStatus.Absent && x.Status != DailySummaryStatus.DayOff),
                 LateCount: g.Count(x => x.Status == DailySummaryStatus.Late),
                 AbsentDays: g.Count(x => x.Status == DailySummaryStatus.Absent),
                 IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete),
@@ -138,13 +138,29 @@ public sealed class ReportQueryService : IReportQueryService
             .Where(r => r.AttendanceDate == today && employeeIds.Contains(r.EmployeeId))
             .ToDictionaryAsync(r => r.EmployeeId, ct);
 
+        // Same non-working-day resolution as the nightly job, just for "today" — so the live
+        // board and the persisted summary always agree once the nightly job catches up.
+        var nonWorkingLocationIds = await _db.NonWorkingDays
+            .Where(n => n.Date == today && (n.LocationId == null || locationIds.Contains(n.LocationId.Value)))
+            .Select(n => n.LocationId)
+            .ToListAsync(ct);
+        var isGloballyNonWorking = nonWorkingLocationIds.Contains(null);
+        var nonWorkingLocationIdSet = nonWorkingLocationIds
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+
         var rows = new List<DayAttendanceRow>(employees.Count);
         foreach (var e in employees)
         {
             if (!locations.TryGetValue(e.LocationId, out var location))
                 continue;
             records.TryGetValue(e.Id, out var record);
-            var c = AttendanceCalculator.Compute(record, location, _timeZone);
+            var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, today.DayOfWeek)
+                                && !isGloballyNonWorking
+                                && !nonWorkingLocationIdSet.Contains(location.Id);
+            var noRecordStatus = isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;
+            var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus);
             rows.Add(new DayAttendanceRow(
                 e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),
                 record?.CheckInAtUtc, record?.CheckOutAtUtc));

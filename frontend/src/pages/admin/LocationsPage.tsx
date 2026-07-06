@@ -20,7 +20,13 @@ type FormState = {
   shiftStart: string
   shiftEnd: string
   lateThresholdMinutes: string
+  workDaysMask: number
 }
+
+// Index = JS Date.getDay() / .NET DayOfWeek (Sunday=0 ... Saturday=6) — same convention as the
+// WorkDaysMask bit position, so no offset translation is needed anywhere.
+const WEEKDAY_LABELS = ['Bazar', 'B.e', 'Ç.a', 'Çər', 'C.a', 'Cümə', 'Şən']
+const DEFAULT_WORK_DAYS_MASK = 126 // every day except Sunday
 
 const EMPTY: FormState = {
   name: '',
@@ -30,6 +36,7 @@ const EMPTY: FormState = {
   shiftStart: '09:00',
   shiftEnd: '18:00',
   lateThresholdMinutes: '15',
+  workDaysMask: DEFAULT_WORK_DAYS_MASK,
 }
 
 const ERRORS: Record<string, string> = {
@@ -42,6 +49,7 @@ const ERRORS: Record<string, string> = {
   ShiftEndInvalid: 'Növbə bitmə vaxtı yanlışdır',
   LocationInUse: 'Bu lokasiya işçilər/qeydlər tərəfindən istifadə olunur — silinə bilməz',
   LocationNotFound: 'Lokasiya tapılmadı',
+  WorkDaysMaskInvalid: 'İş günləri seçimi yanlışdır',
 }
 
 export function LocationsPage() {
@@ -65,8 +73,12 @@ export function LocationsPage() {
     void refresh()
   }, [])
 
-  function set<K extends keyof FormState>(key: K, value: string) {
+  function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function toggleWorkDay(dayIndex: number) {
+    setForm((f) => ({ ...f, workDaysMask: f.workDaysMask ^ (1 << dayIndex) }))
   }
 
   function startCreate() {
@@ -86,6 +98,7 @@ export function LocationsPage() {
       shiftStart: l.shiftStart,
       shiftEnd: l.shiftEnd,
       lateThresholdMinutes: String(l.lateThresholdMinutes),
+      workDaysMask: l.workDaysMask,
     })
     setError(null)
     setOk(null)
@@ -104,6 +117,7 @@ export function LocationsPage() {
       shiftStart: form.shiftStart,
       shiftEnd: form.shiftEnd,
       lateThresholdMinutes: Number(form.lateThresholdMinutes),
+      workDaysMask: form.workDaysMask,
     }
     const { status, data } = editingId
       ? await updateLocation(editingId, payload)
@@ -250,6 +264,29 @@ export function LocationsPage() {
           <div>
             <label className="form-label">Növbə bitmə</label>
             <input className="inp" type="time" required value={form.shiftEnd} onChange={(e) => set('shiftEnd', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <label className="form-label">İş günləri</label>
+          <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+            İşarələnməmiş günlərdə giriş olmasa "Qayıb" yox, "İstirahət" göstərilir.
+          </p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {WEEKDAY_LABELS.map((label, i) => {
+              const active = (form.workDaysMask & (1 << i)) !== 0
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => toggleWorkDay(i)}
+                  className="btn btn-sm"
+                  style={active ? { background: 'var(--leaf)', borderColor: 'var(--leaf)', color: '#fff' } : undefined}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </div>
 

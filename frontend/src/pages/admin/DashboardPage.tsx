@@ -24,26 +24,34 @@ export function DashboardPage() {
     }
   }, 30_000)
 
-  const counts = { present: 0, late: 0, absent: 0, incomplete: 0 }
+  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0 }
   for (const r of rows) {
     if (r.status === 'OnTime') counts.present++
     else if (r.status === 'Late') counts.late++
     else if (r.status === 'Absent') counts.absent++
+    else if (r.status === 'DayOff') counts.dayOff++
     else counts.incomplete++
   }
   const total = rows.length
-  const overallRate = total ? Math.round(((counts.present + counts.late) / total) * 100) : 0
+  // Employees on a day off aren't expected to attend — excluding them from the rate's denominator
+  // keeps a weekend/holiday from reading as a bad attendance day.
+  const expected = total - counts.dayOff
+  const overallRate = expected ? Math.round(((counts.present + counts.late) / expected) * 100) : 0
 
   const areaStats = useMemo(() => {
-    const byArea = new Map<string, { name: string; total: number; present: number }>()
+    const byArea = new Map<string, { name: string; total: number; present: number; dayOff: number }>()
     for (const r of rows) {
-      const entry = byArea.get(r.locationId) ?? { name: r.locationName, total: 0, present: 0 }
+      const entry = byArea.get(r.locationId) ?? { name: r.locationName, total: 0, present: 0, dayOff: 0 }
       entry.total++
       if (r.status === 'OnTime' || r.status === 'Late') entry.present++
+      else if (r.status === 'DayOff') entry.dayOff++
       byArea.set(r.locationId, entry)
     }
     return Array.from(byArea.values())
-      .map((a) => ({ ...a, rate: a.total ? Math.round((a.present / a.total) * 100) : 0 }))
+      .map((a) => {
+        const areaExpected = a.total - a.dayOff
+        return { ...a, expected: areaExpected, rate: areaExpected ? Math.round((a.present / areaExpected) * 100) : 0 }
+      })
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [rows])
 
@@ -69,6 +77,10 @@ export function DashboardPage() {
         <div className="stat-card blue">
           <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
           <div className="stat-val">{counts.incomplete}</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
+          <div className="stat-val">{counts.dayOff}</div>
         </div>
       </div>
 
@@ -96,7 +108,7 @@ export function DashboardPage() {
             >
               <div>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.present}/{a.total} işçi</div>
+                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.present}/{a.expected} işçi</div>
               </div>
               <div
                 style={{
@@ -127,7 +139,7 @@ export function DashboardPage() {
                 {overallRate}%
               </div>
               <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 4 }}>
-                {counts.present + counts.late} / {total} işçi
+                {counts.present + counts.late} / {expected} işçi
               </div>
             </div>
           </div>

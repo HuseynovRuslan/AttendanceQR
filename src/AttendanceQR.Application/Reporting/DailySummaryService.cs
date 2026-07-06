@@ -45,6 +45,18 @@ public sealed class DailySummaryService : IDailySummaryService
             .Where(r => r.AttendanceDate == date)
             .ToDictionaryAsync(r => r.EmployeeId, ct);
 
+        // Admin-declared non-working days for this date: either global (LocationId == null) or
+        // specific to one of the locations in play. A location is "off" if a matching row exists.
+        var nonWorkingLocationIds = await _db.NonWorkingDays
+            .Where(n => n.Date == date && (n.LocationId == null || locationIds.Contains(n.LocationId.Value)))
+            .Select(n => n.LocationId)
+            .ToListAsync(ct);
+        var isGloballyNonWorking = nonWorkingLocationIds.Contains(null);
+        var nonWorkingLocationIdSet = nonWorkingLocationIds
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+
         // Existing summaries for the date → upsert (idempotent; the unique index also guards this).
         var existing = await _db.DailySummaries
             .Where(s => s.SummaryDate == date)
@@ -55,8 +67,13 @@ public sealed class DailySummaryService : IDailySummaryService
             if (!locations.TryGetValue(emp.LocationId, out var location))
                 continue; // defensive: employee's location vanished
 
+            var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, date.DayOfWeek)
+                                && !isGloballyNonWorking
+                                && !nonWorkingLocationIdSet.Contains(location.Id);
+            var noRecordStatus = isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;
+
             records.TryGetValue(emp.Id, out var record);
-            var computed = Compute(emp.Id, emp.LocationId, date, record, location);
+            var computed = Compute(emp.Id, emp.LocationId, date, record, location, isWorkingDay, noRecordStatus);
 
             if (existing.TryGetValue(emp.Id, out var summary))
             {
@@ -78,10 +95,12 @@ public sealed class DailySummaryService : IDailySummaryService
         return employees.Count;
     }
 
-    private DailySummary Compute(Guid employeeId, Guid locationId, DateOnly date, AttendanceRecord? record, Location location)
+    private DailySummary Compute(
+        Guid employeeId, Guid locationId, DateOnly date, AttendanceRecord? record, Location location,
+        bool isWorkingDay, DailySummaryStatus noRecordStatus)
     {
         // Shared timezone/late/overtime logic (also used by the live "today" query).
-        var c = AttendanceCalculator.Compute(record, location, _timeZone);
+        var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus);
         return new DailySummary
         {
             EmployeeId = employeeId,

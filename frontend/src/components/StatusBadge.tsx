@@ -1,13 +1,14 @@
-import { IconCheck, IconClock, IconX } from './icons'
+import { IconCalendar, IconCheck, IconClock, IconX } from './icons'
 
 // Single source of truth for status → class/label/icon, so the same status always reads the
 // same everywhere (badges, stat-card headers, anywhere else) — never hardcode these strings
 // separately elsewhere.
-export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'check' | 'clock' | 'x' }> = {
+export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }> = {
   OnTime: { cls: 'b-present', label: 'Gəlib', icon: 'check' },
   Late: { cls: 'b-late', label: 'Gecikmə', icon: 'clock' },
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
   Incomplete: { cls: 'b-permitted', label: 'İşdə', icon: 'clock' },
+  DayOff: { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' },
 }
 
 export function statusLabel(status: string): string {
@@ -16,7 +17,7 @@ export function statusLabel(status: string): string {
 
 export function StatusBadge({ status }: { status: string }) {
   const m = STATUS_MAP[status] ?? { cls: 'b-absent', label: status, icon: 'x' as const }
-  const Icon = m.icon === 'check' ? IconCheck : m.icon === 'clock' ? IconClock : IconX
+  const Icon = m.icon === 'check' ? IconCheck : m.icon === 'clock' ? IconClock : m.icon === 'calendar' ? IconCalendar : IconX
   return (
     <span className={`badge ${m.cls}`}>
       <Icon />

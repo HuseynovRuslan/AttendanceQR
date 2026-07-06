@@ -53,7 +53,8 @@ public class AdminLocationsController : ControllerBase
             RadiusMeters = request.RadiusMeters,
             ShiftStart = start,
             ShiftEnd = end,
-            LateThresholdMinutes = request.LateThresholdMinutes
+            LateThresholdMinutes = request.LateThresholdMinutes,
+            WorkDaysMask = request.WorkDaysMask
         };
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
@@ -77,6 +78,7 @@ public class AdminLocationsController : ControllerBase
         location.ShiftStart = start;
         location.ShiftEnd = end;
         location.LateThresholdMinutes = request.LateThresholdMinutes;
+        location.WorkDaysMask = request.WorkDaysMask;
         await _db.SaveChangesAsync();
         return Ok(Project(location));
     }
@@ -155,7 +157,8 @@ public class AdminLocationsController : ControllerBase
         shiftStart = l.ShiftStart.ToString("HH:mm"),
         shiftEnd = l.ShiftEnd.ToString("HH:mm"),
         lateThresholdMinutes = l.LateThresholdMinutes,
-        isActive = l.IsActive
+        isActive = l.IsActive,
+        workDaysMask = l.WorkDaysMask
     };
 
     private static bool TryValidate(LocationRequest r, out TimeOnly start, out TimeOnly end, out string? error)
@@ -170,6 +173,7 @@ public class AdminLocationsController : ControllerBase
         if (r.LateThresholdMinutes < 0) { error = "LateThresholdNegative"; return false; }
         if (!TimeOnly.TryParse(r.ShiftStart, CultureInfo.InvariantCulture, out start)) { error = "ShiftStartInvalid"; return false; }
         if (!TimeOnly.TryParse(r.ShiftEnd, CultureInfo.InvariantCulture, out end)) { error = "ShiftEndInvalid"; return false; }
+        if (r.WorkDaysMask is < 0 or > 127) { error = "WorkDaysMaskInvalid"; return false; }
         return true;
     }
 }

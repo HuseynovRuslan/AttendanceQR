@@ -8,7 +8,7 @@ export interface DayAttendanceRow {
   employeeName: string
   locationId: string
   locationName: string
-  status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete'
+  status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete' | 'DayOff'
   checkInAtUtc: string | null
   checkOutAtUtc: string | null
 }
@@ -58,6 +58,9 @@ export interface AdminLocation {
   shiftEnd: string // "HH:mm"
   lateThresholdMinutes: number
   isActive: boolean
+  // Bitmask indexed by JS Date.getDay() (Sunday=0 ... Saturday=6): bit set = working day.
+  // Default 126 = every day except Sunday.
+  workDaysMask: number
 }
 
 /** Create/update payload — active state is managed separately via setLocationActive. */
