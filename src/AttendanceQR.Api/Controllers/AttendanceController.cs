@@ -18,7 +18,6 @@ public class AttendanceController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
-    private readonly INonceStore _nonceStore;
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
     private readonly ILogger<AttendanceController> _logger;
@@ -26,14 +25,12 @@ public class AttendanceController : ControllerBase
     public AttendanceController(
         AppDbContext db,
         IQrTokenService qrTokenService,
-        INonceStore nonceStore,
         IAttendanceQueryService attendanceQuery,
         IPhotoStorageService photoStorage,
         ILogger<AttendanceController> logger)
     {
         _db = db;
         _qrTokenService = qrTokenService;
-        _nonceStore = nonceStore;
         _attendanceQuery = attendanceQuery;
         _photoStorage = photoStorage;
         _logger = logger;
@@ -130,12 +127,10 @@ public class AttendanceController : ControllerBase
             return BadRequest(new { error = validation.FailureReason });
         }
 
-        // 2. Replay protection — a token's nonce may be consumed exactly once.
-        if (!_nonceStore.TryConsume(validation.Nonce!))
-        {
-            await WriteAuditAsync(employeeId, AuditEventType.CheckInRejected, "TokenReused", ip);
-            return BadRequest(new { error = "TokenReused" });
-        }
+        // No per-token replay/nonce check: the QR is a STATIC printed poster meant to be scanned by
+        // many employees, repeatedly, all day. A single-use nonce would let only one person check in
+        // per ~TTL window and reject everyone else with "TokenReused". Anti-fraud is instead enforced
+        // by geofence + device binding + photo audit + QrVersion (admin revoke) + token expiry.
 
         // 3. Employee must exist and be active.
         var employee = await _db.Employees

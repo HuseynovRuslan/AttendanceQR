@@ -16,10 +16,10 @@ namespace AttendanceQR.Api.Controllers;
 public class AdminLocationsController : ControllerBase
 {
     // A printed poster needs to survive well past its next replacement cycle without becoming a
-    // permanent, un-revocable secret — 30 days balances "rarely needs reprinting" against "an old
-    // photo of the poster doesn't stay scannable forever". QrVersion still lets an admin invalidate
+    // permanent, un-revocable secret. 60 days gives comfortable buffer for a ~monthly reprint (so
+    // the poster never expires before it's replaced), while QrVersion still lets an admin invalidate
     // it sooner if needed (a leaked photo, a lost poster, etc).
-    private const int StaticQrTtlSeconds = 30 * 24 * 60 * 60;
+    private const int StaticQrTtlSeconds = 60 * 24 * 60 * 60;
 
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
