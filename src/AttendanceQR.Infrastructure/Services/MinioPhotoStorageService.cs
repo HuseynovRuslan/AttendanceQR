@@ -17,7 +17,9 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
     /// <summary>Prefix for daily check-in selfies — pruned by PhotoCleanupJob after RetentionDays.</summary>
     public const string CheckInPrefix = "checkins/";
 
-    private const string WebpContentType = "image/webp";
+    // JPEG, not WebP: iOS Safari's canvas cannot encode WebP, so the client sends JPEG for
+    // cross-platform capture. Older objects stored as .webp remain valid and viewable.
+    private const string JpegContentType = "image/jpeg";
 
     private readonly IAmazonS3 _s3;
     private readonly MinioOptions _options;
@@ -33,14 +35,14 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
     public async Task<string> UploadCheckInPhotoAsync(Guid employeeId, Guid recordId, byte[] webpBytes, CancellationToken ct = default)
     {
         var nowUtc = DateTime.UtcNow;
-        var key = $"{CheckInPrefix}{nowUtc:yyyy}/{nowUtc:MM}/{nowUtc:dd}/{employeeId}/{recordId}.webp";
+        var key = $"{CheckInPrefix}{nowUtc:yyyy}/{nowUtc:MM}/{nowUtc:dd}/{employeeId}/{recordId}.jpg";
         await PutAsync(key, webpBytes, ct);
         return key;
     }
 
     public async Task<string> UploadReferencePhotoAsync(Guid employeeId, byte[] webpBytes, CancellationToken ct = default)
     {
-        var key = $"{ReferencePrefix}{employeeId}.webp";
+        var key = $"{ReferencePrefix}{employeeId}.jpg";
         await PutAsync(key, webpBytes, ct);
         return key;
     }
@@ -103,7 +105,7 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
             BucketName = _options.BucketName,
             Key = key,
             InputStream = stream,
-            ContentType = WebpContentType,
+            ContentType = JpegContentType,
             // S3-compatible stores (R2/MinIO/B2) don't support the SDK v4 streaming signed/checksummed
             // payload — send a plain single-shot PUT instead. Verified against Cloudflare R2.
             UseChunkEncoding = false,

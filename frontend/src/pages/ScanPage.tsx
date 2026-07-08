@@ -18,11 +18,10 @@ const READER_ID = 'reader'
 
 export function ScanPage() {
   const scannerRef = useRef<Html5Qrcode | null>(null)
-  // Photo audit: a separate, always-warm front-camera stream we grab a single silent frame from at
-  // the moment a check-in QR is decoded. Kept apart from html5-qrcode's back camera. Entirely
-  // best-effort — if the front camera is unavailable (permission denied, or a device that can't run
-  // two cameras at once) we simply skip the photo and the check-in proceeds unaffected.
-  const selfieStreamRef = useRef<MediaStream | null>(null)
+  // Photo audit: a hidden <video> we briefly attach the front camera to — on demand, AFTER the QR
+  // (back) camera is released, since iOS Safari allows only one camera at a time — to grab a single
+  // silent selfie frame at check-in. Best-effort: if the front camera is unavailable we skip the
+  // photo and the check-in proceeds unaffected.
   const selfieVideoRef = useRef<HTMLVideoElement | null>(null)
   const busyRef = useRef(false)
   const [phase, setPhase] = useState<Phase>('scanning')
@@ -40,15 +39,11 @@ export function ScanPage() {
     if (today.kind === 'loading') return
     if (today.kind === 'completed') {
       void stopCamera()
-      stopSelfieCamera()
       return
     }
     void startCamera()
-    // Warm the front camera in parallel so a frame is sharp and instant when the QR decodes.
-    void startSelfieCamera()
     return () => {
       void stopCamera()
-      stopSelfieCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today.kind])
@@ -111,40 +106,23 @@ export function ScanPage() {
 
   // --- selfie (photo audit) front camera ------------------------------------
 
-  async function startSelfieCamera() {
-    if (selfieStreamRef.current) return
-    if (!navigator.mediaDevices?.getUserMedia) return
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false,
-      })
-      selfieStreamRef.current = stream
-      const video = selfieVideoRef.current
-      if (video) {
-        video.srcObject = stream
-        await video.play().catch(() => {})
-      }
-    } catch {
-      // No front camera / permission denied / device can't run two cameras — skip photo silently.
-      selfieStreamRef.current = null
-    }
-  }
-
-  function stopSelfieCamera() {
-    const stream = selfieStreamRef.current
-    selfieStreamRef.current = null
-    stream?.getTracks().forEach((t) => t.stop())
-    const video = selfieVideoRef.current
-    if (video) video.srcObject = null
-  }
-
-  // Grab one frame, shrink to ~640px wide, encode WebP @0.7 (~30–60 KB), return a data URL — or
-  // null if the stream isn't ready. Must run while the stream is still live.
+  // Opens the front camera ON DEMAND (the caller must have released the QR/back camera first — iOS
+  // Safari allows only one camera at a time), grabs a single frame shrunk to ~640px, encodes JPEG
+  // (Safari's canvas can't encode WebP → it would return null), and releases the camera. Returns a
+  // data URL, or null if anything is unavailable — the check-in never depends on it.
   async function captureSelfie(): Promise<string | null> {
+    if (!navigator.mediaDevices?.getUserMedia) return null
     const video = selfieVideoRef.current
-    if (!video || !selfieStreamRef.current || video.videoWidth === 0) return null
+    if (!video) return null
+    let stream: MediaStream | null = null
     try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      video.srcObject = stream
+      await video.play().catch(() => {})
+      // Wait for a real frame (+ a short settle for exposure/focus) so it isn't black, with a timeout.
+      await waitForVideoFrame(video, 2500)
+      if (video.videoWidth === 0) return null
+
       const targetWidth = Math.min(640, video.videoWidth)
       const scale = targetWidth / video.videoWidth
       const canvas = document.createElement('canvas')
@@ -154,24 +132,27 @@ export function ScanPage() {
       if (!ctx) return null
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), 'image/webp', 0.7),
+        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.7),
       )
       if (!blob) return null
       return await blobToDataUrl(blob)
     } catch {
+      // No front camera / permission denied — skip the photo, check-in proceeds without it.
       return null
+    } finally {
+      stream?.getTracks().forEach((t) => t.stop())
+      video.srcObject = null
     }
   }
 
   async function onDecoded(text: string) {
     if (busyRef.current) return
     busyRef.current = true
-    // Capture the selfie ONLY for a check-in (no record yet today) and while the stream is still
-    // live. Check-out never captures a photo. Best-effort: null if the camera wasn't available.
-    const photoBase64 = today.kind === 'none' ? await captureSelfie() : null
+    // Release the QR (back) camera FIRST — iOS Safari won't open the front camera while another is
+    // active. Then show feedback and grab the selfie (check-in only; check-out never captures one).
     await stopCamera()
-    stopSelfieCamera()
     setPhase('processing')
+    const photoBase64 = today.kind === 'none' ? await captureSelfie() : null
     await submitScan(text, photoBase64)
     setPhase('done')
     void loadTodayStatus()
@@ -350,6 +331,26 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onloadend = () => resolve(reader.result as string)
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(blob)
+  })
+}
+
+// Resolve once the video has a real frame (videoWidth > 0) plus a brief exposure/focus settle, or
+// after a timeout — so an on-demand front-camera capture isn't a black frame.
+function waitForVideoFrame(video: HTMLVideoElement, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const start = performance.now()
+    function tick() {
+      if (video.videoWidth > 0) {
+        setTimeout(resolve, 250)
+        return
+      }
+      if (performance.now() - start >= timeoutMs) {
+        resolve()
+        return
+      }
+      requestAnimationFrame(tick)
+    }
+    tick()
   })
 }
 
