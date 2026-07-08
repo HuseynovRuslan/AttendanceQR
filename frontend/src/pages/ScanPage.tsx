@@ -24,6 +24,9 @@ export function ScanPage() {
   // photo and the check-in proceeds unaffected.
   const selfieVideoRef = useRef<HTMLVideoElement | null>(null)
   const busyRef = useRef(false)
+  // True while a scan result is on screen — keeps the today-status reload (which flips today.kind)
+  // from re-running the camera effect and wiping the result message. Cleared when scanning restarts.
+  const scanDoneRef = useRef(false)
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [result, setResult] = useState<Card | null>(null)
@@ -41,6 +44,9 @@ export function ScanPage() {
       void stopCamera()
       return
     }
+    // A scan just finished and its result is showing — don't auto-restart the camera (that would
+    // clear the message). The user restarts via "Yenidən skan et".
+    if (scanDoneRef.current) return
     void startCamera()
     return () => {
       void stopCamera()
@@ -64,6 +70,7 @@ export function ScanPage() {
   }
 
   async function startCamera() {
+    scanDoneRef.current = false
     setCameraError(null)
     setResult(null)
     setPhase('scanning')
@@ -155,6 +162,8 @@ export function ScanPage() {
     const photoBase64 = today.kind === 'none' ? await captureSelfie() : null
     await submitScan(text, photoBase64)
     setPhase('done')
+    // Keep the result on screen: mark done so reloading today's status doesn't restart the camera.
+    scanDoneRef.current = true
     void loadTodayStatus()
   }
 
