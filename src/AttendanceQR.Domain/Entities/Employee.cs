@@ -54,4 +54,11 @@ public class Employee
 
     // 1-to-1, nullable — an employee may not yet have a bound device.
     public DeviceBinding? DeviceBinding { get; set; }
+
+    // Photo audit: the employee's reference selfie (object key in MinIO), captured the first time a
+    // check-in photo is available and kept indefinitely. A manager compares a day's check-in photo
+    // against this by eye — there is no biometric/face-recognition processing anywhere.
+    public string? ReferencePhotoKey { get; set; }
+
+    public DateTime? ReferencePhotoTakenAtUtc { get; set; }
 }

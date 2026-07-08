@@ -15,6 +15,10 @@ public class AttendanceRecordConfiguration : IEntityTypeConfiguration<Attendance
         builder.Property(a => a.Status)
             .HasConversion<int>();
 
+        // Photo-audit object key (points into MinIO). Keys are short; give headroom.
+        builder.Property(a => a.CheckInPhotoKey)
+            .HasMaxLength(256);
+
         // One record per employee per day.
         builder.HasIndex(a => new { a.EmployeeId, a.AttendanceDate })
             .IsUnique();

@@ -23,4 +23,11 @@ public class AttendanceRecord
     public DateTime? CheckOutAtUtc { get; set; }
 
     public AttendanceStatus Status { get; set; }
+
+    // Photo audit: object key (in MinIO, not the DB) of the selfie captured at check-in, plus when
+    // it was taken. Null when the client sent no photo (camera denied / capture failed) — check-in
+    // is never blocked on the photo. See MinioPhotoStorageService for the key layout.
+    public string? CheckInPhotoKey { get; set; }
+
+    public DateTime? CheckInPhotoTakenAtUtc { get; set; }
 }

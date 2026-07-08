@@ -41,6 +41,17 @@ services:
       # startup while set, so remove both after use.
       Ops__ResetAdminEmail: ${Ops__ResetAdminEmail:-}
       Ops__ResetAdminPassword: ${Ops__ResetAdminPassword:-}
+      # ── Photo audit (MinIO / S3-compatible) — OPTIONAL. If Endpoint is empty the whole feature is
+      # a graceful no-op (check-in still works, panel shows "Foto yoxdur"). Endpoint is host[:port]
+      # WITHOUT scheme; UseSsl decides http/https. Use the PUBLICLY reachable MinIO URL — the browser
+      # loads presigned image URLs directly, so an internal-only service name would not resolve.
+      Storage__Minio__Endpoint: ${Storage__Minio__Endpoint:-}
+      Storage__Minio__AccessKey: ${Storage__Minio__AccessKey:-}
+      Storage__Minio__SecretKey: ${Storage__Minio__SecretKey:-}
+      Storage__Minio__BucketName: ${Storage__Minio__BucketName:-attendance-photos}
+      Storage__Minio__UseSsl: ${Storage__Minio__UseSsl:-true}
+      # SigV4 signing region: empty for MinIO, "auto" for Cloudflare R2, bucket region for AWS S3.
+      Storage__Minio__Region: ${Storage__Minio__Region:-}
       # Explicitly Production so seed/dev endpoints stay disabled and dev appsettings never loads.
       ASPNETCORE_ENVIRONMENT: Production
     ports:

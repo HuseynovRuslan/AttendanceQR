@@ -36,6 +36,10 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.Property(e => e.InvitationTokenHash)
             .HasMaxLength(128);
 
+        // Photo-audit reference-selfie object key (points into MinIO).
+        builder.Property(e => e.ReferencePhotoKey)
+            .HasMaxLength(256);
+
         builder.HasIndex(e => e.Email)
             .IsUnique();
 

@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
+using Amazon.Runtime;
+using Amazon.S3;
 using AttendanceQR.Api.Jobs;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
@@ -26,6 +28,8 @@ builder.Services.Configure<JwtOptions>(
     builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<InvitationOptions>(
     builder.Configuration.GetSection(InvitationOptions.SectionName));
+builder.Services.Configure<MinioOptions>(
+    builder.Configuration.GetSection(MinioOptions.SectionName));
 
 // Security services.
 builder.Services.AddMemoryCache();
@@ -39,6 +43,37 @@ builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddScoped<IDeviceChangeService, DeviceChangeService>();
 builder.Services.AddScoped<IAttendanceQueryService, AttendanceQueryService>();
 
+// Photo-audit object storage (MinIO via the S3 SDK). The S3 client is a singleton pointed at the
+// MinIO endpoint; path-style addressing is required for MinIO. When Storage:Minio:Endpoint is empty
+// (e.g. local dev without MinIO) we still register a client so DI resolves — it simply targets a
+// placeholder region and is never called (uploads are best-effort and the cleanup job stays idle).
+builder.Services.AddSingleton<IAmazonS3>(sp =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MinioOptions>>().Value;
+    var config = new AmazonS3Config
+    {
+        ForcePathStyle = true,
+        // AWS SDK v4 adds a streaming CRC "trailer" checksum by default, which S3-compatible stores
+        // (Cloudflare R2, MinIO, B2) reject ("STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER not
+        // implemented"). Only compute/validate checksums when the operation actually requires them.
+        RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+        ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
+    };
+    if (!string.IsNullOrWhiteSpace(opts.Endpoint))
+    {
+        config.ServiceURL = $"{(opts.UseSsl ? "https" : "http")}://{opts.Endpoint}";
+        // SigV4 signing region for the custom endpoint. R2 requires "auto"; MinIO ignores it.
+        if (!string.IsNullOrWhiteSpace(opts.Region))
+            config.AuthenticationRegion = opts.Region;
+    }
+    else
+    {
+        config.RegionEndpoint = Amazon.RegionEndpoint.USEast1; // placeholder so the client constructs; unused
+    }
+    return new AmazonS3Client(new BasicAWSCredentials(opts.AccessKey, opts.SecretKey), config);
+});
+builder.Services.AddScoped<IPhotoStorageService, MinioPhotoStorageService>();
+
 // App options (time zone for shift/UTC math). Registered as a plain singleton so the
 // Application/Infrastructure layers don't need an Options package reference.
 var appOptions = builder.Configuration.GetSection(AppOptions.SectionName).Get<AppOptions>() ?? new AppOptions();
@@ -51,6 +86,9 @@ builder.Services.AddSingleton<IExcelReportExporter, ExcelReportExporter>();
 
 // Nightly summary job (~00:30 local) + startup gap-fill.
 builder.Services.AddHostedService<DailySummaryJob>();
+
+// Nightly photo-retention job (~01:00 local): prunes check-in selfies older than RetentionDays.
+builder.Services.AddHostedService<PhotoCleanupJob>();
 
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
@@ -236,6 +274,28 @@ using (var scope = app.Services.CreateScope())
                     resetEmail);
             }
         }
+    }
+}
+
+// Ensure the photo-audit bucket exists (once, at startup). Non-fatal and skipped entirely when
+// storage is unconfigured — the app still runs; photo upload/read just no-op gracefully.
+var minioStartup = app.Configuration.GetSection(MinioOptions.SectionName).Get<MinioOptions>() ?? new MinioOptions();
+if (!string.IsNullOrWhiteSpace(minioStartup.Endpoint))
+{
+    using var storageScope = app.Services.CreateScope();
+    var s3 = storageScope.ServiceProvider.GetRequiredService<IAmazonS3>();
+    var storageLogger = storageScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        if (!await Amazon.S3.Util.AmazonS3Util.DoesS3BucketExistV2Async(s3, minioStartup.BucketName))
+        {
+            await s3.PutBucketAsync(new Amazon.S3.Model.PutBucketRequest { BucketName = minioStartup.BucketName });
+            storageLogger.LogInformation("Created MinIO bucket '{Bucket}'.", minioStartup.BucketName);
+        }
+    }
+    catch (Exception ex)
+    {
+        storageLogger.LogWarning(ex, "Could not ensure MinIO bucket '{Bucket}' exists — photo audit may be degraded.", minioStartup.BucketName);
     }
 }
 

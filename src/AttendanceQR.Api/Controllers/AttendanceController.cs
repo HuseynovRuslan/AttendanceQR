@@ -20,17 +20,23 @@ public class AttendanceController : ControllerBase
     private readonly IQrTokenService _qrTokenService;
     private readonly INonceStore _nonceStore;
     private readonly IAttendanceQueryService _attendanceQuery;
+    private readonly IPhotoStorageService _photoStorage;
+    private readonly ILogger<AttendanceController> _logger;
 
     public AttendanceController(
         AppDbContext db,
         IQrTokenService qrTokenService,
         INonceStore nonceStore,
-        IAttendanceQueryService attendanceQuery)
+        IAttendanceQueryService attendanceQuery,
+        IPhotoStorageService photoStorage,
+        ILogger<AttendanceController> logger)
     {
         _db = db;
         _qrTokenService = qrTokenService;
         _nonceStore = nonceStore;
         _attendanceQuery = attendanceQuery;
+        _photoStorage = photoStorage;
+        _logger = logger;
     }
 
     // GET /api/attendance/me — the caller's own records. Identity is the JWT "sub"; there is no
@@ -63,6 +69,48 @@ public class AttendanceController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         return Ok(records);
+    }
+
+    // GET /api/attendance/{recordId}/photo-url — short-lived presigned URLs for the check-in selfie
+    // and the employee's reference selfie, so a manager/admin can eyeball them side by side. Photos
+    // never pass through the DB or this API; the browser loads them straight from MinIO. Authorization
+    // reuses the same location-scope rule as the record read side.
+    [HttpGet("{recordId:guid}/photo-url")]
+    public async Task<IActionResult> PhotoUrl(Guid recordId)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
+            return Unauthorized(new { error = "InvalidToken" });
+        if (!Enum.TryParse<EmployeeRole>(User.FindFirstValue("role"), out var role))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var ct = HttpContext.RequestAborted;
+
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, role, record.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        var referenceKey = await _db.Employees
+            .Where(e => e.Id == record.EmployeeId)
+            .Select(e => e.ReferencePhotoKey)
+            .FirstOrDefaultAsync(ct);
+
+        var checkInUrl = record.CheckInPhotoKey is null
+            ? null
+            : await _photoStorage.GetPresignedUrlAsync(record.CheckInPhotoKey, ct);
+        var referenceUrl = referenceKey is null
+            ? null
+            : await _photoStorage.GetPresignedUrlAsync(referenceKey, ct);
+
+        return Ok(new
+        {
+            hasPhoto = checkInUrl is not null,
+            checkInPhotoUrl = checkInUrl,
+            checkInPhotoTakenAtUtc = record.CheckInPhotoTakenAtUtc,
+            referencePhotoUrl = referenceUrl
+        });
     }
 
     [HttpPost("scan")]
@@ -148,7 +196,7 @@ public class AttendanceController : ControllerBase
             .FirstOrDefaultAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == today);
 
         if (record is null)
-            return await CheckInAsync(employee.Id, location, today, nowUtc, ip);
+            return await CheckInAsync(employee, location, today, nowUtc, ip, request.PhotoBase64);
 
         if (record.CheckOutAtUtc is null)
             return await CheckOutAsync(record, nowUtc, employee.Id, ip);
@@ -159,11 +207,11 @@ public class AttendanceController : ControllerBase
     }
 
     private async Task<IActionResult> CheckInAsync(
-        Guid employeeId, Location location, DateOnly today, DateTime nowUtc, string? ip)
+        Employee employee, Location location, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64)
     {
         var record = new AttendanceRecord
         {
-            EmployeeId = employeeId,
+            EmployeeId = employee.Id,
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
@@ -180,18 +228,81 @@ public class AttendanceController : ControllerBase
             // Concurrent check-in for the same (EmployeeId, AttendanceDate) hit the unique
             // index. Detach the failed insert so the audit write below can persist cleanly.
             _db.Entry(record).State = EntityState.Detached;
-            await WriteAuditAsync(employeeId, AuditEventType.CheckInRejected, "DuplicateCheckIn", ip);
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "DuplicateCheckIn", ip);
             return Conflict(new { error = "DuplicateCheckIn" });
         }
 
-        await WriteAuditAsync(employeeId, AuditEventType.CheckInSuccess, null, ip);
+        // Photo audit — strictly best-effort and AFTER the check-in has been committed, so a storage
+        // failure can never block or roll back attendance. Failure just leaves the photo key null.
+        await TryStoreCheckInPhotoAsync(employee, record, photoBase64);
+
+        await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, null, ip);
         return Ok(new
         {
             action = "CheckIn",
             recordId = record.Id,
             status = record.Status.ToString(),
-            checkInAtUtc = nowUtc
+            checkInAtUtc = nowUtc,
+            photoStored = record.CheckInPhotoKey is not null
         });
+    }
+
+    // Decodes and uploads the check-in selfie, then persists the resulting object key. Also seeds the
+    // employee's reference selfie the first time one is available (there is no separate enrollment
+    // capture yet). Never throws: any failure is logged and swallowed so check-in still succeeds.
+    private async Task TryStoreCheckInPhotoAsync(Employee employee, AttendanceRecord record, string? photoBase64)
+    {
+        if (string.IsNullOrWhiteSpace(photoBase64))
+            return;
+
+        try
+        {
+            var bytes = DecodeImage(photoBase64);
+            // Sanity bound: the client sends ~30–60 KB WebP. Reject empty or absurdly large payloads.
+            if (bytes.Length == 0 || bytes.Length > 2 * 1024 * 1024)
+            {
+                _logger.LogWarning(
+                    "Photo audit: skipping check-in photo for employee {EmployeeId} (decoded {Bytes} bytes)", employee.Id, bytes.Length);
+                return;
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            var ct = HttpContext.RequestAborted;
+            record.CheckInPhotoKey = await _photoStorage.UploadCheckInPhotoAsync(employee.Id, record.Id, bytes, ct);
+            record.CheckInPhotoTakenAtUtc = nowUtc;
+
+            // Reference fallback: the first time we ever have a photo for this employee, keep a copy
+            // as their reference selfie for the manager to compare future check-ins against.
+            if (string.IsNullOrEmpty(employee.ReferencePhotoKey))
+            {
+                employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(employee.Id, bytes, ct);
+                employee.ReferencePhotoTakenAtUtc = nowUtc;
+            }
+
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Photo audit: failed to store check-in photo for employee {EmployeeId}, record {RecordId}", employee.Id, record.Id);
+        }
+    }
+
+    // Accepts a data URL ("data:image/webp;base64,AAAA…") or a bare base64 string.
+    private static byte[] DecodeImage(string input)
+    {
+        var comma = input.IndexOf(',');
+        var b64 = input.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma >= 0
+            ? input[(comma + 1)..]
+            : input;
+        try
+        {
+            return Convert.FromBase64String(b64);
+        }
+        catch (FormatException)
+        {
+            return Array.Empty<byte>();
+        }
     }
 
     private async Task<IActionResult> CheckOutAsync(
