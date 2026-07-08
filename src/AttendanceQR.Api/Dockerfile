@@ -13,10 +13,14 @@ COPY src/AttendanceQR.Infrastructure/AttendanceQR.Infrastructure.csproj src/Atte
 COPY src/AttendanceQR.Api/AttendanceQR.Api.csproj                src/AttendanceQR.Api/
 RUN dotnet restore src/AttendanceQR.Api/AttendanceQR.Api.csproj
 
-# Copy the rest of the source and publish a trimmed, release build.
+# Copy the rest of the source and publish a release build.
+# Low peak-memory publish so it fits on small (low-RAM) servers: workstation GC, no shared Roslyn
+# compiler server, single MSBuild node. Slightly slower, but avoids OOM/thrash on constrained hosts
+# (adding AWSSDK.S3 pushed the default parallel build's memory over some servers' limit).
 COPY src/ src/
-RUN dotnet publish src/AttendanceQR.Api/AttendanceQR.Api.csproj \
-    -c Release -o /app --no-restore
+RUN DOTNET_gcServer=0 dotnet publish src/AttendanceQR.Api/AttendanceQR.Api.csproj \
+    -c Release -o /app --no-restore \
+    -p:UseSharedCompilation=false -maxcpucount:1
 
 # ---- runtime stage: small ASP.NET runtime only (no SDK, no source) ----
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
