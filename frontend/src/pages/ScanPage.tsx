@@ -18,6 +18,12 @@ const READER_ID = 'reader'
 
 export function ScanPage() {
   const scannerRef = useRef<Html5Qrcode | null>(null)
+  // Photo audit: a separate, always-warm front-camera stream we grab a single silent frame from at
+  // the moment a check-in QR is decoded. Kept apart from html5-qrcode's back camera. Entirely
+  // best-effort — if the front camera is unavailable (permission denied, or a device that can't run
+  // two cameras at once) we simply skip the photo and the check-in proceeds unaffected.
+  const selfieStreamRef = useRef<MediaStream | null>(null)
+  const selfieVideoRef = useRef<HTMLVideoElement | null>(null)
   const busyRef = useRef(false)
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -34,11 +40,15 @@ export function ScanPage() {
     if (today.kind === 'loading') return
     if (today.kind === 'completed') {
       void stopCamera()
+      stopSelfieCamera()
       return
     }
     void startCamera()
+    // Warm the front camera in parallel so a frame is sharp and instant when the QR decodes.
+    void startSelfieCamera()
     return () => {
       void stopCamera()
+      stopSelfieCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today.kind])
@@ -99,17 +109,75 @@ export function ScanPage() {
     }
   }
 
+  // --- selfie (photo audit) front camera ------------------------------------
+
+  async function startSelfieCamera() {
+    if (selfieStreamRef.current) return
+    if (!navigator.mediaDevices?.getUserMedia) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: false,
+      })
+      selfieStreamRef.current = stream
+      const video = selfieVideoRef.current
+      if (video) {
+        video.srcObject = stream
+        await video.play().catch(() => {})
+      }
+    } catch {
+      // No front camera / permission denied / device can't run two cameras — skip photo silently.
+      selfieStreamRef.current = null
+    }
+  }
+
+  function stopSelfieCamera() {
+    const stream = selfieStreamRef.current
+    selfieStreamRef.current = null
+    stream?.getTracks().forEach((t) => t.stop())
+    const video = selfieVideoRef.current
+    if (video) video.srcObject = null
+  }
+
+  // Grab one frame, shrink to ~640px wide, encode WebP @0.7 (~30–60 KB), return a data URL — or
+  // null if the stream isn't ready. Must run while the stream is still live.
+  async function captureSelfie(): Promise<string | null> {
+    const video = selfieVideoRef.current
+    if (!video || !selfieStreamRef.current || video.videoWidth === 0) return null
+    try {
+      const targetWidth = Math.min(640, video.videoWidth)
+      const scale = targetWidth / video.videoWidth
+      const canvas = document.createElement('canvas')
+      canvas.width = targetWidth
+      canvas.height = Math.round(video.videoHeight * scale)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), 'image/webp', 0.7),
+      )
+      if (!blob) return null
+      return await blobToDataUrl(blob)
+    } catch {
+      return null
+    }
+  }
+
   async function onDecoded(text: string) {
     if (busyRef.current) return
     busyRef.current = true
+    // Capture the selfie ONLY for a check-in (no record yet today) and while the stream is still
+    // live. Check-out never captures a photo. Best-effort: null if the camera wasn't available.
+    const photoBase64 = today.kind === 'none' ? await captureSelfie() : null
     await stopCamera()
+    stopSelfieCamera()
     setPhase('processing')
-    await submitScan(text)
+    await submitScan(text, photoBase64)
     setPhase('done')
     void loadTodayStatus()
   }
 
-  async function submitScan(qrToken: string) {
+  async function submitScan(qrToken: string, photoBase64: string | null) {
     let coords: GeolocationCoordinates
     try {
       coords = await getCurrentPosition()
@@ -130,6 +198,8 @@ export function ScanPage() {
           deviceFingerprint: getDeviceFingerprint(),
           latitude: coords.latitude,
           longitude: coords.longitude,
+          // Omit entirely when there's no photo so the field stays optional on the wire.
+          ...(photoBase64 ? { photoBase64 } : {}),
         },
       })
 
@@ -182,6 +252,10 @@ export function ScanPage() {
           <div id={READER_ID} className="w-full overflow-hidden rounded-2xl bg-black" />
           <p className="text-center text-slate-300 mt-3">QR kodu kameraya tutun</p>
         </div>
+
+        {/* Hidden front-camera feed for the silent check-in selfie (photo audit). Always mounted so
+            captureSelfie() can read a frame; never shown to the employee. */}
+        <video ref={selfieVideoRef} className="hidden" playsInline muted autoPlay />
 
         {phase === 'processing' && (
           <p className="text-lg animate-pulse">Yoxlanılır…</p>
@@ -268,6 +342,15 @@ interface MeRecord {
   recordId: string
   checkInAtUtc?: string
   checkOutAtUtc?: string
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
 }
 
 function getCurrentPosition(): Promise<GeolocationCoordinates> {
