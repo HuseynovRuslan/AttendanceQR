@@ -11,6 +11,9 @@ export interface DayAttendanceRow {
   status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission'
   checkInAtUtc: string | null
   checkOutAtUtc: string | null
+  // Photo audit: today's record id + whether it has a check-in selfie (optional — older backends omit).
+  recordId?: string | null
+  hasPhoto?: boolean
 }
 
 export interface EmployeeReportRow {

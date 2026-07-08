@@ -51,7 +51,12 @@ public sealed record DayAttendanceRow(
     string LocationName,
     string Status,
     DateTime? CheckInAtUtc,
-    DateTime? CheckOutAtUtc);
+    DateTime? CheckOutAtUtc,
+    // Photo-audit: this day's record id (null if the employee has no record yet) and whether that
+    // record carries a check-in selfie — lets the Today board deep-link into the photo comparison
+    // without an extra round-trip. No new storage: both derive from the already-loaded record.
+    Guid? RecordId,
+    bool HasPhoto);
 
 /// <summary>One date's check-in/check-out counts, for the dashboard trend chart.</summary>
 public sealed record DailyTrendPoint(DateOnly Date, int CheckIns, int CheckOuts);

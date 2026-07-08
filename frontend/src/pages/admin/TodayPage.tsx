@@ -1,14 +1,33 @@
 import { useMemo, useState } from 'react'
 import { getToday, type DayAttendanceRow } from '../../api/admin'
+import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { usePolling } from '../../lib/usePolling'
 import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
-import { IconX } from '../../components/icons'
+import { PhotoCompareModal } from '../../components/PhotoCompareModal'
+import { IconCamera, IconX } from '../../components/icons'
 
 export function TodayPage() {
   const [rows, setRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadedOnce, setLoadedOnce] = useState(false)
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
+
+  async function viewPhoto(row: DayAttendanceRow) {
+    if (!row.recordId) return
+    setBusyId(row.recordId)
+    setPhotoError(null)
+    // Fetch fresh presigned URLs each time — they expire (~5 min).
+    const { status, data } = await getPhotoUrl(row.recordId)
+    setBusyId(null)
+    if (status !== 200 || !data || 'error' in data || !data.hasPhoto) {
+      setPhotoError('Şəkil yüklənmədi')
+      return
+    }
+    setModal({ title: row.employeeName, photo: data })
+  }
 
   usePolling(async () => {
     const { status, data } = await getToday()
@@ -104,6 +123,12 @@ export function TodayPage() {
           <span>{error}</span>
         </div>
       )}
+      {photoError && (
+        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+          <IconX />
+          <span>{photoError}</span>
+        </div>
+      )}
 
       <div className="tbl-wrap">
         <table>
@@ -114,6 +139,7 @@ export function TodayPage() {
               <th>Status</th>
               <th>Giriş</th>
               <th>Çıxış</th>
+              <th>Foto</th>
             </tr>
           </thead>
           <tbody>
@@ -126,11 +152,24 @@ export function TodayPage() {
                 </td>
                 <td className="mono">{fmtTime(r.checkInAtUtc)}</td>
                 <td className="mono">{fmtTime(r.checkOutAtUtc)}</td>
+                <td>
+                  {r.hasPhoto && r.recordId ? (
+                    <button
+                      className="btn btn-sm"
+                      disabled={busyId === r.recordId}
+                      onClick={() => void viewPhoto(r)}
+                    >
+                      <IconCamera /> {busyId === r.recordId ? '…' : 'Şəkli gör'}
+                    </button>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
               </tr>
             ))}
             {loadedOnce && visible.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   Məlumat yoxdur
                 </td>
               </tr>
@@ -138,6 +177,16 @@ export function TodayPage() {
           </tbody>
         </table>
       </div>
+
+      {modal && (
+        <PhotoCompareModal
+          title={modal.title}
+          referenceUrl={modal.photo.referencePhotoUrl}
+          checkInUrl={modal.photo.checkInPhotoUrl}
+          checkInTakenAtUtc={modal.photo.checkInPhotoTakenAtUtc}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }

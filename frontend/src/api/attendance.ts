@@ -32,6 +32,21 @@ export function getEmployeeAttendance(employeeId: string) {
   return apiRequest<AttendanceRecord[] | { error: string }>(`/api/attendance/employee/${employeeId}`)
 }
 
+/** Photo-audit: presigned MinIO URLs for a record's check-in selfie + the employee's reference selfie. */
+export interface PhotoUrlResponse {
+  hasPhoto: boolean
+  checkInPhotoUrl: string | null
+  checkInPhotoTakenAtUtc: string | null
+  referencePhotoUrl: string | null
+}
+
+/** GET /api/attendance/{recordId}/photo-url — short-lived (~5 min) presigned URLs for the two photos
+ * so the manager/admin can eyeball them side by side. Scoped server-side by LocationScopeRules; the
+ * URLs expire, so re-call each time a photo is (re)opened rather than caching them. */
+export function getPhotoUrl(recordId: string) {
+  return apiRequest<PhotoUrlResponse | { error: string }>(`/api/attendance/${recordId}/photo-url`)
+}
+
 export interface AdminAttendanceRecord {
   recordId: string
   employeeId: string

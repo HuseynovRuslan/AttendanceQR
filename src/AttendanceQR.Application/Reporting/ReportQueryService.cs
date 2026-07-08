@@ -182,7 +182,8 @@ public sealed class ReportQueryService : IReportQueryService
             var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus);
             rows.Add(new DayAttendanceRow(
                 e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),
-                record?.CheckInAtUtc, record?.CheckOutAtUtc));
+                record?.CheckInAtUtc, record?.CheckOutAtUtc,
+                record?.Id, record?.CheckInPhotoKey != null));
         }
 
         return rows.OrderBy(r => r.EmployeeName).ToList();

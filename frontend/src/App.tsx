@@ -20,6 +20,7 @@ import { LeavesPage } from './pages/admin/LeavesPage'
 import { PrintQrPage } from './pages/admin/PrintQrPage'
 import { EmployeesPage } from './pages/admin/EmployeesPage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
+import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
 
 export default function App() {
   return (
@@ -83,6 +84,9 @@ export default function App() {
         />
         <Route path="today" element={<TodayPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        {/* Photo audit — open to Admin + Manager (like today/reports); managers are scoped to their
+            own locations server-side via LocationScopeRules, so no AdminOnly wrapper. */}
+        <Route path="photo-audit" element={<PhotoAuditPage />} />
         <Route
           path="locations"
           element={
