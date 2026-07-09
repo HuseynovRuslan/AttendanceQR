@@ -60,6 +60,40 @@ public class AdminController : ControllerBase
         return Ok(result);
     }
 
+    // Photo audit: clear ONE employee's reference selfie so their next check-in re-seeds it with the
+    // correct face. Needed because the reference is auto-seeded from the first check-in photo — if
+    // that first scan was an admin's (their face), the reference is wrong. Nulling the key is enough:
+    // the next check-in overwrites the object at reference/{id}.
+    [HttpPost("{id:guid}/reset-reference-photo")]
+    public async Task<IActionResult> ResetReferencePhoto(Guid id)
+    {
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
+        if (employee is null)
+            return NotFound(new { error = "EmployeeNotFound" });
+
+        employee.ReferencePhotoKey = null;
+        employee.ReferencePhotoTakenAtUtc = null;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        return Ok(new { id = employee.Id });
+    }
+
+    // Bulk version — clears every employee's reference selfie in one shot (e.g. all references were
+    // seeded from the admin's face during setup). Each re-seeds on that employee's next check-in.
+    [HttpPost("reset-all-reference-photos")]
+    public async Task<IActionResult> ResetAllReferencePhotos()
+    {
+        var employees = await _db.Employees
+            .Where(e => e.ReferencePhotoKey != null)
+            .ToListAsync(HttpContext.RequestAborted);
+        foreach (var e in employees)
+        {
+            e.ReferencePhotoKey = null;
+            e.ReferencePhotoTakenAtUtc = null;
+        }
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        return Ok(new { reset = employees.Count });
+    }
+
     [HttpPost("invite")]
     public async Task<IActionResult> Invite([FromBody] InviteRequest request)
     {

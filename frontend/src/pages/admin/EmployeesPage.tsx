@@ -5,7 +5,9 @@ import {
   getEmployees,
   invite,
   reinviteEmployee,
+  resetAllReferencePhotos,
   resetEmployeeAttendance,
+  resetReferencePhoto,
   updateEmployee,
   type AdminEmployee,
   type AdminLocation,
@@ -92,6 +94,7 @@ export function EmployeesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null)
   const [resettingId, setResettingId] = useState<string | null>(null)
+  const [refBusy, setRefBusy] = useState(false)
   const [link, setLink] = useState<{ name: string; result: InviteResult } | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -262,6 +265,27 @@ export function EmployeesPage() {
     }
   }
 
+  async function onResetReference(e: AdminEmployee) {
+    if (!window.confirm(`"${e.fullName}" üçün referans şəkli sıfırlansın? İşçi növbəti dəfə öz telefonu ilə giriş edəndə yeni referans avtomatik yaranacaq.`)) return
+    setRefBusy(true)
+    setError(null)
+    const { status } = await resetReferencePhoto(e.id)
+    setRefBusy(false)
+    if (status === 200) setOk(`"${e.fullName}" üçün referans sıfırlandı — növbəti girişdə yenilənəcək.`)
+    else setError('Referans sıfırlanmadı')
+  }
+
+  async function onResetAllReferences() {
+    if (!window.confirm('BÜTÜN işçilərin referans şəkli sıfırlansın? Hər kəs növbəti dəfə öz telefonu ilə giriş edəndə referans avtomatik düzgün üzlə yenilənəcək.')) return
+    setRefBusy(true)
+    setError(null)
+    const { status, data } = await resetAllReferencePhotos()
+    setRefBusy(false)
+    if (status === 200 && data && 'reset' in data)
+      setOk(`${data.reset} işçinin referansı sıfırlandı — hərə növbəti girişdə yenilənəcək.`)
+    else setError('Referanslar sıfırlanmadı')
+  }
+
   async function openAttendance(e: AdminEmployee) {
     setAttendanceEmployee(e)
     setAttendanceError(null)
@@ -383,9 +407,14 @@ export function EmployeesPage() {
             </span>
           ))}
         </div>
-        <button className="btn btn-primary" onClick={showForm && !editingId ? closeForm : startAdd}>
-          <IconUsers /> İşçi əlavə et
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn" disabled={refBusy} onClick={onResetAllReferences} title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir">
+            <IconRefresh /> Referansları sıfırla
+          </button>
+          <button className="btn btn-primary" onClick={showForm && !editingId ? closeForm : startAdd}>
+            <IconUsers /> İşçi əlavə et
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -507,7 +536,12 @@ export function EmployeesPage() {
             <div style={{ fontWeight: 700, color: 'var(--c900)' }}>
               {attendanceEmployee.fullName} — davamiyyət qeydləri
             </div>
-            <button className="btn btn-sm" onClick={closeAttendance}>Bağla</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-sm" disabled={refBusy} onClick={() => onResetReference(attendanceEmployee)}>
+                Referansı sıfırla
+              </button>
+              <button className="btn btn-sm" onClick={closeAttendance}>Bağla</button>
+            </div>
           </div>
 
           {attendanceError && (

@@ -289,6 +289,20 @@ export function resetEmployeeAttendance(id: string) {
   )
 }
 
+/** Photo audit: clear ONE employee's reference selfie — re-seeds on their next check-in. */
+export function resetReferencePhoto(id: string) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/admin/employees/${id}/reset-reference-photo`, {
+    method: 'POST',
+  })
+}
+
+/** Photo audit: clear ALL employees' reference selfies (e.g. all were the admin's face at setup). */
+export function resetAllReferencePhotos() {
+  return apiRequest<{ reset: number } | { error: string }>('/api/admin/employees/reset-all-reference-photos', {
+    method: 'POST',
+  })
+}
+
 // --- device changes --------------------------------------------------------
 
 export interface PendingDeviceChange {
