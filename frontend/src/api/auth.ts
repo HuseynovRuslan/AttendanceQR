@@ -24,11 +24,12 @@ export function activate(
   password: string,
   deviceFingerprint: string,
   deviceLabel?: string,
+  photoBase64?: string,
 ) {
   return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/activate', {
     method: 'POST',
     auth: false,
-    body: { activationToken, password, deviceFingerprint, deviceLabel },
+    body: { activationToken, password, deviceFingerprint, deviceLabel, ...(photoBase64 ? { photoBase64 } : {}) },
   })
 }
 

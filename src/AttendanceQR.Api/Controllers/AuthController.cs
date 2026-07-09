@@ -4,9 +4,11 @@ using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace AttendanceQR.Api.Controllers;
 
@@ -18,6 +20,8 @@ public partial class AuthController : ControllerBase
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
     private readonly ILoginLockoutStore _lockoutStore;
+    private readonly IPhotoStorageService _photoStorage;
+    private readonly ILogger<AuthController> _logger;
 
     // Computed once: a real hash to verify against when an email is unknown / has no password,
     // so login timing does not reveal whether an account exists.
@@ -27,12 +31,15 @@ public partial class AuthController : ControllerBase
     private static partial Regex PinFormat();
 
     public AuthController(
-        AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore)
+        AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore,
+        IPhotoStorageService photoStorage, ILogger<AuthController> logger)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _lockoutStore = lockoutStore;
+        _photoStorage = photoStorage;
+        _logger = logger;
     }
 
     [HttpPost("activate")]
@@ -87,8 +94,47 @@ public partial class AuthController : ControllerBase
         employee.InvitationExpiresUtc = null;
         await _db.SaveChangesAsync();
 
+        // 8b. Store the deliberate enrollment selfie as the reference photo (best-effort — a storage
+        // failure must NOT fail activation). This is a far better reference than the silent
+        // first-check-in fallback: the employee is looking at the camera on purpose.
+        if (!string.IsNullOrWhiteSpace(request.PhotoBase64))
+        {
+            try
+            {
+                var bytes = DecodeImage(request.PhotoBase64);
+                if (bytes.Length is > 0 and <= 2 * 1024 * 1024)
+                {
+                    employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(
+                        employee.Id, bytes, HttpContext.RequestAborted);
+                    employee.ReferencePhotoTakenAtUtc = now;
+                    await _db.SaveChangesAsync(HttpContext.RequestAborted);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Activation: failed to store reference photo for {EmployeeId}", employee.Id);
+            }
+        }
+
         // 9. Hand back a login JWT so the employee is immediately usable.
         return Ok(new { token = _jwtService.GenerateToken(employee), employeeId = employee.Id });
+    }
+
+    // Accepts a data URL ("data:image/jpeg;base64,AAAA…") or a bare base64 string.
+    private static byte[] DecodeImage(string input)
+    {
+        var comma = input.IndexOf(',');
+        var b64 = input.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma >= 0
+            ? input[(comma + 1)..]
+            : input;
+        try
+        {
+            return Convert.FromBase64String(b64);
+        }
+        catch (FormatException)
+        {
+            return Array.Empty<byte>();
+        }
     }
 
     [HttpPost("login")]
