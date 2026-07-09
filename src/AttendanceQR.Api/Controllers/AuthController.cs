@@ -145,7 +145,11 @@ public partial class AuthController : ControllerBase
         if (_lockoutStore.IsLockedOut(request.Email))
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "TooManyAttempts" });
 
-        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Email == request.Email);
+        // The identifier field carries an email OR a phone number — match either.
+        var identifier = request.Email?.Trim() ?? string.Empty;
+        var phone = PhoneNumbers.Normalize(identifier);
+        var employee = await _db.Employees.FirstOrDefaultAsync(e =>
+            e.Email == identifier || (phone != null && e.PhoneNumber == phone));
 
         // Always perform a verification — against a decoy hash when the account is unknown or
         // has no password yet — so timing doesn't leak account existence (email enumeration).

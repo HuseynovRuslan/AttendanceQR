@@ -52,6 +52,8 @@ const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menece
 
 const ERRORS: Record<string, string> = {
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
+  PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
+  NeedEmailOrPhone: 'Telefon nömrəsi və ya email lazımdır',
   LocationNotFound: 'Lokasiya tapılmadı',
   EmployeeHasHistory: 'Bu işçinin davamiyyət tarixçəsi var — silmək olmaz, əvəzinə deaktiv edin',
   CannotDeleteSelf: 'Öz hesabınızı silə bilməzsiniz',
@@ -65,6 +67,7 @@ type FormState = {
   position: string
   birthYear: string
   email: string
+  phoneNumber: string
   locationId: string
   role: Role
   isActive: boolean
@@ -76,6 +79,7 @@ const EMPTY: FormState = {
   position: '',
   birthYear: '',
   email: '',
+  phoneNumber: '',
   locationId: '',
   role: 'Employee',
   isActive: true,
@@ -143,6 +147,7 @@ export function EmployeesPage() {
       position: e.position ?? '',
       birthYear: e.birthYear != null ? String(e.birthYear) : '',
       email: e.email,
+      phoneNumber: e.phoneNumber ?? '',
       locationId: e.locationId,
       role: e.role,
       isActive: e.isActive,
@@ -163,10 +168,15 @@ export function EmployeesPage() {
     e.preventDefault()
     setError(null)
     setOk(null)
+    if (!form.phoneNumber.trim() && !form.email.trim()) {
+      setError('Telefon nömrəsi və ya email lazımdır')
+      return
+    }
     setSaving(true)
     const payload = {
       fullName: form.fullName.trim(),
-      email: form.email.trim(),
+      email: form.email.trim() || null,
+      phoneNumber: form.phoneNumber.trim() || null,
       locationId: form.locationId,
       role: form.role,
       fatherName: form.fatherName.trim() || null,
@@ -482,9 +492,16 @@ export function EmployeesPage() {
 
           <div className="form-row cols2">
             <div>
-              <label className="form-label">Email</label>
-              <input className="inp" type="email" required value={form.email} onChange={(e) => set('email', e.target.value)} />
+              <label className="form-label">Telefon nömrəsi</label>
+              <input className="inp" type="tel" inputMode="tel" placeholder="0501234567" value={form.phoneNumber} onChange={(e) => set('phoneNumber', e.target.value)} />
             </div>
+            <div>
+              <label className="form-label">Email (istəyə bağlı)</label>
+              <input className="inp" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+            </div>
+          </div>
+
+          <div className="form-row cols2">
             <div>
               <label className="form-label">Rol</label>
               <select className="inp" value={form.role} onChange={(e) => set('role', e.target.value as Role)}>
@@ -493,9 +510,6 @@ export function EmployeesPage() {
                 <option value="Admin">Admin</option>
               </select>
             </div>
-          </div>
-
-          <div className="form-row cols2">
             <div>
               <label className="form-label">Ərazi</label>
               <select className="inp" value={form.locationId} onChange={(e) => set('locationId', e.target.value)}>
@@ -506,7 +520,10 @@ export function EmployeesPage() {
                 ))}
               </select>
             </div>
-            {editingId && (
+          </div>
+
+          {editingId && (
+            <div className="form-row cols2">
               <div>
                 <label className="form-label">Status</label>
                 <select className="inp" value={form.isActive ? '1' : '0'} onChange={(e) => set('isActive', e.target.value === '1')}>
@@ -514,8 +531,8 @@ export function EmployeesPage() {
                   <option value="0">Deaktiv (giriş bağlı)</option>
                 </select>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-primary" disabled={saving || !form.locationId}>
@@ -701,7 +718,13 @@ export function EmployeesPage() {
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--c400)' }}>
-                    {[e.fatherName ? `${e.fatherName} oğlu/qızı` : null, e.birthYear || null].filter(Boolean).join(' · ') || '—'}
+                    {e.phoneNumber ? (
+                      <>📞 0{e.phoneNumber}</>
+                    ) : (
+                      <span style={{ color: '#b45309', fontWeight: 600 }}>nömrə yoxdur</span>
+                    )}
+                    {(e.fatherName || e.birthYear) &&
+                      ` · ${[e.fatherName ? `${e.fatherName} oğlu/qızı` : null, e.birthYear || null].filter(Boolean).join(' · ')}`}
                   </div>
                 </td>
                 <td>{e.position || '—'}</td>

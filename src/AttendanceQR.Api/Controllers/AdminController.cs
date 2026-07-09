@@ -48,6 +48,7 @@ public class AdminController : ControllerBase
             birthYear = e.BirthYear,
             email = e.Email,
             role = e.Role.ToString(),
+            phoneNumber = e.PhoneNumber,
             locationId = e.LocationId,
             locationName = locationNames.GetValueOrDefault(e.LocationId),
             isActive = e.IsActive,
@@ -100,13 +101,27 @@ public class AdminController : ControllerBase
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 
-        if (await _db.Employees.AnyAsync(e => e.Email == request.Email))
+        var phone = PhoneNumbers.Normalize(request.PhoneNumber);
+        var hasEmail = !string.IsNullOrWhiteSpace(request.Email);
+
+        // At least one login identifier so the employee can sign in later (phone OR email).
+        if (!hasEmail && phone is null)
+            return BadRequest(new { error = "NeedEmailOrPhone" });
+
+        // Email stays non-null (it's a JWT claim); synthesize a unique placeholder when only a phone
+        // was given. Login works by either identifier.
+        var email = hasEmail ? request.Email!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
+
+        if (await _db.Employees.AnyAsync(e => e.Email == email))
             return Conflict(new { error = "EmailAlreadyExists" });
+        if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone))
+            return Conflict(new { error = "PhoneAlreadyExists" });
 
         var employee = new Employee
         {
             FullName = request.FullName,
-            Email = request.Email,
+            Email = email,
+            PhoneNumber = phone,
             FatherName = request.FatherName,
             Position = request.Position,
             BirthYear = request.BirthYear,
@@ -146,11 +161,18 @@ public class AdminController : ControllerBase
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 
-        if (await _db.Employees.AnyAsync(e => e.Email == request.Email && e.Id != id))
+        var phone = PhoneNumbers.Normalize(request.PhoneNumber);
+        // Keep the current email if none supplied, so a phone-only edit doesn't wipe it.
+        var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
+
+        if (await _db.Employees.AnyAsync(e => e.Email == email && e.Id != id))
             return Conflict(new { error = "EmailAlreadyExists" });
+        if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone && e.Id != id))
+            return Conflict(new { error = "PhoneAlreadyExists" });
 
         employee.FullName = request.FullName;
-        employee.Email = request.Email;
+        employee.Email = email;
+        employee.PhoneNumber = phone;
         employee.FatherName = request.FatherName;
         employee.Position = request.Position;
         employee.BirthYear = request.BirthYear;

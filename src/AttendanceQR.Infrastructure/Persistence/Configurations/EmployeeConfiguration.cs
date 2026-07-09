@@ -43,6 +43,13 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.HasIndex(e => e.Email)
             .IsUnique();
 
+        builder.Property(e => e.PhoneNumber)
+            .HasMaxLength(20);
+
+        // Unique when present — Postgres treats NULLs as distinct, so older phone-less rows don't clash.
+        builder.HasIndex(e => e.PhoneNumber)
+            .IsUnique();
+
         // Activation lookups are by token hash.
         builder.HasIndex(e => e.InvitationTokenHash);
 

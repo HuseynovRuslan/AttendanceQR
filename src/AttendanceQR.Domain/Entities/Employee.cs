@@ -24,6 +24,10 @@ public class Employee
 
     public string Email { get; set; } = string.Empty;
 
+    // Optional alternative login identifier. Stored NORMALIZED (PhoneNumbers.Normalize) so it matches
+    // however it's typed. Unique when present; null for accounts created before phone login existed.
+    public string? PhoneNumber { get; set; }
+
     public string PasswordHash { get; set; } = string.Empty;
 
     // Embedded in every issued JWT as the "tv" claim and checked against this value on every

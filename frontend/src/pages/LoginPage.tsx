@@ -29,7 +29,7 @@ export function LoginPage() {
       } else if (status === 429) {
         setError('Çox sayda cəhd — 15 dəqiqə sonra yenidən cəhd edin')
       } else {
-        setError('Email və ya PIN yanlışdır')
+        setError('Email/nömrə və ya PIN yanlışdır')
       }
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')
@@ -73,10 +73,10 @@ export function LoginPage() {
           )}
 
           <div style={{ marginBottom: 12 }}>
-            <label className="form-label">Email</label>
+            <label className="form-label">Email və ya telefon nömrəsi</label>
             <input
               className="inp"
-              type="email"
+              type="text"
               required
               autoComplete="username"
               value={email}

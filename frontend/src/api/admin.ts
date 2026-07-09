@@ -231,7 +231,8 @@ export interface InviteResult {
 
 export interface InvitePayload {
   fullName: string
-  email: string
+  email?: string | null
+  phoneNumber?: string | null
   locationId: string
   role: Role
   fatherName?: string | null
@@ -246,6 +247,7 @@ export interface AdminEmployee {
   position: string | null
   birthYear: number | null
   email: string
+  phoneNumber: string | null
   role: Role
   locationId: string
   locationName: string | null
