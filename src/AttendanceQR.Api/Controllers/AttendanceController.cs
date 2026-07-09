@@ -16,6 +16,10 @@ namespace AttendanceQR.Api.Controllers;
 [Route("api/attendance")]
 public class AttendanceController : ControllerBase
 {
+    // A second scan within this many minutes of check-in is treated as an accidental double-scan,
+    // not a check-out — stops an employee being checked straight back out seconds after arriving.
+    private const int MinCheckoutMinutes = 5;
+
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
     private readonly IAttendanceQueryService _attendanceQuery;
@@ -223,7 +227,18 @@ public class AttendanceController : ControllerBase
             return await CheckInAsync(employee, location, today, nowUtc, ip, request.PhotoBase64);
 
         if (record.CheckOutAtUtc is null)
+        {
+            // Reject an accidental rapid second scan instead of checking the employee straight back
+            // out. A genuine check-out is many minutes/hours later; a scan seconds after check-in is
+            // a double-tap ("did it work?"), so keep them checked IN and tell them.
+            if (record.CheckInAtUtc is DateTime checkIn
+                && nowUtc - checkIn < TimeSpan.FromMinutes(MinCheckoutMinutes))
+            {
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
+                return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
+            }
             return await CheckOutAsync(record, nowUtc, employee.Id, ip);
+        }
 
         // Already checked in and out today.
         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "AlreadyCompleted", ip);

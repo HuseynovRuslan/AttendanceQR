@@ -12,6 +12,7 @@ import {
   type InviteResult,
 } from '../../api/admin'
 import {
+  adminClearCheckout,
   adminCreateRecord,
   adminUpdateRecord,
   getEmployeeAttendance,
@@ -314,6 +315,22 @@ export function EmployeesPage() {
     }
   }
 
+  async function onClearCheckOut(r: AttendanceRecord) {
+    if (!attendanceEmployee) return
+    if (!window.confirm('Bu qeydin çıxışı ləğv edilsin? İşçi yenidən "işdədir" olacaq və sonra düzgün çıxış edə biləcək.')) return
+    setSavingRecord(true)
+    setAttendanceError(null)
+    const { status, data } = await adminClearCheckout(r.recordId)
+    setSavingRecord(false)
+    if (status === 200) {
+      await refreshAttendance(attendanceEmployee.id)
+    } else if (data && typeof data === 'object' && 'error' in data) {
+      setAttendanceError(ATTENDANCE_ERRORS[(data as { error: string }).error] ?? 'Əməliyyat alınmadı')
+    } else {
+      setAttendanceError('Əməliyyat alınmadı')
+    }
+  }
+
   async function submitCreateRecord() {
     if (!attendanceEmployee || !createDate || !createCheckIn) return
     setSavingRecord(true)
@@ -595,9 +612,16 @@ export function EmployeesPage() {
                         <td className="mono">{r.checkInAtUtc ? new Date(r.checkInAtUtc).toLocaleString('az-AZ') : '—'}</td>
                         <td className="mono">{r.checkOutAtUtc ? new Date(r.checkOutAtUtc).toLocaleString('az-AZ') : '—'}</td>
                         <td style={{ textAlign: 'right' }}>
-                          <button className="btn btn-sm" onClick={() => startEditRecord(r)}>
-                            {r.status === 'Incomplete' ? 'Çıxışı əlavə et' : 'Düzəlt'}
-                          </button>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            {r.checkOutAtUtc && (
+                              <button className="btn btn-sm" disabled={savingRecord} onClick={() => onClearCheckOut(r)}>
+                                Çıxışı ləğv et
+                              </button>
+                            )}
+                            <button className="btn btn-sm" onClick={() => startEditRecord(r)}>
+                              {r.status === 'Incomplete' ? 'Çıxışı əlavə et' : 'Düzəlt'}
+                            </button>
+                          </div>
                         </td>
                       </>
                     )}

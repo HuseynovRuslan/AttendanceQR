@@ -109,6 +109,30 @@ public class AdminAttendanceController : ControllerBase
         return Ok(Project(record));
     }
 
+    // Undo an accidental check-out — clears CheckOutAtUtc so the employee is "checked in, not out"
+    // again and can check out properly later. The Update endpoint can't do this (a null CheckOutAtUtc
+    // there means "leave as-is"), so an accidental double-scan check-out needs this explicit action.
+    [HttpPost("{recordId:guid}/clear-checkout")]
+    public async Task<IActionResult> ClearCheckOut(Guid recordId)
+    {
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+
+        if (record.CheckOutAtUtc is not null)
+        {
+            record.CheckOutAtUtc = null;
+            await _db.SaveChangesAsync();
+
+            if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
+                requesterId = Guid.Empty;
+            await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+            await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
+        }
+
+        return Ok(Project(record));
+    }
+
     private static bool TryValidateTimes(DateTime? checkIn, DateTime? checkOut, out string? error)
     {
         error = null;

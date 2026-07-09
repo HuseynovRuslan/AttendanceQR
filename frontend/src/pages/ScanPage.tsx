@@ -334,6 +334,7 @@ interface ScanResponse {
   checkOutAtUtc?: string
   error?: string
   distanceMeters?: number
+  minutes?: number
 }
 
 interface MeRecord {
@@ -441,6 +442,12 @@ function errorResult(status: number, data: ScanResponse | null): Card {
       return { tone: 'yellow', title: 'QR kod köhnəlib', detail: 'Yenidən skan edin.' }
     case 'AlreadyCompleted':
       return { tone: 'yellow', title: 'Bu gün tamamlanıb', detail: 'Giriş və çıxış artıq qeydə alınıb.' }
+    case 'TooSoonToCheckOut':
+      return {
+        tone: 'green',
+        title: 'Giriş artıq qeydə alınıb',
+        detail: `Çıxış üçün ${data?.minutes ?? 5} dəqiqədən sonra yenidən skan edin.`,
+      }
     case 'EmployeeNotFoundOrInactive':
       return { tone: 'red', title: 'Hesab aktiv deyil' }
     case 'LocationNotFound':

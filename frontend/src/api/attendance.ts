@@ -86,3 +86,11 @@ export function adminCreateRecord(employeeId: string, date: string, checkInAtUtc
     body: { employeeId, date, checkInAtUtc, checkOutAtUtc: checkOutAtUtc ?? null },
   })
 }
+
+/** POST /api/admin/attendance/{recordId}/clear-checkout — undo an accidental check-out (record
+ * goes back to "checked in, not out" so the employee can check out properly later). */
+export function adminClearCheckout(recordId: string) {
+  return apiRequest<AdminAttendanceRecord | { error: string }>(`/api/admin/attendance/${recordId}/clear-checkout`, {
+    method: 'POST',
+  })
+}
