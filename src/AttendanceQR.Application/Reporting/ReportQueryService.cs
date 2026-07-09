@@ -183,7 +183,8 @@ public sealed class ReportQueryService : IReportQueryService
             rows.Add(new DayAttendanceRow(
                 e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),
                 record?.CheckInAtUtc, record?.CheckOutAtUtc,
-                record?.Id, record?.CheckInPhotoKey != null));
+                record?.Id, record?.CheckInPhotoKey != null,
+                record?.FaceMatchScore, record?.FaceMatchStatus.ToString() ?? "NotChecked"));
         }
 
         return rows.OrderBy(r => r.EmployeeName).ToList();

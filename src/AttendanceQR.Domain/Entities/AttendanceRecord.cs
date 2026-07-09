@@ -30,4 +30,11 @@ public class AttendanceRecord
     public string? CheckInPhotoKey { get; set; }
 
     public DateTime? CheckInPhotoTakenAtUtc { get; set; }
+
+    // Face audit (AWS Rekognition): similarity of the check-in selfie vs the employee's reference
+    // (0–100, null if not compared) and the resulting advisory status. Never affects the check-in
+    // itself — only surfaces suspicious records for a manager to review.
+    public int? FaceMatchScore { get; set; }
+
+    public FaceMatchStatus FaceMatchStatus { get; set; } = FaceMatchStatus.NotChecked;
 }

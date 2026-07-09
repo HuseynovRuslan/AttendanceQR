@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { IconX } from './icons'
+import { FaceFlagBadge } from './FaceFlagBadge'
 
 interface PhotoCompareModalProps {
   /** Header line, e.g. "Ad Soyad — 08.07.2026". */
@@ -10,6 +11,9 @@ interface PhotoCompareModalProps {
   checkInUrl: string | null
   /** When the check-in selfie was taken (UTC ISO), shown under the "Giriş" caption. */
   checkInTakenAtUtc: string | null
+  /** Face-audit verdict for this check-in (optional). */
+  faceMatchStatus?: string
+  faceMatchScore?: number | null
   onClose: () => void
 }
 
@@ -18,7 +22,7 @@ interface PhotoCompareModalProps {
  * check-in selfie (right). A manager compares them by eye — no automatic face matching. Shared by
  * PhotoAuditPage and the Today board so both open the exact same view.
  */
-export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTakenAtUtc, onClose }: PhotoCompareModalProps) {
+export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTakenAtUtc, faceMatchStatus, faceMatchScore, onClose }: PhotoCompareModalProps) {
   // Close on Escape.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -57,7 +61,14 @@ export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTake
             borderBottom: '1px solid var(--c100)',
           }}
         >
-          <div style={{ fontWeight: 700, color: 'var(--c900)', minWidth: 0 }}>{title}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: 'var(--c900)' }}>{title}</div>
+            {faceMatchStatus && faceMatchStatus !== 'NotChecked' && (
+              <div style={{ marginTop: 4 }}>
+                <FaceFlagBadge status={faceMatchStatus} score={faceMatchScore} />
+              </div>
+            )}
+          </div>
           <button className="btn btn-sm" onClick={onClose} aria-label="Bağla">
             <IconX />
           </button>

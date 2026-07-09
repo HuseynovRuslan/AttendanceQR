@@ -8,6 +8,9 @@ export interface AttendanceRecord {
   checkInAtUtc: string | null
   checkOutAtUtc: string | null
   status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete'
+  // Face audit (optional — older backends omit).
+  faceMatchScore?: number | null
+  faceMatchStatus?: string
 }
 
 /** GET /api/attendance/me — this employee's full check-in/out history, newest first. Self-scoped
@@ -51,6 +54,8 @@ export interface PhotoUrlResponse {
   checkInPhotoUrl: string | null
   checkInPhotoTakenAtUtc: string | null
   referencePhotoUrl: string | null
+  faceMatchScore?: number | null
+  faceMatchStatus?: string
 }
 
 /** GET /api/attendance/{recordId}/photo-url — short-lived (~5 min) presigned URLs for the two photos

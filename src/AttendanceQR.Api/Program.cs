@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
+using Amazon.Rekognition;
 using Amazon.Runtime;
 using Amazon.S3;
 using AttendanceQR.Api.Jobs;
@@ -30,6 +31,8 @@ builder.Services.Configure<InvitationOptions>(
     builder.Configuration.GetSection(InvitationOptions.SectionName));
 builder.Services.Configure<MinioOptions>(
     builder.Configuration.GetSection(MinioOptions.SectionName));
+builder.Services.Configure<RekognitionOptions>(
+    builder.Configuration.GetSection(RekognitionOptions.SectionName));
 
 // Security services.
 builder.Services.AddMemoryCache();
@@ -74,6 +77,20 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 });
 builder.Services.AddScoped<IPhotoStorageService, MinioPhotoStorageService>();
 
+// Face audit (AWS Rekognition). Graceful: with no AWS keys the service reports Enabled=false and the
+// worker does nothing (records stay NotChecked) — so this can ship "off" and be enabled via env vars.
+builder.Services.AddSingleton<IAmazonRekognition>(sp =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RekognitionOptions>>().Value;
+    var region = Amazon.RegionEndpoint.GetBySystemName(string.IsNullOrWhiteSpace(opts.Region) ? "us-east-1" : opts.Region);
+    var creds = new BasicAWSCredentials(
+        string.IsNullOrWhiteSpace(opts.AccessKey) ? "unset" : opts.AccessKey,
+        string.IsNullOrWhiteSpace(opts.SecretKey) ? "unset" : opts.SecretKey);
+    return new AmazonRekognitionClient(creds, region);
+});
+builder.Services.AddScoped<IFaceMatchService, RekognitionFaceMatchService>();
+builder.Services.AddSingleton<IFaceMatchQueue, FaceMatchQueue>();
+
 // App options (time zone for shift/UTC math). Registered as a plain singleton so the
 // Application/Infrastructure layers don't need an Options package reference.
 var appOptions = builder.Configuration.GetSection(AppOptions.SectionName).Get<AppOptions>() ?? new AppOptions();
@@ -89,6 +106,9 @@ builder.Services.AddHostedService<DailySummaryJob>();
 
 // Nightly photo-retention job (~01:00 local): prunes check-in selfies older than RetentionDays.
 builder.Services.AddHostedService<PhotoCleanupJob>();
+
+// Background face-match worker — drains the queue enqueued by check-ins / admin re-check.
+builder.Services.AddHostedService<FaceMatchWorker>();
 
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()

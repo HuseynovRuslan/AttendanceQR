@@ -19,6 +19,10 @@ public class AttendanceRecordConfiguration : IEntityTypeConfiguration<Attendance
         builder.Property(a => a.CheckInPhotoKey)
             .HasMaxLength(256);
 
+        // Face-audit status stored as int (like Status).
+        builder.Property(a => a.FaceMatchStatus)
+            .HasConversion<int>();
+
         // One record per employee per day.
         builder.HasIndex(a => new { a.EmployeeId, a.AttendanceDate })
             .IsUnique();

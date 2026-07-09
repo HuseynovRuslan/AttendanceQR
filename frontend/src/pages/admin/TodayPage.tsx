@@ -4,6 +4,7 @@ import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { usePolling } from '../../lib/usePolling'
 import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
+import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
 import { IconCamera, IconX } from '../../components/icons'
 
 export function TodayPage() {
@@ -11,6 +12,7 @@ export function TodayPage() {
   const [error, setError] = useState<string | null>(null)
   const [loadedOnce, setLoadedOnce] = useState(false)
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  const [flaggedOnly, setFlaggedOnly] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
@@ -48,7 +50,9 @@ export function TodayPage() {
     return Array.from(seen, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
   }, [rows])
 
-  const visible = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
+  const locFiltered = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
+  const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+  const visible = flaggedOnly ? locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)) : locFiltered
 
   const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of visible) {
@@ -85,6 +89,15 @@ export function TodayPage() {
           ))}
         </div>
       )}
+
+      <div className="chip-row">
+        <span className={`chip${!flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(false)}>
+          Bütün işçilər
+        </span>
+        <span className={`chip${flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(true)}>
+          ⚠ Yalnız bayraqlananlar{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
+        </span>
+      </div>
 
       <div className="stat-grid">
         <div className="stat-card leaf">
@@ -140,6 +153,7 @@ export function TodayPage() {
               <th>Giriş</th>
               <th>Çıxış</th>
               <th>Foto</th>
+              <th>Üz</th>
             </tr>
           </thead>
           <tbody>
@@ -165,11 +179,14 @@ export function TodayPage() {
                     <span className="muted">—</span>
                   )}
                 </td>
+                <td>
+                  <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} />
+                </td>
               </tr>
             ))}
             {loadedOnce && visible.length === 0 && !error && (
               <tr>
-                <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   Məlumat yoxdur
                 </td>
               </tr>
@@ -184,6 +201,8 @@ export function TodayPage() {
           referenceUrl={modal.photo.referencePhotoUrl}
           checkInUrl={modal.photo.checkInPhotoUrl}
           checkInTakenAtUtc={modal.photo.checkInPhotoTakenAtUtc}
+          faceMatchStatus={modal.photo.faceMatchStatus}
+          faceMatchScore={modal.photo.faceMatchScore}
           onClose={() => setModal(null)}
         />
       )}

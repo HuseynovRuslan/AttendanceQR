@@ -56,7 +56,10 @@ public sealed record DayAttendanceRow(
     // record carries a check-in selfie — lets the Today board deep-link into the photo comparison
     // without an extra round-trip. No new storage: both derive from the already-loaded record.
     Guid? RecordId,
-    bool HasPhoto);
+    bool HasPhoto,
+    // Face-audit: similarity (0–100, null if not compared) + status string, for the flag badge.
+    int? FaceMatchScore,
+    string FaceMatchStatus);
 
 /// <summary>One date's check-in/check-out counts, for the dashboard trend chart.</summary>
 public sealed record DailyTrendPoint(DateOnly Date, int CheckIns, int CheckOuts);

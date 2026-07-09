@@ -8,7 +8,9 @@ public sealed record AttendanceRecordDto(
     Guid LocationId,
     DateTime? CheckInAtUtc,
     DateTime? CheckOutAtUtc,
-    string Status);
+    string Status,
+    int? FaceMatchScore,
+    string FaceMatchStatus);
 
 /// <summary>Outcome of a resource-level access check for another employee's records.</summary>
 public enum AttendanceAccess

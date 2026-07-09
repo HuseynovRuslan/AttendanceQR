@@ -24,6 +24,7 @@ public class AttendanceController : ControllerBase
     private readonly IQrTokenService _qrTokenService;
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
+    private readonly IFaceMatchQueue _faceQueue;
     private readonly ILogger<AttendanceController> _logger;
 
     public AttendanceController(
@@ -31,12 +32,14 @@ public class AttendanceController : ControllerBase
         IQrTokenService qrTokenService,
         IAttendanceQueryService attendanceQuery,
         IPhotoStorageService photoStorage,
+        IFaceMatchQueue faceQueue,
         ILogger<AttendanceController> logger)
     {
         _db = db;
         _qrTokenService = qrTokenService;
         _attendanceQuery = attendanceQuery;
         _photoStorage = photoStorage;
+        _faceQueue = faceQueue;
         _logger = logger;
     }
 
@@ -139,7 +142,9 @@ public class AttendanceController : ControllerBase
             hasPhoto = checkInUrl is not null,
             checkInPhotoUrl = checkInUrl,
             checkInPhotoTakenAtUtc = record.CheckInPhotoTakenAtUtc,
-            referencePhotoUrl = referenceUrl
+            referencePhotoUrl = referenceUrl,
+            faceMatchScore = record.FaceMatchScore,
+            faceMatchStatus = record.FaceMatchStatus.ToString()
         });
     }
 
@@ -307,18 +312,26 @@ public class AttendanceController : ControllerBase
 
             var nowUtc = DateTime.UtcNow;
             var ct = HttpContext.RequestAborted;
+            // Whether a reference existed BEFORE this scan — decides if there's anything to face-match
+            // against (the very first check-in only seeds the reference, so there's nothing to compare).
+            var hadReference = !string.IsNullOrEmpty(employee.ReferencePhotoKey);
+
             record.CheckInPhotoKey = await _photoStorage.UploadCheckInPhotoAsync(employee.Id, record.Id, bytes, ct);
             record.CheckInPhotoTakenAtUtc = nowUtc;
 
             // Reference fallback: the first time we ever have a photo for this employee, keep a copy
             // as their reference selfie for the manager to compare future check-ins against.
-            if (string.IsNullOrEmpty(employee.ReferencePhotoKey))
+            if (!hadReference)
             {
                 employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(employee.Id, bytes, ct);
                 employee.ReferencePhotoTakenAtUtc = nowUtc;
             }
 
             await _db.SaveChangesAsync(ct);
+
+            // Queue a background face-match only when there's a prior reference to compare against.
+            if (hadReference)
+                _faceQueue.Enqueue(record.Id);
         }
         catch (Exception ex)
         {

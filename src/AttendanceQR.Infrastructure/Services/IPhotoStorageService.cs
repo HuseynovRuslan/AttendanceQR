@@ -19,6 +19,9 @@ public interface IPhotoStorageService
     /// <summary>A short-lived presigned GET URL the admin panel can load the image from directly.</summary>
     Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default);
 
+    /// <summary>Downloads an object's raw bytes (used by the face-audit worker to feed Rekognition).</summary>
+    Task<byte[]> GetBytesAsync(string key, CancellationToken ct = default);
+
     /// <summary>
     /// Deletes every object under <paramref name="prefix"/> last modified before
     /// <paramref name="olderThanUtc"/>. Used by the retention job — never point it at <c>reference/</c>.

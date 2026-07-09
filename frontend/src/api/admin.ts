@@ -14,6 +14,9 @@ export interface DayAttendanceRow {
   // Photo audit: today's record id + whether it has a check-in selfie (optional — older backends omit).
   recordId?: string | null
   hasPhoto?: boolean
+  // Face audit.
+  faceMatchScore?: number | null
+  faceMatchStatus?: string
 }
 
 export interface EmployeeReportRow {
@@ -127,6 +130,13 @@ export type LocationInput = Omit<AdminLocation, 'id' | 'isActive'>
 
 export function getToday() {
   return apiRequest<DayAttendanceRow[]>('/api/reports/today')
+}
+
+/** Face audit: re-queue a background face-match for every record that has a check-in photo. */
+export function recheckFaces() {
+  return apiRequest<{ queued: number } | { error: string }>('/api/admin/attendance/recheck-faces', {
+    method: 'POST',
+  })
 }
 
 export function getSummary(from: string, to: string, locationId?: string) {

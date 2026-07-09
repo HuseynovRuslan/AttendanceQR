@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getSummary } from '../../api/admin'
+import { getSummary, recheckFaces } from '../../api/admin'
 import {
   getEmployeeAttendance,
   getPhotoUrl,
@@ -8,6 +8,7 @@ import {
 } from '../../api/attendance'
 import { StatusBadge } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
+import { FaceFlagBadge } from '../../components/FaceFlagBadge'
 import { IconCamera, IconX } from '../../components/icons'
 
 interface EmpOption {
@@ -35,6 +36,8 @@ export function PhotoAuditPage() {
   const [noPhotoIds, setNoPhotoIds] = useState<Set<string>>(new Set())
   const [rowError, setRowError] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalState | null>(null)
+  const [recheckBusy, setRecheckBusy] = useState(false)
+  const [recheckMsg, setRecheckMsg] = useState<string | null>(null)
 
   // Employee roster for the picker. Sourced from the summary endpoint over the last 90 days (the
   // photo-retention window) because it is available to BOTH Admin and Manager and is already scoped
@@ -110,8 +113,33 @@ export function PhotoAuditPage() {
     })
   }
 
+  async function onRecheckAll() {
+    setRecheckBusy(true)
+    setRecheckMsg(null)
+    const { status, data } = await recheckFaces()
+    setRecheckBusy(false)
+    if (status === 200 && data && 'queued' in data)
+      setRecheckMsg(`${data.queued} qeyd üz-uyğunluğuna görə yenidən yoxlanışa göndərildi (bir neçə dəqiqəyə hazır olar).`)
+    else setRecheckMsg('Əməliyyat alınmadı')
+  }
+
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Foto Audit</h1>
+          <div className="muted" style={{ fontSize: 13 }}>Giriş şəklini referans ilə müqayisə et — üz uyğunluğu avtomatik yoxlanır.</div>
+        </div>
+        <button className="btn btn-sm" disabled={recheckBusy} onClick={onRecheckAll} title="Bütün foto qeydlərini üz-uyğunluğuna görə yenidən yoxla">
+          {recheckBusy ? 'Göndərilir…' : 'Hamısını yenidən yoxla'}
+        </button>
+      </div>
+      {recheckMsg && (
+        <div className="fb fb-ok" style={{ marginBottom: 12 }}>
+          <span>{recheckMsg}</span>
+        </div>
+      )}
+
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <label className="form-label" htmlFor="emp-select">
           İşçi seçin
@@ -177,6 +205,7 @@ export function PhotoAuditPage() {
                 <th>Giriş</th>
                 <th>Çıxış</th>
                 <th>Foto</th>
+                <th>Üz</th>
               </tr>
             </thead>
             <tbody>
@@ -203,6 +232,9 @@ export function PhotoAuditPage() {
                       </button>
                     )}
                   </td>
+                  <td>
+                    <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -216,6 +248,8 @@ export function PhotoAuditPage() {
           referenceUrl={modal.photo.referencePhotoUrl}
           checkInUrl={modal.photo.checkInPhotoUrl}
           checkInTakenAtUtc={modal.photo.checkInPhotoTakenAtUtc}
+          faceMatchStatus={modal.photo.faceMatchStatus}
+          faceMatchScore={modal.photo.faceMatchScore}
           onClose={() => setModal(null)}
         />
       )}

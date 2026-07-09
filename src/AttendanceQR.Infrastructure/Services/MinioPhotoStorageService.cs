@@ -61,6 +61,14 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
         return _s3.GetPreSignedURLAsync(request);
     }
 
+    public async Task<byte[]> GetBytesAsync(string key, CancellationToken ct = default)
+    {
+        using var resp = await _s3.GetObjectAsync(_options.BucketName, key, ct);
+        using var ms = new MemoryStream();
+        await resp.ResponseStream.CopyToAsync(ms, ct);
+        return ms.ToArray();
+    }
+
     public async Task DeleteByPrefixOlderThanAsync(string prefix, DateTime olderThanUtc, CancellationToken ct = default)
     {
         string? continuationToken = null;

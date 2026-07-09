@@ -30,6 +30,7 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
             .Where(r => r.EmployeeId == employeeId)
             .OrderByDescending(r => r.AttendanceDate)
             .Select(r => new AttendanceRecordDto(
-                r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc, r.Status.ToString()))
+                r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc, r.Status.ToString(),
+                r.FaceMatchScore, r.FaceMatchStatus.ToString()))
             .ToListAsync(ct);
 }

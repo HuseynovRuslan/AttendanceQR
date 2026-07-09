@@ -4,6 +4,7 @@ using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -22,11 +23,13 @@ public class AdminAttendanceController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IDailySummaryService _dailySummaryService;
+    private readonly IFaceMatchQueue _faceQueue;
 
-    public AdminAttendanceController(AppDbContext db, IDailySummaryService dailySummaryService)
+    public AdminAttendanceController(AppDbContext db, IDailySummaryService dailySummaryService, IFaceMatchQueue faceQueue)
     {
         _db = db;
         _dailySummaryService = dailySummaryService;
+        _faceQueue = faceQueue;
     }
 
     [HttpPut("{recordId:guid}")]
@@ -131,6 +134,20 @@ public class AdminAttendanceController : ControllerBase
         }
 
         return Ok(Project(record));
+    }
+
+    // Re-queue a background face-match for every record that has a check-in photo — e.g. after the
+    // references were corrected, to (re)score the history. Returns how many were queued.
+    [HttpPost("recheck-faces")]
+    public async Task<IActionResult> RecheckFaces()
+    {
+        var ids = await _db.AttendanceRecords
+            .Where(r => r.CheckInPhotoKey != null)
+            .Select(r => r.Id)
+            .ToListAsync(HttpContext.RequestAborted);
+        foreach (var id in ids)
+            _faceQueue.Enqueue(id);
+        return Ok(new { queued = ids.Count });
     }
 
     private static bool TryValidateTimes(DateTime? checkIn, DateTime? checkOut, out string? error)
