@@ -16,6 +16,19 @@ export function getMyAttendance() {
   return apiRequest<AttendanceRecord[]>('/api/attendance/me')
 }
 
+export interface MyProfile {
+  fullName: string
+  email: string
+  role: string
+  position: string | null
+  locationName: string | null
+}
+
+/** GET /api/attendance/me/profile — the caller's own name/location for the home greeting + menu. */
+export function getMyProfile() {
+  return apiRequest<MyProfile>('/api/attendance/me/profile')
+}
+
 /** GET /api/reports/summary — aggregated totals for this employee over a date range. Employee-role
  * JWTs are forced to their own records server-side regardless of any other param, so this is the
  * same endpoint the admin reports page uses, just naturally self-scoped. */

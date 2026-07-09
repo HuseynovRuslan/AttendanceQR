@@ -48,6 +48,35 @@ public class AttendanceController : ControllerBase
         return Ok(records);
     }
 
+    // GET /api/attendance/me/profile — the caller's own profile (name/location) for the mobile
+    // home greeting + menu card. The JWT only carries id/email/role, so name comes from here.
+    [HttpGet("me/profile")]
+    public async Task<IActionResult> MyProfile()
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var profile = await _db.Employees
+            .Where(e => e.Id == employeeId)
+            .Select(e => new
+            {
+                fullName = e.FullName,
+                email = e.Email,
+                role = e.Role.ToString(),
+                position = e.Position,
+                locationName = _db.Locations
+                    .Where(l => l.Id == e.LocationId)
+                    .Select(l => l.Name)
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        if (profile is null)
+            return NotFound(new { error = "NotFound" });
+
+        return Ok(profile);
+    }
+
     // GET /api/attendance/employee/{id} — another employee's records, subject to a resource-level
     // check in the service ([Authorize] alone cannot enforce "only your own / your team's").
     [HttpGet("employee/{employeeId:guid}")]

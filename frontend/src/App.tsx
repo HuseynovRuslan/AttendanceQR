@@ -10,6 +10,11 @@ import { HistoryPage } from './pages/HistoryPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { DeviceChangeRequestPage } from './pages/DeviceChangeRequestPage'
 import { KioskPage } from './pages/KioskPage'
+import { EmployeeLayout } from './pages/EmployeeLayout'
+import { HomePage } from './pages/HomePage'
+import { StatsPage } from './pages/StatsPage'
+import { NotificationsPage } from './pages/NotificationsPage'
+import { MenuPage } from './pages/MenuPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { DashboardPage } from './pages/admin/DashboardPage'
 import { TodayPage } from './pages/admin/TodayPage'
@@ -27,6 +32,21 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/activate" element={<ActivatePage />} />
+      {/* Employee mobile shell: bottom-tab pages share the EmployeeLayout (light theme + tab bar). */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <EmployeeLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/stats" element={<StatsPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/menu" element={<MenuPage />} />
+      </Route>
+
+      {/* Full-screen scanner (no bottom bar) — reached from the center Scan button. */}
       <Route
         path="/scan"
         element={

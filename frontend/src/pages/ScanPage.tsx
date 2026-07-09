@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
 import { getMyAttendance, type AttendanceRecord } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
-import { EmployeeNav } from '../components/EmployeeNav'
 
 type Card = { tone: 'green' | 'red' | 'yellow'; title: string; detail?: string; showDeviceChangeLink?: boolean }
 type Phase = 'scanning' | 'processing' | 'done'
@@ -17,6 +16,7 @@ type TodayInfo =
 const READER_ID = 'reader'
 
 export function ScanPage() {
+  const navigate = useNavigate()
   const scannerRef = useRef<Html5Qrcode | null>(null)
   // Photo audit: a hidden <video> we briefly attach the front camera to — on demand, AFTER the QR
   // (back) camera is released, since iOS Safari allows only one camera at a time — to grab a single
@@ -220,7 +220,15 @@ export function ScanPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
-      <EmployeeNav title="AttendanceQR · Skan" />
+      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+        <span className="font-semibold">QR skan</span>
+        <button
+          onClick={() => navigate('/home')}
+          className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-300 transition hover:text-white"
+        >
+          Bağla
+        </button>
+      </header>
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 gap-5">
         <TodayBanner today={today} />
