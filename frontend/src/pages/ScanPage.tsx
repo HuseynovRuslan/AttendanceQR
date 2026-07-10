@@ -6,6 +6,7 @@ import { getMyAttendance, reportScanFailure, type AttendanceRecord } from '../ap
 import { getDeviceFingerprint } from '../lib/device'
 import { FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
+import { PhotoIntro } from '../components/PhotoIntro'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -20,7 +21,11 @@ type Card = {
   photo?: string
   showDeviceChangeLink?: boolean
 }
-type Phase = 'scanning' | 'photo' | 'processing' | 'done'
+type Phase = 'scanning' | 'intro' | 'photo' | 'processing' | 'done'
+
+// The employee reads what is about to happen before the front camera opens. Auto-advances so a
+// hesitant person cannot block the queue by never tapping "Hazıram".
+const INTRO_MS = 6000
 
 // How long the front-camera preview stays up after the first real frame. It has to outlast reading
 // the words on screen and settling into position — at 1.2s the shot was taken before people had even
@@ -63,6 +68,11 @@ export function ScanPage() {
   const [photoLive, setPhotoLive] = useState(false)
   const photoProgress = useCaptureProgress(photoLive, PHOTO_HOLD_MS)
   const secondsLeft = Math.max(1, Math.ceil(((1 - photoProgress) * PHOTO_HOLD_MS) / 1000))
+
+  // Resolves the intro screen early when the employee taps "Hazıram"; the timeout resolves it anyway.
+  const introSkipRef = useRef<(() => void) | null>(null)
+  const introProgress = useCaptureProgress(phase === 'intro', INTRO_MS)
+  const introSecondsLeft = Math.max(1, Math.ceil(((1 - introProgress) * INTRO_MS) / 1000))
 
   // Today's status decides whether the camera should even start — no point opening it if the
   // day is already complete (the backend would just reject with AlreadyCompleted anyway).
@@ -183,6 +193,23 @@ export function ScanPage() {
 
   // --- selfie (photo audit) front camera ------------------------------------
 
+  // Holds on the intro card until the employee taps "Hazıram" or INTRO_MS elapses, whichever comes
+  // first. Never rejects: the scan must continue either way.
+  function waitForIntro(): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        introSkipRef.current = null
+        resolve()
+      }
+      const timer = setTimeout(finish, INTRO_MS)
+      introSkipRef.current = finish
+    })
+  }
+
   // Opens the front camera ON DEMAND (the caller must have released the QR/back camera first — iOS
   // Safari allows only one camera at a time) and shows the employee what it sees for a moment before
   // taking the frame. The capture is DISCLOSED, not covert: the phone lights its camera indicator
@@ -222,7 +249,13 @@ export function ScanPage() {
     // active. Then show feedback and grab the selfie (check-in only; check-out never captures one).
     await stopCamera()
     const willPhotograph = today.kind === 'none'
-    setPhase(willPhotograph ? 'photo' : 'processing')
+    if (willPhotograph) {
+      setPhase('intro')
+      await waitForIntro()
+      setPhase('photo')
+    } else {
+      setPhase('processing')
+    }
     const photoBase64 = willPhotograph ? await captureSelfie() : null
     setPhase('processing')
     await submitScan(text, photoBase64)
@@ -316,6 +349,10 @@ export function ScanPage() {
               {formatDuration(minutesBetween(today.checkInAtUtc, today.checkOutAtUtc))}
             </p>
           </div>
+        )}
+
+        {phase === 'intro' && (
+          <PhotoIntro secondsLeft={introSecondsLeft} onReady={() => introSkipRef.current?.()} />
         )}
 
         {today.kind !== 'completed' && geo.kind === 'checking' && (
