@@ -509,8 +509,13 @@ public class AttendanceController : ControllerBase
             _deviceOptions.MaxActiveDevices,
             nowUtc);
 
+        // Must go through the DbSet, NOT employee.DeviceBindings.Add(). The DeviceBinding constructor
+        // assigns its own Guid, so a new entity discovered through a navigation property looks to
+        // change-tracking like an existing row (key already set) — EF then issues an UPDATE that
+        // matches nothing, throws DbUpdateConcurrencyException, and the scan dies as a "network
+        // error" on the phone. DbSet.Add marks it Added explicitly.
         if (!employee.DeviceBindings.Contains(binding))
-            employee.DeviceBindings.Add(binding);
+            _db.DeviceBindings.Add(binding);
 
         _db.AuditLogs.Add(new AuditLog
         {
