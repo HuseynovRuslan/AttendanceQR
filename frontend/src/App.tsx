@@ -34,14 +34,20 @@ import { ProblemsPage } from './pages/admin/ProblemsPage'
  *  banner, and an installed PWA is otherwise stuck on whatever bundle it launched with. Never fires
  *  mid-scan or mid-activation, where a reload would throw away work in progress. */
 function AutoUpdater() {
-  const updateReady = useAppUpdate()
+  const newBuildId = useAppUpdate()
   const { pathname } = useLocation()
 
   useEffect(() => {
-    if (!updateReady) return
+    if (!newBuildId) return
     if (pathname === '/scan' || pathname === '/activate') return
+
+    // Belt and braces: if a reload somehow served the same stale bundle again (a cached index.html
+    // would do it), we would spin forever. One attempt per published build, per tab.
+    const key = 'attendanceqr.reloadedFor'
+    if (sessionStorage.getItem(key) === newBuildId) return
+    sessionStorage.setItem(key, newBuildId)
     window.location.reload()
-  }, [updateReady, pathname])
+  }, [newBuildId, pathname])
 
   return null
 }

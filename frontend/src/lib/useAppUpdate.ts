@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // An installed iOS web app is suspended, not closed: tapping its icon resumes the page instead of
 // reloading it, so a deploy never reaches the employee — and employees do not refresh apps. With no
 // service worker to swap the bundle, the app has to notice for itself. /version.json changes on every
-// build (see scripts/version.mjs).
+// build (scripts/version.mjs) and is served no-store; __BUILD_ID__ is the id of the bundle currently
+// executing (vite.config.ts).
 
 const POLL_MS = 5 * 60_000
 
@@ -19,38 +20,44 @@ async function fetchBuildId(): Promise<string | null> {
   }
 }
 
-/** True once a newer build than the one currently running has been published. */
-export function useAppUpdate(): boolean {
-  const running = useRef<string | null>(null)
-  const [updateReady, setUpdateReady] = useState(false)
+/** The build id published on the server, once it differs from the one running here. */
+export function useAppUpdate(): string | null {
+  const [newBuildId, setNewBuildId] = useState<string | null>(null)
 
   useEffect(() => {
+    // 'dev' means the file was never generated (vite dev server) — nothing to compare against.
+    if (!__BUILD_ID__ || __BUILD_ID__ === 'dev') return
+
     let cancelled = false
 
     async function check() {
-      const id = await fetchBuildId()
-      if (cancelled || id === null) return
-      // First answer defines what "currently running" means; later answers are compared to it.
-      if (running.current === null) running.current = id
-      else if (id !== running.current) setUpdateReady(true)
+      const published = await fetchBuildId()
+      // Compared against the id COMPILED INTO this bundle, never against the first answer the server
+      // gave: a stale bundle that adopted the server's id as its own would never see itself as old.
+      if (!cancelled && published !== null && published !== __BUILD_ID__) setNewBuildId(published)
     }
 
     void check()
 
-    // The resume case is the important one: it is the only moment an employee's PWA comes back to
-    // life after a deploy. Polling covers a phone left open on the counter all day.
-    const onVisible = () => {
+    // Resume is the moment that matters — it is the only time an employee's suspended PWA comes back
+    // to life after a deploy. `pageshow` also covers a back/forward-cache restore, which fires no
+    // visibilitychange at all.
+    const onWake = () => {
       if (document.visibilityState === 'visible') void check()
     }
-    document.addEventListener('visibilitychange', onVisible)
-    const timer = setInterval(onVisible, POLL_MS)
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('pageshow', onWake)
+    window.addEventListener('focus', onWake)
+    const timer = setInterval(onWake, POLL_MS)
 
     return () => {
       cancelled = true
-      document.removeEventListener('visibilitychange', onVisible)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('pageshow', onWake)
+      window.removeEventListener('focus', onWake)
       clearInterval(timer)
     }
   }, [])
 
-  return updateReady
+  return newBuildId
 }
