@@ -12,3 +12,4 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+public/version.json

@@ -1,4 +1,6 @@
-import { Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Route, Routes, useLocation } from 'react-router-dom'
+import { useAppUpdate } from './lib/useAppUpdate'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, AdminOnly } from './components/AdminRoute'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
@@ -28,7 +30,32 @@ import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
 import { ProblemsPage } from './pages/admin/ProblemsPage'
 
+/** Reloads the app once a newer build exists. Silent by design: employees will not tap an "update"
+ *  banner, and an installed PWA is otherwise stuck on whatever bundle it launched with. Never fires
+ *  mid-scan or mid-activation, where a reload would throw away work in progress. */
+function AutoUpdater() {
+  const updateReady = useAppUpdate()
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    if (!updateReady) return
+    if (pathname === '/scan' || pathname === '/activate') return
+    window.location.reload()
+  }, [updateReady, pathname])
+
+  return null
+}
+
 export default function App() {
+  return (
+    <>
+      <AutoUpdater />
+      <AppRoutes />
+    </>
+  )
+}
+
+function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

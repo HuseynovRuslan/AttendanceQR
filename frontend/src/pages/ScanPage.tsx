@@ -23,9 +23,10 @@ type Card = {
 type Phase = 'scanning' | 'photo' | 'processing' | 'done'
 
 // How long the front-camera preview stays up after the first real frame. It has to outlast reading
-// the words on screen — at 1.2s the shot was taken before people had looked up. A ring counts it
-// down so nobody is surprised. There is still no shutter button to press.
-const PHOTO_HOLD_MS = 2500
+// the words on screen and settling into position — at 1.2s the shot was taken before people had even
+// looked up. A ring and a seconds counter run alongside so nobody is surprised. There is still no
+// shutter button to press: the photo is taken automatically at zero.
+const PHOTO_HOLD_MS = 10_000
 // Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
 // not, and full-frame captures kept picking up two and three faces.
 const PHOTO_CROP = 0.85
@@ -60,6 +61,8 @@ export function ScanPage() {
   // True once the front camera is actually producing frames, so the preview says "look at the
   // camera" rather than showing a black circle while it warms up.
   const [photoLive, setPhotoLive] = useState(false)
+  const photoProgress = useCaptureProgress(photoLive, PHOTO_HOLD_MS)
+  const secondsLeft = Math.max(1, Math.ceil(((1 - photoProgress) * PHOTO_HOLD_MS) / 1000))
 
   // Today's status decides whether the camera should even start — no point opening it if the
   // day is already complete (the backend would just reject with AlreadyCompleted anyway).
@@ -355,12 +358,20 @@ export function ScanPage() {
                 autoPlay
               />
             </div>
-            {/* Starts only once real frames arrive, so the countdown never runs while the camera is
-                still warming up — the employee gets the full PHOTO_HOLD_MS to look at the lens. */}
-            <CaptureRing active={photoLive} durationMs={PHOTO_HOLD_MS} />
+            {/* Drains only once real frames arrive, so the countdown never runs while the camera is
+                still warming up — the employee gets the full PHOTO_HOLD_MS to settle. */}
+            <CaptureRing progress={photoProgress} />
           </div>
-          <p className="text-lg font-semibold">{photoLive ? 'Şəklə baxın…' : 'Kamera hazırlanır…'}</p>
-          <p className="text-sm text-slate-400">Giriş şəkli çəkilir</p>
+
+          {photoLive ? (
+            <>
+              <p className="text-xl font-bold">Ekrana baxın</p>
+              <p className="text-base text-slate-300">Tərpənməyin — şəkil çəkilir</p>
+              <p className="text-4xl font-extrabold tabular-nums text-green-400">{secondsLeft}</p>
+            </>
+          ) : (
+            <p className="text-lg font-semibold">Kamera hazırlanır…</p>
+          )}
         </div>
 
         {phase === 'processing' && (
@@ -383,12 +394,12 @@ export function ScanPage() {
   )
 }
 
-// --- capture countdown ring -------------------------------------------------
+// --- capture countdown ------------------------------------------------------
 
-/** A ring that drains over `durationMs`, so the employee can see how long they have to look up.
- *  Driven by rAF rather than a CSS transition: the ring must start on the first real camera frame,
- *  not on mount, and a transition triggered mid-render is easy to get wrong. */
-function CaptureRing({ active, durationMs }: { active: boolean; durationMs: number }) {
+/** 0 → 1 over `durationMs`, restarting whenever `active` flips on. Driven by rAF rather than a CSS
+ *  transition: it must start on the first real camera frame, not on mount, and the same value feeds
+ *  both the ring and the seconds counter. */
+function useCaptureProgress(active: boolean, durationMs: number): number {
   const [progress, setProgress] = useState(0)
 
   useEffect(() => {
@@ -407,6 +418,12 @@ function CaptureRing({ active, durationMs }: { active: boolean; durationMs: numb
     return () => cancelAnimationFrame(raf)
   }, [active, durationMs])
 
+  return progress
+}
+
+/** Ring drawn OUTSIDE the circular overflow-hidden preview, or its stroke would be clipped by the
+ *  very circle it draws around. */
+function CaptureRing({ progress }: { progress: number }) {
   const radius = 118
   const circumference = 2 * Math.PI * radius
 
