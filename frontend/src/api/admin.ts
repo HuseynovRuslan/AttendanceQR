@@ -132,6 +132,34 @@ export function getToday() {
   return apiRequest<DayAttendanceRow[]>('/api/reports/today')
 }
 
+// --- problems (rejected scans) ----------------------------------------------
+
+export interface ProblemRow {
+  atUtc: string
+  employeeId: string | null
+  employeeName: string
+  action: 'CheckIn' | 'CheckOut'
+  reason: string
+}
+
+export interface ReasonCount {
+  reason: string
+  count: number
+}
+
+export interface ProblemsReport {
+  date: string
+  rejectedCount: number
+  successCount: number
+  summary: ReasonCount[]
+  rows: ProblemRow[]
+}
+
+/** GET /api/reports/problems?date=yyyy-MM-dd — who couldn't scan that day, and why. */
+export function getProblems(date: string) {
+  return apiRequest<ProblemsReport | { error: string }>(`/api/reports/problems?date=${date}`)
+}
+
 /** Face audit: re-queue a background face-match for every record that has a check-in photo. */
 export function recheckFaces() {
   return apiRequest<{ queued: number } | { error: string }>('/api/admin/attendance/recheck-faces', {

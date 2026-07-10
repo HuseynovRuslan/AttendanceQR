@@ -95,6 +95,22 @@ public class ReportsController : ControllerBase
         return Ok(rows);
     }
 
+    // GET /api/reports/problems?date=yyyy-MM-dd — every rejected scan on that local day: who could
+    // not check in/out, and why. Without this the failures only live in AuditLogs, invisible to staff.
+    [HttpGet("problems")]
+    public async Task<IActionResult> Problems([FromQuery] DateOnly date)
+    {
+        if (!TryGetCaller(out var requesterId, out var role))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var (access, report) = await _reports.GetProblemsAsync(date, requesterId, role, HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        return Ok(report);
+    }
+
     private bool TryGetCaller(out Guid id, out EmployeeRole role)
     {
         role = default;

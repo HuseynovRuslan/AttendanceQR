@@ -32,6 +32,13 @@ public interface IReportQueryService
     /// </summary>
     Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every rejected scan on a local day (from AuditLogs) — who could not check in/out and why.
+    /// Admin sees all; a Manager only employees in their managed locations; an Employee: Forbidden.
+    /// </summary>
+    Task<(ReportAccess Access, ProblemsReport? Report)> GetProblemsAsync(
+        DateOnly date, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 }
 
 public sealed class ReportQueryService : IReportQueryService
@@ -188,6 +195,67 @@ public sealed class ReportQueryService : IReportQueryService
         }
 
         return rows.OrderBy(r => r.EmployeeName).ToList();
+    }
+
+    public async Task<(ReportAccess Access, ProblemsReport? Report)> GetProblemsAsync(
+        DateOnly date, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        // An employee has no business seeing everyone else's failed scans.
+        if (role == EmployeeRole.Employee)
+            return (ReportAccess.Forbidden, null);
+
+        // Audit rows are stamped in UTC; translate the requested LOCAL day into a UTC window.
+        var localStart = date.ToDateTime(TimeOnly.MinValue);
+        var startUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), _timeZone);
+        var endUtc = startUtc.AddDays(1);
+
+        // A single day of audit rows is small — pull them once and shape in memory.
+        var dayLogs = await _db.AuditLogs
+            .Where(a => a.CreatedAtUtc >= startUtc && a.CreatedAtUtc < endUtc)
+            .OrderBy(a => a.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        var empIds = dayLogs.Where(a => a.EmployeeId.HasValue).Select(a => a.EmployeeId!.Value).Distinct().ToList();
+        var empById = await _db.Employees
+            .Where(e => empIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.FullName, e.LocationId })
+            .ToDictionaryAsync(e => e.Id, e => (e.FullName, e.LocationId), ct);
+
+        // Manager scope: only employees in the locations they manage. Admin: everything.
+        List<Guid>? managed = role == EmployeeRole.Manager
+            ? await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct)
+            : null;
+
+        bool InScope(Guid? employeeId) =>
+            managed is null
+            || (employeeId is Guid id && empById.TryGetValue(id, out var e) && managed.Contains(e.LocationId));
+
+        string NameOf(Guid? employeeId) =>
+            employeeId is Guid id && empById.TryGetValue(id, out var e) ? e.FullName : "(naməlum)";
+
+        var problems = dayLogs
+            .Where(a => a.EventType is AuditEventType.CheckInRejected or AuditEventType.CheckOutRejected)
+            .Where(a => InScope(a.EmployeeId))
+            .Select(a => new ProblemRow(
+                a.CreatedAtUtc,
+                a.EmployeeId,
+                NameOf(a.EmployeeId),
+                a.EventType == AuditEventType.CheckInRejected ? "CheckIn" : "CheckOut",
+                a.Reason ?? "Unknown"))
+            .ToList();
+
+        var successCount = dayLogs.Count(a =>
+            (a.EventType is AuditEventType.CheckInSuccess or AuditEventType.CheckOutSuccess)
+            && InScope(a.EmployeeId));
+
+        var summary = problems
+            .GroupBy(p => p.Reason)
+            .Select(g => new ReasonCount(g.Key, g.Count()))
+            .OrderByDescending(s => s.Count)
+            .ThenBy(s => s.Reason)
+            .ToList();
+
+        return (ReportAccess.Allowed, new ProblemsReport(date, problems.Count, successCount, summary, problems));
     }
 
     public async Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(

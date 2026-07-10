@@ -26,6 +26,7 @@ import { PrintQrPage } from './pages/admin/PrintQrPage'
 import { EmployeesPage } from './pages/admin/EmployeesPage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
+import { ProblemsPage } from './pages/admin/ProblemsPage'
 
 export default function App() {
   return (
@@ -107,6 +108,8 @@ export default function App() {
         {/* Photo audit — open to Admin + Manager (like today/reports); managers are scoped to their
             own locations server-side via LocationScopeRules, so no AdminOnly wrapper. */}
         <Route path="photo-audit" element={<PhotoAuditPage />} />
+        {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
+        <Route path="problems" element={<ProblemsPage />} />
         <Route
           path="locations"
           element={

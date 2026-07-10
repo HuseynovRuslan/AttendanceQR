@@ -61,6 +61,24 @@ public sealed record DayAttendanceRow(
     int? FaceMatchScore,
     string FaceMatchStatus);
 
+/// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
+public sealed record ProblemRow(
+    DateTime AtUtc,
+    Guid? EmployeeId,
+    string EmployeeName,
+    string Action,   // "CheckIn" | "CheckOut"
+    string Reason);
+
+public sealed record ReasonCount(string Reason, int Count);
+
+/// <summary>All rejected scans for one local day, plus a per-reason tally and the success count.</summary>
+public sealed record ProblemsReport(
+    DateOnly Date,
+    int RejectedCount,
+    int SuccessCount,
+    IReadOnlyList<ReasonCount> Summary,
+    IReadOnlyList<ProblemRow> Rows);
+
 /// <summary>One date's check-in/check-out counts, for the dashboard trend chart.</summary>
 public sealed record DailyTrendPoint(DateOnly Date, int CheckIns, int CheckOuts);
 

@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import {
+  IconAlert,
   IconCalendar,
   IconCamera,
   IconChart,
@@ -26,6 +27,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/today': { title: 'Bugünkü davamiyyət', sub: 'Canlı — hər 30 saniyədə yenilənir' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
+  '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
   '/admin/leaves': { title: 'Məzuniyyət / İcazə', sub: 'Təsdiqlənmiş yoxluq qeydləri' },
@@ -61,6 +63,7 @@ export function AdminLayout() {
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     // Admin + Manager (no isAdmin gate) — managers audit their own locations' employees.
     { to: '/admin/photo-audit', label: 'Foto Audit', Icon: IconCamera },
+    { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
     ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
