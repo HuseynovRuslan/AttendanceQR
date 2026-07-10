@@ -34,6 +34,7 @@ public class AttendanceController : ControllerBase
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
     private readonly IFaceMatchQueue _faceQueue;
+    private readonly DeviceBindingOptions _deviceOptions;
     private readonly ILogger<AttendanceController> _logger;
 
     public AttendanceController(
@@ -42,6 +43,7 @@ public class AttendanceController : ControllerBase
         IAttendanceQueryService attendanceQuery,
         IPhotoStorageService photoStorage,
         IFaceMatchQueue faceQueue,
+        DeviceBindingOptions deviceOptions,
         ILogger<AttendanceController> logger)
     {
         _db = db;
@@ -49,6 +51,7 @@ public class AttendanceController : ControllerBase
         _attendanceQuery = attendanceQuery;
         _photoStorage = photoStorage;
         _faceQueue = faceQueue;
+        _deviceOptions = deviceOptions;
         _logger = logger;
     }
 
@@ -218,7 +221,7 @@ public class AttendanceController : ControllerBase
 
         // 3. Employee must exist and be active.
         var employee = await _db.Employees
-            .Include(e => e.DeviceBinding)
+            .Include(e => e.DeviceBindings)
             .FirstOrDefaultAsync(e => e.Id == employeeId && e.IsActive);
         if (employee is null)
         {
@@ -226,19 +229,9 @@ public class AttendanceController : ControllerBase
             return Unauthorized(new { error = "EmployeeNotFoundOrInactive" });
         }
 
-        // 4. Device binding is now mandatory — every activated employee has a bound device.
-        if (employee.DeviceBinding is null)
-        {
-            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "NoDeviceBound", ip);
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NoDeviceBound" });
-        }
-        if (!string.Equals(employee.DeviceBinding.DeviceFingerprint, request.DeviceFingerprint, StringComparison.Ordinal))
-        {
-            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "DeviceMismatch", ip);
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeviceMismatch" });
-        }
-
-        // 5. Geofence — must be within the location's radius (token carries the LocationId).
+        // 4. Geofence — must be within the location's radius (token carries the LocationId).
+        //    Checked BEFORE the device on purpose: an unrecognised device may only be adopted once we
+        //    know the employee is standing at the location, so nobody can bind a phone from home.
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == validation.LocationId!.Value);
         if (location is null)
         {
@@ -266,6 +259,14 @@ public class AttendanceController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden,
                 new { error = "OutsideRadius", distanceMeters = Math.Round(distanceMeters) });
         }
+
+        // 5. Device. The fingerprint identifies a BROWSER STORAGE CONTEXT, not a phone — Safari and
+        //    the installed PWA are separate contexts on the same handset and the web offers no way to
+        //    link them. So the employee holds several bindings, and an unknown one arriving from
+        //    inside the geofence is adopted rather than rejected (while AutoBind is on).
+        var deviceRejection = await ResolveDeviceAsync(employee, request.DeviceFingerprint, ip);
+        if (deviceRejection is not null)
+            return deviceRejection;
 
         // 6. Resolve today's record (server UTC day) and decide check-in vs check-out.
         var nowUtc = DateTime.UtcNow;
@@ -430,6 +431,69 @@ public class AttendanceController : ControllerBase
         var lateCutoff = location.ShiftStart.AddMinutes(location.LateThresholdMinutes);
         var nowTime = TimeOnly.FromDateTime(nowUtc);
         return nowTime > lateCutoff ? AttendanceStatus.Late : AttendanceStatus.OnTime;
+    }
+
+    // Decides whether this device may scan, adopting it if the rules allow. Returns null when the
+    // scan may proceed, or the rejection to send back. Callers MUST have passed the geofence first —
+    // being physically at the location is the whole evidence behind an automatic binding.
+    private async Task<IActionResult?> ResolveDeviceAsync(Employee employee, string fingerprint, string? ip)
+    {
+        var nowUtc = DateTime.UtcNow;
+
+        var known = employee.DeviceBindings.FirstOrDefault(d =>
+            d.IsActive && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
+        if (known is not null)
+        {
+            known.LastSeenAtUtc = nowUtc;   // keeps this context out of the eviction queue
+            await _db.SaveChangesAsync();
+            return null;
+        }
+
+        // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change.
+        if (!_deviceOptions.AutoBind)
+            return await RejectDeviceAsync(employee, ip);
+
+        // Private browsing hands out a fresh storage context per session — uncapped, it would mint a
+        // binding on every scan. Hitting this limit means "talk to this employee", not "attack".
+        var since = nowUtc.AddDays(-30);
+        var recentBinds = await _db.AuditLogs.CountAsync(a =>
+            a.EmployeeId == employee.Id
+            && a.EventType == AuditEventType.DeviceAutoBound
+            && a.CreatedAtUtc >= since);
+        if (recentBinds >= _deviceOptions.MaxBindsPer30Days)
+            return await RejectDeviceAsync(employee, ip);
+
+        var binding = DeviceBindingRules.Bind(
+            employee.DeviceBindings.ToList(),
+            employee.Id,
+            fingerprint,
+            DeviceLabels.FromUserAgent(Request.Headers.UserAgent.ToString()),
+            _deviceOptions.MaxActiveDevices,
+            nowUtc);
+
+        if (!employee.DeviceBindings.Contains(binding))
+            employee.DeviceBindings.Add(binding);
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = employee.Id,
+            EventType = AuditEventType.DeviceAutoBound,
+            Reason = binding.DeviceLabel,
+            IpAddress = ip
+        });
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Auto-bound device for employee {EmployeeId} ({Label})", employee.Id, binding.DeviceLabel);
+        return null;
+    }
+
+    private async Task<IActionResult> RejectDeviceAsync(Employee employee, string? ip)
+    {
+        // "No device at all" and "the wrong device" send the employee down different paths in the
+        // app — the first is an admin problem, the second offers "this is my new phone".
+        var reason = employee.DeviceBindings.Any(d => d.IsActive) ? "DeviceMismatch" : "NoDeviceBound";
+        await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, reason, ip);
+        return StatusCode(StatusCodes.Status403Forbidden, new { error = reason });
     }
 
     private async Task WriteAuditAsync(Guid? employeeId, AuditEventType eventType, string? reason, string? ip)

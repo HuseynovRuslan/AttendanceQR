@@ -6,21 +6,27 @@ public class DeviceBinding
     {
         Id = Guid.NewGuid();
         BoundAtUtc = DateTime.UtcNow;
+        LastSeenAtUtc = BoundAtUtc;
     }
 
     public Guid Id { get; set; }
 
-    // FK to Employee, unique (1-to-1).
+    // FK to Employee. An employee holds SEVERAL bindings — one per browser storage context (Safari,
+    // the installed PWA, a spare phone). The web exposes no cross-browser device identity, so a
+    // single binding would lock the employee out the moment they switch context.
     public Guid EmployeeId { get; set; }
 
     public string DeviceFingerprint { get; set; } = string.Empty;
 
-    // Human-friendly device name derived client-side from the User-Agent at activation (e.g.
-    // "Samsung Galaxy", "iPhone") — shown in the admin employee list. Never used for any security
-    // decision; DeviceFingerprint is the only value scan actually matches against.
+    // Human-friendly device name — from the User-Agent at activation, or derived server-side when a
+    // device is auto-bound. Shown in the admin employee list. Never used for any security decision;
+    // DeviceFingerprint is the only value scan actually matches against.
     public string? DeviceLabel { get; set; }
 
     public DateTime BoundAtUtc { get; set; }
+
+    // Bumped on every accepted scan. Decides the eviction order once MaxActiveDevices is reached.
+    public DateTime LastSeenAtUtc { get; set; }
 
     public bool IsActive { get; set; } = true;
 }

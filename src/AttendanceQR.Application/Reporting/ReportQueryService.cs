@@ -318,8 +318,12 @@ public sealed class ReportQueryService : IReportQueryService
                         && a.EmployeeId != null && scopedEmployeeIds.Contains(a.EmployeeId.Value))
             .CountAsync(ct);
 
+        // Employees WITH a device, not rows: one person can now hold several bindings (Safari, the
+        // installed PWA), and the dashboard tile means "how many staff can scan".
         var activeDeviceCount = await _db.DeviceBindings
             .Where(d => d.IsActive && scopedEmployeeIds.Contains(d.EmployeeId))
+            .Select(d => d.EmployeeId)
+            .Distinct()
             .CountAsync(ct);
 
         var trend = summaries

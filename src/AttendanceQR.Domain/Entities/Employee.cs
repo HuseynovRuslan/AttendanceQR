@@ -56,8 +56,9 @@ public class Employee
     // Null until the employee completes activation (sets password + binds device).
     public DateTime? ActivatedAtUtc { get; set; }
 
-    // 1-to-1, nullable — an employee may not yet have a bound device.
-    public DeviceBinding? DeviceBinding { get; set; }
+    // One binding per browser storage context (Safari, the installed PWA, a spare phone). Empty
+    // until the employee activates. Capped and least-recently-used-evicted — see DeviceBindingRules.
+    public ICollection<DeviceBinding> DeviceBindings { get; set; } = new List<DeviceBinding>();
 
     // Photo audit: the employee's reference selfie (object key in MinIO), captured the first time a
     // check-in photo is available and kept indefinitely. A manager compares a day's check-in photo

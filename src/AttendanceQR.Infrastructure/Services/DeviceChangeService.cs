@@ -8,8 +8,13 @@ namespace AttendanceQR.Infrastructure.Services;
 public sealed class DeviceChangeService : IDeviceChangeService
 {
     private readonly AppDbContext _db;
+    private readonly DeviceBindingOptions _options;
 
-    public DeviceChangeService(AppDbContext db) => _db = db;
+    public DeviceChangeService(AppDbContext db, DeviceBindingOptions options)
+    {
+        _db = db;
+        _options = options;
+    }
 
     public async Task<RequestDeviceChangeResult> RequestAsync(
         Guid employeeId, string newDeviceFingerprint, string? ip, CancellationToken ct = default)
@@ -52,6 +57,7 @@ public sealed class DeviceChangeService : IDeviceChangeService
                 e.FullName,
                 _db.DeviceBindings
                     .Where(d => d.EmployeeId == r.EmployeeId && d.IsActive)
+                    .OrderByDescending(d => d.LastSeenAtUtc)
                     .Select(d => d.DeviceFingerprint)
                     .FirstOrDefault(),
                 r.NewDeviceFingerprint,
@@ -72,19 +78,18 @@ public sealed class DeviceChangeService : IDeviceChangeService
 
         var now = DateTime.UtcNow;
 
-        // Design decision: UPDATE the existing binding in place rather than deactivate-and-insert.
-        // DeviceBinding.EmployeeId carries a UNIQUE index (1-to-1), so a second row for the same
-        // employee — even with IsActive=false on the old one — would violate it. Overwriting is the
-        // clean, index-safe move; the previous fingerprint is preserved in the audit trail.
-        var binding = await _db.DeviceBindings.FirstOrDefaultAsync(d => d.EmployeeId == request.EmployeeId, ct);
-        if (binding is null)
-        {
-            binding = new DeviceBinding { EmployeeId = request.EmployeeId };
+        // Approving ADDS the new context rather than overwriting the old one: an employee whose
+        // Safari storage was wiped still wants the installed PWA to keep working. The cap and the
+        // least-recently-used eviction are the same ones the scan path applies.
+        var existing = await _db.DeviceBindings
+            .Where(d => d.EmployeeId == request.EmployeeId)
+            .ToListAsync(ct);
+
+        var binding = DeviceBindingRules.Bind(
+            existing, request.EmployeeId, request.NewDeviceFingerprint, label: null, _options.MaxActiveDevices, now);
+
+        if (!existing.Contains(binding))
             _db.DeviceBindings.Add(binding);
-        }
-        binding.DeviceFingerprint = request.NewDeviceFingerprint;
-        binding.BoundAtUtc = now;
-        binding.IsActive = true;
 
         request.Status = DeviceChangeStatus.Approved;
         request.ReviewedByEmployeeId = adminId;

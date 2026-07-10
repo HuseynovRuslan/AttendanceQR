@@ -19,15 +19,18 @@ public class DeviceBindingConfiguration : IEntityTypeConfiguration<DeviceBinding
         builder.Property(d => d.DeviceLabel)
             .HasMaxLength(100);
 
-        // 1-to-1: Employee.DeviceBinding <-> DeviceBinding.EmployeeId.
-        // HasForeignKey<DeviceBinding> makes EmployeeId the (unique) dependent FK.
+        builder.Property(d => d.LastSeenAtUtc)
+            .IsRequired();
+
+        // 1-to-many: an employee holds one binding per browser storage context.
         builder.HasOne<Employee>()
-            .WithOne(e => e.DeviceBinding)
-            .HasForeignKey<DeviceBinding>(d => d.EmployeeId)
+            .WithMany(e => e.DeviceBindings)
+            .HasForeignKey(d => d.EmployeeId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Explicit for clarity — 1-to-1 already enforces uniqueness on the FK.
-        builder.HasIndex(d => d.EmployeeId)
+        // One row per (employee, context) — including evicted ones, which are kept with
+        // IsActive=false and reactivated if that context ever comes back.
+        builder.HasIndex(d => new { d.EmployeeId, d.DeviceFingerprint })
             .IsUnique();
     }
 }

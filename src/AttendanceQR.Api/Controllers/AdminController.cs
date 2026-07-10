@@ -31,7 +31,7 @@ public class AdminController : ControllerBase
         // Admin accounts are system operators, not on-site staff to manage here — hide them
         // entirely (they don't check in/out and aren't part of the "İşçilər" roster).
         var employees = await _db.Employees
-            .Include(e => e.DeviceBinding)
+            .Include(e => e.DeviceBindings)
             .Where(e => e.Role != EmployeeRole.Admin)
             .OrderBy(e => e.FullName)
             .ToListAsync(HttpContext.RequestAborted);
@@ -39,24 +39,32 @@ public class AdminController : ControllerBase
         var locationNames = await _db.Locations
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
 
-        var result = employees.Select(e => new
+        var result = employees.Select(e =>
         {
-            id = e.Id,
-            fullName = e.FullName,
-            fatherName = e.FatherName,
-            position = e.Position,
-            birthYear = e.BirthYear,
-            email = e.Email,
-            role = e.Role.ToString(),
-            phoneNumber = e.PhoneNumber,
-            locationId = e.LocationId,
-            locationName = locationNames.GetValueOrDefault(e.LocationId),
-            isActive = e.IsActive,
-            activated = e.ActivatedAtUtc != null,
-            hasDevice = e.DeviceBinding != null && e.DeviceBinding.IsActive,
-            deviceLabel = e.DeviceBinding != null ? e.DeviceBinding.DeviceLabel : null,
-            boundAtUtc = e.DeviceBinding != null ? e.DeviceBinding.BoundAtUtc : (DateTime?)null,
-            createdAtUtc = e.CreatedAtUtc
+            // An employee may hold several contexts (Safari, the installed PWA). The list still shows
+            // one label — the most recently used — plus how many are bound in total.
+            var active = e.DeviceBindings.Where(d => d.IsActive).OrderByDescending(d => d.LastSeenAtUtc).ToList();
+            var newest = active.FirstOrDefault();
+            return new
+            {
+                id = e.Id,
+                fullName = e.FullName,
+                fatherName = e.FatherName,
+                position = e.Position,
+                birthYear = e.BirthYear,
+                email = e.Email,
+                role = e.Role.ToString(),
+                phoneNumber = e.PhoneNumber,
+                locationId = e.LocationId,
+                locationName = locationNames.GetValueOrDefault(e.LocationId),
+                isActive = e.IsActive,
+                activated = e.ActivatedAtUtc != null,
+                hasDevice = newest != null,
+                deviceLabel = newest?.DeviceLabel,
+                boundAtUtc = newest?.BoundAtUtc,
+                deviceCount = active.Count,
+                createdAtUtc = e.CreatedAtUtc
+            };
         });
         return Ok(result);
     }

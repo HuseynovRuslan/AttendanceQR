@@ -141,9 +141,12 @@ public class DevController : ControllerBase
             .ToListAsync();
         var byEmail = employees.ToDictionary(e => e.Email);
         var employeeIds = employees.Select(e => e.Id).ToList();
-        var devices = await _db.DeviceBindings
-            .Where(d => employeeIds.Contains(d.EmployeeId))
-            .ToDictionaryAsync(d => d.EmployeeId, d => d.DeviceFingerprint);
+        // An employee may hold several bindings now, so group rather than key straight off EmployeeId.
+        var devices = (await _db.DeviceBindings
+                .Where(d => employeeIds.Contains(d.EmployeeId))
+                .ToListAsync())
+            .GroupBy(d => d.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(d => d.LastSeenAtUtc).First().DeviceFingerprint);
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
         var locations = await _db.Locations
             .Where(l => locationIds.Contains(l.Id))

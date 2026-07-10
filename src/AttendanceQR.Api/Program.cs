@@ -96,6 +96,11 @@ builder.Services.AddSingleton<IFaceMatchQueue, FaceMatchQueue>();
 var appOptions = builder.Configuration.GetSection(AppOptions.SectionName).Get<AppOptions>() ?? new AppOptions();
 builder.Services.AddSingleton(appOptions);
 
+// Same reason — DeviceChangeService (Infrastructure) needs these without an Options dependency.
+var deviceBindingOptions = builder.Configuration.GetSection(DeviceBindingOptions.SectionName)
+    .Get<DeviceBindingOptions>() ?? new DeviceBindingOptions();
+builder.Services.AddSingleton(deviceBindingOptions);
+
 // Reporting: summary generation + query are scoped (DbContext); the Excel writer is stateless.
 builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
 builder.Services.AddScoped<IReportQueryService, ReportQueryService>();

@@ -13,5 +13,9 @@ public enum AuditEventType
 
     // The scan never reached the server: the browser refused to give the phone's position, so there
     // was no QR to validate. Self-reported by the client, otherwise these employees are invisible.
-    ScanBlockedOnDevice = 8
+    ScanBlockedOnDevice = 8,
+
+    // An unrecognised device scanned from inside the geofence and was adopted without an admin
+    // approving it. Also the counter behind the per-employee auto-bind rate limit.
+    DeviceAutoBound = 9
 }
