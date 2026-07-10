@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#18191A" />
+
+    <!-- Installable app. NOTE: deliberately NO service worker. One would cache the bundle for every
+         employee, and a stale scan page is far worse than having no offline support. Manual "Add to
+         Home Screen" needs no service worker; only Chrome's automatic install prompt does. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- "default" keeps the status bar opaque so content starts below it; "black-translucent" would
+         slide the app header under the notch and needs safe-area CSS we don't have. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Davamiyyət" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
