@@ -7,7 +7,17 @@ import { getDeviceFingerprint } from '../lib/device'
 import { FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
 
-type Card = { tone: 'green' | 'red' | 'yellow'; title: string; detail?: string; showDeviceChangeLink?: boolean }
+type Card = {
+  tone: 'green' | 'red' | 'yellow'
+  title: string
+  detail?: string
+  /** Quiet second line: what happens next, when the employee needs to know. */
+  note?: string
+  /** Nothing left to do here. Offering "scan again" after a successful check-in is what made people
+   *  scan a second time and land on TooSoonToCheckOut — so success only ever offers "close". */
+  final?: boolean
+  showDeviceChangeLink?: boolean
+}
 type Phase = 'scanning' | 'processing' | 'done'
 // The scan is pointless without a position, so we settle this before the camera ever opens.
 type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
@@ -240,6 +250,8 @@ export function ScanPage() {
           tone: 'green',
           title: 'Giriş qeydə alındı',
           detail: `Saat ${fmtTime(data.checkInAtUtc)} · ${statusAz(data.status)}`,
+          note: 'İş bitəndə çıxış üçün yenidən skan edin.',
+          final: true,
         })
         return
       }
@@ -249,6 +261,8 @@ export function ScanPage() {
           tone: 'green',
           title: 'Çıxış qeydə alındı',
           detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc)}`,
+          note: 'Sabaha qədər!',
+          final: true,
         })
         return
       }
@@ -319,10 +333,16 @@ export function ScanPage() {
         )}
 
         {cameraError && (
-          <ResultCard card={{ tone: 'red', title: 'Kamera xətası', detail: cameraError }} onRetry={startCamera} />
+          <ResultCard
+            card={{ tone: 'red', title: 'Kamera xətası', detail: cameraError }}
+            onRetry={startCamera}
+            onClose={() => navigate('/home')}
+          />
         )}
 
-        {phase === 'done' && result && <ResultCard card={result} onRetry={startCamera} />}
+        {phase === 'done' && result && (
+          <ResultCard card={result} onRetry={startCamera} onClose={() => navigate('/home')} />
+        )}
       </main>
     </div>
   )
@@ -352,7 +372,7 @@ function recordToTodayInfo(record: AttendanceRecord | undefined): TodayInfo {
 
 // --- result card -----------------------------------------------------------
 
-function ResultCard({ card, onRetry }: { card: Card; onRetry: () => void }) {
+function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => void; onClose: () => void }) {
   const tone = {
     green: 'bg-green-500 text-white',
     red: 'bg-red-500 text-white',
@@ -365,12 +385,25 @@ function ResultCard({ card, onRetry }: { card: Card; onRetry: () => void }) {
       <div className="text-6xl font-bold mb-3">{icon}</div>
       <h2 className="text-xl font-bold">{card.title}</h2>
       {card.detail && <p className="mt-2 text-base opacity-90">{card.detail}</p>}
-      <button
-        onClick={onRetry}
-        className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
-      >
-        Yenidən skan et
-      </button>
+      {card.note && <p className="mt-1 text-sm opacity-75">{card.note}</p>}
+
+      {/* The only button on a settled result is "close". Anything else invites the second scan. */}
+      {card.final ? (
+        <button
+          onClick={onClose}
+          className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
+        >
+          Bağla
+        </button>
+      ) : (
+        <button
+          onClick={onRetry}
+          className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
+        >
+          Yenidən skan et
+        </button>
+      )}
+
       {card.showDeviceChangeLink && (
         <Link
           to="/device-change-request"
@@ -465,6 +498,9 @@ async function workedDurationText(recordId: string): Promise<string | undefined>
   }
 }
 
+// `final` marks the outcomes where scanning again cannot change anything — the day is already
+// recorded, or only an admin can unblock the employee. Everything else genuinely is worth retrying
+// (walk closer, re-aim at the poster), so those keep the retry button.
 function errorResult(status: number, data: ScanResponse | null): Card {
   const err = data?.error
   switch (err) {
@@ -473,30 +509,41 @@ function errorResult(status: number, data: ScanResponse | null): Card {
         tone: 'red',
         title: 'İş yerində deyilsiniz',
         detail: data?.distanceMeters != null ? `Məsafə: ${data.distanceMeters} m` : 'Radius xaricindəsiniz',
+        note: 'İş yerinə yaxınlaşıb yenidən cəhd edin.',
       }
     case 'DeviceMismatch':
       return {
         tone: 'red',
         title: 'Bu cihaz hesabınıza bağlı deyil',
+        note: 'Yenidən skan etmək kömək etməyəcək.',
+        final: true,
         showDeviceChangeLink: true,
       }
     case 'NoDeviceBound':
-      return { tone: 'red', title: 'Cihaz hesabınıza bağlı deyil', detail: 'Admin ilə əlaqə saxlayın.' }
+      return { tone: 'red', title: 'Cihaz hesabınıza bağlı deyil', detail: 'Admin ilə əlaqə saxlayın.', final: true }
     case 'TokenExpired':
     case 'TokenReused':
       return { tone: 'yellow', title: 'QR kod köhnəlib', detail: 'Yenidən skan edin.' }
     case 'AlreadyCompleted':
-      return { tone: 'yellow', title: 'Bu gün tamamlanıb', detail: 'Giriş və çıxış artıq qeydə alınıb.' }
+      return {
+        tone: 'yellow',
+        title: 'Bu gün tamamlanıb',
+        detail: 'Giriş və çıxış artıq qeydə alınıb.',
+        final: true,
+      }
     case 'TooSoonToCheckOut':
       return {
         tone: 'green',
         title: 'Giriş artıq qeydə alınıb',
-        detail: `Çıxış üçün ${data?.minutes ?? 5} dəqiqədən sonra yenidən skan edin.`,
+        detail: `Çıxış üçün ${data?.minutes ?? 5} dəqiqədən sonra skan edin.`,
+        note: 'İndi bir şey etmək lazım deyil.',
+        final: true,
       }
     case 'EmployeeNotFoundOrInactive':
-      return { tone: 'red', title: 'Hesab aktiv deyil' }
+      return { tone: 'red', title: 'Hesab aktiv deyil', detail: 'Admin ilə əlaqə saxlayın.', final: true }
     case 'LocationNotFound':
-      return { tone: 'red', title: 'Məkan tapılmadı' }
+    case 'LocationInactive':
+      return { tone: 'red', title: 'Məkan tapılmadı', detail: 'Admin ilə əlaqə saxlayın.', final: true }
     default:
       // QR signature/format failures and anything else — show the reason the backend returned.
       return { tone: 'yellow', title: 'QR kod qəbul edilmədi', detail: err ?? `HTTP ${status}` }
