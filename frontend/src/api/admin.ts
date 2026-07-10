@@ -138,8 +138,11 @@ export interface ProblemRow {
   atUtc: string
   employeeId: string | null
   employeeName: string
-  action: 'CheckIn' | 'CheckOut'
+  /** "Device" = blocked on the phone (no GPS); the scan never reached the server. */
+  action: 'CheckIn' | 'CheckOut' | 'Device'
   reason: string
+  /** Extra context for some reasons — e.g. the ± metres behind "GpsInaccurate". */
+  detail: string | null
 }
 
 export interface ReasonCount {

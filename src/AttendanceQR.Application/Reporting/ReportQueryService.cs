@@ -233,15 +233,32 @@ public sealed class ReportQueryService : IReportQueryService
         string NameOf(Guid? employeeId) =>
             employeeId is Guid id && empById.TryGetValue(id, out var e) ? e.FullName : "(naməlum)";
 
+        static string ActionOf(AuditEventType type) => type switch
+        {
+            AuditEventType.CheckInRejected => "CheckIn",
+            AuditEventType.CheckOutRejected => "CheckOut",
+            _ => "Device"
+        };
+
+        // Client-reported reasons may carry a "|detail" suffix (e.g. "GpsInaccurate|520"); strip it
+        // off so the per-reason tally below still groups on the bare code.
+        static (string Code, string? Detail) SplitReason(string? reason)
+        {
+            if (string.IsNullOrEmpty(reason)) return ("Unknown", null);
+            var sep = reason.IndexOf('|');
+            return sep < 0 ? (reason, null) : (reason[..sep], reason[(sep + 1)..]);
+        }
+
         var problems = dayLogs
-            .Where(a => a.EventType is AuditEventType.CheckInRejected or AuditEventType.CheckOutRejected)
+            .Where(a => a.EventType is AuditEventType.CheckInRejected
+                or AuditEventType.CheckOutRejected
+                or AuditEventType.ScanBlockedOnDevice)
             .Where(a => InScope(a.EmployeeId))
-            .Select(a => new ProblemRow(
-                a.CreatedAtUtc,
-                a.EmployeeId,
-                NameOf(a.EmployeeId),
-                a.EventType == AuditEventType.CheckInRejected ? "CheckIn" : "CheckOut",
-                a.Reason ?? "Unknown"))
+            .Select(a =>
+            {
+                var (code, detail) = SplitReason(a.Reason);
+                return new ProblemRow(a.CreatedAtUtc, a.EmployeeId, NameOf(a.EmployeeId), ActionOf(a.EventType), code, detail);
+            })
             .ToList();
 
         var successCount = dayLogs.Count(a =>

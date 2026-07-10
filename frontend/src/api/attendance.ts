@@ -19,6 +19,17 @@ export function getMyAttendance() {
   return apiRequest<AttendanceRecord[]>('/api/attendance/me')
 }
 
+/** POST /api/attendance/scan-failure — report a scan that never left the phone (no GPS, permission
+ * denied, position too coarse). Fire-and-forget: the employee's flow never waits on it, and the
+ * server de-duplicates retries — but the attempt now shows up in the admin "Problemlər" screen
+ * instead of vanishing. */
+export function reportScanFailure(reason: string, accuracyMeters?: number) {
+  return apiRequest<void>('/api/attendance/scan-failure', {
+    method: 'POST',
+    body: { reason, accuracyMeters: accuracyMeters ?? null },
+  })
+}
+
 export interface MyProfile {
   fullName: string
   email: string

@@ -9,5 +9,9 @@ public enum AuditEventType
     DeviceChangeRequested = 4,
     DeviceChangeApproved = 5,
     DeviceChangeRejected = 6,
-    RecordEditedByAdmin = 7
+    RecordEditedByAdmin = 7,
+
+    // The scan never reached the server: the browser refused to give the phone's position, so there
+    // was no QR to validate. Self-reported by the client, otherwise these employees are invisible.
+    ScanBlockedOnDevice = 8
 }

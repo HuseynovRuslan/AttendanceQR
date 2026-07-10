@@ -66,8 +66,10 @@ public sealed record ProblemRow(
     DateTime AtUtc,
     Guid? EmployeeId,
     string EmployeeName,
-    string Action,   // "CheckIn" | "CheckOut"
-    string Reason);
+    string Action,   // "CheckIn" | "CheckOut" | "Device" (blocked on the phone, never reached us)
+    string Reason,
+    // Extra context some reasons carry — e.g. the ± metres behind "GpsInaccurate".
+    string? Detail = null);
 
 public sealed record ReasonCount(string Reason, int Count);
 

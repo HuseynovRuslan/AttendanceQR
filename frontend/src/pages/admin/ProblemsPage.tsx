@@ -15,8 +15,21 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   TokenMalformed: { label: 'Yanlış QR', cls: 'bg-amber-100 text-amber-700' },
   SignatureInvalid: { label: 'Yanlış QR (imza)', cls: 'bg-amber-100 text-amber-700' },
   TooSoonToCheckOut: { label: 'Çox tez çıxış cəhdi', cls: 'bg-blue-100 text-blue-700' },
+  // Reported by the phone itself — the scan never reached the server.
+  GpsPermissionDenied: { label: 'Məkan icazəsi verilməyib', cls: 'bg-red-100 text-red-700', blocking: true },
+  GpsUnavailable: { label: 'Telefonda məkan bağlıdır', cls: 'bg-red-100 text-red-700', blocking: true },
+  GpsTimeout: { label: 'GPS siqnal tapmadı', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  GpsUnsupported: { label: 'Brauzer məkanı dəstəkləmir', cls: 'bg-red-100 text-red-700', blocking: true },
+  // Measured, warned about, but never blocked — so it isn't a "could not scan" reason.
+  GpsInaccurate: { label: 'GPS dəqiq deyil', cls: 'bg-amber-100 text-amber-700' },
   AlreadyCompleted: { label: 'Gün artıq tamamlanıb', cls: 'bg-slate-100 text-slate-600' },
   DuplicateCheckIn: { label: 'Təkrar giriş', cls: 'bg-slate-100 text-slate-600' },
+}
+
+const ACTION_AZ: Record<string, string> = {
+  CheckIn: 'Giriş',
+  CheckOut: 'Çıxış',
+  Device: 'Telefonda',
 }
 
 function meta(reason: string) {
@@ -140,11 +153,16 @@ export function ProblemsPage() {
               <tr key={`${r.atUtc}-${i}`}>
                 <td className="mono">{fmtTime(r.atUtc)}</td>
                 <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</td>
-                <td>{r.action === 'CheckIn' ? 'Giriş' : 'Çıxış'}</td>
+                <td>{ACTION_AZ[r.action] ?? r.action}</td>
                 <td>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${meta(r.reason).cls}`}>
                     {meta(r.reason).label}
                   </span>
+                  {r.detail && (
+                    <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                      {r.reason === 'GpsInaccurate' ? `±${r.detail} m` : r.detail}
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

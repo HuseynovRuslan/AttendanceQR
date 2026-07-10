@@ -2,11 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
-import { getMyAttendance, type AttendanceRecord } from '../api/attendance'
+import { getMyAttendance, reportScanFailure, type AttendanceRecord } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
+import { FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { GpsHelp } from '../components/GpsHelp'
 
 type Card = { tone: 'green' | 'red' | 'yellow'; title: string; detail?: string; showDeviceChangeLink?: boolean }
 type Phase = 'scanning' | 'processing' | 'done'
+// The scan is pointless without a position, so we settle this before the camera ever opens.
+type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
 type TodayInfo =
   | { kind: 'loading' }
   | { kind: 'none' }
@@ -31,6 +35,7 @@ export function ScanPage() {
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
+  const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
 
   // Today's status decides whether the camera should even start — no point opening it if the
   // day is already complete (the backend would just reject with AlreadyCompleted anyway).
@@ -38,9 +43,20 @@ export function ScanPage() {
     void loadTodayStatus()
   }, [])
 
+  // Settle the position up front. This both surfaces a broken GPS *before* the employee aims at the
+  // poster (instead of after a failed scan) and warms the fix, so the scan itself answers instantly.
+  useEffect(() => {
+    void checkGeo()
+  }, [])
+
   useEffect(() => {
     if (today.kind === 'loading') return
     if (today.kind === 'completed') {
+      void stopCamera()
+      return
+    }
+    // Without a position the scan would be rejected anyway — show the fix instructions, not a camera.
+    if (geo.kind !== 'ready') {
       void stopCamera()
       return
     }
@@ -52,7 +68,34 @@ export function ScanPage() {
       void stopCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today.kind])
+  }, [today.kind, geo.kind])
+
+  // Resolve the phone's position and record the outcome. A failure here is reported to the server
+  // (deduplicated there) so the employee appears in the admin "Problemlər" screen — previously a
+  // GPS failure never reached /scan and so left no trace at all.
+  async function checkGeo() {
+    setGeo({ kind: 'checking' })
+    const position = await getPosition()
+
+    if (!position.ok) {
+      setGeo({ kind: 'failed', fail: position.kind })
+      void reportScanFailure(FAILURE_REASON[position.kind]).catch(() => {})
+      return
+    }
+
+    const accuracy = Math.round(position.coords.accuracy)
+    setGeo({ kind: 'ready', accuracy })
+    // Too coarse to mean much against a 150 m radius. Deliberately not blocking during the pilot —
+    // we warn the employee, note it for the admin, and let the scan through.
+    if (accuracy > POOR_ACCURACY_METERS) void reportScanFailure('GpsInaccurate', accuracy).catch(() => {})
+  }
+
+  function retryGeo() {
+    scanDoneRef.current = false
+    setResult(null)
+    setPhase('scanning')
+    void checkGeo()
+  }
 
   async function loadTodayStatus() {
     try {
@@ -168,17 +211,16 @@ export function ScanPage() {
   }
 
   async function submitScan(qrToken: string, photoBase64: string | null) {
-    let coords: GeolocationCoordinates
-    try {
-      coords = await getCurrentPosition()
-    } catch {
-      setResult({
-        tone: 'red',
-        title: 'GPS icazəsi lazımdır',
-        detail: 'Radius yoxlanışı üçün məkan (GPS) icazəsi verin — skan GPS-siz işləmir.',
-      })
+    // Warmed by the pre-flight check, so this normally returns a cached fix immediately. If the
+    // employee revoked the permission between the two, fall back to the same instructions.
+    const position = await getPosition()
+    if (!position.ok) {
+      void reportScanFailure(FAILURE_REASON[position.kind]).catch(() => {})
+      setGeo({ kind: 'failed', fail: position.kind })
+      setResult(null)
       return
     }
+    const coords = position.coords
 
     try {
       const { status, data } = await apiRequest<ScanResponse>('/api/attendance/scan', {
@@ -216,7 +258,8 @@ export function ScanPage() {
     }
   }
 
-  const showCamera = today.kind !== 'loading' && today.kind !== 'completed' && phase !== 'done' && !cameraError
+  const showCamera =
+    today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase !== 'done' && !cameraError
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
@@ -242,6 +285,22 @@ export function ScanPage() {
               {' · '}
               {formatDuration(minutesBetween(today.checkInAtUtc, today.checkOutAtUtc))}
             </p>
+          </div>
+        )}
+
+        {today.kind !== 'completed' && geo.kind === 'checking' && (
+          <p className="text-lg text-slate-300 animate-pulse">Məkan yoxlanılır…</p>
+        )}
+
+        {today.kind !== 'completed' && geo.kind === 'failed' && (
+          <GpsHelp kind={geo.fail} onRetry={retryGeo} />
+        )}
+
+        {/* Position obtained, but too coarse to sit comfortably inside a 150 m radius. Scanning is
+            still allowed — this only nudges the employee somewhere with a clearer view of the sky. */}
+        {showCamera && geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS && (
+          <div className="w-full max-w-sm rounded-xl bg-yellow-400/15 border border-yellow-400/40 px-4 py-3 text-center text-sm text-yellow-200">
+            GPS dəqiqliyi zəifdir (±{geo.accuracy} m). Skan işləyəcək, amma açıq yerdə daha dəqiq olar.
           </div>
         )}
 
@@ -369,20 +428,6 @@ function waitForVideoFrame(video: HTMLVideoElement, timeoutMs: number): Promise<
       requestAnimationFrame(tick)
     }
     tick()
-  })
-}
-
-function getCurrentPosition(): Promise<GeolocationCoordinates> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('no geolocation'))
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve(pos.coords),
-      (err) => reject(err),
-      { enableHighAccuracy: true, timeout: 10_000 },
-    )
   })
 }
 

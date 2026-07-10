@@ -20,6 +20,15 @@ public class AttendanceController : ControllerBase
     // not a check-out — stops an employee being checked straight back out seconds after arriving.
     private const int MinCheckoutMinutes = 5;
 
+    // Reasons the client may self-report against its own account. An allow-list, not free text:
+    // the body is employee-controlled and lands straight in the audit log the admin panel reads.
+    private static readonly string[] ClientFailureReasons =
+        ["GpsPermissionDenied", "GpsUnavailable", "GpsTimeout", "GpsUnsupported", "GpsInaccurate"];
+
+    // A blocked employee retries over and over. Collapse the same (employee, reason) into one
+    // incident for this long, so one stuck phone doesn't bury the day's real problems.
+    private static readonly TimeSpan FailureDedupeWindow = TimeSpan.FromMinutes(5);
+
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
     private readonly IAttendanceQueryService _attendanceQuery;
@@ -146,6 +155,43 @@ public class AttendanceController : ControllerBase
             faceMatchScore = record.FaceMatchScore,
             faceMatchStatus = record.FaceMatchStatus.ToString()
         });
+    }
+
+    // POST /api/attendance/scan-failure — the scan never happened: the browser would not give the
+    // client a position, so there is no QR token, no coordinates and nothing to validate. Recorded
+    // so the employee surfaces in the admin "Problemlər" screen rather than failing silently all
+    // morning while nobody knows. Advisory only — it can never create or alter an attendance record.
+    [HttpPost("scan-failure")]
+    public async Task<IActionResult> ScanFailure([FromBody] ScanFailureRequest request)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        if (string.IsNullOrEmpty(request.Reason) || !ClientFailureReasons.Contains(request.Reason, StringComparer.Ordinal))
+            return BadRequest(new { error = "UnknownReason" });
+
+        var since = DateTime.UtcNow - FailureDedupeWindow;
+        var alreadyLogged = await _db.AuditLogs.AnyAsync(a =>
+            a.EmployeeId == employeeId
+            && a.EventType == AuditEventType.ScanBlockedOnDevice
+            && a.CreatedAtUtc >= since
+            && a.Reason != null
+            && a.Reason.StartsWith(request.Reason), HttpContext.RequestAborted);
+
+        if (!alreadyLogged)
+        {
+            // Accuracy rides along as "Code|metres"; the reports layer splits it back off so the
+            // per-reason tally still groups on the bare code. Keeps AuditLog's shape unchanged.
+            var accuracy = request.AccuracyMeters;
+            var reason = accuracy is > 0
+                ? $"{request.Reason}|{Math.Round(accuracy.Value)}"
+                : request.Reason;
+
+            await WriteAuditAsync(employeeId, AuditEventType.ScanBlockedOnDevice, reason,
+                HttpContext.Connection.RemoteIpAddress?.ToString());
+        }
+
+        return Accepted();
     }
 
     [HttpPost("scan")]
