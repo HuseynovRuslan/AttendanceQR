@@ -22,9 +22,10 @@ type Card = {
 }
 type Phase = 'scanning' | 'photo' | 'processing' | 'done'
 
-// How long the front-camera preview stays up after the first real frame. Long enough to look at the
-// lens, short enough that nobody feels delayed — there is no shutter button to press.
-const PHOTO_HOLD_MS = 1200
+// How long the front-camera preview stays up after the first real frame. It has to outlast reading
+// the words on screen — at 1.2s the shot was taken before people had looked up. A ring counts it
+// down so nobody is surprised. There is still no shutter button to press.
+const PHOTO_HOLD_MS = 2500
 // Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
 // not, and full-frame captures kept picking up two and three faces.
 const PHOTO_CROP = 0.85
@@ -344,14 +345,19 @@ export function ScanPage() {
             employee looking at the lens produces one clean face instead of the queue behind them.
             The circle matches the centre crop frameToJpeg() takes, so what they see is what is kept. */}
         <div className={phase === 'photo' ? 'flex w-full max-w-sm flex-col items-center gap-3' : 'hidden'}>
-          <div className="relative h-56 w-56 overflow-hidden rounded-full border-4 border-white/70 bg-black shadow-lg">
-            <video
-              ref={selfieVideoRef}
-              className="h-full w-full -scale-x-100 object-cover"
-              playsInline
-              muted
-              autoPlay
-            />
+          <div className="relative h-60 w-60">
+            <div className="h-full w-full overflow-hidden rounded-full border-2 border-white/20 bg-black shadow-lg">
+              <video
+                ref={selfieVideoRef}
+                className="h-full w-full -scale-x-100 object-cover"
+                playsInline
+                muted
+                autoPlay
+              />
+            </div>
+            {/* Starts only once real frames arrive, so the countdown never runs while the camera is
+                still warming up — the employee gets the full PHOTO_HOLD_MS to look at the lens. */}
+            <CaptureRing active={photoLive} durationMs={PHOTO_HOLD_MS} />
           </div>
           <p className="text-lg font-semibold">{photoLive ? 'Şəklə baxın…' : 'Kamera hazırlanır…'}</p>
           <p className="text-sm text-slate-400">Giriş şəkli çəkilir</p>
@@ -374,6 +380,51 @@ export function ScanPage() {
         )}
       </main>
     </div>
+  )
+}
+
+// --- capture countdown ring -------------------------------------------------
+
+/** A ring that drains over `durationMs`, so the employee can see how long they have to look up.
+ *  Driven by rAF rather than a CSS transition: the ring must start on the first real camera frame,
+ *  not on mount, and a transition triggered mid-render is easy to get wrong. */
+function CaptureRing({ active, durationMs }: { active: boolean; durationMs: number }) {
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    if (!active) {
+      setProgress(0)
+      return
+    }
+    let raf = 0
+    const start = performance.now()
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / durationMs)
+      setProgress(p)
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [active, durationMs])
+
+  const radius = 118
+  const circumference = 2 * Math.PI * radius
+
+  return (
+    <svg viewBox="0 0 256 256" className="pointer-events-none absolute inset-0 h-full w-full -rotate-90">
+      <circle cx="128" cy="128" r={radius} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="7" />
+      <circle
+        cx="128"
+        cy="128"
+        r={radius}
+        fill="none"
+        stroke="#22c55e"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - progress)}
+      />
+    </svg>
   )
 }
 
