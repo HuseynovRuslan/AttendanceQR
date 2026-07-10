@@ -96,6 +96,36 @@ public class AttendanceController : ControllerBase
         return Ok(profile);
     }
 
+    // GET /api/attendance/me/device?fingerprint=… — is the browser asking bound to the caller's own
+    // account? Answers the one question an employee cannot otherwise find out except by walking to
+    // the poster and failing: "will this phone/app actually work tomorrow morning?"
+    [HttpGet("me/device")]
+    public async Task<IActionResult> MyDevice([FromQuery] string? fingerprint)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var bindings = await _db.DeviceBindings
+            .Where(d => d.EmployeeId == employeeId)
+            .ToListAsync(HttpContext.RequestAborted);
+
+        var mine = bindings.FirstOrDefault(d =>
+            string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
+
+        return Ok(new
+        {
+            bound = mine is { IsActive: true },
+            // Revoked by an admin: no scan will adopt it back, so the employee must ask rather than
+            // stand at the poster wondering. Distinct from simply never having been bound.
+            revoked = mine?.RevokedAtUtc != null,
+            deviceLabel = mine?.DeviceLabel,
+            boundAtUtc = mine is { IsActive: true } ? mine.BoundAtUtc : (DateTime?)null,
+            activeDeviceCount = bindings.Count(d => d.IsActive),
+            // Nothing to adopt an unknown device with while this is off — the app says so plainly.
+            autoBindEnabled = _deviceOptions.AutoBind
+        });
+    }
+
     // GET /api/attendance/employee/{id} — another employee's records, subject to a resource-level
     // check in the service ([Authorize] alone cannot enforce "only your own / your team's").
     [HttpGet("employee/{employeeId:guid}")]

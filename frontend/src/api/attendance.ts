@@ -30,6 +30,22 @@ export function reportScanFailure(reason: string, accuracyMeters?: number) {
   })
 }
 
+export interface MyDeviceStatus {
+  bound: boolean
+  /** Killed by an admin — a scan will NOT adopt it back; the employee has to ask. */
+  revoked: boolean
+  deviceLabel: string | null
+  boundAtUtc: string | null
+  activeDeviceCount: number
+  autoBindEnabled: boolean
+}
+
+/** GET /api/attendance/me/device — is THIS browser bound to my account? Safari and the installed app
+ * are separate contexts, so an employee can be bound in one and not the other without knowing. */
+export function getMyDeviceStatus(fingerprint: string) {
+  return apiRequest<MyDeviceStatus>(`/api/attendance/me/device?fingerprint=${encodeURIComponent(fingerprint)}`)
+}
+
 export interface MyProfile {
   fullName: string
   email: string
