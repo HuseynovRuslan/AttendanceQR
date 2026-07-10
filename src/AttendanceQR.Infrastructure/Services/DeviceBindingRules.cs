@@ -1,4 +1,5 @@
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 
 namespace AttendanceQR.Infrastructure.Services;
 
@@ -14,6 +15,11 @@ public static class DeviceBindingRules
     /// and evicted is reactivated rather than inserted again — the (EmployeeId, DeviceFingerprint)
     /// unique index means a second row for it would fail.
     /// </summary>
+    /// <remarks>
+    /// Clears any revocation: calling this IS the authorization to trust the context again. Callers
+    /// that are not an explicit human decision — i.e. auto-bind — must check <see
+    /// cref="DeviceBinding.RevokedAtUtc"/> themselves and refuse before getting here.
+    /// </remarks>
     /// <returns>
     /// The binding to use. It is a NEW entity when this fingerprint was never seen — the caller must
     /// add it to the context (check with <c>existing.Contains(result)</c>). Nothing is saved here.
@@ -23,6 +29,7 @@ public static class DeviceBindingRules
         Guid employeeId,
         string fingerprint,
         string? label,
+        DeviceBindingOrigin origin,
         int maxActive,
         DateTime nowUtc)
     {
@@ -44,6 +51,8 @@ public static class DeviceBindingRules
         if (match is not null)
         {
             match.IsActive = true;
+            match.RevokedAtUtc = null;
+            match.BoundVia = origin;
             match.BoundAtUtc = nowUtc;
             match.LastSeenAtUtc = nowUtc;
             if (label is not null) match.DeviceLabel = label;
@@ -55,6 +64,7 @@ public static class DeviceBindingRules
             EmployeeId = employeeId,
             DeviceFingerprint = fingerprint,
             DeviceLabel = label,
+            BoundVia = origin,
             BoundAtUtc = nowUtc,
             LastSeenAtUtc = nowUtc,
             IsActive = true

@@ -17,5 +17,8 @@ public enum AuditEventType
 
     // An unrecognised device scanned from inside the geofence and was adopted without an admin
     // approving it. Also the counter behind the per-employee auto-bind rate limit.
-    DeviceAutoBound = 9
+    DeviceAutoBound = 9,
+
+    // An admin killed a bound device. It will not be re-adopted automatically.
+    DeviceBindingRevoked = 10
 }

@@ -86,7 +86,8 @@ public sealed class DeviceChangeService : IDeviceChangeService
             .ToListAsync(ct);
 
         var binding = DeviceBindingRules.Bind(
-            existing, request.EmployeeId, request.NewDeviceFingerprint, label: null, _options.MaxActiveDevices, now);
+            existing, request.EmployeeId, request.NewDeviceFingerprint, label: null,
+            DeviceBindingOrigin.AdminApproval, _options.MaxActiveDevices, now);
 
         if (!existing.Contains(binding))
             _db.DeviceBindings.Add(binding);

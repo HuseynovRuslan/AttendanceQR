@@ -22,6 +22,9 @@ public class DeviceBindingConfiguration : IEntityTypeConfiguration<DeviceBinding
         builder.Property(d => d.LastSeenAtUtc)
             .IsRequired();
 
+        builder.Property(d => d.BoundVia)
+            .HasConversion<int>();
+
         // 1-to-many: an employee holds one binding per browser storage context.
         builder.HasOne<Employee>()
             .WithMany(e => e.DeviceBindings)

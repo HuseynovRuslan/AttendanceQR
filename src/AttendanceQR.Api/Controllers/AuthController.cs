@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -84,7 +85,9 @@ public partial class AuthController : ControllerBase
             EmployeeId = employee.Id,
             DeviceFingerprint = request.DeviceFingerprint,
             DeviceLabel = string.IsNullOrWhiteSpace(request.DeviceLabel) ? null : request.DeviceLabel.Trim(),
+            BoundVia = DeviceBindingOrigin.Activation,
             BoundAtUtc = now,
+            LastSeenAtUtc = now,
             IsActive = true
         });
 

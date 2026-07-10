@@ -372,3 +372,31 @@ export function rejectDeviceChange(id: string) {
     method: 'POST',
   })
 }
+
+// --- bound devices ---------------------------------------------------------
+
+export interface DeviceBinding {
+  id: string
+  employeeId: string
+  employeeName: string
+  deviceLabel: string | null
+  deviceFingerprint: string
+  /** How the binding came to exist — "AutoBind" is the one worth a second look. */
+  boundVia: 'Activation' | 'AutoBind' | 'AdminApproval'
+  boundAtUtc: string
+  lastSeenAtUtc: string
+}
+
+/** GET /api/admin/device-bindings — every active binding, newest first. An employee holds one per
+ * browser context (Safari, the installed PWA), so several rows per person is normal. */
+export function getDeviceBindings() {
+  return apiRequest<DeviceBinding[]>('/api/admin/device-bindings')
+}
+
+/** POST /api/admin/device-bindings/{id}/revoke — kill one context. The row is kept and marked
+ * revoked, which is what stops the next scan from silently re-adopting it. */
+export function revokeDeviceBinding(id: string) {
+  return apiRequest<{ status: string } | { error: string }>(`/api/admin/device-bindings/${id}/revoke`, {
+    method: 'POST',
+  })
+}

@@ -1,3 +1,5 @@
+using AttendanceQR.Domain.Enums;
+
 namespace AttendanceQR.Domain.Entities;
 
 public class DeviceBinding
@@ -27,6 +29,13 @@ public class DeviceBinding
 
     // Bumped on every accepted scan. Decides the eviction order once MaxActiveDevices is reached.
     public DateTime LastSeenAtUtc { get; set; }
+
+    public DeviceBindingOrigin BoundVia { get; set; } = DeviceBindingOrigin.Activation;
+
+    // Set when an admin deliberately kills this context. Distinct from IsActive=false by eviction:
+    // an evicted context is re-adopted the next time it scans, a REVOKED one never is — only an
+    // admin approval brings it back. Without this, "revoke" would be undone by the next scan.
+    public DateTime? RevokedAtUtc { get; set; }
 
     public bool IsActive { get; set; } = true;
 }

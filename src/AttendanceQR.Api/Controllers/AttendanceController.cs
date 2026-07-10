@@ -449,6 +449,13 @@ public class AttendanceController : ControllerBase
             return null;
         }
 
+        // An admin killed this context. Re-adopting it on the next scan would make "revoke" a no-op,
+        // so it stays dead until an admin approves a device-change request for it.
+        var revoked = employee.DeviceBindings.FirstOrDefault(d =>
+            d.RevokedAtUtc != null && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
+        if (revoked is not null)
+            return await RejectDeviceAsync(employee, ip);
+
         // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change.
         if (!_deviceOptions.AutoBind)
             return await RejectDeviceAsync(employee, ip);
@@ -468,6 +475,7 @@ public class AttendanceController : ControllerBase
             employee.Id,
             fingerprint,
             DeviceLabels.FromUserAgent(Request.Headers.UserAgent.ToString()),
+            DeviceBindingOrigin.AutoBind,
             _deviceOptions.MaxActiveDevices,
             nowUtc);
 
