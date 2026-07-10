@@ -5,7 +5,10 @@ import { IconCalendar, IconCheck, IconClock, IconX } from './icons'
 // separately elsewhere.
 export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }> = {
   OnTime: { cls: 'b-present', label: 'Gəlib', icon: 'check' },
-  Late: { cls: 'b-late', label: 'Gecikmə', icon: 'clock' },
+  // Rendered exactly like OnTime, on purpose. Every employee keeps their own hours, so a single
+  // location-wide shift makes "Gecikmə" a wrong label rather than a useful one. The backend still
+  // records the status — once per-employee schedules exist, this becomes meaningful again.
+  Late: { cls: 'b-present', label: 'Gəlib', icon: 'check' },
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
   Incomplete: { cls: 'b-permitted', label: 'İşdə', icon: 'clock' },
   DayOff: { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' },

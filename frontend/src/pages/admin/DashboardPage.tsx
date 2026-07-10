@@ -28,10 +28,11 @@ export function DashboardPage() {
     }
   }, 30_000)
 
-  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
+  const counts = { present: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of rows) {
-    if (r.status === 'OnTime') counts.present++
-    else if (r.status === 'Late') counts.late++
+    // Late folds into present: the employee came to work. Which hour counts as "late" depends on a
+    // per-employee schedule the system does not have yet.
+    if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'DayOff') counts.dayOff++
     else if (r.status === 'OnLeave') counts.onLeave++
@@ -44,7 +45,7 @@ export function DashboardPage() {
   // from reading as a bad attendance day.
   const notExpected = counts.dayOff + counts.onLeave + counts.permission
   const expected = total - notExpected
-  const overallRate = expected ? Math.round(((counts.present + counts.late) / expected) * 100) : 0
+  const overallRate = expected ? Math.round((counts.present / expected) * 100) : 0
 
   const areaStats = useMemo(() => {
     const byArea = new Map<string, { name: string; total: number; present: number; notExpected: number }>()
@@ -104,10 +105,6 @@ export function DashboardPage() {
         <div className="stat-card leaf">
           <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
           <div className="stat-val">{counts.present}</div>
-        </div>
-        <div className="stat-card amber">
-          <div className="stat-lbl">{STATUS_MAP.Late.label}</div>
-          <div className="stat-val">{counts.late}</div>
         </div>
         <div className="stat-card clay">
           <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
@@ -186,7 +183,7 @@ export function DashboardPage() {
                 {overallRate}%
               </div>
               <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 4 }}>
-                {counts.present + counts.late} / {expected} işçi
+                {counts.present} / {expected} işçi
               </div>
             </div>
           </div>
@@ -248,10 +245,6 @@ export function DashboardPage() {
               <div className="stat-lbl">Toplam çıxışlar</div>
               <div className="stat-val">{dashReport.totalCheckOuts}</div>
             </div>
-            <div className="stat-card amber">
-              <div className="stat-lbl">Gecikənlər</div>
-              <div className="stat-val">{dashReport.lateCount}</div>
-            </div>
             <div className="stat-card clay">
               <div className="stat-lbl">Qayıblar</div>
               <div className="stat-val">{dashReport.absentCount}</div>
@@ -303,30 +296,9 @@ export function DashboardPage() {
             </div>
           </div>
 
+          {/* "Ən çox gecikənlər" removed with the rest of lateness: ranking employees against a shift
+              none of them actually works to is worse than showing nothing. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-            <div className="card card-pad">
-              <div className="card-title">Ən çox gecikənlər (TOP-5)</div>
-              {dashReport.topLate.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Gecikmə qeydə alınmayıb</p>}
-              {dashReport.topLate.map((r, i) => (
-                <div
-                  key={r.employeeId}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 0', borderBottom: '1px solid var(--c50)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ color: 'var(--c400)', fontSize: 12, width: 16 }}>{i + 1}</span>
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>{r.employeeName}</span>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, color: 'var(--amber)' }}>{r.totalLateMinutes} dəq</div>
-                    <div style={{ fontSize: 11, color: 'var(--c400)' }}>{r.lateCount} dəfə</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
             <div className="card card-pad">
               <div className="card-title">Ümumi baxış</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 10, fontSize: 13 }}>
@@ -334,8 +306,6 @@ export function DashboardPage() {
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.from} – {dashReport.to}</span>
                 <span className="muted">Giriş/Çıxış nisbəti</span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.checkInOutRatio}%</span>
-                <span className="muted">Gecikmə faizi</span>
-                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.lateRate}%</span>
                 <span className="muted">Koordinat xarici faizi</span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.outsideRadiusRate}%</span>
                 <span className="muted">Orta gündəlik əməliyyat</span>

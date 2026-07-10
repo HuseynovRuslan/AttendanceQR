@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType, SVGProps } from 'react'
 import { getMyAttendance, type AttendanceRecord } from '../api/attendance'
 import { EmptyCard, SkeletonList } from '../components/employeeBits'
-import { IconCheck, IconClock, IconLogout } from '../components/icons'
+import { IconCheck, IconLogout } from '../components/icons'
 import { fmtDate, fmtTime } from '../lib/att'
 
-type FeedType = 'checkin' | 'late' | 'checkout'
+// No 'late': a check-in is a check-in. Every employee keeps their own hours, so a location-wide
+// shift cannot say who was late — telling someone they were is simply wrong.
+type FeedType = 'checkin' | 'checkout'
 interface FeedItem {
   id: string
   at: string
@@ -20,7 +22,6 @@ const META: Record<
   { title: string; Icon: ComponentType<SVGProps<SVGSVGElement>>; ring: string }
 > = {
   checkin: { title: 'Giriş qeydə alındı', Icon: IconCheck, ring: 'bg-green-100 text-green-600' },
-  late: { title: 'Gecikmə qeydə alındı', Icon: IconClock, ring: 'bg-amber-100 text-amber-600' },
   checkout: { title: 'Çıxış qeydə alındı', Icon: IconLogout, ring: 'bg-blue-100 text-blue-600' },
 }
 
@@ -28,7 +29,7 @@ function buildFeed(records: AttendanceRecord[]): FeedItem[] {
   const items: FeedItem[] = []
   for (const r of records) {
     if (r.checkInAtUtc)
-      items.push({ id: `${r.recordId}:in`, at: r.checkInAtUtc, date: r.attendanceDate, type: r.status === 'Late' ? 'late' : 'checkin' })
+      items.push({ id: `${r.recordId}:in`, at: r.checkInAtUtc, date: r.attendanceDate, type: 'checkin' })
     if (r.checkOutAtUtc) items.push({ id: `${r.recordId}:out`, at: r.checkOutAtUtc, date: r.attendanceDate, type: 'checkout' })
   }
   return items.sort((a, b) => (a.at < b.at ? 1 : -1))

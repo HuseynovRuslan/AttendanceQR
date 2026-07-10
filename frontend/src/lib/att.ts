@@ -34,12 +34,12 @@ export function initials(fullName: string | null | undefined): string {
 
 export type TodayState =
   | { kind: 'none' }
-  | { kind: 'in'; checkIn: string; late: boolean }
+  | { kind: 'in'; checkIn: string }
   | { kind: 'done'; checkIn: string; checkOut: string }
 
 export function todayState(records: AttendanceRecord[]): TodayState {
   const rec = records.find((r) => r.attendanceDate === todayStr())
   if (!rec?.checkInAtUtc) return { kind: 'none' }
-  if (!rec.checkOutAtUtc) return { kind: 'in', checkIn: rec.checkInAtUtc, late: rec.status === 'Late' }
+  if (!rec.checkOutAtUtc) return { kind: 'in', checkIn: rec.checkInAtUtc }
   return { kind: 'done', checkIn: rec.checkInAtUtc, checkOut: rec.checkOutAtUtc }
 }

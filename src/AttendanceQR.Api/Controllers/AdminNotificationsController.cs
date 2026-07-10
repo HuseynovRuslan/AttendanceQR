@@ -39,9 +39,9 @@ public class AdminNotificationsController : ControllerBase
             return Unauthorized(new { error = "InvalidToken" });
 
         var pending = await _deviceChangeService.GetPendingAsync(HttpContext.RequestAborted);
-        var today = await _reports.GetTodayAttendanceAsync(requesterId, EmployeeRole.Admin, HttpContext.RequestAborted);
-        var lateCount = today.Count(r => r.Status == "Late");
 
+        // No "N employees were late today": every employee keeps their own hours, so a location-wide
+        // shift cannot decide who was late — the alert was simply wrong, every morning.
         var items = pending
             .Take(MaxPendingItems)
             .Select(p => new
@@ -52,19 +52,9 @@ public class AdminNotificationsController : ControllerBase
             })
             .ToList<object>();
 
-        if (lateCount > 0)
-        {
-            items.Add(new
-            {
-                type = "LateToday",
-                message = $"Bugün {lateCount} işçi gecikib",
-                linkTo = "/admin/today"
-            });
-        }
-
         return Ok(new
         {
-            totalCount = pending.Count + lateCount,
+            totalCount = pending.Count,
             items
         });
     }

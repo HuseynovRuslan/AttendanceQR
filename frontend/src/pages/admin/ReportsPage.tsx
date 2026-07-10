@@ -103,7 +103,6 @@ export function ReportsPage() {
                 <th>İşçi</th>
                 <th>Ərazi</th>
                 <th className="num">İş günləri</th>
-                <th className="num">Gecikmə</th>
                 <th className="num">Qayıb</th>
                 <th className="num">Məzuniyyət</th>
                 <th className="num">İcazə</th>
@@ -117,7 +116,6 @@ export function ReportsPage() {
                   <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</td>
                   <td>{r.locationName}</td>
                   <td className="num mono">{r.workDays}</td>
-                  <td className="num mono">{r.lateCount}</td>
                   <td className="num mono">{r.absentDays}</td>
                   <td className="num mono">{r.leaveDays}</td>
                   <td className="num mono">{r.permissionDays}</td>
@@ -138,7 +136,6 @@ export function ReportsPage() {
                 <tr>
                   <td colSpan={2}>CƏM</td>
                   <td className="num mono">{report.totals.workDays}</td>
-                  <td className="num mono">{report.totals.lateCount}</td>
                   <td className="num mono">{report.totals.absentDays}</td>
                   <td className="num mono">{report.totals.leaveDays}</td>
                   <td className="num mono">{report.totals.permissionDays}</td>

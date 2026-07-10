@@ -16,9 +16,19 @@ type Card = {
   /** Nothing left to do here. Offering "scan again" after a successful check-in is what made people
    *  scan a second time and land on TooSoonToCheckOut — so success only ever offers "close". */
   final?: boolean
+  /** The check-in selfie, shown back to the employee — the capture is disclosed, not covert. */
+  photo?: string
   showDeviceChangeLink?: boolean
 }
-type Phase = 'scanning' | 'processing' | 'done'
+type Phase = 'scanning' | 'photo' | 'processing' | 'done'
+
+// How long the front-camera preview stays up after the first real frame. Long enough to look at the
+// lens, short enough that nobody feels delayed — there is no shutter button to press.
+const PHOTO_HOLD_MS = 1200
+// Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
+// not, and full-frame captures kept picking up two and three faces.
+const PHOTO_CROP = 0.85
+const PHOTO_SIZE = 480
 // The scan is pointless without a position, so we settle this before the camera ever opens.
 type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
 type TodayInfo =
@@ -46,6 +56,9 @@ export function ScanPage() {
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
+  // True once the front camera is actually producing frames, so the preview says "look at the
+  // camera" rather than showing a black circle while it warms up.
+  const [photoLive, setPhotoLive] = useState(false)
 
   // Today's status decides whether the camera should even start — no point opening it if the
   // day is already complete (the backend would just reject with AlreadyCompleted anyway).
@@ -167,9 +180,11 @@ export function ScanPage() {
   // --- selfie (photo audit) front camera ------------------------------------
 
   // Opens the front camera ON DEMAND (the caller must have released the QR/back camera first — iOS
-  // Safari allows only one camera at a time), grabs a single frame shrunk to ~640px, encodes JPEG
-  // (Safari's canvas can't encode WebP → it would return null), and releases the camera. Returns a
-  // data URL, or null if anything is unavailable — the check-in never depends on it.
+  // Safari allows only one camera at a time) and shows the employee what it sees for a moment before
+  // taking the frame. The capture is DISCLOSED, not covert: the phone lights its camera indicator
+  // anyway, and someone who knows they are being photographed both holds the phone properly (one
+  // face, straight on) and is actually deterred from scanning for a colleague. Returns a data URL,
+  // or null if anything is unavailable — the check-in never depends on it.
   async function captureSelfie(): Promise<string | null> {
     if (!navigator.mediaDevices?.getUserMedia) return null
     const video = selfieVideoRef.current
@@ -183,25 +198,16 @@ export function ScanPage() {
       await waitForVideoFrame(video, 2500)
       if (video.videoWidth === 0) return null
 
-      const targetWidth = Math.min(640, video.videoWidth)
-      const scale = targetWidth / video.videoWidth
-      const canvas = document.createElement('canvas')
-      canvas.width = targetWidth
-      canvas.height = Math.round(video.videoHeight * scale)
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return null
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.7),
-      )
-      if (!blob) return null
-      return await blobToDataUrl(blob)
+      setPhotoLive(true)
+      await delay(PHOTO_HOLD_MS)
+      return await frameToJpeg(video)
     } catch {
       // No front camera / permission denied — skip the photo, check-in proceeds without it.
       return null
     } finally {
       stream?.getTracks().forEach((t) => t.stop())
       video.srcObject = null
+      setPhotoLive(false)
     }
   }
 
@@ -211,8 +217,10 @@ export function ScanPage() {
     // Release the QR (back) camera FIRST — iOS Safari won't open the front camera while another is
     // active. Then show feedback and grab the selfie (check-in only; check-out never captures one).
     await stopCamera()
+    const willPhotograph = today.kind === 'none'
+    setPhase(willPhotograph ? 'photo' : 'processing')
+    const photoBase64 = willPhotograph ? await captureSelfie() : null
     setPhase('processing')
-    const photoBase64 = today.kind === 'none' ? await captureSelfie() : null
     await submitScan(text, photoBase64)
     setPhase('done')
     // Keep the result on screen: mark done so reloading today's status doesn't restart the camera.
@@ -249,9 +257,12 @@ export function ScanPage() {
         setResult({
           tone: 'green',
           title: 'Giriş qeydə alındı',
-          detail: `Saat ${fmtTime(data.checkInAtUtc)} · ${statusAz(data.status)}`,
+          // No on-time/late verdict: every employee keeps their own hours, so one location-wide
+          // shift makes "Gecikmə" a wrong label rather than a useful one.
+          detail: `Saat ${fmtTime(data.checkInAtUtc)}`,
           note: 'İş bitəndə çıxış üçün yenidən skan edin.',
           final: true,
+          photo: photoBase64 ?? undefined,
         })
         return
       }
@@ -272,8 +283,9 @@ export function ScanPage() {
     }
   }
 
+  // Only while actually scanning — the QR frame must give way to the selfie preview, not sit behind it.
   const showCamera =
-    today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase !== 'done' && !cameraError
+    today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
@@ -322,11 +334,28 @@ export function ScanPage() {
         <div className={showCamera ? 'w-full max-w-sm' : 'hidden'}>
           <div id={READER_ID} className="w-full overflow-hidden rounded-2xl bg-black" />
           <p className="text-center text-slate-300 mt-3">QR kodu kameraya tutun</p>
+          {today.kind === 'none' && (
+            <p className="text-center text-xs text-slate-500 mt-1">Girişdə şəkil çəkilir</p>
+          )}
         </div>
 
-        {/* Hidden front-camera feed for the silent check-in selfie (photo audit). Always mounted so
-            captureSelfie() can read a frame; never shown to the employee. */}
-        <video ref={selfieVideoRef} className="hidden" playsInline muted autoPlay />
+        {/* Front-camera preview for the check-in selfie. Stays mounted (hidden) so captureSelfie()
+            can always read a frame, and is SHOWN while capturing — the photo is disclosed, and an
+            employee looking at the lens produces one clean face instead of the queue behind them.
+            The circle matches the centre crop frameToJpeg() takes, so what they see is what is kept. */}
+        <div className={phase === 'photo' ? 'flex w-full max-w-sm flex-col items-center gap-3' : 'hidden'}>
+          <div className="relative h-56 w-56 overflow-hidden rounded-full border-4 border-white/70 bg-black shadow-lg">
+            <video
+              ref={selfieVideoRef}
+              className="h-full w-full -scale-x-100 object-cover"
+              playsInline
+              muted
+              autoPlay
+            />
+          </div>
+          <p className="text-lg font-semibold">{photoLive ? 'Şəklə baxın…' : 'Kamera hazırlanır…'}</p>
+          <p className="text-sm text-slate-400">Giriş şəkli çəkilir</p>
+        </div>
 
         {phase === 'processing' && (
           <p className="text-lg animate-pulse">Yoxlanılır…</p>
@@ -386,6 +415,15 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
       <h2 className="text-xl font-bold">{card.title}</h2>
       {card.detail && <p className="mt-2 text-base opacity-90">{card.detail}</p>}
       {card.note && <p className="mt-1 text-sm opacity-75">{card.note}</p>}
+
+      {/* Showing the photo back closes the loop: the employee sees exactly what was stored. */}
+      {card.photo && (
+        <img
+          src={card.photo}
+          alt="Giriş şəkli"
+          className="mx-auto mt-4 h-20 w-20 rounded-full object-cover ring-2 ring-white/60"
+        />
+      )}
 
       {/* The only button on a settled result is "close". Anything else invites the second scan. */}
       {card.final ? (
@@ -469,10 +507,32 @@ function fmtTime(iso?: string): string {
   return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
 }
 
-function statusAz(status?: string): string {
-  if (status === 'Late') return 'Gecikmə'
-  if (status === 'OnTime') return 'Vaxtında'
-  return status ?? ''
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// Crop the CENTRE of the frame and encode JPEG (Safari's canvas cannot encode WebP — it returns
+// null). Bystanders queueing behind the employee sit at the edges of a front-camera frame, so
+// discarding the edges is what stops two and three faces landing in a check-in photo.
+function frameToJpeg(video: HTMLVideoElement): Promise<string | null> {
+  const side = Math.round(Math.min(video.videoWidth, video.videoHeight) * PHOTO_CROP)
+  const sx = Math.round((video.videoWidth - side) / 2)
+  const sy = Math.round((video.videoHeight - side) / 2)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = PHOTO_SIZE
+  canvas.height = PHOTO_SIZE
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return Promise.resolve(null)
+  ctx.drawImage(video, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE)
+
+  return new Promise((resolve) =>
+    canvas.toBlob(
+      (blob) => (blob ? blobToDataUrl(blob).then(resolve, () => resolve(null)) : resolve(null)),
+      'image/jpeg',
+      0.75,
+    ),
+  )
 }
 
 function minutesBetween(startIso: string, endIso: string): number {

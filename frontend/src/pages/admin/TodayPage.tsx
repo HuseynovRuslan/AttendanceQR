@@ -54,10 +54,10 @@ export function TodayPage() {
   const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
   const visible = flaggedOnly ? locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)) : locFiltered
 
-  const counts = { present: 0, late: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
+  const counts = { present: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of visible) {
-    if (r.status === 'OnTime') counts.present++
-    else if (r.status === 'Late') counts.late++
+    // Late folds into present — see StatusBadge: there is no per-employee schedule to be late against.
+    if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'DayOff') counts.dayOff++
     else if (r.status === 'OnLeave') counts.onLeave++
@@ -103,10 +103,6 @@ export function TodayPage() {
         <div className="stat-card leaf">
           <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
           <div className="stat-val">{counts.present}</div>
-        </div>
-        <div className="stat-card amber">
-          <div className="stat-lbl">{STATUS_MAP.Late.label}</div>
-          <div className="stat-val">{counts.late}</div>
         </div>
         <div className="stat-card clay">
           <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>

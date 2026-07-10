@@ -51,8 +51,7 @@ export function HistoryPage() {
           {summary && (
             <div className="bg-slate-800 rounded-2xl p-4 mb-4 text-center">
               <p className="text-lg">
-                Son 30 gün: <b>{summary.workDays}</b> gün işlədiniz, <b>{summary.lateCount}</b> gecikmə,{' '}
-                <b>{summary.absentDays}</b> qayıb
+                Son 30 gün: <b>{summary.workDays}</b> gün işlədiniz, <b>{summary.absentDays}</b> qayıb
               </p>
             </div>
           )}

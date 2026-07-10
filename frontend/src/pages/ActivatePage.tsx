@@ -206,8 +206,11 @@ export function ActivatePage() {
                   📷 Şəkil çək
                 </button>
               )}
+              {/* The check-in capture is disclosed here, once, in writing — the employee agrees to it
+                  by activating rather than discovering it later from the camera indicator. */}
               <p className="text-xs text-slate-400 mt-1">
                 Üzünüzü aydın kameraya tutun — bu şəkil davamiyyət yoxlaması üçün referansdır.
+                Hər giriş skanında da şəkil çəkilir və yalnız rəhbərliyin yoxlaması üçün 90 gün saxlanılır.
               </p>
             </div>
 

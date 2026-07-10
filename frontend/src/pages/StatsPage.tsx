@@ -50,8 +50,7 @@ export function StatsPage() {
       </div>
 
       {totals && (
-        <div className="grid grid-cols-3 gap-3">
-          <Chip label="Gecikmə" value={totals.lateCount} tone="amber" />
+        <div className="grid grid-cols-2 gap-3">
           <Chip label="Qayıb" value={totals.absentDays} tone="red" />
           <Chip label="Əlavə saat" value={Math.round(totals.overtimeHours)} tone="slate" />
         </div>

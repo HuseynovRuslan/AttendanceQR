@@ -82,12 +82,9 @@ function TodayCard({ today }: { today: TodayState }) {
   }
   if (today.kind === 'in') {
     return (
-      <div className={`${base} ${today.late ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+      <div className={`${base} border-green-200 bg-green-50`}>
         <div className="text-sm font-semibold text-slate-500">Bu gün · işdəsiniz</div>
-        <div className="mt-1 text-2xl font-extrabold">
-          Giriş {fmtTime(today.checkIn)}
-          {today.late && <span className="ml-2 align-middle text-sm font-bold text-amber-600">gecikmə</span>}
-        </div>
+        <div className="mt-1 text-2xl font-extrabold">Giriş {fmtTime(today.checkIn)}</div>
         <div className="mt-1 text-sm text-slate-600">Hələ çıxış etməmisiniz.</div>
       </div>
     )

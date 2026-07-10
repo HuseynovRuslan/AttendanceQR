@@ -10,9 +10,11 @@ public interface IExcelReportExporter
 /// <summary>Renders an <see cref="AttendanceReport"/> to a formatted .xlsx via ClosedXML (MIT).</summary>
 public sealed class ExcelReportExporter : IExcelReportExporter
 {
+    // No "Late Count": every employee keeps their own hours, so a location-wide shift cannot say who
+    // was late. AttendanceReport still carries the figure — only the sheet omits it.
     private static readonly string[] Headers =
         {
-            "Employee", "Location", "Work Days", "Late Count", "Absent Days", "Total Hours", "Overtime Hours",
+            "Employee", "Location", "Work Days", "Absent Days", "Total Hours", "Overtime Hours",
             "Leave Days", "Permission Days"
         };
 
@@ -48,12 +50,11 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(r, 1).Value = row.EmployeeName;
             ws.Cell(r, 2).Value = row.LocationName;
             ws.Cell(r, 3).Value = row.WorkDays;
-            ws.Cell(r, 4).Value = row.LateCount;
-            ws.Cell(r, 5).Value = row.AbsentDays;
-            ws.Cell(r, 6).Value = row.TotalWorkedHours;
-            ws.Cell(r, 7).Value = row.OvertimeHours;
-            ws.Cell(r, 8).Value = row.LeaveDays;
-            ws.Cell(r, 9).Value = row.PermissionDays;
+            ws.Cell(r, 4).Value = row.AbsentDays;
+            ws.Cell(r, 5).Value = row.TotalWorkedHours;
+            ws.Cell(r, 6).Value = row.OvertimeHours;
+            ws.Cell(r, 7).Value = row.LeaveDays;
+            ws.Cell(r, 8).Value = row.PermissionDays;
             for (var c = 1; c <= Headers.Length; c++)
                 ws.Cell(r, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             r++;
@@ -62,12 +63,11 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         // Totals row.
         ws.Cell(r, 1).Value = "TOTAL";
         ws.Cell(r, 3).Value = report.Totals.WorkDays;
-        ws.Cell(r, 4).Value = report.Totals.LateCount;
-        ws.Cell(r, 5).Value = report.Totals.AbsentDays;
-        ws.Cell(r, 6).Value = report.Totals.TotalWorkedHours;
-        ws.Cell(r, 7).Value = report.Totals.OvertimeHours;
-        ws.Cell(r, 8).Value = report.Totals.LeaveDays;
-        ws.Cell(r, 9).Value = report.Totals.PermissionDays;
+        ws.Cell(r, 4).Value = report.Totals.AbsentDays;
+        ws.Cell(r, 5).Value = report.Totals.TotalWorkedHours;
+        ws.Cell(r, 6).Value = report.Totals.OvertimeHours;
+        ws.Cell(r, 7).Value = report.Totals.LeaveDays;
+        ws.Cell(r, 8).Value = report.Totals.PermissionDays;
         var totalRange = ws.Range(r, 1, r, Headers.Length);
         totalRange.Style.Font.Bold = true;
         totalRange.Style.Fill.BackgroundColor = XLColor.LightYellow;
