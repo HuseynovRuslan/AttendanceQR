@@ -109,54 +109,135 @@ public class AdminController : ControllerBase
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 
-        var phone = PhoneNumbers.Normalize(request.PhoneNumber);
-        var hasEmail = !string.IsNullOrWhiteSpace(request.Email);
+        var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
+        var (employee, token, error) = BuildInvite(
+            request.FullName, request.Email, request.PhoneNumber, request.FatherName, request.Position,
+            request.BirthYear, request.LocationId, request.Role, takenEmails, takenPhones);
 
-        // At least one login identifier so the employee can sign in later (phone OR email).
-        if (!hasEmail && phone is null)
-            return BadRequest(new { error = "NeedEmailOrPhone" });
+        if (error is not null)
+            return error is "EmailAlreadyExists" or "PhoneAlreadyExists"
+                ? Conflict(new { error })
+                : BadRequest(new { error });
 
-        // Email stays non-null (it's a JWT claim); synthesize a unique placeholder when only a phone
-        // was given. Login works by either identifier.
-        var email = hasEmail ? request.Email!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
-
-        if (await _db.Employees.AnyAsync(e => e.Email == email))
-            return Conflict(new { error = "EmailAlreadyExists" });
-        if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone))
-            return Conflict(new { error = "PhoneAlreadyExists" });
-
-        var employee = new Employee
-        {
-            FullName = request.FullName,
-            Email = email,
-            PhoneNumber = phone,
-            FatherName = request.FatherName,
-            Position = request.Position,
-            BirthYear = request.BirthYear,
-            LocationId = request.LocationId,
-            Role = request.Role,
-            PasswordHash = string.Empty,       // set by the employee at activation
-            IsActive = true,
-            ActivatedAtUtc = null,             // not activated yet
-            InvitationExpiresUtc = DateTime.UtcNow.AddHours(_invitationOptions.ExpiryHours)
-        };
-
-        // The token embeds the (non-secret) employee id so activation can look the account up by
-        // a key that survives activation; only the random part's hash is stored.
-        var (activationToken, randomHash) = ActivationToken.Create(employee.Id);
-        employee.InvitationTokenHash = randomHash;
-
-        _db.Employees.Add(employee);
+        _db.Employees.Add(employee!);
         await _db.SaveChangesAsync();
 
         // No email/SMS channel yet — return the PLAINTEXT token so it can be shared by hand.
         // (Base64Url is URL-safe, so it needs no additional encoding in the link.)
         return Ok(new
         {
-            employeeId = employee.Id,
-            activationToken,
-            activationUrl = $"/activate?token={activationToken}"
+            employeeId = employee!.Id,
+            activationToken = token,
+            activationUrl = $"/activate?token={token}"
         });
+    }
+
+    // POST /api/admin/employees/bulk-invite — add many employees at once (one shared location + role).
+    // Each row is validated on its own: a duplicate phone or missing name is reported back in `failed`
+    // without blocking the others. All the good rows are saved in a single transaction.
+    [HttpPost("bulk-invite")]
+    public async Task<IActionResult> BulkInvite([FromBody] BulkInviteRequest request)
+    {
+        if (request.Rows is null || request.Rows.Count == 0)
+            return BadRequest(new { error = "NoRows" });
+        if (request.Rows.Count > 200)
+            return BadRequest(new { error = "TooManyRows" });
+        if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
+            return BadRequest(new { error = "LocationNotFound" });
+
+        var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
+        var created = new List<object>();
+        var failed = new List<object>();
+
+        foreach (var row in request.Rows)
+        {
+            var (employee, token, error) = BuildInvite(
+                row.FullName, row.Email, row.PhoneNumber, fatherName: null, row.Position, birthYear: null,
+                request.LocationId, request.Role, takenEmails, takenPhones);
+
+            if (error is not null)
+            {
+                failed.Add(new { fullName = row.FullName, error });
+                continue;
+            }
+
+            _db.Employees.Add(employee!);
+            created.Add(new
+            {
+                employeeId = employee!.Id,
+                fullName = employee.FullName,
+                phoneNumber = employee.PhoneNumber,
+                activationToken = token,
+                activationUrl = $"/activate?token={token}"
+            });
+        }
+
+        if (created.Count > 0)
+            await _db.SaveChangesAsync();
+
+        return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
+    }
+
+    // Emails + phones already in use, as sets, so a batch can check for collisions in memory (against
+    // the DB and against earlier rows in the same batch) without a query per row.
+    private async Task<(HashSet<string> Emails, HashSet<string> Phones)> LoadTakenIdentifiersAsync()
+    {
+        var emails = await _db.Employees.Select(e => e.Email).ToListAsync();
+        var phones = await _db.Employees.Where(e => e.PhoneNumber != null).Select(e => e.PhoneNumber!).ToListAsync();
+        return (new HashSet<string>(emails, StringComparer.Ordinal), new HashSet<string>(phones, StringComparer.Ordinal));
+    }
+
+    // Builds one invited employee (not yet added to the context) + its activation token, or returns an
+    // error code. Mutates the taken-sets so the next call in a batch sees this row's identifiers. Shared
+    // by the single and bulk invite paths so their validation can never drift apart.
+    private (Employee? Employee, string? Token, string? Error) BuildInvite(
+        string fullName, string? emailIn, string? phoneIn, string? fatherName, string? position, int? birthYear,
+        Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return (null, null, "NameRequired");
+
+        var phone = PhoneNumbers.Normalize(phoneIn);
+        var hasEmail = !string.IsNullOrWhiteSpace(emailIn);
+
+        // At least one login identifier so the employee can sign in later (phone OR email).
+        if (!hasEmail && phone is null)
+            return (null, null, "NeedEmailOrPhone");
+
+        // Email stays non-null (it's a JWT claim); synthesize a unique placeholder when only a phone
+        // was given. Login works by either identifier.
+        var email = hasEmail ? emailIn!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
+
+        if (takenEmails.Contains(email))
+            return (null, null, "EmailAlreadyExists");
+        if (phone is not null && takenPhones.Contains(phone))
+            return (null, null, "PhoneAlreadyExists");
+
+        var employee = new Employee
+        {
+            FullName = fullName.Trim(),
+            Email = email,
+            PhoneNumber = phone,
+            FatherName = string.IsNullOrWhiteSpace(fatherName) ? null : fatherName.Trim(),
+            Position = string.IsNullOrWhiteSpace(position) ? null : position.Trim(),
+            BirthYear = birthYear,
+            LocationId = locationId,
+            Role = role,
+            PasswordHash = string.Empty,       // set by the employee at activation
+            IsActive = true,
+            ActivatedAtUtc = null,             // not activated yet
+            InvitationExpiresUtc = DateTime.UtcNow.AddHours(_invitationOptions.ExpiryHours)
+        };
+
+        // The token embeds the (non-secret) employee id so activation can look the account up by a key
+        // that survives activation; only the random part's hash is stored.
+        var (activationToken, randomHash) = ActivationToken.Create(employee.Id);
+        employee.InvitationTokenHash = randomHash;
+
+        takenEmails.Add(email);
+        if (phone is not null) takenPhones.Add(phone);
+
+        return (employee, activationToken, null);
     }
 
     [HttpPut("{id:guid}")]

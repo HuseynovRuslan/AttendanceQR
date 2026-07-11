@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* Tailwind v4 is configured in CSS, not a tailwind.config file. These custom properties become
+   utilities automatically: --color-ink -> text-ink/bg-ink, --color-primary -> bg-primary, etc. */
+@theme {
+  --color-ink: #0F1B2D;
+  --color-primary: #1E70C8;
+  --color-primary-dark: #155CAE;
+  --color-soft: #F4F7FA;
+  --color-muted: #5B6B7C;
+
+  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: #ffffff;
+}
+
+/* Anchored sections shouldn't hide under the sticky header when jumped to. */
+:target {
+  scroll-margin-top: 90px;
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 80" fill="none">
+  <!-- Q: rounded-square ring -->
+  <path fill="#0F1B2D" fill-rule="evenodd" d="M8 26 A18 18 0 0 1 26 8 H40 A18 18 0 0 1 58 26 V50 A18 18 0 0 1 40 68 H26 A18 18 0 0 1 8 50 Z M26 27 A5 5 0 0 0 21 32 V44 A5 5 0 0 0 26 49 H40 A5 5 0 0 0 45 44 V32 A5 5 0 0 0 40 27 Z"/>
+  <path stroke="#1E70C8" stroke-width="11" stroke-linecap="round" d="M35 45 L55 65"/>
+  <!-- R: stem + bowl + THICK diagonal leg -->
+  <rect x="72" y="8" width="17" height="60" rx="3" fill="#0F1B2D"/>
+  <path fill="#0F1B2D" fill-rule="evenodd" d="M82 8 H99 A18 18 0 0 1 99 45 H82 Z M89 22 V32 H99 A5 5 0 0 0 99 22 Z"/>
+  <path fill="#0F1B2D" d="M85 40 H102 L118 68 H101 Z"/>
+</svg>

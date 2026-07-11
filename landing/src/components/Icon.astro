@@ -1,0 +1,35 @@
+---
+// Small inline SVG icon set. Kept as stroke paths so a single style covers every icon.
+interface Props {
+  name: string
+  class?: string
+}
+const { name, class: cls = 'w-6 h-6' } = Astro.props
+
+const paths: Record<string, string> = {
+  qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v3M14 21h7M21 17v4"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  device: '<rect x="7" y="2" width="10" height="20" rx="2"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>',
+  phone: '<rect x="5" y="2" width="14" height="20" rx="3"/><path d="M9 6h6"/>',
+  office: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h6"/>',
+  gov: '<path d="M3 21h18M4 21V10l8-5 8 5v11M9 21v-6h6v6"/>',
+  shop: '<path d="M4 9h16l-1 12H5zM4 9l1-5h14l1 5M9 13h6"/>',
+  build: '<path d="M3 21h18M6 21V8l6-4 6 4v13M10 12h4M10 16h4"/>',
+  service: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+}
+---
+
+<svg
+  class={cls}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  set:html={paths[name] ?? ''}
+/>

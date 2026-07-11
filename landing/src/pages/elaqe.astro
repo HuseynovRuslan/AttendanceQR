@@ -1,0 +1,39 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import PageHero from '../components/PageHero.astro'
+import { SITE } from '../data/site'
+---
+
+<BaseLayout
+  title="Əlaqə — QRLog"
+  description="QRLog ilə əlaqə saxlayın. Davamiyyət sistemi haqqında suallarınızı cavablandıraq."
+>
+  <PageHero title="Əlaqə" subtitle="Suallarınız var? Bizimlə əlaqə saxlayın." />
+  <section class="bg-white py-16">
+    <div class="mx-auto grid max-w-4xl gap-10 px-4 sm:px-6 md:grid-cols-2">
+      <div>
+        <h2 class="text-xl font-bold text-ink">Əlaqə məlumatları</h2>
+        <ul class="mt-4 space-y-3 text-muted">
+          <li><span class="font-semibold text-ink">E-poçt:</span> <a href={`mailto:${SITE.email}`} class="text-primary hover:underline">{SITE.email}</a></li>
+          <li><span class="font-semibold text-ink">Telefon:</span> {SITE.phone}</li>
+          <li><span class="font-semibold text-ink">Ünvan:</span> {SITE.address}</li>
+        </ul>
+      </div>
+
+      <form class="rounded-2xl bg-soft p-6 ring-1 ring-ink/5" action={`mailto:${SITE.email}`} method="post" enctype="text/plain">
+        <label class="block text-sm font-semibold text-ink" for="name">Ad</label>
+        <input id="name" name="Ad" required class="mt-1 w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-primary" />
+
+        <label class="mt-4 block text-sm font-semibold text-ink" for="email">E-poçt</label>
+        <input id="email" name="Epoct" type="email" required class="mt-1 w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-primary" />
+
+        <label class="mt-4 block text-sm font-semibold text-ink" for="msg">Mesaj</label>
+        <textarea id="msg" name="Mesaj" rows="4" required class="mt-1 w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-primary"></textarea>
+
+        <button type="submit" class="mt-5 w-full rounded-xl bg-primary px-6 py-3 font-semibold text-white transition hover:bg-primary-dark">
+          Göndər
+        </button>
+      </form>
+    </div>
+  </section>
+</BaseLayout>

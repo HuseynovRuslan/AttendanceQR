@@ -1,0 +1,47 @@
+---
+import { SITE } from '../data/site'
+
+const year = 2026
+const links = [
+  { label: 'Xüsusiyyətlər', href: '/#xususiyyetler' },
+  { label: 'Qiymət', href: '/qiymet' },
+  { label: 'Haqqımızda', href: '/haqqimizda' },
+  { label: 'Bloq', href: '/bloq' },
+  { label: 'Əlaqə', href: '/elaqe' },
+]
+---
+
+<footer class="border-t border-ink/10 bg-soft">
+  <div class="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <div class="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
+      <div class="md:col-span-2">
+        <img src="/logo.png" alt="QRLog" height="32" class="h-8 w-auto" />
+        <p class="mt-3 max-w-sm text-sm leading-relaxed text-muted">
+          QR əsaslı işçi davamiyyəti sistemi — telefonla giriş-çıxış, GPS və foto təsdiqi ilə.
+        </p>
+      </div>
+
+      <nav aria-label="Alt naviqasiya">
+        <h2 class="text-sm font-bold text-ink">Səhifələr</h2>
+        <ul class="mt-3 space-y-2">
+          {links.map((l) => (
+            <li><a href={l.href} class="text-sm text-muted transition hover:text-primary">{l.label}</a></li>
+          ))}
+        </ul>
+      </nav>
+
+      <div>
+        <h2 class="text-sm font-bold text-ink">Əlaqə</h2>
+        <ul class="mt-3 space-y-2 text-sm text-muted">
+          <li><a href={`mailto:${SITE.email}`} class="transition hover:text-primary">{SITE.email}</a></li>
+          <li>{SITE.address}</li>
+          <li><a href={SITE.appUrl} class="font-semibold text-primary transition hover:text-primary-dark">İşçi girişi →</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-10 border-t border-ink/10 pt-6 text-center text-xs text-muted">
+      © {year} {SITE.name} · {SITE.domain}
+    </div>
+  </div>
+</footer>

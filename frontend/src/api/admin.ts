@@ -323,6 +323,44 @@ export function reinviteEmployee(id: string) {
   })
 }
 
+// --- bulk invite -----------------------------------------------------------
+
+export interface BulkInviteRow {
+  fullName: string
+  phoneNumber?: string | null
+  position?: string | null
+}
+
+export interface BulkInvitePayload {
+  locationId: string
+  role: Role
+  rows: BulkInviteRow[]
+}
+
+export interface BulkInviteCreated {
+  employeeId: string
+  fullName: string
+  phoneNumber: string | null
+  activationToken: string
+  activationUrl: string
+}
+
+export interface BulkInviteResult {
+  createdCount: number
+  failedCount: number
+  created: BulkInviteCreated[]
+  failed: { fullName: string; error: string }[]
+}
+
+/** POST /api/admin/employees/bulk-invite — add many employees at once (one shared location + role).
+ * Each row is validated independently; failures come back per-row without blocking the rest. */
+export function bulkInvite(payload: BulkInvitePayload) {
+  return apiRequest<BulkInviteResult | { error: string }>('/api/admin/employees/bulk-invite', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
 /** Testing helper — clears an employee's check-in/check-out history so the same account +
  * device can be used to re-test the scan flow. Keeps the account and device binding. */
 export function resetEmployeeAttendance(id: string) {

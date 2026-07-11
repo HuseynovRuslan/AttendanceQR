@@ -1,0 +1,32 @@
+---
+import Button from './Button.astro'
+import HeroAnimation from './HeroAnimation.astro'
+import { SITE } from '../data/site'
+---
+
+<section class="relative overflow-hidden bg-white">
+  <div class="mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 md:grid-cols-2 md:py-24">
+    <div>
+      <span class="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
+        QR əsaslı davamiyyət sistemi
+      </span>
+      <h1 class="mt-5 text-4xl font-bold leading-tight text-ink sm:text-5xl">
+        İşçi davamiyyətini <span class="text-primary">QR ilə</span> idarə edin
+      </h1>
+      <p class="mt-5 max-w-lg text-lg leading-relaxed text-muted">
+        QRLog — işçilərin telefonu ilə QR kodu skan edərək giriş-çıxışını qeydə alan onlayn
+        davamiyyət proqramıdır. GPS, foto təsdiqi və cihaz bağlaması ilə saxtakarlığa qarşı qorunur.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-4">
+        <Button href={SITE.appUrl} external>İşçi girişi</Button>
+        <Button href="/#xususiyyetler" variant="ghost">Ətraflı</Button>
+      </div>
+      <p class="mt-4 text-sm text-muted">Ayrıca cihaz yoxdur · Telefonla işləyir · Dəqiqələr içində qurulur</p>
+    </div>
+
+    <!-- Animasiya: giriş prosesinin üç addımı canlı olaraq dövr edir. -->
+    <div class="relative">
+      <HeroAnimation />
+    </div>
+  </div>
+</section>

@@ -1,0 +1,35 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import PageHero from '../../components/PageHero.astro'
+import { getCollection } from 'astro:content'
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+)
+
+const fmt = (d: Date) => d.toLocaleDateString('az-AZ', { year: 'numeric', month: 'long', day: 'numeric' })
+---
+
+<BaseLayout
+  title="Bloq — QRLog"
+  description="İşçi davamiyyəti, QR sistemləri və uçotun rəqəmsallaşdırılması haqqında məqalələr."
+>
+  <PageHero title="Bloq" subtitle="Davamiyyət və QR sistemləri haqqında məqalələr." />
+  <section class="bg-white py-16">
+    <div class="mx-auto max-w-3xl px-4 sm:px-6">
+      {posts.length === 0 ? (
+        <p class="text-center text-muted">Tezliklə ilk məqalələr burada olacaq.</p>
+      ) : (
+        <ul class="space-y-6">
+          {posts.map((post) => (
+            <li class="rounded-2xl border border-ink/10 p-6 transition hover:border-primary/40 hover:shadow-sm">
+              <p class="text-sm text-muted">{fmt(post.data.pubDate)}</p>
+              <h2 class="mt-1 text-xl font-bold text-ink">{post.data.title}</h2>
+              <p class="mt-2 text-muted">{post.data.description}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  </section>
+</BaseLayout>

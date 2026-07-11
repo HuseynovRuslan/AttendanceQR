@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" fill="none" font-family="Segoe UI, Arial, sans-serif">
+  <g transform="translate(14 20)">
+    <path fill="#0F1B2D" fill-rule="evenodd" d="M8 26 A18 18 0 0 1 26 8 H40 A18 18 0 0 1 58 26 V50 A18 18 0 0 1 40 68 H26 A18 18 0 0 1 8 50 Z M26 27 A5 5 0 0 0 21 32 V44 A5 5 0 0 0 26 49 H40 A5 5 0 0 0 45 44 V32 A5 5 0 0 0 40 27 Z"/>
+    <path stroke="#1E70C8" stroke-width="11" stroke-linecap="round" d="M35 45 L55 65"/>
+    <path fill="#0F1B2D" fill-rule="evenodd" d="M74 8 H100 A18 18 0 0 1 100 44 H92 L112 68 H95 L77 45 V68 H74 Z M88 22 V32 H98 A5 5 0 0 0 98 22 Z"/>
+  </g>
+  <line x1="150" y1="30" x2="150" y2="90" stroke="#C7D0DA" stroke-width="2"/>
+  <text x="176" y="78" font-size="62" font-weight="700" letter-spacing="-1">
+    <tspan fill="#0F1B2D">QR</tspan><tspan fill="#1E70C8">Log</tspan>
+  </text>
+</svg>

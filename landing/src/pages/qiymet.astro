@@ -1,0 +1,24 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import PageHero from '../components/PageHero.astro'
+import Button from '../components/Button.astro'
+import { SITE } from '../data/site'
+---
+
+<BaseLayout
+  title="Qiymət — QRLog"
+  description="QRLog davamiyyət sisteminin qiymətləri. Ətraflı məlumat üçün bizimlə əlaqə saxlayın."
+>
+  <PageHero title="Qiymət" subtitle="Təşkilatınızın ölçüsünə uyğun planlar hazırlanır." />
+  <section class="bg-white py-16">
+    <div class="mx-auto max-w-2xl px-4 text-center sm:px-6">
+      <p class="text-lg text-muted">
+        Qiymət planları tezliklə burada yerləşdiriləcək. Hazırda təkliflər üçün bizimlə əlaqə saxlayın.
+      </p>
+      <div class="mt-8 flex justify-center gap-4">
+        <Button href="/elaqe">Əlaqə saxla</Button>
+        <Button href={SITE.appUrl} external variant="ghost">İşçi girişi</Button>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

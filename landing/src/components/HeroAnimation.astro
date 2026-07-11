@@ -1,0 +1,176 @@
+---
+// Animated phone mockup for the hero: cycles through the three real steps of a check-in
+// (scan QR → verify location + photo → recorded). Pure CSS motion + a tiny cycler script.
+// Icons on the left of a caption that slides on each step; scan line, pulse and a drawn check.
+---
+
+<div class="qr-anim mx-auto w-full max-w-[320px]" aria-hidden="true">
+  <!-- phone -->
+  <div class="rounded-[2.4rem] bg-white p-3 shadow-2xl ring-1 ring-ink/10">
+    <div class="relative h-[440px] overflow-hidden rounded-[1.9rem] bg-soft">
+      <!-- app header -->
+      <div class="flex items-center justify-between px-5 pt-5">
+        <span class="text-sm font-bold text-ink">QRLog</span>
+        <span class="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+          <span class="live-dot h-2 w-2 rounded-full bg-primary"></span> Canlı
+        </span>
+      </div>
+
+      <!-- screens -->
+      <div class="relative mt-2 h-[330px]">
+        <!-- 1: scan -->
+        <div class="screen" data-step="0">
+          <div class="relative grid h-40 w-40 place-items-center rounded-3xl bg-white shadow-sm ring-1 ring-ink/10">
+            <svg viewBox="0 0 24 24" class="h-24 w-24 text-ink" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v3M14 21h7M21 17v4"/>
+            </svg>
+            <span class="scanline"></span>
+          </div>
+        </div>
+
+        <!-- 2: verify -->
+        <div class="screen" data-step="1">
+          <div class="flex items-center gap-4">
+            <div class="relative grid h-20 w-20 place-items-center rounded-2xl bg-white text-primary shadow-sm ring-1 ring-ink/10">
+              <span class="ping"></span>
+              <svg viewBox="0 0 24 24" class="h-9 w-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div class="relative grid h-20 w-20 place-items-center rounded-2xl bg-white text-primary shadow-sm ring-1 ring-ink/10">
+              <span class="ping" style="animation-delay:.4s"></span>
+              <svg viewBox="0 0 24 24" class="h-9 w-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3: recorded -->
+        <div class="screen" data-step="2">
+          <div class="grid h-24 w-24 place-items-center rounded-full bg-primary/10">
+            <svg viewBox="0 0 24 24" class="check h-12 w-12 text-primary" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <p class="mt-4 text-base font-bold text-ink">Giriş qeydə alındı</p>
+          <p class="mt-1 text-sm text-muted">Saat 09:04 · İş yerində</p>
+        </div>
+      </div>
+
+      <!-- progress dots -->
+      <div class="absolute bottom-5 left-0 flex w-full justify-center gap-2">
+        <span class="dot" data-dot="0"></span>
+        <span class="dot" data-dot="1"></span>
+        <span class="dot" data-dot="2"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- caption: icon on the left + step text, slides on change -->
+  <div class="caption mt-5 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-ink/5">
+    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+      <svg class="cap-icon h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+    </span>
+    <div class="min-w-0">
+      <p class="cap-title text-sm font-bold text-ink">QR kodu skan edin</p>
+      <p class="cap-sub text-xs text-muted">Telefonla iş yerindəki kodu skan edin</p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    pointer-events: none;
+  }
+  .screen.is-active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* scanning line sweeping across the QR */
+  .scanline {
+    position: absolute;
+    left: 12%;
+    right: 12%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, #1E70C8, transparent);
+    box-shadow: 0 0 12px 2px rgba(30, 112, 200, 0.5);
+    animation: sweep 2s ease-in-out infinite;
+  }
+  @keyframes sweep {
+    0%, 100% { top: 18%; opacity: 0.2; }
+    50% { top: 78%; opacity: 1; }
+  }
+
+  /* pulsing ring behind the verify icons */
+  .ping {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 2px solid #1E70C8;
+    opacity: 0;
+    animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes ping {
+    0% { transform: scale(1); opacity: 0.6; }
+    80%, 100% { transform: scale(1.35); opacity: 0; }
+  }
+
+  .live-dot { animation: blink 1.4s ease-in-out infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* checkmark draws itself when its screen becomes active */
+  .check path { stroke-dasharray: 32; stroke-dashoffset: 32; }
+  .screen.is-active .check path { animation: draw 0.6s ease-out 0.15s forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+
+  .dot { height: 6px; width: 6px; border-radius: 999px; background: #C7D0DA; transition: all 0.4s ease; }
+  .dot.is-active { width: 20px; background: #1E70C8; }
+
+  .caption { transition: opacity 0.35s ease, transform 0.35s ease; }
+  .caption.swap { opacity: 0; transform: translateX(8px); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scanline, .ping, .live-dot, .check path { animation: none; }
+  }
+</style>
+
+<script>
+  const root = document.querySelector('.qr-anim')
+  if (root) {
+    const steps = [
+      { icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v3M14 21h7M21 17v4"/>', title: 'QR kodu skan edin', sub: 'Telefonla iş yerindəki kodu skan edin' },
+      { icon: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>', title: 'Məkan və şəkil təsdiqlənir', sub: 'GPS və foto avtomatik yoxlanılır' },
+      { icon: '<path d="M20 6 9 17l-5-5"/>', title: 'Giriş qeydə alındı', sub: 'Rəhbərlik dərhal görür' },
+    ]
+    const screens = [...root.querySelectorAll('.screen')] as HTMLElement[]
+    const dots = [...root.querySelectorAll('.dot')] as HTMLElement[]
+    const caption = root.querySelector('.caption') as HTMLElement
+    const capIcon = root.querySelector('.cap-icon') as SVGElement
+    const capTitle = root.querySelector('.cap-title') as HTMLElement
+    const capSub = root.querySelector('.cap-sub') as HTMLElement
+
+    let i = -1
+    const show = (n: number) => {
+      i = n
+      screens.forEach((s, k) => s.classList.toggle('is-active', k === n))
+      dots.forEach((d, k) => d.classList.toggle('is-active', k === n))
+      caption.classList.add('swap')
+      setTimeout(() => {
+        capIcon.innerHTML = steps[n].icon
+        capTitle.textContent = steps[n].title
+        capSub.textContent = steps[n].sub
+        caption.classList.remove('swap')
+      }, 200)
+    }
+
+    show(0)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!reduce) setInterval(() => show((i + 1) % steps.length), 2800)
+  }
+</script>

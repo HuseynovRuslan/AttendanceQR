@@ -1,0 +1,64 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import Hero from '../components/Hero.astro'
+import Features from '../components/Features.astro'
+import HowItWorks from '../components/HowItWorks.astro'
+import Audience from '../components/Audience.astro'
+import FAQ from '../components/FAQ.astro'
+import CTA from '../components/CTA.astro'
+import { SITE, FEATURES, FAQ as FAQ_ITEMS } from '../data/site'
+
+const title = 'QRLog — QR ilə işçi davamiyyəti sistemi | Azərbaycan'
+const description = SITE.description
+
+// Page-specific structured data: the software itself + the FAQ, kept in sync with what renders.
+const softwareLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'QRLog',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web, iOS, Android',
+  url: SITE.url,
+  description,
+  inLanguage: 'az',
+  featureList: FEATURES.map((f) => f.title),
+  offers: { '@type': 'Offer', priceCurrency: 'AZN', price: '0' },
+}
+
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQ_ITEMS.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+}
+---
+
+<BaseLayout title={title} description={description}>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={JSON.stringify(softwareLd)} />
+    <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />
+  </Fragment>
+
+  <Hero />
+
+  <!-- "QRLog nədir?" — qısa, faktiki tərif (AI-lar bunu götürür) -->
+  <section class="bg-white pb-4 pt-8">
+    <div class="mx-auto max-w-3xl px-4 text-center sm:px-6">
+      <h2 class="text-2xl font-bold text-ink sm:text-3xl">QRLog nədir?</h2>
+      <p class="mt-4 text-lg leading-relaxed text-muted">
+        QRLog — QR koda əsaslanan işçi davamiyyəti sistemidir. İşçi telefonu ilə iş yerindəki QR kodu
+        skan edir, sistem isə giriş və çıxışı avtomatik qeydə alır. GPS məkan yoxlaması, foto təsdiqi
+        və cihaz bağlaması ilə başqasının yerinə giriş etməyin qarşısını alır.
+      </p>
+    </div>
+  </section>
+
+  <Features />
+  <HowItWorks />
+  <Audience />
+  <FAQ />
+  <CTA />
+</BaseLayout>

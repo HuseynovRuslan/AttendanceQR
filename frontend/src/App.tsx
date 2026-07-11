@@ -30,6 +30,7 @@ import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
 import { ProblemsPage } from './pages/admin/ProblemsPage'
 import { OpenRecordsPage } from './pages/admin/OpenRecordsPage'
+import { BulkInvitePage } from './pages/admin/BulkInvitePage'
 
 /** Reloads the app once a newer build exists. Silent by design: employees will not tap an "update"
  *  banner, and an installed PWA is otherwise stuck on whatever bundle it launched with. Never fires
@@ -190,6 +191,14 @@ function AppRoutes() {
           element={
             <AdminOnly>
               <EmployeesPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="bulk-invite"
+          element={
+            <AdminOnly>
+              <BulkInvitePage />
             </AdminOnly>
           }
         />

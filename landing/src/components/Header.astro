@@ -1,0 +1,31 @@
+---
+import Button from './Button.astro'
+import { SITE } from '../data/site'
+
+const nav = [
+  { label: 'Ana səhifə', href: '/' },
+  { label: 'Xüsusiyyətlər', href: '/#xususiyyetler' },
+  { label: 'Qiymət', href: '/qiymet' },
+  { label: 'Əlaqə', href: '/elaqe' },
+]
+---
+
+<header class="sticky top-0 z-50 border-b border-ink/10 bg-white/90 backdrop-blur">
+  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+    <a href="/" class="flex items-center" aria-label="QRLog ana səhifə">
+      <img src="/logo.png" alt="QRLog" height="36" class="h-9 w-auto" />
+    </a>
+
+    <nav class="hidden items-center gap-8 md:flex" aria-label="Əsas naviqasiya">
+      {nav.map((i) => (
+        <a href={i.href} class="text-sm font-semibold text-ink/80 transition hover:text-primary">
+          {i.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="flex items-center gap-3">
+      <Button href={SITE.appUrl} external class="!px-5 !py-2 !text-sm">İşçi girişi</Button>
+    </div>
+  </div>
+</header>
