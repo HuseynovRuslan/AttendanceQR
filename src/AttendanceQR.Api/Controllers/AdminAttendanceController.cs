@@ -32,6 +32,38 @@ public class AdminAttendanceController : ControllerBase
         _faceQueue = faceQueue;
     }
 
+    // GET /api/admin/attendance/open — records with a check-in but no check-out, from BEFORE today.
+    // These are the "forgot / couldn't scan to check out" days: the nightly summary marks them
+    // Incomplete with 0 minutes worked, so a full day silently reads as zero until an admin closes it.
+    // Today is excluded on purpose — an open record for today is just someone still at work.
+    [HttpGet("open")]
+    public async Task<IActionResult> Open()
+    {
+        // AttendanceDate is stamped from the UTC day at check-in (see AttendanceController.Scan), so
+        // the "not today" cutoff uses the same UTC day — no timezone conversion to get out of step.
+        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var rows = await (
+            from r in _db.AttendanceRecords
+            where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayUtc
+            join e in _db.Employees on r.EmployeeId equals e.Id
+            join l in _db.Locations on r.LocationId equals l.Id
+            orderby r.AttendanceDate descending, e.FullName
+            select new
+            {
+                recordId = r.Id,
+                employeeId = e.Id,
+                employeeName = e.FullName,
+                locationName = l.Name,
+                attendanceDate = r.AttendanceDate,
+                checkInAtUtc = r.CheckInAtUtc
+            })
+            .Take(500)
+            .ToListAsync(HttpContext.RequestAborted);
+
+        return Ok(rows);
+    }
+
     [HttpPut("{recordId:guid}")]
     public async Task<IActionResult> Update(Guid recordId, [FromBody] AdminAttendanceUpdateRequest request)
     {

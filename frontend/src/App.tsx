@@ -29,6 +29,7 @@ import { EmployeesPage } from './pages/admin/EmployeesPage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
 import { ProblemsPage } from './pages/admin/ProblemsPage'
+import { OpenRecordsPage } from './pages/admin/OpenRecordsPage'
 
 /** Reloads the app once a newer build exists. Silent by design: employees will not tap an "update"
  *  banner, and an installed PWA is otherwise stuck on whatever bundle it launched with. Never fires
@@ -143,6 +144,15 @@ function AppRoutes() {
         <Route path="photo-audit" element={<PhotoAuditPage />} />
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<ProblemsPage />} />
+        {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
+        <Route
+          path="open-records"
+          element={
+            <AdminOnly>
+              <OpenRecordsPage />
+            </AdminOnly>
+          }
+        />
         <Route
           path="locations"
           element={

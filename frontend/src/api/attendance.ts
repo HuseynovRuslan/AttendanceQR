@@ -101,6 +101,21 @@ export interface AdminAttendanceRecord {
   status: string
 }
 
+export interface OpenRecord {
+  recordId: string
+  employeeId: string
+  employeeName: string
+  locationName: string
+  attendanceDate: string
+  checkInAtUtc: string
+}
+
+/** GET /api/admin/attendance/open — past days with a check-in but no check-out (today excluded).
+ * The nightly summary counts these as 0 hours worked until an admin sets a check-out time. */
+export function getOpenRecords() {
+  return apiRequest<OpenRecord[]>('/api/admin/attendance/open')
+}
+
 /** PUT /api/admin/attendance/{recordId} — correct an existing record's check-in/out (either or
  * both; omitted fields are left as-is). Recomputes that date's summary immediately. */
 export function adminUpdateRecord(recordId: string, checkInAtUtc?: string, checkOutAtUtc?: string) {
