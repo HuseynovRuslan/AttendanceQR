@@ -1,6 +1,14 @@
 # Automatic HTTPS for the production stack. Caddy fetches and renews Let's Encrypt certificates on
-# its own, the moment these names resolve to this server. The app lives under bax.qrlog.az; the apex
-# qrlog.az is a separate landing page and is intentionally not handled here.
+# its own, the moment these names resolve to this server.
+#   bax.qrlog.az  → the attendance app (frontend)
+#   api.qrlog.az  → the backend API
+#   qrlog.az      → the static marketing site (Astro build, served from /srv/qrlog)
+
+qrlog.az, www.qrlog.az {
+	encode zstd gzip
+	root * /srv/qrlog
+	file_server
+}
 
 bax.qrlog.az {
 	encode zstd gzip
