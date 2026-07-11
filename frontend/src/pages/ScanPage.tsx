@@ -484,7 +484,7 @@ export function ScanPage() {
             employee looking at the lens produces one clean face instead of the queue behind them.
             The circle matches the centre crop frameToJpeg() takes, so what they see is what is kept. */}
         <div className={phase === 'photo' ? 'flex w-full max-w-sm flex-col items-center gap-3' : 'hidden'}>
-          <div className="relative h-72 w-56">
+          <div className="relative h-64 w-52">
             {/* Oval (face-shaped) frame so the employee lines their face up inside it. */}
             <div className="h-full w-full overflow-hidden rounded-[50%] border-2 border-white/20 bg-black shadow-lg">
               <video
@@ -552,31 +552,29 @@ function useCaptureProgress(active: boolean, durationMs: number): number {
   return progress
 }
 
-/** Oval countdown ring tracing the face frame. Drawn over the preview; the ellipse perimeter (via
- *  Ramanujan's approximation) feeds strokeDasharray so it drains exactly once over the hold. */
+/** Oval countdown ring tracing the face frame. An ellipse can't be rotated to start at the top without
+ *  distorting its shape, so it's drawn as a path that begins at 12 o'clock; pathLength=1 lets the dash
+ *  drain by fraction without computing the perimeter. */
 function CaptureRing({ progress }: { progress: number }) {
-  const cx = 112
-  const cy = 144
-  const rx = 104
-  const ry = 136
-  const hh = ((rx - ry) / (rx + ry)) ** 2
-  const perimeter = Math.PI * (rx + ry) * (1 + (3 * hh) / (10 + Math.sqrt(4 - 3 * hh)))
+  const cx = 104
+  const cy = 128
+  const rx = 96
+  const ry = 120
+  // Ellipse as a path, starting at the top, clockwise.
+  const d = `M ${cx} ${cy - ry} A ${rx} ${ry} 0 1 1 ${cx} ${cy + ry} A ${rx} ${ry} 0 1 1 ${cx} ${cy - ry}`
 
   return (
-    <svg viewBox="0 0 224 288" className="pointer-events-none absolute inset-0 h-full w-full">
-      <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="6" />
-      <ellipse
-        cx={cx}
-        cy={cy}
-        rx={rx}
-        ry={ry}
+    <svg viewBox="0 0 208 256" className="pointer-events-none absolute inset-0 h-full w-full">
+      <path d={d} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="6" />
+      <path
+        d={d}
         fill="none"
         stroke="#22c55e"
         strokeWidth="6"
         strokeLinecap="round"
-        strokeDasharray={perimeter}
-        strokeDashoffset={perimeter * (1 - progress)}
-        transform={`rotate(-90 ${cx} ${cy})`}
+        pathLength={1}
+        strokeDasharray={1}
+        strokeDashoffset={1 - progress}
       />
     </svg>
   )
