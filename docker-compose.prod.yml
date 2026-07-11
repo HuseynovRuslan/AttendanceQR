@@ -1,0 +1,84 @@
+# Production full-stack for a single VM: PostgreSQL + backend + frontend + Caddy (automatic HTTPS).
+# Unlike docker-compose.yml (local dev), nothing but Caddy is exposed to the host — the app and DB
+# are reachable only inside the compose network. Caddy terminates TLS for qrlog.az / api.qrlog.az and
+# gets Let's Encrypt certs on its own once DNS points at this server.
+#
+#   cd /opt/attendanceqr && git pull && docker compose -f docker-compose.prod.yml up -d --build
+#
+# Secrets come from /opt/attendanceqr/.env (gitignored). See .env.example for the full list.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: src/AttendanceQR.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey}
+      QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret}
+      Cors__AllowedOrigins: ${Cors__AllowedOrigins}
+      # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
+      # the proxy's address instead of the phone's.
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Photo audit (Cloudflare R2) + face match (AWS Rekognition). Empty = graceful no-op.
+      Storage__Minio__Endpoint: ${Storage__Minio__Endpoint:-}
+      Storage__Minio__AccessKey: ${Storage__Minio__AccessKey:-}
+      Storage__Minio__SecretKey: ${Storage__Minio__SecretKey:-}
+      Storage__Minio__BucketName: ${Storage__Minio__BucketName:-attendance-photos}
+      Storage__Minio__UseSsl: ${Storage__Minio__UseSsl:-true}
+      Storage__Minio__Region: ${Storage__Minio__Region:-auto}
+      Rekognition__AccessKey: ${Rekognition__AccessKey:-}
+      Rekognition__SecretKey: ${Rekognition__SecretKey:-}
+      Rekognition__Region: ${Rekognition__Region:-us-east-1}
+      DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
+      DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
+      DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,17 @@
+# Automatic HTTPS for the production stack. Caddy fetches and renews Let's Encrypt certificates on
+# its own, the moment these names resolve to this server. Names are proxied to the compose services
+# by their service name on the internal network.
+
+www.qrlog.az {
+	redir https://qrlog.az{uri} permanent
+}
+
+qrlog.az {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+api.qrlog.az {
+	encode zstd gzip
+	reverse_proxy backend:8080
+}
