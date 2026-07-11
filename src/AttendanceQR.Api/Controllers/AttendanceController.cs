@@ -112,6 +112,15 @@ public class AttendanceController : ControllerBase
         var mine = bindings.FirstOrDefault(d =>
             string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
 
+        // The employee's assigned location, so the scan page can pre-check the geofence (show "you're
+        // at the workplace / X m away" BEFORE scanning). The scan itself still checks against the QR's
+        // own location server-side — this is a pre-check against where the employee is expected to be.
+        var location = await _db.Employees
+            .Where(e => e.Id == employeeId)
+            .Join(_db.Locations, e => e.LocationId, l => l.Id,
+                (e, l) => new { l.Name, l.Latitude, l.Longitude, l.RadiusMeters })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
         return Ok(new
         {
             bound = mine is { IsActive: true },
@@ -122,7 +131,16 @@ public class AttendanceController : ControllerBase
             boundAtUtc = mine is { IsActive: true } ? mine.BoundAtUtc : (DateTime?)null,
             activeDeviceCount = bindings.Count(d => d.IsActive),
             // Nothing to adopt an unknown device with while this is off — the app says so plainly.
-            autoBindEnabled = _deviceOptions.AutoBind
+            autoBindEnabled = _deviceOptions.AutoBind,
+            location = location is null
+                ? null
+                : new
+                {
+                    name = location.Name,
+                    latitude = location.Latitude,
+                    longitude = location.Longitude,
+                    radiusMeters = location.RadiusMeters
+                }
         });
     }
 

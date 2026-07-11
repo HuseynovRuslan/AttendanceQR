@@ -5,7 +5,7 @@ import { apiRequest } from '../api/client'
 import { getMyAttendance, getMyDeviceStatus, reportScanFailure, type AttendanceRecord } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
-import { FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
@@ -68,6 +68,9 @@ export function ScanPage() {
   // The visible pre-scan verification (device → location → camera). An overlay while it runs.
   const [verifying, setVerifying] = useState(true)
   const [checks, setChecks] = useState<ScanChecks>({ device: 'idle', location: 'idle', camera: 'idle' })
+  // Set when the geofence pre-check finds the employee outside their workplace radius — surfaced
+  // before scanning (with a "scan anyway" escape, since the QR's own location is the final word).
+  const [radiusFail, setRadiusFail] = useState<{ distance: number; name: string } | null>(null)
   // True once the front camera is actually producing frames, so the preview says "look at the
   // camera" rather than showing a black circle while it warms up.
   const [photoLive, setPhotoLive] = useState(false)
@@ -119,6 +122,7 @@ export function ScanPage() {
     setVerifying(true)
     setCameraError(null)
     setResult(null)
+    setRadiusFail(null)
     setPhase('scanning')
     scanDoneRef.current = false
     busyRef.current = false
@@ -140,6 +144,8 @@ export function ScanPage() {
             ? 'ok'
             : 'warn' // not bound yet — it will be adopted on this scan (at the geofence)
         : 'ok'
+    const assignedLocation =
+      dev && dev.status === 200 && dev.data && 'location' in dev.data ? dev.data.location : null
     setChecks((c) => ({ ...c, device: deviceStep, location: 'run' }))
     if (deviceStep === 'fail') {
       await delay(1000)
@@ -164,6 +170,22 @@ export function ScanPage() {
     const accuracy = Math.round(position.coords.accuracy)
     setGeo({ kind: 'ready', accuracy })
     if (accuracy > POOR_ACCURACY_METERS) void reportScanFailure('GpsInaccurate', accuracy).catch(() => {})
+
+    // Geofence pre-check: is the employee within their assigned workplace radius? Caught here so they
+    // don't scan and get rejected. The scan still checks against the QR's own location server-side,
+    // so this is advisory — a "scan anyway" escape covers the rare case of a different valid location.
+    if (assignedLocation) {
+      const dist = Math.round(
+        distanceMeters(position.coords.latitude, position.coords.longitude, assignedLocation.latitude, assignedLocation.longitude),
+      )
+      if (dist > assignedLocation.radiusMeters) {
+        setChecks((c) => ({ ...c, location: 'fail' }))
+        await delay(900)
+        setVerifying(false)
+        setRadiusFail({ distance: dist, name: assignedLocation.name })
+        return
+      }
+    }
     setChecks((c) => ({ ...c, location: 'ok', camera: 'run' }))
 
     // 3) Camera — the reader is now visible (phase 'scanning' + geo ready), so html5-qrcode attaches.
@@ -180,6 +202,14 @@ export function ScanPage() {
       await delay(700)
       setVerifying(false)
     }
+  }
+
+  // Escape hatch from the geofence pre-check: the QR's own location is the final word (the employee
+  // may legitimately be at a different location), so let them open the camera and let the server decide.
+  function scanAnyway() {
+    setRadiusFail(null)
+    setChecks((c) => ({ ...c, location: 'ok', camera: 'ok' }))
+    void startCamera()
   }
 
   async function loadTodayStatus() {
@@ -368,7 +398,7 @@ export function ScanPage() {
 
   // Only while actually scanning — the QR frame must give way to the selfie preview, not sit behind it.
   const showCamera =
-    today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError
+    today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
@@ -405,6 +435,29 @@ export function ScanPage() {
 
         {today.kind !== 'completed' && geo.kind === 'failed' && (
           <GpsHelp kind={geo.fail} onRetry={() => void runChecks()} />
+        )}
+
+        {radiusFail && (
+          <div className="w-full max-w-sm rounded-2xl bg-slate-800 p-5 text-center shadow-lg">
+            <div className="text-5xl">📍</div>
+            <h2 className="mt-2 text-lg font-bold text-white">İş yerində deyilsiniz</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              {radiusFail.name} ərazisindən təxminən <b className="text-white">{radiusFail.distance} m</b> uzaqsınız.
+              Yaxınlaşıb yenidən yoxlayın.
+            </p>
+            <button
+              onClick={() => void runChecks()}
+              className="mt-5 w-full rounded-lg bg-white py-3 font-semibold text-slate-900 transition hover:bg-slate-200"
+            >
+              Yenidən yoxla
+            </button>
+            <button
+              onClick={scanAnyway}
+              className="mt-2 w-full rounded-lg py-2 text-sm font-medium text-slate-400 transition hover:text-white"
+            >
+              Yenə də skan et
+            </button>
+          </div>
         )}
 
         {/* Position obtained, but too coarse to sit comfortably inside a 150 m radius. Scanning is

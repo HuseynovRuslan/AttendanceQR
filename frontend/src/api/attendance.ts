@@ -38,6 +38,8 @@ export interface MyDeviceStatus {
   boundAtUtc: string | null
   activeDeviceCount: number
   autoBindEnabled: boolean
+  /** The employee's assigned location, for the pre-scan geofence check (null if none). */
+  location: { name: string; latitude: number; longitude: number; radiusMeters: number } | null
 }
 
 /** GET /api/attendance/me/device — is THIS browser bound to my account? Safari and the installed app
