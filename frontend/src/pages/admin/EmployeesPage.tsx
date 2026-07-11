@@ -7,6 +7,7 @@ import {
   reinviteEmployee,
   resetAllReferencePhotos,
   resetEmployeeAttendance,
+  resetPin,
   resetReferencePhoto,
   updateEmployee,
   type AdminEmployee,
@@ -101,6 +102,7 @@ export function EmployeesPage() {
   const [refBusy, setRefBusy] = useState(false)
   const [link, setLink] = useState<{ name: string; result: InviteResult } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [pinReset, setPinReset] = useState<{ name: string; pin: string } | null>(null)
 
   // Attendance-correction panel (view + fix one employee's raw records).
   const [attendanceEmployee, setAttendanceEmployee] = useState<AdminEmployee | null>(null)
@@ -272,6 +274,20 @@ export function EmployeesPage() {
       await refresh()
     } else if (data && 'error' in data) {
       setError(ERRORS[data.error] ?? 'Link yaradılmadı')
+    }
+  }
+
+  async function onResetPin(e: AdminEmployee) {
+    if (!window.confirm(`"${e.fullName}" üçün PIN sıfırlansın? Yeni müvəqqəti PIN veriləcək — işçi girib öz PIN-ini dəyişməlidir.`)) return
+    setError(null)
+    setOk(null)
+    const { status, data } = await resetPin(e.id)
+    if (status === 200 && data && 'tempPin' in data) {
+      setPinReset({ name: e.fullName, pin: data.tempPin })
+    } else if (data && 'error' in data && data.error === 'NotActivated') {
+      setError('Bu işçi hələ aktivləşməyib — «Qeyd. linki» göndərin.')
+    } else {
+      setError('PIN sıfırlanmadı')
     }
   }
 
@@ -455,6 +471,36 @@ export function EmployeesPage() {
               {copied ? 'Kopyalandı ✓' : 'Kopyala'}
             </button>
             <button className="btn btn-sm" onClick={() => setLink(null)}>
+              Bağla
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* temporary PIN result (after reset-pin) */}
+      {pinReset && (
+        <div className="card card-pad" style={{ marginBottom: 16 }}>
+          <div className="fb fb-ok" style={{ marginBottom: 12 }}>
+            <IconCheck />
+            <span>
+              <b>{pinReset.name}</b> üçün yeni müvəqqəti PIN. İşçiyə deyin — girib öz PIN-ini dəyişsin.
+            </span>
+          </div>
+          <div className="link-box" style={{ fontSize: 28, fontWeight: 800, letterSpacing: 6, textAlign: 'center' }}>
+            {pinReset.pin}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                void navigator.clipboard?.writeText(pinReset.pin)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              }}
+            >
+              {copied ? 'Kopyalandı ✓' : 'Kopyala'}
+            </button>
+            <button className="btn btn-sm" onClick={() => setPinReset(null)}>
               Bağla
             </button>
           </div>
@@ -760,6 +806,13 @@ export function EmployeesPage() {
                           title="Giriş/çıxış tarixçəsini sil — hesab qalır, yenidən test edin"
                         >
                           <IconRefresh /> Sıfırla
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => onResetPin(e)}
+                          title="İşçi PIN-ini unudubsa — müvəqqəti PIN ver"
+                        >
+                          <IconPhone /> PIN sıfırla
                         </button>
                       </>
                     )}

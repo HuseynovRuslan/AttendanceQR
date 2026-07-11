@@ -323,6 +323,14 @@ export function reinviteEmployee(id: string) {
   })
 }
 
+/** POST /api/admin/employees/{id}/reset-pin — set a random temporary PIN for an activated employee
+ * who forgot theirs (a PIN can't be read back — only reset). Returns the temp PIN to pass on. */
+export function resetPin(id: string) {
+  return apiRequest<{ tempPin: string } | { error: string }>(`/api/admin/employees/${id}/reset-pin`, {
+    method: 'POST',
+  })
+}
+
 // --- bulk invite -----------------------------------------------------------
 
 export interface BulkInviteRow {

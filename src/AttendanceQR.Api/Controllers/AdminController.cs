@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -18,11 +19,19 @@ public class AdminController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly InvitationOptions _invitationOptions;
+    private readonly IPasswordHasher _passwordHasher;
+    private readonly ILoginLockoutStore _lockout;
 
-    public AdminController(AppDbContext db, IOptions<InvitationOptions> invitationOptions)
+    public AdminController(
+        AppDbContext db,
+        IOptions<InvitationOptions> invitationOptions,
+        IPasswordHasher passwordHasher,
+        ILoginLockoutStore lockout)
     {
         _db = db;
         _invitationOptions = invitationOptions.Value;
+        _passwordHasher = passwordHasher;
+        _lockout = lockout;
     }
 
     [HttpGet]
@@ -346,5 +355,35 @@ public class AdminController : ControllerBase
             activationToken,
             activationUrl = $"/activate?token={activationToken}"
         });
+    }
+
+    // POST /api/admin/employees/{id}/reset-pin — set a random temporary PIN for an activated employee
+    // who forgot theirs (a hashed PIN can never be read back). Returns the plaintext temp PIN so the
+    // admin can pass it on; the employee logs in and changes it from the menu. Also clears any login
+    // lockout so they can sign in straight away. Not-yet-activated accounts use reinvite instead.
+    [HttpPost("{id:guid}/reset-pin")]
+    public async Task<IActionResult> ResetPin(Guid id)
+    {
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);
+        if (employee is null)
+            return NotFound(new { error = "EmployeeNotFound" });
+        if (employee.ActivatedAtUtc is null)
+            return Conflict(new { error = "NotActivated" });
+
+        // Cryptographically random 4-digit PIN, zero-padded (0000–9999).
+        var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        employee.PasswordHash = _passwordHasher.Hash(pin);
+        await _db.SaveChangesAsync();
+
+        // Clear the lockout under every identifier they might have typed (the store keys by the raw
+        // string, so a phone with and without the leading 0 are distinct buckets).
+        _lockout.RecordSuccess(employee.Email);
+        if (employee.PhoneNumber is not null)
+        {
+            _lockout.RecordSuccess(employee.PhoneNumber);
+            _lockout.RecordSuccess("0" + employee.PhoneNumber);
+        }
+
+        return Ok(new { tempPin = pin });
     }
 }
