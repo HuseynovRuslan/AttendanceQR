@@ -59,6 +59,12 @@ export function ScanPage() {
   // photo and the check-in proceeds unaffected.
   const selfieVideoRef = useRef<HTMLVideoElement | null>(null)
   const busyRef = useRef(false)
+  // True while this page is mounted — so a start() that resolves AFTER the employee tapped "Bağla"
+  // releases the camera instead of leaving it held (a held camera is what turns the next scan black).
+  const mountedRef = useRef(true)
+  // A start is in flight — blocks a second overlapping start() from stacking a second video (and a
+  // second, black stream) onto #reader.
+  const startingRef = useRef(false)
   // True while a scan result is on screen — keeps the today-status reload (which flips today.kind)
   // from re-running the camera effect and wiping the result message. Cleared when scanning restarts.
   const scanDoneRef = useRef(false)
@@ -83,6 +89,15 @@ export function ScanPage() {
   const introSkipRef = useRef<(() => void) | null>(null)
   const introProgress = useCaptureProgress(phase === 'intro', INTRO_MS)
   const introSecondsLeft = Math.max(1, Math.ceil(((1 - introProgress) * INTRO_MS) / 1000))
+
+  // Track mount so an in-flight camera start can bail if the employee already left the screen.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      void stopCamera()
+    }
+  }, [])
 
   // Today's status decides whether the camera should even start — no point opening it if the
   // day is already complete (the backend would just reject with AlreadyCompleted anyway).
@@ -230,37 +245,72 @@ export function ScanPage() {
   }
 
   async function startCamera() {
+    // One start at a time: a second overlapping start() stacks a second (black) video onto #reader.
+    if (startingRef.current) return
+    startingRef.current = true
     scanDoneRef.current = false
     setCameraError(null)
     setResult(null)
     setPhase('scanning')
     busyRef.current = false
 
-    // Let the reader element become visible before the camera attaches.
-    await new Promise((r) => requestAnimationFrame(() => r(null)))
-
     try {
-      const scanner = new Html5Qrcode(READER_ID, { verbose: false })
-      scannerRef.current = scanner
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        onDecoded,
-        undefined,
-      )
-    } catch (err) {
-      setCameraError(cameraFailKind(err))
+      // Two attempts: start() can resolve while the device is still held by a prior stream and deliver
+      // only black frames. If no real frame arrives we tear the whole thing down and try once more;
+      // only then do we give up to CameraHelp. This is what the employee used to do by hand (refresh).
+      for (let attempt = 0; attempt < 2; attempt++) {
+        // Always clear any previous scanner (and its stream) before attaching a new one.
+        await stopCamera()
+        if (!mountedRef.current) return
+
+        // Let the reader element become visible before the camera attaches.
+        await new Promise((r) => requestAnimationFrame(() => r(null)))
+
+        try {
+          const scanner = new Html5Qrcode(READER_ID, { verbose: false })
+          scannerRef.current = scanner
+          await scanner.start(
+            { facingMode: 'environment' },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            onDecoded,
+            undefined,
+          )
+        } catch (err) {
+          // A real getUserMedia failure (denied / no camera / in use) — no point retrying.
+          await stopCamera()
+          setCameraError(cameraFailKind(err))
+          return
+        }
+
+        // Left the screen while start() was in flight — release the camera and stop.
+        if (!mountedRef.current) {
+          await stopCamera()
+          return
+        }
+
+        // start() resolved; confirm the stream is actually producing frames, not sitting black.
+        if (await waitForReaderFrame(3500)) return // success — scannerRef stays set
+
+        // Black. Tear down and loop; after the last attempt fall through to the CameraHelp below.
+        await stopCamera()
+      }
+      if (mountedRef.current) setCameraError('inuse')
+    } finally {
+      startingRef.current = false
     }
   }
 
   async function stopCamera() {
     const scanner = scannerRef.current
     scannerRef.current = null
+    // Kill the injected <video>'s stream FIRST — it survives a stop() that throws because start()
+    // was still mid-flight, and a leaked track keeps the (single) camera busy → next start() is black.
+    releaseReaderTracks()
     if (!scanner) return
     try {
       await scanner.stop()
     } catch {
-      /* already stopped */
+      /* not started yet, or already stopped — the stream is handled above */
     }
     try {
       scanner.clear()
@@ -703,6 +753,37 @@ function waitForVideoFrame(video: HTMLVideoElement, timeoutMs: number): Promise<
     }
     tick()
   })
+}
+
+// Resolve true once html5-qrcode's injected <video> is actually producing frames (videoWidth > 0),
+// false after a timeout. A start() that resolves but never delivers a frame is the "black camera"
+// case — the device is still held by a stream that was never released.
+function waitForReaderFrame(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const start = performance.now()
+    const tick = () => {
+      const video = document.getElementById(READER_ID)?.querySelector('video') as HTMLVideoElement | null
+      if (video && video.videoWidth > 0) {
+        resolve(true)
+        return
+      }
+      if (performance.now() - start >= timeoutMs) {
+        resolve(false)
+        return
+      }
+      requestAnimationFrame(tick)
+    }
+    tick()
+  })
+}
+
+// Stop every track on the scanner's <video>, even when html5-qrcode's own stop() can't (it throws if
+// start() hadn't finished). A live track holds the one camera the phone allows, so the next start()
+// resolves to black until a full reload — this is what stops that from ever being needed.
+function releaseReaderTracks() {
+  const video = document.getElementById(READER_ID)?.querySelector('video') as HTMLVideoElement | null
+  const stream = video?.srcObject as MediaStream | null
+  stream?.getTracks().forEach((t) => t.stop())
 }
 
 function fmtTime(iso?: string): string {
