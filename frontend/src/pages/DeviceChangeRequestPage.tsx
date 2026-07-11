@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { requestDeviceChange } from '../api/deviceChange'
 import { getDeviceFingerprint } from '../lib/device'
-import { EmployeeNav } from '../components/EmployeeNav'
+import { SubPageHeader } from '../components/SubPageHeader'
 
 type Result = { tone: 'green' | 'yellow' | 'red'; title: string; detail?: string }
 
@@ -43,20 +43,19 @@ export function DeviceChangeRequestPage() {
     : ''
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-900 text-white">
-      <EmployeeNav title="Cihaz dəyişimi" />
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <SubPageHeader title="Yeni telefon" />
 
-      <main className="flex-1 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-sm">
-          <h1 className="text-2xl font-bold text-center mb-2">Yeni telefon</h1>
-          <p className="text-slate-300 text-center text-base mb-6">
+      <main className="mx-auto w-full max-w-sm p-4">
+        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <p className="mb-6 text-center text-base text-slate-500">
             Yeni telefondan sistemə daxil olmaq üçün admin təsdiqi lazımdır. Aşağıdakı düyməni basın
             — bu telefon admin təsdiqinə göndəriləcək.
           </p>
 
           {result && (
-            <div className={`rounded-2xl p-5 text-center mb-4 ${toneClass}`}>
-              <div className="text-4xl font-bold mb-2">
+            <div className={`mb-4 rounded-2xl p-5 text-center ${toneClass}`}>
+              <div className="mb-2 text-4xl font-bold">
                 {result.tone === 'green' ? '✓' : result.tone === 'yellow' ? '!' : '✕'}
               </div>
               <h2 className="text-lg font-bold">{result.title}</h2>
@@ -68,7 +67,7 @@ export function DeviceChangeRequestPage() {
             <button
               onClick={onSubmit}
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-2xl py-4 text-lg transition"
+              className="w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? 'Göndərilir…' : 'Bu telefonu təsdiq üçün göndər'}
             </button>

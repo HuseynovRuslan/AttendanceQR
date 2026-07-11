@@ -105,6 +105,13 @@ export const IconX = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const IconArrowLeft = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <line x1="19" y1="12" x2="5" y2="12" />
+    <polyline points="12 19 5 12 12 5" />
+  </svg>
+)
+
 export const IconClock = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <circle cx="12" cy="12" r="9" />
