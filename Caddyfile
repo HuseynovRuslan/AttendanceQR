@@ -1,12 +1,8 @@
 # Automatic HTTPS for the production stack. Caddy fetches and renews Let's Encrypt certificates on
-# its own, the moment these names resolve to this server. Names are proxied to the compose services
-# by their service name on the internal network.
+# its own, the moment these names resolve to this server. The app lives under bax.qrlog.az; the apex
+# qrlog.az is a separate landing page and is intentionally not handled here.
 
-www.qrlog.az {
-	redir https://qrlog.az{uri} permanent
-}
-
-qrlog.az {
+bax.qrlog.az {
 	encode zstd gzip
 	reverse_proxy frontend:80
 }
