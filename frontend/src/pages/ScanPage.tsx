@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
-import { getMyAttendance, reportScanFailure, type AttendanceRecord } from '../api/attendance'
+import { getMyAttendance, getMyDeviceStatus, reportScanFailure, type AttendanceRecord } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
+import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
 import { FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
@@ -64,6 +65,9 @@ export function ScanPage() {
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
+  // The visible pre-scan verification (device → location → camera). An overlay while it runs.
+  const [verifying, setVerifying] = useState(true)
+  const [checks, setChecks] = useState<ScanChecks>({ device: 'idle', location: 'idle', camera: 'idle' })
   // True once the front camera is actually producing frames, so the preview says "look at the
   // camera" rather than showing a black circle while it warms up.
   const [photoLive, setPhotoLive] = useState(false)
@@ -81,58 +85,101 @@ export function ScanPage() {
     void loadTodayStatus()
   }, [])
 
-  // Settle the position up front. This both surfaces a broken GPS *before* the employee aims at the
-  // poster (instead of after a failed scan) and warms the fix, so the scan itself answers instantly.
-  useEffect(() => {
-    void checkGeo()
-  }, [])
-
+  // Run the pre-scan verification once today's status is known (and re-run on an explicit retry).
+  // The day being already complete needs no camera at all.
   useEffect(() => {
     if (today.kind === 'loading') return
     if (today.kind === 'completed') {
+      setVerifying(false)
       void stopCamera()
       return
     }
-    // Without a position the scan would be rejected anyway — show the fix instructions, not a camera.
-    if (geo.kind !== 'ready') {
-      void stopCamera()
-      return
-    }
-    // A scan just finished and its result is showing — don't auto-restart the camera (that would
-    // clear the message). The user restarts via "Yenidən skan et".
+    // A scan just finished and its result is on screen — don't re-verify (that would wipe it). The
+    // employee restarts via "Yenidən skan et", which calls runChecks itself.
     if (scanDoneRef.current) return
-    void startCamera()
+    void runChecks()
     return () => {
       void stopCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today.kind, geo.kind])
+  }, [today.kind])
 
-  // Resolve the phone's position and record the outcome. A failure here is reported to the server
-  // (deduplicated there) so the employee appears in the admin "Problemlər" screen — previously a
-  // GPS failure never reached /scan and so left no trace at all.
-  async function checkGeo() {
+  // Failsafe: the checklist overlay must never stick. runChecks always clears `verifying` itself, but
+  // if some await hangs unexpectedly, drop the overlay after 25s so the employee is never trapped.
+  useEffect(() => {
+    if (!verifying) return
+    const t = setTimeout(() => setVerifying(false), 25_000)
+    return () => clearTimeout(t)
+  }, [verifying])
+
+  // The three checks that really gate a scan — device binding, location, camera — run in order and
+  // are shown one after another (ScanChecklist) so the process is visible, not a hidden pause.
+  // Device is advisory (the server still enforces it on the scan); location is the real gate.
+  async function runChecks() {
+    setVerifying(true)
+    setCameraError(null)
+    setResult(null)
+    setPhase('scanning')
+    scanDoneRef.current = false
+    busyRef.current = false
     setGeo({ kind: 'checking' })
-    const position = await getPosition()
+    setChecks({ device: 'run', location: 'idle', camera: 'idle' })
 
-    if (!position.ok) {
-      setGeo({ kind: 'failed', fail: position.kind })
-      void reportScanFailure(FAILURE_REASON[position.kind]).catch(() => {})
+    // 1) Device — is this browser context bound to the caller's account? Advisory only, so a slow or
+    // failed check must never block the scan: race it against a short timeout and treat null as pass.
+    const dev = await Promise.race([
+      getMyDeviceStatus(getDeviceFingerprint()).catch(() => null),
+      delay(3000).then(() => null),
+    ])
+    await delay(650)
+    const deviceStep =
+      dev && dev.status === 200 && dev.data && 'bound' in dev.data
+        ? dev.data.revoked
+          ? 'fail'
+          : dev.data.bound
+            ? 'ok'
+            : 'warn' // not bound yet — it will be adopted on this scan (at the geofence)
+        : 'ok'
+    setChecks((c) => ({ ...c, device: deviceStep, location: 'run' }))
+    if (deviceStep === 'fail') {
+      await delay(1000)
+      setVerifying(false)
+      setResult({ tone: 'red', title: 'Cihaz ləğv edilib', detail: 'Administrator ilə əlaqə saxlayın.', final: true })
+      setPhase('done')
+      scanDoneRef.current = true
       return
     }
 
+    // 2) Location — the real gate. A failure shows GpsHelp.
+    const position = await getPosition()
+    await delay(650)
+    if (!position.ok) {
+      setChecks((c) => ({ ...c, location: 'fail' }))
+      setGeo({ kind: 'failed', fail: position.kind })
+      void reportScanFailure(FAILURE_REASON[position.kind]).catch(() => {})
+      await delay(900)
+      setVerifying(false)
+      return
+    }
     const accuracy = Math.round(position.coords.accuracy)
     setGeo({ kind: 'ready', accuracy })
-    // Too coarse to mean much against a 150 m radius. Deliberately not blocking during the pilot —
-    // we warn the employee, note it for the admin, and let the scan through.
     if (accuracy > POOR_ACCURACY_METERS) void reportScanFailure('GpsInaccurate', accuracy).catch(() => {})
-  }
+    setChecks((c) => ({ ...c, location: 'ok', camera: 'run' }))
 
-  function retryGeo() {
-    scanDoneRef.current = false
-    setResult(null)
-    setPhase('scanning')
-    void checkGeo()
+    // 3) Camera — the reader is now visible (phase 'scanning' + geo ready), so html5-qrcode attaches.
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    await startCamera()
+    await delay(500)
+    if (scannerRef.current) {
+      setChecks((c) => ({ ...c, camera: 'ok' }))
+      await delay(550)
+      setVerifying(false)
+    } else {
+      // startCamera set cameraError — reveal CameraHelp.
+      setChecks((c) => ({ ...c, camera: 'fail' }))
+      await delay(700)
+      setVerifying(false)
+    }
   }
 
   async function loadTodayStatus() {
@@ -335,7 +382,9 @@ export function ScanPage() {
         </button>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-4 gap-5">
+      <main className="relative flex-1 flex flex-col items-center justify-center p-4 gap-5">
+        {verifying && today.kind !== 'completed' && <ScanChecklist checks={checks} />}
+
         <TodayBanner today={today} />
 
         {today.kind === 'completed' && (
@@ -354,12 +403,8 @@ export function ScanPage() {
           <PhotoIntro secondsLeft={introSecondsLeft} onReady={() => introSkipRef.current?.()} />
         )}
 
-        {today.kind !== 'completed' && geo.kind === 'checking' && (
-          <p className="text-lg text-slate-300 animate-pulse">Məkan yoxlanılır…</p>
-        )}
-
         {today.kind !== 'completed' && geo.kind === 'failed' && (
-          <GpsHelp kind={geo.fail} onRetry={retryGeo} />
+          <GpsHelp kind={geo.fail} onRetry={() => void runChecks()} />
         )}
 
         {/* Position obtained, but too coarse to sit comfortably inside a 150 m radius. Scanning is
@@ -414,10 +459,10 @@ export function ScanPage() {
           <p className="text-lg animate-pulse">Yoxlanılır…</p>
         )}
 
-        {cameraError && <CameraHelp kind={cameraError} onRetry={startCamera} />}
+        {cameraError && <CameraHelp kind={cameraError} onRetry={() => void runChecks()} />}
 
         {phase === 'done' && result && (
-          <ResultCard card={result} onRetry={startCamera} onClose={() => navigate('/home')} />
+          <ResultCard card={result} onRetry={() => void runChecks()} onClose={() => navigate('/home')} />
         )}
       </main>
     </div>
