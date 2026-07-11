@@ -33,11 +33,13 @@ const INTRO_MS = 6000
 // the words on screen and settling into position — at 1.2s the shot was taken before people had even
 // looked up. A ring and a seconds counter run alongside so nobody is surprised. There is still no
 // shutter button to press: the photo is taken automatically at zero.
-const PHOTO_HOLD_MS = 10_000
+const PHOTO_HOLD_MS = 5_000
 // Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
 // not, and full-frame captures kept picking up two and three faces.
-const PHOTO_CROP = 0.85
-const PHOTO_SIZE = 480
+// A face-shaped (portrait) crop + output, matching the oval preview the employee sees.
+const PHOTO_CROP = 0.92
+const PHOTO_W = 420
+const PHOTO_H = 540
 // The scan is pointless without a position, so we settle this before the camera ever opens.
 type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
 type TodayInfo =
@@ -482,8 +484,9 @@ export function ScanPage() {
             employee looking at the lens produces one clean face instead of the queue behind them.
             The circle matches the centre crop frameToJpeg() takes, so what they see is what is kept. */}
         <div className={phase === 'photo' ? 'flex w-full max-w-sm flex-col items-center gap-3' : 'hidden'}>
-          <div className="relative h-60 w-60">
-            <div className="h-full w-full overflow-hidden rounded-full border-2 border-white/20 bg-black shadow-lg">
+          <div className="relative h-72 w-56">
+            {/* Oval (face-shaped) frame so the employee lines their face up inside it. */}
+            <div className="h-full w-full overflow-hidden rounded-[50%] border-2 border-white/20 bg-black shadow-lg">
               <video
                 ref={selfieVideoRef}
                 className="h-full w-full -scale-x-100 object-cover"
@@ -549,25 +552,31 @@ function useCaptureProgress(active: boolean, durationMs: number): number {
   return progress
 }
 
-/** Ring drawn OUTSIDE the circular overflow-hidden preview, or its stroke would be clipped by the
- *  very circle it draws around. */
+/** Oval countdown ring tracing the face frame. Drawn over the preview; the ellipse perimeter (via
+ *  Ramanujan's approximation) feeds strokeDasharray so it drains exactly once over the hold. */
 function CaptureRing({ progress }: { progress: number }) {
-  const radius = 118
-  const circumference = 2 * Math.PI * radius
+  const cx = 112
+  const cy = 144
+  const rx = 104
+  const ry = 136
+  const hh = ((rx - ry) / (rx + ry)) ** 2
+  const perimeter = Math.PI * (rx + ry) * (1 + (3 * hh) / (10 + Math.sqrt(4 - 3 * hh)))
 
   return (
-    <svg viewBox="0 0 256 256" className="pointer-events-none absolute inset-0 h-full w-full -rotate-90">
-      <circle cx="128" cy="128" r={radius} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="7" />
-      <circle
-        cx="128"
-        cy="128"
-        r={radius}
+    <svg viewBox="0 0 224 288" className="pointer-events-none absolute inset-0 h-full w-full">
+      <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="6" />
+      <ellipse
+        cx={cx}
+        cy={cy}
+        rx={rx}
+        ry={ry}
         fill="none"
         stroke="#22c55e"
-        strokeWidth="7"
+        strokeWidth="6"
         strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - progress)}
+        strokeDasharray={perimeter}
+        strokeDashoffset={perimeter * (1 - progress)}
+        transform={`rotate(-90 ${cx} ${cy})`}
       />
     </svg>
   )
@@ -711,16 +720,28 @@ function delay(ms: number): Promise<void> {
 // null). Bystanders queueing behind the employee sit at the edges of a front-camera frame, so
 // discarding the edges is what stops two and three faces landing in a check-in photo.
 function frameToJpeg(video: HTMLVideoElement): Promise<string | null> {
-  const side = Math.round(Math.min(video.videoWidth, video.videoHeight) * PHOTO_CROP)
-  const sx = Math.round((video.videoWidth - side) / 2)
-  const sy = Math.round((video.videoHeight - side) / 2)
+  // Largest centred crop with the portrait (face) aspect, zoomed slightly (PHOTO_CROP), so the face
+  // fills the frame the way the oval preview showed it. Bystanders sit outside a portrait crop too.
+  const aspect = PHOTO_W / PHOTO_H
+  const vw = video.videoWidth
+  const vh = video.videoHeight
+  let cw = vh * aspect
+  let ch = vh
+  if (cw > vw) {
+    cw = vw
+    ch = vw / aspect
+  }
+  cw = Math.round(cw * PHOTO_CROP)
+  ch = Math.round(ch * PHOTO_CROP)
+  const sx = Math.round((vw - cw) / 2)
+  const sy = Math.round((vh - ch) / 2)
 
   const canvas = document.createElement('canvas')
-  canvas.width = PHOTO_SIZE
-  canvas.height = PHOTO_SIZE
+  canvas.width = PHOTO_W
+  canvas.height = PHOTO_H
   const ctx = canvas.getContext('2d')
   if (!ctx) return Promise.resolve(null)
-  ctx.drawImage(video, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE)
+  ctx.drawImage(video, sx, sy, cw, ch, 0, 0, PHOTO_W, PHOTO_H)
 
   return new Promise((resolve) =>
     canvas.toBlob(
