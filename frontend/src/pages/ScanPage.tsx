@@ -6,6 +6,7 @@ import { getMyAttendance, reportScanFailure, type AttendanceRecord } from '../ap
 import { getDeviceFingerprint } from '../lib/device'
 import { FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
+import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
 
 type Card = {
@@ -59,7 +60,7 @@ export function ScanPage() {
   // from re-running the camera effect and wiping the result message. Cleared when scanning restarts.
   const scanDoneRef = useRef(false)
   const [phase, setPhase] = useState<Phase>('scanning')
-  const [cameraError, setCameraError] = useState<string | null>(null)
+  const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
@@ -168,10 +169,8 @@ export function ScanPage() {
         onDecoded,
         undefined,
       )
-    } catch {
-      setCameraError(
-        'Kameraya çıxış yoxdur. Brauzerdə kamera icazəsi verin. Kamera yalnız HTTPS və ya localhost-da işləyir.',
-      )
+    } catch (err) {
+      setCameraError(cameraFailKind(err))
     }
   }
 
@@ -415,13 +414,7 @@ export function ScanPage() {
           <p className="text-lg animate-pulse">Yoxlanılır…</p>
         )}
 
-        {cameraError && (
-          <ResultCard
-            card={{ tone: 'red', title: 'Kamera xətası', detail: cameraError }}
-            onRetry={startCamera}
-            onClose={() => navigate('/home')}
-          />
-        )}
+        {cameraError && <CameraHelp kind={cameraError} onRetry={startCamera} />}
 
         {phase === 'done' && result && (
           <ResultCard card={result} onRetry={startCamera} onClose={() => navigate('/home')} />
