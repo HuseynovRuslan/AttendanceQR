@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
-import { getMyAttendance, getMyDeviceStatus, reportScanFailure, type AttendanceRecord } from '../api/attendance'
+import {
+  getMyAttendance,
+  getMyDeviceStatus,
+  getMissedCheckoutStatus,
+  reportScanFailure,
+  type AttendanceRecord,
+  type MissedCheckoutStatusResp,
+} from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
 import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
@@ -73,6 +80,11 @@ export function ScanPage() {
   const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
+  // Forgot-checkout gate: an open past day blocks the scan behind a prompt until it's reported or the
+  // employee taps "Sonra skan et". `missedReady` guards against starting the camera before we know.
+  const [missed, setMissed] = useState<MissedCheckoutStatusResp | null>(null)
+  const [missedReady, setMissedReady] = useState(false)
+  const [gateCleared, setGateCleared] = useState(false)
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // The visible pre-scan verification (device → location → camera). An overlay while it runs.
   const [verifying, setVerifying] = useState(true)
@@ -106,9 +118,25 @@ export function ScanPage() {
     void loadTodayStatus()
   }, [])
 
+  // Is there a forgotten-checkout day to deal with before scanning? Fail-open: any error just lets the
+  // scan proceed (never trap someone at the gate over this check).
+  useEffect(() => {
+    void getMissedCheckoutStatus()
+      .then((r) => {
+        if (r.status === 200 && r.data && 'openDay' in r.data) setMissed(r.data)
+      })
+      .finally(() => setMissedReady(true))
+  }, [])
+
+  // The scan may start once we know there's nothing to block on: no open day, one already pending, or
+  // the employee cleared the prompt (reported / "Sonra skan et").
+  const scanAllowed = missedReady && (!missed?.openDay || missed.pending || gateCleared)
+
   // Run the pre-scan verification once today's status is known (and re-run on an explicit retry).
   // The day being already complete needs no camera at all.
   useEffect(() => {
+    // Held behind the forgot-checkout prompt — don't open the camera yet.
+    if (!scanAllowed) return
     if (today.kind === 'loading') return
     if (today.kind === 'completed') {
       setVerifying(false)
@@ -123,7 +151,7 @@ export function ScanPage() {
       void stopCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today.kind])
+  }, [today.kind, scanAllowed])
 
   // Failsafe: the checklist overlay must never stick. runChecks always clears `verifying` itself, but
   // if some await hangs unexpectedly, drop the overlay after 25s so the employee is never trapped.
@@ -465,12 +493,6 @@ export function ScanPage() {
         </button>
       </header>
 
-      {/* Forgotten-checkout nudge, surfaced here too: the scan screen is where attendance actually
-          happens, so an employee who ignored the home banner still meets it before checking in/out. */}
-      <div className="mx-auto w-full max-w-sm px-4 pt-3">
-        <MissedCheckoutBanner />
-      </div>
-
       <main className="relative flex-1 flex flex-col items-center justify-center p-4 gap-5">
         {verifying && today.kind !== 'completed' && <ScanChecklist checks={checks} />}
 
@@ -578,6 +600,23 @@ export function ScanPage() {
           <ResultCard card={result} onRetry={() => void runChecks()} onClose={() => navigate('/home')} />
         )}
       </main>
+
+      {/* Mandatory forgot-checkout gate: an open past day blocks the scan until the employee reports it
+          or explicitly taps "Sonra skan et". Covers the checklist/camera so it can't be missed. */}
+      {missedReady && !scanAllowed && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-900/95 p-5">
+          <div className="w-full max-w-sm">
+            <p className="mb-3 text-center text-lg font-bold text-white">Əvvəlcə dünənki çıxışı bildirin</p>
+            <MissedCheckoutBanner onReported={() => setGateCleared(true)} />
+            <button
+              onClick={() => setGateCleared(true)}
+              className="mt-4 w-full rounded-2xl bg-slate-700 py-3 font-semibold text-slate-200 transition active:scale-[0.99]"
+            >
+              Sonra skan et
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

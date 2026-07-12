@@ -24,7 +24,7 @@ function fmtDate(dateOnly: string): string {
  * left (preset reason + time picker); it becomes a request an admin/manager approves. The count of
  * this month's reports is shown back to them on purpose — this path is a safety net, not a habit.
  */
-export function MissedCheckoutBanner() {
+export function MissedCheckoutBanner({ onReported }: { onReported?: () => void } = {}) {
   const [status, setStatus] = useState<MissedCheckoutStatusResp | null>(null)
   const [open, setOpen] = useState(false)
   const [time, setTime] = useState('18:00')
@@ -87,6 +87,7 @@ export function MissedCheckoutBanner() {
     if (r.status === 201) {
       setSent(true)
       setOpen(false)
+      onReported?.()
       return
     }
     const code = r.data && 'error' in r.data ? r.data.error : ''
