@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import {
   bulkImport,
   bulkInvite,
+  downloadXlsxTemplate,
   getAdminLocations,
   parseXlsx,
   type AdminLocation,
@@ -214,6 +215,9 @@ export function BulkInvitePage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-sm" onClick={() => void downloadXlsxTemplate()}>
+            📥 Excel şablonu yüklə
+          </button>
           <label className="btn" style={{ cursor: importing ? 'default' : 'pointer' }}>
             {importing ? 'Oxunur…' : '📄 Excel / CSV faylı seç'}
             <input
@@ -225,6 +229,9 @@ export function BulkInvitePage() {
             />
           </label>
           <span className="muted" style={{ fontSize: 12 }}>və ya aşağı birbaşa yapışdırın</span>
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+          Şablonu yükləyin → içini doldurun (Ad Soyad · Telefon · Vəzifə) → «faylı seç» ilə geri yükləyin.
         </div>
 
         <label className="form-label">İşçilər — hər sətir bir nəfər</label>

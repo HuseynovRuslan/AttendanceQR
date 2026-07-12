@@ -290,6 +290,36 @@ public class AdminController : ControllerBase
         return Ok(new { rows });
     }
 
+    // GET /api/admin/employees/xlsx-template — a ready-to-fill .xlsx with the exact columns parse-xlsx
+    // expects, so the admin downloads it, types the rows in, and uploads it back. Headers only (no
+    // example data row — an unedited example would otherwise import as a real employee).
+    [HttpGet("xlsx-template")]
+    public IActionResult XlsxTemplate()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("İşçilər");
+
+        var headers = new[] { "Ad Soyad", "Telefon", "Vəzifə" };
+        for (var i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E8EEF7");
+        }
+        ws.Column(1).Width = 28;
+        ws.Column(2).Width = 18;
+        ws.Column(3).Width = 22;
+        ws.SheetView.FreezeRows(1);
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return File(
+            ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "isciler-sablon.xlsx");
+    }
+
     // Emails + phones already in use, as sets, so a batch can check for collisions in memory (against
     // the DB and against earlier rows in the same batch) without a query per row.
     private async Task<(HashSet<string> Emails, HashSet<string> Phones)> LoadTakenIdentifiersAsync()

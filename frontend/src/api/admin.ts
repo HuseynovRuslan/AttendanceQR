@@ -399,6 +399,30 @@ export interface ParsedXlsxRow {
   position: string | null
 }
 
+/** GET /api/admin/employees/xlsx-template — download a ready-to-fill .xlsx with the expected columns.
+ * Returns false on failure. Authed, so it fetches the blob rather than using a plain link. */
+export async function downloadXlsxTemplate(): Promise<boolean> {
+  const token = getToken()
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/employees/xlsx-template`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) return false
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'isciler-sablon.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** POST /api/admin/employees/parse-xlsx — upload an .xlsx and get its rows back (parsing only, creates
  * nothing). Multipart, so it can't ride the JSON apiRequest helper. */
 export async function parseXlsx(file: File): Promise<{ status: number; rows: ParsedXlsxRow[] }> {
