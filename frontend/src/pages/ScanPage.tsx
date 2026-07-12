@@ -128,9 +128,12 @@ export function ScanPage() {
       .finally(() => setMissedReady(true))
   }, [])
 
-  // The scan may start once we know there's nothing to block on: no open day, one already pending, or
-  // the employee cleared the prompt (reported / "Sonra skan et").
-  const scanAllowed = missedReady && (!missed?.openDay || missed.pending || gateCleared)
+  // The scan may start once there's nothing actionable to block on: no open day, a report already
+  // pending, the monthly cap is reached (they can only see the admin now — don't trap them), or they
+  // just reported. Reporting is the ONLY way through when a report is still possible — no skip.
+  const scanAllowed =
+    missedReady &&
+    (!missed?.openDay || missed.pending || missed.monthlyCount >= missed.limit || gateCleared)
 
   // Run the pre-scan verification once today's status is known (and re-run on an explicit retry).
   // The day being already complete needs no camera at all.
@@ -601,19 +604,16 @@ export function ScanPage() {
         )}
       </main>
 
-      {/* Mandatory forgot-checkout gate: an open past day blocks the scan until the employee reports it
-          or explicitly taps "Sonra skan et". Covers the checklist/camera so it can't be missed. */}
+      {/* Mandatory forgot-checkout gate: an open past day blocks the scan until the employee reports the
+          time they left. No skip — reporting is the only way through. Covers the checklist/camera so it
+          can't be missed. (Over-limit / already-pending days don't reach here — see scanAllowed.) */}
       {missedReady && !scanAllowed && (
-        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-900/95 p-5">
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center overflow-y-auto bg-slate-900/95 p-5">
           <div className="w-full max-w-sm">
-            <p className="mb-3 text-center text-lg font-bold text-white">Əvvəlcə dünənki çıxışı bildirin</p>
+            <p className="mb-3 text-center text-lg font-bold text-white">
+              Əvvəlcə dünənki çıxışı bildirin
+            </p>
             <MissedCheckoutBanner onReported={() => setGateCleared(true)} />
-            <button
-              onClick={() => setGateCleared(true)}
-              className="mt-4 w-full rounded-2xl bg-slate-700 py-3 font-semibold text-slate-200 transition active:scale-[0.99]"
-            >
-              Sonra skan et
-            </button>
           </div>
         </div>
       )}

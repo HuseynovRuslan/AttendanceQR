@@ -7,7 +7,11 @@ import {
 
 // Preset reasons so a non-technical employee taps instead of typing. "Başqa" opens a short free text.
 const REASONS = ['Yadımdan çıxdı', 'Tələsirdim', 'Telefon/internet problemi', 'Skan işləmədi', 'Başqa']
-const QUICK_TIMES = ['17:00', '18:00', '19:00']
+// Tap-only time: an hour + a minute button, no native clock-face picker (which older staff found
+// confusing). Covers the usual end-of-shift window; half-hour-ish precision is fine for an estimate.
+const HOURS = [14, 15, 16, 17, 18, 19, 20, 21, 22]
+const MINUTES = [0, 15, 30, 45]
+const pad = (n: number) => String(n).padStart(2, '0')
 
 const AZ_MONTHS = [
   'yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun',
@@ -27,7 +31,8 @@ function fmtDate(dateOnly: string): string {
 export function MissedCheckoutBanner({ onReported }: { onReported?: () => void } = {}) {
   const [status, setStatus] = useState<MissedCheckoutStatusResp | null>(null)
   const [open, setOpen] = useState(false)
-  const [time, setTime] = useState('18:00')
+  const [hour, setHour] = useState(18)
+  const [minute, setMinute] = useState(0)
   const [reason, setReason] = useState('')
   const [customReason, setCustomReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -75,7 +80,7 @@ export function MissedCheckoutBanner({ onReported }: { onReported?: () => void }
     }
     // The employee picks a wall-clock time; combine it with the day and let the phone's timezone give
     // the UTC instant the server stores.
-    const dt = new Date(`${openDay.attendanceDate}T${time}:00`)
+    const dt = new Date(`${openDay.attendanceDate}T${pad(hour)}:${pad(minute)}:00`)
     if (Number.isNaN(dt.getTime())) {
       setError('Saat düzgün deyil')
       return
@@ -127,7 +132,7 @@ export function MissedCheckoutBanner({ onReported }: { onReported?: () => void }
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-          <div className="w-full max-w-sm rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl">
+          <div className="max-h-[92vh] w-full max-w-sm overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl">
             <h2 className="text-center text-lg font-bold">Çıxış vaxtını bildir</h2>
             <p className="mt-1 text-center text-sm text-slate-500">
               {fmtDate(openDay.attendanceDate)} günü neçədə getdiniz?
@@ -137,23 +142,36 @@ export function MissedCheckoutBanner({ onReported }: { onReported?: () => void }
               <div className="mt-3 rounded-lg bg-red-50 p-2.5 text-center text-sm font-medium text-red-700">{error}</div>
             )}
 
-            <label className="mt-4 block text-sm font-semibold text-slate-600">Çıxış saatı</label>
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-center text-2xl font-bold tabular-nums focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
-            <div className="mt-2 flex gap-2">
-              {QUICK_TIMES.map((t) => (
+            <div className="mt-4 rounded-2xl bg-blue-50 py-3 text-center text-3xl font-extrabold tabular-nums text-blue-700">
+              {pad(hour)}:{pad(minute)}
+            </div>
+
+            <div className="mt-3 text-sm font-semibold text-slate-600">Saat</div>
+            <div className="mt-1 grid grid-cols-5 gap-2">
+              {HOURS.map((h) => (
                 <button
-                  key={t}
-                  onClick={() => setTime(t)}
-                  className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-                    time === t ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                  key={h}
+                  onClick={() => setHour(h)}
+                  className={`rounded-lg py-2.5 text-base font-bold transition ${
+                    hour === h ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                   }`}
                 >
-                  {t}
+                  {h}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 text-sm font-semibold text-slate-600">Dəqiqə</div>
+            <div className="mt-1 grid grid-cols-4 gap-2">
+              {MINUTES.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMinute(m)}
+                  className={`rounded-lg py-2.5 text-base font-bold transition ${
+                    minute === m ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {pad(m)}
                 </button>
               ))}
             </div>
