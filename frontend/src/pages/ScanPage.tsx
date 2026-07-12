@@ -9,6 +9,7 @@ import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
+import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -463,6 +464,12 @@ export function ScanPage() {
           Bağla
         </button>
       </header>
+
+      {/* Forgotten-checkout nudge, surfaced here too: the scan screen is where attendance actually
+          happens, so an employee who ignored the home banner still meets it before checking in/out. */}
+      <div className="mx-auto w-full max-w-sm px-4 pt-3">
+        <MissedCheckoutBanner />
+      </div>
 
       <main className="relative flex-1 flex flex-col items-center justify-center p-4 gap-5">
         {verifying && today.kind !== 'completed' && <ScanChecklist checks={checks} />}
