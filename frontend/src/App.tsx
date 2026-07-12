@@ -31,6 +31,7 @@ import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
 import { ProblemsPage } from './pages/admin/ProblemsPage'
 import { OpenRecordsPage } from './pages/admin/OpenRecordsPage'
+import { MissedCheckoutPage } from './pages/admin/MissedCheckoutPage'
 import { BulkInvitePage } from './pages/admin/BulkInvitePage'
 
 /** Reloads the app once a newer build exists. Silent by design: employees will not tap an "update"
@@ -155,6 +156,8 @@ function AppRoutes() {
         <Route path="photo-audit" element={<PhotoAuditPage />} />
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<ProblemsPage />} />
+        {/* Forgot-to-check-out requests — Admin + Manager (manager scoped to their locations). */}
+        <Route path="missed-checkout" element={<MissedCheckoutPage />} />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
         <Route
           path="open-records"

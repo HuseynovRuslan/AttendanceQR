@@ -61,6 +61,31 @@ export function getMyProfile() {
   return apiRequest<MyProfile>('/api/attendance/me/profile')
 }
 
+export interface MissedCheckoutStatusResp {
+  /** The oldest past day left open (check-in, no check-out), or null. */
+  openDay: { recordId: string; attendanceDate: string; checkInAtUtc: string } | null
+  /** This calendar month's self-reports (pending/approved). */
+  monthlyCount: number
+  limit: number
+  /** A request for the open day is already awaiting approval. */
+  pending: boolean
+}
+
+/** GET /api/attendance/missed-checkout — does the caller have a forgotten-checkout day to fix, and
+ * how many times have they used this path this month (for the home banner + its deterrent count). */
+export function getMissedCheckoutStatus() {
+  return apiRequest<MissedCheckoutStatusResp>('/api/attendance/missed-checkout')
+}
+
+/** POST /api/attendance/missed-checkout — report the time they actually left for a forgotten day. It
+ * becomes a request a manager/admin approves; the employee never writes their own hours. */
+export function submitMissedCheckout(recordId: string, checkOutAtUtc: string, reason: string) {
+  return apiRequest<{ id: string } | { error: string }>('/api/attendance/missed-checkout', {
+    method: 'POST',
+    body: { recordId, checkOutAtUtc, reason },
+  })
+}
+
 /** GET /api/reports/summary — aggregated totals for this employee over a date range. Employee-role
  * JWTs are forced to their own records server-side regardless of any other param, so this is the
  * same endpoint the admin reports page uses, just naturally self-scoped. */

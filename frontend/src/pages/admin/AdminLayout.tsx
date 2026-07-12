@@ -29,6 +29,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
   '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
+  '/admin/missed-checkout': { title: 'Çıxış tələbləri', sub: 'İşçilərin unudulmuş çıxış tələbləri' },
   '/admin/open-records': { title: 'Bağlanmamış günlər', sub: 'Giriş edib çıxış etməyən günlər' },
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
@@ -67,6 +68,8 @@ export function AdminLayout() {
     // Admin + Manager (no isAdmin gate) — managers audit their own locations' employees.
     { to: '/admin/photo-audit', label: 'Foto Audit', Icon: IconCamera },
     { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
+    // Admin + Manager — managers approve their own locations' forgot-checkout requests.
+    { to: '/admin/missed-checkout', label: 'Çıxış tələbləri', Icon: IconClock },
     ...(isAdmin ? [{ to: '/admin/open-records', label: 'Bağlanmamış günlər', Icon: IconClock }] : []),
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
     ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),

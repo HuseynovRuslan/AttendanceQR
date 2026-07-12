@@ -393,6 +393,40 @@ export function bulkImport(payload: BulkInvitePayload) {
   })
 }
 
+// --- missed-checkout requests (forgot to scan out) -------------------------
+
+export interface MissedCheckoutPending {
+  id: string
+  employeeName: string
+  locationName: string
+  attendanceDate: string
+  requestedCheckOutAtUtc: string
+  reason: string
+  requestedAtUtc: string
+  /** This employee's self-reports this month — the visibility deterrent. */
+  monthlyCount: number
+}
+
+/** GET /api/admin/missed-checkout/pending — forgotten-checkout requests awaiting review, scoped to the
+ * caller's locations (managers) or all (admin). */
+export function getMissedCheckoutPending() {
+  return apiRequest<MissedCheckoutPending[]>('/api/admin/missed-checkout/pending')
+}
+
+/** POST .../approve — write the requested check-out onto the record and recompute that day. */
+export function approveMissedCheckout(id: string) {
+  return apiRequest<{ status: string } | { error: string }>(`/api/admin/missed-checkout/${id}/approve`, {
+    method: 'POST',
+  })
+}
+
+/** POST .../reject — decline the request (the day stays open for the admin to handle). */
+export function rejectMissedCheckout(id: string) {
+  return apiRequest<{ status: string } | { error: string }>(`/api/admin/missed-checkout/${id}/reject`, {
+    method: 'POST',
+  })
+}
+
 export interface ParsedXlsxRow {
   fullName: string
   phoneNumber: string | null

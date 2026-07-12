@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<DeviceBinding> DeviceBindings => Set<DeviceBinding>();
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
+    public DbSet<MissedCheckoutRequest> MissedCheckoutRequests => Set<MissedCheckoutRequest>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<DailySummary> DailySummaries => Set<DailySummary>();

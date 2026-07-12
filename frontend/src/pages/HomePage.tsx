@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMyAttendance, getMyProfile, type AttendanceRecord, type MyProfile } from '../api/attendance'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
+import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { fmtDuration, fmtTime, firstName, initials, todayState, type TodayState } from '../lib/att'
 
 export function HomePage() {
@@ -38,6 +39,8 @@ export function HomePage() {
           <div className="truncate text-sm text-slate-500">{profile?.locationName ?? profile?.email ?? ''}</div>
         </div>
       </div>
+
+      <MissedCheckoutBanner />
 
       <TodayCard today={today} />
 
