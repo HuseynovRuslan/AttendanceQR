@@ -8,8 +8,8 @@ import {
 // Preset reasons so a non-technical employee taps instead of typing. "Başqa" opens a short free text.
 const REASONS = ['Yadımdan çıxdı', 'Tələsirdim', 'Telefon/internet problemi', 'Skan işləmədi', 'Başqa']
 // Tap-only time: an hour + a minute button, no native clock-face picker (which older staff found
-// confusing). Covers the usual end-of-shift window; half-hour-ish precision is fine for an estimate.
-const HOURS = [14, 15, 16, 17, 18, 19, 20, 21, 22]
+// confusing). The hour choices are built from the check-in hour to end of day, so an early leaver and
+// a late one are both covered and pre-check-in (invalid) hours never appear.
 const MINUTES = [0, 15, 30, 45]
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -72,6 +72,12 @@ export function MissedCheckoutBanner({ onReported }: { onReported?: () => void }
     )
   }
 
+  // Valid checkout hours: from the (local) check-in hour to 23. selHour keeps the readout/submit inside
+  // that range even if the default (18) is earlier than a late check-in.
+  const checkInHour = new Date(openDay.checkInAtUtc).getHours()
+  const hours = Array.from({ length: 24 - checkInHour }, (_, i) => checkInHour + i)
+  const selHour = hours.includes(hour) ? hour : hours[0]
+
   async function submit() {
     const finalReason = (reason === 'Başqa' ? customReason : reason).trim()
     if (!finalReason) {
@@ -80,7 +86,7 @@ export function MissedCheckoutBanner({ onReported }: { onReported?: () => void }
     }
     // The employee picks a wall-clock time; combine it with the day and let the phone's timezone give
     // the UTC instant the server stores.
-    const dt = new Date(`${openDay.attendanceDate}T${pad(hour)}:${pad(minute)}:00`)
+    const dt = new Date(`${openDay.attendanceDate}T${pad(selHour)}:${pad(minute)}:00`)
     if (Number.isNaN(dt.getTime())) {
       setError('Saat düzgün deyil')
       return
@@ -143,17 +149,17 @@ export function MissedCheckoutBanner({ onReported }: { onReported?: () => void }
             )}
 
             <div className="mt-4 rounded-2xl bg-blue-50 py-3 text-center text-3xl font-extrabold tabular-nums text-blue-700">
-              {pad(hour)}:{pad(minute)}
+              {pad(selHour)}:{pad(minute)}
             </div>
 
             <div className="mt-3 text-sm font-semibold text-slate-600">Saat</div>
-            <div className="mt-1 grid grid-cols-5 gap-2">
-              {HOURS.map((h) => (
+            <div className="mt-1 grid grid-cols-6 gap-2">
+              {hours.map((h) => (
                 <button
                   key={h}
                   onClick={() => setHour(h)}
                   className={`rounded-lg py-2.5 text-base font-bold transition ${
-                    hour === h ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
+                    selHour === h ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'
                   }`}
                 >
                   {h}
