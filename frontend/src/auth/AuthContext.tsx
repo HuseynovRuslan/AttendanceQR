@@ -15,6 +15,8 @@ interface AuthState {
   isAuthenticated: boolean
   role: Role | null
   email: string | null
+  /** True while the account is still on a temporary PIN — the app forces the "set your PIN" screen. */
+  mustChangePin: boolean
   saveToken: (token: string) => void
   logout: () => void
 }
@@ -40,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: token !== null,
       role: claims?.role ?? null,
       email: claims?.email ?? null,
+      mustChangePin: claims?.mcp === '1',
       saveToken: (t: string) => {
         setToken(t)
         setTokenState(t)

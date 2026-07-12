@@ -13,6 +13,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { DeviceChangeRequestPage } from './pages/DeviceChangeRequestPage'
 import { KioskPage } from './pages/KioskPage'
 import { EmployeeLayout } from './pages/EmployeeLayout'
+import { SetPinPage } from './pages/SetPinPage'
 import { HomePage } from './pages/HomePage'
 import { StatsPage } from './pages/StatsPage'
 import { NotificationsPage } from './pages/NotificationsPage'
@@ -104,6 +105,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      {/* Forced first-login PIN set (temp-PIN accounts). Guards route every other path here. */}
+      <Route
+        path="/set-pin"
+        element={
+          <ProtectedRoute>
+            <SetPinPage />
           </ProtectedRoute>
         }
       />

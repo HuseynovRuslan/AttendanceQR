@@ -41,3 +41,12 @@ export function changePassword(currentPassword: string, newPassword: string) {
     body: { currentPassword, newPassword },
   })
 }
+
+/** POST /api/auth/set-initial-pin — first-time PIN for an account still on a temporary PIN (no current
+ * PIN asked, since they just signed in with the temp one) → a fresh JWT without the "mcp" flag. */
+export function setInitialPin(newPin: string) {
+  return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/set-initial-pin', {
+    method: 'POST',
+    body: { newPin },
+  })
+}

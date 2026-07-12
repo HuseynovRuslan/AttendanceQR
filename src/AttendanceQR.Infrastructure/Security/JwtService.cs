@@ -25,15 +25,21 @@ public sealed class JwtService : IJwtService
     {
         var now = DateTime.UtcNow;
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim("sub", employee.Id.ToString()),
-            new Claim("email", employee.Email),
-            new Claim("role", employee.Role.ToString()),
+            new("sub", employee.Id.ToString()),
+            new("email", employee.Email),
+            new("role", employee.Role.ToString()),
             // Checked against Employee.TokenVersion on every request (Program.cs
             // OnTokenValidated) — lets change-password invalidate every other outstanding token.
-            new Claim("tv", employee.TokenVersion.ToString())
+            new("tv", employee.TokenVersion.ToString())
         };
+
+        // Signals the client to force the "set your own PIN" screen before anything else — the account
+        // is still on a temporary PIN. The server also enforces this (set-initial-pin), so the claim is
+        // only a UX hint, not the security boundary.
+        if (employee.MustChangePin)
+            claims.Add(new Claim("mcp", "1"));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

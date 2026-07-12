@@ -369,6 +369,30 @@ export function bulkInvite(payload: BulkInvitePayload) {
   })
 }
 
+export interface BulkImportCreated {
+  employeeId: string
+  fullName: string
+  phoneNumber: string | null
+  /** Temporary PIN to hand out — the employee sets their own on first login. */
+  tempPin: string
+}
+
+export interface BulkImportResult {
+  createdCount: number
+  failedCount: number
+  created: BulkImportCreated[]
+  failed: { fullName: string; error: string }[]
+}
+
+/** POST /api/admin/employees/bulk-import — add many employees at once, each ACTIVATED with a temporary
+ * PIN (no activation link). The employee signs in with phone + temp PIN and is forced to set their own. */
+export function bulkImport(payload: BulkInvitePayload) {
+  return apiRequest<BulkImportResult | { error: string }>('/api/admin/employees/bulk-import', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
 /** Testing helper — clears an employee's check-in/check-out history so the same account +
  * device can be used to re-test the scan flow. Keeps the account and device binding. */
 export function resetEmployeeAttendance(id: string) {

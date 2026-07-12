@@ -187,6 +187,52 @@ public class AdminController : ControllerBase
         return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
     }
 
+    // POST /api/admin/employees/bulk-import — add many employees at once, each ACTIVATED with a random
+    // temporary PIN the admin hands out (no activation link). The employee signs in with phone + temp
+    // PIN and is forced to set their own PIN on first login (MustChangePin). The device binds later, at
+    // the first scan inside the geofence. Same per-row validation as bulk-invite.
+    [HttpPost("bulk-import")]
+    public async Task<IActionResult> BulkImport([FromBody] BulkInviteRequest request)
+    {
+        if (request.Rows is null || request.Rows.Count == 0)
+            return BadRequest(new { error = "NoRows" });
+        if (request.Rows.Count > 200)
+            return BadRequest(new { error = "TooManyRows" });
+        if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
+            return BadRequest(new { error = "LocationNotFound" });
+
+        var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
+        var created = new List<object>();
+        var failed = new List<object>();
+
+        foreach (var row in request.Rows)
+        {
+            var (employee, tempPin, error) = BuildActivatedWithTempPin(
+                row.FullName, row.Email, row.PhoneNumber, row.Position,
+                request.LocationId, request.Role, takenEmails, takenPhones);
+
+            if (error is not null)
+            {
+                failed.Add(new { fullName = row.FullName, error });
+                continue;
+            }
+
+            _db.Employees.Add(employee!);
+            created.Add(new
+            {
+                employeeId = employee!.Id,
+                fullName = employee.FullName,
+                phoneNumber = employee.PhoneNumber,
+                tempPin
+            });
+        }
+
+        if (created.Count > 0)
+            await _db.SaveChangesAsync();
+
+        return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
+    }
+
     // Emails + phones already in use, as sets, so a batch can check for collisions in memory (against
     // the DB and against earlier rows in the same batch) without a query per row.
     private async Task<(HashSet<string> Emails, HashSet<string> Phones)> LoadTakenIdentifiersAsync()
@@ -247,6 +293,52 @@ public class AdminController : ControllerBase
         if (phone is not null) takenPhones.Add(phone);
 
         return (employee, activationToken, null);
+    }
+
+    // Builds one ACTIVATED employee (not yet added to the context) with a random temporary PIN, or an
+    // error code. Mirrors BuildInvite's validation exactly, but instead of an activation token it sets a
+    // hashed temp PIN + MustChangePin, so the employee can sign in immediately and is forced to pick
+    // their own PIN. Mutates the taken-sets so later rows in the batch see this row's identifiers.
+    private (Employee? Employee, string? TempPin, string? Error) BuildActivatedWithTempPin(
+        string fullName, string? emailIn, string? phoneIn, string? position,
+        Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return (null, null, "NameRequired");
+
+        var phone = PhoneNumbers.Normalize(phoneIn);
+        var hasEmail = !string.IsNullOrWhiteSpace(emailIn);
+        if (!hasEmail && phone is null)
+            return (null, null, "NeedEmailOrPhone");
+
+        var email = hasEmail ? emailIn!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
+        if (takenEmails.Contains(email))
+            return (null, null, "EmailAlreadyExists");
+        if (phone is not null && takenPhones.Contains(phone))
+            return (null, null, "PhoneAlreadyExists");
+
+        var tempPin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var now = DateTime.UtcNow;
+        var employee = new Employee
+        {
+            FullName = fullName.Trim(),
+            Email = email,
+            PhoneNumber = phone,
+            Position = string.IsNullOrWhiteSpace(position) ? null : position.Trim(),
+            LocationId = locationId,
+            Role = role,
+            PasswordHash = _passwordHasher.Hash(tempPin),
+            IsActive = true,
+            ActivatedAtUtc = now,   // no activation link — the temp PIN is the credential
+            MustChangePin = true,   // forced to set their own PIN on first login
+            InvitationTokenHash = null,
+            InvitationExpiresUtc = null
+        };
+
+        takenEmails.Add(email);
+        if (phone is not null) takenPhones.Add(phone);
+
+        return (employee, tempPin, null);
     }
 
     [HttpPut("{id:guid}")]
@@ -373,6 +465,8 @@ public class AdminController : ControllerBase
         // Cryptographically random 4-digit PIN, zero-padded (0000–9999).
         var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
         employee.PasswordHash = _passwordHasher.Hash(pin);
+        employee.MustChangePin = true;   // the employee picks their own PIN on next login
+        employee.TokenVersion++;         // kill any session still holding the old PIN's token
         await _db.SaveChangesAsync();
 
         // Clear the lockout under every identifier they might have typed (the store keys by the raw

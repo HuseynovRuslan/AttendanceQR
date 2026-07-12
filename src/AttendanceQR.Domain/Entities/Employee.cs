@@ -30,6 +30,11 @@ public class Employee
 
     public string PasswordHash { get; set; } = string.Empty;
 
+    // True when the current PasswordHash is a temporary PIN the admin handed out (bulk import or a
+    // PIN reset) — the employee is forced to set their own PIN on first login before anything else.
+    // Cleared when they set their own PIN. Surfaced to the client as the "mcp" JWT claim.
+    public bool MustChangePin { get; set; }
+
     // Embedded in every issued JWT as the "tv" claim and checked against this value on every
     // request (see Program.cs OnTokenValidated) — bumping it instantly invalidates every
     // previously issued token. There is no refresh-token flow in this app (JWTs are long-lived,

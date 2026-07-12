@@ -195,9 +195,41 @@ public partial class AuthController : ControllerBase
             return BadRequest(new { error = "PinInvalid" });
 
         employee.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        employee.MustChangePin = false;
 
         // Invalidate every other outstanding token (see Program.cs OnTokenValidated) — the token
         // returned below embeds the new version, so only THIS session survives the change.
+        employee.TokenVersion++;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { token = _jwtService.GenerateToken(employee) });
+    }
+
+    // POST /api/auth/set-initial-pin — first-time PIN set for an account still on a temporary PIN
+    // (bulk import or an admin PIN reset). The employee has just signed in with the temp PIN, so no
+    // current PIN is asked for; the server only allows this while MustChangePin is set, so it can't be
+    // used to change a PIN without knowing the old one.
+    [HttpPost("set-initial-pin")]
+    [Authorize]
+    public async Task<IActionResult> SetInitialPin([FromBody] SetInitialPinRequest request)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId);
+        if (employee is null)
+            return Unauthorized(new { error = "InvalidToken" });
+
+        // Not on a temporary PIN — the employee must use change-password (which verifies the old PIN).
+        if (!employee.MustChangePin)
+            return Conflict(new { error = "AlreadySet" });
+
+        if (!PinFormat().IsMatch(request.NewPin))
+            return BadRequest(new { error = "PinInvalid" });
+
+        employee.PasswordHash = _passwordHasher.Hash(request.NewPin);
+        employee.MustChangePin = false;
+        // The temp-PIN token(s) stop working; only the freshly issued token below survives.
         employee.TokenVersion++;
         await _db.SaveChangesAsync();
 
