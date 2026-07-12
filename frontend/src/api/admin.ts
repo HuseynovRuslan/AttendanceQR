@@ -393,6 +393,31 @@ export function bulkImport(payload: BulkInvitePayload) {
   })
 }
 
+export interface ParsedXlsxRow {
+  fullName: string
+  phoneNumber: string | null
+  position: string | null
+}
+
+/** POST /api/admin/employees/parse-xlsx — upload an .xlsx and get its rows back (parsing only, creates
+ * nothing). Multipart, so it can't ride the JSON apiRequest helper. */
+export async function parseXlsx(file: File): Promise<{ status: number; rows: ParsedXlsxRow[] }> {
+  const form = new FormData()
+  form.append('file', file)
+  const token = getToken()
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/employees/parse-xlsx`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    })
+    const data = res.ok ? await res.json() : null
+    return { status: res.status, rows: (data?.rows as ParsedXlsxRow[]) ?? [] }
+  } catch {
+    return { status: 0, rows: [] }
+  }
+}
+
 /** Testing helper — clears an employee's check-in/check-out history so the same account +
  * device can be used to re-test the scan flow. Keeps the account and device binding. */
 export function resetEmployeeAttendance(id: string) {

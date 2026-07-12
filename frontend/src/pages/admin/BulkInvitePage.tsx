@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import {
   bulkImport,
   bulkInvite,
   getAdminLocations,
+  parseXlsx,
   type AdminLocation,
   type BulkImportResult,
   type BulkInviteResult,
@@ -60,6 +61,7 @@ export function BulkInvitePage() {
   const [pinResult, setPinResult] = useState<BulkImportResult | null>(null)
   const [linkResult, setLinkResult] = useState<BulkInviteResult | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => {
     void getAdminLocations().then((r) => {
@@ -95,6 +97,36 @@ export function BulkInvitePage() {
         setText('')
       } else setError(status === 403 ? 'İcazəniz yoxdur' : 'Əlavə edilmədi')
     }
+  }
+
+  // A chosen file fills the textarea, then the normal preview + submit flow takes over. .csv is read
+  // in the browser; .xlsx is parsed on the server (no risky xlsx dependency in the bundle).
+  async function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // let the same file be re-picked
+    if (!file) return
+    setError(null)
+    if (file.name.toLowerCase().endsWith('.csv')) {
+      setText(await file.text())
+      return
+    }
+    setImporting(true)
+    const { status, rows: parsed } = await parseXlsx(file)
+    setImporting(false)
+    if (status !== 200) {
+      setError(status === 403 ? 'İcazəniz yoxdur' : 'Fayl oxunmadı')
+      return
+    }
+    if (parsed.length === 0) {
+      setError('Faylda işçi sətri tapılmadı')
+      return
+    }
+    const lines = parsed.map((r) => {
+      const cells = [r.fullName, r.phoneNumber ?? '', r.position ?? '']
+      while (cells.length > 1 && cells[cells.length - 1] === '') cells.pop()
+      return cells.join(', ')
+    })
+    setText(lines.join('\n'))
   }
 
   async function copy(value: string, key: string) {
@@ -179,6 +211,20 @@ export function BulkInvitePage() {
               <option value="Manager">{ROLE_LABEL.Manager}</option>
             </select>
           </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <label className="btn" style={{ cursor: importing ? 'default' : 'pointer' }}>
+            {importing ? 'Oxunur…' : '📄 Excel / CSV faylı seç'}
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={onFile}
+              disabled={importing}
+              style={{ display: 'none' }}
+            />
+          </label>
+          <span className="muted" style={{ fontSize: 12 }}>və ya aşağı birbaşa yapışdırın</span>
         </div>
 
         <label className="form-label">İşçilər — hər sətir bir nəfər</label>

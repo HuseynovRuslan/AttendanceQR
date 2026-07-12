@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using ClosedXML.Excel;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -231,6 +232,62 @@ public class AdminController : ControllerBase
             await _db.SaveChangesAsync();
 
         return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
+    }
+
+    // POST /api/admin/employees/parse-xlsx — read an uploaded .xlsx and return its rows so the admin can
+    // review, then import, them. First sheet, columns A=Ad Soyad, B=Telefon, C=Vəzifə. A header row (a
+    // first row whose telefon cell has letters but no digits) is skipped. Parsing only — creates nothing.
+    [HttpPost("parse-xlsx")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public IActionResult ParseXlsx(IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "NoFile" });
+
+        var rows = new List<object>();
+        try
+        {
+            using var stream = file.OpenReadStream();
+            using var wb = new XLWorkbook(stream);
+            var ws = wb.Worksheets.FirstOrDefault();
+            if (ws is null)
+                return BadRequest(new { error = "EmptyFile" });
+
+            var first = true;
+            foreach (var row in ws.RowsUsed())
+            {
+                var fullName = row.Cell(1).GetString().Trim();
+                var phone = row.Cell(2).GetString().Trim();
+                var position = row.Cell(3).GetString().Trim();
+
+                // Drop a header row: the very first row whose telefon cell has content but no digits.
+                if (first)
+                {
+                    first = false;
+                    if (!string.IsNullOrEmpty(phone) && !phone.Any(char.IsDigit))
+                        continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(fullName))
+                    continue;
+
+                rows.Add(new
+                {
+                    fullName,
+                    phoneNumber = string.IsNullOrWhiteSpace(phone) ? null : phone,
+                    position = string.IsNullOrWhiteSpace(position) ? null : position
+                });
+
+                if (rows.Count >= 200)
+                    break;
+            }
+        }
+        catch
+        {
+            return BadRequest(new { error = "ParseFailed" });
+        }
+
+        return Ok(new { rows });
     }
 
     // Emails + phones already in use, as sets, so a batch can check for collisions in memory (against
