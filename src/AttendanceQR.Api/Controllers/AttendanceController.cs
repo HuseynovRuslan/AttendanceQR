@@ -96,6 +96,30 @@ public class AttendanceController : ControllerBase
         return Ok(profile);
     }
 
+    // POST /api/attendance/me/reference-photo — the caller sets their OWN reference selfie (the
+    // face-audit baseline). Used by the first-login flow for temp-PIN accounts, which never took an
+    // activation selfie; overwrites any existing reference.
+    [HttpPost("me/reference-photo")]
+    public async Task<IActionResult> SetMyReferencePhoto([FromBody] ReferencePhotoRequest request)
+    {
+        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, HttpContext.RequestAborted);
+        if (employee is null)
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var bytes = DecodeImage(request.PhotoBase64);
+        if (bytes.Length is <= 0 or > 2 * 1024 * 1024)
+            return BadRequest(new { error = "InvalidPhoto" });
+
+        var ct = HttpContext.RequestAborted;
+        employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(employee.Id, bytes, ct);
+        employee.ReferencePhotoTakenAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
+    }
+
     // GET /api/attendance/me/device?fingerprint=… — is the browser asking bound to the caller's own
     // account? Answers the one question an employee cannot otherwise find out except by walking to
     // the poster and failing: "will this phone/app actually work tomorrow morning?"

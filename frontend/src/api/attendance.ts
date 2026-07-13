@@ -61,6 +61,15 @@ export function getMyProfile() {
   return apiRequest<MyProfile>('/api/attendance/me/profile')
 }
 
+/** POST /api/attendance/me/reference-photo — set the caller's own face-audit reference selfie. Used by
+ * the first-login flow for temp-PIN accounts (which never took an activation selfie). */
+export function setMyReferencePhoto(photoBase64: string) {
+  return apiRequest<{ ok: boolean } | { error: string }>('/api/attendance/me/reference-photo', {
+    method: 'POST',
+    body: { photoBase64 },
+  })
+}
+
 export interface MissedCheckoutStatusResp {
   /** The oldest past day left open (check-in, no check-out), or null. */
   openDay: { recordId: string; attendanceDate: string; checkInAtUtc: string } | null
