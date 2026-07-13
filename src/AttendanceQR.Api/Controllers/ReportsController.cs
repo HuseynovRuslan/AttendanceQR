@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Enums;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -94,6 +96,75 @@ public class ReportsController : ControllerBase
 
         var rows = await _reports.GetTodayAttendanceAsync(requesterId, role, date, HttpContext.RequestAborted);
         return Ok(rows);
+    }
+
+    // POST /api/reports/export-day — format the (already filtered) board the admin sees into a tidy
+    // .xlsx: a title line, a coloured header row, borders and sensible column widths. The client sends
+    // exactly what's on screen, so any active filters carry through.
+    [HttpPost("export-day")]
+    public IActionResult ExportDay([FromBody] ExportDayRequest request)
+    {
+        if (!TryGetCaller(out _, out _))
+            return Unauthorized(new { error = "InvalidToken" });
+
+        var data = request.Rows ?? [];
+        if (data.Count > 5000)
+            return BadRequest(new { error = "TooManyRows" });
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Davamiyyət");
+
+        // Title line across the table.
+        ws.Cell(1, 1).Value = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;
+        ws.Range(1, 1, 1, 6).Merge();
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(1, 1).Style.Font.FontSize = 14;
+
+        var headers = new[] { "Ad Soyad", "Ərazi", "Status", "Giriş", "Çıxış", "Şəkil" };
+        for (var i = 0; i < headers.Length; i++)
+        {
+            var c = ws.Cell(2, i + 1);
+            c.Value = headers[i];
+            c.Style.Font.Bold = true;
+            c.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E70C8");
+            c.Style.Font.FontColor = XLColor.White;
+            c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        }
+
+        var r = 3;
+        foreach (var row in data)
+        {
+            ws.Cell(r, 1).Value = row.Name ?? string.Empty;
+            ws.Cell(r, 2).Value = row.Location ?? string.Empty;
+            ws.Cell(r, 3).Value = row.Status ?? string.Empty;
+            ws.Cell(r, 4).Value = row.CheckIn ?? string.Empty;
+            ws.Cell(r, 5).Value = row.CheckOut ?? string.Empty;
+            ws.Cell(r, 6).Value = row.Photo ?? string.Empty;
+            r++;
+        }
+
+        if (r > 3)
+        {
+            var table = ws.Range(2, 1, r - 1, 6);
+            table.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            table.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        }
+
+        ws.Column(1).Width = 28;
+        ws.Column(2).Width = 20;
+        ws.Column(3).Width = 16;
+        ws.Column(4).Width = 10;
+        ws.Column(5).Width = 10;
+        ws.Column(6).Width = 9;
+        ws.SheetView.FreezeRows(2);
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        var safeDate = string.IsNullOrWhiteSpace(request.Date) ? "gun" : request.Date;
+        return File(
+            ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"davamiyyet-{safeDate}.xlsx");
     }
 
     // GET /api/reports/problems?date=yyyy-MM-dd — every rejected scan on that local day: who could

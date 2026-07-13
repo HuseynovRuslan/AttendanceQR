@@ -133,6 +133,45 @@ export function getToday(date?: string) {
   return apiRequest<DayAttendanceRow[]>(`/api/reports/today${date ? `?date=${date}` : ''}`)
 }
 
+export interface ExportDayRowInput {
+  name: string
+  location: string
+  status: string
+  checkIn: string
+  checkOut: string
+  photo: string
+}
+
+/** POST /api/reports/export-day — send the visible board rows, download a tidy .xlsx. Returns false on
+ * failure. Reads the blob directly (not JSON), so it can't ride apiRequest. */
+export async function exportDayXlsx(payload: {
+  title: string
+  date: string
+  rows: ExportDayRowInput[]
+}): Promise<boolean> {
+  const token = getToken()
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/reports/export-day`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) return false
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `davamiyyet-${payload.date}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // --- problems (rejected scans) ----------------------------------------------
 
 export interface ProblemRow {

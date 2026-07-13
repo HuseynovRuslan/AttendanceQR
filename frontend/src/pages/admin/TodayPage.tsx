@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getToday, type DayAttendanceRow } from '../../api/admin'
+import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
@@ -48,6 +48,7 @@ export function TodayPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [noPhotoOnly, setNoPhotoOnly] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   async function viewPhoto(row: DayAttendanceRow) {
     if (!row.recordId) return
@@ -130,32 +131,20 @@ export function TodayPage() {
       ? { cursor: 'pointer', boxShadow: '0 0 0 2px #1E70C8' }
       : { cursor: 'pointer' }
 
-  function exportCsv() {
-    const header = ['Ad', 'Ərazi', 'Status', 'Giriş', 'Çıxış', 'Şəkil']
-    const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+  async function exportXlsx() {
     const label = (st: string) => (STATUS_MAP as Record<string, { label: string }>)[st]?.label ?? st
-    const lines = visible.map((r) =>
-      [
-        r.employeeName,
-        r.locationName,
-        label(r.status),
-        fmtTime(r.checkInAtUtc),
-        fmtTime(r.checkOutAtUtc),
-        r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',
-      ]
-        .map((c) => esc(String(c)))
-        .join(','),
-    )
-    const csv = [header.join(','), ...lines].join('\r\n')
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }) // BOM → Excel reads UTF-8
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `davamiyyet-${date}.csv`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    const rows = visible.map((r) => ({
+      name: r.employeeName,
+      location: r.locationName,
+      status: label(r.status),
+      checkIn: fmtTime(r.checkInAtUtc),
+      checkOut: fmtTime(r.checkOutAtUtc),
+      photo: r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',
+    }))
+    setExporting(true)
+    const ok = await exportDayXlsx({ title: `Davamiyyət — ${dateLabel}`, date, rows })
+    setExporting(false)
+    if (!ok) setPhotoError('Excel çıxarıla bilmədi')
   }
 
   const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString('az-AZ', {
@@ -222,8 +211,8 @@ export function TodayPage() {
         {search && (
           <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>
         )}
-        <button className="btn btn-sm" onClick={exportCsv} style={{ marginLeft: 'auto' }}>
-          ⬇ Excel-ə çıxar
+        <button className="btn btn-sm" disabled={exporting} onClick={exportXlsx} style={{ marginLeft: 'auto' }}>
+          {exporting ? 'Çıxarılır…' : '⬇ Excel-ə çıxar'}
         </button>
       </div>
 
