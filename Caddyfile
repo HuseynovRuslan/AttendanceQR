@@ -15,6 +15,13 @@ bax.qrlog.az {
 	reverse_proxy frontend:80
 }
 
+# EastCafe (tenant "ecafe"). One explicit single-host block per tenant — a normal HTTP-01 cert, just
+# like bax. (A bare *.qrlog.az on-demand block breaks the explicit hosts on the stock Caddy image.)
+ecafe.qrlog.az {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
 api.qrlog.az {
 	encode zstd gzip
 	reverse_proxy backend:8080
