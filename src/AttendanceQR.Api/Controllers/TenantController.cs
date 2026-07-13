@@ -30,10 +30,10 @@ public class TenantController : ControllerBase
         // tenant directly.
         var b = await _db.Tenants
             .Where(t => t.Id == _tenant.TenantId)
-            .Select(t => new { displayName = t.DisplayName, color = t.Color })
+            .Select(t => new { displayName = t.DisplayName, color = t.Color, logoUrl = t.LogoKey })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
-        return Ok(b ?? new { displayName = string.Empty, color = (string?)null });
+        return Ok(b ?? new { displayName = string.Empty, color = (string?)null, logoUrl = (string?)null });
     }
 
     // GET /api/tenant/allow-tls?domain=<host> — Caddy's on-demand-TLS gate. Only issue a certificate

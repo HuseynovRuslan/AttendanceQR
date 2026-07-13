@@ -3,6 +3,8 @@ import { apiRequest } from './client'
 export interface TenantBranding {
   displayName: string
   color: string | null
+  /** Public path/URL to the tenant's own logo (null → fall back to the default mark). */
+  logoUrl: string | null
 }
 
 /** GET /api/tenant/branding — the current tenant's name/colour (resolved from the subdomain). Public,

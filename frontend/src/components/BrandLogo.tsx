@@ -1,5 +1,55 @@
-/** Bakı Abadlıq leaf mark. */
+import { useState } from 'react'
+import { useBranding } from '../branding/BrandingContext'
+
+/**
+ * The tenant's brand mark. In order: the tenant's own uploaded logo → a neutral initial badge in the
+ * tenant accent (while no logo is set, or if the logo file is missing) → the default Bakı Abadlıq leaf
+ * (bax, which has no branding).
+ */
 export function BrandLogo({ size = 34 }: { size?: number }) {
+  const { logoUrl, displayName, color } = useBranding()
+  const [broken, setBroken] = useState(false)
+
+  if (logoUrl && !broken) {
+    return (
+      <img
+        src={logoUrl}
+        alt={displayName || 'Logo'}
+        width={size}
+        height={size}
+        onError={() => setBroken(true)}
+        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+      />
+    )
+  }
+
+  // A branded tenant with no logo yet: show its initial in the accent colour instead of another
+  // company's leaf.
+  if (color) {
+    const initial = (displayName || '?').trim().charAt(0).toUpperCase() || '?'
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          background: 'var(--leaf)',
+          color: 'var(--on-leaf, #fff)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'Sora, sans-serif',
+          fontWeight: 800,
+          fontSize: Math.round(size * 0.46),
+          lineHeight: 1,
+        }}
+      >
+        {initial}
+      </div>
+    )
+  }
+
+  // Default: Bakı Abadlıq leaf mark.
   return (
     <svg viewBox="0 0 100 120" fill="none" style={{ width: size, height: size }}>
       <path d="M50 4C74 30 92 55 92 76C92 100 73 116 50 116C27 116 8 100 8 76C8 55 26 30 50 4Z" fill="#3D3E3E" />
