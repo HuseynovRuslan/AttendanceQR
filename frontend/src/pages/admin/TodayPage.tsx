@@ -11,6 +11,27 @@ function localDateISO(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+// Does a row's status belong to the clicked stat-card bucket? Mirrors the counts grouping (Late folds
+// into present; "incomplete" is everything not one of the five named statuses).
+function statusMatches(status: string, filter: string): boolean {
+  switch (filter) {
+    case 'present':
+      return status === 'OnTime' || status === 'Late'
+    case 'absent':
+      return status === 'Absent'
+    case 'dayOff':
+      return status === 'DayOff'
+    case 'onLeave':
+      return status === 'OnLeave'
+    case 'permission':
+      return status === 'Permission'
+    case 'incomplete':
+      return !['OnTime', 'Late', 'Absent', 'DayOff', 'OnLeave', 'Permission'].includes(status)
+    default:
+      return true
+  }
+}
+
 export function TodayPage() {
   const todayISO = useMemo(() => localDateISO(new Date()), [])
   const [date, setDate] = useState(todayISO)
@@ -24,6 +45,9 @@ export function TodayPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [noPhotoOnly, setNoPhotoOnly] = useState(false)
 
   async function viewPhoto(row: DayAttendanceRow) {
     if (!row.recordId) return
@@ -75,11 +99,11 @@ export function TodayPage() {
   }, [rows])
 
   const locFiltered = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
-  const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
-  const visible = flaggedOnly ? locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)) : locFiltered
 
+  // Counts reflect the LOCATION scope only (not the status/search/photo filters), so the cards keep
+  // showing the day's real breakdown and stay usable as toggles.
   const counts = { present: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
-  for (const r of visible) {
+  for (const r of locFiltered) {
     // Late folds into present — see StatusBadge: there is no per-employee schedule to be late against.
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
@@ -87,6 +111,51 @@ export function TodayPage() {
     else if (r.status === 'OnLeave') counts.onLeave++
     else if (r.status === 'Permission') counts.permission++
     else counts.incomplete++
+  }
+  const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+
+  const q = search.trim().toLowerCase()
+  const visible = locFiltered.filter((r) => {
+    if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
+    if (statusFilter && !statusMatches(r.status, statusFilter)) return false
+    // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
+    if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
+    if (q && !r.employeeName.toLowerCase().includes(q)) return false
+    return true
+  })
+
+  const toggleStatus = (k: string) => setStatusFilter((f) => (f === k ? null : k))
+  const cardStyle = (k: string) =>
+    statusFilter === k
+      ? { cursor: 'pointer', boxShadow: '0 0 0 2px #1E70C8' }
+      : { cursor: 'pointer' }
+
+  function exportCsv() {
+    const header = ['Ad', 'Ərazi', 'Status', 'Giriş', 'Çıxış', 'Şəkil']
+    const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
+    const label = (st: string) => (STATUS_MAP as Record<string, { label: string }>)[st]?.label ?? st
+    const lines = visible.map((r) =>
+      [
+        r.employeeName,
+        r.locationName,
+        label(r.status),
+        fmtTime(r.checkInAtUtc),
+        fmtTime(r.checkOutAtUtc),
+        r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',
+      ]
+        .map((c) => esc(String(c)))
+        .join(','),
+    )
+    const csv = [header.join(','), ...lines].join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }) // BOM → Excel reads UTF-8
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `davamiyyet-${date}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString('az-AZ', {
@@ -136,34 +205,59 @@ export function TodayPage() {
         <span className={`chip${flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(true)}>
           ⚠ Yalnız bayraqlananlar{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
         </span>
+        <span className={`chip${noPhotoOnly ? ' active' : ''}`} onClick={() => setNoPhotoOnly((v) => !v)}>
+          📷 Şəkilsizlər
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Ad üzrə axtar…"
+          className="inp"
+          style={{ width: 'auto', maxWidth: 220, padding: '6px 10px' }}
+        />
+        {search && (
+          <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>
+        )}
+        <button className="btn btn-sm" onClick={exportCsv} style={{ marginLeft: 'auto' }}>
+          ⬇ Excel-ə çıxar
+        </button>
       </div>
 
       <div className="stat-grid">
-        <div className="stat-card leaf">
+        <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
           <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
           <div className="stat-val">{counts.present}</div>
         </div>
-        <div className="stat-card clay">
+        <div className="stat-card clay" style={cardStyle('absent')} onClick={() => toggleStatus('absent')}>
           <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
           <div className="stat-val">{counts.absent}</div>
         </div>
-        <div className="stat-card blue">
+        <div className="stat-card blue" style={cardStyle('incomplete')} onClick={() => toggleStatus('incomplete')}>
           <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
           <div className="stat-val">{counts.incomplete}</div>
         </div>
-        <div className="stat-card purple">
+        <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
           <div className="stat-val">{counts.dayOff}</div>
         </div>
-        <div className="stat-card purple">
+        <div className="stat-card purple" style={cardStyle('onLeave')} onClick={() => toggleStatus('onLeave')}>
           <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
           <div className="stat-val">{counts.onLeave}</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
           <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
           <div className="stat-val">{counts.permission}</div>
         </div>
       </div>
+      {statusFilter && (
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+          Süzgəc aktiv — kartı təkrar basıb ləğv edin.
+        </div>
+      )}
 
       {error && (
         <div className="fb fb-err" style={{ marginBottom: 12 }}>
