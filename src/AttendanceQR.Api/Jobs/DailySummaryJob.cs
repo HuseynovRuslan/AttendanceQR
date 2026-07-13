@@ -1,5 +1,6 @@
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -68,51 +69,68 @@ public sealed class DailySummaryJob : BackgroundService
         return delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
     }
 
-    // Simple gap-fill: from the day after the last stored summary up to yesterday, capped so a long
-    // outage can't spin for years. If nothing is stored yet, just do yesterday.
+    // The summary service queries/writes through the tenant query filter, so it must run once PER
+    // tenant with that tenant resolved — otherwise it would only ever process the default tenant.
+    private async Task<List<Guid>> ActiveTenantIdsAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Tenants.Where(t => t.IsActive).Select(t => t.Id).ToListAsync(ct);
+    }
+
+    // Simple gap-fill per tenant: from the day after that tenant's last stored summary up to yesterday,
+    // capped so a long outage can't spin for years. If nothing is stored yet, just do yesterday.
     private async Task BackfillAsync(CancellationToken ct)
     {
-        try
+        var yesterday = Yesterday();
+        foreach (var tenantId in await ActiveTenantIdsAsync(ct))
         {
-            var yesterday = Yesterday();
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var summaries = scope.ServiceProvider.GetRequiredService<IDailySummaryService>();
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(tenantId);
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var summaries = scope.ServiceProvider.GetRequiredService<IDailySummaryService>();
 
-            var lastDate = await db.DailySummaries
-                .OrderByDescending(s => s.SummaryDate)
-                .Select(s => (DateOnly?)s.SummaryDate)
-                .FirstOrDefaultAsync(ct);
+                var lastDate = await db.DailySummaries
+                    .OrderByDescending(s => s.SummaryDate)
+                    .Select(s => (DateOnly?)s.SummaryDate)
+                    .FirstOrDefaultAsync(ct);
 
-            var start = lastDate is DateOnly d ? d.AddDays(1) : yesterday;
-            if (start > yesterday)
-                return;
-            if (yesterday.DayNumber - start.DayNumber > BackfillCapDays)
-                start = yesterday.AddDays(-BackfillCapDays);
+                var start = lastDate is DateOnly d ? d.AddDays(1) : yesterday;
+                if (start > yesterday)
+                    continue;
+                if (yesterday.DayNumber - start.DayNumber > BackfillCapDays)
+                    start = yesterday.AddDays(-BackfillCapDays);
 
-            for (var day = start; day <= yesterday; day = day.AddDays(1))
-                await summaries.GenerateForDateAsync(day, ct);
+                for (var day = start; day <= yesterday; day = day.AddDays(1))
+                    await summaries.GenerateForDateAsync(day, ct);
 
-            _logger.LogInformation("DailySummaryJob: backfilled {From}..{To}", start, yesterday);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "DailySummaryJob: backfill failed");
+                _logger.LogInformation("DailySummaryJob: backfilled {From}..{To} for tenant {Tenant}", start, yesterday, tenantId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DailySummaryJob: backfill failed for tenant {Tenant}", tenantId);
+            }
         }
     }
 
     private async Task GenerateAsync(DateOnly date, CancellationToken ct)
     {
-        try
+        foreach (var tenantId in await ActiveTenantIdsAsync(ct))
         {
-            using var scope = _scopeFactory.CreateScope();
-            var summaries = scope.ServiceProvider.GetRequiredService<IDailySummaryService>();
-            var count = await summaries.GenerateForDateAsync(date, ct);
-            _logger.LogInformation("DailySummaryJob: generated {Count} summaries for {Date}", count, date);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "DailySummaryJob: generation failed for {Date}", date);
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(tenantId);
+                var summaries = scope.ServiceProvider.GetRequiredService<IDailySummaryService>();
+                var count = await summaries.GenerateForDateAsync(date, ct);
+                _logger.LogInformation("DailySummaryJob: generated {Count} summaries for {Date} tenant {Tenant}", count, date, tenantId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DailySummaryJob: generation failed for {Date} tenant {Tenant}", date, tenantId);
+            }
         }
     }
 }

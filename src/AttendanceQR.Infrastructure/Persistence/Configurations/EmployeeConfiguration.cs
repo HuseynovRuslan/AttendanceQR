@@ -40,14 +40,15 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.Property(e => e.ReferencePhotoKey)
             .HasMaxLength(256);
 
-        builder.HasIndex(e => e.Email)
+        // Unique PER TENANT — the same email/phone may legitimately exist in two different companies.
+        builder.HasIndex(e => new { e.TenantId, e.Email })
             .IsUnique();
 
         builder.Property(e => e.PhoneNumber)
             .HasMaxLength(20);
 
-        // Unique when present — Postgres treats NULLs as distinct, so older phone-less rows don't clash.
-        builder.HasIndex(e => e.PhoneNumber)
+        // Unique per tenant when present — Postgres treats NULLs as distinct, so phone-less rows don't clash.
+        builder.HasIndex(e => new { e.TenantId, e.PhoneNumber })
             .IsUnique();
 
         // Activation lookups are by token hash.
