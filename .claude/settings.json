@@ -9,7 +9,13 @@
       "Bash(curl -s --max-time 10 https://api.qrlog.az/api/kiosk/location/f951ac1e-b733-410f-b741-9dec3b943a69)",
       "Bash(SSH_ASKPASS=C:/Users/HP/AppData/Local/Temp/claude/c--Users-HP-AttendanceQR/87306edd-c00b-49a0-a60f-4a1d6c1b7f84/scratchpad/apnew.sh SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@62.84.179.39 ' *)",
       "Bash(nslookup ecafe.qrlog.az)",
-      "Bash(nslookup test123.qrlog.az 1.1.1.1)"
+      "Bash(nslookup test123.qrlog.az 1.1.1.1)",
+      "Bash(curl -s -o /dev/null -w \"bax.qrlog.az: %{http_code}\\\\n\" --max-time 12 https://bax.qrlog.az/)",
+      "Bash(curl -s -o /dev/null -w \"qrlog.az \\(landing\\): %{http_code}\\\\n\" --max-time 12 https://qrlog.az/)",
+      "Bash(curl -s -o /dev/null -w \"api login: %{http_code}\\\\n\" --max-time 12 -X POST https://api.qrlog.az/api/auth/login -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 12 \"https://api.qrlog.az/api/tenant/allow-tls?domain=bax.qrlog.az\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 12 \"https://api.qrlog.az/api/tenant/allow-tls?domain=ecafe.qrlog.az\")",
+      "Bash(SSH_ASKPASS=C:/Users/HP/AppData/Local/Temp/claude/c--Users-HP-AttendanceQR/87306edd-c00b-49a0-a60f-4a1d6c1b7f84/scratchpad/apnew.sh SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@62.84.179.39 'docker logs attendanceqr-caddy-1 --tail 60 2>&1 | grep -iE \"error|acme|obtain|certificate|bax|api\\\\.qrlog|wildcard|challenge|rate\" | tail -25')"
     ]
   }
 }

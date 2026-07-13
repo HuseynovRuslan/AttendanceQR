@@ -322,6 +322,67 @@ using (var scope = app.Services.CreateScope())
             }
         }
     }
+
+    // One-time tenant bootstrap: stand up a brand-new tenant + a starter location + its first admin,
+    // so a company can be created before there's a super-admin UI. Idempotent by slug (safe to leave
+    // the vars set). Set TenantSeed:Slug, TenantSeed:Name, TenantSeed:AdminPhone, TenantSeed:AdminPin
+    // (4 digits); redeploy; the log line confirms; then the vars can be removed.
+    var seedSlug = app.Configuration["TenantSeed:Slug"]?.Trim().ToLowerInvariant();
+    var seedName = app.Configuration["TenantSeed:Name"];
+    var seedPhone = app.Configuration["TenantSeed:AdminPhone"];
+    var seedPin = app.Configuration["TenantSeed:AdminPin"];
+    if (!string.IsNullOrWhiteSpace(seedSlug) && !string.IsNullOrWhiteSpace(seedPhone)
+        && !string.IsNullOrWhiteSpace(seedPin) && System.Text.RegularExpressions.Regex.IsMatch(seedPin, @"^\d{4}$"))
+    {
+        if (await db.Tenants.AnyAsync(t => t.Slug == seedSlug))
+        {
+            startupLogger.LogInformation("TenantSeed: tenant '{Slug}' already exists — skipping.", seedSlug);
+        }
+        else
+        {
+            var display = string.IsNullOrWhiteSpace(seedName) ? seedSlug : seedName.Trim();
+            var newTenant = new Tenant { Name = display, Slug = seedSlug, DisplayName = display };
+            db.Tenants.Add(newTenant);
+            await db.SaveChangesAsync();
+
+            // Everything added after this belongs to the new tenant — the auto-stamp reads the request
+            // tenant, and there is no request here, so point it at the tenant we just created.
+            scope.ServiceProvider.GetRequiredService<AttendanceQR.Infrastructure.Multitenancy.ITenantContext>()
+                .Resolve(newTenant.Id);
+
+            var starterLocation = new Location
+            {
+                Name = "Baş ofis",
+                Latitude = 40.4093,
+                Longitude = 49.8671,
+                RadiusMeters = 150,
+                ShiftStart = new TimeOnly(9, 0),
+                ShiftEnd = new TimeOnly(18, 0),
+                LateThresholdMinutes = 15
+            };
+            db.Locations.Add(starterLocation);
+            await db.SaveChangesAsync();
+
+            var seedHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+            db.Employees.Add(new Employee
+            {
+                FullName = "Admin",
+                Email = $"admin-{seedSlug}@baki.local",
+                PhoneNumber = AttendanceQR.Api.PhoneNumbers.Normalize(seedPhone),
+                Role = EmployeeRole.Admin,
+                LocationId = starterLocation.Id,
+                PasswordHash = seedHasher.Hash(seedPin),
+                IsActive = true,
+                ActivatedAtUtc = DateTime.UtcNow,
+                MustChangePin = true
+            });
+            await db.SaveChangesAsync();
+
+            startupLogger.LogWarning(
+                "TenantSeed: created tenant '{Slug}' + starter location + admin {Phone}. REMOVE TenantSeed:* vars now.",
+                seedSlug, seedPhone);
+        }
+    }
 }
 
 // Ensure the photo-audit bucket exists (once, at startup). Non-fatal and skipped entirely when

@@ -49,6 +49,11 @@ services:
       DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
       DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
       DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}
+      # One-time new-tenant bootstrap (empty = off). Set in .env, redeploy, then clear. Idempotent by slug.
+      TenantSeed__Slug: ${TenantSeed__Slug:-}
+      TenantSeed__Name: ${TenantSeed__Name:-}
+      TenantSeed__AdminPhone: ${TenantSeed__AdminPhone:-}
+      TenantSeed__AdminPin: ${TenantSeed__AdminPin:-}
       ASPNETCORE_ENVIRONMENT: Production
     depends_on:
       db:
