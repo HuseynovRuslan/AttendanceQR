@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { useBranding } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import {
@@ -43,6 +44,7 @@ const MOBILE_BREAKPOINT = 680
 
 export function AdminLayout() {
   const { role, email, logout } = useAuth()
+  const branding = useBranding()
   const location = useLocation()
   const isAdmin = role === 'Admin'
   const meta = PAGE_META[location.pathname]
@@ -89,7 +91,7 @@ export function AdminLayout() {
             <BrandLogo size={34} />
           </div>
           <div className="logo-text">
-            <div className="t1">Bakı Abadlıq</div>
+            <div className="t1">{branding.displayName || 'Davamiyyət'}</div>
             <div className="t2">Davamiyyət sistemi</div>
           </div>
         </div>

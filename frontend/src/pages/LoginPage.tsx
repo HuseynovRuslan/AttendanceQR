@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
+import { useBranding } from '../branding/BrandingContext'
 import { decodeJwt, roleHome } from '../lib/jwt'
 import { BrandLogo } from '../components/BrandLogo'
 import { IconX } from '../components/icons'
@@ -12,6 +13,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const { saveToken } = useAuth()
+  const branding = useBranding()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -55,7 +57,7 @@ export function LoginPage() {
             <BrandLogo size={52} />
           </div>
           <div style={{ fontFamily: 'Sora,sans-serif', fontWeight: 800, fontSize: 20, color: '#fff' }}>
-            Bakı Abadlıq
+            {branding.displayName || 'Davamiyyət'}
           </div>
           <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 2 }}>Davamiyyət sistemi</div>
         </div>
