@@ -14,9 +14,21 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void getTenantBranding().then((r) => {
       if (r.status === 200 && r.data && 'displayName' in r.data) {
+        const { displayName, color, logoUrl } = r.data
         setBranding(r.data)
         // Recolour the whole design system to the tenant's accent (no-op for bax, which has none).
-        if (r.data.color) applyAccent(r.data.color)
+        if (color) applyAccent(color)
+        // Per-tenant browser tab: title text + favicon (index.html ships a neutral default).
+        document.title = displayName ? `${displayName} — Davamiyyət` : 'Davamiyyət'
+        if (logoUrl) {
+          let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+          if (!link) {
+            link = document.createElement('link')
+            link.rel = 'icon'
+            document.head.appendChild(link)
+          }
+          link.href = logoUrl
+        }
       }
     })
   }, [])
