@@ -12,6 +12,9 @@ public class AuditLog
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     // Nullable — some events may not be tied to a known employee.
     public Guid? EmployeeId { get; set; }
 

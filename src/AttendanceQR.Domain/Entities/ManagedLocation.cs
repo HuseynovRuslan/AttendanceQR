@@ -9,4 +9,7 @@ public class ManagedLocation
     public Guid EmployeeId { get; set; }
 
     public Guid LocationId { get; set; }
+
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
 }

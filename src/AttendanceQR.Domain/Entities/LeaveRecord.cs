@@ -18,6 +18,9 @@ public class LeaveRecord
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     public Guid EmployeeId { get; set; }
 
     public DateOnly FromDate { get; set; }

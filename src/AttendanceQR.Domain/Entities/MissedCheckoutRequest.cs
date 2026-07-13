@@ -18,6 +18,9 @@ public class MissedCheckoutRequest
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     // The employee who forgot to check out.
     public Guid EmployeeId { get; set; }
 

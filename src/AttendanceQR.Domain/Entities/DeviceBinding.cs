@@ -13,6 +13,9 @@ public class DeviceBinding
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     // FK to Employee. An employee holds SEVERAL bindings — one per browser storage context (Safari,
     // the installed PWA, a spare phone). The web exposes no cross-browser device identity, so a
     // single binding would lock the employee out the moment they switch context.

@@ -12,6 +12,9 @@ public class Employee
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     public string FullName { get; set; } = string.Empty;
 
     // Optional profile fields shown in the admin employee list. Nullable so existing rows and

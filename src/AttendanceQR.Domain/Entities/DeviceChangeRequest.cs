@@ -12,6 +12,9 @@ public class DeviceChangeRequest
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     // FK to the Employee who requested the change.
     public Guid EmployeeId { get; set; }
 

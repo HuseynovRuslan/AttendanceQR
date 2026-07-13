@@ -9,6 +9,9 @@ public class Location
 
     public Guid Id { get; set; }
 
+    // Multi-tenancy: which company (Tenant) this row belongs to.
+    public Guid TenantId { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public double Latitude { get; set; }
