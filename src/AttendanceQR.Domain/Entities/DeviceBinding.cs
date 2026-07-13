@@ -2,7 +2,7 @@ using AttendanceQR.Domain.Enums;
 
 namespace AttendanceQR.Domain.Entities;
 
-public class DeviceBinding
+public class DeviceBinding : ITenantScoped
 {
     public DeviceBinding()
     {

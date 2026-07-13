@@ -1,6 +1,6 @@
 namespace AttendanceQR.Domain.Entities;
 
-public class Location
+public class Location : ITenantScoped
 {
     public Location()
     {

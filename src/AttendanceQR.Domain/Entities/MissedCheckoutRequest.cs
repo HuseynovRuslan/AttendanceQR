@@ -8,7 +8,7 @@ namespace AttendanceQR.Domain.Entities;
 /// on this instead of scanning out: a required reason, a per-month cap, and the count is shown to the
 /// approver and back to the employee.
 /// </summary>
-public class MissedCheckoutRequest
+public class MissedCheckoutRequest : ITenantScoped
 {
     public MissedCheckoutRequest()
     {

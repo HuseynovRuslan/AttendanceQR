@@ -32,7 +32,10 @@ public sealed class JwtService : IJwtService
             new("role", employee.Role.ToString()),
             // Checked against Employee.TokenVersion on every request (Program.cs
             // OnTokenValidated) — lets change-password invalidate every other outstanding token.
-            new("tv", employee.TokenVersion.ToString())
+            new("tv", employee.TokenVersion.ToString()),
+            // Multi-tenancy: which company this session belongs to. OnTokenValidated resolves the
+            // request's tenant from here, so every query is scoped without touching the subdomain.
+            new("tid", employee.TenantId.ToString())
         };
 
         // Signals the client to force the "set your own PIN" screen before anything else — the account

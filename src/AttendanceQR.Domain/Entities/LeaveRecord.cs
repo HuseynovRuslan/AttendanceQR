@@ -8,7 +8,7 @@ namespace AttendanceQR.Domain.Entities;
 /// OnLeave/Permission instead of Absent; a day inside the range WITH a check-in still reports
 /// normally (showing up on a leave day is worked time, not overridden).
 /// </summary>
-public class LeaveRecord
+public class LeaveRecord : ITenantScoped
 {
     public LeaveRecord()
     {

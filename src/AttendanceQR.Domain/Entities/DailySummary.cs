@@ -7,7 +7,7 @@ namespace AttendanceQR.Domain.Entities;
 /// manual admin trigger). Reports read from here rather than recomputing over raw records.
 /// Uniqueness is enforced on (EmployeeId, SummaryDate).
 /// </summary>
-public class DailySummary
+public class DailySummary : ITenantScoped
 {
     public DailySummary()
     {

@@ -2,7 +2,7 @@ using AttendanceQR.Domain.Enums;
 
 namespace AttendanceQR.Domain.Entities;
 
-public class AttendanceRecord
+public class AttendanceRecord : ITenantScoped
 {
     public AttendanceRecord()
     {

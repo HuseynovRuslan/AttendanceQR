@@ -4,7 +4,7 @@ namespace AttendanceQR.Domain.Entities;
 /// Many-to-many link: which locations a manager oversees. A manager may manage several locations;
 /// report/export scope is restricted to this set. Composite key (EmployeeId, LocationId).
 /// </summary>
-public class ManagedLocation
+public class ManagedLocation : ITenantScoped
 {
     public Guid EmployeeId { get; set; }
 

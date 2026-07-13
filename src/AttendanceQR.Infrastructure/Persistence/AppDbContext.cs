@@ -1,14 +1,25 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Infrastructure.Multitenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Infrastructure.Persistence;
 
 public class AppDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options)
+    private readonly ITenantContext? _tenant;
+
+    // ITenantContext is optional so the design-time factory (migrations) can build the model without
+    // the DI container. At runtime it's always injected.
+    public AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null)
         : base(options)
     {
+        _tenant = tenant;
     }
+
+    /// <summary>The tenant every query is filtered to and every insert is stamped with. Referenced by
+    /// the query filters below — EF re-reads it per query, so it tracks the current request's tenant.</summary>
+    public Guid CurrentTenantId => _tenant?.TenantId ?? TenantDefaults.BakiAbadligId;
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Employee> Employees => Set<Employee>();
@@ -30,9 +41,8 @@ public class AppDbContext : DbContext
         // Each entity has its own IEntityTypeConfiguration<T> in Persistence/Configurations.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
-        // Multi-tenancy (Phase 0): every tenant-scoped entity carries TenantId → Tenant. Configured
-        // centrally so all rows stay consistent. Query filters + auto-stamping arrive in Phase 1;
-        // Restrict on delete so a tenant with data can't be removed out from under its rows.
+        // Multi-tenancy: every tenant-scoped entity carries TenantId → Tenant (FK + index configured
+        // centrally). Delete is Restrict so a tenant with data can't be removed out from under its rows.
         var tenantScoped = new[]
         {
             typeof(Employee), typeof(Location), typeof(AttendanceRecord), typeof(DeviceBinding),
@@ -46,6 +56,45 @@ public class AppDbContext : DbContext
                 .HasForeignKey(nameof(Tenant) + "Id")
                 .OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity(t).HasIndex(nameof(Tenant) + "Id");
+        }
+
+        // Phase 1 — the isolation boundary. Every query is automatically scoped to CurrentTenantId, so
+        // one tenant can never read another's rows even if a query forgets to filter. Explicit per
+        // entity (typed) so EF reliably treats CurrentTenantId as a runtime value, not a baked constant.
+        modelBuilder.Entity<Employee>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Location>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<DeviceBinding>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<DeviceChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<MissedCheckoutRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<DailySummary>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AuditLog>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ManagedLocation>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<NonWorkingDay>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<LeaveRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        StampTenant();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
+    {
+        StampTenant();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
+    }
+
+    // New tenant-scoped rows get the current tenant automatically (unless already set explicitly), so
+    // callers never have to remember TenantId. This is what lets the column default be dropped.
+    private void StampTenant()
+    {
+        var tenantId = CurrentTenantId;
+        foreach (var entry in ChangeTracker.Entries<ITenantScoped>())
+        {
+            if (entry.State == EntityState.Added && entry.Entity.TenantId == Guid.Empty)
+                entry.Entity.TenantId = tenantId;
         }
     }
 }

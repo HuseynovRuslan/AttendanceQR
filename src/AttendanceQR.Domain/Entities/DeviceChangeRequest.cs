@@ -2,7 +2,7 @@ using AttendanceQR.Domain.Enums;
 
 namespace AttendanceQR.Domain.Entities;
 
-public class DeviceChangeRequest
+public class DeviceChangeRequest : ITenantScoped
 {
     public DeviceChangeRequest()
     {

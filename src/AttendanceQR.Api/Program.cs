@@ -5,10 +5,12 @@ using Amazon.Rekognition;
 using Amazon.Runtime;
 using Amazon.S3;
 using AttendanceQR.Api.Jobs;
+using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -41,6 +43,11 @@ builder.Services.AddSingleton<INonceStore, MemoryCacheNonceStore>();
 builder.Services.AddSingleton<ILoginLockoutStore, MemoryCacheLoginLockoutStore>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 builder.Services.AddSingleton<IJwtService, JwtService>();
+
+// Multi-tenancy: the current request's tenant, resolved from the JWT (OnTokenValidated) or the
+// request Origin (middleware below). Scoped so the DbContext can read it per request for its query
+// filter + insert stamping.
+builder.Services.AddScoped<ITenantContext, TenantContext>();
 
 // Business services (use the scoped DbContext, so they are scoped too).
 builder.Services.AddScoped<IDeviceChangeService, DeviceChangeService>();
@@ -164,6 +171,12 @@ builder.Services
                     context.Fail("TokenMalformed");
                     return;
                 }
+
+                // Resolve the tenant from the token FIRST, so the TokenVersion lookup (and everything
+                // after) is scoped to this session's tenant. Tokens issued before Phase 1 have no "tid"
+                // — they fall back to the default tenant, which is the only one that exists yet.
+                if (Guid.TryParse(context.Principal?.FindFirstValue("tid"), out var tenantId))
+                    context.HttpContext.RequestServices.GetRequiredService<ITenantContext>().Resolve(tenantId);
 
                 var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
                 var currentVersion = await db.Employees
@@ -330,6 +343,30 @@ if (!string.IsNullOrWhiteSpace(minioStartup.Endpoint))
 app.UseCors(SpaCorsPolicy);
 
 app.UseAuthentication();
+
+// Resolve the tenant for anonymous requests (login, activate, kiosk) from the request Origin's
+// subdomain — authenticated requests are already resolved from the JWT in OnTokenValidated. Runs
+// before authorization/controllers so the DbContext query filter is scoped by the time they query.
+app.Use(async (context, next) =>
+{
+    var tenant = context.RequestServices.GetRequiredService<ITenantContext>();
+    if (!tenant.IsResolved)
+    {
+        var slug = TenantSlug.FromRequest(context.Request);
+        if (slug is not null)
+        {
+            var db = context.RequestServices.GetRequiredService<AppDbContext>();
+            var id = await db.Tenants
+                .Where(t => t.Slug == slug && t.IsActive)
+                .Select(t => (Guid?)t.Id)
+                .FirstOrDefaultAsync();
+            if (id.HasValue)
+                tenant.Resolve(id.Value);
+        }
+    }
+    await next();
+});
+
 app.UseAuthorization();
 
 app.MapControllers();

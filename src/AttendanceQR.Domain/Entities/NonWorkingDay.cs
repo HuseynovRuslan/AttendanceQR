@@ -5,7 +5,7 @@ namespace AttendanceQR.Domain.Entities;
 /// regular weekly WorkDaysMask. A null LocationId applies to every location; a set LocationId
 /// applies only to that one.
 /// </summary>
-public class NonWorkingDay
+public class NonWorkingDay : ITenantScoped
 {
     public NonWorkingDay()
     {
