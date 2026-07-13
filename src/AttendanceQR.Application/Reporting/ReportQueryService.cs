@@ -24,7 +24,7 @@ public interface IReportQueryService
     /// for past days after the nightly job). One row per in-scope active employee.
     /// </summary>
     Task<IReadOnlyList<DayAttendanceRow>> GetTodayAttendanceAsync(
-        Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+        Guid requesterId, EmployeeRole role, DateOnly? date = null, CancellationToken ct = default);
 
     /// <summary>
     /// KPI tiles, trend/weekday charts, and a top-5-late list over a date range — the richer
@@ -126,9 +126,11 @@ public sealed class ReportQueryService : IReportQueryService
     }
 
     public async Task<IReadOnlyList<DayAttendanceRow>> GetTodayAttendanceAsync(
-        Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+        Guid requesterId, EmployeeRole role, DateOnly? date = null, CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        // Defaults to the local "today"; a past date shows that day's board (same computation, so the
+        // live board and any historical day read identically).
+        var today = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
         // In-scope active employees. Admins are system operators, not on-site staff — they never
         // check in/out, so including them here would just show a permanent, meaningless "Qayıb".

@@ -84,14 +84,15 @@ public class ReportsController : ControllerBase
         return Ok(report);
     }
 
-    // Live "today" board (computed from raw records, not DailySummary). Scoped by role.
+    // Live "today" board (computed from raw records, not DailySummary). Scoped by role. An optional
+    // ?date=yyyy-MM-dd shows a past day's board instead (same shape, so the UI can browse history).
     [HttpGet("today")]
-    public async Task<IActionResult> Today()
+    public async Task<IActionResult> Today([FromQuery] DateOnly? date)
     {
         if (!TryGetCaller(out var requesterId, out var role))
             return Unauthorized(new { error = "InvalidToken" });
 
-        var rows = await _reports.GetTodayAttendanceAsync(requesterId, role, HttpContext.RequestAborted);
+        var rows = await _reports.GetTodayAttendanceAsync(requesterId, role, date, HttpContext.RequestAborted);
         return Ok(rows);
     }
 

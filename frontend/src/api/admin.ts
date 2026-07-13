@@ -128,8 +128,9 @@ export interface AdminLocation {
 /** Create/update payload — active state is managed separately via setLocationActive. */
 export type LocationInput = Omit<AdminLocation, 'id' | 'isActive'>
 
-export function getToday() {
-  return apiRequest<DayAttendanceRow[]>('/api/reports/today')
+/** The attendance board. Omit `date` for the live today board; pass "yyyy-MM-dd" for a past day. */
+export function getToday(date?: string) {
+  return apiRequest<DayAttendanceRow[]>(`/api/reports/today${date ? `?date=${date}` : ''}`)
 }
 
 // --- problems (rejected scans) ----------------------------------------------
