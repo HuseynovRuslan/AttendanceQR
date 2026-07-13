@@ -35,4 +35,18 @@ public class TenantController : ControllerBase
 
         return Ok(b ?? new { displayName = string.Empty, color = (string?)null });
     }
+
+    // GET /api/tenant/allow-tls?domain=<host> — Caddy's on-demand-TLS gate. Only issue a certificate
+    // for a subdomain that maps to a real, active tenant, so nobody can trigger cert issuance for
+    // random *.qrlog.az names. 200 = allow, 404 = deny.
+    [HttpGet("allow-tls")]
+    [AllowAnonymous]
+    public async Task<IActionResult> AllowTls([FromQuery] string? domain)
+    {
+        if (string.IsNullOrWhiteSpace(domain))
+            return NotFound();
+        var slug = domain.Split('.')[0].ToLowerInvariant();
+        var exists = await _db.Tenants.AnyAsync(t => t.Slug == slug && t.IsActive, HttpContext.RequestAborted);
+        return exists ? Ok() : NotFound();
+    }
 }

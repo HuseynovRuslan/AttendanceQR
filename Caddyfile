@@ -1,8 +1,18 @@
 # Automatic HTTPS for the production stack. Caddy fetches and renews Let's Encrypt certificates on
 # its own, the moment these names resolve to this server.
-#   bax.qrlog.az  → the attendance app (frontend)
-#   api.qrlog.az  → the backend API
-#   qrlog.az      → the static marketing site (Astro build, served from /srv/qrlog)
+#   bax.qrlog.az     → the attendance app (frontend) — the first tenant (Bakı Abadlıq)
+#   <slug>.qrlog.az  → the attendance app for any other tenant (cert issued on demand, gated below)
+#   api.qrlog.az     → the backend API
+#   qrlog.az         → the static marketing site (Astro build, served from /srv/qrlog)
+
+{
+	# On-demand TLS: for a <slug>.qrlog.az we haven't seen before, only obtain a certificate if the
+	# backend confirms the slug is a real, active tenant — otherwise anyone could trigger cert
+	# issuance (and hit Let's Encrypt rate limits) by requesting random subdomains.
+	on_demand_tls {
+		ask http://backend:8080/api/tenant/allow-tls
+	}
+}
 
 qrlog.az, www.qrlog.az {
 	encode zstd gzip
@@ -18,4 +28,14 @@ bax.qrlog.az {
 api.qrlog.az {
 	encode zstd gzip
 	reverse_proxy backend:8080
+}
+
+# Every other <slug>.qrlog.az → the attendance app. Same frontend bundle; the tenant is derived from
+# the subdomain (the browser's Origin) by the API. TLS issued on demand, gated by the ask above.
+*.qrlog.az {
+	encode zstd gzip
+	tls {
+		on_demand
+	}
+	reverse_proxy frontend:80
 }

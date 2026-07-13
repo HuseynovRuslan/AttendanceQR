@@ -6,7 +6,10 @@
       "Bash(curl -s -o /dev/null -w 'HTTP %{http_code}\\\\n' --max-time 10 -H 'Origin: https://bax.qrlog.az' https://api.qrlog.az/api/kiosk/location/f951ac1e-b733-410f-b741-9dec3b943a69)",
       "Bash(curl -s --max-time 10 -H 'Origin: https://bax.qrlog.az' https://api.qrlog.az/api/kiosk/location/f951ac1e-b733-410f-b741-9dec3b943a69)",
       "Bash(curl -s -o /dev/null -w 'HTTP %{http_code}\\\\n' --max-time 10 https://api.qrlog.az/api/kiosk/location/f951ac1e-b733-410f-b741-9dec3b943a69)",
-      "Bash(curl -s --max-time 10 https://api.qrlog.az/api/kiosk/location/f951ac1e-b733-410f-b741-9dec3b943a69)"
+      "Bash(curl -s --max-time 10 https://api.qrlog.az/api/kiosk/location/f951ac1e-b733-410f-b741-9dec3b943a69)",
+      "Bash(SSH_ASKPASS=C:/Users/HP/AppData/Local/Temp/claude/c--Users-HP-AttendanceQR/87306edd-c00b-49a0-a60f-4a1d6c1b7f84/scratchpad/apnew.sh SSH_ASKPASS_REQUIRE=force DISPLAY=:0 ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 root@62.84.179.39 ' *)",
+      "Bash(nslookup ecafe.qrlog.az)",
+      "Bash(nslookup test123.qrlog.az 1.1.1.1)"
     ]
   }
 }

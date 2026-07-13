@@ -191,16 +191,25 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
-// CORS: the SPA calls the API cross-origin. Allowed origins come from configuration
-// ("Cors:AllowedOrigins", comma-separated) — the Vite dev server locally, the deployed
-// frontend domain in production. No cookies are used (the JWT travels in the Authorization
+// CORS: the SPA calls the API cross-origin. Every tenant lives at its own <slug>.qrlog.az subdomain,
+// so instead of a fixed list we allow any https://*.qrlog.az origin (plus the apex and whatever
+// Cors:AllowedOrigins adds for local dev). No cookies are used (the JWT rides the Authorization
 // header), so credentials are intentionally NOT allowed.
 const string SpaCorsPolicy = "SpaCors";
 var corsOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? string.Empty)
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+bool IsAllowedOrigin(string origin)
+{
+    if (corsOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+        return true;
+    return Uri.TryCreate(origin, UriKind.Absolute, out var u)
+           && u.Scheme == Uri.UriSchemeHttps
+           && (u.Host.Equals("qrlog.az", StringComparison.OrdinalIgnoreCase)
+               || u.Host.EndsWith(".qrlog.az", StringComparison.OrdinalIgnoreCase));
+}
 builder.Services.AddCors(options =>
     options.AddPolicy(SpaCorsPolicy, policy =>
-        policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+        policy.SetIsOriginAllowed(IsAllowedOrigin).AllowAnyHeader().AllowAnyMethod()));
 
 builder.Services
     .AddControllers()
