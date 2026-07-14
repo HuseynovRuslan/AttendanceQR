@@ -14,30 +14,21 @@ export function BrandLogo({ size = 34 }: { size?: number }) {
   const { logoUrl, displayName, color } = useBranding()
   const [broken, setBroken] = useState(false)
 
-  // QRLog wordmark: rendered as text in the app font (crisp at any size, consistent across devices)
-  // on a light chip so the navy "QR" stays legible on both the dark chrome and the light employee bar.
+  // QRLog official lockup (the real brand PNG). It's on an opaque white ground, so it reads on both the
+  // dark chrome (login/sidebar) and the light employee bar; a faint border defines its edge on white.
   if (logoUrl === QRLOG_LOGO) {
     return (
-      <span
-        aria-label="QRLog"
+      <img
+        src="/brand/qrlog-logo.png"
+        alt="QRLog"
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          background: '#fff',
+          height: Math.round(size * 0.92),
+          width: 'auto',
+          display: 'block',
+          borderRadius: Math.round(size * 0.18),
           border: '1px solid rgba(15,27,45,0.08)',
-          borderRadius: Math.round(size * 0.3),
-          padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.34)}px`,
-          fontFamily: 'Sora, sans-serif',
-          fontWeight: 800,
-          fontSize: Math.round(size * 0.62),
-          lineHeight: 1,
-          letterSpacing: '-0.02em',
-          whiteSpace: 'nowrap',
         }}
-      >
-        <span style={{ color: '#0F1B2D' }}>QR</span>
-        <span style={{ color: '#1E70C8' }}>Log</span>
-      </span>
+      />
     )
   }
 
