@@ -1,14 +1,45 @@
 import { useState } from 'react'
 import { useBranding } from '../branding/BrandingContext'
 
+/** Sentinel LogoKey that means "QRLog-branded tenant" — render the QRLog wordmark lockup (below)
+ * rather than treating it as an image path. Same file is still used for favicon/PWA icon. */
+const QRLOG_LOGO = '/brand/qrlog.svg'
+
 /**
- * The tenant's brand mark. In order: the tenant's own uploaded logo → a neutral initial badge in the
- * tenant accent (while no logo is set, or if the logo file is missing) → the default Bakı Abadlıq leaf
- * (bax, which has no branding).
+ * The tenant's brand mark. In order: QRLog wordmark (every non-bax tenant, promoting the product
+ * brand) → the tenant's own uploaded image logo → a neutral initial badge in the tenant accent →
+ * the default Bakı Abadlıq leaf (bax, which has no branding).
  */
 export function BrandLogo({ size = 34 }: { size?: number }) {
   const { logoUrl, displayName, color } = useBranding()
   const [broken, setBroken] = useState(false)
+
+  // QRLog wordmark: rendered as text in the app font (crisp at any size, consistent across devices)
+  // on a light chip so the navy "QR" stays legible on both the dark chrome and the light employee bar.
+  if (logoUrl === QRLOG_LOGO) {
+    return (
+      <span
+        aria-label="QRLog"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          background: '#fff',
+          border: '1px solid rgba(15,27,45,0.08)',
+          borderRadius: Math.round(size * 0.3),
+          padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.34)}px`,
+          fontFamily: 'Sora, sans-serif',
+          fontWeight: 800,
+          fontSize: Math.round(size * 0.62),
+          lineHeight: 1,
+          letterSpacing: '-0.02em',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span style={{ color: '#0F1B2D' }}>QR</span>
+        <span style={{ color: '#1E70C8' }}>Log</span>
+      </span>
+    )
+  }
 
   if (logoUrl && !broken) {
     return (

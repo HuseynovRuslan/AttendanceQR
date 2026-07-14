@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import type { ComponentType, SVGProps } from 'react'
 import { BrandLogo } from '../components/BrandLogo'
+import { useBranding } from '../branding/BrandingContext'
 import { IconBell, IconChart, IconHome, IconQr, IconUser } from '../components/icons'
 
 type Tab = { to: string; label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> }
@@ -20,14 +21,22 @@ const RIGHT: Tab[] = [
  */
 export function EmployeeLayout() {
   const navigate = useNavigate()
+  const branding = useBranding()
+  // QRLog-branded tenants: the logo pill already says "QRLog", so show the company name beside it.
+  // bax (leaf) keeps the original "AttendanceQR" wordmark untouched.
+  const isQrlog = branding.logoUrl === '/brand/qrlog.svg'
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       <header className="sticky top-0 z-20 bg-white border-b border-slate-100 h-14 flex items-center gap-2 px-4">
         <BrandLogo size={26} />
-        <span className="font-extrabold text-lg tracking-tight">
-          Attendance<span className="text-blue-600">QR</span>
-        </span>
+        {isQrlog ? (
+          <span className="font-extrabold text-lg tracking-tight">{branding.displayName}</span>
+        ) : (
+          <span className="font-extrabold text-lg tracking-tight">
+            Attendance<span className="text-blue-600">QR</span>
+          </span>
+        )}
       </header>
 
       <main className="flex-1 w-full max-w-md mx-auto px-4 pt-4 pb-28">
