@@ -64,9 +64,9 @@ export function PhotoIntro({ secondsLeft, onReady }: { secondsLeft: number; onRe
       </div>
 
       <ul className="mt-4 space-y-2 text-left text-sm text-slate-300">
-        <li>📱 Telefonu üz səviyyəsində tutun</li>
+        <li>📱 Telefonu üzünüzə yaxın tutun</li>
+        <li>😊 Üzünüz çərçivəni doldursun</li>
         <li>👤 Kadrda tək siz olun</li>
-        <li>🙂 Ekrana baxın və tərpənməyin</li>
       </ul>
 
       <button

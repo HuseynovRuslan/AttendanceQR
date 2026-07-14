@@ -42,7 +42,11 @@ const PHOTO_HOLD_MS = 5_000
 // Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
 // not, and full-frame captures kept picking up two and three faces.
 // A face-shaped (portrait) crop + output, matching the oval preview the employee sees.
-const PHOTO_CROP = 0.92
+// Tight (was 0.92): zoom into the face so it fills the photo instead of a small, far figure. The
+// preview video is scaled by SELFIE_PREVIEW_ZOOM to show roughly the same framing (WYSIWYG); the crop
+// is kept a touch tighter than the preview so no bystander the employee didn't see slips in.
+const PHOTO_CROP = 0.68
+const SELFIE_PREVIEW_ZOOM = 1.4
 const PHOTO_W = 420
 const PHOTO_H = 540
 // The scan is pointless without a position, so we settle this before the camera ever opens.
@@ -544,7 +548,9 @@ export function ScanPage() {
             <div className="h-full w-full overflow-hidden rounded-[50%] border-2 border-white/20 bg-black shadow-lg">
               <video
                 ref={selfieVideoRef}
-                className="h-full w-full -scale-x-100 object-cover"
+                className="h-full w-full object-cover"
+                // Mirror (selfie) + zoom into the centre so the preview matches the tighter crop.
+                style={{ transform: `scaleX(-1) scale(${SELFIE_PREVIEW_ZOOM})` }}
                 playsInline
                 muted
                 autoPlay
@@ -558,7 +564,7 @@ export function ScanPage() {
           {photoLive ? (
             <>
               <p className="text-xl font-bold">Ekrana baxın</p>
-              <p className="text-base text-slate-300">Tərpənməyin — şəkil çəkilir</p>
+              <p className="text-base text-slate-300">Üzünüzü ovalın içinə salın — tərpənməyin</p>
               <p className="text-4xl font-extrabold tabular-nums text-green-400">{secondsLeft}</p>
             </>
           ) : (
