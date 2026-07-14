@@ -55,12 +55,14 @@ public class TenantController : ControllerBase
         if (!string.IsNullOrWhiteSpace(t?.LogoKey))
         {
             var key = t!.LogoKey!;
-            var mime = key.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png"
+            var isSvg = key.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
+            var mime = isSvg ? "image/svg+xml"
+                     : key.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png"
                      : key.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ? "image/webp"
-                     : key.EndsWith(".svg", StringComparison.OrdinalIgnoreCase) ? "image/svg+xml"
                      : "image/jpeg";
-            // One square logo, declared at the sizes browsers look for on install (scaled from source).
-            icons = new() { new() { ["src"] = key, ["sizes"] = "192x192 512x512", ["type"] = mime, ["purpose"] = "any" } };
+            // SVG is scalable → "any"; a raster logo is declared at the sizes browsers look for on install.
+            var sizes = isSvg ? "any" : "192x192 512x512";
+            icons = new() { new() { ["src"] = key, ["sizes"] = sizes, ["type"] = mime, ["purpose"] = "any" } };
         }
         else
         {

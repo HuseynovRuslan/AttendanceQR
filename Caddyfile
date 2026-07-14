@@ -22,6 +22,12 @@ ecaf.qrlog.az {
 	reverse_proxy frontend:80
 }
 
+# CleanFix (tenant "cleanfix"). Same single-host pattern; QRLog-branded like every non-bax tenant.
+cleanfix.qrlog.az {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
 api.qrlog.az {
 	encode zstd gzip
 	reverse_proxy backend:8080
