@@ -50,6 +50,13 @@ public class Employee : ITenantScoped
 
     public Guid LocationId { get; set; }
 
+    // Optional per-employee work hours. When set, they override the location's ShiftStart/ShiftEnd for
+    // this employee's late-arrival / early-departure detection (staff at one location can keep different
+    // hours). Null → fall back to the location's shift. Time-of-day only; the date comes from the scan.
+    public TimeOnly? WorkStart { get; set; }
+
+    public TimeOnly? WorkEnd { get; set; }
+
     // Admin kill-switch: whether the account is enabled. Independent of activation.
     public bool IsActive { get; set; } = true;
 

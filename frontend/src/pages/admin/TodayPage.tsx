@@ -137,8 +137,8 @@ export function TodayPage() {
       name: r.employeeName,
       location: r.locationName,
       status: label(r.status),
-      checkIn: fmtTime(r.checkInAtUtc),
-      checkOut: fmtTime(r.checkOutAtUtc),
+      checkIn: fmtTime(r.checkInAtUtc) + (r.lateArrivalReason ? ` (gec: ${r.lateArrivalReason})` : ''),
+      checkOut: fmtTime(r.checkOutAtUtc) + (r.earlyDepartureReason ? ` (tez: ${r.earlyDepartureReason})` : ''),
       photo: r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',
     }))
     setExporting(true)
@@ -282,8 +282,22 @@ export function TodayPage() {
                 <td>
                   <StatusBadge status={r.status} />
                 </td>
-                <td className="mono">{fmtTime(r.checkInAtUtc)}</td>
-                <td className="mono">{fmtTime(r.checkOutAtUtc)}</td>
+                <td className="mono">
+                  {fmtTime(r.checkInAtUtc)}
+                  {r.lateArrivalReason && (
+                    <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
+                      Gec: {r.lateArrivalReason}
+                    </div>
+                  )}
+                </td>
+                <td className="mono">
+                  {fmtTime(r.checkOutAtUtc)}
+                  {r.earlyDepartureReason && (
+                    <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
+                      Tez: {r.earlyDepartureReason}
+                    </div>
+                  )}
+                </td>
                 <td>
                   {r.hasPhoto && r.recordId ? (
                     <button

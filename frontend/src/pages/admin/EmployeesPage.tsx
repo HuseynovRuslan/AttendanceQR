@@ -72,6 +72,8 @@ type FormState = {
   locationId: string
   role: Role
   isActive: boolean
+  workStart: string
+  workEnd: string
 }
 
 const EMPTY: FormState = {
@@ -84,6 +86,8 @@ const EMPTY: FormState = {
   locationId: '',
   role: 'Employee',
   isActive: true,
+  workStart: '',
+  workEnd: '',
 }
 
 export function EmployeesPage() {
@@ -153,6 +157,8 @@ export function EmployeesPage() {
       locationId: e.locationId,
       role: e.role,
       isActive: e.isActive,
+      workStart: e.workStart ?? '',
+      workEnd: e.workEnd ?? '',
     })
     setError(null)
     setOk(null)
@@ -186,7 +192,12 @@ export function EmployeesPage() {
       birthYear: form.birthYear ? Number(form.birthYear) : null,
     }
     const res = editingId
-      ? await updateEmployee(editingId, { ...payload, isActive: form.isActive })
+      ? await updateEmployee(editingId, {
+          ...payload,
+          isActive: form.isActive,
+          workStart: form.workStart || null,
+          workEnd: form.workEnd || null,
+        })
       : await invite(payload)
     setSaving(false)
 
@@ -578,6 +589,24 @@ export function EmployeesPage() {
                 </select>
               </div>
             </div>
+          )}
+
+          {editingId && (
+            <>
+              <div className="form-row cols2">
+                <div>
+                  <label className="form-label">İş başlanğıcı</label>
+                  <input className="inp" type="time" value={form.workStart} onChange={(e) => set('workStart', e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">İş sonu</label>
+                  <input className="inp" type="time" value={form.workEnd} onChange={(e) => set('workEnd', e.target.value)} />
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
+                Boş buraxsanız ərazinin iş saatları tətbiq olunur — gec gəlmə / tez çıxma bu saatlara görə hesablanır.
+              </p>
+            </>
           )}
 
           <div style={{ display: 'flex', gap: 8 }}>

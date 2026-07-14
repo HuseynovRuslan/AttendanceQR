@@ -87,7 +87,11 @@ public class AdminAttendanceController : ControllerBase
         if (request.CheckInAtUtc is not null)
         {
             record.CheckInAtUtc = request.CheckInAtUtc;
-            record.Status = AttendanceController.DetermineStatus(location, request.CheckInAtUtc.Value);
+            var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId);
+            var shiftStart = employee is null
+                ? location.ShiftStart
+                : AttendanceController.EffectiveShiftStart(employee, location);
+            record.Status = AttendanceController.DetermineStatus(shiftStart, location.LateThresholdMinutes, request.CheckInAtUtc.Value);
         }
         if (request.CheckOutAtUtc is not null)
             record.CheckOutAtUtc = request.CheckOutAtUtc;
@@ -130,7 +134,8 @@ public class AdminAttendanceController : ControllerBase
             AttendanceDate = request.Date,
             CheckInAtUtc = request.CheckInAtUtc,
             CheckOutAtUtc = request.CheckOutAtUtc,
-            Status = AttendanceController.DetermineStatus(location, request.CheckInAtUtc)
+            Status = AttendanceController.DetermineStatus(
+                AttendanceController.EffectiveShiftStart(employee, location), location.LateThresholdMinutes, request.CheckInAtUtc)
         };
         _db.AttendanceRecords.Add(record);
         await _db.SaveChangesAsync();

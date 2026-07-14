@@ -59,7 +59,10 @@ public sealed record DayAttendanceRow(
     bool HasPhoto,
     // Face-audit: similarity (0–100, null if not compared) + status string, for the flag badge.
     int? FaceMatchScore,
-    string FaceMatchStatus);
+    string FaceMatchStatus,
+    // Reasons the employee gave at the scan for arriving late / leaving early (null if none/skipped).
+    string? LateArrivalReason = null,
+    string? EarlyDepartureReason = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

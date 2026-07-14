@@ -14,6 +14,7 @@ import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
+import { ReasonPrompt } from '../components/ReasonPrompt'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -80,6 +81,8 @@ export function ScanPage() {
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
   const [result, setResult] = useState<Card | null>(null)
+  // Skippable late-arrival / early-departure reason prompt, shown over the result after the scan.
+  const [reason, setReason] = useState<{ recordId: string; kind: 'late' | 'early' } | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // The visible pre-scan verification (device → location → camera). An overlay while it runs.
@@ -148,6 +151,7 @@ export function ScanPage() {
     setVerifying(true)
     setCameraError(null)
     setResult(null)
+    setReason(null)
     setRadiusFail(null)
     setPhase('scanning')
     scanDoneRef.current = false
@@ -438,6 +442,8 @@ export function ScanPage() {
           final: true,
           photo: photoBase64 ?? undefined,
         })
+        // Ask why they were late (skippable) — a prompt, not a "Gecikmə" verdict on screen.
+        if (data.late && data.recordId) setReason({ recordId: data.recordId, kind: 'late' })
         return
       }
       if (status === 200 && data?.action === 'CheckOut') {
@@ -449,6 +455,8 @@ export function ScanPage() {
           note: 'Sabaha qədər!',
           final: true,
         })
+        // Ask why they left early (skippable).
+        if (data.earlyDeparture && data.recordId) setReason({ recordId: data.recordId, kind: 'early' })
         return
       }
       setResult(errorResult(status, data))
@@ -583,6 +591,9 @@ export function ScanPage() {
         )}
       </main>
 
+      {reason && (
+        <ReasonPrompt recordId={reason.recordId} kind={reason.kind} onDone={() => setReason(null)} />
+      )}
     </div>
   )
 }
@@ -725,6 +736,10 @@ interface ScanResponse {
   action?: 'CheckIn' | 'CheckOut'
   recordId?: string
   status?: string
+  // Backend flags: the check-in was late / the check-out early (vs the employee's own hours, else the
+  // location's) — the app then asks for a reason (skippable).
+  late?: boolean
+  earlyDeparture?: boolean
   checkInAtUtc?: string
   checkOutAtUtc?: string
   error?: string

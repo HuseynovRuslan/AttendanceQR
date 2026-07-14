@@ -361,7 +361,7 @@ public class AttendanceController : ControllerBase
                 await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                 return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
             }
-            return await CheckOutAsync(record, nowUtc, employee.Id, ip);
+            return await CheckOutAsync(record, employee, location, nowUtc, ip);
         }
 
         // Already checked in and out today.
@@ -378,7 +378,7 @@ public class AttendanceController : ControllerBase
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
-            Status = DetermineStatus(location, nowUtc)
+            Status = DetermineStatus(EffectiveShiftStart(employee, location), location.LateThresholdMinutes, nowUtc)
         };
         _db.AttendanceRecords.Add(record);
 
@@ -405,6 +405,9 @@ public class AttendanceController : ControllerBase
             action = "CheckIn",
             recordId = record.Id,
             status = record.Status.ToString(),
+            // Tells the app to prompt for a late-arrival reason (skippable). Uses the employee's own
+            // hours when set (EffectiveShiftStart).
+            late = record.Status == AttendanceStatus.Late,
             checkInAtUtc = nowUtc,
             photoStored = record.CheckInPhotoKey is not null
         });
@@ -477,33 +480,50 @@ public class AttendanceController : ControllerBase
     }
 
     private async Task<IActionResult> CheckOutAsync(
-        AttendanceRecord record, DateTime nowUtc, Guid employeeId, string? ip)
+        AttendanceRecord record, Employee employee, Location location, DateTime nowUtc, string? ip)
     {
         record.CheckOutAtUtc = nowUtc;
         await _db.SaveChangesAsync();
 
-        await WriteAuditAsync(employeeId, AuditEventType.CheckOutSuccess, null, ip);
+        await WriteAuditAsync(employee.Id, AuditEventType.CheckOutSuccess, null, ip);
         return Ok(new
         {
             action = "CheckOut",
             recordId = record.Id,
-            checkOutAtUtc = nowUtc
+            checkOutAtUtc = nowUtc,
+            // Tells the app to prompt for an early-departure reason (skippable).
+            earlyDeparture = IsEarlyDeparture(EffectiveShiftEnd(employee, location), location.LateThresholdMinutes, nowUtc)
         });
     }
 
+    // The effective shift bounds for an employee: their own WorkStart/WorkEnd when set, else the
+    // location's. Staff at one location can keep different hours (the reason "Gecikmə" was dropped as a
+    // location-wide label) — this makes late/early detection per-person when needed.
+    internal static TimeOnly EffectiveShiftStart(Employee employee, Location location)
+        => employee.WorkStart ?? location.ShiftStart;
+
+    internal static TimeOnly EffectiveShiftEnd(Employee employee, Location location)
+        => employee.WorkEnd ?? location.ShiftEnd;
+
     /// <summary>
-    /// OnTime unless the current time is past ShiftStart + LateThresholdMinutes.
+    /// OnTime unless the current time is past shiftStart + lateThreshold. shiftStart is the employee's
+    /// own WorkStart when set, else the location's ShiftStart (see EffectiveShiftStart).
     /// Note: shift times and server time are treated as the same reference here; a real
     /// deployment would carry a per-location timezone.
     /// Internal (not private) so AdminAttendanceController can recompute the same way when an
     /// admin edits/creates a record's check-in time.
     /// </summary>
-    internal static AttendanceStatus DetermineStatus(Location location, DateTime nowUtc)
+    internal static AttendanceStatus DetermineStatus(TimeOnly shiftStart, int lateThresholdMinutes, DateTime nowUtc)
     {
-        var lateCutoff = location.ShiftStart.AddMinutes(location.LateThresholdMinutes);
+        var lateCutoff = shiftStart.AddMinutes(lateThresholdMinutes);
         var nowTime = TimeOnly.FromDateTime(nowUtc);
         return nowTime > lateCutoff ? AttendanceStatus.Late : AttendanceStatus.OnTime;
     }
+
+    /// <summary>True when the check-out is more than lateThreshold minutes before shiftEnd — the same
+    /// grace as late arrival, applied to early departure.</summary>
+    internal static bool IsEarlyDeparture(TimeOnly shiftEnd, int lateThresholdMinutes, DateTime nowUtc)
+        => TimeOnly.FromDateTime(nowUtc) < shiftEnd.AddMinutes(-lateThresholdMinutes);
 
     // Decides whether this device may scan, adopting it if the rules allow. Returns null when the
     // scan may proceed, or the rejection to send back. Callers MUST have passed the geofence first —

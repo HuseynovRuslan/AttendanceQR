@@ -62,6 +62,8 @@ public class AdminController : ControllerBase
                 fatherName = e.FatherName,
                 position = e.Position,
                 birthYear = e.BirthYear,
+                workStart = e.WorkStart?.ToString("HH:mm"),
+                workEnd = e.WorkEnd?.ToString("HH:mm"),
                 email = e.Email,
                 role = e.Role.ToString(),
                 phoneNumber = e.PhoneNumber,
@@ -456,9 +458,15 @@ public class AdminController : ControllerBase
         employee.LocationId = request.LocationId;
         employee.Role = request.Role;
         employee.IsActive = request.IsActive;
+        employee.WorkStart = ParseTimeOrNull(request.WorkStart);
+        employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         await _db.SaveChangesAsync();
         return Ok(new { id = employee.Id });
     }
+
+    // "HH:mm" (or empty) → TimeOnly?; empty/unparseable clears the per-employee override.
+    private static TimeOnly? ParseTimeOrNull(string? value)
+        => TimeOnly.TryParse(value, out var t) ? t : null;
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, [FromQuery] bool force = false)

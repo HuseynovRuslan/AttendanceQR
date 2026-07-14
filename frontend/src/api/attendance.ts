@@ -1,6 +1,15 @@
 import { apiRequest } from './client'
 import { getSummary, type AttendanceReport } from './admin'
 
+/** POST /api/attendance/reason — attach a late-arrival ("late") or early-departure ("early") reason to
+ * the caller's own record. Skippable, so failures are non-fatal. */
+export function submitAttendanceReason(recordId: string, kind: 'late' | 'early', reason: string) {
+  return apiRequest<{ ok: boolean } | { error: string }>('/api/attendance/reason', {
+    method: 'POST',
+    body: { recordId, kind, reason },
+  })
+}
+
 export interface AttendanceRecord {
   recordId: string
   attendanceDate: string // "yyyy-MM-dd"

@@ -17,6 +17,9 @@ export interface DayAttendanceRow {
   // Face audit.
   faceMatchScore?: number | null
   faceMatchStatus?: string
+  // Reasons the employee gave for arriving late / leaving early (null if none/skipped).
+  lateArrivalReason?: string | null
+  earlyDepartureReason?: string | null
 }
 
 export interface EmployeeReportRow {
@@ -309,6 +312,9 @@ export interface InvitePayload {
   fatherName?: string | null
   position?: string | null
   birthYear?: number | null
+  // Per-employee work hours "HH:mm" (empty/null → the location's shift is used).
+  workStart?: string | null
+  workEnd?: string | null
 }
 
 export interface AdminEmployee {
@@ -317,6 +323,8 @@ export interface AdminEmployee {
   fatherName: string | null
   position: string | null
   birthYear: number | null
+  workStart?: string | null
+  workEnd?: string | null
   email: string
   phoneNumber: string | null
   role: Role
