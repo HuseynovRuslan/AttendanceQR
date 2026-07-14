@@ -1,3 +1,5 @@
+import type { AttendanceRecord } from '../api/attendance'
+import { todayStr } from '../lib/att'
 import { IconCalendar, IconCheck, IconClock, IconX } from './icons'
 
 // Single source of truth for status → class/label/icon, so the same status always reads the
@@ -29,4 +31,35 @@ export function StatusBadge({ status }: { status: string }) {
       {m.label}
     </span>
   )
+}
+
+/**
+ * Completion-state badge for one record row (Home / history) — distinct from the OnTime/Late status,
+ * and from each other regardless of the tenant accent (fixed colours):
+ *   • check-in + check-out            → green  "Tamamlandı"
+ *   • check-in, no check-out, today   → blue   "İşdə" (still at work)
+ *   • check-in, no check-out, past    → red    "Çıxış yoxdur"
+ *   • no check-in                     → the record's own status (Qayıb, İstirahət, …)
+ */
+export function RecordBadge({ r }: { r: AttendanceRecord }) {
+  if (r.checkInAtUtc && r.checkOutAtUtc)
+    return (
+      <span className="badge" style={{ background: '#E7F6EC', color: '#1B7F3B' }}>
+        <IconCheck />
+        Tamamlandı
+      </span>
+    )
+  if (r.checkInAtUtc && !r.checkOutAtUtc)
+    return r.attendanceDate < todayStr() ? (
+      <span className="badge" style={{ background: '#FBEAE7', color: '#C2410C' }}>
+        <IconX />
+        Çıxış yoxdur
+      </span>
+    ) : (
+      <span className="badge" style={{ background: '#EAF1FE', color: '#2563EB' }}>
+        <IconClock />
+        İşdə
+      </span>
+    )
+  return <StatusBadge status={r.status} />
 }

@@ -1,5 +1,5 @@
 import type { AttendanceRecord } from '../api/attendance'
-import { StatusBadge } from './StatusBadge'
+import { RecordBadge } from './StatusBadge'
 import { fmtDate, fmtDuration, fmtTime } from '../lib/att'
 
 /** One attendance record row — shared by Home, Statistics and history lists. */
@@ -13,7 +13,7 @@ export function HistoryRow({ r }: { r: AttendanceRecord }) {
           {r.checkInAtUtc && r.checkOutAtUtc && ` · ${fmtDuration(r.checkInAtUtc, r.checkOutAtUtc)}`}
         </div>
       </div>
-      <StatusBadge status={r.status} />
+      <RecordBadge r={r} />
     </div>
   )
 }
