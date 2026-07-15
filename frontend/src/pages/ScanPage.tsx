@@ -14,7 +14,6 @@ import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
-import { ReasonPrompt } from '../components/ReasonPrompt'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -22,6 +21,8 @@ type Card = {
   detail?: string
   /** Quiet second line: what happens next, when the employee needs to know. */
   note?: string
+  /** Prominent notice pill (e.g. "Gecikdiniz" / "Tez çıxdınız") — informational, no action. */
+  warn?: string
   /** Nothing left to do here. Offering "scan again" after a successful check-in is what made people
    *  scan a second time and land on TooSoonToCheckOut — so success only ever offers "close". */
   final?: boolean
@@ -81,8 +82,6 @@ export function ScanPage() {
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
   const [result, setResult] = useState<Card | null>(null)
-  // Skippable late-arrival / early-departure reason prompt, shown over the result after the scan.
-  const [reason, setReason] = useState<{ recordId: string; kind: 'late' | 'early' } | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // The visible pre-scan verification (device → location → camera). An overlay while it runs.
@@ -151,7 +150,6 @@ export function ScanPage() {
     setVerifying(true)
     setCameraError(null)
     setResult(null)
-    setReason(null)
     setRadiusFail(null)
     setPhase('scanning')
     scanDoneRef.current = false
@@ -435,15 +433,13 @@ export function ScanPage() {
         setResult({
           tone: 'green',
           title: 'Giriş qeydə alındı',
-          // No on-time/late verdict: every employee keeps their own hours, so one location-wide
-          // shift makes "Gecikmə" a wrong label rather than a useful one.
           detail: `Saat ${fmtTime(data.checkInAtUtc)}`,
           note: 'İş bitəndə çıxış üçün yenidən skan edin.',
+          // Just tell them they were late (vs their own hours, else the location's) — no reason asked.
+          warn: data.late ? 'Gecikdiniz' : undefined,
           final: true,
           photo: photoBase64 ?? undefined,
         })
-        // Ask why they were late (skippable) — a prompt, not a "Gecikmə" verdict on screen.
-        if (data.late && data.recordId) setReason({ recordId: data.recordId, kind: 'late' })
         return
       }
       if (status === 200 && data?.action === 'CheckOut') {
@@ -453,10 +449,9 @@ export function ScanPage() {
           title: 'Çıxış qeydə alındı',
           detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc)}`,
           note: 'Sabaha qədər!',
+          warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
           final: true,
         })
-        // Ask why they left early (skippable).
-        if (data.earlyDeparture && data.recordId) setReason({ recordId: data.recordId, kind: 'early' })
         return
       }
       setResult(errorResult(status, data))
@@ -590,10 +585,6 @@ export function ScanPage() {
           <ResultCard card={result} onRetry={() => void runChecks()} onClose={() => navigate('/home')} />
         )}
       </main>
-
-      {reason && (
-        <ReasonPrompt recordId={reason.recordId} kind={reason.kind} onDone={() => setReason(null)} />
-      )}
     </div>
   )
 }
@@ -689,6 +680,9 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
     <div className={`w-full max-w-sm rounded-2xl p-6 text-center shadow-lg ${tone}`}>
       <div className="text-6xl font-bold mb-3">{icon}</div>
       <h2 className="text-xl font-bold">{card.title}</h2>
+      {card.warn && (
+        <p className="mt-2 inline-block rounded-full bg-white/25 px-3 py-1 text-sm font-bold">{card.warn}</p>
+      )}
       {card.detail && <p className="mt-2 text-base opacity-90">{card.detail}</p>}
       {card.note && <p className="mt-1 text-sm opacity-75">{card.note}</p>}
 

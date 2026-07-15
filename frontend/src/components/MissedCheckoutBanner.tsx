@@ -27,6 +27,11 @@ export function MissedCheckoutBanner() {
 
   if (!status?.openDay) return null
 
+  // Only for the day right after the miss (one day) — not forever on every open. Older un-closed days
+  // are the admin's to close (/admin/open-records); the employee isn't nagged about them anymore.
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  if (status.openDay.attendanceDate !== yesterday) return null
+
   return (
     <div className="rounded-3xl border-2 border-red-300 bg-red-50 p-4">
       <div className="flex items-center gap-3">
