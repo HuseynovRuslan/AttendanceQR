@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   approveDeviceChange,
   getDeviceBindings,
@@ -82,7 +83,7 @@ export function DeviceChangesPage() {
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, color: 'var(--c900)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <IconPhone /> {r.employeeName}
+                    <IconPhone /> <EmployeeLink id={r.employeeId} name={r.employeeName} />
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--c500)', marginTop: 4 }}>
                     Köhnə: <span className="mono">{r.currentDeviceFingerprint ?? '—'}</span> → Yeni:{' '}
@@ -179,7 +180,7 @@ function BoundDevices() {
           <tbody>
             {rows.map((b) => (
               <tr key={b.id}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{b.employeeName}</td>
+                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={b.employeeId} name={b.employeeName} /></td>
                 <td>{b.deviceLabel ?? <span className="muted">Naməlum cihaz</span>}</td>
                 <td>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${ORIGIN[b.boundVia].cls}`}>

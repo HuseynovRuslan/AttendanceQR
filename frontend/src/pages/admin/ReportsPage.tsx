@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   downloadReportExcel,
   getMyLocations,
@@ -113,7 +114,7 @@ export function ReportsPage() {
             <tbody>
               {report.rows.map((r) => (
                 <tr key={r.employeeId}>
-                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                   <td>{r.locationName}</td>
                   <td className="num mono">{r.workDays}</td>
                   <td className="num mono">{r.absentDays}</td>

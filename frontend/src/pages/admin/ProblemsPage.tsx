@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import { getProblems, type ProblemsReport } from '../../api/admin'
 import { IconX } from '../../components/icons'
 
@@ -152,7 +153,7 @@ export function ProblemsPage() {
             {(report?.rows ?? []).map((r, i) => (
               <tr key={`${r.atUtc}-${i}`}>
                 <td className="mono">{fmtTime(r.atUtc)}</td>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</td>
+                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                 <td>{ACTION_AZ[r.action] ?? r.action}</td>
                 <td>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${meta(r.reason).cls}`}>

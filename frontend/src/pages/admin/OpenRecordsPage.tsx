@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import { adminUpdateRecord, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
 
@@ -116,7 +117,7 @@ export function OpenRecordsPage() {
             {(rows ?? []).map((r) => (
               <tr key={r.recordId}>
                 <td>
-                  <div style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</div>
+                  <div style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.locationName}</div>
                 </td>
                 <td className="mono">{fmtDate(r.attendanceDate)}</td>

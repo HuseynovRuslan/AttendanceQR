@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
@@ -277,7 +278,7 @@ export function TodayPage() {
           <tbody>
             {visible.map((r) => (
               <tr key={r.employeeId}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.employeeName}</td>
+                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                 <td>{r.locationName}</td>
                 <td>
                   <StatusBadge status={r.status} />

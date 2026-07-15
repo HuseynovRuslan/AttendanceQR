@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import { addLeave, deleteLeave, getLeaves, type LeaveRecord, type LeaveType } from '../../api/leaves'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
@@ -167,7 +168,7 @@ export function LeavesPage() {
           <tbody>
             {visible.map((l) => (
               <tr key={l.id}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{l.employeeName}</td>
+                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={l.employeeId} name={l.employeeName} /></td>
                 <td>{TYPE_LABELS[l.type]}</td>
                 <td className="mono">{fmtDate(l.fromDate)}–{fmtDate(l.toDate)}</td>
                 <td>{l.note ?? '—'}</td>
