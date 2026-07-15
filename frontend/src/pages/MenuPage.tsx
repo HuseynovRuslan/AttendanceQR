@@ -5,12 +5,12 @@ import { getMyDeviceStatus, getMyProfile, type MyDeviceStatus, type MyProfile } 
 import { useAuth } from '../auth/AuthContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
-import { IconClock, IconLogout, IconPhone, IconUser } from '../components/icons'
+import { IconChart, IconClock, IconLogout, IconPhone, IconUser } from '../components/icons'
 
 const APP_VERSION = '2.0.0'
 
 export function MenuPage() {
-  const { logout, email } = useAuth()
+  const { logout, email, role } = useAuth()
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
 
@@ -44,6 +44,11 @@ export function MenuPage() {
       <DeviceCard device={device} />
 
       <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+        {/* Staff who also run the panel (admin/manager) get a way back — mirror of the sidebar's
+            "İşçi rejimi" link. Plain employees never see this row. */}
+        {(role === 'Admin' || role === 'Manager') && (
+          <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
+        )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />

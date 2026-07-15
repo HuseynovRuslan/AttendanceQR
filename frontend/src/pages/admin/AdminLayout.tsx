@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useBranding } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
@@ -116,6 +116,12 @@ export function AdminLayout() {
         </nav>
 
         <div className="sidebar-footer">
+          {/* Admins/managers also clock in and out themselves — one tap over to the employee shell
+              (scan lives behind its centre button). Without this they'd have to type the URL. */}
+          <Link to="/home" className="nav-item" style={{ color: 'var(--c400)' }}>
+            <IconPhone />
+            İşçi rejimi (skan)
+          </Link>
           <button
             onClick={logout}
             className="nav-item"
