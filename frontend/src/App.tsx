@@ -27,6 +27,7 @@ import { NonWorkingDaysPage } from './pages/admin/NonWorkingDaysPage'
 import { LeavesPage } from './pages/admin/LeavesPage'
 import { PrintQrPage } from './pages/admin/PrintQrPage'
 import { EmployeesPage } from './pages/admin/EmployeesPage'
+import { EmployeeProfilePage } from './pages/admin/EmployeeProfilePage'
 import { DeviceChangesPage } from './pages/admin/DeviceChangesPage'
 import { PhotoAuditPage } from './pages/admin/PhotoAuditPage'
 import { ProblemsPage } from './pages/admin/ProblemsPage'
@@ -204,6 +205,14 @@ function AppRoutes() {
           element={
             <AdminOnly>
               <EmployeesPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="employees/:id"
+          element={
+            <AdminOnly>
+              <EmployeeProfilePage />
             </AdminOnly>
           }
         />

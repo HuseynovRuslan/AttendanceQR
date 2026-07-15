@@ -48,7 +48,9 @@ export function AdminLayout() {
   const location = useLocation()
   const isAdmin = role === 'Admin'
   const meta = PAGE_META[location.pathname]
-    ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' } : { title: 'Panel', sub: '' })
+    ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' }
+      : location.pathname.startsWith('/admin/employees/') ? { title: 'İşçi profili', sub: 'İşçinin tam məlumatı və əməliyyatlar' }
+      : { title: 'Panel', sub: '' })
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
 

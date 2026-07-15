@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   deleteEmployee,
   getAdminLocations,
@@ -131,6 +132,20 @@ export function EmployeesPage() {
   useEffect(() => {
     void refresh()
   }, [])
+
+  // Opened from an employee's profile ("Redaktə et" → /admin/employees?edit=<id>): jump straight into
+  // that employee's edit form once the list has loaded, then drop the query param.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const eid = searchParams.get('edit')
+    if (!eid || rows.length === 0) return
+    const target = rows.find((r) => r.id === eid)
+    if (target) {
+      startEdit(target)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, searchParams])
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -784,8 +799,10 @@ export function EmployeesPage() {
             {visible.map((e) => (
               <tr key={e.id} style={{ opacity: e.isActive ? 1 : 0.55 }}>
                 <td>
-                  <div style={{ fontWeight: 700, color: 'var(--c900)' }}>
-                    {e.fullName}
+                  <div style={{ fontWeight: 700 }}>
+                    <Link to={`/admin/employees/${e.id}`} style={{ color: 'var(--c900)', textDecoration: 'none' }}>
+                      {e.fullName}
+                    </Link>
                     {!e.isActive && (
                       <span className="tag" style={{ marginLeft: 8, background: 'rgba(154,52,18,0.12)', color: '#9a3412' }}>
                         Deaktiv
