@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -35,6 +36,7 @@ public class AttendanceController : ControllerBase
     private readonly IPhotoStorageService _photoStorage;
     private readonly IFaceMatchQueue _faceQueue;
     private readonly DeviceBindingOptions _deviceOptions;
+    private readonly TimeZoneInfo _timeZone;
     private readonly ILogger<AttendanceController> _logger;
 
     public AttendanceController(
@@ -44,6 +46,7 @@ public class AttendanceController : ControllerBase
         IPhotoStorageService photoStorage,
         IFaceMatchQueue faceQueue,
         DeviceBindingOptions deviceOptions,
+        AppOptions appOptions,
         ILogger<AttendanceController> logger)
     {
         _db = db;
@@ -52,6 +55,7 @@ public class AttendanceController : ControllerBase
         _photoStorage = photoStorage;
         _faceQueue = faceQueue;
         _deviceOptions = deviceOptions;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
         _logger = logger;
     }
 
@@ -378,7 +382,7 @@ public class AttendanceController : ControllerBase
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
-            Status = DetermineStatus(EffectiveShiftStart(employee, location), location.LateThresholdMinutes, nowUtc)
+            Status = DetermineStatus(EffectiveShiftStart(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone)
         };
         _db.AttendanceRecords.Add(record);
 
@@ -492,7 +496,7 @@ public class AttendanceController : ControllerBase
             recordId = record.Id,
             checkOutAtUtc = nowUtc,
             // Tells the app to prompt for an early-departure reason (skippable).
-            earlyDeparture = IsEarlyDeparture(EffectiveShiftEnd(employee, location), location.LateThresholdMinutes, nowUtc)
+            earlyDeparture = IsEarlyDeparture(EffectiveShiftEnd(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone)
         });
     }
 
@@ -513,17 +517,22 @@ public class AttendanceController : ControllerBase
     /// Internal (not private) so AdminAttendanceController can recompute the same way when an
     /// admin edits/creates a record's check-in time.
     /// </summary>
-    internal static AttendanceStatus DetermineStatus(TimeOnly shiftStart, int lateThresholdMinutes, DateTime nowUtc)
+    internal static AttendanceStatus DetermineStatus(TimeOnly shiftStart, int lateThresholdMinutes, DateTime nowUtc, TimeZoneInfo timeZone)
     {
-        var lateCutoff = shiftStart.AddMinutes(lateThresholdMinutes);
-        var nowTime = TimeOnly.FromDateTime(nowUtc);
-        return nowTime > lateCutoff ? AttendanceStatus.Late : AttendanceStatus.OnTime;
+        var nowLocal = LocalTimeOfDay(nowUtc, timeZone);
+        return nowLocal > shiftStart.AddMinutes(lateThresholdMinutes) ? AttendanceStatus.Late : AttendanceStatus.OnTime;
     }
 
     /// <summary>True when the check-out is more than lateThreshold minutes before shiftEnd — the same
     /// grace as late arrival, applied to early departure.</summary>
-    internal static bool IsEarlyDeparture(TimeOnly shiftEnd, int lateThresholdMinutes, DateTime nowUtc)
-        => TimeOnly.FromDateTime(nowUtc) < shiftEnd.AddMinutes(-lateThresholdMinutes);
+    internal static bool IsEarlyDeparture(TimeOnly shiftEnd, int lateThresholdMinutes, DateTime nowUtc, TimeZoneInfo timeZone)
+        => LocalTimeOfDay(nowUtc, timeZone) < shiftEnd.AddMinutes(-lateThresholdMinutes);
+
+    // Shift times are stored as LOCAL wall-clock (Asia/Baku = UTC+4); the scan time is UTC. Convert
+    // before comparing — otherwise a 15:00Z (= 19:00 local) check-out reads as "before 18:00" and is
+    // wrongly flagged early. This was the bug that asked Ənvər why he left early at 19:00.
+    internal static TimeOnly LocalTimeOfDay(DateTime nowUtc, TimeZoneInfo timeZone)
+        => TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), timeZone));
 
     // Decides whether this device may scan, adopting it if the rules allow. Returns null when the
     // scan may proceed, or the rejection to send back. Callers MUST have passed the geofence first —

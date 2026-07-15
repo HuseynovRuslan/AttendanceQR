@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -24,12 +25,15 @@ public class AdminAttendanceController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IDailySummaryService _dailySummaryService;
     private readonly IFaceMatchQueue _faceQueue;
+    private readonly TimeZoneInfo _timeZone;
 
-    public AdminAttendanceController(AppDbContext db, IDailySummaryService dailySummaryService, IFaceMatchQueue faceQueue)
+    public AdminAttendanceController(
+        AppDbContext db, IDailySummaryService dailySummaryService, IFaceMatchQueue faceQueue, AppOptions appOptions)
     {
         _db = db;
         _dailySummaryService = dailySummaryService;
         _faceQueue = faceQueue;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
     }
 
     // GET /api/admin/attendance/open — records with a check-in but no check-out, from BEFORE today.
@@ -91,7 +95,7 @@ public class AdminAttendanceController : ControllerBase
             var shiftStart = employee is null
                 ? location.ShiftStart
                 : AttendanceController.EffectiveShiftStart(employee, location);
-            record.Status = AttendanceController.DetermineStatus(shiftStart, location.LateThresholdMinutes, request.CheckInAtUtc.Value);
+            record.Status = AttendanceController.DetermineStatus(shiftStart, location.LateThresholdMinutes, request.CheckInAtUtc.Value, _timeZone);
         }
         if (request.CheckOutAtUtc is not null)
             record.CheckOutAtUtc = request.CheckOutAtUtc;
@@ -135,7 +139,7 @@ public class AdminAttendanceController : ControllerBase
             CheckInAtUtc = request.CheckInAtUtc,
             CheckOutAtUtc = request.CheckOutAtUtc,
             Status = AttendanceController.DetermineStatus(
-                AttendanceController.EffectiveShiftStart(employee, location), location.LateThresholdMinutes, request.CheckInAtUtc)
+                AttendanceController.EffectiveShiftStart(employee, location), location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
         };
         _db.AttendanceRecords.Add(record);
         await _db.SaveChangesAsync();
