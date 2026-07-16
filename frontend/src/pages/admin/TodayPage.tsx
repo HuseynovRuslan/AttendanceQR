@@ -104,9 +104,10 @@ export function TodayPage() {
 
   // Counts reflect the LOCATION scope only (not the status/search/photo filters), so the cards keep
   // showing the day's real breakdown and stay usable as toggles.
+  // present = checked in AND out ("Tamamlayıb"). incomplete = checked in, no check-out yet — reads as
+  // "İşdə" (still at work) on today's board, or "Çıxış yoxdur" (forgot to check out) on a past date.
   const counts = { present: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of locFiltered) {
-    // Late folds into present — see StatusBadge: there is no per-employee schedule to be late against.
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'DayOff') counts.dayOff++
@@ -115,6 +116,8 @@ export function TodayPage() {
     else counts.incomplete++
   }
   const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+  const incompleteLabel = isToday ? 'İşdə' : 'Çıxış yoxdur'
+  const incompleteOverride = isToday ? undefined : { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
 
   const q = search.trim().toLowerCase()
   const visible = locFiltered.filter((r) => {
@@ -133,7 +136,8 @@ export function TodayPage() {
       : { cursor: 'pointer' }
 
   async function exportXlsx() {
-    const label = (st: string) => (STATUS_MAP as Record<string, { label: string }>)[st]?.label ?? st
+    const label = (st: string) =>
+      st === 'Incomplete' ? incompleteLabel : (STATUS_MAP as Record<string, { label: string }>)[st]?.label ?? st
     const rows = visible.map((r) => ({
       name: r.employeeName,
       location: r.locationName,
@@ -218,17 +222,24 @@ export function TodayPage() {
       </div>
 
       <div className="stat-grid">
-        <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
-          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
-          <div className="stat-val">{counts.present}</div>
+        <div
+          className={`stat-card ${isToday ? 'blue' : 'clay'}`}
+          style={cardStyle('incomplete')}
+          onClick={() => toggleStatus('incomplete')}
+        >
+          <div className="stat-lbl">{incompleteLabel}</div>
+          <div className="stat-val">{counts.incomplete}</div>
+          <div className="stat-sub">{isToday ? 'Hazırda işdədir, çıxışı yoxdur' : 'Gün bitib, çıxış qeydə alınmayıb'}</div>
         </div>
         <div className="stat-card clay" style={cardStyle('absent')} onClick={() => toggleStatus('absent')}>
           <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
           <div className="stat-val">{counts.absent}</div>
+          <div className="stat-sub">Heç giriş etməyib</div>
         </div>
-        <div className="stat-card blue" style={cardStyle('incomplete')} onClick={() => toggleStatus('incomplete')}>
-          <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
-          <div className="stat-val">{counts.incomplete}</div>
+        <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
+          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
+          <div className="stat-val">{counts.present}</div>
+          <div className="stat-sub">Giriş və çıxış edib</div>
         </div>
         <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
@@ -281,7 +292,7 @@ export function TodayPage() {
                 <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                 <td>{r.locationName}</td>
                 <td>
-                  <StatusBadge status={r.status} />
+                  <StatusBadge status={r.status} override={r.status === 'Incomplete' ? incompleteOverride : undefined} />
                 </td>
                 <td className="mono">
                   {fmtTime(r.checkInAtUtc)}

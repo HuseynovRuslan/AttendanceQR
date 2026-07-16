@@ -6,12 +6,15 @@ import { IconCalendar, IconCheck, IconClock, IconX } from './icons'
 // same everywhere (badges, stat-card headers, anywhere else) — never hardcode these strings
 // separately elsewhere.
 export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }> = {
-  OnTime: { cls: 'b-present', label: 'Gəlib', icon: 'check' },
-  // Rendered exactly like OnTime, on purpose. Every employee keeps their own hours, so a single
-  // location-wide shift makes "Gecikmə" a wrong label rather than a useful one. The backend still
-  // records the status — once per-employee schedules exist, this becomes meaningful again.
-  Late: { cls: 'b-present', label: 'Gəlib', icon: 'check' },
+  // "Tamamlayıb" (not "Gəlib"): OnTime/Late only ever apply once BOTH check-in and check-out exist
+  // (see AttendanceCalculator.Compute), so this means "checked in and out — done for the day". Calling
+  // it "Gəlib" (came) falsely implied that someone still at work (Incomplete/"İşdə") hadn't come at all.
+  OnTime: { cls: 'b-present', label: 'Tamamlayıb', icon: 'check' },
+  Late: { cls: 'b-present', label: 'Tamamlayıb', icon: 'check' },
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
+  // Checked in, no check-out yet. On a live "today" view this just means "still at work" — correct.
+  // On a PAST day it means a check-out was never recorded (a real problem) — callers viewing a past
+  // date should override this via StatusBadge's `override` prop (see TodayPage.tsx).
   Incomplete: { cls: 'b-permitted', label: 'İşdə', icon: 'clock' },
   DayOff: { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' },
   OnLeave: { cls: 'b-leave', label: 'Məzuniyyət', icon: 'calendar' },
@@ -22,8 +25,12 @@ export function statusLabel(status: string): string {
   return STATUS_MAP[status]?.label ?? status
 }
 
-export function StatusBadge({ status }: { status: string }) {
-  const m = STATUS_MAP[status] ?? { cls: 'b-absent', label: status, icon: 'x' as const }
+type StatusVisual = { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }
+
+/** `override` lets a caller replace the looked-up visual for one specific status in one context —
+ *  e.g. TodayPage shows "Incomplete" as "Çıxış yoxdur" (not "İşdə") when viewing a past date. */
+export function StatusBadge({ status, override }: { status: string; override?: StatusVisual }) {
+  const m = override ?? STATUS_MAP[status] ?? { cls: 'b-absent', label: status, icon: 'x' as const }
   const Icon = m.icon === 'check' ? IconCheck : m.icon === 'clock' ? IconClock : m.icon === 'calendar' ? IconCalendar : IconX
   return (
     <span className={`badge ${m.cls}`}>

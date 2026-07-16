@@ -28,10 +28,12 @@ export function DashboardPage() {
     }
   }, 30_000)
 
+  // present = checked in AND OUT already ("Tamamlayıb" — finished their day). incomplete = checked in,
+  // no check-out YET ("İşdə" — still at work; this page is always "today", so that's the only reading).
+  // Both mean the employee showed up today — only their SEPARATE counts distinguish "still here" from
+  // "already left", which used to be conflated as one confusing "Gəlib" bucket.
   const counts = { present: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of rows) {
-    // Late folds into present: the employee came to work. Which hour counts as "late" depends on a
-    // per-employee schedule the system does not have yet.
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'DayOff') counts.dayOff++
@@ -45,21 +47,26 @@ export function DashboardPage() {
   // from reading as a bad attendance day.
   const notExpected = counts.dayOff + counts.onLeave + counts.permission
   const expected = total - notExpected
-  const overallRate = expected ? Math.round((counts.present / expected) * 100) : 0
+  // "Attended today" = showed up at all, whether still here or already gone (present + incomplete).
+  // This is the figure the daily attendance rate and the per-area breakdown are based on — NOT just
+  // "present" (already-left) alone, which read as "0/55" all morning before anyone had checked out.
+  const attended = counts.present + counts.incomplete
+  const overallRate = expected ? Math.round((attended / expected) * 100) : 0
 
   const areaStats = useMemo(() => {
-    const byArea = new Map<string, { name: string; total: number; present: number; notExpected: number }>()
+    const byArea = new Map<string, { name: string; total: number; attended: number; notExpected: number }>()
     for (const r of rows) {
-      const entry = byArea.get(r.locationId) ?? { name: r.locationName, total: 0, present: 0, notExpected: 0 }
+      const entry = byArea.get(r.locationId) ?? { name: r.locationName, total: 0, attended: 0, notExpected: 0 }
       entry.total++
-      if (r.status === 'OnTime' || r.status === 'Late') entry.present++
-      else if (r.status === 'DayOff' || r.status === 'OnLeave' || r.status === 'Permission') entry.notExpected++
+      // Attended = has a check-in today at all (OnTime/Late/Incomplete) — not Absent/excused.
+      if (!['Absent', 'DayOff', 'OnLeave', 'Permission'].includes(r.status)) entry.attended++
+      if (r.status === 'DayOff' || r.status === 'OnLeave' || r.status === 'Permission') entry.notExpected++
       byArea.set(r.locationId, entry)
     }
     return Array.from(byArea.values())
       .map((a) => {
         const areaExpected = a.total - a.notExpected
-        return { ...a, expected: areaExpected, rate: areaExpected ? Math.round((a.present / areaExpected) * 100) : 0 }
+        return { ...a, expected: areaExpected, rate: areaExpected ? Math.round((a.attended / areaExpected) * 100) : 0 }
       })
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [rows])
@@ -102,17 +109,20 @@ export function DashboardPage() {
           <div className="stat-lbl">Ümumi işçi</div>
           <div className="stat-val">{total}</div>
         </div>
-        <div className="stat-card leaf">
-          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
-          <div className="stat-val">{counts.present}</div>
+        <div className="stat-card blue">
+          <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
+          <div className="stat-val">{counts.incomplete}</div>
+          <div className="stat-sub">Hazırda işdədir, çıxışı yoxdur</div>
         </div>
         <div className="stat-card clay">
           <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
           <div className="stat-val">{counts.absent}</div>
+          <div className="stat-sub">Bu gün heç giriş etməyib</div>
         </div>
-        <div className="stat-card blue">
-          <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
-          <div className="stat-val">{counts.incomplete}</div>
+        <div className="stat-card leaf">
+          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
+          <div className="stat-val">{counts.present}</div>
+          <div className="stat-sub">Giriş və çıxış edib, günü bitirib</div>
         </div>
         <div className="stat-card purple">
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
@@ -152,7 +162,7 @@ export function DashboardPage() {
             >
               <div>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.present}/{a.expected} işçi</div>
+                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.attended}/{a.expected} işçi işdədir</div>
               </div>
               <div
                 style={{
@@ -170,7 +180,10 @@ export function DashboardPage() {
 
         <div className="card card-pad">
           <div className="card-title">Günlük davamiyyət faizi</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 140 }}>
+          <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 8 }}>
+            Bu gün işə gələnlər (hazırda işdə olan + günü bitirən) gözlənilən işçilərə nisbətdə
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
             <div style={{ textAlign: 'center' }}>
               <div
                 style={{
@@ -183,7 +196,7 @@ export function DashboardPage() {
                 {overallRate}%
               </div>
               <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 4 }}>
-                {counts.present} / {expected} işçi
+                {attended} / {expected} işçi işdədir
               </div>
             </div>
           </div>
@@ -204,14 +217,6 @@ export function DashboardPage() {
       {/* --- date-range dashboard --- */}
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
-          <div>
-            <label className="form-label">Başlanğıc</label>
-            <input className="inp" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Son</label>
-            <input className="inp" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
-          </div>
           <div style={{ minWidth: 180 }}>
             <label className="form-label">Ərazi</label>
             <select className="inp" value={dashLocationId} onChange={(e) => setDashLocationId(e.target.value)}>
@@ -220,6 +225,14 @@ export function DashboardPage() {
                 <option key={l.id} value={l.id}>{l.name}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="form-label">Başlanğıc</label>
+            <input className="inp" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Son</label>
+            <input className="inp" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
           </div>
           <button className="btn btn-primary" onClick={loadDashboard} disabled={dashLoading}>
             {dashLoading ? 'Yüklənir…' : 'Yüklə'}
@@ -250,8 +263,9 @@ export function DashboardPage() {
               <div className="stat-val">{dashReport.absentCount}</div>
             </div>
             <div className="stat-card blue">
-              <div className="stat-lbl">Yarımçıq</div>
+              <div className="stat-lbl">Çıxışı unudulan günlər</div>
               <div className="stat-val">{dashReport.incompleteCount}</div>
+              <div className="stat-sub">Gün bitib, çıxış qeydə alınmayıb</div>
             </div>
             <div className="stat-card purple">
               <div className="stat-lbl">İstirahət</div>
@@ -308,7 +322,13 @@ export function DashboardPage() {
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.checkInOutRatio}%</span>
                 <span className="muted">Koordinat xarici faizi</span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.outsideRadiusRate}%</span>
-                <span className="muted">Orta gündəlik əməliyyat</span>
+                <span className="muted">
+                  Gündəlik orta giriş+çıxış sayı
+                  <br />
+                  <span style={{ fontSize: 11, color: 'var(--c400)' }}>
+                    (seçilmiş dövrdə gündə orta hesabla neçə skan qeydə alınıb)
+                  </span>
+                </span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.avgDailyOperations}</span>
               </div>
             </div>
