@@ -1,21 +1,56 @@
 using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using AttendanceQR.Api.Contracts;
 
 namespace AttendanceQR.Application.Tests;
 
 /// <summary>
-/// Proves the coordinate bounds on the request contracts actually run. This is not a formality: on a
-/// positional record, a bare [Range] binds to the CONSTRUCTOR PARAMETER, not the property MVC
-/// validates — it compiles, reads correctly, and silently never fires. These tests fail if the
-/// [property:] prefix is ever dropped.
+/// Proves the coordinate bounds on the request contracts actually run under MVC.
+///
+/// The first version of these tests used Validator.TryValidateObject and passed while production was
+/// throwing on every scan. TryValidateObject reads PROPERTIES; MVC reads the record's CONSTRUCTOR
+/// PARAMETERS and throws outright if it finds validation metadata on a property instead. So the test
+/// could not tell the broken arrangement from the working one — it agreed with whatever was written.
+/// Hence <see cref="Bounds_are_on_the_constructor_parameters_which_is_what_MVC_reads"/>, which pins
+/// the placement itself. The value assertions below still use TryValidateObject, which is fine for
+/// asking "does this RangeAttribute reject infinity" once the placement is proven separately.
 /// </summary>
 public class ScanRequestValidationTests
 {
     private static List<ValidationResult> Validate(object model)
     {
+        // Validates the constructor parameters' attributes by evaluating them directly — see above
+        // for why this is NOT a stand-in for how MVC discovers them.
         var results = new List<ValidationResult>();
-        Validator.TryValidateObject(model, new ValidationContext(model), results, validateAllProperties: true);
+        var ctor = model.GetType().GetConstructors().Single();
+        foreach (var p in ctor.GetParameters())
+        {
+            var attrs = p.GetCustomAttributes<ValidationAttribute>().ToArray();
+            if (attrs.Length == 0) continue;
+            var value = model.GetType().GetProperty(p.Name!)!.GetValue(model);
+            var ctx = new ValidationContext(model) { MemberName = p.Name };
+            Validator.TryValidateValue(value!, ctx, results, attrs);
+        }
         return results;
+    }
+
+    [Theory]
+    [InlineData(typeof(ScanRequest), "Latitude")]
+    [InlineData(typeof(ScanRequest), "Longitude")]
+    [InlineData(typeof(LocationRequest), "Latitude")]
+    [InlineData(typeof(LocationRequest), "Longitude")]
+    [InlineData(typeof(LocationRequest), "RadiusMeters")]
+    public void Bounds_are_on_the_constructor_parameters_which_is_what_MVC_reads(Type record, string name)
+    {
+        // THE regression test. [property: Range(...)] here made MVC throw
+        // "validation metadata must be associated with the constructor parameter" on every request,
+        // i.e. a 500 before the action even ran. Both halves matter: present on the parameter, and
+        // ABSENT from the property.
+        var parameter = record.GetConstructors().Single().GetParameters().Single(p => p.Name == name);
+        Assert.NotEmpty(parameter.GetCustomAttributes<ValidationAttribute>());
+
+        var property = record.GetProperty(name)!;
+        Assert.Empty(property.GetCustomAttributes<ValidationAttribute>());
     }
 
     private static ScanRequest Scan(double lat, double lon) => new("qr", "fp", lat, lon);
