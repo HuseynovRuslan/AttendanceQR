@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getDashboard, getMyLocations, getToday, type DashboardReport, type DayAttendanceRow, type LocationDto } from '../../api/admin'
 import { usePolling } from '../../lib/usePolling'
 import { STATUS_MAP } from '../../components/StatusBadge'
+import { DateRangePicker } from '../../components/DateRangePicker'
 import { ChartLegend, TrendChart, WeekdayBarChart } from '../../components/Charts'
 import { IconX } from '../../components/icons'
 
@@ -87,10 +88,12 @@ export function DashboardPage() {
     })
   }, [])
 
-  async function loadDashboard() {
+  // Accepts explicit from/to/locationId so a preset pick (DateRangePicker) can load with the fresh
+  // values immediately, without waiting on setState to settle first.
+  async function loadDashboard(f = dashFrom, t = dashTo, locId = dashLocationId) {
     setDashError(null)
     setDashLoading(true)
-    const { status, data } = await getDashboard(dashFrom, dashTo, dashLocationId || undefined)
+    const { status, data } = await getDashboard(f, t, locId || undefined)
     if (status === 200 && data && 'trend' in data) setDashReport(data)
     else if (status === 403) setDashError('İcazəniz yoxdur')
     else setDashError('Məlumat yüklənmədi')
@@ -117,16 +120,17 @@ export function DashboardPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="form-label">Başlanğıc</label>
-            <input className="inp" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Son</label>
-            <input className="inp" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
-          </div>
-          <button className="btn btn-primary" onClick={loadDashboard} disabled={dashLoading}>
-            {dashLoading ? 'Yüklənir…' : 'Yüklə'}
+          <DateRangePicker
+            from={dashFrom}
+            to={dashTo}
+            onApply={(f, t) => {
+              setDashFrom(f)
+              setDashTo(t)
+              void loadDashboard(f, t)
+            }}
+          />
+          <button className="btn btn-primary" onClick={() => void loadDashboard()} disabled={dashLoading}>
+            {dashLoading ? 'Yüklənir…' : 'Yenilə'}
           </button>
         </div>
       </div>

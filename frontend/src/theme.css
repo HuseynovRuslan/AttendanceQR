@@ -131,6 +131,12 @@ select.inp{cursor:pointer}
 .emp-link{color:inherit;text-decoration:none;cursor:pointer}
 .emp-link:hover{text-decoration:underline;color:var(--leaf-d)}
 
+/* One row inside a light dropdown menu (e.g. DateRangePicker's preset list) — plain button, not the
+   dark-sidebar .nav-item. */
+.dropdown-item{display:block;width:100%;text-align:left;padding:9px 12px;border-radius:8px;border:none;background:transparent;font-size:13px;font-weight:600;color:var(--c700);cursor:pointer;transition:background .15s}
+.dropdown-item:hover{background:var(--c50)}
+.dropdown-item.active{background:var(--leaf);color:#fff}
+
 .hamburger-btn{display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:1px solid var(--c200);background:var(--white);color:var(--c700);cursor:pointer;flex-shrink:0}
 /* Only ever rendered (conditionally, in JSX) while the drawer is open, so no display toggle needed here. */
 .sidebar-overlay{position:fixed;inset:0;background:rgba(24,25,26,.5);z-index:25}
