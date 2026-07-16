@@ -59,16 +59,27 @@ public class GeoCalculatorTests
         Assert.True(lon < lat * 0.8, $"expected longitude degree ({lon:F0} m) well under latitude degree ({lat:F0} m)");
     }
 
-    // --- the open security finding (#2 in the audit) ---------------------------------------------
+    // --- the geofence bypass (audit finding #2) ---------------------------------------------------
 
-    [Fact(Skip = "Documents open finding #2: non-finite coords produce NaN, and NaN > radius is false → geofence bypass. Un-skip when the scan endpoint validates coordinates.")]
-    public void Non_finite_coordinates_must_not_produce_NaN()
+    [Theory]
+    [InlineData(double.PositiveInfinity, 49.8)]  // what JSON "1e400" deserializes to
+    [InlineData(double.NegativeInfinity, 49.8)]
+    [InlineData(double.NaN, 49.8)]
+    [InlineData(40.3, double.PositiveInfinity)]
+    [InlineData(40.3, double.NaN)]
+    public void Non_finite_coordinates_are_rejected_rather_than_returning_NaN(double lat, double lon)
     {
-        // A client posting 1e400 parses to double.PositiveInfinity; Haversine turns that into NaN,
-        // and every `distance > radius` comparison against NaN is FALSE → the scan is accepted from
-        // anywhere on earth. The fix belongs at the endpoint (reject non-finite input), so this test
-        // is the marker for it, not the fix.
-        var d = GeoCalculator.DistanceMeters(double.PositiveInfinity, double.PositiveInfinity, Lat1, Lon1);
-        Assert.False(double.IsNaN(d), "non-finite input must not silently become NaN");
+        // The bypass this guards: Haversine maps non-finite input to NaN, and the caller's
+        // `distance > radius` is FALSE against NaN — so the scan reads as inside the fence from
+        // anywhere on earth. Never hand back a value that silently disables the check.
+        Assert.Throws<ArgumentException>(() => GeoCalculator.DistanceMeters(lat, lon, Lat1, Lon1));
+    }
+
+    [Fact]
+    public void Non_finite_target_coordinates_are_rejected_too()
+    {
+        // The location side comes from the DB, but a bad row must fail loudly, not open the fence.
+        Assert.Throws<ArgumentException>(
+            () => GeoCalculator.DistanceMeters(Lat1, Lon1, double.PositiveInfinity, Lon1));
     }
 }
