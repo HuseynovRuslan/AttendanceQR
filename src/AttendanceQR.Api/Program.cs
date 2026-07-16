@@ -187,13 +187,22 @@ builder.Services
                     tenantCtx.Resolve(TenantDefaults.BakiAbadligId);
 
                 var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-                var currentVersion = await db.Employees
+                var account = await db.Employees
                     .Where(e => e.Id == employeeId)
-                    .Select(e => (int?)e.TokenVersion)
+                    .Select(e => new { e.TokenVersion, e.IsActive })
                     .FirstOrDefaultAsync();
 
-                if (currentVersion is null || currentVersion != tokenVersion)
+                if (account is null || account.TokenVersion != tokenVersion)
+                {
                     context.Fail("TokenVersionMismatch");
+                    return;
+                }
+
+                // Deactivation must bite immediately, whatever route set the flag — the admin edit
+                // bumps TokenVersion, but a bulk import or a hand-run SQL update would not, and these
+                // tokens never expire. Cheap: the row is already being read for the version.
+                if (!account.IsActive)
+                    context.Fail("AccountDeactivated");
             }
         };
     });

@@ -453,6 +453,14 @@ public class AdminController : ControllerBase
         if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone && e.Id != id))
             return Conflict(new { error = "PhoneAlreadyExists" });
 
+        // A token carries the role and never expires, and nothing re-checks it per request — so
+        // changing either of these has to invalidate the sessions already issued. Without this a
+        // demoted admin keeps the admin panel and a deactivated employee keeps scanning, both for as
+        // long as they simply never log in again. Only bump when one of the two actually changed, so
+        // an ordinary edit (name, position, hours) doesn't log the employee out for nothing.
+        if (employee.Role != request.Role || employee.IsActive != request.IsActive)
+            employee.TokenVersion++;
+
         employee.FullName = request.FullName;
         employee.Email = email;
         employee.PhoneNumber = phone;
