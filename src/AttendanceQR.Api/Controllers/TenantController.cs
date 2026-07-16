@@ -26,6 +26,11 @@ public class TenantController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Branding()
     {
+        // Asked by someone whose subdomain names no tenant (the apex, a direct api.qrlog.az hit):
+        // there is nothing to brand as, and guessing means showing one company's identity to another.
+        if (!_tenant.IsResolved)
+            return Ok(new { displayName = string.Empty, color = (string?)null, logoUrl = (string?)null });
+
         // Tenants is not query-filtered (it's the tenant registry itself), so this reads the resolved
         // tenant directly.
         var b = await _db.Tenants
@@ -43,7 +48,9 @@ public class TenantController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Manifest()
     {
-        var t = await _db.Tenants
+        // Unknown subdomain → the generic manifest below (no name, default icons), never another
+        // tenant's. See Branding().
+        var t = !_tenant.IsResolved ? null : await _db.Tenants
             .Where(t => t.Id == _tenant.TenantId)
             .Select(t => new { t.DisplayName, t.LogoKey })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);

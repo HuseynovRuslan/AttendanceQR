@@ -1,4 +1,5 @@
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -25,11 +26,11 @@ public sealed class FaceMatchWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await foreach (var recordId in _queue.Reader.ReadAllAsync(stoppingToken))
+        await foreach (var job in _queue.Reader.ReadAllAsync(stoppingToken))
         {
             try
             {
-                await ProcessAsync(recordId, stoppingToken);
+                await ProcessAsync(job, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -37,17 +38,23 @@ public sealed class FaceMatchWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "FaceMatchWorker: processing {RecordId} failed", recordId);
+                _logger.LogWarning(ex, "FaceMatchWorker: processing {RecordId} failed", job.RecordId);
             }
         }
     }
 
-    private async Task ProcessAsync(Guid recordId, CancellationToken ct)
+    private async Task ProcessAsync(FaceMatchJob job, CancellationToken ct)
     {
+        var recordId = job.RecordId;
         using var scope = _scopeFactory.CreateScope();
         var face = scope.ServiceProvider.GetRequiredService<IFaceMatchService>();
         if (!face.Enabled)
             return; // feature off — leave the record NotChecked
+
+        // A fresh scope has no request, so nothing has resolved the tenant — scope it to the tenant
+        // the check-in came from, or every lookup below runs against the wrong company's rows and
+        // silently finds nothing.
+        scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(job.TenantId);
 
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var storage = scope.ServiceProvider.GetRequiredService<IPhotoStorageService>();

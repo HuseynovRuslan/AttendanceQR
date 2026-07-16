@@ -1,5 +1,3 @@
-using AttendanceQR.Domain;
-
 namespace AttendanceQR.Infrastructure.Multitenancy;
 
 /// <summary>Per-request tenant. Resolved from the JWT (authenticated) or the request Origin/Host
@@ -15,10 +13,18 @@ public sealed class TenantContext : ITenantContext
 {
     private Guid? _id;
 
-    // Until resolved, fall back to the original tenant (Bakı Abadlıq). Safe while it is the ONLY
-    // tenant; must be revisited before onboarding a second tenant so an unresolved request cannot
-    // silently read tenant #1's data.
-    public Guid TenantId => _id ?? TenantDefaults.BakiAbadligId;
+    /// <summary>
+    /// The resolved tenant. FAIL-CLOSED: reading this before anything resolved it throws rather than
+    /// falling back to a default. Until there was a second tenant a fallback was harmless; with
+    /// several live tenants it is the opposite — an unresolved request would silently read and, worse,
+    /// WRITE tenant #1's data (SaveChanges stamps rows with whatever this returns). Every legitimate
+    /// entry point resolves explicitly: the JWT (OnTokenValidated), the Origin/Host middleware, the
+    /// per-tenant loop in DailySummaryJob/FaceMatchWorker, and the startup seed scope.
+    /// </summary>
+    public Guid TenantId => _id ?? throw new InvalidOperationException(
+        "Tenant is not resolved for this scope. An authenticated request resolves it from the JWT 'tid' " +
+        "claim; an anonymous one from the Origin/Host subdomain; background work must Resolve() the " +
+        "tenant it is processing. Reaching tenant-scoped data without one is a bug, not a default.");
 
     public bool IsResolved => _id.HasValue;
 

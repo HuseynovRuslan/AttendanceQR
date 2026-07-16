@@ -456,8 +456,10 @@ public class AttendanceController : ControllerBase
             await _db.SaveChangesAsync(ct);
 
             // Queue a background face-match only when there's a prior reference to compare against.
+            // The worker has no request to resolve a tenant from, so hand it the one this record was
+            // just written under.
             if (hadReference)
-                _faceQueue.Enqueue(record.Id);
+                _faceQueue.Enqueue(_db.CurrentTenantId, record.Id);
         }
         catch (Exception ex)
         {

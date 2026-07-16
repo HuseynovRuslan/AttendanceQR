@@ -1,4 +1,3 @@
-using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using Microsoft.EntityFrameworkCore;
@@ -18,8 +17,16 @@ public class AppDbContext : DbContext
     }
 
     /// <summary>The tenant every query is filtered to and every insert is stamped with. Referenced by
-    /// the query filters below — EF re-reads it per query, so it tracks the current request's tenant.</summary>
-    public Guid CurrentTenantId => _tenant?.TenantId ?? TenantDefaults.BakiAbadligId;
+    /// the query filters below — EF re-reads it per query, so it tracks the current request's tenant.
+    /// FAIL-CLOSED: throws when no tenant is resolved (or, design-time, when there is no context at
+    /// all) instead of defaulting to tenant #1 — see <see cref="ITenantContext.TenantId"/>. Only the
+    /// design-time factory constructs this without a context, and that path builds the model without
+    /// ever executing a query, so it never reads this.</summary>
+    public Guid CurrentTenantId => _tenant is not null
+        ? _tenant.TenantId
+        : throw new InvalidOperationException(
+            "AppDbContext was constructed without an ITenantContext (design-time factory) and something " +
+            "tried to run a tenant-scoped query or save through it.");
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Employee> Employees => Set<Employee>();
@@ -88,13 +95,18 @@ public class AppDbContext : DbContext
 
     // New tenant-scoped rows get the current tenant automatically (unless already set explicitly), so
     // callers never have to remember TenantId. This is what lets the column default be dropped.
+    // CurrentTenantId is read lazily — it now throws when unresolved, and a save that stamps nothing
+    // (updating existing rows, or writing the un-scoped Tenants registry itself) has no tenant to need.
     private void StampTenant()
     {
+        var pending = ChangeTracker.Entries<ITenantScoped>()
+            .Where(e => e.State == EntityState.Added && e.Entity.TenantId == Guid.Empty)
+            .ToList();
+        if (pending.Count == 0)
+            return;
+
         var tenantId = CurrentTenantId;
-        foreach (var entry in ChangeTracker.Entries<ITenantScoped>())
-        {
-            if (entry.State == EntityState.Added && entry.Entity.TenantId == Guid.Empty)
-                entry.Entity.TenantId = tenantId;
-        }
+        foreach (var entry in pending)
+            entry.Entity.TenantId = tenantId;
     }
 }

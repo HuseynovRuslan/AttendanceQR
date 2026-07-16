@@ -8,6 +8,7 @@ using AttendanceQR.Api.Jobs;
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -173,10 +174,17 @@ builder.Services
                 }
 
                 // Resolve the tenant from the token FIRST, so the TokenVersion lookup (and everything
-                // after) is scoped to this session's tenant. Tokens issued before Phase 1 have no "tid"
-                // — they fall back to the default tenant, which is the only one that exists yet.
+                // after) is scoped to this session's tenant. A token with no "tid" predates Phase 1,
+                // and back then Bakı Abadlıq was the only tenant there was — so such a token can only
+                // be theirs. These JWTs never expire, so those sessions are still out there; resolve
+                // them here EXPLICITLY rather than leaning on a global default that would also catch
+                // requests which simply failed to resolve. Removable once bax sessions have all turned
+                // over (a TokenVersion bump for that tenant would force it).
+                var tenantCtx = context.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
                 if (Guid.TryParse(context.Principal?.FindFirstValue("tid"), out var tenantId))
-                    context.HttpContext.RequestServices.GetRequiredService<ITenantContext>().Resolve(tenantId);
+                    tenantCtx.Resolve(tenantId);
+                else
+                    tenantCtx.Resolve(TenantDefaults.BakiAbadligId);
 
                 var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
                 var currentVersion = await db.Employees
@@ -225,6 +233,12 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    // There is no request here, so nothing has resolved a tenant — and the tenant context is now
+    // fail-closed. The blocks below (admin bootstrap, emergency PIN reset) have always operated on
+    // the original tenant; say so explicitly. TenantSeed re-resolves to the tenant it creates.
+    scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(TenantDefaults.BakiAbadligId);
+
     for (var attempt = 1; ; attempt++)
     {
         try
@@ -417,6 +431,14 @@ app.UseAuthentication();
 // Resolve the tenant for anonymous requests (login, activate, kiosk) from the request Origin's
 // subdomain — authenticated requests are already resolved from the JWT in OnTokenValidated. Runs
 // before authorization/controllers so the DbContext query filter is scoped by the time they query.
+//
+// /api/tenant is the one controller that must answer an unattributable request: it reads the
+// un-scoped Tenants registry (never another tenant's rows), and each of its endpoints has a correct
+// tenant-less answer — allow-tls is called by Caddy itself with no Origin, and branding/manifest
+// return neutral defaults rather than guess an identity. Everything else is rejected below.
+static bool TenantOptional(PathString path) =>
+    path.StartsWithSegments("/api/tenant");
+
 app.Use(async (context, next) =>
 {
     var tenant = context.RequestServices.GetRequiredService<ITenantContext>();
@@ -434,6 +456,20 @@ app.Use(async (context, next) =>
                 tenant.Resolve(id.Value);
         }
     }
+
+    // Fail closed. An API request we cannot attribute to a tenant used to fall through to Bakı
+    // Abadlıq's data — with several tenants live that is a login pool and a write target belonging
+    // to someone else. Reject it here so it surfaces as a clear 400 instead of the wrong company's
+    // rows (the tenant context would otherwise throw deeper in, as a 500).
+    if (!tenant.IsResolved
+        && context.Request.Path.StartsWithSegments("/api")
+        && !TenantOptional(context.Request.Path))
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new { error = "TenantUnresolved" });
+        return;
+    }
+
     await next();
 });
 

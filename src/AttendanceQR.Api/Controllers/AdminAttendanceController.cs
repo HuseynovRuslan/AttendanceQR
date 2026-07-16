@@ -187,7 +187,7 @@ public class AdminAttendanceController : ControllerBase
             .Select(r => r.Id)
             .ToListAsync(HttpContext.RequestAborted);
         foreach (var id in ids)
-            _faceQueue.Enqueue(id);
+            _faceQueue.Enqueue(_db.CurrentTenantId, id);
         return Ok(new { queued = ids.Count });
     }
 
