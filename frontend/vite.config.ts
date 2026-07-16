@@ -20,9 +20,9 @@ export default defineConfig({
     host: true,
   },
   build: {
-    // Skip JS minification: on the low-RAM deploy server the esbuild minify pass thrashed/hung at
-    // "rendering chunks". nginx gzips responses, so the transfer-size cost is small. Re-enable the
-    // default ('esbuild') once the build runs on a host with more memory.
-    minify: false,
+    // Minification is back on (was disabled when the deploy box was a 4 GB Hetzner with no swap and
+    // the esbuild pass thrashed at "rendering chunks"; the current server has 12 GB, so the reason
+    // it was turned off is gone).
+    minify: 'esbuild',
   },
 })
