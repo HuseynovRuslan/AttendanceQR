@@ -104,6 +104,33 @@ export function DashboardPage() {
 
   return (
     <div>
+      {/* --- date-range report filter, at the very top per feedback --- */}
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div className="card-title">Ərazi və tarix aralığı — aşağıdakı hesabat üçün</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
+          <div style={{ minWidth: 180 }}>
+            <label className="form-label">Ərazi</label>
+            <select className="inp" value={dashLocationId} onChange={(e) => setDashLocationId(e.target.value)}>
+              <option value="">Hamısı</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Başlanğıc</label>
+            <input className="inp" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">Son</label>
+            <input className="inp" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
+          </div>
+          <button className="btn btn-primary" onClick={loadDashboard} disabled={dashLoading}>
+            {dashLoading ? 'Yüklənir…' : 'Yüklə'}
+          </button>
+        </div>
+      </div>
+
       <div className="stat-grid">
         <div className="stat-card leaf">
           <div className="stat-lbl">Ümumi işçi</div>
@@ -211,32 +238,6 @@ export function DashboardPage() {
               }}
             />
           </div>
-        </div>
-      </div>
-
-      {/* --- date-range dashboard --- */}
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
-          <div style={{ minWidth: 180 }}>
-            <label className="form-label">Ərazi</label>
-            <select className="inp" value={dashLocationId} onChange={(e) => setDashLocationId(e.target.value)}>
-              <option value="">Hamısı</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Başlanğıc</label>
-            <input className="inp" type="date" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Son</label>
-            <input className="inp" type="date" value={dashTo} onChange={(e) => setDashTo(e.target.value)} />
-          </div>
-          <button className="btn btn-primary" onClick={loadDashboard} disabled={dashLoading}>
-            {dashLoading ? 'Yüklənir…' : 'Yüklə'}
-          </button>
         </div>
       </div>
 
