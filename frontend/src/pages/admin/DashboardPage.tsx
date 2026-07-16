@@ -109,10 +109,10 @@ export function DashboardPage() {
     <div>
       {/* --- date-range report filter, at the very top per feedback --- */}
       <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-title">Ərazi və tarix aralığı — aşağıdakı hesabat üçün</div>
+        <div className="card-title">Filial və tarix aralığı — aşağıdakı hesabat üçün</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
           <div style={{ minWidth: 180 }}>
-            <label className="form-label">Ərazi</label>
+            <label className="form-label">Filial</label>
             <select className="inp" value={dashLocationId} onChange={(e) => setDashLocationId(e.target.value)}>
               <option value="">Hamısı</option>
               {locations.map((l) => (
@@ -182,7 +182,7 @@ export function DashboardPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 28 }}>
         <div className="card card-pad">
-          <div className="card-title">Ərazilər üzrə bugün</div>
+          <div className="card-title">Filiallar üzrə bugün</div>
           {areaStats.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Məlumat yoxdur</p>}
           {areaStats.map((a) => (
             <div
@@ -307,7 +307,7 @@ export function DashboardPage() {
             <div className="stat-card clay">
               <div className="stat-lbl">Koordinat xarici</div>
               <div className="stat-val">{dashReport.outsideRadiusCount}</div>
-              <div className="stat-sub">Ərazidən kənarda edilən skan sayı</div>
+              <div className="stat-sub">Filialdan kənarda edilən skan sayı</div>
             </div>
             <div className="stat-card leaf">
               <div className="stat-lbl">Aktiv cihazlar</div>

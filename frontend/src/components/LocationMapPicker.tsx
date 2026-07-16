@@ -41,7 +41,7 @@ export function LocationMapPicker({ latitude, longitude, radiusMeters, onPick }:
       <MapContainer
         center={[latitude, longitude]}
         zoom={15}
-        style={{ height: 320, width: '100%' }}
+        style={{ height: 230, width: '100%' }}
         scrollWheelZoom
       >
         <TileLayer

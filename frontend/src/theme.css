@@ -97,6 +97,8 @@ select.inp{cursor:pointer}
 .tbl-wrap tbody tr:hover td{background:rgba(0,0,0,.015)}
 .tbl-wrap tfoot td{background:var(--c50);font-weight:700;color:var(--c900)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
+/* Centre the numeric columns in tables that opt in (e.g. reports). */
+.tbl-center-nums .num{text-align:center}
 
 /* Badges */
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}

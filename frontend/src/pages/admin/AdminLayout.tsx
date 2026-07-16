@@ -22,7 +22,7 @@ import {
 } from '../../components/icons'
 
 const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' }
-const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Ərazi meneceri' }
+const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri' }
 
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
@@ -30,9 +30,8 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
   '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
-  '/admin/missed-checkout': { title: 'Çıxış tələbləri', sub: 'İşçilərin unudulmuş çıxış tələbləri' },
-  '/admin/open-records': { title: 'Bağlanmamış günlər', sub: 'Giriş edib çıxış etməyən günlər' },
-  '/admin/locations': { title: 'Lokasiyalar', sub: 'Ərazi əlavə et / redaktə et' },
+  '/admin/open-records': { title: 'Çıxışı unudulan günlər', sub: 'Giriş edib çıxış etməyən günlər' },
+  '/admin/locations': { title: 'Lokasiyalar', sub: 'Filial əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
   '/admin/leaves': { title: 'Məzuniyyət / İcazə', sub: 'Təsdiqlənmiş yoxluq qeydləri' },
   '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
@@ -73,8 +72,7 @@ export function AdminLayout() {
     { to: '/admin/photo-audit', label: 'Foto Audit', Icon: IconCamera },
     { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
     // Admin + Manager — managers approve their own locations' forgot-checkout requests.
-    { to: '/admin/missed-checkout', label: 'Çıxış tələbləri', Icon: IconClock },
-    ...(isAdmin ? [{ to: '/admin/open-records', label: 'Bağlanmamış günlər', Icon: IconClock }] : []),
+    ...(isAdmin ? [{ to: '/admin/open-records', label: 'Çıxışı unudulan günlər', Icon: IconClock }] : []),
     ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
     ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),

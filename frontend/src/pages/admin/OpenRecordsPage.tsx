@@ -61,6 +61,8 @@ export function OpenRecordsPage() {
       setError('Çıxış girişdən əvvəl ola bilməz')
       return
     }
+    if (!window.confirm(`${r.employeeName} · ${fmtDate(r.attendanceDate)} — çıxış vaxtı ${fmtTime(iso)} kimi təyin edilsin?`))
+      return
     setBusyId(r.recordId)
     setError(null)
     const { status } = await adminUpdateRecord(r.recordId, undefined, iso)
@@ -78,7 +80,7 @@ export function OpenRecordsPage() {
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Bağlanmamış günlər</h1>
+        <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Çıxışı unudulan günlər</h1>
         <div className="muted" style={{ fontSize: 13 }}>
           Giriş edib çıxış etməyən günlər. Çıxış təyin edilməsə, həmin gün hesabatda 0 saat sayılır.
         </div>
@@ -142,7 +144,7 @@ export function OpenRecordsPage() {
             {empty && !error && (
               <tr>
                 <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Bağlanmamış gün yoxdur 🎉
+                  Çıxışı unudulan gün yoxdur 🎉
                 </td>
               </tr>
             )}

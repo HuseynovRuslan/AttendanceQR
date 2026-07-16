@@ -12,6 +12,17 @@ import { IconDownload, IconX } from '../../components/icons'
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 
+// Worked/overtime come as decimal hours (e.g. 0.32 = ~19 min, 8.53 = 8 s 32 dəq). A bare "0.32" reads
+// like minutes and confuses everyone — show real "saat/dəq" instead.
+function fmtHM(hours: number): string {
+  const totalMin = Math.round((hours || 0) * 60)
+  if (totalMin === 0) return '—'
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h === 0) return `${m} dəq`
+  return m === 0 ? `${h} saat` : `${h} saat ${m} dəq`
+}
+
 export function ReportsPage() {
   const [from, setFrom] = useState(daysAgoIso(29))
   const [to, setTo] = useState(todayIso())
@@ -69,7 +80,7 @@ export function ReportsPage() {
             <input className="inp" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div style={{ minWidth: 180 }}>
-            <label className="form-label">Ərazi</label>
+            <label className="form-label">Filial</label>
             <select className="inp" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
               <option value="">Hamısı</option>
               {locations.map((l) => (
@@ -97,12 +108,12 @@ export function ReportsPage() {
       )}
 
       {report && (
-        <div className="tbl-wrap">
+        <div className="tbl-wrap tbl-center-nums">
           <table>
             <thead>
               <tr>
                 <th>İşçi</th>
-                <th>Ərazi</th>
+                <th>Filial</th>
                 <th className="num">İş günləri</th>
                 <th className="num">Qayıb</th>
                 <th className="num">Məzuniyyət</th>
@@ -120,8 +131,8 @@ export function ReportsPage() {
                   <td className="num mono">{r.absentDays}</td>
                   <td className="num mono">{r.leaveDays}</td>
                   <td className="num mono">{r.permissionDays}</td>
-                  <td className="num mono">{r.totalWorkedHours}</td>
-                  <td className="num mono">{r.overtimeHours}</td>
+                  <td className="num mono">{fmtHM(r.totalWorkedHours)}</td>
+                  <td className="num mono">{fmtHM(r.overtimeHours)}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (
@@ -140,8 +151,8 @@ export function ReportsPage() {
                   <td className="num mono">{report.totals.absentDays}</td>
                   <td className="num mono">{report.totals.leaveDays}</td>
                   <td className="num mono">{report.totals.permissionDays}</td>
-                  <td className="num mono">{report.totals.totalWorkedHours}</td>
-                  <td className="num mono">{report.totals.overtimeHours}</td>
+                  <td className="num mono">{fmtHM(report.totals.totalWorkedHours)}</td>
+                  <td className="num mono">{fmtHM(report.totals.overtimeHours)}</td>
                 </tr>
               </tfoot>
             )}

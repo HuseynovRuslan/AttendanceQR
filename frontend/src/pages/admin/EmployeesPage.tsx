@@ -95,6 +95,7 @@ export function EmployeesPage() {
   const [rows, setRows] = useState<AdminEmployee[]>([])
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY)
@@ -439,7 +440,12 @@ export function EmployeesPage() {
     }
   }
 
-  const visible = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
+  const q = search.trim().toLowerCase()
+  const visible = rows.filter((r) => {
+    if (filterLoc && r.locationId !== filterLoc) return false
+    if (q && !`${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.id}`.toLowerCase().includes(q)) return false
+    return true
+  })
 
   return (
     <div>
@@ -459,7 +465,16 @@ export function EmployeesPage() {
             </span>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            className="inp"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Ad, nömrə, vəzifə üzrə axtar…"
+            style={{ width: 'auto', minWidth: 210, padding: '8px 12px' }}
+          />
+          {search && <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>}
           <button className="btn" disabled={refBusy} onClick={onResetAllReferences} title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir">
             <IconRefresh /> Referansları sıfırla
           </button>
@@ -583,7 +598,7 @@ export function EmployeesPage() {
               </select>
             </div>
             <div>
-              <label className="form-label">Ərazi</label>
+              <label className="form-label">Filial</label>
               <select className="inp" value={form.locationId} onChange={(e) => set('locationId', e.target.value)}>
                 {locations.map((l) => (
                   <option key={l.id} value={l.id}>
@@ -619,7 +634,7 @@ export function EmployeesPage() {
                 </div>
               </div>
               <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
-                Boş buraxsanız ərazinin iş saatları tətbiq olunur — gec gəlmə / tez çıxma bu saatlara görə hesablanır.
+                Boş buraxsanız filialın iş saatları tətbiq olunur — gec gəlmə / tez çıxma bu saatlara görə hesablanır.
               </p>
             </>
           )}
@@ -788,7 +803,7 @@ export function EmployeesPage() {
             <tr>
               <th>Ad, soyad, ata adı</th>
               <th>Vəzifə</th>
-              <th>Ərazi</th>
+              <th>Filial</th>
               <th>Rol</th>
               <th>Cihaz</th>
               <th>Qeydiyyat</th>
@@ -816,7 +831,10 @@ export function EmployeesPage() {
                       <span style={{ color: '#b45309', fontWeight: 600 }}>nömrə yoxdur</span>
                     )}
                     {(e.fatherName || e.birthYear) &&
-                      ` · ${[e.fatherName ? `${e.fatherName} oğlu/qızı` : null, e.birthYear || null].filter(Boolean).join(' · ')}`}
+                      ` · ${[e.fatherName || null, e.birthYear || null].filter(Boolean).join(' · ')}`}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--c400)', fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>
+                    ID: {e.id.slice(0, 8)}
                   </div>
                 </td>
                 <td>{e.position || '—'}</td>
@@ -873,7 +891,7 @@ export function EmployeesPage() {
             {visible.length === 0 && (
               <tr>
                 <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  {rows.length === 0 ? 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın' : 'Bu ərazidə işçi yoxdur'}
+                  {rows.length === 0 ? 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın' : 'Bu axtarış/filial üzrə işçi yoxdur'}
                 </td>
               </tr>
             )}

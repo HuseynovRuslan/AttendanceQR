@@ -506,7 +506,7 @@ export function ScanPage() {
             <div className="text-5xl">📍</div>
             <h2 className="mt-2 text-lg font-bold text-white">İş yerində deyilsiniz</h2>
             <p className="mt-1 text-sm text-slate-300">
-              {radiusFail.name} ərazisindən təxminən <b className="text-white">{radiusFail.distance} m</b> uzaqsınız.
+              {radiusFail.name} filialından təxminən <b className="text-white">{radiusFail.distance} m</b> uzaqsınız.
               Yaxınlaşıb yenidən yoxlayın.
             </p>
             <button

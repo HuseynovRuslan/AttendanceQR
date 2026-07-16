@@ -19,7 +19,7 @@ import { RecordBadge } from '../../components/StatusBadge'
 import { fmtDate, fmtDuration, fmtTime, initials } from '../../lib/att'
 import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
 
-const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Ərazi meneceri', Employee: 'İşçi' }
+const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
 
 /** One employee's full profile: identity + this-month summary + recent attendance + photos + devices,
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
@@ -160,6 +160,9 @@ export function EmployeeProfilePage() {
             <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
               {[emp.position, emp.locationName].filter(Boolean).join(' · ') || '—'}
             </div>
+            <div className="muted" style={{ fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>
+              ID: {emp.id.slice(0, 8)}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <span className="tag">{ROLE_LABEL[emp.role] ?? emp.role}</span>
@@ -217,7 +220,7 @@ export function EmployeeProfilePage() {
           <Field label="Təvəllüd" value={emp.birthYear ? String(emp.birthYear) : null} />
           <Field label="Telefon" value={emp.phoneNumber} />
           <Field label="Email" value={emp.email} />
-          <Field label="İş saatı" value={emp.workStart && emp.workEnd ? `${emp.workStart} – ${emp.workEnd}` : 'Ərazinin saatı'} />
+          <Field label="İş saatı" value={emp.workStart && emp.workEnd ? `${emp.workStart} – ${emp.workEnd}` : 'Filialın saatı'} />
           <Field label="Qeydiyyat" value={emp.createdAtUtc ? fmtDate(emp.createdAtUtc.slice(0, 10)) : null} />
         </div>
       </div>

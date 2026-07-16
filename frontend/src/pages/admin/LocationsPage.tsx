@@ -62,6 +62,9 @@ export function LocationsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  // The form (with the big map) is hidden by default so the list is what you see first; "Əlavə et" or
+  // a row's "Redaktə" opens it.
+  const [showForm, setShowForm] = useState(false)
 
   async function refresh() {
     const { status, data } = await getAdminLocations()
@@ -86,6 +89,13 @@ export function LocationsPage() {
     setForm(EMPTY)
     setError(null)
     setOk(null)
+    setShowForm(true)
+  }
+
+  function closeForm() {
+    setEditingId(null)
+    setForm(EMPTY)
+    setShowForm(false)
   }
 
   function startEdit(l: AdminLocation) {
@@ -102,6 +112,7 @@ export function LocationsPage() {
     })
     setError(null)
     setOk(null)
+    setShowForm(true)
   }
 
   async function onSubmit(e: FormEvent) {
@@ -126,7 +137,7 @@ export function LocationsPage() {
 
     if (status === 200) {
       setOk(editingId ? 'Yeniləndi' : 'Lokasiya əlavə olundu')
-      startCreate()
+      closeForm()
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
       setError(ERRORS[(data as { error: string }).error] ?? 'Yadda saxlanmadı')
@@ -143,7 +154,7 @@ export function LocationsPage() {
     const { status, data } = await deleteLocation(l.id)
     setDeletingId(null)
     if (status === 200) {
-      if (editingId === l.id) startCreate()
+      if (editingId === l.id) closeForm()
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
       setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
@@ -191,6 +202,14 @@ export function LocationsPage() {
         </span>
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+        <div className="card-title" style={{ marginBottom: 0 }}>Lokasiyalar</div>
+        <button className="btn btn-primary" onClick={showForm ? closeForm : startCreate}>
+          {showForm ? 'Ləğv et' : '＋ Lokasiya əlavə et'}
+        </button>
+      </div>
+
+      {showForm && (
       <form onSubmit={onSubmit} className="card card-pad" style={{ marginBottom: 16, maxWidth: 760 }}>
         <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <IconMapPin />
@@ -219,7 +238,7 @@ export function LocationsPage() {
           <label className="form-label">Yer və radius</label>
           <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
             Xəritədə iş yerinin üstünə klikləyin — koordinat avtomatik dolur. Dairə "check-in qəbul
-            olunan" ərazini göstərir. İstəsəniz koordinatı aşağıda əl ilə də yaza bilərsiniz.
+            olunan" sahəni göstərir. İstəsəniz koordinatı aşağıda əl ilə də yaza bilərsiniz.
           </p>
           {Number.isFinite(mapLat) && Number.isFinite(mapLng) && (
             <LocationMapPicker
@@ -295,13 +314,12 @@ export function LocationsPage() {
             <IconCheck />
             {saving ? 'Yadda saxlanır…' : editingId ? 'Yadda saxla' : 'Əlavə et'}
           </button>
-          {editingId && (
-            <button type="button" className="btn" onClick={startCreate} disabled={saving}>
-              Ləğv et
-            </button>
-          )}
+          <button type="button" className="btn" onClick={closeForm} disabled={saving}>
+            Ləğv et
+          </button>
         </div>
       </form>
+      )}
 
       <div className="tbl-wrap">
         <table>
@@ -387,7 +405,7 @@ export function LocationsPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Hələ lokasiya yoxdur — yuxarıdan əlavə edin
+                  Hələ lokasiya yoxdur — «Lokasiya əlavə et» ilə başlayın
                 </td>
               </tr>
             )}

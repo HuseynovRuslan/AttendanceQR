@@ -281,7 +281,7 @@ export function TodayPage() {
           <thead>
             <tr>
               <th>İşçi</th>
-              <th>Ərazi</th>
+              <th>Filial</th>
               <th>Status</th>
               <th>Giriş</th>
               <th>Çıxış</th>
@@ -319,8 +319,10 @@ export function TodayPage() {
                       className="btn btn-sm"
                       disabled={busyId === r.recordId}
                       onClick={() => void viewPhoto(r)}
+                      title="Giriş şəklini gör"
+                      aria-label="Giriş şəklini gör"
                     >
-                      <IconCamera /> {busyId === r.recordId ? '…' : 'Şəkli gör'}
+                      {busyId === r.recordId ? '…' : <IconCamera />}
                     </button>
                   ) : (
                     <span className="muted">—</span>
