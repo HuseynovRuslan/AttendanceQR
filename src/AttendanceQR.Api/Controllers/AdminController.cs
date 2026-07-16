@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using ClosedXML.Excel;
@@ -22,27 +23,33 @@ public class AdminController : ControllerBase
     private readonly InvitationOptions _invitationOptions;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILoginLockoutStore _lockout;
+    private readonly string[] _hiddenEmails;
 
     public AdminController(
         AppDbContext db,
         IOptions<InvitationOptions> invitationOptions,
         IPasswordHasher passwordHasher,
-        ILoginLockoutStore lockout)
+        ILoginLockoutStore lockout,
+        AppOptions appOptions)
     {
         _db = db;
         _invitationOptions = invitationOptions.Value;
         _passwordHasher = passwordHasher;
         _lockout = lockout;
+        _hiddenEmails = appOptions.HiddenEmails
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => x.ToLowerInvariant())
+            .ToArray();
     }
 
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        // Admin accounts are system operators, not on-site staff to manage here — hide them
-        // entirely (they don't check in/out and aren't part of the "İşçilər" roster).
+        // Admins/managers ARE shown here now (so they can be managed), EXCEPT the system/root admin
+        // accounts listed in AppOptions.HiddenEmails (e.g. admin@bms.az) — they're operators, not staff.
         var employees = await _db.Employees
             .Include(e => e.DeviceBindings)
-            .Where(e => e.Role != EmployeeRole.Admin)
+            .Where(e => !_hiddenEmails.Contains(e.Email.ToLower()))
             .OrderBy(e => e.FullName)
             .ToListAsync(HttpContext.RequestAborted);
 

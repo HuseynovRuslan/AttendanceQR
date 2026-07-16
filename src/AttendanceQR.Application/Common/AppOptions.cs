@@ -10,4 +10,11 @@ public sealed class AppOptions
     /// Default Asia/Baku (UTC+4). Never hard-coded in logic — read from here.
     /// </summary>
     public string TimeZone { get; set; } = "Asia/Baku";
+
+    /// <summary>
+    /// Comma-separated emails hidden from the admin "İşçilər" roster — the system/root admin accounts
+    /// created by bootstrap/seed. They still exist and work fully; they're just not listed (they're
+    /// operators, not staff to manage). Empty = hide nobody.
+    /// </summary>
+    public string HiddenEmails { get; set; } = string.Empty;
 }
