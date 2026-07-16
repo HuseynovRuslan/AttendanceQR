@@ -36,10 +36,7 @@ public class AdminController : ControllerBase
         _invitationOptions = invitationOptions.Value;
         _passwordHasher = passwordHasher;
         _lockout = lockout;
-        _hiddenEmails = appOptions.HiddenEmails
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(x => x.ToLowerInvariant())
-            .ToArray();
+        _hiddenEmails = appOptions.HiddenEmailList();
     }
 
     [HttpGet]

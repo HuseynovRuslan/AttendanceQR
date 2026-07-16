@@ -45,11 +45,13 @@ public sealed class ReportQueryService : IReportQueryService
 {
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
+    private readonly string[] _hiddenEmails;
 
     public ReportQueryService(AppDbContext db, AppOptions options)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        _hiddenEmails = options.HiddenEmailList();
     }
 
     public async Task<(ReportAccess Access, AttendanceReport? Report)> GetSummaryAsync(
@@ -132,9 +134,10 @@ public sealed class ReportQueryService : IReportQueryService
         // live board and any historical day read identically).
         var today = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
-        // In-scope active employees. Admins are system operators, not on-site staff — they never
-        // check in/out, so including them here would just show a permanent, meaningless "Qayıb".
-        var employeesQuery = _db.Employees.Where(e => e.IsActive && e.ActivatedAtUtc != null && e.Role != EmployeeRole.Admin);
+        // In-scope active employees. Admins/managers who also clock in ARE shown (e.g. a director who
+        // scans); only the system/root accounts in HiddenEmails (admin@bms.az) are excluded.
+        var employeesQuery = _db.Employees.Where(e =>
+            e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()));
         if (role == EmployeeRole.Manager)
         {
             var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct);

@@ -20,19 +20,21 @@ public sealed class DailySummaryService : IDailySummaryService
 {
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
+    private readonly string[] _hiddenEmails;
 
     public DailySummaryService(AppDbContext db, AppOptions options)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        _hiddenEmails = options.HiddenEmailList();
     }
 
     public async Task<int> GenerateForDateAsync(DateOnly date, CancellationToken ct = default)
     {
-        // Admins are system operators, not on-site staff — exclude them so they don't accumulate a
-        // permanent, meaningless "Absent" history (mirrors the live "today" board's exclusion).
+        // Only the system/root accounts in HiddenEmails are excluded; admins/managers who also clock in
+        // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
         var employees = await _db.Employees
-            .Where(e => e.IsActive && e.ActivatedAtUtc != null && e.Role != EmployeeRole.Admin)
+            .Where(e => e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()))
             .Select(e => new { e.Id, e.LocationId })
             .ToListAsync(ct);
 

@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace AttendanceQR.Application.Common;
 
 /// <summary>App-wide settings bound from the "App" configuration section.</summary>
@@ -17,4 +19,10 @@ public sealed class AppOptions
     /// operators, not staff to manage). Empty = hide nobody.
     /// </summary>
     public string HiddenEmails { get; set; } = string.Empty;
+
+    /// <summary>Parsed, lowercased list of hidden emails (from the comma-separated HiddenEmails).</summary>
+    public string[] HiddenEmailList() => HiddenEmails
+        .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
+        .Select(x => x.ToLowerInvariant())
+        .ToArray();
 }
