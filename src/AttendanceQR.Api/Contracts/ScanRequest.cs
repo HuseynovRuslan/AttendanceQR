@@ -11,11 +11,16 @@ namespace AttendanceQR.Api.Contracts;
 /// and a non-finite coordinate makes that comparison FALSE rather than true: JSON "1e400" parses to
 /// double.PositiveInfinity, Haversine turns that into NaN, and every comparison against NaN is false
 /// — so an unchecked coordinate is accepted from anywhere on earth. The bounds reject NaN too (it
-/// compares false against both ends). Attributes are [property:] so they land on the property, which
-/// is what MVC validates — on a positional record they would otherwise bind to the constructor
-/// parameter and silently never run. The bounds are written as doubles (-90d, not -90) on purpose:
-/// integer literals pick RangeAttribute's int overload, which validates via Convert.ToInt32 and
-/// throws OverflowException on infinity — a 500 instead of a 400.
+/// compares false against both ends).
+///
+/// Two things about how these are written, both learned the hard way:
+///   • NO [property:] prefix. On a positional record MVC validates the CONSTRUCTOR PARAMETER, and it
+///     throws outright ("validation metadata must be associated with the constructor parameter")
+///     if it finds the metadata on the property instead — every scan 500s. Note this is the opposite
+///     of Validator.TryValidateObject, which reads properties; a test using that passes either way,
+///     so it cannot tell you which one MVC wants.
+///   • Bounds are doubles (-90d, not -90). Integer literals select RangeAttribute's int overload,
+///     which validates via Convert.ToInt32 and throws OverflowException on infinity — a 500 again.
 /// </param>
 /// <param name="PhotoBase64">
 /// Optional check-in selfie for photo audit — a WebP data URL (or bare base64) captured silently by
@@ -25,6 +30,6 @@ namespace AttendanceQR.Api.Contracts;
 public record ScanRequest(
     string QrToken,
     string DeviceFingerprint,
-    [property: Range(-90d, 90d)] double Latitude,
-    [property: Range(-180d, 180d)] double Longitude,
+    [Range(-90d, 90d)] double Latitude,
+    [Range(-180d, 180d)] double Longitude,
     string? PhotoBase64 = null);
