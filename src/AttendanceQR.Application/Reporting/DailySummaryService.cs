@@ -35,7 +35,7 @@ public sealed class DailySummaryService : IDailySummaryService
         // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
         var employees = await _db.Employees
             .Where(e => e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()))
-            .Select(e => new { e.Id, e.LocationId })
+            .Select(e => new { e.Id, e.LocationId, e.WorkStart, e.WorkEnd })
             .ToListAsync(ct);
 
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
@@ -86,7 +86,8 @@ public sealed class DailySummaryService : IDailySummaryService
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(emp.Id, out var record);
-            var computed = Compute(emp.Id, emp.LocationId, date, record, location, isWorkingDay, noRecordStatus);
+            var computed = Compute(
+                emp.Id, emp.LocationId, date, record, location, isWorkingDay, noRecordStatus, emp.WorkStart, emp.WorkEnd);
 
             if (existing.TryGetValue(emp.Id, out var summary))
             {
@@ -110,10 +111,11 @@ public sealed class DailySummaryService : IDailySummaryService
 
     private DailySummary Compute(
         Guid employeeId, Guid locationId, DateOnly date, AttendanceRecord? record, Location location,
-        bool isWorkingDay, DailySummaryStatus noRecordStatus)
+        bool isWorkingDay, DailySummaryStatus noRecordStatus, TimeOnly? workStart, TimeOnly? workEnd)
     {
-        // Shared timezone/late/overtime logic (also used by the live "today" query).
-        var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus);
+        // Shared timezone/late/overtime logic (also used by the live "today" query). The employee's own
+        // hours override the location shift when set — same rule as at scan time.
+        var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus, workStart, workEnd);
         return new DailySummary
         {
             EmployeeId = employeeId,

@@ -149,7 +149,7 @@ public sealed class ReportQueryService : IReportQueryService
         }
 
         var employees = await employeesQuery
-            .Select(e => new { e.Id, e.FullName, e.LocationId })
+            .Select(e => new { e.Id, e.FullName, e.LocationId, e.WorkStart, e.WorkEnd })
             .ToListAsync(ct);
 
         var employeeIds = employees.Select(e => e.Id).ToList();
@@ -191,7 +191,9 @@ public sealed class ReportQueryService : IReportQueryService
                                 && !nonWorkingLocationIdSet.Contains(location.Id);
             LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
-            var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus);
+            // The employee's own hours override the location shift when set — same rule as at scan time.
+            var c = AttendanceCalculator.Compute(
+                record, location, _timeZone, isWorkingDay, noRecordStatus, e.WorkStart, e.WorkEnd);
             rows.Add(new DayAttendanceRow(
                 e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),
                 record?.CheckInAtUtc, record?.CheckOutAtUtc,

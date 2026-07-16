@@ -47,10 +47,21 @@ public static class AttendanceCalculator
     /// Status to report when nobody checked in — Absent on a working day, DayOff otherwise (or,
     /// once leave/permission exists, OnLeave/Permission — the caller decides).
     /// </param>
+    /// <param name="employeeWorkStart">
+    /// The employee's own <see cref="Employee.WorkStart"/>, when set — it overrides the location's
+    /// ShiftStart for THIS employee (staff at one location can keep different hours). Null → the
+    /// location's shift. Must mirror AttendanceController.EffectiveShiftStart, or a day would read
+    /// one way at scan time and another in the report.
+    /// </param>
+    /// <param name="employeeWorkEnd">Same as employeeWorkStart, for the shift end (overtime).</param>
     public static DayComputation Compute(
         AttendanceRecord? record, Location location, TimeZoneInfo timeZone,
-        bool isWorkingDay, DailySummaryStatus noRecordStatus)
+        bool isWorkingDay, DailySummaryStatus noRecordStatus,
+        TimeOnly? employeeWorkStart = null, TimeOnly? employeeWorkEnd = null)
     {
+        var shiftStart = employeeWorkStart ?? location.ShiftStart;
+        var shiftEnd = employeeWorkEnd ?? location.ShiftEnd;
+
         // No record → the employee never showed up (or it wasn't a working day / they were on
         // leave — whichever the caller determined via noRecordStatus).
         if (record is null || record.CheckInAtUtc is null)
@@ -67,7 +78,7 @@ public static class AttendanceCalculator
         var localCheckOut = TimeZoneInfo.ConvertTimeFromUtc(record.CheckOutAtUtc.Value, timeZone);
 
         var minutesAfterStart =
-            (TimeOnly.FromDateTime(localCheckIn).ToTimeSpan() - location.ShiftStart.ToTimeSpan()).TotalMinutes;
+            (TimeOnly.FromDateTime(localCheckIn).ToTimeSpan() - shiftStart.ToTimeSpan()).TotalMinutes;
 
         var workedMinutes = (int)Math.Round((record.CheckOutAtUtc.Value - record.CheckInAtUtc.Value).TotalMinutes);
 
@@ -84,7 +95,7 @@ public static class AttendanceCalculator
             status = DailySummaryStatus.OnTime;
         }
 
-        var overtime = (TimeOnly.FromDateTime(localCheckOut).ToTimeSpan() - location.ShiftEnd.ToTimeSpan()).TotalMinutes;
+        var overtime = (TimeOnly.FromDateTime(localCheckOut).ToTimeSpan() - shiftEnd.ToTimeSpan()).TotalMinutes;
         var overtimeMinutes = overtime > 0 ? (int)Math.Round(overtime) : 0;
 
         return new DayComputation(status, workedMinutes, lateMinutes, overtimeMinutes);
