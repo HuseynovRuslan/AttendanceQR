@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -22,8 +21,7 @@ public class DeviceChangeController : ControllerBase
     [HttpPost("request")]
     public async Task<IActionResult> Submit([FromBody] DeviceChangeRequestBody body)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var result = await _deviceChangeService.RequestAsync(

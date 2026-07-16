@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Services;
@@ -35,8 +34,7 @@ public class AdminNotificationsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
 
         var pending = await _deviceChangeService.GetPendingAsync(HttpContext.RequestAborted);
 

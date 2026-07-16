@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,8 +26,7 @@ public class AttendanceReasonController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Submit([FromBody] AttendanceReasonBody body)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var kind = (body.Kind ?? string.Empty).Trim().ToLowerInvariant();
         if (kind != "late" && kind != "early")

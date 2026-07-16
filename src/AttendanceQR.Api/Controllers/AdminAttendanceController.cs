@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
@@ -102,8 +101,7 @@ public class AdminAttendanceController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-            requesterId = Guid.Empty;
+        var requesterId = User.EmployeeId();
         await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
 
         await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
@@ -144,8 +142,7 @@ public class AdminAttendanceController : ControllerBase
         _db.AttendanceRecords.Add(record);
         await _db.SaveChangesAsync();
 
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-            requesterId = Guid.Empty;
+        var requesterId = User.EmployeeId();
         await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
 
         await _dailySummaryService.GenerateForDateAsync(request.Date, HttpContext.RequestAborted);
@@ -168,8 +165,7 @@ public class AdminAttendanceController : ControllerBase
             record.CheckOutAtUtc = null;
             await _db.SaveChangesAsync();
 
-            if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-                requesterId = Guid.Empty;
+            var requesterId = User.EmployeeId();
             await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
             await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
         }

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
@@ -483,8 +482,7 @@ public class AdminController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, [FromQuery] bool force = false)
     {
-        Guid.TryParse(User.FindFirstValue("sub"), out var requesterId);
-        if (id == requesterId)
+        if (id == User.EmployeeId())
             return BadRequest(new { error = "CannotDeleteSelf" });
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);

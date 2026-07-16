@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -32,8 +31,8 @@ public class AdminMissedCheckoutController : ControllerBase
     [HttpGet("pending")]
     public async Task<IActionResult> Pending()
     {
-        if (!TryGetCaller(out var callerId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var callerId = User.EmployeeId();
+        var role = User.Role();
 
         var ct = HttpContext.RequestAborted;
 
@@ -91,8 +90,8 @@ public class AdminMissedCheckoutController : ControllerBase
     [HttpPost("{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id)
     {
-        if (!TryGetCaller(out var callerId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var callerId = User.EmployeeId();
+        var role = User.Role();
         var ct = HttpContext.RequestAborted;
 
         var mc = await _db.MissedCheckoutRequests.FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -125,8 +124,8 @@ public class AdminMissedCheckoutController : ControllerBase
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id)
     {
-        if (!TryGetCaller(out var callerId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var callerId = User.EmployeeId();
+        var role = User.Role();
         var ct = HttpContext.RequestAborted;
 
         var mc = await _db.MissedCheckoutRequests.FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -146,11 +145,4 @@ public class AdminMissedCheckoutController : ControllerBase
         return Ok(new { status = "Rejected" });
     }
 
-    private bool TryGetCaller(out Guid callerId, out EmployeeRole role)
-    {
-        role = default;
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out callerId))
-            return false;
-        return Enum.TryParse(User.FindFirstValue("role"), out role);
-    }
 }

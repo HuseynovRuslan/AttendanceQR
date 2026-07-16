@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -52,9 +51,6 @@ public class AdminDeviceBindingController : ControllerBase
     [HttpPost("{id:guid}/revoke")]
     public async Task<IActionResult> Revoke(Guid id)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out _))
-            return Unauthorized(new { error = "InvalidToken" });
-
         var binding = await _db.DeviceBindings.FirstOrDefaultAsync(d => d.Id == id, HttpContext.RequestAborted);
         if (binding is null)
             return NotFound(new { error = "BindingNotFound" });

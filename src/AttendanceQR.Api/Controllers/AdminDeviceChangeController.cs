@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,8 +24,7 @@ public class AdminDeviceChangeController : ControllerBase
     [HttpPost("{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var adminId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var adminId = User.EmployeeId();
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var outcome = await _deviceChangeService.ApproveAsync(id, adminId, ip, HttpContext.RequestAborted);
@@ -42,8 +40,7 @@ public class AdminDeviceChangeController : ControllerBase
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var adminId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var adminId = User.EmployeeId();
 
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var outcome = await _deviceChangeService.RejectAsync(id, adminId, ip, HttpContext.RequestAborted);

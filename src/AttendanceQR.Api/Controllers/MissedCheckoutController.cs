@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -32,8 +31,7 @@ public class MissedCheckoutController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Status()
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -69,8 +67,7 @@ public class MissedCheckoutController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Submit([FromBody] MissedCheckoutRequestBody request)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         if (string.IsNullOrWhiteSpace(request.Reason))
             return BadRequest(new { error = "ReasonRequired" });

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
@@ -183,8 +182,7 @@ public partial class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId);
         if (employee is null)
@@ -216,8 +214,7 @@ public partial class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> SetInitialPin([FromBody] SetInitialPinRequest request)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId);
         if (employee is null)

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
@@ -72,8 +71,7 @@ public class AdminLeaveController : ControllerBase
         if (!await _db.Employees.AnyAsync(e => e.Id == request.EmployeeId))
             return BadRequest(new { error = "EmployeeNotFound" });
 
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
 
         var leave = new LeaveRecord
         {

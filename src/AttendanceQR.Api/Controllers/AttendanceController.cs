@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -64,8 +63,7 @@ public class AttendanceController : ControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> Me()
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var records = await _attendanceQuery.GetOwnRecordsAsync(employeeId, HttpContext.RequestAborted);
         return Ok(records);
@@ -76,8 +74,7 @@ public class AttendanceController : ControllerBase
     [HttpGet("me/profile")]
     public async Task<IActionResult> MyProfile()
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var profile = await _db.Employees
             .Where(e => e.Id == employeeId)
@@ -106,8 +103,7 @@ public class AttendanceController : ControllerBase
     [HttpPost("me/reference-photo")]
     public async Task<IActionResult> SetMyReferencePhoto([FromBody] ReferencePhotoRequest request)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, HttpContext.RequestAborted);
         if (employee is null)
@@ -130,8 +126,7 @@ public class AttendanceController : ControllerBase
     [HttpGet("me/device")]
     public async Task<IActionResult> MyDevice([FromQuery] string? fingerprint)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         var bindings = await _db.DeviceBindings
             .Where(d => d.EmployeeId == employeeId)
@@ -177,11 +172,9 @@ public class AttendanceController : ControllerBase
     [HttpGet("employee/{employeeId:guid}")]
     public async Task<IActionResult> ForEmployee(Guid employeeId)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
 
-        if (!Enum.TryParse<EmployeeRole>(User.FindFirstValue("role"), out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var role = User.Role();
 
         var (access, records) = await _attendanceQuery.GetForEmployeeAsync(
             employeeId, requesterId, role, HttpContext.RequestAborted);
@@ -199,10 +192,8 @@ public class AttendanceController : ControllerBase
     [HttpGet("{recordId:guid}/photo-url")]
     public async Task<IActionResult> PhotoUrl(Guid recordId)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var requesterId))
-            return Unauthorized(new { error = "InvalidToken" });
-        if (!Enum.TryParse<EmployeeRole>(User.FindFirstValue("role"), out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         var ct = HttpContext.RequestAborted;
 
@@ -243,8 +234,7 @@ public class AttendanceController : ControllerBase
     [HttpPost("scan-failure")]
     public async Task<IActionResult> ScanFailure([FromBody] ScanFailureRequest request)
     {
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         if (string.IsNullOrEmpty(request.Reason) || !ClientFailureReasons.Contains(request.Reason, StringComparer.Ordinal))
             return BadRequest(new { error = "UnknownReason" });
@@ -279,8 +269,7 @@ public class AttendanceController : ControllerBase
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
 
         // Identity comes from the authenticated JWT ("sub" claim), never from the body.
-        if (!Guid.TryParse(User.FindFirstValue("sub"), out var employeeId))
-            return Unauthorized(new { error = "InvalidToken" });
+        var employeeId = User.EmployeeId();
 
         // 1. QR token validity (signature/format/expiry — all server-side).
         var validation = _qrTokenService.Validate(request.QrToken);

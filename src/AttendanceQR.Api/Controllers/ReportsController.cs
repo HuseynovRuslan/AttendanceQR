@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Enums;
@@ -27,8 +26,8 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> Summary(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {
-        if (!TryGetCaller(out var requesterId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         var (access, report) = await _reports.GetSummaryAsync(
             from, to, locationId, requesterId, role, HttpContext.RequestAborted);
@@ -43,8 +42,8 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> Export(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {
-        if (!TryGetCaller(out var requesterId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         // Same scope path as the JSON summary — export can't sidestep it.
         var (access, report) = await _reports.GetSummaryAsync(
@@ -62,8 +61,8 @@ public class ReportsController : ControllerBase
     [HttpGet("my-locations")]
     public async Task<IActionResult> MyLocations()
     {
-        if (!TryGetCaller(out var requesterId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         var locations = await _reports.GetVisibleLocationsAsync(requesterId, role, HttpContext.RequestAborted);
         return Ok(locations);
@@ -74,8 +73,8 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> Dashboard(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {
-        if (!TryGetCaller(out var requesterId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         var (access, report) = await _reports.GetDashboardAsync(
             from, to, locationId, requesterId, role, HttpContext.RequestAborted);
@@ -91,8 +90,8 @@ public class ReportsController : ControllerBase
     [HttpGet("today")]
     public async Task<IActionResult> Today([FromQuery] DateOnly? date)
     {
-        if (!TryGetCaller(out var requesterId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         var rows = await _reports.GetTodayAttendanceAsync(requesterId, role, date, HttpContext.RequestAborted);
         return Ok(rows);
@@ -104,9 +103,6 @@ public class ReportsController : ControllerBase
     [HttpPost("export-day")]
     public IActionResult ExportDay([FromBody] ExportDayRequest request)
     {
-        if (!TryGetCaller(out _, out _))
-            return Unauthorized(new { error = "InvalidToken" });
-
         var data = request.Rows ?? [];
         if (data.Count > 5000)
             return BadRequest(new { error = "TooManyRows" });
@@ -172,8 +168,8 @@ public class ReportsController : ControllerBase
     [HttpGet("problems")]
     public async Task<IActionResult> Problems([FromQuery] DateOnly date)
     {
-        if (!TryGetCaller(out var requesterId, out var role))
-            return Unauthorized(new { error = "InvalidToken" });
+        var requesterId = User.EmployeeId();
+        var role = User.Role();
 
         var (access, report) = await _reports.GetProblemsAsync(date, requesterId, role, HttpContext.RequestAborted);
 
@@ -183,10 +179,4 @@ public class ReportsController : ControllerBase
         return Ok(report);
     }
 
-    private bool TryGetCaller(out Guid id, out EmployeeRole role)
-    {
-        role = default;
-        return Guid.TryParse(User.FindFirstValue("sub"), out id)
-               && Enum.TryParse(User.FindFirstValue("role"), out role);
-    }
 }
