@@ -21,35 +21,37 @@ public sealed class MemoryCacheLoginLockoutStore : ILoginLockoutStore
 
     public MemoryCacheLoginLockoutStore(IMemoryCache cache) => _cache = cache;
 
-    public bool IsLockedOut(string email) => _cache.TryGetValue(LockKey(email), out _);
+    public bool IsLockedOut(string key) => _cache.TryGetValue(LockKey(key), out _);
 
-    public void RecordFailure(string email)
+    public void RecordFailure(string key)
     {
         lock (_gate)
         {
-            var key = FailureKey(email);
-            var count = _cache.TryGetValue(key, out int existing) ? existing : 0;
+            var failureKey = FailureKey(key);
+            var count = _cache.TryGetValue(failureKey, out int existing) ? existing : 0;
             count++;
 
             if (count >= MaxAttempts)
             {
-                _cache.Set(LockKey(email), true, LockoutDuration);
-                _cache.Remove(key);
+                _cache.Set(LockKey(key), true, LockoutDuration);
+                _cache.Remove(failureKey);
             }
             else
             {
-                _cache.Set(key, count, FailureWindow);
+                _cache.Set(failureKey, count, FailureWindow);
             }
         }
     }
 
-    public void RecordSuccess(string email)
+    public void RecordSuccess(string key)
     {
-        _cache.Remove(FailureKey(email));
-        _cache.Remove(LockKey(email));
+        _cache.Remove(FailureKey(key));
+        _cache.Remove(LockKey(key));
     }
 
-    private static string Normalize(string email) => email.Trim().ToLowerInvariant();
-    private static string FailureKey(string email) => FailurePrefix + Normalize(email);
-    private static string LockKey(string email) => LockPrefix + Normalize(email);
+    // Defensive only — the caller is responsible for canonicalizing the account identity (see the
+    // interface docs). Lowercasing here cannot merge "0501234567" and "+994 50 123 45 67".
+    private static string Normalize(string key) => key.Trim().ToLowerInvariant();
+    private static string FailureKey(string key) => FailurePrefix + Normalize(key);
+    private static string LockKey(string key) => LockPrefix + Normalize(key);
 }

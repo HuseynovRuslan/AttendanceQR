@@ -144,8 +144,11 @@ public partial class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         // A 4-digit PIN is only 10,000 combinations — without this, an unthrottled attacker could
-        // exhaust the whole space in seconds. Checked before touching the DB/hasher.
-        if (_lockoutStore.IsLockedOut(request.Email))
+        // exhaust the whole space in seconds. Checked before touching the DB/hasher, so the key has
+        // to be derived from the input alone — LoginIdentity canonicalizes it the same way the
+        // account lookup below does, so every spelling of one number spends ONE budget.
+        var lockoutKey = LoginIdentity.LockoutKey(_db.CurrentTenantId, request.Email);
+        if (_lockoutStore.IsLockedOut(lockoutKey))
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "TooManyAttempts" });
 
         // The identifier field carries an email OR a phone number — match either.
@@ -168,11 +171,11 @@ public partial class AuthController : ControllerBase
         // Identical response for every failure mode (unknown email, wrong password, inactive…).
         if (!canLogin)
         {
-            _lockoutStore.RecordFailure(request.Email);
+            _lockoutStore.RecordFailure(lockoutKey);
             return Unauthorized(new { error = "InvalidCredentials" });
         }
 
-        _lockoutStore.RecordSuccess(request.Email);
+        _lockoutStore.RecordSuccess(lockoutKey);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
 

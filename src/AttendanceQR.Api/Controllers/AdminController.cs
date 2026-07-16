@@ -568,14 +568,13 @@ public class AdminController : ControllerBase
         employee.TokenVersion++;         // kill any session still holding the old PIN's token
         await _db.SaveChangesAsync();
 
-        // Clear the lockout under every identifier they might have typed (the store keys by the raw
-        // string, so a phone with and without the leading 0 are distinct buckets).
-        _lockout.RecordSuccess(employee.Email);
+        // Clear the lockout for both identifiers they can log in with. No longer needs to guess at
+        // spellings ("0"+phone, +994…): LoginIdentity collapses every spelling of a number onto one
+        // key, which is the same key Login would have locked.
+        var tenantId = _db.CurrentTenantId;
+        _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
         if (employee.PhoneNumber is not null)
-        {
-            _lockout.RecordSuccess(employee.PhoneNumber);
-            _lockout.RecordSuccess("0" + employee.PhoneNumber);
-        }
+            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
 
         return Ok(new { tempPin = pin });
     }
