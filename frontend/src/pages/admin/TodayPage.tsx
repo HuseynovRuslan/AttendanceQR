@@ -244,14 +244,17 @@ export function TodayPage() {
         <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
           <div className="stat-val">{counts.dayOff}</div>
+          <div className="stat-sub">Bu gün iş günü deyil</div>
         </div>
         <div className="stat-card purple" style={cardStyle('onLeave')} onClick={() => toggleStatus('onLeave')}>
           <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
           <div className="stat-val">{counts.onLeave}</div>
+          <div className="stat-sub">Təsdiqlənmiş məzuniyyətdədir</div>
         </div>
         <div className="stat-card" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
           <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
           <div className="stat-val">{counts.permission}</div>
+          <div className="stat-sub">Təsdiqlənmiş icazəlidir</div>
         </div>
       </div>
       {statusFilter && (

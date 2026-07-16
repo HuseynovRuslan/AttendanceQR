@@ -135,6 +135,7 @@ export function DashboardPage() {
         <div className="stat-card leaf">
           <div className="stat-lbl">Ümumi işçi</div>
           <div className="stat-val">{total}</div>
+          <div className="stat-sub">Bütün aktiv işçilər</div>
         </div>
         <div className="stat-card blue">
           <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
@@ -154,14 +155,17 @@ export function DashboardPage() {
         <div className="stat-card purple">
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
           <div className="stat-val">{counts.dayOff}</div>
+          <div className="stat-sub">Bu gün iş günü deyil</div>
         </div>
         <div className="stat-card purple">
           <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
           <div className="stat-val">{counts.onLeave}</div>
+          <div className="stat-sub">Təsdiqlənmiş məzuniyyətdədir</div>
         </div>
         <div className="stat-card">
           <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
           <div className="stat-val">{counts.permission}</div>
+          <div className="stat-sub">Təsdiqlənmiş icazəlidir</div>
         </div>
       </div>
 
@@ -254,14 +258,17 @@ export function DashboardPage() {
             <div className="stat-card leaf">
               <div className="stat-lbl">Toplam girişlər</div>
               <div className="stat-val">{dashReport.totalCheckIns}</div>
+              <div className="stat-sub">Seçilmiş dövrdə bütün giriş sayı</div>
             </div>
             <div className="stat-card blue">
               <div className="stat-lbl">Toplam çıxışlar</div>
               <div className="stat-val">{dashReport.totalCheckOuts}</div>
+              <div className="stat-sub">Seçilmiş dövrdə bütün çıxış sayı</div>
             </div>
             <div className="stat-card clay">
               <div className="stat-lbl">Qayıblar</div>
               <div className="stat-val">{dashReport.absentCount}</div>
+              <div className="stat-sub">Heç giriş edilməyən iş günləri</div>
             </div>
             <div className="stat-card blue">
               <div className="stat-lbl">Çıxışı unudulan günlər</div>
@@ -271,30 +278,37 @@ export function DashboardPage() {
             <div className="stat-card purple">
               <div className="stat-lbl">İstirahət</div>
               <div className="stat-val">{dashReport.dayOffCount}</div>
+              <div className="stat-sub">İş günü olmayan günlər</div>
             </div>
             <div className="stat-card purple">
               <div className="stat-lbl">Məzuniyyət</div>
               <div className="stat-val">{dashReport.leaveCount}</div>
+              <div className="stat-sub">Təsdiqlənmiş məzuniyyət günləri</div>
             </div>
             <div className="stat-card">
               <div className="stat-lbl">İcazə</div>
               <div className="stat-val">{dashReport.permissionCount}</div>
+              <div className="stat-sub">Təsdiqlənmiş icazə günləri</div>
             </div>
             <div className="stat-card leaf">
               <div className="stat-lbl">İşlənən saat</div>
               <div className="stat-val">{dashReport.totalWorkedHours}</div>
+              <div className="stat-sub">Bütün işçilərin cəm iş saatı</div>
             </div>
             <div className="stat-card amber">
               <div className="stat-lbl">Overtime saat</div>
               <div className="stat-val">{dashReport.overtimeHours}</div>
+              <div className="stat-sub">Şift bitimindən sonra işlənən saat</div>
             </div>
             <div className="stat-card clay">
               <div className="stat-lbl">Koordinat xarici</div>
               <div className="stat-val">{dashReport.outsideRadiusCount}</div>
+              <div className="stat-sub">Ərazidən kənarda edilən skan sayı</div>
             </div>
             <div className="stat-card leaf">
               <div className="stat-lbl">Aktiv cihazlar</div>
               <div className="stat-val">{dashReport.activeDeviceCount}</div>
+              <div className="stat-sub">Hazırda bağlı olan cihaz sayı</div>
             </div>
           </div>
 
@@ -323,14 +337,6 @@ export function DashboardPage() {
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.checkInOutRatio}%</span>
                 <span className="muted">Koordinat xarici faizi</span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.outsideRadiusRate}%</span>
-                <span className="muted">
-                  Gündəlik orta giriş+çıxış sayı
-                  <br />
-                  <span style={{ fontSize: 11, color: 'var(--c400)' }}>
-                    (seçilmiş dövrdə gündə orta hesabla neçə skan qeydə alınıb)
-                  </span>
-                </span>
-                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.avgDailyOperations}</span>
               </div>
             </div>
           </div>
