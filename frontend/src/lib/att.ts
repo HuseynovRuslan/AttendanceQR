@@ -1,25 +1,10 @@
 import type { AttendanceRecord } from '../api/attendance'
 
+// Attendance-domain helpers. The time/date formatters that used to live here moved to lib/format.ts,
+// where someone looking for a time formatter can actually find them.
+
 export function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
-}
-
-export function fmtTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' }) : '—'
-}
-
-export function fmtDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${d}.${m}.${y}`
-}
-
-export function minutesBetween(aIso: string, bIso: string): number {
-  return Math.round((new Date(bIso).getTime() - new Date(aIso).getTime()) / 60_000)
-}
-
-export function fmtDuration(startIso: string, endIso: string): string {
-  const m = Math.max(0, minutesBetween(startIso, endIso))
-  return `${Math.floor(m / 60)} saat ${m % 60} dəqiqə`
 }
 
 export function firstName(fullName: string | null | undefined): string {

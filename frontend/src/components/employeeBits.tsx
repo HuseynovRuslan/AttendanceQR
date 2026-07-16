@@ -1,6 +1,6 @@
 import type { AttendanceRecord } from '../api/attendance'
 import { RecordBadge } from './StatusBadge'
-import { fmtDate, fmtDuration, fmtTime } from '../lib/att'
+import { fmtDate, fmtDuration, fmtTime } from '../lib/format'
 
 /** One attendance record row — shared by Home, Statistics and history lists. */
 export function HistoryRow({ r }: { r: AttendanceRecord }) {

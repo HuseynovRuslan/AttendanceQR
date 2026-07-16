@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getMyAttendance, getMySummary, type AttendanceRecord } from '../api/attendance'
 import { STATUS_MAP } from '../components/StatusBadge'
 import { EmployeeNav } from '../components/EmployeeNav'
+import { fmtDate, fmtDuration, fmtTime } from '../lib/format'
 
 const STATUS_TONE: Record<string, string> = {
   OnTime: 'bg-green-500/20 text-green-400',
@@ -85,18 +86,3 @@ export function HistoryPage() {
   )
 }
 
-function fmtDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${d}.${m}.${y}`
-}
-
-function fmtTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' }) : '—'
-}
-
-function fmtDuration(startIso: string, endIso: string): string {
-  const minutes = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000)
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${h} saat ${m} dəqiqə`
-}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { adminUpdateRecord, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
+import { fmtDate, fmtTime } from '../../lib/format'
 
 // datetime-local <-> ISO, matching EmployeesPage. The input reads/writes the admin's local time; the
 // wire is always UTC ISO.
@@ -16,15 +17,6 @@ function defaultCheckout(checkInIso: string): string {
   const d = new Date(checkInIso)
   d.setHours(18, 0, 0, 0)
   return toLocalInput(d)
-}
-
-function fmtDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${d}.${m}.${y}`
-}
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
 }
 
 export function OpenRecordsPage() {

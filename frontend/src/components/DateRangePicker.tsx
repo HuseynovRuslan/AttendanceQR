@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { IconCalendar } from './icons'
+import { fmtDate } from '../lib/format'
 
 // Manual selection is capped at ~3 months so a report can't be pointed at the entire history by
 // accident (and the query stays fast). Presets below never exceed this on their own.
@@ -11,11 +12,6 @@ function toIso(d: Date): string {
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 86_400_000)
 }
-function fmtDisplay(iso: string): string {
-  const [y, m, d] = iso.split('-')
-  return `${d}.${m}.${y}`
-}
-
 function buildPresets(): { key: string; label: string; from: string; to: string }[] {
   const today = new Date()
   const todayIso = toIso(today)
@@ -99,7 +95,7 @@ export function DateRangePicker({
         onClick={() => setOpen((v) => !v)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minWidth: 230, cursor: 'pointer' }}
       >
-        <span className="mono">{fmtDisplay(from)} – {fmtDisplay(to)}</span>
+        <span className="mono">{fmtDate(from)} – {fmtDate(to)}</span>
         <IconCalendar style={{ width: 15, height: 15, color: 'var(--c400)', flexShrink: 0 }} />
       </button>
 

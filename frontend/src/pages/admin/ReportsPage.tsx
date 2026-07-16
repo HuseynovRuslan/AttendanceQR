@@ -8,21 +8,13 @@ import {
   type LocationDto,
 } from '../../api/admin'
 import { IconDownload, IconX } from '../../components/icons'
+import { fmtHM } from '../../lib/format'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 
 // Worked/overtime come as decimal hours (e.g. 0.32 = ~19 min, 8.53 = 8 s 32 dəq). A bare "0.32" reads
 // like minutes and confuses everyone — show real "saat/dəq" instead.
-function fmtHM(hours: number): string {
-  const totalMin = Math.round((hours || 0) * 60)
-  if (totalMin === 0) return '—'
-  const h = Math.floor(totalMin / 60)
-  const m = totalMin % 60
-  if (h === 0) return `${m} dəq`
-  return m === 0 ? `${h} saat` : `${h} saat ${m} dəq`
-}
-
 export function ReportsPage() {
   const [from, setFrom] = useState(daysAgoIso(29))
   const [to, setTo] = useState(todayIso())

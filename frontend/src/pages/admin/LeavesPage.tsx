@@ -3,6 +3,7 @@ import { EmployeeLink } from '../../components/EmployeeLink'
 import { addLeave, deleteLeave, getLeaves, type LeaveRecord, type LeaveType } from '../../api/leaves'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
+import { fmtDate } from '../../lib/format'
 
 const ERRORS: Record<string, string> = {
   DateRangeInvalid: 'Bitmə tarixi başlanğıcdan əvvəl ola bilməz',
@@ -193,7 +194,3 @@ export function LeavesPage() {
   )
 }
 
-function fmtDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${d}.${m}.${y}`
-}

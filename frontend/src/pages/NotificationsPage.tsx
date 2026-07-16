@@ -3,7 +3,7 @@ import type { ComponentType, SVGProps } from 'react'
 import { getMyAttendance, type AttendanceRecord } from '../api/attendance'
 import { EmptyCard, SkeletonList } from '../components/employeeBits'
 import { IconCheck, IconLogout } from '../components/icons'
-import { fmtDate, fmtTime } from '../lib/att'
+import { fmtDate, fmtTime } from '../lib/format'
 
 // No 'late': a check-in is a check-in. Every employee keeps their own hours, so a location-wide
 // shift cannot say who was late — telling someone they were is simply wrong.

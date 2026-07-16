@@ -11,15 +11,12 @@ import {
 } from '../../api/admin'
 import { usePolling } from '../../lib/usePolling'
 import { IconCheck, IconPhone, IconTrash, IconX } from '../../components/icons'
+import { fmtDateTime } from '../../lib/format'
 
 const ORIGIN: Record<DeviceBinding['boundVia'], { label: string; cls: string }> = {
   Activation: { label: 'Aktivləşdirmə', cls: 'bg-slate-100 text-slate-600' },
   AdminApproval: { label: 'Admin təsdiqi', cls: 'bg-blue-100 text-blue-700' },
   AutoBind: { label: 'Avtomatik', cls: 'bg-amber-100 text-amber-700' },
-}
-
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleString('az-AZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 export function DeviceChangesPage() {
@@ -187,8 +184,8 @@ function BoundDevices() {
                     {ORIGIN[b.boundVia].label}
                   </span>
                 </td>
-                <td className="mono">{fmt(b.boundAtUtc)}</td>
-                <td className="mono">{fmt(b.lastSeenAtUtc)}</td>
+                <td className="mono">{fmtDateTime(b.boundAtUtc)}</td>
+                <td className="mono">{fmtDateTime(b.lastSeenAtUtc)}</td>
                 <td style={{ textAlign: 'right' }}>
                   <button className="btn btn-danger btn-sm" disabled={busyId === b.id} onClick={() => revoke(b)}>
                     <IconTrash /> Ləğv et

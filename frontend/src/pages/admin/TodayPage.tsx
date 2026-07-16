@@ -6,6 +6,7 @@ import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
 import { IconCamera, IconX } from '../../components/icons'
+import { fmtTime } from '../../lib/format'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -359,6 +360,3 @@ export function TodayPage() {
   )
 }
 
-function fmtTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' }) : '—'
-}

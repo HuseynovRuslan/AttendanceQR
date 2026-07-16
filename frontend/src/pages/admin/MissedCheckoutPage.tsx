@@ -6,19 +6,7 @@ import {
   type MissedCheckoutPending,
 } from '../../api/admin'
 import { IconCheck, IconX } from '../../components/icons'
-
-const AZ_MONTHS = [
-  'yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt', 'noy', 'dek',
-]
-
-function fmtDate(dateOnly: string): string {
-  const d = new Date(`${dateOnly}T00:00:00`)
-  return `${d.getDate()} ${AZ_MONTHS[d.getMonth()] ?? ''}`
-}
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
-}
+import { fmtDayMonth, fmtTime } from '../../lib/format'
 
 export function MissedCheckoutPage() {
   const [rows, setRows] = useState<MissedCheckoutPending[]>([])
@@ -74,7 +62,7 @@ export function MissedCheckoutPage() {
                     {r.employeeName}
                     <div className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{r.locationName}</div>
                   </td>
-                  <td>{fmtDate(r.attendanceDate)}</td>
+                  <td>{fmtDayMonth(r.attendanceDate)}</td>
                   <td className="mono" style={{ fontWeight: 700 }}>{fmtTime(r.requestedCheckOutAtUtc)}</td>
                   <td style={{ maxWidth: 220 }}>{r.reason}</td>
                   <td>

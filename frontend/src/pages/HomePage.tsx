@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { getMyAttendance, getMyProfile, type AttendanceRecord, type MyProfile } from '../api/attendance'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
-import { fmtDuration, fmtTime, firstName, initials, todayState, type TodayState } from '../lib/att'
+import { firstName, initials, todayState, type TodayState } from '../lib/att'
+import { fmtDuration, fmtTime } from '../lib/format'
 
 export function HomePage() {
   const navigate = useNavigate()

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { addNonWorkingDay, deleteNonWorkingDay, getNonWorkingDays, type NonWorkingDay } from '../../api/calendar'
 import { getAdminLocations, type AdminLocation } from '../../api/admin'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
+import { fmtDate } from '../../lib/format'
 
 const ERRORS: Record<string, string> = {
   DescriptionRequired: 'Təsvir tələb olunur',
@@ -156,7 +157,3 @@ export function NonWorkingDaysPage() {
   )
 }
 
-function fmtDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-')
-  return `${d}.${m}.${y}`
-}

@@ -14,6 +14,7 @@ import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
+import { fmtTime } from '../lib/format'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -433,7 +434,7 @@ export function ScanPage() {
         setResult({
           tone: 'green',
           title: 'Giriş qeydə alındı',
-          detail: `Saat ${fmtTime(data.checkInAtUtc)}`,
+          detail: `Saat ${fmtTime(data.checkInAtUtc, '')}`,
           note: 'İş bitəndə çıxış üçün yenidən skan edin.',
           // Just tell them they were late (vs their own hours, else the location's) — no reason asked.
           warn: data.late ? 'Gecikdiniz' : undefined,
@@ -447,7 +448,7 @@ export function ScanPage() {
         setResult({
           tone: 'green',
           title: 'Çıxış qeydə alındı',
-          detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc)}`,
+          detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc, '')}`,
           note: 'Sabaha qədər!',
           warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
           final: true,
@@ -486,7 +487,7 @@ export function ScanPage() {
             <div className="text-6xl font-bold mb-3">✓</div>
             <h2 className="text-xl font-bold">Bu gün tamamlandı</h2>
             <p className="mt-2 text-base opacity-90">
-              {fmtTime(today.checkInAtUtc)} – {fmtTime(today.checkOutAtUtc)}
+              {fmtTime(today.checkInAtUtc, '')} – {fmtTime(today.checkOutAtUtc, '')}
               {' · '}
               {formatDuration(minutesBetween(today.checkInAtUtc, today.checkOutAtUtc))}
             </p>
@@ -653,7 +654,7 @@ function TodayBanner({ today }: { today: TodayInfo }) {
       {today.kind === 'none' && 'Bu gün hələ giriş etməmisiniz'}
       {today.kind === 'in-progress' && (
         <>
-          Giriş: <b>{fmtTime(today.checkInAtUtc)}</b> — hələ çıxış etməmisiniz
+          Giriş: <b>{fmtTime(today.checkInAtUtc, '')}</b> — hələ çıxış etməmisiniz
         </>
       )}
     </div>
@@ -805,11 +806,6 @@ function releaseReaderTracks() {
   const video = document.getElementById(READER_ID)?.querySelector('video') as HTMLVideoElement | null
   const stream = video?.srcObject as MediaStream | null
   stream?.getTracks().forEach((t) => t.stop())
-}
-
-function fmtTime(iso?: string): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
 }
 
 function delay(ms: number): Promise<void> {

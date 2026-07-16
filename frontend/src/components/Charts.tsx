@@ -1,3 +1,4 @@
+import { fmtShortDate } from '../lib/format'
 // Hand-rolled, dependency-free SVG charts — no charting library, keeps bundle size down. Two
 // series (check-ins / check-outs) rendered consistently across both chart types.
 const WEEKDAY_LABELS = ['Bazar', 'B.e', 'Ç.a', 'Çər', 'C.a', 'Cümə', 'Şən']
@@ -15,11 +16,6 @@ export function ChartLegend() {
       </span>
     </div>
   )
-}
-
-function fmtShortDate(dateStr: string): string {
-  const [, m, d] = dateStr.split('-')
-  return `${d}.${m}`
 }
 
 interface TrendPoint {

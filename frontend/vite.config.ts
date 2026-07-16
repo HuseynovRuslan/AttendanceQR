@@ -25,4 +25,12 @@ export default defineConfig({
     // it was turned off is gone).
     minify: 'esbuild',
   },
+  test: {
+    environment: 'node',
+    // Pin the clock's zone. The formatters turn UTC instants into local wall-clock time, so their
+    // tests assert Baku times — which would fail on any machine that is not UTC+4 (a CI box in UTC,
+    // a laptop abroad). Everyone who uses this app is in Baku; the tests should say so out loud
+    // rather than depend on where they happen to run.
+    env: { TZ: 'Asia/Baku' },
+  },
 })

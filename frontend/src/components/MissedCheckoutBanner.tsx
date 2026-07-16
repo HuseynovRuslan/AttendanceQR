@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getMissedCheckoutStatus, type MissedCheckoutStatusResp } from '../api/attendance'
-
-const AZ_MONTHS = [
-  'yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun',
-  'iyul', 'avqust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr',
-]
-
-function fmtDate(dateOnly: string): string {
-  const d = new Date(`${dateOnly}T00:00:00`)
-  return `${d.getDate()} ${AZ_MONTHS[d.getMonth()] ?? ''}`
-}
+import { fmtDayMonth } from '../lib/format'
 
 /**
  * Red, information-only alert for a day the employee forgot to scan out. Deliberately NOT actionable:
@@ -39,7 +30,7 @@ export function MissedCheckoutBanner() {
         <div className="min-w-0 flex-1">
           <div className="font-bold text-red-800">Çıxış qeyd olunmayıb</div>
           <div className="mt-0.5 text-sm text-red-700">
-            {fmtDate(status.openDay.attendanceDate)} — çıxış etməyi unutmusunuz. Növbəti dəfə çıxışı skan etməyi
+            {fmtDayMonth(status.openDay.attendanceDate)} — çıxış etməyi unutmusunuz. Növbəti dəfə çıxışı skan etməyi
             unutmayın.
           </div>
         </div>

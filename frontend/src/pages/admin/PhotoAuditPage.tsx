@@ -10,6 +10,7 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge } from '../../components/FaceFlagBadge'
 import { IconCamera, IconX } from '../../components/icons'
+import { fmtDateOfInstant, fmtTime } from '../../lib/format'
 
 interface EmpOption {
   id: string
@@ -108,7 +109,7 @@ export function PhotoAuditPage() {
       return
     }
     setModal({
-      title: `${selectedEmployee?.name ?? ''} — ${fmtDate(record.attendanceDate)}`,
+      title: `${selectedEmployee?.name ?? ''} — ${fmtDateOfInstant(record.attendanceDate)}`,
       photo: data,
     })
   }
@@ -211,7 +212,7 @@ export function PhotoAuditPage() {
             <tbody>
               {records.map((r) => (
                 <tr key={r.recordId}>
-                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{fmtDate(r.attendanceDate)}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{fmtDateOfInstant(r.attendanceDate)}</td>
                   <td>
                     <StatusBadge status={r.status} />
                   </td>
@@ -262,10 +263,3 @@ function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-
-function fmtTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' }) : '—'
-}

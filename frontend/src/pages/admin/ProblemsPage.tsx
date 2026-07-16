@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { getProblems, type ProblemsReport } from '../../api/admin'
 import { IconX } from '../../components/icons'
+import { fmtTime } from '../../lib/format'
 
 /** Reason → human label + colour. `blocking` = the employee genuinely could NOT check in/out. */
 const REASON: Record<string, { label: string; cls: string; blocking?: boolean }> = {
@@ -41,10 +42,6 @@ function todayLocal(): string {
   const d = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
 }
 
 export function ProblemsPage() {

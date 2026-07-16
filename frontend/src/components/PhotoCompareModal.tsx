@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { IconX } from './icons'
 import { FaceFlagBadge } from './FaceFlagBadge'
+import { fmtTime } from '../lib/format'
 
 interface PhotoCompareModalProps {
   /** Header line, e.g. "Ad Soyad — 08.07.2026". */
@@ -120,6 +121,3 @@ function PhotoCell({ caption, url, emptyText, alt }: { caption: string; url: str
   )
 }
 
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
-}

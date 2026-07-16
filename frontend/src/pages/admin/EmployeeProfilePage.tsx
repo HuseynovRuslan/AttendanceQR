@@ -16,7 +16,8 @@ import {
 import { getEmployeeAttendance, getPhotoUrl } from '../../api/attendance'
 import type { AttendanceRecord } from '../../api/attendance'
 import { RecordBadge } from '../../components/StatusBadge'
-import { fmtDate, fmtDuration, fmtTime, initials } from '../../lib/att'
+import { initials } from '../../lib/att'
+import { fmtDate, fmtDuration, fmtTime } from '../../lib/format'
 import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
