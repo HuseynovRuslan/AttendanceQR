@@ -147,6 +147,50 @@ public class AdminController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Resolves one row's branch and role: the row's own if it names them, otherwise the batch's.
+    /// A spreadsheet carries a branch NAME, so it is matched against this tenant's branches — case
+    /// and surrounding space are the typist's business, not theirs to get exactly right. A name that
+    /// matches nothing fails that row alone rather than silently landing the person somewhere else.
+    /// </summary>
+    private static (Guid LocationId, EmployeeRole Role, string? Error) ResolveRowScope(
+        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid> locationsByName)
+    {
+        var locationId = batchLocationId;
+        if (!string.IsNullOrWhiteSpace(row.LocationName))
+        {
+            if (!locationsByName.TryGetValue(row.LocationName.Trim(), out var found))
+                return (default, default, "LocationNotFound");
+            locationId = found;
+        }
+
+        var role = batchRole;
+        if (!string.IsNullOrWhiteSpace(row.RoleName))
+        {
+            var parsed = ParseRoleName(row.RoleName);
+            if (parsed is null)
+                return (default, default, "RoleNotRecognised");
+            role = parsed.Value;
+        }
+
+        return (locationId, role, null);
+    }
+
+    /// <summary>Accepts what an admin actually types in a spreadsheet — the Azerbaijani labels the UI
+    /// shows them, or the English enum names. Null when it is neither.</summary>
+    private static EmployeeRole? ParseRoleName(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "işçi" or "isci" or "employee" => EmployeeRole.Employee,
+        "menecer" or "manager" => EmployeeRole.Manager,
+        "admin" => EmployeeRole.Admin,
+        _ => null,
+    };
+
+    private async Task<Dictionary<string, Guid>> LocationsByNameAsync(CancellationToken ct) =>
+        (await _db.Locations.Select(l => new { l.Id, l.Name }).ToListAsync(ct))
+        .GroupBy(l => l.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+
     // POST /api/admin/employees/bulk-invite — add many employees at once (one shared location + role).
     // Each row is validated on its own: a duplicate phone or missing name is reported back in `failed`
     // without blocking the others. All the good rows are saved in a single transaction.
@@ -161,14 +205,22 @@ public class AdminController : ControllerBase
             return BadRequest(new { error = "LocationNotFound" });
 
         var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
+        var locationsByName = await LocationsByNameAsync(HttpContext.RequestAborted);
         var created = new List<object>();
         var failed = new List<object>();
 
         foreach (var row in request.Rows)
         {
+            var (rowLocationId, rowRole, scopeError) = ResolveRowScope(row, request.LocationId, request.Role, locationsByName);
+            if (scopeError is not null)
+            {
+                failed.Add(new { fullName = row.FullName, error = scopeError });
+                continue;
+            }
+
             var (employee, token, error) = BuildInvite(
-                row.FullName, row.Email, row.PhoneNumber, fatherName: null, row.Position, birthYear: null,
-                request.LocationId, request.Role, takenEmails, takenPhones);
+                row.FullName, row.Email, row.PhoneNumber, row.FatherName, row.Position, row.BirthYear,
+                rowLocationId, rowRole, takenEmails, takenPhones);
 
             if (error is not null)
             {
@@ -208,14 +260,22 @@ public class AdminController : ControllerBase
             return BadRequest(new { error = "LocationNotFound" });
 
         var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
+        var locationsByName = await LocationsByNameAsync(HttpContext.RequestAborted);
         var created = new List<object>();
         var failed = new List<object>();
 
         foreach (var row in request.Rows)
         {
+            var (rowLocationId, rowRole, scopeError) = ResolveRowScope(row, request.LocationId, request.Role, locationsByName);
+            if (scopeError is not null)
+            {
+                failed.Add(new { fullName = row.FullName, error = scopeError });
+                continue;
+            }
+
             var (employee, tempPin, error) = BuildActivatedWithTempPin(
-                row.FullName, row.Email, row.PhoneNumber, row.Position,
-                request.LocationId, request.Role, takenEmails, takenPhones);
+                row.FullName, row.Email, row.PhoneNumber, row.FatherName, row.Position, row.BirthYear,
+                rowLocationId, rowRole, takenEmails, takenPhones);
 
             if (error is not null)
             {
@@ -239,9 +299,27 @@ public class AdminController : ControllerBase
         return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
     }
 
+    /// <summary>The header text this importer understands, per field. Several spellings each, because
+    /// the file comes back from a person who may have retyped the header or kept an older template.</summary>
+    private static readonly (string Field, string[] Headers)[] XlsxColumns =
+    [
+        ("fullName", ["ad soyad", "ad, soyad", "adı soyadı", "ad", "full name", "fullname"]),
+        ("phoneNumber", ["telefon", "telefon nömrəsi", "nömrə", "phone"]),
+        ("position", ["vəzifə", "vezife", "position"]),
+        ("fatherName", ["ata adı", "ata adi", "atasının adı", "father"]),
+        ("birthYear", ["təvəllüd ili", "təvəllüd", "tevellud", "doğum ili", "birth year", "birthyear"]),
+        ("email", ["email", "e-mail", "poçt", "e-poçt"]),
+        ("roleName", ["rol", "role"]),
+        ("locationName", ["filial", "ərazi", "lokasiya", "location", "branch"]),
+    ];
+
     // POST /api/admin/employees/parse-xlsx — read an uploaded .xlsx and return its rows so the admin can
-    // review, then import, them. First sheet, columns A=Ad Soyad, B=Telefon, C=Vəzifə. A header row (a
-    // first row whose telefon cell has letters but no digits) is skipped. Parsing only — creates nothing.
+    // review, then import, them. Parsing only — creates nothing.
+    //
+    // Columns are found by their HEADER TEXT, not their position. That is what lets an older
+    // three-column file (Ad Soyad · Telefon · Vəzifə) still import correctly after the template grew
+    // to eight: by position, its phone column would have landed in "Ata adı" — silently, and the
+    // import would have looked like it worked. It also means the admin may reorder or delete columns.
     [HttpPost("parse-xlsx")]
     [RequestSizeLimit(5 * 1024 * 1024)]
     public IActionResult ParseXlsx(IFormFile? file)
@@ -258,29 +336,59 @@ public class AdminController : ControllerBase
             if (ws is null)
                 return BadRequest(new { error = "EmptyFile" });
 
-            var first = true;
-            foreach (var row in ws.RowsUsed())
-            {
-                var fullName = row.Cell(1).GetString().Trim();
-                var phone = row.Cell(2).GetString().Trim();
-                var position = row.Cell(3).GetString().Trim();
+            var used = ws.RowsUsed().ToList();
+            if (used.Count == 0)
+                return Ok(new { rows });
 
-                // Drop a header row: the very first row whose telefon cell has content but no digits.
-                if (first)
-                {
-                    first = false;
-                    if (!string.IsNullOrEmpty(phone) && !phone.Any(char.IsDigit))
-                        continue;
-                }
+            // Map field -> column number from the header row.
+            var map = new Dictionary<string, int>();
+            var headerRow = used[0];
+            foreach (var cell in headerRow.CellsUsed())
+            {
+                var text = cell.GetString().Trim().ToLowerInvariant();
+                var match = XlsxColumns.FirstOrDefault(c => c.Headers.Contains(text));
+                if (match.Field is not null && !map.ContainsKey(match.Field))
+                    map[match.Field] = cell.Address.ColumnNumber;
+            }
+
+            // No recognisable header (someone deleted it, or typed their own): fall back to the
+            // original positional layout, which is what every file predating this change looks like.
+            var hasHeader = map.ContainsKey("fullName");
+            if (!hasHeader)
+                map = new Dictionary<string, int> { ["fullName"] = 1, ["phoneNumber"] = 2, ["position"] = 3 };
+
+            string? Get(IXLRow row, string field)
+            {
+                if (!map.TryGetValue(field, out var col)) return null;
+                var v = row.Cell(col).GetString().Trim();
+                return string.IsNullOrWhiteSpace(v) ? null : v;
+            }
+
+            foreach (var row in used.Skip(hasHeader ? 1 : 0))
+            {
+                var fullName = Get(row, "fullName");
+                var phone = Get(row, "phoneNumber");
+
+                // Headerless file: the old rule for spotting a title row it might still carry.
+                if (!hasHeader && ReferenceEquals(row, used[0])
+                    && !string.IsNullOrEmpty(phone) && !phone.Any(char.IsDigit))
+                    continue;
 
                 if (string.IsNullOrWhiteSpace(fullName))
                     continue;
 
+                var birthYearText = Get(row, "birthYear");
                 rows.Add(new
                 {
                     fullName,
-                    phoneNumber = string.IsNullOrWhiteSpace(phone) ? null : phone,
-                    position = string.IsNullOrWhiteSpace(position) ? null : position
+                    phoneNumber = phone,
+                    position = Get(row, "position"),
+                    fatherName = Get(row, "fatherName"),
+                    // A year typed as "1990" or read back as "1990.0" — take the digits, ignore the rest.
+                    birthYear = int.TryParse(birthYearText?.Split('.', ',')[0], out var by) ? by : (int?)null,
+                    email = Get(row, "email"),
+                    roleName = Get(row, "roleName"),
+                    locationName = Get(row, "locationName"),
                 });
 
                 if (rows.Count >= 200)
@@ -295,26 +403,62 @@ public class AdminController : ControllerBase
         return Ok(new { rows });
     }
 
-    // GET /api/admin/employees/xlsx-template — a ready-to-fill .xlsx with the exact columns parse-xlsx
-    // expects, so the admin downloads it, types the rows in, and uploads it back. Headers only (no
-    // example data row — an unedited example would otherwise import as a real employee).
+    // GET /api/admin/employees/xlsx-template — a ready-to-fill .xlsx carrying every field the
+    // single-employee form collects, so importing a spreadsheet is not a lesser way to add someone.
+    // Headers only (no example data row — an unedited example would import as a real employee).
+    //
+    // The first three columns keep their original order so an older file, and the paste box, still
+    // line up. parse-xlsx reads by header text anyway, so an admin may reorder or drop columns.
     [HttpGet("xlsx-template")]
-    public IActionResult XlsxTemplate()
+    public async Task<IActionResult> XlsxTemplate()
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("İşçilər");
 
-        var headers = new[] { "Ad Soyad", "Telefon", "Vəzifə" };
-        for (var i = 0; i < headers.Length; i++)
+        // (header, column width, note shown under the header). NOTHING goes under "Ad Soyad": row 2
+        // survives only because its column A is empty, which is exactly how parse-xlsx skips it. A
+        // note there would import as an employee called "məcburi".
+        (string Header, int Width, string? Note)[] columns =
+        [
+            ("Ad Soyad", 28, null),
+            ("Telefon", 18, "0501234567"),
+            ("Vəzifə", 22, null),
+            ("Ata adı", 20, null),
+            ("Təvəllüd ili", 14, "1990"),
+            ("Email", 26, "istəyə bağlı"),
+            ("Rol", 14, "İşçi / Menecer / Admin"),
+            ("Filial", 22, "boş = səhifədə seçilən"),
+        ];
+
+        for (var i = 0; i < columns.Length; i++)
         {
             var cell = ws.Cell(1, i + 1);
-            cell.Value = headers[i];
+            cell.Value = columns[i].Header;
             cell.Style.Font.Bold = true;
             cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E8EEF7");
+            ws.Column(i + 1).Width = columns[i].Width;
+
+            // Row 2 is guidance, greyed and italic. parse-xlsx drops it: it has no name in column A.
+            if (columns[i].Note is not null)
+            {
+                var note = ws.Cell(2, i + 1);
+                note.Value = columns[i].Note;
+                note.Style.Font.Italic = true;
+                note.Style.Font.FontColor = XLColor.FromHtml("#8A94A6");
+            }
         }
-        ws.Column(1).Width = 28;
-        ws.Column(2).Width = 18;
-        ws.Column(3).Width = 22;
+
+        // Spell out the branch names that will match, so nobody has to guess at the spelling.
+        var locationNames = await _db.Locations
+            .OrderBy(l => l.Name)
+            .Select(l => l.Name)
+            .ToListAsync(HttpContext.RequestAborted);
+        if (locationNames.Count > 0)
+        {
+            var hint = ws.Cell(2, columns.Length);
+            hint.Value = "boş = səhifədəki · " + string.Join(" / ", locationNames);
+        }
+
         ws.SheetView.FreezeRows(1);
 
         using var ms = new MemoryStream();
@@ -392,7 +536,7 @@ public class AdminController : ControllerBase
     // hashed temp PIN + MustChangePin, so the employee can sign in immediately and is forced to pick
     // their own PIN. Mutates the taken-sets so later rows in the batch see this row's identifiers.
     private (Employee? Employee, string? TempPin, string? Error) BuildActivatedWithTempPin(
-        string fullName, string? emailIn, string? phoneIn, string? position,
+        string fullName, string? emailIn, string? phoneIn, string? fatherName, string? position, int? birthYear,
         Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
     {
         if (string.IsNullOrWhiteSpace(fullName))
@@ -416,7 +560,9 @@ public class AdminController : ControllerBase
             FullName = fullName.Trim(),
             Email = email,
             PhoneNumber = phone,
+            FatherName = string.IsNullOrWhiteSpace(fatherName) ? null : fatherName.Trim(),
             Position = string.IsNullOrWhiteSpace(position) ? null : position.Trim(),
+            BirthYear = birthYear,
             LocationId = locationId,
             Role = role,
             PasswordHash = _passwordHasher.Hash(tempPin),

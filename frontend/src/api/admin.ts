@@ -385,6 +385,11 @@ export interface BulkInviteRow {
   fullName: string
   phoneNumber?: string | null
   position?: string | null
+  fatherName?: string | null
+  birthYear?: number | null
+  /** Per-row branch/role by NAME; null falls back to the batch's LocationId / Role. */
+  roleName?: string | null
+  locationName?: string | null
 }
 
 export interface BulkInvitePayload {
@@ -475,10 +480,17 @@ export function rejectMissedCheckout(id: string) {
   })
 }
 
+/** What the server read out of an uploaded .xlsx. Every field the single-employee form collects —
+ *  Rol/Filial arrive as the NAMES the admin typed, resolved server-side at import. */
 export interface ParsedXlsxRow {
   fullName: string
   phoneNumber: string | null
   position: string | null
+  fatherName: string | null
+  birthYear: number | null
+  email: string | null
+  roleName: string | null
+  locationName: string | null
 }
 
 /** GET /api/admin/employees/xlsx-template — download a ready-to-fill .xlsx with the expected columns.

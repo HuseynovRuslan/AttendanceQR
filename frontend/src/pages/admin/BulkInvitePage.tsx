@@ -10,6 +10,7 @@ import {
   type BulkInviteResult,
 } from '../../api/admin'
 import type { Role } from '../../lib/jwt'
+import { parseBulkText } from './bulkParse'
 import { IconCheck, IconX } from '../../components/icons'
 
 const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
@@ -21,31 +22,10 @@ const ERROR_AZ: Record<string, string> = {
   NeedEmailOrPhone: 'Telefon və ya email lazımdır',
   PhoneAlreadyExists: 'Bu nömrə artıq mövcuddur',
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
+  LocationNotFound: 'Bu adda filial yoxdur — adı dəqiq yazın və ya boş buraxın',
+  RoleNotRecognised: 'Rol tanınmadı — İşçi / Menecer / Admin yazın və ya boş buraxın',
 }
 
-interface ParsedRow {
-  fullName: string
-  phoneNumber?: string
-  position?: string
-}
-
-// Each line = one employee. Fields separated by comma / tab / semicolon, so pasting straight from an
-// Excel selection (tab-separated) works:  Ad Soyad, telefon, vəzifə(istəyə bağlı)
-function parse(text: string): ParsedRow[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const parts = line.split(/[,\t;]+/).map((p) => p.trim())
-      return {
-        fullName: parts[0] ?? '',
-        phoneNumber: parts[1] || undefined,
-        position: parts[2] || undefined,
-      }
-    })
-    .filter((r) => r.fullName.length > 0)
-}
 
 function activationLink(url: string): string {
   return `${window.location.origin}${url}`
@@ -73,7 +53,7 @@ export function BulkInvitePage() {
     })
   }, [])
 
-  const rows = useMemo(() => parse(text), [text])
+  const rows = useMemo(() => parseBulkText(text), [text])
   const failed = pinResult?.failed ?? linkResult?.failed ?? []
 
   async function submit() {
@@ -122,8 +102,20 @@ export function BulkInvitePage() {
       setError('Faylda işçi sətri tapılmadı')
       return
     }
+    // Back into the textarea in the template's column order, so the preview shows exactly what the
+    // file said and the admin can still edit it before importing. Empty cells stay as empty fields —
+    // parse() reads them positionally.
     const lines = parsed.map((r) => {
-      const cells = [r.fullName, r.phoneNumber ?? '', r.position ?? '']
+      const cells = [
+        r.fullName,
+        r.phoneNumber ?? '',
+        r.position ?? '',
+        r.fatherName ?? '',
+        r.birthYear != null ? String(r.birthYear) : '',
+        r.email ?? '',
+        r.roleName ?? '',
+        r.locationName ?? '',
+      ]
       while (cells.length > 1 && cells[cells.length - 1] === '') cells.pop()
       return cells.join(', ')
     })
@@ -231,7 +223,8 @@ export function BulkInvitePage() {
           <span className="muted" style={{ fontSize: 12 }}>və ya aşağı birbaşa yapışdırın</span>
         </div>
         <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-          Şablonu yükləyin → içini doldurun (Ad Soyad · Telefon · Vəzifə) → «faylı seç» ilə geri yükləyin.
+          Şablonu yükləyin → içini doldurun → «faylı seç» ilə geri yükləyin. Sütunlar başlıqlarına görə
+          oxunur, ona görə lazımsız sütunu silə və ya yerini dəyişə bilərsiniz. <b>Yalnız «Ad Soyad» məcburidir.</b>
         </div>
 
         <label className="form-label">İşçilər — hər sətir bir nəfər</label>
@@ -240,11 +233,19 @@ export function BulkInvitePage() {
           rows={9}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={'Əli Vəliyev, 0501234567\nAyşə Məmmədova, 0557654321, Mühasib\nRəşad Quliyev, 0701112233'}
+          placeholder={
+            'Əli Vəliyev, 0501234567\n' +
+            'Ayşə Məmmədova, 0557654321, Mühasib\n' +
+            'Rəşad Quliyev, 0701112233, Bağban, Səməd oğlu, 1990, rashad@mail.az'
+          }
           style={{ fontFamily: 'inherit', resize: 'vertical' }}
         />
         <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Format: <b>Ad Soyad, telefon, vəzifə</b> (vəzifə istəyə bağlı). Vergül və ya tab ilə ayırın.
+          Format: <b>Ad Soyad, Telefon, Vəzifə, Ata adı, Təvəllüd ili, Email, Rol, Filial</b> —
+          yalnız ad məcburidir, qalanını buraxa bilərsiniz. Vergül və ya tab ilə ayırın.
+          <br />
+          Ortadakı sahəni ötürmək üçün yerini boş saxlayın:{' '}
+          <code style={{ fontSize: 11 }}>Əli Vəliyev, 0501234567, , , , ali@mail.az</code>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
