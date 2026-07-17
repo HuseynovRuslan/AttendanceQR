@@ -149,6 +149,9 @@ select.inp{cursor:pointer}
   .form-row.cols2{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:repeat(2,1fr)}
   .content{padding:16px}
+  /* Dashboard "today": the rate card sits beside its tiles on a wide screen, above them on a narrow
+     one — side by side it would squeeze both into unreadable columns. */
+  .dash-today{grid-template-columns:1fr !important}
 }
 
 /* True phone widths: the sidebar can't coexist with content, so it becomes an off-canvas drawer

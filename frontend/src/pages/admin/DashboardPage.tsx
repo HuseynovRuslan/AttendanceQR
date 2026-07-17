@@ -5,6 +5,7 @@ import { STATUS_MAP } from '../../components/StatusBadge'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { ChartLegend, TrendChart, WeekdayBarChart } from '../../components/Charts'
 import { IconX } from '../../components/icons'
+import { fmtDate, fmtHM } from '../../lib/format'
 
 function rateColor(rate: number): string {
   return rate >= 80 ? 'var(--leaf-d)' : rate >= 50 ? 'var(--amber)' : 'var(--clay)'
@@ -12,6 +13,31 @@ function rateColor(rate: number): string {
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
+
+/** A heading over a band of tiles, saying what the numbers below are counting and over what period.
+ *  The screen carries two different clocks — a live "today" and a chosen date range — and reading a
+ *  tile without knowing which one it belongs to is how "Qayıb 13" and "Qayıblar 14" both looked
+ *  correct at the same time. */
+function Band({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div style={{ margin: '4px 2px 10px' }}>
+      <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 15, fontWeight: 700, color: 'var(--c900)' }}>{title}</div>
+      <div style={{ fontSize: 12, color: 'var(--c400)', marginTop: 2 }}>{hint}</div>
+    </div>
+  )
+}
+
+/** One tile. `tone` is the semantic status, not decoration: leaf = fine, blue = in progress,
+ *  clay = wrong, amber = needs a person to act, purple = not expected in today. */
+function Stat({ tone, label, value, sub }: { tone?: string; label: string; value: number | string; sub: string }) {
+  return (
+    <div className={tone ? `stat-card ${tone}` : 'stat-card'}>
+      <div className="stat-lbl">{label}</div>
+      <div className="stat-val">{value}</div>
+      <div className="stat-sub">{sub}</div>
+    </div>
+  )
+}
 
 export function DashboardPage() {
   const [rows, setRows] = useState<DayAttendanceRow[]>([])
@@ -82,6 +108,19 @@ export function DashboardPage() {
   const [dashLoading, setDashLoading] = useState(false)
   const [dashError, setDashError] = useState<string | null>(null)
 
+  // An employee with no bound device cannot scan at all — which then reads as "absent" and is not
+  // their fault. Only worth a tile when it is actually happening.
+  const missingDevices = Math.max(0, total - (dashReport?.activeDeviceCount ?? total))
+
+  // Says which days the band below is counting. "Bu gün" when the range is just today, so the two
+  // bands do not silently look like the same question asked twice.
+  const rangeHint =
+    dashFrom === dashTo
+      ? dashFrom === todayIso()
+        ? 'Yalnız bu gün'
+        : fmtDate(dashFrom)
+      : `${fmtDate(dashFrom)} – ${fmtDate(dashTo)}`
+
   useEffect(() => {
     getMyLocations().then(({ status, data }) => {
       if (status === 200 && Array.isArray(data)) setLocations(data)
@@ -135,44 +174,6 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="stat-grid">
-        <div className="stat-card leaf">
-          <div className="stat-lbl">Ümumi işçi</div>
-          <div className="stat-val">{total}</div>
-          <div className="stat-sub">Bütün aktiv işçilər</div>
-        </div>
-        <div className="stat-card blue">
-          <div className="stat-lbl">{STATUS_MAP.Incomplete.label}</div>
-          <div className="stat-val">{counts.incomplete}</div>
-          <div className="stat-sub">Hazırda işdədir, çıxışı yoxdur</div>
-        </div>
-        <div className="stat-card clay">
-          <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
-          <div className="stat-val">{counts.absent}</div>
-          <div className="stat-sub">Bu gün heç giriş etməyib</div>
-        </div>
-        <div className="stat-card leaf">
-          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
-          <div className="stat-val">{counts.present}</div>
-          <div className="stat-sub">Giriş və çıxış edib, günü bitirib</div>
-        </div>
-        <div className="stat-card purple">
-          <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
-          <div className="stat-val">{counts.dayOff}</div>
-          <div className="stat-sub">Bu gün iş günü deyil</div>
-        </div>
-        <div className="stat-card purple">
-          <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
-          <div className="stat-val">{counts.onLeave}</div>
-          <div className="stat-sub">Təsdiqlənmiş məzuniyyətdədir</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
-          <div className="stat-val">{counts.permission}</div>
-          <div className="stat-sub">Təsdiqlənmiş icazəlidir</div>
-        </div>
-      </div>
-
       {error && (
         <div className="fb fb-err" style={{ marginBottom: 12 }}>
           <IconX />
@@ -180,10 +181,49 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 28 }}>
-        <div className="card card-pad">
-          <div className="card-title">Filiallar üzrə bugün</div>
-          {areaStats.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Məlumat yoxdur</p>}
+      <Band title="Bu gün" hint="Canlı — hər 30 saniyədə yenilənir" />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) 1fr', gap: 16, marginBottom: 10, alignItems: 'stretch' }} className="dash-today">
+        {/* The one number the screen leads with, plus the meter for the same ratio. */}
+        <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 52, color: rateColor(overallRate), lineHeight: 1 }}>
+              {overallRate}%
+            </div>
+            {/* "gəlib", not "işdədir": some of them have already finished and gone home. The old
+                caption said one thing and the number under it said the other. */}
+            <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 8 }}>
+              {expected} nəfərdən <b style={{ color: 'var(--c900)' }}>{attended}</b>-i işə gəlib
+            </div>
+          </div>
+          <div style={{ height: 8, background: 'var(--c100)', borderRadius: 999, overflow: 'hidden', marginTop: 14 }}>
+            <div style={{ height: '100%', background: rateColor(overallRate), borderRadius: 999, width: `${overallRate}%`, transition: 'width .6s' }} />
+          </div>
+          {notExpected > 0 && (
+            // Folded into one quiet line: three tiles reading 0 all week were three tiles of nothing.
+            <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 10, textAlign: 'center' }}>
+              Gözlənilmir: {[
+                counts.dayOff && `${counts.dayOff} istirahət`,
+                counts.onLeave && `${counts.onLeave} məzuniyyət`,
+                counts.permission && `${counts.permission} icazə`,
+              ].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </div>
+
+        <div className="stat-grid" style={{ marginBottom: 0, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+          <Stat tone="blue" label={STATUS_MAP.Incomplete.label} value={counts.incomplete} sub="Hazırda işdədir, çıxışı yoxdur" />
+          <Stat tone="leaf" label={STATUS_MAP.OnTime.label} value={counts.present} sub="Giriş və çıxış edib, günü bitirib" />
+          <Stat tone="clay" label={STATUS_MAP.Absent.label} value={counts.absent} sub="Bu gün heç giriş etməyib" />
+          <Stat label="Ümumi işçi" value={total} sub="Bütün aktiv işçilər" />
+        </div>
+      </div>
+
+      {/* Only worth a panel when there is more than one branch to compare. With a single branch its
+          rows were the same number as the hero above, said twice. */}
+      {areaStats.length > 1 && (
+        <div className="card card-pad" style={{ marginBottom: 28 }}>
+          <div className="card-title">Filiallar üzrə</div>
           {areaStats.map((a) => (
             <div
               key={a.name}
@@ -197,57 +237,16 @@ export function DashboardPage() {
             >
               <div>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.attended}/{a.expected} işçi işdədir</div>
+                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.expected} nəfərdən {a.attended}-i gəlib</div>
               </div>
-              <div
-                style={{
-                  fontFamily: "'Sora',sans-serif",
-                  fontWeight: 800,
-                  fontSize: 18,
-                  color: rateColor(a.rate),
-                }}
-              >
+              <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 18, color: rateColor(a.rate) }}>
                 {a.rate}%
               </div>
             </div>
           ))}
         </div>
-
-        <div className="card card-pad">
-          <div className="card-title">Günlük davamiyyət faizi</div>
-          <p className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 8 }}>
-            Bu gün işə gələnlər (hazırda işdə olan + günü bitirən) gözlənilən işçilərə nisbətdə
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 120 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontFamily: "'Sora',sans-serif",
-                  fontWeight: 800,
-                  fontSize: 52,
-                  color: rateColor(overallRate),
-                }}
-              >
-                {overallRate}%
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 4 }}>
-                {attended} / {expected} işçi işdədir
-              </div>
-            </div>
-          </div>
-          <div style={{ height: 8, background: 'var(--c100)', borderRadius: 999, overflow: 'hidden', marginTop: 8 }}>
-            <div
-              style={{
-                height: '100%',
-                background: rateColor(overallRate),
-                borderRadius: 999,
-                width: `${overallRate}%`,
-                transition: 'width .6s',
-              }}
-            />
-          </div>
-        </div>
-      </div>
+      )}
+      {areaStats.length <= 1 && <div style={{ marginBottom: 18 }} />}
 
       {dashError && (
         <div className="fb fb-err" style={{ marginBottom: 12 }}>
@@ -258,63 +257,50 @@ export function DashboardPage() {
 
       {dashReport && (
         <>
+          <Band title="Seçilmiş dövr" hint={rangeHint} />
+
           <div className="stat-grid">
-            <div className="stat-card leaf">
-              <div className="stat-lbl">Toplam girişlər</div>
-              <div className="stat-val">{dashReport.totalCheckIns}</div>
-              <div className="stat-sub">Seçilmiş dövrdə bütün giriş sayı</div>
-            </div>
-            <div className="stat-card blue">
-              <div className="stat-lbl">Toplam çıxışlar</div>
-              <div className="stat-val">{dashReport.totalCheckOuts}</div>
-              <div className="stat-sub">Seçilmiş dövrdə bütün çıxış sayı</div>
-            </div>
-            <div className="stat-card clay">
-              <div className="stat-lbl">Qayıblar</div>
-              <div className="stat-val">{dashReport.absentCount}</div>
-              <div className="stat-sub">Heç giriş edilməyən iş günləri</div>
-            </div>
-            <div className="stat-card blue">
-              <div className="stat-lbl">Çıxışı unudulan günlər</div>
-              <div className="stat-val">{dashReport.incompleteCount}</div>
-              <div className="stat-sub">Gün bitib, çıxış qeydə alınmayıb</div>
-            </div>
-            <div className="stat-card purple">
-              <div className="stat-lbl">İstirahət</div>
-              <div className="stat-val">{dashReport.dayOffCount}</div>
-              <div className="stat-sub">İş günü olmayan günlər</div>
-            </div>
-            <div className="stat-card purple">
-              <div className="stat-lbl">Məzuniyyət</div>
-              <div className="stat-val">{dashReport.leaveCount}</div>
-              <div className="stat-sub">Təsdiqlənmiş məzuniyyət günləri</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-lbl">İcazə</div>
-              <div className="stat-val">{dashReport.permissionCount}</div>
-              <div className="stat-sub">Təsdiqlənmiş icazə günləri</div>
-            </div>
-            <div className="stat-card leaf">
-              <div className="stat-lbl">İşlənən saat</div>
-              <div className="stat-val">{dashReport.totalWorkedHours}</div>
-              <div className="stat-sub">Bütün işçilərin cəm iş saatı</div>
-            </div>
-            <div className="stat-card amber">
-              <div className="stat-lbl">Overtime saat</div>
-              <div className="stat-val">{dashReport.overtimeHours}</div>
-              <div className="stat-sub">Şift bitimindən sonra işlənən saat</div>
-            </div>
-            <div className="stat-card clay">
-              <div className="stat-lbl">Koordinat xarici</div>
-              <div className="stat-val">{dashReport.outsideRadiusCount}</div>
-              <div className="stat-sub">Filialdan kənarda edilən skan sayı</div>
-            </div>
-            <div className="stat-card leaf">
-              <div className="stat-lbl">Aktiv cihazlar</div>
-              <div className="stat-val">{dashReport.activeDeviceCount}</div>
-              <div className="stat-sub">Hazırda bağlı olan cihaz sayı</div>
-            </div>
+            <Stat tone="leaf" label="Girişlər" value={dashReport.totalCheckIns} sub="Dövr ərzində qeydə alınan giriş" />
+            <Stat tone="blue" label="Çıxışlar" value={dashReport.totalCheckOuts} sub="Dövr ərzində qeydə alınan çıxış" />
+            <Stat tone="clay" label="Qayıb günləri" value={dashReport.absentCount} sub="Heç giriş edilməyən iş günü" />
+            <Stat tone="leaf" label="İşlənən saat" value={fmtHM(dashReport.totalWorkedHours)} sub="Bütün işçilərin cəmi" />
+            {/* "Overtime" was the only English word on an Azerbaijani screen. */}
+            <Stat tone="amber" label="Əlavə iş saatı" value={fmtHM(dashReport.overtimeHours)} sub="Növbə bitdikdən sonra işlənən" />
+            {/* Days off / leave / permission only earn a tile when there is something to report. */}
+            {dashReport.dayOffCount > 0 && (
+              <Stat tone="purple" label="İstirahət" value={dashReport.dayOffCount} sub="İş günü olmayan günlər" />
+            )}
+            {dashReport.leaveCount > 0 && (
+              <Stat tone="purple" label="Məzuniyyət" value={dashReport.leaveCount} sub="Təsdiqlənmiş məzuniyyət günləri" />
+            )}
+            {dashReport.permissionCount > 0 && (
+              <Stat tone="purple" label="İcazə" value={dashReport.permissionCount} sub="Təsdiqlənmiş icazə günləri" />
+            )}
           </div>
+
+          {/* Nothing here means nothing to do — so the band disappears entirely rather than showing a
+              row of reassuring zeros that have to be read before they can be dismissed. */}
+          {(dashReport.incompleteCount > 0 || dashReport.outsideRadiusCount > 0 || missingDevices > 0) && (
+            <>
+              <Band title="Diqqət tələb edir" hint="Baxılmasa hesabat səhv qalır" />
+              <div className="stat-grid">
+                {dashReport.incompleteCount > 0 && (
+                  <Stat
+                    tone="amber"
+                    label="Çıxışı unudulan günlər"
+                    value={dashReport.incompleteCount}
+                    sub="Gün bitib, çıxış yoxdur — 0 saat sayılır"
+                  />
+                )}
+                {dashReport.outsideRadiusCount > 0 && (
+                  <Stat tone="clay" label="Koordinat xarici" value={dashReport.outsideRadiusCount} sub="Filialdan kənarda rədd edilən skan" />
+                )}
+                {missingDevices > 0 && (
+                  <Stat tone="clay" label="Cihazsız işçi" value={missingDevices} sub="Skan edə bilmir — cihaz bağlanmayıb" />
+                )}
+              </div>
+            </>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 4, marginBottom: 16 }}>
             <div className="card card-pad">
