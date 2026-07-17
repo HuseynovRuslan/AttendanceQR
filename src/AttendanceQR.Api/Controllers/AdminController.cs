@@ -440,6 +440,19 @@ public class AdminController : ControllerBase
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
 
+        // You cannot lock yourself out. Deleting yourself is already blocked below, but deactivating
+        // or demoting yourself was not — and the result is worse: login rejects an inactive account,
+        // so the door closes silently and cannot be reopened from inside the tenant. CleanFix's only
+        // admin did exactly this and left a 13-person company with nobody who could sign in; it took
+        // a hand-written UPDATE to undo.
+        if (id == User.EmployeeId())
+        {
+            if (!request.IsActive)
+                return BadRequest(new { error = "CannotDeactivateSelf" });
+            if (request.Role != employee.Role)
+                return BadRequest(new { error = "CannotChangeOwnRole" });
+        }
+
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 

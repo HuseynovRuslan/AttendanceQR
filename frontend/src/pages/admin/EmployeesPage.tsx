@@ -23,6 +23,7 @@ import {
   type AttendanceRecord,
 } from '../../api/attendance'
 import type { Role } from '../../lib/jwt'
+import { useAuth } from '../../auth/AuthContext'
 import { StatusBadge } from '../../components/StatusBadge'
 import { IconCalendar, IconCheck, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
 
@@ -59,6 +60,8 @@ const ERRORS: Record<string, string> = {
   LocationNotFound: 'Lokasiya tapılmadı',
   EmployeeHasHistory: 'Bu işçinin davamiyyət tarixçəsi var — silmək olmaz, əvəzinə deaktiv edin',
   CannotDeleteSelf: 'Öz hesabınızı silə bilməzsiniz',
+  CannotDeactivateSelf: 'Öz hesabınızı deaktiv edə bilməzsiniz — girişiniz bağlanardı',
+  CannotChangeOwnRole: 'Öz rolunuzu dəyişə bilməzsiniz — panelə girişinizi itirə bilərsiniz',
   AlreadyActivated: 'İşçi artıq qeydiyyatdan keçib',
   EmployeeNotFound: 'İşçi tapılmadı',
 }
@@ -100,6 +103,9 @@ export function EmployeesPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState<string | null>(null)
+  // Editing your own row: the two fields that can lock you out are read-only there.
+  const { employeeId: myId } = useAuth()
+  const isSelf = editingId !== null && editingId === myId
   const [ok, setOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -591,11 +597,21 @@ export function EmployeesPage() {
           <div className="form-row cols2">
             <div>
               <label className="form-label">Rol</label>
-              <select className="inp" value={form.role} onChange={(e) => set('role', e.target.value as Role)}>
+              {/* Same reason as Status: demoting yourself out of Admin locks you out of this panel,
+                  and there may be no one else who can put you back. */}
+              <select
+                className="inp"
+                value={form.role}
+                disabled={isSelf}
+                onChange={(e) => set('role', e.target.value as Role)}
+              >
                 <option value="Employee">İşçi</option>
                 <option value="Manager">Menecer</option>
                 <option value="Admin">Admin</option>
               </select>
+              {isSelf && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Öz rolunuzu dəyişə bilməzsiniz</div>
+              )}
             </div>
             <div>
               <label className="form-label">Filial</label>
@@ -613,10 +629,21 @@ export function EmployeesPage() {
             <div className="form-row cols2">
               <div>
                 <label className="form-label">Status</label>
-                <select className="inp" value={form.isActive ? '1' : '0'} onChange={(e) => set('isActive', e.target.value === '1')}>
+                {/* Locked when you are editing yourself: deactivating your own account closes your
+                    login silently, and if you are the only admin nobody left can undo it. The server
+                    refuses this too — this just stops you reaching for it. */}
+                <select
+                  className="inp"
+                  value={form.isActive ? '1' : '0'}
+                  disabled={isSelf}
+                  onChange={(e) => set('isActive', e.target.value === '1')}
+                >
                   <option value="1">Aktiv</option>
                   <option value="0">Deaktiv (giriş bağlı)</option>
                 </select>
+                {isSelf && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Öz hesabınızı deaktiv edə bilməzsiniz</div>
+                )}
               </div>
             </div>
           )}

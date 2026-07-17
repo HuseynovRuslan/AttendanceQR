@@ -14,6 +14,9 @@ interface AuthState {
   token: string | null
   isAuthenticated: boolean
   role: Role | null
+  /** The signed-in employee's own id — lets a screen tell "this row is me" apart from everyone else
+   *  (e.g. the admin employee form, which must not let you switch yourself off). */
+  employeeId: string | null
   email: string | null
   /** True while the account is still on a temporary PIN — the app forces the "set your PIN" screen. */
   mustChangePin: boolean
@@ -41,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       isAuthenticated: token !== null,
       role: claims?.role ?? null,
+      employeeId: claims?.sub ?? null,
       email: claims?.email ?? null,
       mustChangePin: claims?.mcp === '1',
       saveToken: (t: string) => {
