@@ -52,6 +52,12 @@ public class AdminController : ControllerBase
         var locationNames = await _db.Locations
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
 
+        // Which branches each manager oversees — the form needs it to show what is already ticked,
+        // and the list needs it because a manager with none sees an empty panel and no explanation.
+        var managedByEmployee = (await _db.ManagedLocations.ToListAsync(HttpContext.RequestAborted))
+            .GroupBy(m => m.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(m => m.LocationId).ToList());
+
         var result = employees.Select(e =>
         {
             // An employee may hold several contexts (Safari, the installed PWA). The list still shows
@@ -72,6 +78,13 @@ public class AdminController : ControllerBase
                 phoneNumber = e.PhoneNumber,
                 locationId = e.LocationId,
                 locationName = locationNames.GetValueOrDefault(e.LocationId),
+                // Only meaningful for a Manager. Empty on one is why their panel is blank.
+                managedLocationIds = e.Role == EmployeeRole.Manager
+                    ? managedByEmployee.GetValueOrDefault(e.Id, [])
+                    : [],
+                managedLocationNames = e.Role == EmployeeRole.Manager
+                    ? managedByEmployee.GetValueOrDefault(e.Id, []).Select(id => locationNames.GetValueOrDefault(id, "")).ToList()
+                    : [],
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
                 hasDevice = newest != null,
@@ -630,8 +643,49 @@ public class AdminController : ControllerBase
         employee.IsActive = request.IsActive;
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
+
+        var scopeError = await ApplyManagedLocationsAsync(employee, request.ManagedLocationIds);
+        if (scopeError is not null)
+            return BadRequest(new { error = scopeError });
+
         await _db.SaveChangesAsync();
         return Ok(new { id = employee.Id });
+    }
+
+    /// <summary>
+    /// Sets which branches a Manager may see in the reports. Null → leave alone; a list → replace.
+    ///
+    /// Cleared whenever the employee is not a Manager, so a demoted manager's old scope cannot come
+    /// back to life if they are ever promoted again — a stale set is a silent grant.
+    /// </summary>
+    private async Task<string?> ApplyManagedLocationsAsync(Employee employee, IReadOnlyList<Guid>? wanted)
+    {
+        var existing = await _db.ManagedLocations
+            .Where(m => m.EmployeeId == employee.Id)
+            .ToListAsync(HttpContext.RequestAborted);
+
+        if (employee.Role != EmployeeRole.Manager)
+        {
+            // An Admin already sees every branch and an Employee only their own record — a row here
+            // would mean nothing for either, and would quietly apply again on a future promotion.
+            _db.ManagedLocations.RemoveRange(existing);
+            return null;
+        }
+
+        if (wanted is null)
+            return null; // caller did not say — keep what they have
+
+        var ids = wanted.Distinct().ToList();
+        // Tenant-filtered, so this also rejects a branch belonging to another company.
+        var validCount = await _db.Locations.CountAsync(l => ids.Contains(l.Id), HttpContext.RequestAborted);
+        if (validCount != ids.Count)
+            return "ManagedLocationNotFound";
+
+        _db.ManagedLocations.RemoveRange(existing.Where(m => !ids.Contains(m.LocationId)));
+        foreach (var locationId in ids.Where(i => existing.All(m => m.LocationId != i)))
+            _db.ManagedLocations.Add(new ManagedLocation { EmployeeId = employee.Id, LocationId = locationId });
+
+        return null;
     }
 
     // "HH:mm" (or empty) → TimeOnly?; empty/unparseable clears the per-employee override.

@@ -330,6 +330,9 @@ export interface AdminEmployee {
   role: Role
   locationId: string
   locationName: string | null
+  /** Manager only: the branches they may SEE in reports. Empty on a manager = blank panel. */
+  managedLocationIds: string[]
+  managedLocationNames: string[]
   isActive: boolean
   activated: boolean
   hasDevice: boolean
@@ -338,7 +341,11 @@ export interface AdminEmployee {
   createdAtUtc: string
 }
 
-export type EmployeeUpdatePayload = Omit<InvitePayload, never> & { isActive: boolean }
+export type EmployeeUpdatePayload = Omit<InvitePayload, never> & {
+  isActive: boolean
+  /** Manager only. Omit/undefined = leave as-is; [] = clear. Ignored for other roles. */
+  managedLocationIds?: string[]
+}
 
 export function getEmployees() {
   return apiRequest<AdminEmployee[]>('/api/admin/employees')

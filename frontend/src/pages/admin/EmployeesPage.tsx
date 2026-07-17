@@ -78,6 +78,9 @@ type FormState = {
   isActive: boolean
   workStart: string
   workEnd: string
+  /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
+   *  they clock in. Empty on a manager means an empty panel. */
+  managedLocationIds: string[]
 }
 
 const EMPTY: FormState = {
@@ -92,6 +95,7 @@ const EMPTY: FormState = {
   isActive: true,
   workStart: '',
   workEnd: '',
+  managedLocationIds: [],
 }
 
 export function EmployeesPage() {
@@ -181,6 +185,7 @@ export function EmployeesPage() {
       isActive: e.isActive,
       workStart: e.workStart ?? '',
       workEnd: e.workEnd ?? '',
+      managedLocationIds: e.managedLocationIds ?? [],
     })
     setError(null)
     setOk(null)
@@ -219,6 +224,9 @@ export function EmployeesPage() {
           isActive: form.isActive,
           workStart: form.workStart || null,
           workEnd: form.workEnd || null,
+          // Always sent, so unticking the last branch actually clears it. The server ignores this
+          // for non-managers and clears any stale rows itself.
+          managedLocationIds: form.managedLocationIds,
         })
       : await invite(payload)
     setSaving(false)
@@ -625,6 +633,49 @@ export function EmployeesPage() {
             </div>
           </div>
 
+          {/* A Manager sees only the branches ticked here — nothing else. Until this existed, nothing
+              outside DevController ever wrote them, so every manager in production opened an empty
+              panel with no way to tell why. It is deliberately not the same as "Filial" above: that
+              is where they clock in; this is what they may look at. */}
+          {form.role === 'Manager' && (
+            <div style={{ marginTop: 4 }}>
+              <label className="form-label">Hansı filiallara baxa bilsin?</label>
+              <div
+                style={{
+                  border: '1px solid var(--c200)', borderRadius: 10, padding: '10px 12px',
+                  display: 'flex', flexWrap: 'wrap', gap: '8px 18px',
+                }}
+              >
+                {locations.map((l) => (
+                  <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.managedLocationIds.includes(l.id)}
+                      onChange={(e) =>
+                        set(
+                          'managedLocationIds',
+                          e.target.checked
+                            ? [...form.managedLocationIds, l.id]
+                            : form.managedLocationIds.filter((x) => x !== l.id),
+                        )
+                      }
+                    />
+                    {l.name}
+                  </label>
+                ))}
+                {locations.length === 0 && <span className="muted" style={{ fontSize: 12 }}>Filial yoxdur</span>}
+              </div>
+              <div
+                className="muted"
+                style={{ fontSize: 11, marginTop: 4, color: form.managedLocationIds.length === 0 ? 'var(--clay)' : undefined }}
+              >
+                {form.managedLocationIds.length === 0
+                  ? 'Heç biri seçilməyib — menecer panelə girə bilər, amma hər səhifə BOŞ olacaq.'
+                  : `${form.managedLocationIds.length} filialın davamiyyətini görəcək. Bu, işlədiyi filialdan asılı deyil.`}
+              </div>
+            </div>
+          )}
+
           {editingId && (
             <div className="form-row cols2">
               <div>
@@ -866,7 +917,22 @@ export function EmployeesPage() {
                 </td>
                 <td>{e.position || '—'}</td>
                 <td>{e.locationName ?? '—'}</td>
-                <td>{ROLE_LABEL[e.role] ?? e.role}</td>
+                <td>
+                  {ROLE_LABEL[e.role] ?? e.role}
+                  {/* A manager with no branches is not a lesser manager — they see nothing at all.
+                      That is invisible from the admin's side unless the list says so. */}
+                  {e.role === 'Manager' && (
+                    e.managedLocationIds?.length > 0 ? (
+                      <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
+                        👁 {e.managedLocationNames.join(', ')}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--clay)', fontWeight: 600, marginTop: 2 }}>
+                        filial seçilməyib — boş panel
+                      </div>
+                    )
+                  )}
+                </td>
                 <td>{deviceBadge(e.hasDevice, e.deviceLabel)}</td>
                 <td>{statusBadge(e.activated)}</td>
                 <td>
