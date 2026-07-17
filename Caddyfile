@@ -3,6 +3,17 @@
 #   bax.qrlog.az  → the attendance app (frontend)
 #   api.qrlog.az  → the backend API
 #   qrlog.az      → the static marketing site (Astro build, served from /srv/qrlog)
+#   <slug>.qrlog.az → any tenant, certificate issued on demand (see the catch-all at the bottom)
+
+{
+	# On-demand TLS: a certificate is fetched the first time a hostname is requested, but only if
+	# the backend says that hostname belongs to a real, active tenant. Without the ask, anyone
+	# pointing a DNS name here could make us request certificates on their behalf until Let's
+	# Encrypt rate-limits the whole domain. Caddy appends ?domain=<host> to this URL itself.
+	on_demand_tls {
+		ask http://backend:8080/api/tenant/allow-tls
+	}
+}
 
 qrlog.az, www.qrlog.az {
 	encode zstd gzip
@@ -15,14 +26,14 @@ bax.qrlog.az {
 	reverse_proxy frontend:80
 }
 
-# EastCaf (tenant "ecaf"). One explicit single-host block per tenant — a normal HTTP-01 cert, just
-# like bax. (A bare *.qrlog.az on-demand block breaks the explicit hosts on the stock Caddy image.)
+# EastCaf (tenant "ecaf") and CleanFix — kept as explicit blocks even though the catch-all below
+# would now cover them. They have working certificates and there is no reason to move a live tenant
+# onto a new code path to prove a point; new tenants need no block at all.
 ecaf.qrlog.az {
 	encode zstd gzip
 	reverse_proxy frontend:80
 }
 
-# CleanFix (tenant "cleanfix"). Same single-host pattern; QRLog-branded like every non-bax tenant.
 cleanfix.qrlog.az {
 	encode zstd gzip
 	reverse_proxy frontend:80
@@ -31,4 +42,22 @@ cleanfix.qrlog.az {
 api.qrlog.az {
 	encode zstd gzip
 	reverse_proxy backend:8080
+}
+
+# Every tenant from here on, without a block of its own. Adding a company used to mean editing this
+# file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
+#
+# This is a CATCH-ALL, not a wildcard. `*.qrlog.az` as a site address is what broke this before: it
+# makes Caddy manage a *wildcard certificate*, which needs DNS-01, and failing that it took the
+# explicit hosts down with it. `https://` names no host at all — it simply matches whatever the more
+# specific blocks above did not, and each hostname then gets its own ordinary single-host
+# certificate, issued on first request and gated by the ask above.
+#
+# Order does not decide this — Caddy routes by specificity, so bax/api/qrlog.az still win over it.
+https:// {
+	encode zstd gzip
+	tls {
+		on_demand
+	}
+	reverse_proxy frontend:80
 }
