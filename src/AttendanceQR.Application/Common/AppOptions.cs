@@ -25,4 +25,24 @@ public sealed class AppOptions
         .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
         .Select(x => x.ToLowerInvariant())
         .ToArray();
+
+    /// <summary>
+    /// Comma-separated Employee IDs allowed to manage TENANTS — create a company, disable one, see
+    /// across all of them. Empty = nobody, and the super-admin screen simply does not exist.
+    ///
+    /// IDs, not emails, on purpose. Emails are unique per tenant, not globally — `(TenantId, Email)`
+    /// is the index — so any tenant's own admin could set their address to the operator's and, on
+    /// their next login, carry a token that an email-based check would accept. An employee id cannot
+    /// be taken by someone else.
+    /// </summary>
+    public string SuperAdminEmployeeIds { get; set; } = string.Empty;
+
+    /// <summary>Parsed super-admin employee ids; unparseable entries are ignored rather than
+    /// widening the check.</summary>
+    public Guid[] SuperAdminIdList() => SuperAdminEmployeeIds
+        .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
+        .Select(x => Guid.TryParse(x, out var id) ? id : (Guid?)null)
+        .Where(x => x.HasValue)
+        .Select(x => x!.Value)
+        .ToArray();
 }

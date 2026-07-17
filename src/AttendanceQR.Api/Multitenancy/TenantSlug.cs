@@ -10,6 +10,14 @@ public static class TenantSlug
     private static readonly HashSet<string> NonTenantLabels =
         new(StringComparer.OrdinalIgnoreCase) { "api", "www", "localhost", "qrlog", "127" };
 
+    /// <summary>
+    /// True when a label can never name a tenant. A tenant created on one of these would be
+    /// unreachable in the most confusing way possible: FromRequest refuses to resolve it, so every
+    /// request from its subdomain would be rejected as unattributable while the company sits in the
+    /// database looking fine. The super-admin panel checks this before creating one.
+    /// </summary>
+    public static bool IsReservedLabel(string label) => NonTenantLabels.Contains(label);
+
     public static string? FromRequest(HttpRequest request)
     {
         var host = HostFromHeader(request.Headers["Origin"].ToString())

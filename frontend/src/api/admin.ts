@@ -620,3 +620,70 @@ export function revokeDeviceBinding(id: string) {
     method: 'POST',
   })
 }
+
+// --- super-admin: the companies themselves ----------------------------------
+
+/** One tenant, with the numbers that say whether it is actually in use. */
+export interface SuperTenant {
+  id: string
+  slug: string
+  displayName: string
+  color: string | null
+  logoUrl: string | null
+  isActive: boolean
+  createdAtUtc: string
+  host: string
+  employeeCount: number
+  locationCount: number
+  /** "yyyy-MM-dd" of the last scan, or null if nobody has ever scanned. */
+  lastScanDate: string | null
+}
+
+export interface CreateTenantInput {
+  slug: string
+  displayName?: string
+  adminName?: string
+  adminPhone?: string
+  /** 4 digits; omit to have one generated. */
+  adminPin?: string
+  locationName?: string
+  latitude?: number
+  longitude?: number
+}
+
+export interface CreateTenantResult {
+  id: string
+  slug: string
+  host: string
+  adminPhone: string
+  /** Shown once — there is no way to read it back, only to reset it. */
+  tempPin: string
+}
+
+/** Whether this account may manage tenants. Asked before showing the menu item, so the panel never
+ *  offers a screen that would only 403. */
+export function getIsSuperAdmin() {
+  return apiRequest<{ isSuperAdmin: boolean }>('/api/super/me')
+}
+
+export function getSuperTenants() {
+  return apiRequest<SuperTenant[] | { error: string }>('/api/super/tenants')
+}
+
+export function createTenant(input: CreateTenantInput) {
+  return apiRequest<CreateTenantResult | { error: string }>('/api/super/tenants', { method: 'POST', body: input })
+}
+
+export function setTenantActive(id: string, isActive: boolean) {
+  return apiRequest<{ id: string; isActive: boolean } | { error: string }>(`/api/super/tenants/${id}/active`, {
+    method: 'PUT',
+    body: { isActive },
+  })
+}
+
+export function setTenantBranding(id: string, input: { displayName?: string; color?: string; logoUrl?: string }) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/super/tenants/${id}/branding`, {
+    method: 'PUT',
+    body: input,
+  })
+}

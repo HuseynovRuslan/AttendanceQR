@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { useBranding } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
+import { getIsSuperAdmin } from '../../api/admin'
 import {
   IconAlert,
   IconCalendar,
@@ -26,6 +27,7 @@ const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial me
 
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
+  '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
@@ -46,6 +48,16 @@ export function AdminLayout() {
   const branding = useBranding()
   const location = useLocation()
   const isAdmin = role === 'Admin'
+
+  // Managing tenants is not a role — it is a config allowlist of employee ids, so only the server can
+  // answer this. Asked once here rather than guessed, so the menu never offers a screen that 403s.
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  useEffect(() => {
+    if (!isAdmin) return
+    void getIsSuperAdmin().then((r) => {
+      if (r.status === 200 && r.data) setIsSuperAdmin(r.data.isSuperAdmin)
+    })
+  }, [isAdmin])
   const meta = PAGE_META[location.pathname]
     ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' }
       : location.pathname.startsWith('/admin/employees/') ? { title: 'İşçi profili', sub: 'İşçinin tam məlumatı və əməliyyatlar' }
@@ -79,6 +91,8 @@ export function AdminLayout() {
     ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
     ...(isAdmin ? [{ to: '/admin/bulk-invite', label: 'Toplu əlavə', Icon: IconUsers }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
+    // Across every company, not inside one — only the operator sees it.
+    ...(isSuperAdmin ? [{ to: '/admin/tenants', label: 'Şirkətlər', Icon: IconUsers }] : []),
   ]
 
   return (
