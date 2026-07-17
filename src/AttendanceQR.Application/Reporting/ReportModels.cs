@@ -104,7 +104,13 @@ public sealed record DashboardReport(
     int TotalCheckOuts,
     int LateCount,
     int AbsentCount,
+    /// <summary>Checked in, never checked out, on a day that is OVER — someone genuinely forgot, and
+    /// the day reads as zero hours until an admin closes it. Today is excluded on purpose: see
+    /// <see cref="StillAtWorkCount"/>.</summary>
     int IncompleteCount,
+    /// <summary>Checked in and not yet out TODAY — still at work, which is not a problem and must not
+    /// be counted as a forgotten check-out. Always 0 when the range does not include today.</summary>
+    int StillAtWorkCount,
     int DayOffCount,
     int LeaveCount,
     int PermissionCount,

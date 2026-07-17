@@ -1,4 +1,5 @@
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -54,22 +55,208 @@ public sealed class ReportQueryService : IReportQueryService
         _hiddenEmails = options.HiddenEmailList();
     }
 
+    /// <summary>One employee-day's computed figures — the shape DailySummary persists, and the shape
+    /// every reporting aggregate here consumes. A finished day is read from the table; today is
+    /// computed into the same shape on demand, so the aggregates never need to know the difference.</summary>
+    private sealed record DayRow(
+        Guid EmployeeId,
+        Guid LocationId,
+        DateOnly Date,
+        DateTime? CheckInAtUtc,
+        DateTime? CheckOutAtUtc,
+        DailySummaryStatus Status,
+        int WorkedMinutes,
+        int OvertimeMinutes,
+        int LateMinutes);
+
+    /// <summary>An in-scope employee plus the fields the day computation needs.</summary>
+    private sealed record ScopedEmployee(Guid Id, string FullName, Guid LocationId, TimeOnly? WorkStart, TimeOnly? WorkEnd);
+
+    /// <summary>One employee's computed day with everything it was computed from still attached — so
+    /// the two callers can each project what they need (the board wants the record's photo/face/reason
+    /// fields; the reports want only the figures) without computing the day twice.</summary>
+    private sealed record LiveDay(
+        ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed);
+
+    private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+
+    /// <summary>
+    /// The active employees this caller may see — the live-path twin of
+    /// <see cref="LocationScope.ApplyLocationScopeAsync"/>, which narrows persisted summaries. Both
+    /// must select the same people: a day computed live and a day read from DailySummary have to
+    /// cover the same population, or the totals shift depending on which side of midnight you ask.
+    /// </summary>
+    private async Task<(ReportAccess Access, List<ScopedEmployee> Employees)> ScopedEmployeesAsync(
+        Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct)
+    {
+        // Admins/managers who also clock in ARE included (e.g. a director who scans); only the
+        // system/root accounts in HiddenEmails are left out. Same rule as the nightly job.
+        var query = _db.Employees.Where(e =>
+            e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()));
+
+        switch (role)
+        {
+            case EmployeeRole.Admin:
+                if (locationId is Guid adminLoc)
+                    query = query.Where(e => e.LocationId == adminLoc);
+                break;
+
+            case EmployeeRole.Manager:
+                var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct);
+                if (locationId is Guid reqLoc)
+                {
+                    if (!managed.Contains(reqLoc))
+                        return (ReportAccess.Forbidden, []);
+                    query = query.Where(e => e.LocationId == reqLoc);
+                }
+                else
+                {
+                    query = query.Where(e => managed.Contains(e.LocationId));
+                }
+                break;
+
+            default: // Employee — only themselves, whatever locationId was passed.
+                query = query.Where(e => e.Id == requesterId);
+                break;
+        }
+
+        var employees = await query
+            .Select(e => new ScopedEmployee(e.Id, e.FullName, e.LocationId, e.WorkStart, e.WorkEnd))
+            .ToListAsync(ct);
+        return (ReportAccess.Allowed, employees);
+    }
+
+    /// <summary>
+    /// Computes one date for the given employees straight from raw AttendanceRecords — the same
+    /// inputs and the same <see cref="AttendanceCalculator"/> the nightly job uses, so a day computed
+    /// here and the row the job writes for it later agree.
+    /// </summary>
+    private async Task<List<LiveDay>> ComputeDayLiveAsync(
+        DateOnly date, List<ScopedEmployee> employees, CancellationToken ct)
+    {
+        var rows = new List<LiveDay>(employees.Count);
+        if (employees.Count == 0)
+            return rows;
+
+        var employeeIds = employees.Select(e => e.Id).ToList();
+        var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
+
+        var locations = await _db.Locations
+            .Where(l => locationIds.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, ct);
+        var records = await _db.AttendanceRecords
+            .Where(r => r.AttendanceDate == date && employeeIds.Contains(r.EmployeeId))
+            .ToDictionaryAsync(r => r.EmployeeId, ct);
+
+        var nonWorkingLocationIds = await _db.NonWorkingDays
+            .Where(n => n.Date == date && (n.LocationId == null || locationIds.Contains(n.LocationId.Value)))
+            .Select(n => n.LocationId)
+            .ToListAsync(ct);
+        var isGloballyNonWorking = nonWorkingLocationIds.Contains(null);
+        var nonWorkingLocationIdSet = nonWorkingLocationIds
+            .Where(id => id.HasValue).Select(id => id!.Value).ToHashSet();
+
+        var leaveByEmployee = await _db.LeaveRecords
+            .Where(l => l.FromDate <= date && l.ToDate >= date && employeeIds.Contains(l.EmployeeId))
+            .GroupBy(l => l.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Type = g.First().Type })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.Type, ct);
+
+        foreach (var e in employees)
+        {
+            if (!locations.TryGetValue(e.LocationId, out var location))
+                continue; // defensive: the employee's location vanished
+
+            var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, date.DayOfWeek)
+                               && !isGloballyNonWorking
+                               && !nonWorkingLocationIdSet.Contains(location.Id);
+            LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
+            var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
+
+            records.TryGetValue(e.Id, out var record);
+            // The employee's own hours override the location shift when set — same rule as at scan time.
+            var c = AttendanceCalculator.Compute(
+                record, location, _timeZone, isWorkingDay, noRecordStatus, e.WorkStart, e.WorkEnd);
+
+            rows.Add(new LiveDay(e, location, record, c));
+        }
+
+        return rows;
+    }
+
+    private static DayRow ToDayRow(LiveDay d, DateOnly date) => new(
+        d.Employee.Id, d.Employee.LocationId, date, d.Record?.CheckInAtUtc, d.Record?.CheckOutAtUtc,
+        d.Computed.Status, d.Computed.WorkedMinutes, d.Computed.OvertimeMinutes, d.Computed.LateMinutes);
+
+    /// <summary>
+    /// The computed rows for [from..to], scoped to the caller.
+    ///
+    /// DailySummary is the record of a FINISHED day — the nightly job writes yesterday and never
+    /// today. So today is computed live here, and any row that happens to exist for today in the
+    /// table is ignored: several admin actions (an attendance edit, a leave entry, a non-working-day
+    /// change) call GenerateForDateAsync with today's date and freeze a half-finished snapshot into
+    /// it. The dashboard was reading that snapshot — showing, hours later, whatever the day looked
+    /// like when an admin last touched it, or zeros where no admin had.
+    /// </summary>
+    private async Task<(ReportAccess Access, List<DayRow> Rows, string Label)> LoadDayRowsAsync(
+        DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct)
+    {
+        var today = LocalToday();
+        var rows = new List<DayRow>();
+
+        // Finished days: straight from the table.
+        var persistedTo = to < today ? to : today.AddDays(-1);
+        var scoped = await LocationScope.ApplyLocationScopeAsync(
+            _db, _db.DailySummaries.Where(s => s.SummaryDate >= from && s.SummaryDate <= persistedTo),
+            requesterId, role, locationId, ct);
+        if (scoped.Access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, rows, scoped.Label);
+
+        if (persistedTo >= from)
+        {
+            rows.AddRange(await scoped.Query
+                .Select(s => new DayRow(
+                    s.EmployeeId, s.LocationId, s.SummaryDate, s.CheckInAtUtc, s.CheckOutAtUtc,
+                    s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes))
+                .ToListAsync(ct));
+        }
+
+        // Today (only if the range actually reaches it): computed, never read.
+        if (from <= today && today <= to)
+        {
+            var (access, employees) = await ScopedEmployeesAsync(locationId, requesterId, role, ct);
+            if (access == ReportAccess.Forbidden)
+                return (ReportAccess.Forbidden, [], "Forbidden");
+            rows.AddRange((await ComputeDayLiveAsync(today, employees, ct)).Select(d => ToDayRow(d, today)));
+        }
+
+        return (ReportAccess.Allowed, rows, scoped.Label);
+    }
+
     public async Task<(ReportAccess Access, AttendanceReport? Report)> GetSummaryAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
-        var baseQuery = _db.DailySummaries.Where(s => s.SummaryDate >= from && s.SummaryDate <= to);
-
-        // Same scope authority for JSON and Excel — export cannot bypass it.
-        var scoped = await LocationScope.ApplyLocationScopeAsync(_db, baseQuery, requesterId, role, locationId, ct);
-        if (scoped.Access == ReportAccess.Forbidden)
+        // Same scope authority for JSON and Excel — export cannot bypass it. Today is computed live
+        // rather than read from DailySummary; see LoadDayRowsAsync.
+        var (access, dayRows, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
             return (ReportAccess.Forbidden, null);
 
-        var rows = await (
-            from s in scoped.Query
-            join e in _db.Employees on s.EmployeeId equals e.Id
-            join l in _db.Locations on s.LocationId equals l.Id
-            select new { s.EmployeeId, e.FullName, LocationName = l.Name, s.Status, s.WorkedMinutes, s.OvertimeMinutes })
-            .ToListAsync(ct);
+        var (employeeNames, locationNames) = await NamesForAsync(dayRows, ct);
+        var rows = dayRows
+            .Where(r => employeeNames.ContainsKey(r.EmployeeId))
+            .Select(r => new
+            {
+                r.EmployeeId,
+                FullName = employeeNames[r.EmployeeId],
+                // The row's OWN location, not the employee's current one: a day belongs to wherever
+                // they were working that day, and this report is history.
+                LocationName = locationNames.GetValueOrDefault(r.LocationId, string.Empty),
+                r.Status,
+                r.WorkedMinutes,
+                r.OvertimeMinutes,
+            })
+            .ToList();
 
         var grouped = rows
             .GroupBy(x => new { x.EmployeeId, x.FullName })
@@ -98,7 +285,26 @@ public sealed class ReportQueryService : IReportQueryService
             LeaveDays: grouped.Sum(r => r.LeaveDays),
             PermissionDays: grouped.Sum(r => r.PermissionDays));
 
-        return (ReportAccess.Allowed, new AttendanceReport(from, to, scoped.Label, grouped, totals));
+        return (ReportAccess.Allowed, new AttendanceReport(from, to, label, grouped, totals));
+    }
+
+    /// <summary>Employee and location names for a set of computed rows. The rows carry ids only:
+    /// they come from two sources (the summary table and a live computation) and only one of those
+    /// could join.</summary>
+    private async Task<(Dictionary<Guid, string> Employees, Dictionary<Guid, string> Locations)> NamesForAsync(
+        List<DayRow> rows, CancellationToken ct)
+    {
+        var employeeIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+        var locationIds = rows.Select(r => r.LocationId).Distinct().ToList();
+
+        var locations = await _db.Locations
+            .Where(l => locationIds.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        var employees = await _db.Employees
+            .Where(e => employeeIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+
+        return (employees, locations);
     }
 
     public async Task<IReadOnlyList<LocationDto>> GetVisibleLocationsAsync(
@@ -132,77 +338,25 @@ public sealed class ReportQueryService : IReportQueryService
     {
         // Defaults to the local "today"; a past date shows that day's board (same computation, so the
         // live board and any historical day read identically).
-        var today = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var day = date ?? LocalToday();
 
-        // In-scope active employees. Admins/managers who also clock in ARE shown (e.g. a director who
-        // scans); only the system/root accounts in HiddenEmails (admin@bms.az) are excluded.
-        var employeesQuery = _db.Employees.Where(e =>
-            e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()));
-        if (role == EmployeeRole.Manager)
-        {
-            var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct);
-            employeesQuery = employeesQuery.Where(e => managed.Contains(e.LocationId));
-        }
-        else if (role == EmployeeRole.Employee)
-        {
-            employeesQuery = employeesQuery.Where(e => e.Id == requesterId);
-        }
+        // No location filter here: the board has its own client-side one, and a Manager is already
+        // narrowed to their locations by scope.
+        var (access, employees) = await ScopedEmployeesAsync(null, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
+            return [];
 
-        var employees = await employeesQuery
-            .Select(e => new { e.Id, e.FullName, e.LocationId, e.WorkStart, e.WorkEnd })
-            .ToListAsync(ct);
+        var computed = await ComputeDayLiveAsync(day, employees, ct);
 
-        var employeeIds = employees.Select(e => e.Id).ToList();
-        var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
-        var locations = await _db.Locations
-            .Where(l => locationIds.Contains(l.Id))
-            .ToDictionaryAsync(l => l.Id, ct);
-        var records = await _db.AttendanceRecords
-            .Where(r => r.AttendanceDate == today && employeeIds.Contains(r.EmployeeId))
-            .ToDictionaryAsync(r => r.EmployeeId, ct);
-
-        // Same non-working-day resolution as the nightly job, just for "today" — so the live
-        // board and the persisted summary always agree once the nightly job catches up.
-        var nonWorkingLocationIds = await _db.NonWorkingDays
-            .Where(n => n.Date == today && (n.LocationId == null || locationIds.Contains(n.LocationId.Value)))
-            .Select(n => n.LocationId)
-            .ToListAsync(ct);
-        var isGloballyNonWorking = nonWorkingLocationIds.Contains(null);
-        var nonWorkingLocationIdSet = nonWorkingLocationIds
-            .Where(id => id.HasValue)
-            .Select(id => id!.Value)
-            .ToHashSet();
-
-        // Same leave/permission resolution as the nightly job, for "today".
-        var leaveByEmployee = await _db.LeaveRecords
-            .Where(l => l.FromDate <= today && l.ToDate >= today && employeeIds.Contains(l.EmployeeId))
-            .GroupBy(l => l.EmployeeId)
-            .Select(g => new { EmployeeId = g.Key, Type = g.First().Type })
-            .ToDictionaryAsync(x => x.EmployeeId, x => x.Type, ct);
-
-        var rows = new List<DayAttendanceRow>(employees.Count);
-        foreach (var e in employees)
-        {
-            if (!locations.TryGetValue(e.LocationId, out var location))
-                continue;
-            records.TryGetValue(e.Id, out var record);
-            var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, today.DayOfWeek)
-                                && !isGloballyNonWorking
-                                && !nonWorkingLocationIdSet.Contains(location.Id);
-            LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
-            var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
-            // The employee's own hours override the location shift when set — same rule as at scan time.
-            var c = AttendanceCalculator.Compute(
-                record, location, _timeZone, isWorkingDay, noRecordStatus, e.WorkStart, e.WorkEnd);
-            rows.Add(new DayAttendanceRow(
-                e.Id, e.FullName, location.Id, location.Name, c.Status.ToString(),
-                record?.CheckInAtUtc, record?.CheckOutAtUtc,
-                record?.Id, record?.CheckInPhotoKey != null,
-                record?.FaceMatchScore, record?.FaceMatchStatus.ToString() ?? "NotChecked",
-                record?.LateArrivalReason, record?.EarlyDepartureReason));
-        }
-
-        return rows.OrderBy(r => r.EmployeeName).ToList();
+        return computed
+            .Select(d => new DayAttendanceRow(
+                d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name, d.Computed.Status.ToString(),
+                d.Record?.CheckInAtUtc, d.Record?.CheckOutAtUtc,
+                d.Record?.Id, d.Record?.CheckInPhotoKey != null,
+                d.Record?.FaceMatchScore, d.Record?.FaceMatchStatus.ToString() ?? "NotChecked",
+                d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason))
+            .OrderBy(r => r.EmployeeName)
+            .ToList();
     }
 
     public async Task<(ReportAccess Access, ProblemsReport? Report)> GetProblemsAsync(
@@ -286,30 +440,28 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
-        var baseQuery = _db.DailySummaries.Where(s => s.SummaryDate >= from && s.SummaryDate <= to);
-
-        // Same scope authority as GetSummaryAsync — one rule for every reporting view.
-        var scoped = await LocationScope.ApplyLocationScopeAsync(_db, baseQuery, requesterId, role, locationId, ct);
-        if (scoped.Access == ReportAccess.Forbidden)
+        // Same scope authority as GetSummaryAsync — one rule for every reporting view. Today is
+        // computed live rather than read from DailySummary; see LoadDayRowsAsync.
+        var (access, summaries, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
             return (ReportAccess.Forbidden, null);
 
-        var summaries = await scoped.Query
-            .Select(s => new
-            {
-                s.EmployeeId, s.SummaryDate, s.CheckInAtUtc, s.CheckOutAtUtc,
-                s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes
-            })
-            .ToListAsync(ct);
-
         // Everything below is scoped to exactly these employees — derived from the same
-        // already-scoped DailySummary rows, rather than re-deriving scope rules a second time.
+        // already-scoped rows, rather than re-deriving scope rules a second time.
         var scopedEmployeeIds = summaries.Select(s => s.EmployeeId).Distinct().ToList();
 
         var totalCheckIns = summaries.Count(s => s.CheckInAtUtc != null);
         var totalCheckOuts = summaries.Count(s => s.CheckOutAtUtc != null);
         var lateCount = summaries.Count(s => s.Status == DailySummaryStatus.Late);
         var absentCount = summaries.Count(s => s.Status == DailySummaryStatus.Absent);
-        var incompleteCount = summaries.Count(s => s.Status == DailySummaryStatus.Incomplete);
+
+        // Incomplete means "checked in, never out". On a finished day that is a forgotten check-out —
+        // the day reads as zero hours until an admin closes it, so it needs attention. On TODAY it
+        // just means the person is still at work, which needs nothing. The dashboard used to lump
+        // them together and reported everyone currently on shift as having forgotten to leave.
+        var todayLocal = LocalToday();
+        var incompleteCount = summaries.Count(s => s.Status == DailySummaryStatus.Incomplete && s.Date != todayLocal);
+        var stillAtWorkCount = summaries.Count(s => s.Status == DailySummaryStatus.Incomplete && s.Date == todayLocal);
         var dayOffCount = summaries.Count(s => s.Status == DailySummaryStatus.DayOff);
         var leaveCount = summaries.Count(s => s.Status == DailySummaryStatus.OnLeave);
         var permissionCount = summaries.Count(s => s.Status == DailySummaryStatus.Permission);
@@ -335,13 +487,13 @@ public sealed class ReportQueryService : IReportQueryService
             .CountAsync(ct);
 
         var trend = summaries
-            .GroupBy(s => s.SummaryDate)
+            .GroupBy(s => s.Date)
             .Select(g => new DailyTrendPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null)))
             .OrderBy(p => p.Date)
             .ToList();
 
         var weekday = summaries
-            .GroupBy(s => (int)s.SummaryDate.DayOfWeek)
+            .GroupBy(s => (int)s.Date.DayOfWeek)
             .Select(g => new WeekdayPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null)))
             .OrderBy(p => p.DayOfWeek)
             .ToList();
@@ -364,8 +516,9 @@ public sealed class ReportQueryService : IReportQueryService
         var avgDailyOperations = Math.Round((totalCheckIns + totalCheckOuts) / (double)daySpan, 1);
 
         var report = new DashboardReport(
-            from, to, scoped.Label,
-            totalCheckIns, totalCheckOuts, lateCount, absentCount, incompleteCount, dayOffCount, leaveCount, permissionCount,
+            from, to, label,
+            totalCheckIns, totalCheckOuts, lateCount, absentCount, incompleteCount, stillAtWorkCount,
+            dayOffCount, leaveCount, permissionCount,
             totalWorkedHours, overtimeHours, outsideRadiusCount, activeDeviceCount,
             checkInOutRatio, lateRate, outsideRadiusRate, avgDailyOperations,
             trend, weekday, topLate);
