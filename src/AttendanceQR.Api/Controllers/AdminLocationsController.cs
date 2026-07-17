@@ -92,11 +92,16 @@ public class AdminLocationsController : ControllerBase
 
         // Refuse to delete a location that is still referenced — it would orphan employees /
         // attendance history (and the DB foreign keys would reject it anyway).
-        var inUse = await _db.Employees.AnyAsync(e => e.LocationId == id)
-                    || await _db.AttendanceRecords.AnyAsync(a => a.LocationId == id)
-                    || await _db.DailySummaries.AnyAsync(d => d.LocationId == id);
-        if (inUse)
-            return Conflict(new { error = "LocationInUse" });
+        //
+        // Report WHAT is holding it, because the two cases have different answers and the admin
+        // cannot see which they are in: staff can be moved and then the branch deletes, but history
+        // never can — that branch has to be deactivated instead. "Cannot be deleted" on its own left
+        // someone staring at a branch whose only occupant was their own admin account.
+        var employeeCount = await _db.Employees.CountAsync(e => e.LocationId == id);
+        var historyCount = await _db.AttendanceRecords.CountAsync(a => a.LocationId == id)
+                           + await _db.DailySummaries.CountAsync(d => d.LocationId == id);
+        if (employeeCount > 0 || historyCount > 0)
+            return Conflict(new { error = "LocationInUse", employeeCount, historyCount });
 
         _db.Locations.Remove(location);
         await _db.SaveChangesAsync();

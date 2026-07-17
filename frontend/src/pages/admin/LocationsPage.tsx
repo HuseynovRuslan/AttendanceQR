@@ -47,9 +47,21 @@ const ERRORS: Record<string, string> = {
   LateThresholdNegative: 'Gecikmə həddi mənfi ola bilməz',
   ShiftStartInvalid: 'Növbə başlama vaxtı yanlışdır',
   ShiftEndInvalid: 'Növbə bitmə vaxtı yanlışdır',
-  LocationInUse: 'Bu lokasiya işçilər/qeydlər tərəfindən istifadə olunur — silinə bilməz',
+  LocationInUse: 'Bu filial istifadə olunur — silinə bilməz',
   LocationNotFound: 'Lokasiya tapılmadı',
   WorkDaysMaskInvalid: 'İş günləri seçimi yanlışdır',
+}
+
+/** Why this branch will not delete, and what to do about it — the two causes have different answers.
+ *  Staff can be moved and the branch then deletes; history cannot, so that branch is deactivated
+ *  instead. Saying only "it is in use" left an admin hunting for staff they could not see. */
+function inUseMessage(name: string, employees: number, history: number): string {
+  if (history > 0) {
+    return `«${name}» filialında ${history} davamiyyət qeydi var — silinsə tarixçə itərdi. ` +
+      'Əvəzinə «Dayandır» ilə deaktiv edin: kiosk QR bağlanır, məlumat qalır.'
+  }
+  return `«${name}» filialında ${employees} işçi var. Əvvəlcə onları başqa filiala köçürün ` +
+    '(İşçilər → redaktə → Filial), sonra silin. Özünüz də o filialda ola bilərsiniz.'
 }
 
 export function LocationsPage() {
@@ -157,7 +169,8 @@ export function LocationsPage() {
       if (editingId === l.id) closeForm()
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
-      setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
+      const d = data as { error: string; employeeCount?: number; historyCount?: number }
+      setError(d.error === 'LocationInUse' ? inUseMessage(l.name, d.employeeCount ?? 0, d.historyCount ?? 0) : ERRORS[d.error] ?? 'Silinmədi')
     } else {
       setError('Silinmədi')
     }
