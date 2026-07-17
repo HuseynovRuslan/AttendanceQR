@@ -33,6 +33,10 @@ services:
       Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey}
       QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret}
       Cors__AllowedOrigins: ${Cors__AllowedOrigins}
+      # Every variable the app reads has to be named HERE — a value in .env alone reaches nothing,
+      # because Compose only interpolates what this list mentions. (Same trap as TenantSeed__*.)
+      # Employee ids allowed to manage tenants; empty = the super-admin screen does not exist.
+      App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
       # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
       # the proxy's address instead of the phone's.
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
