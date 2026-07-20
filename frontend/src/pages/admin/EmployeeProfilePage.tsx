@@ -160,7 +160,7 @@ export function EmployeeProfilePage() {
             {initials(emp.fullName)}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'Sora,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--c900)' }}>{emp.fullName}</div>
+            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--c900)' }}>{emp.fullName}</div>
             <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
               {[emp.position, emp.locationName].filter(Boolean).join(' · ') || '—'}
             </div>

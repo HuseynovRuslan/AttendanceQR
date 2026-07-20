@@ -1,37 +1,97 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getDashboard, getMyLocations, getToday, type DashboardReport, type DayAttendanceRow, type LocationDto } from '../../api/admin'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  getDashboard, getMyLocations, getPendingDeviceChanges, getProblems, getToday,
+  type DashboardReport, type DayAttendanceRow, type LocationDto,
+} from '../../api/admin'
+import { getOpenRecords } from '../../api/attendance'
 import { usePolling } from '../../lib/usePolling'
-import { STATUS_MAP } from '../../components/StatusBadge'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { ChartLegend, TrendChart, WeekdayBarChart } from '../../components/Charts'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
-import { fmtDate, fmtHM } from '../../lib/format'
+import { fmtDate, fmtHM, fmtTime } from '../../lib/format'
+import { initials } from '../../lib/att'
+
+// Accent for one employee row, by their own state — colour-codes the list at a glance.
+const BUCKET_COLOR: Record<string, string> = { in: 'var(--blue)', done: 'var(--leaf)', absent: 'var(--clay)', off: 'var(--purple)' }
+const BUCKET_ICON: Record<string, { icon: string; accent: string }> = {
+  in: { icon: '🏢', accent: 'blue' },
+  done: { icon: '✅', accent: 'leaf' },
+  absent: { icon: '🚫', accent: 'clay' },
+  total: { icon: '👥', accent: 'leaf' },
+}
+
+// The bucket a today-row belongs to — mirrors the hero counts exactly so the pill and the list agree.
+type Bucket = 'in' | 'done' | 'absent'
+function bucketOf(status: string): Bucket | 'off' {
+  if (status === 'OnTime' || status === 'Late') return 'done'
+  if (status === 'Absent') return 'absent'
+  if (status === 'DayOff' || status === 'OnLeave' || status === 'Permission') return 'off'
+  return 'in'
+}
+const BUCKET_LABEL: Record<string, string> = { in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', total: 'Ümumi işçi' }
 
 function rateColor(rate: number): string {
   return rate >= 80 ? 'var(--leaf-d)' : rate >= 50 ? 'var(--amber)' : 'var(--clay)'
 }
 
+/** Eases a number from its previous value to the new target (easeOutCubic). On first mount it counts
+ *  up from 0; on later updates (the 30s poll) it ticks smoothly from the old value — never a jarring
+ *  reset. Honours reduced-motion by jumping straight to the target. */
+function useCountUp(target: number, duration = 750): number {
+  const [val, setVal] = useState(target)
+  const fromRef = useRef(0)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      fromRef.current = target
+      setVal(target)
+      return
+    }
+    const from = fromRef.current
+    const start = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setVal(from + (target - from) * eased)
+      if (p < 1) raf = requestAnimationFrame(tick)
+      else fromRef.current = target
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return val
+}
+
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
 
-/** A heading over a band of tiles, saying what the numbers below are counting and over what period.
- *  The screen carries two different clocks — a live "today" and a chosen date range — and reading a
- *  tile without knowing which one it belongs to is how "Qayıb 13" and "Qayıblar 14" both looked
- *  correct at the same time. */
-function Band({ title, hint }: { title: string; hint: string }) {
+// On a large total the odd minutes are noise and only make the number wrap — round to whole hours
+// past 100h, keep "saat X dəq" for the small ones where the minutes still matter.
+const fmtHours = (h: number) => (h >= 100 ? `${Math.round(h)} saat` : fmtHM(h))
+
+/** A premium section header — an accent icon chip + title + subtitle + a fading rule — that divides the
+ *  dashboard into clear bands. `accent` is one of the theme colour families (leaf/blue/clay/amber/…). */
+function Section({ title, sub, accent = 'leaf' }: { title: string; sub: string; accent?: string }) {
   return (
-    <div style={{ margin: '4px 2px 10px' }}>
-      <div style={{ fontFamily: "'Sora',sans-serif", fontSize: 15, fontWeight: 700, color: 'var(--c900)' }}>{title}</div>
-      <div style={{ fontSize: 12, color: 'var(--c400)', marginTop: 2 }}>{hint}</div>
+    <div className="dash-section">
+      <span className="dash-section-bar" style={{ background: `var(--${accent})` }} />
+      <div>
+        <div className="dash-section-t">{title}</div>
+        <div className="dash-section-s">{sub}</div>
+      </div>
+      <div className="dash-section-line" />
     </div>
   )
 }
 
 /** One tile. `tone` is the semantic status, not decoration: leaf = fine, blue = in progress,
  *  clay = wrong, amber = needs a person to act, purple = not expected in today. */
-function Stat({ tone, label, value, sub }: { tone?: string; label: string; value: number | string; sub: string }) {
+function Stat({ tone, label, value, sub, icon }: { tone?: string; label: string; value: number | string; sub: string; icon?: string }) {
   return (
     <div className={tone ? `stat-card ${tone}` : 'stat-card'}>
+      {icon && <div className="stat-ic">{icon}</div>}
       <div className="stat-lbl">{label}</div>
       <div className="stat-val">{value}</div>
       <div className="stat-sub">{sub}</div>
@@ -40,20 +100,44 @@ function Stat({ tone, label, value, sub }: { tone?: string; label: string; value
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [openBucket, setOpenBucket] = useState<string | null>(null)
+  // Action-center counts: past open records, pending device approvals, today's rejected scans.
+  const [actions, setActions] = useState({ open: 0, devices: 0, problems: 0 })
 
   usePolling(async () => {
-    const { status, data } = await getToday()
-    if (status === 200 && Array.isArray(data)) {
-      setRows(data)
+    const [today, open, devices, problems] = await Promise.all([
+      getToday(),
+      getOpenRecords(),
+      getPendingDeviceChanges(),
+      getProblems(todayIso()),
+    ])
+    if (today.status === 200 && Array.isArray(today.data)) {
+      setRows(today.data)
       setError(null)
-    } else if (status === 403) {
+    } else if (today.status === 403) {
       setError('İcazəniz yoxdur')
     } else {
       setError('Məlumat yüklənmədi')
     }
+    setActions({
+      open: Array.isArray(open.data) ? open.data.length : 0,
+      devices: Array.isArray(devices.data) ? devices.data.length : 0,
+      problems: problems.data && 'rejectedCount' in problems.data ? problems.data.rejectedCount : 0,
+    })
   }, 30_000)
+
+  // Live activity feed — the latest check-ins/outs today, built from the rows we already have.
+  const activity = useMemo(() => {
+    const ev: { id: string; name: string; loc: string; type: 'in' | 'out'; at: string }[] = []
+    for (const r of rows) {
+      if (r.checkInAtUtc) ev.push({ id: r.employeeId + 'i', name: r.employeeName, loc: r.locationName, type: 'in', at: r.checkInAtUtc })
+      if (r.checkOutAtUtc) ev.push({ id: r.employeeId + 'o', name: r.employeeName, loc: r.locationName, type: 'out', at: r.checkOutAtUtc })
+    }
+    return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 12)
+  }, [rows])
 
   // present = checked in AND OUT already ("Tamamlayıb" — finished their day). incomplete = checked in,
   // no check-out YET ("İşdə" — still at work; this page is always "today", so that's the only reading).
@@ -108,10 +192,6 @@ export function DashboardPage() {
   const [dashLoading, setDashLoading] = useState(false)
   const [dashError, setDashError] = useState<string | null>(null)
 
-  // An employee with no bound device cannot scan at all — which then reads as "absent" and is not
-  // their fault. Only worth a tile when it is actually happening.
-  const missingDevices = Math.max(0, total - (dashReport?.activeDeviceCount ?? total))
-
   // Says which days the band below is counting. "Bu gün" when the range is just today, so the two
   // bands do not silently look like the same question asked twice.
   const rangeHint =
@@ -144,11 +224,165 @@ export function DashboardPage() {
     void loadDashboard()
   }, [])
 
+  const RING_R = 62
+  const RING_C = 2 * Math.PI * RING_R
+  const ringColor = rateColor(overallRate)
+  const ringVal = useCountUp(overallRate)
+  const cIn = Math.round(useCountUp(counts.incomplete))
+  const cDone = Math.round(useCountUp(counts.present))
+  const cAbsent = Math.round(useCountUp(counts.absent))
+  const cTotal = Math.round(useCountUp(total))
+
   return (
-    <div>
-      {/* --- date-range report filter, at the very top per feedback --- */}
+    <div className="dash-premium">
+      {/* Executive hero — the live "today" picture, led by the attendance ring. */}
+      <div className="dash-hero">
+        <div className="dash-hero-inner">
+          <div className="dash-ring">
+            <svg width="150" height="150" viewBox="0 0 150 150">
+              <circle cx="75" cy="75" r={RING_R} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="12" />
+              <circle
+                cx="75" cy="75" r={RING_R} fill="none" stroke={ringColor} strokeWidth="12" strokeLinecap="round"
+                strokeDasharray={RING_C}
+                strokeDashoffset={RING_C - (ringVal / 100) * RING_C}
+                style={{ transition: 'stroke .4s', filter: `drop-shadow(0 0 6px ${ringColor})` }}
+              />
+            </svg>
+            <div className="dash-ring-c">
+              <b>{Math.round(ringVal)}%</b>
+              <span>davamiyyət</span>
+            </div>
+          </div>
+
+          <div className="dash-hero-main">
+            <div className="dash-eyebrow"><i />Bu gün · Canlı</div>
+            <h2>Davamiyyət icmalı</h2>
+            <div className="dash-hero-sub">
+              {expected} nəfərdən <b>{attended}</b>-i işə gəlib · hər 30 saniyədə yenilənir
+            </div>
+
+            <div className="dash-pills">
+              {[
+                { key: 'in', v: cIn, label: 'İşdə', dot: 'var(--blue)' },
+                { key: 'done', v: cDone, label: 'Tamamlayıb', dot: 'var(--leaf)' },
+                { key: 'absent', v: cAbsent, label: 'Qayıb', dot: 'var(--clay)' },
+                { key: 'total', v: cTotal, label: 'Ümumi işçi', dot: 'rgba(255,255,255,.4)' },
+              ].map((p) => (
+                <div
+                  key={p.key}
+                  className={`dash-pill${openBucket === p.key ? ' active' : ''}`}
+                  onClick={() => setOpenBucket((b) => (b === p.key ? null : p.key))}
+                  title="İşçi siyahısını aç"
+                >
+                  <div className="v">{p.v}</div>
+                  <div className="l"><i style={{ background: p.dot }} />{p.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {notExpected > 0 && (
+              <div className="dash-hero-note">
+                Bu gün gözlənilmir: {[
+                  counts.dayOff && `${counts.dayOff} istirahət`,
+                  counts.onLeave && `${counts.onLeave} məzuniyyət`,
+                  counts.permission && `${counts.permission} icazə`,
+                ].filter(Boolean).join(' · ')}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tapping a hero pill opens the matching employee list right below — so "Qayıb 16" is one
+          click from knowing exactly who. */}
+      {openBucket && (() => {
+        const list = (openBucket === 'total' ? rows : rows.filter((r) => bucketOf(r.status) === openBucket))
+          .slice()
+          .sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+        const head = BUCKET_ICON[openBucket] ?? BUCKET_ICON.total
+        return (
+          <div className="card card-pad dash-list" style={{ marginBottom: 22 }}>
+            <div className="dash-list-head">
+              <span className="dash-section-bar" style={{ background: `var(--${head.accent})`, height: 34 }} />
+              <div style={{ flex: 1 }}>
+                <div className="dash-list-t">{BUCKET_LABEL[openBucket]}</div>
+                <div className="dash-list-c">{list.length} işçi</div>
+              </div>
+              <button className="btn btn-sm" onClick={() => setOpenBucket(null)} aria-label="Bağla"><IconX /></button>
+            </div>
+            {list.length === 0 ? (
+              <div className="muted" style={{ padding: '8px 0' }}>Bu qrupda işçi yoxdur</div>
+            ) : (
+              <div className="dash-list-grid">
+                {list.map((r) => {
+                  const b = bucketOf(r.status)
+                  const color = BUCKET_COLOR[b] ?? 'var(--c400)'
+                  return (
+                    <div key={r.employeeId} className="dash-emp" style={{ borderLeftColor: color }}>
+                      <div className="dash-emp-av" style={{ background: color }}>{initials(r.employeeName)}</div>
+                      <div className="dash-emp-main">
+                        <div className="dash-emp-nm"><EmployeeLink id={r.employeeId} name={r.employeeName} /></div>
+                        <div className="dash-emp-loc">{r.locationName}</div>
+                      </div>
+                      <div className="dash-emp-time">
+                        {r.checkInAtUtc ? (
+                          <>
+                            <div>↙ {fmtTime(r.checkInAtUtc)}</div>
+                            {r.checkOutAtUtc && <div>↗ {fmtTime(r.checkOutAtUtc)}</div>}
+                          </>
+                        ) : (
+                          <span className="absent">Gəlməyib</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {error && (
+        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+          <IconX />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Only worth a panel when there is more than one branch to compare. With a single branch its
+          rows were the same number as the hero above, said twice. */}
+      {areaStats.length > 1 && (
+        <>
+        <Section title="Filiallar üzrə" sub="Bu gün — filial performansı" accent="blue" />
+        <div className="card card-pad" style={{ marginBottom: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {areaStats.map((a) => (
+              <div key={a.name}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c900)' }}>{a.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--c400)' }}>{a.attended}/{a.expected}</span>
+                    <span style={{ fontFamily: "'Manrope',sans-serif", fontWeight: 800, fontSize: 17, color: rateColor(a.rate) }}>
+                      {a.rate}%
+                    </span>
+                  </div>
+                </div>
+                <div className="dash-bar">
+                  <i style={{ width: `${a.rate}%`, background: rateColor(a.rate) }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        </>
+      )}
+
+      {/* --- Period report section --- */}
+      <Section title="Dövr hesabatı" sub={`Seçilmiş aralıq: ${rangeHint}`} accent="leaf" />
+
       <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-title">Filial və tarix aralığı — aşağıdakı hesabat üçün</div>
+        <div className="card-title">Filial və tarix aralığı seçin</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 }}>
           <div style={{ minWidth: 180 }}>
             <label className="form-label">Filial</label>
@@ -174,80 +408,6 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="fb fb-err" style={{ marginBottom: 12 }}>
-          <IconX />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <Band title="Bu gün" hint="Canlı — hər 30 saniyədə yenilənir" />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) 1fr', gap: 16, marginBottom: 10, alignItems: 'stretch' }} className="dash-today">
-        {/* The one number the screen leads with, plus the meter for the same ratio. */}
-        <div className="card card-pad" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 52, color: rateColor(overallRate), lineHeight: 1 }}>
-              {overallRate}%
-            </div>
-            {/* "gəlib", not "işdədir": some of them have already finished and gone home. The old
-                caption said one thing and the number under it said the other. */}
-            <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 8 }}>
-              {expected} nəfərdən <b style={{ color: 'var(--c900)' }}>{attended}</b>-i işə gəlib
-            </div>
-          </div>
-          <div style={{ height: 8, background: 'var(--c100)', borderRadius: 999, overflow: 'hidden', marginTop: 14 }}>
-            <div style={{ height: '100%', background: rateColor(overallRate), borderRadius: 999, width: `${overallRate}%`, transition: 'width .6s' }} />
-          </div>
-          {notExpected > 0 && (
-            // Folded into one quiet line: three tiles reading 0 all week were three tiles of nothing.
-            <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 10, textAlign: 'center' }}>
-              Gözlənilmir: {[
-                counts.dayOff && `${counts.dayOff} istirahət`,
-                counts.onLeave && `${counts.onLeave} məzuniyyət`,
-                counts.permission && `${counts.permission} icazə`,
-              ].filter(Boolean).join(' · ')}
-            </div>
-          )}
-        </div>
-
-        <div className="stat-grid" style={{ marginBottom: 0, gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-          <Stat tone="blue" label={STATUS_MAP.Incomplete.label} value={counts.incomplete} sub="Hazırda işdədir, çıxışı yoxdur" />
-          <Stat tone="leaf" label={STATUS_MAP.OnTime.label} value={counts.present} sub="Giriş və çıxış edib, günü bitirib" />
-          <Stat tone="clay" label={STATUS_MAP.Absent.label} value={counts.absent} sub="Bu gün heç giriş etməyib" />
-          <Stat label="Ümumi işçi" value={total} sub="Bütün aktiv işçilər" />
-        </div>
-      </div>
-
-      {/* Only worth a panel when there is more than one branch to compare. With a single branch its
-          rows were the same number as the hero above, said twice. */}
-      {areaStats.length > 1 && (
-        <div className="card card-pad" style={{ marginBottom: 28 }}>
-          <div className="card-title">Filiallar üzrə</div>
-          {areaStats.map((a) => (
-            <div
-              key={a.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 0',
-                borderBottom: '1px solid var(--c50)',
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{a.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--c400)' }}>{a.expected} nəfərdən {a.attended}-i gəlib</div>
-              </div>
-              <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 18, color: rateColor(a.rate) }}>
-                {a.rate}%
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {areaStats.length <= 1 && <div style={{ marginBottom: 18 }} />}
-
       {dashError && (
         <div className="fb fb-err" style={{ marginBottom: 12 }}>
           <IconX />
@@ -257,15 +417,13 @@ export function DashboardPage() {
 
       {dashReport && (
         <>
-          <Band title="Seçilmiş dövr" hint={rangeHint} />
-
           <div className="stat-grid">
             <Stat tone="leaf" label="Girişlər" value={dashReport.totalCheckIns} sub="Dövr ərzində qeydə alınan giriş" />
             <Stat tone="blue" label="Çıxışlar" value={dashReport.totalCheckOuts} sub="Dövr ərzində qeydə alınan çıxış" />
             <Stat tone="clay" label="Qayıb günləri" value={dashReport.absentCount} sub="Heç giriş edilməyən iş günü" />
-            <Stat tone="leaf" label="İşlənən saat" value={fmtHM(dashReport.totalWorkedHours)} sub="Bütün işçilərin cəmi" />
+            <Stat tone="leaf" label="İşlənən saat" value={fmtHours(dashReport.totalWorkedHours)} sub="Bütün işçilərin cəmi" />
             {/* "Overtime" was the only English word on an Azerbaijani screen. */}
-            <Stat tone="amber" label="Əlavə iş saatı" value={fmtHM(dashReport.overtimeHours)} sub="Növbə bitdikdən sonra işlənən" />
+            <Stat tone="amber" label="Əlavə iş saatı" value={fmtHours(dashReport.overtimeHours)} sub="Növbə bitdikdən sonra işlənən" />
             {/* Days off / leave / permission only earn a tile when there is something to report. */}
             {dashReport.dayOffCount > 0 && (
               <Stat tone="purple" label="İstirahət" value={dashReport.dayOffCount} sub="İş günü olmayan günlər" />
@@ -278,31 +436,8 @@ export function DashboardPage() {
             )}
           </div>
 
-          {/* Nothing here means nothing to do — so the band disappears entirely rather than showing a
-              row of reassuring zeros that have to be read before they can be dismissed. */}
-          {(dashReport.incompleteCount > 0 || dashReport.outsideRadiusCount > 0 || missingDevices > 0) && (
-            <>
-              <Band title="Diqqət tələb edir" hint="Baxılmasa hesabat səhv qalır" />
-              <div className="stat-grid">
-                {dashReport.incompleteCount > 0 && (
-                  <Stat
-                    tone="amber"
-                    label="Çıxışı unudulan günlər"
-                    value={dashReport.incompleteCount}
-                    sub="Gün bitib, çıxış yoxdur — 0 saat sayılır"
-                  />
-                )}
-                {dashReport.outsideRadiusCount > 0 && (
-                  <Stat tone="clay" label="Koordinat xarici" value={dashReport.outsideRadiusCount} sub="Filialdan kənarda rədd edilən skan" />
-                )}
-                {missingDevices > 0 && (
-                  <Stat tone="clay" label="Cihazsız işçi" value={missingDevices} sub="Skan edə bilmir — cihaz bağlanmayıb" />
-                )}
-              </div>
-            </>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginTop: 4, marginBottom: 16 }}>
+          <Section title="Trendlər" sub="Giriş / çıxış dinamikası və həftəlik model" accent="blue" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 4 }}>
             <div className="card card-pad">
               <div className="card-title">Giriş / Çıxış trendi</div>
               <ChartLegend />
@@ -317,21 +452,64 @@ export function DashboardPage() {
 
           {/* "Ən çox gecikənlər" removed with the rest of lateness: ranking employees against a shift
               none of them actually works to is worse than showing nothing. */}
+          <Section title="Ümumi baxış" sub="Dövr üzrə nisbətlər" accent="leaf" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
             <div className="card card-pad">
-              <div className="card-title">Ümumi baxış</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 10, fontSize: 13 }}>
                 <span className="muted">Seçilmiş tarix aralığı</span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.from} – {dashReport.to}</span>
                 <span className="muted">Giriş/Çıxış nisbəti</span>
                 <span className="mono" style={{ textAlign: 'right' }}>{dashReport.checkInOutRatio}%</span>
-                <span className="muted">Koordinat xarici faizi</span>
-                <span className="mono" style={{ textAlign: 'right' }}>{dashReport.outsideRadiusRate}%</span>
               </div>
             </div>
           </div>
         </>
       )}
+
+      {/* Action center + live activity — moved below the report per feedback. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginTop: 22 }}>
+        <div className="card card-pad">
+          <div className="card-title">Diqqət mərkəzi</div>
+          <div className="dash-actions">
+            {[
+              { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => setOpenBucket('absent') },
+              { color: 'var(--amber)', n: actions.open, label: 'Çıxışı unudulub', onClick: () => navigate('/admin/open-records') },
+              { color: 'var(--blue)', n: actions.devices, label: 'Cihaz təsdiqi gözləyir', onClick: () => navigate('/admin/device-changes') },
+              { color: 'var(--clay)', n: actions.problems, label: 'Problemli skan (bu gün)', onClick: () => navigate('/admin/problems') },
+            ].map((it) => {
+              const calm = it.n === 0
+              return (
+                <button key={it.label} className={`dash-act${calm ? ' calm' : ''}`} onClick={calm ? undefined : it.onClick}>
+                  <span className="dash-act-dot" style={{ background: calm ? 'var(--leaf)' : it.color }} />
+                  <span className="dash-act-l">{it.label}</span>
+                  <span className="dash-act-n" style={{ color: calm ? 'var(--leaf-d)' : 'var(--c900)' }}>{it.n}</span>
+                  {!calm && <span className="dash-act-ar">›</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="card card-pad">
+          <div className="card-title">Son fəaliyyət</div>
+          {activity.length === 0 ? (
+            <div className="muted" style={{ padding: '8px 0' }}>Bu gün hələ hərəkət yoxdur</div>
+          ) : (
+            <div className="dash-feed">
+              {activity.map((e) => (
+                <div key={e.id} className="dash-feed-row">
+                  <span className="dash-feed-dot" style={{ background: e.type === 'in' ? 'var(--leaf)' : 'var(--blue)' }} />
+                  <div className="dash-feed-main">
+                    <div className="dash-feed-nm">{e.name}</div>
+                    <div className="dash-feed-a">{e.type === 'in' ? 'Giriş etdi' : 'Çıxış etdi'} · {e.loc}</div>
+                  </div>
+                  <span className="dash-feed-t">{fmtTime(e.at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

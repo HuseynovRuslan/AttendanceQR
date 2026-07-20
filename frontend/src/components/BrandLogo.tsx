@@ -60,7 +60,7 @@ export function BrandLogo({ size = 34 }: { size?: number }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: 'Sora, sans-serif',
+          fontFamily: 'Manrope, sans-serif',
           fontWeight: 800,
           fontSize: Math.round(size * 0.46),
           lineHeight: 1,

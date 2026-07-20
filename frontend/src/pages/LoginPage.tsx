@@ -56,14 +56,14 @@ export function LoginPage() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
             <BrandLogo size={52} />
           </div>
-          <div style={{ fontFamily: 'Sora,sans-serif', fontWeight: 800, fontSize: 20, color: '#fff' }}>
+          <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: '#fff' }}>
             {branding.displayName || 'Davamiyyət'}
           </div>
           <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 2 }}>Davamiyyət sistemi</div>
         </div>
 
         <form onSubmit={onSubmit} style={{ background: '#fff', borderRadius: 20, padding: 28 }}>
-          <div style={{ fontFamily: 'Sora,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 18, color: 'var(--c900)' }}>
+          <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 18, color: 'var(--c900)' }}>
             Sistemə daxil olun
           </div>
 

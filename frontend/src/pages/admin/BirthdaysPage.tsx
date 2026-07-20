@@ -52,7 +52,7 @@ export function BirthdaysPage() {
                   style={{
                     width: 44,
                     textAlign: 'center',
-                    fontFamily: "'Sora',sans-serif",
+                    fontFamily: "'Manrope',sans-serif",
                     fontWeight: 800,
                     fontSize: 20,
                     color: r.isToday ? 'var(--leaf-d)' : 'var(--c700)',
