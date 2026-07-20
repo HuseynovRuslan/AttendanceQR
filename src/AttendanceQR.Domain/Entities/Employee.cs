@@ -57,6 +57,12 @@ public class Employee : ITenantScoped
 
     public TimeOnly? WorkEnd { get; set; }
 
+    // Fixed monthly salary in AZN, for the payroll report. Null = not set (that employee is left out of
+    // the money totals). The report starts from this figure and deducts a per-day share for each
+    // unexcused absence — approved leave/permission are NOT deducted. Overtime is shown as hours only,
+    // never auto-converted to money (fixed-salary overtime is paid separately, by hand).
+    public decimal? MonthlySalary { get; set; }
+
     // Admin kill-switch: whether the account is enabled. Independent of activation.
     public bool IsActive { get; set; } = true;
 

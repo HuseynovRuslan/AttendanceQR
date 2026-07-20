@@ -163,6 +163,39 @@ public class ReportsController : ControllerBase
             $"davamiyyet-{safeDate}.xlsx");
     }
 
+    // GET /api/reports/payroll?from=&to=&locationId= — the payroll (Maaş) table: each employee's
+    // fixed monthly salary minus a per-day share for unexcused absences. Same scope as the summary.
+    [HttpGet("payroll")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Payroll(
+        [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
+    {
+        var (access, report) = await _reports.GetPayrollAsync(
+            from, to, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        return Ok(report);
+    }
+
+    // GET /api/reports/payroll/export — the same payroll table as a formatted .xlsx for the accountant.
+    [HttpGet("payroll/export")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> PayrollExport(
+        [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
+    {
+        var (access, report) = await _reports.GetPayrollAsync(
+            from, to, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        var bytes = _exporter.BuildPayroll(report!);
+        var fileName = $"maas_{from:yyyy-MM-dd}_{to:yyyy-MM-dd}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
     // GET /api/reports/problems?date=yyyy-MM-dd — every rejected scan on that local day: who could
     // not check in/out, and why. Without this the failures only live in AuditLogs, invisible to staff.
     [HttpGet("problems")]

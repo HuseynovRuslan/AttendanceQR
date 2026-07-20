@@ -10,7 +10,9 @@ public record InviteRequest(
     string? PhoneNumber = null,
     string? FatherName = null,
     string? Position = null,
-    int? BirthYear = null);
+    int? BirthYear = null,
+    // Fixed monthly salary in AZN for the payroll report; null = not set.
+    decimal? MonthlySalary = null);
 
 /// <summary>Edit an existing employee's profile, role, location and enabled state.</summary>
 /// <param name="LocationId">Where this person WORKS — the geofence their own scans are checked against.</param>
@@ -36,4 +38,6 @@ public record EmployeeUpdateRequest(
     // Optional per-employee work hours ("HH:mm"); empty/null → falls back to the location's shift.
     string? WorkStart = null,
     string? WorkEnd = null,
+    // Fixed monthly salary in AZN for the payroll report; null = not set.
+    decimal? MonthlySalary = null,
     IReadOnlyList<Guid>? ManagedLocationIds = null);

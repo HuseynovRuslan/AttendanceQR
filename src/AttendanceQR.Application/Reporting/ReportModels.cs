@@ -43,6 +43,35 @@ public sealed record AttendanceReport(
 /// <summary>A location the caller may see/filter by (invite + report filter dropdowns).</summary>
 public sealed record LocationDto(Guid Id, string Name);
 
+/// <summary>One employee's payroll line for the period, on the fixed-monthly-salary model. Start from
+/// the monthly salary, deduct a per-day share for each unexcused absence. Leave/permission days are
+/// excused (not deducted) but still count as working days for the divisor. Overtime is carried as
+/// hours only — never auto-converted to money.</summary>
+public sealed record PayrollRow(
+    Guid EmployeeId,
+    string EmployeeName,
+    string LocationName,
+    decimal? MonthlySalary,
+    int ScheduledDays,
+    int WorkDays,
+    int AbsentDays,
+    int LeaveDays,
+    int PermissionDays,
+    double OvertimeHours,
+    decimal PerDay,
+    decimal Deduction,
+    decimal Payable);
+
+/// <summary>The payroll report payload, shared by the JSON and Excel endpoints.</summary>
+public sealed record PayrollReport(
+    DateOnly From,
+    DateOnly To,
+    string ScopeLabel,
+    IReadOnlyList<PayrollRow> Rows,
+    decimal TotalMonthlySalary,
+    decimal TotalDeduction,
+    decimal TotalPayable);
+
 /// <summary>One employee's live status for a single day (the "today" board).</summary>
 public sealed record DayAttendanceRow(
     Guid EmployeeId,

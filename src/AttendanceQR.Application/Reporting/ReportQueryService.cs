@@ -40,6 +40,14 @@ public interface IReportQueryService
     /// </summary>
     Task<(ReportAccess Access, ProblemsReport? Report)> GetProblemsAsync(
         DateOnly date, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
+    /// Payroll for the period on the fixed-monthly-salary model: each employee's salary, minus a
+    /// per-day share for every unexcused absence. Built on top of <see cref="GetSummaryAsync"/>, so it
+    /// shares the same scope authority and day-counting.
+    /// </summary>
+    Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
+        DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 }
 
 public sealed class ReportQueryService : IReportQueryService
@@ -286,6 +294,61 @@ public sealed class ReportQueryService : IReportQueryService
             PermissionDays: grouped.Sum(r => r.PermissionDays));
 
         return (ReportAccess.Allowed, new AttendanceReport(from, to, label, grouped, totals));
+    }
+
+    public async Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
+        DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        // Reuse the summary — same scope check, same day-counting — then price it. Nothing here can see
+        // a wider scope than GetSummaryAsync already allowed.
+        var (access, summary) = await GetSummaryAsync(from, to, locationId, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden || summary is null)
+            return (ReportAccess.Forbidden, null);
+
+        var ids = summary.Rows.Select(r => r.EmployeeId).ToList();
+        var salaries = await _db.Employees
+            .Where(e => ids.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.MonthlySalary, ct);
+
+        var rows = summary.Rows.Select(r =>
+        {
+            var salary = salaries.GetValueOrDefault(r.EmployeeId);
+            // The divisor is every day that was a working day for this employee in the period —
+            // present, absent, or excused (leave/permission). Only unexcused absences are deducted.
+            var scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays;
+
+            decimal perDay = 0m, deduction = 0m, payable = 0m;
+            if (salary is > 0m)
+            {
+                if (scheduled > 0)
+                {
+                    perDay = Math.Round(salary.Value / scheduled, 2, MidpointRounding.AwayFromZero);
+                    deduction = Math.Round(perDay * r.AbsentDays, 2, MidpointRounding.AwayFromZero);
+                    payable = salary.Value - deduction;
+                    if (payable < 0m) payable = 0m;
+                }
+                else
+                {
+                    // Salary set but no working day fell in the period (all day-off) — nothing to deduct.
+                    payable = salary.Value;
+                }
+            }
+
+            return new PayrollRow(
+                r.EmployeeId, r.EmployeeName, r.LocationName, salary,
+                scheduled, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.OvertimeHours,
+                perDay, deduction, payable);
+        })
+        .OrderBy(r => r.EmployeeName)
+        .ToList();
+
+        var report = new PayrollReport(
+            from, to, summary.ScopeLabel, rows,
+            TotalMonthlySalary: rows.Sum(r => r.MonthlySalary ?? 0m),
+            TotalDeduction: rows.Sum(r => r.Deduction),
+            TotalPayable: rows.Sum(r => r.Payable));
+
+        return (ReportAccess.Allowed, report);
     }
 
     /// <summary>Employee and location names for a set of computed rows. The rows carry ids only:

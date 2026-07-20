@@ -223,6 +223,62 @@ export function getMyLocations() {
   return apiRequest<LocationDto[]>('/api/reports/my-locations')
 }
 
+// --- payroll (Maaş) --------------------------------------------------------
+
+export interface PayrollRow {
+  employeeId: string
+  employeeName: string
+  locationName: string
+  /** Fixed monthly salary in AZN; null = not set (money columns blank). */
+  monthlySalary: number | null
+  scheduledDays: number
+  workDays: number
+  absentDays: number
+  leaveDays: number
+  permissionDays: number
+  overtimeHours: number
+  perDay: number
+  deduction: number
+  payable: number
+}
+
+export interface PayrollReport {
+  from: string
+  to: string
+  scopeLabel: string
+  rows: PayrollRow[]
+  totalMonthlySalary: number
+  totalDeduction: number
+  totalPayable: number
+}
+
+/** Payroll table for the period. Admin only (salaries are sensitive) → 403 for a manager. */
+export function getPayroll(from: string, to: string, locationId?: string) {
+  const q = new URLSearchParams({ from, to })
+  if (locationId) q.set('locationId', locationId)
+  return apiRequest<PayrollReport | { error: string }>(`/api/reports/payroll?${q}`)
+}
+
+/** Streams the payroll .xlsx back as a blob and triggers a browser download. */
+export async function downloadPayrollExcel(from: string, to: string, locationId?: string): Promise<void> {
+  const q = new URLSearchParams({ from, to })
+  if (locationId) q.set('locationId', locationId)
+  const token = getToken()
+  const res = await fetch(`${API_BASE_URL}/api/reports/payroll/export?${q}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error(`payroll export failed: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `maas_${from}_${to}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function getAdminLocations() {
   return apiRequest<AdminLocation[]>('/api/admin/locations')
 }
@@ -315,6 +371,8 @@ export interface InvitePayload {
   // Per-employee work hours "HH:mm" (empty/null → the location's shift is used).
   workStart?: string | null
   workEnd?: string | null
+  // Fixed monthly salary in AZN for the payroll report; null/omitted → not set.
+  monthlySalary?: number | null
 }
 
 export interface AdminEmployee {
@@ -325,6 +383,7 @@ export interface AdminEmployee {
   birthYear: number | null
   workStart?: string | null
   workEnd?: string | null
+  monthlySalary?: number | null
   email: string
   phoneNumber: string | null
   role: Role

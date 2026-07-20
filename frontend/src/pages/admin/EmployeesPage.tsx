@@ -78,6 +78,8 @@ type FormState = {
   isActive: boolean
   workStart: string
   workEnd: string
+  /** Fixed monthly salary in AZN for the payroll report; blank = not set. Kept as a string while typing. */
+  monthlySalary: string
   /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
    *  they clock in. Empty on a manager means an empty panel. */
   managedLocationIds: string[]
@@ -95,6 +97,7 @@ const EMPTY: FormState = {
   isActive: true,
   workStart: '',
   workEnd: '',
+  monthlySalary: '',
   managedLocationIds: [],
 }
 
@@ -185,6 +188,7 @@ export function EmployeesPage() {
       isActive: e.isActive,
       workStart: e.workStart ?? '',
       workEnd: e.workEnd ?? '',
+      monthlySalary: e.monthlySalary != null ? String(e.monthlySalary) : '',
       managedLocationIds: e.managedLocationIds ?? [],
     })
     setError(null)
@@ -217,6 +221,7 @@ export function EmployeesPage() {
       fatherName: form.fatherName.trim() || null,
       position: form.position.trim() || null,
       birthYear: form.birthYear ? Number(form.birthYear) : null,
+      monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
     }
     const res = editingId
       ? await updateEmployee(editingId, {
@@ -698,6 +703,26 @@ export function EmployeesPage() {
               </div>
             </div>
           )}
+
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Aylıq maaş (AZN)</label>
+              <input
+                className="inp"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={form.monthlySalary}
+                onChange={(e) => set('monthlySalary', e.target.value)}
+                placeholder="məs. 800"
+              />
+            </div>
+            <div />
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
+            Maaş hesabatı üçün. Boş buraxsanız işçi maaş cədvəlinə düşmür.
+          </p>
 
           {editingId && (
             <>

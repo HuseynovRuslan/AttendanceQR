@@ -32,6 +32,7 @@ const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ 
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ default: m.TodayPage })))
 const LiveBoardPage = lazy(() => import('./pages/admin/LiveBoardPage').then(m => ({ default: m.LiveBoardPage })))
+const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
 const LocationsPage = lazy(() => import('./pages/admin/LocationsPage').then(m => ({ default: m.LocationsPage })))
 const NonWorkingDaysPage = lazy(() => import('./pages/admin/NonWorkingDaysPage').then(m => ({ default: m.NonWorkingDaysPage })))
@@ -175,6 +176,15 @@ function AppRoutes() {
         <Route path="live" element={<LiveBoardPage />} />
         <Route path="today" element={<TodayPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        {/* Payroll — Admin only (salaries are sensitive; a manager must not see them). */}
+        <Route
+          path="payroll"
+          element={
+            <AdminOnly>
+              <PayrollPage />
+            </AdminOnly>
+          }
+        />
         {/* Photo audit — open to Admin + Manager (like today/reports); managers are scoped to their
             own locations server-side via LocationScopeRules, so no AdminOnly wrapper. */}
         <Route path="photo-audit" element={<PhotoAuditPage />} />

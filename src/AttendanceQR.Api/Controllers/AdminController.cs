@@ -73,6 +73,7 @@ public class AdminController : ControllerBase
                 birthYear = e.BirthYear,
                 workStart = e.WorkStart?.ToString("HH:mm"),
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
+                monthlySalary = e.MonthlySalary,
                 email = e.Email,
                 role = e.Role.ToString(),
                 phoneNumber = e.PhoneNumber,
@@ -148,6 +149,7 @@ public class AdminController : ControllerBase
                 ? Conflict(new { error })
                 : BadRequest(new { error });
 
+        employee!.MonthlySalary = request.MonthlySalary;
         _db.Employees.Add(employee!);
         await _db.SaveChangesAsync();
 
@@ -644,6 +646,7 @@ public class AdminController : ControllerBase
         employee.IsActive = request.IsActive;
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
+        employee.MonthlySalary = request.MonthlySalary;
 
         var scopeError = await ApplyManagedLocationsAsync(employee, request.ManagedLocationIds);
         if (scopeError is not null)
