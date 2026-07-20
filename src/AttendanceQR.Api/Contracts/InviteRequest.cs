@@ -11,6 +11,8 @@ public record InviteRequest(
     string? FatherName = null,
     string? Position = null,
     int? BirthYear = null,
+    // Full date of birth (day/month/year). Preferred over BirthYear; the year is kept in sync from it.
+    DateOnly? BirthDate = null,
     // Fixed monthly salary in AZN for the payroll report; null = not set.
     decimal? MonthlySalary = null);
 
@@ -35,6 +37,8 @@ public record EmployeeUpdateRequest(
     string? FatherName = null,
     string? Position = null,
     int? BirthYear = null,
+    // Full date of birth (day/month/year). Preferred over BirthYear; the year is kept in sync from it.
+    DateOnly? BirthDate = null,
     // Optional per-employee work hours ("HH:mm"); empty/null → falls back to the location's shift.
     string? WorkStart = null,
     string? WorkEnd = null,

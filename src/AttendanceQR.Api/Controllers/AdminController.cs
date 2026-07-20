@@ -71,6 +71,7 @@ public class AdminController : ControllerBase
                 fatherName = e.FatherName,
                 position = e.Position,
                 birthYear = e.BirthYear,
+                birthDate = e.BirthDate,
                 workStart = e.WorkStart?.ToString("HH:mm"),
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
                 monthlySalary = e.MonthlySalary,
@@ -150,6 +151,9 @@ public class AdminController : ControllerBase
                 : BadRequest(new { error });
 
         employee!.MonthlySalary = request.MonthlySalary;
+        employee.BirthDate = request.BirthDate;
+        if (request.BirthDate is { } dob)
+            employee.BirthYear = dob.Year;   // keep the year in sync so the fallback display agrees
         _db.Employees.Add(employee!);
         await _db.SaveChangesAsync();
 
@@ -640,7 +644,9 @@ public class AdminController : ControllerBase
         employee.PhoneNumber = phone;
         employee.FatherName = request.FatherName;
         employee.Position = request.Position;
-        employee.BirthYear = request.BirthYear;
+        employee.BirthDate = request.BirthDate;
+        // Full date wins; keep the year in sync from it so the fallback display agrees.
+        employee.BirthYear = request.BirthDate?.Year ?? request.BirthYear;
         employee.LocationId = request.LocationId;
         employee.Role = request.Role;
         employee.IsActive = request.IsActive;

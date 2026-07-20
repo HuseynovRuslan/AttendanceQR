@@ -118,6 +118,9 @@ export function EmployeeProfilePage() {
       fatherName: emp.fatherName,
       position: emp.position,
       birthYear: emp.birthYear,
+      // Re-send these too, or this partial update would blank them (the request defaults them to null).
+      birthDate: emp.birthDate ?? null,
+      monthlySalary: emp.monthlySalary ?? null,
       workStart: emp.workStart ?? null,
       workEnd: emp.workEnd ?? null,
       isActive: !emp.isActive,
@@ -218,7 +221,7 @@ export function EmployeeProfilePage() {
         <div className="card-title">Şəxsi məlumat</div>
         <div className="form-row cols2" style={{ marginBottom: 0 }}>
           <Field label="Ata adı" value={emp.fatherName} />
-          <Field label="Təvəllüd" value={emp.birthYear ? String(emp.birthYear) : null} />
+          <Field label="Doğum tarixi" value={emp.birthDate ? emp.birthDate.split('-').reverse().join('.') : emp.birthYear ? String(emp.birthYear) : null} />
           <Field label="Telefon" value={emp.phoneNumber} />
           <Field label="Email" value={emp.email} />
           <Field label="İş saatı" value={emp.workStart && emp.workEnd ? `${emp.workStart} – ${emp.workEnd}` : 'Filialın saatı'} />

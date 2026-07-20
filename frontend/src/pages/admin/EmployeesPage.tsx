@@ -70,7 +70,10 @@ type FormState = {
   fullName: string
   fatherName: string
   position: string
+  // Year kept only to preserve it for rows that were entered year-only (bulk import); the form edits
+  // the full date below. birthDate is "yyyy-MM-dd" (what <input type="date"> emits), blank if unset.
   birthYear: string
+  birthDate: string
   email: string
   phoneNumber: string
   locationId: string
@@ -90,6 +93,7 @@ const EMPTY: FormState = {
   fatherName: '',
   position: '',
   birthYear: '',
+  birthDate: '',
   email: '',
   phoneNumber: '',
   locationId: '',
@@ -181,6 +185,7 @@ export function EmployeesPage() {
       fatherName: e.fatherName ?? '',
       position: e.position ?? '',
       birthYear: e.birthYear != null ? String(e.birthYear) : '',
+      birthDate: e.birthDate ?? '',
       email: e.email,
       phoneNumber: e.phoneNumber ?? '',
       locationId: e.locationId,
@@ -221,6 +226,7 @@ export function EmployeesPage() {
       fatherName: form.fatherName.trim() || null,
       position: form.position.trim() || null,
       birthYear: form.birthYear ? Number(form.birthYear) : null,
+      birthDate: form.birthDate || null,
       monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
     }
     const res = editingId
@@ -591,8 +597,20 @@ export function EmployeesPage() {
               <input className="inp" value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="məs. Bağban" />
             </div>
             <div>
-              <label className="form-label">Təvəllüd ili</label>
-              <input className="inp" type="number" min="1940" max="2010" value={form.birthYear} onChange={(e) => set('birthYear', e.target.value)} placeholder="1990" />
+              <label className="form-label">Doğum tarixi</label>
+              <input
+                className="inp"
+                type="date"
+                min="1940-01-01"
+                max="2012-12-31"
+                value={form.birthDate}
+                onChange={(e) => set('birthDate', e.target.value)}
+              />
+              {!form.birthDate && form.birthYear && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  Hazırda yalnız il məlumdur: {form.birthYear}. Tam tarix seçsəniz yenilənəcək.
+                </div>
+              )}
             </div>
           </div>
 
@@ -934,8 +952,14 @@ export function EmployeesPage() {
                     ) : (
                       <span style={{ color: '#b45309', fontWeight: 600 }}>nömrə yoxdur</span>
                     )}
-                    {(e.fatherName || e.birthYear) &&
-                      ` · ${[e.fatherName || null, e.birthYear || null].filter(Boolean).join(' · ')}`}
+                    {(e.fatherName || e.birthDate || e.birthYear) &&
+                      ` · ${[
+                        e.fatherName || null,
+                        // Prefer the full date (dd.MM.yyyy) when we have it, else fall back to the year.
+                        e.birthDate ? e.birthDate.split('-').reverse().join('.') : e.birthYear || null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}`}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c400)', fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>
                     ID: {e.id.slice(0, 8)}

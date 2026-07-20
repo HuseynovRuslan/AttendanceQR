@@ -370,6 +370,8 @@ export interface InvitePayload {
   fatherName?: string | null
   position?: string | null
   birthYear?: number | null
+  /** Full date of birth "yyyy-MM-dd" (preferred over birthYear). */
+  birthDate?: string | null
   // Per-employee work hours "HH:mm" (empty/null → the location's shift is used).
   workStart?: string | null
   workEnd?: string | null
@@ -383,6 +385,8 @@ export interface AdminEmployee {
   fatherName: string | null
   position: string | null
   birthYear: number | null
+  /** Full date of birth "yyyy-MM-dd" (preferred over birthYear); null on rows that only had a year. */
+  birthDate?: string | null
   workStart?: string | null
   workEnd?: string | null
   monthlySalary?: number | null

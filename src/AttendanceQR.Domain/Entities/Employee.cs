@@ -23,7 +23,13 @@ public class Employee : ITenantScoped
 
     public string? Position { get; set; }
 
+    // Kept for backward compatibility (bulk import + rows entered before full dates existed). When
+    // BirthDate is set it is the source of truth and BirthYear is kept in sync with its year.
     public int? BirthYear { get; set; }
+
+    // Full date of birth (day/month/year). Optional. Preferred over BirthYear for display; enables
+    // birthday greetings later. Null on older rows that only ever had a year.
+    public DateOnly? BirthDate { get; set; }
 
     public string Email { get; set; } = string.Empty;
 
