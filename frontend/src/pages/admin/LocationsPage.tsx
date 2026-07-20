@@ -84,6 +84,13 @@ export function LocationsPage() {
   // Schedule (qrafik) library — reusable shift templates. Picking one fills the shift fields; the
   // location still stores its own copy, so schedules are a convenience, not a live link.
   const [schedules, setSchedules] = useState<Schedule[]>([])
+  const [selectedScheduleId, setSelectedScheduleId] = useState('') // controlled dropdown value
+  const [newSchedule, setNewSchedule] = useState<{ open: boolean; name: string; start: string; end: string }>({
+    open: false,
+    name: '',
+    start: '22:00',
+    end: '06:00',
+  })
 
   async function refresh() {
     const { status, data } = await getAdminLocations()
@@ -102,6 +109,7 @@ export function LocationsPage() {
   }, [])
 
   function applySchedule(s: Schedule) {
+    setSelectedScheduleId(s.id)
     setForm((f) => ({
       ...f,
       shiftStart: s.shiftStart,
@@ -111,21 +119,29 @@ export function LocationsPage() {
     }))
   }
 
-  async function saveCurrentAsSchedule() {
-    const name = window.prompt('Bu qrafikin adı (məs. "Gecə növbəsi"):')?.trim()
-    if (!name) return
+  // Create a new schedule from the mini-form, then drop it into the picker AND select+apply it — so
+  // "create a schedule" ends with that schedule chosen and its hours already filled in.
+  async function createNewSchedule() {
+    const name = newSchedule.name.trim()
+    if (!name) {
+      setError('Qrafikin adını yazın')
+      return
+    }
     const { status, data } = await createSchedule({
       name,
-      shiftStart: form.shiftStart,
-      shiftEnd: form.shiftEnd,
+      shiftStart: newSchedule.start,
+      shiftEnd: newSchedule.end,
       lateThresholdMinutes: Number(form.lateThresholdMinutes) || 15,
       workDaysMask: form.workDaysMask,
     })
-    if (status === 200 && data && !('error' in data)) {
-      await loadSchedules()
-      setOk(`"${name}" qrafiki yadda saxlanıldı`)
+    if (status === 200 && data && !('error' in data) && 'id' in data) {
+      const created = data as Schedule
+      setSchedules((prev) => [...prev, created])
+      applySchedule(created)
+      setNewSchedule({ open: false, name: '', start: '22:00', end: '06:00' })
+      setOk(`"${name}" qrafiki yaradıldı və seçildi`)
     } else {
-      setError('Qrafik saxlanılmadı')
+      setError('Qrafik yaradılmadı')
     }
   }
 
@@ -140,6 +156,8 @@ export function LocationsPage() {
   function startCreate() {
     setEditingId(null)
     setForm(EMPTY)
+    setSelectedScheduleId('')
+    setNewSchedule({ open: false, name: '', start: '22:00', end: '06:00' })
     setError(null)
     setOk(null)
     setShowForm(true)
@@ -148,11 +166,15 @@ export function LocationsPage() {
   function closeForm() {
     setEditingId(null)
     setForm(EMPTY)
+    setSelectedScheduleId('')
     setShowForm(false)
   }
 
   function startEdit(l: AdminLocation) {
     setEditingId(l.id)
+    // The location holds its own hours (schedules are copy-templates), so no schedule is pre-selected;
+    // its actual times show in the fields below.
+    setSelectedScheduleId('')
     setForm({
       name: l.name,
       latitude: String(l.latitude),
@@ -329,31 +351,72 @@ export function LocationsPage() {
           </div>
         </div>
 
-        {/* Schedule picker — pick a saved template to fill the hours, or fine-tune below and save the
-            result as a new schedule. Templates only; the location keeps its own copy of the times. */}
+        {/* Schedule picker — pick a saved template to fill the hours, or create a new one which then
+            drops into the picker already selected. Templates only; the location keeps its own copy. */}
         <div style={{ marginBottom: 12 }}>
           <label className="form-label">Qrafik</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <select
               className="inp"
               style={{ flex: '1 1 220px' }}
-              value=""
+              value={selectedScheduleId}
               onChange={(e) => {
                 const s = schedules.find((x) => x.id === e.target.value)
                 if (s) applySchedule(s)
+                else setSelectedScheduleId('')
               }}
             >
-              <option value="">Qrafik seçin (saatları doldurur)…</option>
+              <option value="">Qrafik seçin…</option>
               {schedules.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.isOvernight ? '🌙 ' : ''}{s.name} ({s.shiftStart}–{s.shiftEnd})
                 </option>
               ))}
             </select>
-            <button type="button" className="btn btn-sm" onClick={() => void saveCurrentAsSchedule()}>
-              ＋ Aşağıdakını qrafik kimi saxla
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setNewSchedule((n) => ({ ...n, open: !n.open }))}
+            >
+              {newSchedule.open ? 'Ləğv et' : '＋ Yeni qrafik'}
             </button>
           </div>
+
+          {/* Inline create form: name + hours. On save it appears in the dropdown, selected. */}
+          {newSchedule.open && (
+            <div className="card card-pad" style={{ marginTop: 8, background: 'var(--c50)' }}>
+              <div className="form-row cols2">
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Qrafikin adı</label>
+                  <input
+                    className="inp"
+                    placeholder="məs. Gecə növbəsi, Qısa gün"
+                    value={newSchedule.name}
+                    onChange={(e) => setNewSchedule((n) => ({ ...n, name: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="form-row cols2">
+                <div>
+                  <label className="form-label">Başlama</label>
+                  <input className="inp" type="time" value={newSchedule.start} onChange={(e) => setNewSchedule((n) => ({ ...n, start: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="form-label">Bitmə</label>
+                  <input className="inp" type="time" value={newSchedule.end} onChange={(e) => setNewSchedule((n) => ({ ...n, end: e.target.value }))} />
+                </div>
+              </div>
+              {newSchedule.end < newSchedule.start && (
+                <div className="muted" style={{ fontSize: 11, color: 'var(--leaf-d)' }}>
+                  🌙 Gecə növbəsi (gecə yarısını keçir)
+                </div>
+              )}
+              <button type="button" className="btn btn-sm btn-primary" style={{ marginTop: 10 }} onClick={() => void createNewSchedule()}>
+                Qrafiki yarat
+              </button>
+            </div>
+          )}
+
           <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
             Qrafik seçmək saatları doldurur; istəsəniz aşağıda dəyişə bilərsiniz. Qrafiki dəyişmək köhnə
             lokasiyalara təsir etmir.
