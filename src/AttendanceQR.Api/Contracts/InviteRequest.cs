@@ -14,7 +14,11 @@ public record InviteRequest(
     // Full date of birth (day/month/year). Preferred over BirthYear; the year is kept in sync from it.
     DateOnly? BirthDate = null,
     // Fixed monthly salary in AZN for the payroll report; null = not set.
-    decimal? MonthlySalary = null);
+    decimal? MonthlySalary = null,
+    // Optional per-employee work hours ("HH:mm") at creation — lets a schedule (day/night) be assigned
+    // right away instead of only after activation. Empty/null → falls back to the location's shift.
+    string? WorkStart = null,
+    string? WorkEnd = null);
 
 /// <summary>Edit an existing employee's profile, role, location and enabled state.</summary>
 /// <param name="LocationId">Where this person WORKS — the geofence their own scans are checked against.</param>

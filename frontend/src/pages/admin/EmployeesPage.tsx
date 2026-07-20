@@ -4,6 +4,7 @@ import {
   deleteEmployee,
   getAdminLocations,
   getEmployees,
+  getSchedules,
   invite,
   reinviteEmployee,
   resetAllReferencePhotos,
@@ -14,6 +15,7 @@ import {
   type AdminEmployee,
   type AdminLocation,
   type InviteResult,
+  type Schedule,
 } from '../../api/admin'
 import {
   adminClearCheckout,
@@ -108,6 +110,7 @@ const EMPTY: FormState = {
 export function EmployeesPage() {
   const [rows, setRows] = useState<AdminEmployee[]>([])
   const [locations, setLocations] = useState<AdminLocation[]>([])
+  const [schedules, setSchedules] = useState<Schedule[]>([])
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -142,9 +145,10 @@ export function EmployeesPage() {
   const [savingRecord, setSavingRecord] = useState(false)
 
   async function refresh() {
-    const [emp, locs] = await Promise.all([getEmployees(), getAdminLocations()])
+    const [emp, locs, scheds] = await Promise.all([getEmployees(), getAdminLocations(), getSchedules()])
     if (emp.status === 200 && Array.isArray(emp.data)) setRows(emp.data)
     if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
+    if (scheds.status === 200 && Array.isArray(scheds.data)) setSchedules(scheds.data)
   }
 
   useEffect(() => {
@@ -228,6 +232,9 @@ export function EmployeesPage() {
       birthYear: form.birthYear ? Number(form.birthYear) : null,
       birthDate: form.birthDate || null,
       monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
+      // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
+      workStart: form.workStart || null,
+      workEnd: form.workEnd || null,
     }
     const res = editingId
       ? await updateEmployee(editingId, {
@@ -742,23 +749,41 @@ export function EmployeesPage() {
             Maaş hesabatı üçün. Boş buraxsanız işçi maaş cədvəlinə düşmür.
           </p>
 
-          {editingId && (
-            <>
-              <div className="form-row cols2">
-                <div>
-                  <label className="form-label">İş başlanğıcı</label>
-                  <input className="inp" type="time" value={form.workStart} onChange={(e) => set('workStart', e.target.value)} />
-                </div>
-                <div>
-                  <label className="form-label">İş sonu</label>
-                  <input className="inp" type="time" value={form.workEnd} onChange={(e) => set('workEnd', e.target.value)} />
-                </div>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
-                Boş buraxsanız filialın iş saatları tətbiq olunur — gec gəlmə / tez çıxma bu saatlara görə hesablanır.
-              </p>
-            </>
-          )}
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Qrafik (növbə)</label>
+              <select
+                className="inp"
+                value={schedules.find((s) => s.shiftStart === form.workStart && s.shiftEnd === form.workEnd)?.id ?? ''}
+                onChange={(e) => {
+                  const s = schedules.find((x) => x.id === e.target.value)
+                  if (s) setForm((f) => ({ ...f, workStart: s.shiftStart, workEnd: s.shiftEnd }))
+                }}
+              >
+                <option value="">— Qrafik seçin (istəyə görə) —</option>
+                {schedules.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.shiftStart}–{s.shiftEnd}){s.isOvernight ? ' 🌙' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div />
+          </div>
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">İş başlanğıcı</label>
+              <input className="inp" type="time" value={form.workStart} onChange={(e) => set('workStart', e.target.value)} />
+            </div>
+            <div>
+              <label className="form-label">İş sonu</label>
+              <input className="inp" type="time" value={form.workEnd} onChange={(e) => set('workEnd', e.target.value)} />
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
+            Qrafik seçsəniz saatlar avtomatik dolur. Boş buraxsanız filialın iş saatları tətbiq olunur —
+            beləcə bir lokasiyada fərqli işçilər fərqli qrafikdə (gündüz/gecə) ola bilər.
+          </p>
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-primary" disabled={saving || !form.locationId}>
@@ -966,7 +991,16 @@ export function EmployeesPage() {
                   </div>
                 </td>
                 <td>{e.position || '—'}</td>
-                <td>{e.locationName ?? '—'}</td>
+                <td>
+                  {e.locationName ?? '—'}
+                  {/* The employee's own shift when set — so it's visible which schedule (day/night)
+                      they're on at a location that runs several. */}
+                  {e.workStart && e.workEnd && (
+                    <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
+                      🕒 {e.workStart}–{e.workEnd}{e.workEnd < e.workStart ? ' 🌙' : ''}
+                    </div>
+                  )}
+                </td>
                 <td>
                   {ROLE_LABEL[e.role] ?? e.role}
                   {/* A manager with no branches is not a lesser manager — they see nothing at all.

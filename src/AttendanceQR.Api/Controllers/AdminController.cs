@@ -154,6 +154,8 @@ public class AdminController : ControllerBase
         employee.BirthDate = request.BirthDate;
         if (request.BirthDate is { } dob)
             employee.BirthYear = dob.Year;   // keep the year in sync so the fallback display agrees
+        employee.WorkStart = ParseTimeOrNull(request.WorkStart);
+        employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         _db.Employees.Add(employee!);
         await _db.SaveChangesAsync();
 
