@@ -27,9 +27,26 @@ namespace AttendanceQR.Api.Contracts;
 /// the client. Optional by design: if the camera is unavailable it is omitted and check-in proceeds
 /// without a photo. Only sent for check-in, never check-out.
 /// </param>
+/// <param name="ClientScanId">
+/// Client-generated id for this scan action (one per tap, reused across retries). Present on every
+/// scan so a lost response or a re-sent offline queue item is de-duplicated by the server instead of
+/// creating a second record. Null on older clients — then there is simply no idempotency.
+/// </param>
+/// <param name="ClientTimestampUtc">
+/// The phone's own clock at the moment of the scan. Only used when <paramref name="Offline"/> is true
+/// (an online scan is always stamped with server time). Trusted only within a sane window; outside it
+/// the server falls back to its own time (see the Scan handler).
+/// </param>
+/// <param name="Offline">
+/// True when this scan was captured with no connection and is now being synced. Switches the record's
+/// time to the phone's clock and marks it WasOffline for the admin to audit.
+/// </param>
 public record ScanRequest(
     string QrToken,
     string DeviceFingerprint,
     [Range(-90d, 90d)] double Latitude,
     [Range(-180d, 180d)] double Longitude,
-    string? PhotoBase64 = null);
+    string? PhotoBase64 = null,
+    Guid? ClientScanId = null,
+    DateTime? ClientTimestampUtc = null,
+    bool Offline = false);

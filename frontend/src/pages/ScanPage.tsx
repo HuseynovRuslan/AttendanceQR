@@ -9,6 +9,7 @@ import {
   type AttendanceRecord,
 } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
+import { enqueueScan } from '../lib/offlineQueue'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
 import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
@@ -418,6 +419,12 @@ export function ScanPage() {
     }
     const coords = position.coords
 
+    // One id per tap, sent even on the first (online) try: if the response is lost and the scan is
+    // later re-sent from the offline queue, the server de-duplicates on this id instead of recording
+    // a second check-in. clientTimestampUtc is only used by the server if the scan syncs offline.
+    const clientScanId = crypto.randomUUID()
+    const clientTimestampUtc = new Date().toISOString()
+
     try {
       const { status, data } = await apiRequest<ScanResponse>('/api/attendance/scan', {
         method: 'POST',
@@ -428,6 +435,7 @@ export function ScanPage() {
           longitude: coords.longitude,
           // Omit entirely when there's no photo so the field stays optional on the wire.
           ...(photoBase64 ? { photoBase64 } : {}),
+          clientScanId,
         },
       })
 
@@ -458,7 +466,30 @@ export function ScanPage() {
       }
       setResult(errorResult(status, data))
     } catch {
-      setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.' })
+      // No connection — instead of failing, save the scan on the device and sync it when the network
+      // returns. GPS + selfie were already captured, so nothing is lost; only the round-trip is deferred.
+      try {
+        await enqueueScan({
+          clientScanId,
+          qrToken,
+          deviceFingerprint: getDeviceFingerprint(),
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          photoBase64: photoBase64 ?? undefined,
+          clientTimestampUtc,
+          queuedAtMs: Date.now(),
+        })
+        setResult({
+          tone: 'green',
+          title: 'İnternet yoxdur — yadda saxlanıldı',
+          detail: 'Giriş cihazınızda saxlanıldı.',
+          note: 'İnternet qayıdanda avtomatik göndəriləcək. Tətbiqi bağlaya bilərsiniz.',
+          final: true,
+          photo: photoBase64 ?? undefined,
+        })
+      } catch {
+        setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.' })
+      }
     }
   }
 

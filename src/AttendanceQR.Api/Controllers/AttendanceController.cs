@@ -303,6 +303,15 @@ public class AttendanceController : ControllerBase
             return Unauthorized(new { error = "EmployeeNotFoundOrInactive" });
         }
 
+        // Idempotency: a replayed offline scan (re-sent from the queue, or a scan whose response was
+        // lost) carries the same client id it was first sent with. If we've already processed it, don't
+        // create a second check-in/out — tell the client it's already recorded so it drops the queue item.
+        if (request.ClientScanId is Guid seenScanId
+            && await _db.ProcessedScans.AnyAsync(p => p.ClientScanId == seenScanId))
+        {
+            return Ok(new { action = "AlreadyRecorded", alreadyProcessed = true });
+        }
+
         // 4. Geofence — must be within the location's radius (token carries the LocationId).
         //    Checked BEFORE the device on purpose: an unrecognised device may only be adopted once we
         //    know the employee is standing at the location, so nobody can bind a phone from home.
@@ -343,7 +352,17 @@ public class AttendanceController : ControllerBase
             return deviceRejection;
 
         // 6. Resolve today's record (server UTC day) and decide check-in vs check-out.
-        var nowUtc = DateTime.UtcNow;
+        // An offline scan carries the phone's clock; trust it only within a sane window, otherwise fall
+        // back to server time so a rolled-back clock can't fake an on-time arrival. Online scans (the
+        // overwhelming majority) always use server time — Offline is false, so this is a no-op for them.
+        var serverNow = DateTime.UtcNow;
+        var nowUtc = serverNow;
+        if (request.Offline && request.ClientTimestampUtc is DateTime clientTs)
+        {
+            var clientUtc = DateTime.SpecifyKind(clientTs, DateTimeKind.Utc);
+            if (clientUtc <= serverNow.AddMinutes(10) && clientUtc >= serverNow.AddHours(-18))
+                nowUtc = clientUtc;
+        }
         var today = DateOnly.FromDateTime(nowUtc);
 
         var record = await _db.AttendanceRecords
@@ -373,11 +392,13 @@ public class AttendanceController : ControllerBase
                         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                         return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
                     }
-                    return await CheckOutAsync(openNight, employee, location, nowUtc, ip);
+                    return await CheckOutAsync(openNight, employee, location, nowUtc, ip,
+                        request.ClientScanId, request.Offline, serverNow);
                 }
             }
 
-            return await CheckInAsync(employee, location, today, nowUtc, ip, request.PhotoBase64);
+            return await CheckInAsync(employee, location, today, nowUtc, ip, request.PhotoBase64,
+                request.ClientScanId, request.Offline, serverNow);
         }
 
         if (record.CheckOutAtUtc is null)
@@ -391,7 +412,8 @@ public class AttendanceController : ControllerBase
                 await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                 return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
             }
-            return await CheckOutAsync(record, employee, location, nowUtc, ip);
+            return await CheckOutAsync(record, employee, location, nowUtc, ip,
+                request.ClientScanId, request.Offline, serverNow);
         }
 
         // Already checked in and out today.
@@ -400,7 +422,8 @@ public class AttendanceController : ControllerBase
     }
 
     private async Task<IActionResult> CheckInAsync(
-        Employee employee, Location location, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64)
+        Employee employee, Location location, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64,
+        Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
     {
         var record = new AttendanceRecord
         {
@@ -408,7 +431,9 @@ public class AttendanceController : ControllerBase
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
-            Status = DetermineStatus(EffectiveShiftStart(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone)
+            Status = DetermineStatus(EffectiveShiftStart(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone),
+            WasOffline = wasOffline,
+            SubmittedAtUtc = wasOffline ? submittedAtUtc : null,
         };
         _db.AttendanceRecords.Add(record);
 
@@ -424,6 +449,9 @@ public class AttendanceController : ControllerBase
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "DuplicateCheckIn", ip);
             return Conflict(new { error = "DuplicateCheckIn" });
         }
+
+        // Mark this scan processed so a replay of the same offline queue item doesn't check in twice.
+        await RecordProcessedScanAsync(clientScanId, employee.Id);
 
         // Photo audit — strictly best-effort and AFTER the check-in has been committed, so a storage
         // failure can never block or roll back attendance. Failure just leaves the photo key null.
@@ -512,10 +540,18 @@ public class AttendanceController : ControllerBase
     }
 
     private async Task<IActionResult> CheckOutAsync(
-        AttendanceRecord record, Employee employee, Location location, DateTime nowUtc, string? ip)
+        AttendanceRecord record, Employee employee, Location location, DateTime nowUtc, string? ip,
+        Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
     {
         record.CheckOutAtUtc = nowUtc;
+        // OR-in the offline flag: a record is "offline" if EITHER its check-in or check-out was.
+        if (wasOffline)
+        {
+            record.WasOffline = true;
+            record.SubmittedAtUtc = submittedAtUtc;
+        }
         await _db.SaveChangesAsync();
+        await RecordProcessedScanAsync(clientScanId, employee.Id);
 
         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutSuccess, null, ip);
         return Ok(new
@@ -526,6 +562,25 @@ public class AttendanceController : ControllerBase
             // Tells the app to prompt for an early-departure reason (skippable).
             earlyDeparture = IsEarlyDeparture(EffectiveShiftEnd(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone)
         });
+    }
+
+    // Records the idempotency marker for a scan that carried a client id. Best-effort and isolated from
+    // the check-in/out it follows: on a unique-index race (the same offline item sent twice at once) the
+    // duplicate is detached and swallowed, since the record it protects is already committed.
+    private async Task RecordProcessedScanAsync(Guid? clientScanId, Guid employeeId)
+    {
+        if (clientScanId is not Guid id)
+            return;
+
+        var entry = _db.ProcessedScans.Add(new ProcessedScan { ClientScanId = id, EmployeeId = employeeId });
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     // The effective shift bounds for an employee: their own WorkStart/WorkEnd when set, else the

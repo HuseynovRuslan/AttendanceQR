@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
+import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, AdminOnly } from './components/AdminRoute'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
@@ -75,10 +76,18 @@ function RouteFallback() {
   return <div style={{ minHeight: '60vh' }} aria-busy="true" />
 }
 
+/** Drains any scans made offline back to the server — on load and whenever the connection returns.
+ *  No-op when signed out or the queue is empty. */
+function OfflineSyncer() {
+  useEffect(() => startOfflineSync(), [])
+  return null
+}
+
 export default function App() {
   return (
     <>
       <AutoUpdater />
+      <OfflineSyncer />
       {/* One boundary around every route: React needs a Suspense ancestor for any lazy element, and
           the eager employee routes never suspend, so they never see it. */}
       <Suspense fallback={<RouteFallback />}>

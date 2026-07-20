@@ -300,6 +300,15 @@ export function TodayPage() {
                 </td>
                 <td className="mono">
                   {fmtTime(r.checkInAtUtc)}
+                  {r.wasOffline && (
+                    <span
+                      className="tag"
+                      title="Oflayn qeydə alınıb — vaxt telefonun saatı ilədir"
+                      style={{ marginLeft: 6, background: 'var(--amber-bg)', color: 'var(--amber)' }}
+                    >
+                      📴 oflayn
+                    </span>
+                  )}
                   {r.lateArrivalReason && (
                     <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
                       Gec: {r.lateArrivalReason}

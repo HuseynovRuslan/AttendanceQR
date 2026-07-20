@@ -91,7 +91,10 @@ public sealed record DayAttendanceRow(
     string FaceMatchStatus,
     // Reasons the employee gave at the scan for arriving late / leaving early (null if none/skipped).
     string? LateArrivalReason = null,
-    string? EarlyDepartureReason = null);
+    string? EarlyDepartureReason = null,
+    // True when the record was captured offline and synced later — its time is the phone's clock, so
+    // the admin can treat it with a touch more scepticism. See ProcessedScan / the Scan handler.
+    bool WasOffline = false);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

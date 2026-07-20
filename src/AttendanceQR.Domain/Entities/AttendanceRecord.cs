@@ -27,6 +27,14 @@ public class AttendanceRecord : ITenantScoped
 
     public AttendanceStatus Status { get; set; }
 
+    // Offline check-in: this record was captured while the phone had no connection and synced later.
+    // The check-in/out time is the PHONE's clock (trusted only within a sane window — see the Scan
+    // handler); SubmittedAtUtc is when the server actually received it. The gap lets an admin audit an
+    // offline record. False + null for every normal online scan.
+    public bool WasOffline { get; set; }
+
+    public DateTime? SubmittedAtUtc { get; set; }
+
     // Optional reason the employee gives when they arrive late / leave early (preset chip or free text).
     // Skippable at the scan, so usually null. Surfaced to the admin on the attendance board.
     public string? LateArrivalReason { get; set; }

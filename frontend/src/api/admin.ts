@@ -20,6 +20,8 @@ export interface DayAttendanceRow {
   // Reasons the employee gave for arriving late / leaving early (null if none/skipped).
   lateArrivalReason?: string | null
   earlyDepartureReason?: string | null
+  // True when captured offline and synced later — the time is the phone's clock (older backends omit).
+  wasOffline?: boolean
 }
 
 export interface EmployeeReportRow {
