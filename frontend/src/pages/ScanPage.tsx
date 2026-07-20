@@ -40,8 +40,9 @@ const INTRO_MS = 6000
 // How long the front-camera preview stays up after the first real frame. It has to outlast reading
 // the words on screen and settling into position — at 1.2s the shot was taken before people had even
 // looked up. A ring and a seconds counter run alongside so nobody is surprised. There is still no
-// shutter button to press: the photo is taken automatically at zero.
-const PHOTO_HOLD_MS = 5_000
+// shutter button to press: the photo is taken automatically at zero. 5s felt too long in daily use;
+// 2s is the deliberate trade-off — long enough to look up, short enough not to hold the queue.
+const PHOTO_HOLD_MS = 2_000
 // Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
 // not, and full-frame captures kept picking up two and three faces.
 // A face-shaped (portrait) crop + output, matching the oval preview the employee sees.
