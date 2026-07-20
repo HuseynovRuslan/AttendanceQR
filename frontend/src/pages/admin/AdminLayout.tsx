@@ -35,6 +35,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
+  '/admin/birthdays': { title: 'Doğum günləri', sub: 'Bu ay doğum günü olan işçilər' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
   '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
   '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
@@ -89,6 +90,7 @@ export function AdminLayout() {
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     ...(isAdmin ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
     ...(isAdmin ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
+    ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),
     // Admin + Manager (no isAdmin gate) — managers audit their own locations' employees.
     { to: '/admin/photo-audit', label: 'Foto Audit', Icon: IconCamera },
     { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },

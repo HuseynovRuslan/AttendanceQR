@@ -225,6 +225,23 @@ export function getMyLocations() {
   return apiRequest<LocationDto[]>('/api/reports/my-locations')
 }
 
+// --- birthdays (Doğum günləri) ---------------------------------------------
+
+export interface BirthdayRow {
+  employeeId: string
+  fullName: string
+  locationName: string
+  birthDate: string
+  day: number
+  turningAge: number
+  isToday: boolean
+}
+
+/** This month's birthdays (employees with a full date). Admin only. */
+export function getBirthdays() {
+  return apiRequest<BirthdayRow[]>('/api/admin/birthdays')
+}
+
 // --- payroll (Maaş) --------------------------------------------------------
 
 export interface PayrollRow {

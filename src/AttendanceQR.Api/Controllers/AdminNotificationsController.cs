@@ -1,8 +1,11 @@
+using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
 
@@ -24,11 +27,16 @@ public class AdminNotificationsController : ControllerBase
 
     private readonly IDeviceChangeService _deviceChangeService;
     private readonly IReportQueryService _reports;
+    private readonly AppDbContext _db;
+    private readonly TimeZoneInfo _timeZone;
 
-    public AdminNotificationsController(IDeviceChangeService deviceChangeService, IReportQueryService reports)
+    public AdminNotificationsController(
+        IDeviceChangeService deviceChangeService, IReportQueryService reports, AppDbContext db, AppOptions options)
     {
         _deviceChangeService = deviceChangeService;
         _reports = reports;
+        _db = db;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
     }
 
     [HttpGet]
@@ -50,10 +58,37 @@ public class AdminNotificationsController : ControllerBase
             })
             .ToList<object>();
 
+        var birthdays = await BirthdayItemsAsync();
+        items.AddRange(birthdays);
+
         return Ok(new
         {
-            totalCount = pending.Count,
+            // Birthdays count toward the badge so the reminder is actually noticed.
+            totalCount = pending.Count + birthdays.Count,
             items
         });
+    }
+
+    // Today's and tomorrow's birthdays, as bell reminders ("Sabah Əlinin doğum günüdür"). Only
+    // employees with a full BirthDate; matched on day/month in local (Baku) time.
+    private async Task<List<object>> BirthdayItemsAsync()
+    {
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var tomorrow = todayLocal.AddDays(1);
+
+        var withDob = await _db.Employees
+            .Where(e => e.IsActive && e.BirthDate != null)
+            .Select(e => new { e.FullName, Dob = e.BirthDate!.Value })
+            .ToListAsync(HttpContext.RequestAborted);
+
+        var result = new List<object>();
+        foreach (var e in withDob.OrderBy(e => e.FullName))
+        {
+            if (e.Dob.Month == todayLocal.Month && e.Dob.Day == todayLocal.Day)
+                result.Add(new { type = "Birthday", message = $"🎂 Bu gün {e.FullName}-in doğum günüdür!", linkTo = "/admin/birthdays" });
+            else if (e.Dob.Month == tomorrow.Month && e.Dob.Day == tomorrow.Day)
+                result.Add(new { type = "Birthday", message = $"🎂 Sabah {e.FullName}-in doğum günüdür", linkTo = "/admin/birthdays" });
+        }
+        return result;
     }
 }

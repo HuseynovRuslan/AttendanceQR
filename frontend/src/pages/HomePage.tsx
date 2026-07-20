@@ -31,6 +31,15 @@ export function HomePage() {
   const today = todayState(records)
   const recent = records.slice(0, 3)
 
+  // Today is the employee's birthday? Compare day + month (any year) in the device's local date.
+  const isBirthday = (() => {
+    if (!profile?.birthDate) return false
+    const parts = profile.birthDate.split('-')
+    if (parts.length !== 3) return false
+    const now = new Date()
+    return now.getMonth() + 1 === Number(parts[1]) && now.getDate() === Number(parts[2])
+  })()
+
   return (
     <div className="flex flex-col gap-4">
       <InstallHint />
@@ -44,6 +53,16 @@ export function HomePage() {
           <div className="truncate text-sm text-slate-500">{profile?.locationName ?? profile?.email ?? ''}</div>
         </div>
       </div>
+
+      {isBirthday && (
+        <div className="rounded-3xl border border-pink-200 bg-gradient-to-r from-pink-50 to-amber-50 p-5 text-center shadow-sm">
+          <div className="text-5xl">🎂</div>
+          <div className="mt-1 text-xl font-extrabold text-pink-700">
+            Ad günün mübarək, {firstName(profile?.fullName)}!
+          </div>
+          <div className="mt-1 text-sm text-slate-600">Bütün komanda səni təbrik edir 🎉</div>
+        </div>
+      )}
 
       <MissedCheckoutBanner />
 

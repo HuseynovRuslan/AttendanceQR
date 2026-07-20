@@ -93,6 +93,8 @@ public class AttendanceController : ControllerBase
                 email = e.Email,
                 role = e.Role.ToString(),
                 position = e.Position,
+                // For the home-screen birthday greeting; the client compares day/month to today.
+                birthDate = e.BirthDate,
                 locationName = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.Name)

@@ -35,6 +35,7 @@ const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ defa
 const LiveBoardPage = lazy(() => import('./pages/admin/LiveBoardPage').then(m => ({ default: m.LiveBoardPage })))
 const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
+const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
 const LocationsPage = lazy(() => import('./pages/admin/LocationsPage').then(m => ({ default: m.LocationsPage })))
 const NonWorkingDaysPage = lazy(() => import('./pages/admin/NonWorkingDaysPage').then(m => ({ default: m.NonWorkingDaysPage })))
@@ -200,6 +201,14 @@ function AppRoutes() {
           element={
             <AdminOnly>
               <AnnouncementsPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="birthdays"
+          element={
+            <AdminOnly>
+              <BirthdaysPage />
             </AdminOnly>
           }
         />

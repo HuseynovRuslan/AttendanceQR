@@ -63,6 +63,8 @@ export interface MyProfile {
   role: string
   position: string | null
   locationName: string | null
+  /** Full date of birth "yyyy-MM-dd" (null if unset) — for the home-screen birthday greeting. */
+  birthDate?: string | null
 }
 
 /** GET /api/attendance/me/profile — the caller's own name/location for the home greeting + menu. */
