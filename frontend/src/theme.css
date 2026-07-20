@@ -166,3 +166,45 @@ select.inp{cursor:pointer}
   .content{padding:14px}
   .stat-grid{grid-template-columns:repeat(2,1fr)}
 }
+
+/* ── Canlı lövhə (live board) ──────────────────────────────────────────────────
+   A glanceable, auto-refreshing "who's in right now" screen, built to be shown on
+   an office monitor/tablet. Big numbers, colour-coded cards, a live pulse. */
+.live-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.live-dot{width:11px;height:11px;border-radius:50%;background:var(--leaf);position:relative;flex-shrink:0}
+.live-dot::after{content:'';position:absolute;inset:-5px;border-radius:50%;background:var(--leaf);opacity:.55;animation:live-pulse 1.8s ease-out infinite}
+@keyframes live-pulse{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.2);opacity:0}}
+.live-live{font-family:'Sora',sans-serif;font-weight:800;font-size:13px;letter-spacing:.12em;color:var(--leaf-d);text-transform:uppercase}
+.live-clock{font-family:'Sora',sans-serif;font-weight:800;font-size:22px;color:var(--c900);font-variant-numeric:tabular-nums;line-height:1}
+.live-updated{font-size:12px;color:var(--c400);font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){.live-dot::after{animation:none}}
+
+.live-hero{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.live-tile{border-radius:var(--r-lg);padding:20px 22px;position:relative;overflow:hidden;border:1px solid var(--c100);background:var(--white);box-shadow:var(--sh-sm)}
+.live-tile .lbl{font-size:13px;font-weight:700;color:var(--c600);text-transform:uppercase;letter-spacing:.04em}
+.live-tile .val{font-family:'Sora',sans-serif;font-size:52px;font-weight:800;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums}
+.live-tile .sub{font-size:12px;color:var(--c400);margin-top:6px}
+.live-tile.in{background:var(--leaf-bg);border-color:color-mix(in srgb,var(--leaf) 30%,transparent)}
+.live-tile.in .val{color:var(--leaf-d)}
+.live-tile.out .val{color:var(--c600)}
+.live-tile.absent{background:var(--clay-bg);border-color:color-mix(in srgb,var(--clay) 30%,transparent)}
+.live-tile.absent .val{color:var(--clay)}
+.live-tile.late .val{color:var(--amber)}
+
+.live-section{margin-bottom:22px}
+.live-section-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.live-section-head h3{font-size:16px;margin:0}
+.live-section-head .meta{font-size:13px;color:var(--c500);font-weight:600;font-variant-numeric:tabular-nums}
+.live-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.live-card{border:1px solid var(--c100);border-left:4px solid var(--c300);border-radius:var(--r);padding:11px 13px;background:var(--white);box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:3px;min-width:0}
+.live-card .nm{font-weight:700;color:var(--c900);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-card .tm{font-size:12px;color:var(--c500);font-variant-numeric:tabular-nums}
+.live-card.in{border-left-color:var(--leaf);background:color-mix(in srgb,var(--leaf-bg) 55%,var(--white))}
+.live-card.out{border-left-color:var(--c400)}
+.live-card.absent{border-left-color:var(--clay);background:color-mix(in srgb,var(--clay-bg) 45%,var(--white))}
+.live-card.off{border-left-color:var(--purple);opacity:.8}
+.live-late{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.03em;color:var(--amber);background:var(--amber-bg);border-radius:5px;padding:1px 6px;align-self:flex-start;text-transform:uppercase}
+.live-fs{margin-left:auto}
+
+@media(max-width:820px){.live-hero{grid-template-columns:repeat(2,1fr)}.live-tile .val{font-size:42px}}
+@media(max-width:680px){.live-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
