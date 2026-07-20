@@ -341,7 +341,35 @@ public class AttendanceController : ControllerBase
             .FirstOrDefaultAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == today);
 
         if (record is null)
+        {
+            // Night shift: a MORNING scan is the check-OUT of a shift that began the previous evening
+            // and crossed midnight. There is no record for "today" yet, so without this the scan would
+            // wrongly open a fresh check-in and leave last night's shift forever un-closed. Strictly
+            // additive — the branch only runs for an overnight shift (end earlier than start) scanned
+            // before noon, so ordinary day shifts are completely unaffected.
+            var shiftStart = EffectiveShiftStart(employee, location);
+            var shiftEnd = EffectiveShiftEnd(employee, location);
+            var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+            if (shiftEnd < shiftStart && nowLocal.Hour < 12)
+            {
+                var yesterday = today.AddDays(-1);
+                var openNight = await _db.AttendanceRecords.FirstOrDefaultAsync(r =>
+                    r.EmployeeId == employee.Id && r.AttendanceDate == yesterday
+                    && r.CheckInAtUtc != null && r.CheckOutAtUtc == null);
+                if (openNight is not null)
+                {
+                    if (openNight.CheckInAtUtc is DateTime nightIn
+                        && nowUtc - nightIn < TimeSpan.FromMinutes(MinCheckoutMinutes))
+                    {
+                        await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
+                        return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
+                    }
+                    return await CheckOutAsync(openNight, employee, location, nowUtc, ip);
+                }
+            }
+
             return await CheckInAsync(employee, location, today, nowUtc, ip, request.PhotoBase64);
+        }
 
         if (record.CheckOutAtUtc is null)
         {

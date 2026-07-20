@@ -77,8 +77,23 @@ public static class AttendanceCalculator
         var localCheckIn = TimeZoneInfo.ConvertTimeFromUtc(record.CheckInAtUtc.Value, timeZone);
         var localCheckOut = TimeZoneInfo.ConvertTimeFromUtc(record.CheckOutAtUtc.Value, timeZone);
 
-        var minutesAfterStart =
-            (TimeOnly.FromDateTime(localCheckIn).ToTimeSpan() - shiftStart.ToTimeSpan()).TotalMinutes;
+        // An overnight shift (e.g. 22:00–06:00) is one whose end is EARLIER than its start — it
+        // crosses midnight. Put every time-of-day on a single continuous timeline with a NOON PIVOT:
+        // for overnight shifts, anything before noon is the *next* day, so 06:00 comes after 22:00.
+        // Day shifts leave every value untouched, so their late/overtime is computed exactly as before.
+        var overnight = shiftEnd < shiftStart;
+        int OnTimeline(TimeOnly t)
+        {
+            var m = (int)t.ToTimeSpan().TotalMinutes;
+            return overnight && m < 12 * 60 ? m + 24 * 60 : m;
+        }
+
+        var startMin = OnTimeline(shiftStart);
+        var endMin = OnTimeline(shiftEnd);
+        var checkInMin = OnTimeline(TimeOnly.FromDateTime(localCheckIn));
+        var checkOutMin = OnTimeline(TimeOnly.FromDateTime(localCheckOut));
+
+        var minutesAfterStart = checkInMin - startMin;
 
         var workedMinutes = (int)Math.Round((record.CheckOutAtUtc.Value - record.CheckInAtUtc.Value).TotalMinutes);
 
@@ -88,15 +103,15 @@ public static class AttendanceCalculator
         if (isWorkingDay && minutesAfterStart > location.LateThresholdMinutes)
         {
             status = DailySummaryStatus.Late;
-            lateMinutes = (int)Math.Round(minutesAfterStart);
+            lateMinutes = minutesAfterStart;
         }
         else
         {
             status = DailySummaryStatus.OnTime;
         }
 
-        var overtime = (TimeOnly.FromDateTime(localCheckOut).ToTimeSpan() - shiftEnd.ToTimeSpan()).TotalMinutes;
-        var overtimeMinutes = overtime > 0 ? (int)Math.Round(overtime) : 0;
+        var overtime = checkOutMin - endMin;
+        var overtimeMinutes = overtime > 0 ? overtime : 0;
 
         return new DayComputation(status, workedMinutes, lateMinutes, overtimeMinutes);
     }

@@ -45,6 +45,72 @@ public class AttendanceCalculatorTests
         AttendanceCalculator.Compute(
             record, location, Baku, isWorkingDay, DailySummaryStatus.Absent, workStart, workEnd);
 
+    // --- overnight / night shift (22:00–06:00, crosses midnight) --------------------------------
+
+    private static Location Night() => Loc("22:00", "06:00", lateThreshold: 15);
+
+    [Fact]
+    public void Night_on_time_check_in_just_after_start()
+    {
+        // 22:05 in, 06:00 out next day — 5 min after a 22:00 start, inside the 15-min grace.
+        var c = Run(Record("2026-07-15 22:05", "2026-07-16 06:00"), Night());
+        Assert.Equal(DailySummaryStatus.OnTime, c.Status);
+        Assert.Equal(0, c.LateMinutes);
+    }
+
+    [Fact]
+    public void Night_check_in_after_midnight_is_late_across_the_boundary()
+    {
+        // Arrived 00:30 for a 22:00 shift — 2.5 h late. The naive time-of-day math read this as
+        // wildly early (00:30 < 22:00); the noon pivot puts 00:30 on the next day, so it is +150.
+        var c = Run(Record("2026-07-16 00:30", "2026-07-16 06:00"), Night());
+        Assert.Equal(DailySummaryStatus.Late, c.Status);
+        Assert.Equal(150, c.LateMinutes);
+    }
+
+    [Fact]
+    public void Night_arriving_before_start_is_not_late()
+    {
+        // 21:50 for a 22:00 shift — 10 min early, must NOT be treated as ~24 h late.
+        var c = Run(Record("2026-07-15 21:50", "2026-07-16 06:00"), Night());
+        Assert.Equal(DailySummaryStatus.OnTime, c.Status);
+        Assert.Equal(0, c.LateMinutes);
+    }
+
+    [Fact]
+    public void Night_checkout_after_shift_end_is_overtime()
+    {
+        // Left 06:30, shift ends 06:00 next morning → 30 min overtime, across midnight.
+        var c = Run(Record("2026-07-15 22:00", "2026-07-16 06:30"), Night());
+        Assert.Equal(30, c.OvertimeMinutes);
+    }
+
+    [Fact]
+    public void Night_checkout_before_shift_end_has_no_overtime()
+    {
+        var c = Run(Record("2026-07-15 22:00", "2026-07-16 05:30"), Night());
+        Assert.Equal(0, c.OvertimeMinutes);
+    }
+
+    [Fact]
+    public void Night_worked_minutes_span_midnight()
+    {
+        // 22:00 → 06:00 is a full 8 hours even though it crosses midnight (absolute span).
+        var c = Run(Record("2026-07-15 22:00", "2026-07-16 06:00"), Night());
+        Assert.Equal(480, c.WorkedMinutes);
+    }
+
+    [Fact]
+    public void Night_per_employee_hours_can_also_be_overnight()
+    {
+        // The employee's own hours override the location shift, overnight included.
+        var c = Run(
+            Record("2026-07-15 23:10", "2026-07-16 07:00"), Loc("09:00", "18:00"),
+            workStart: TimeOnly.Parse("23:00"), workEnd: TimeOnly.Parse("07:00"));
+        Assert.Equal(DailySummaryStatus.OnTime, c.Status); // 10 min after 23:00, within grace
+        Assert.Equal(0, c.OvertimeMinutes);
+    }
+
     // --- timezone (the bug that asked Ənvər why he left early at 19:00) --------------------------
 
     [Fact]

@@ -298,6 +298,13 @@ export function LocationsPage() {
             <input className="inp" type="time" required value={form.shiftEnd} onChange={(e) => set('shiftEnd', e.target.value)} />
           </div>
         </div>
+        {/* Overnight shift = end earlier than start; the system detects and handles it automatically. */}
+        {form.shiftEnd < form.shiftStart && (
+          <div className="hint" style={{ color: 'var(--leaf-d)', fontSize: 12, marginTop: -6 }}>
+            🌙 Gecə növbəsi: bitmə başlanğıcdan tezdir, yəni növbə gecə yarısını keçir (məs. 22:00–06:00).
+            Səhər çıxışı avtomatik dünənki növbəni bağlayacaq.
+          </div>
+        )}
 
         <div className="form-row">
           <label className="form-label">İş günləri</label>
