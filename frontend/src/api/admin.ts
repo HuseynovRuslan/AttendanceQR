@@ -687,3 +687,33 @@ export function setTenantBranding(id: string, input: { displayName?: string; col
     body: input,
   })
 }
+
+// --- schedules (qrafik) — reusable shift templates for the location form ------
+
+export interface Schedule {
+  id: string
+  name: string
+  shiftStart: string // "HH:mm"
+  shiftEnd: string
+  lateThresholdMinutes: number
+  workDaysMask: number
+  isOvernight: boolean
+}
+
+export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight'>
+
+export function getSchedules() {
+  return apiRequest<Schedule[]>('/api/admin/schedules')
+}
+
+export function createSchedule(input: ScheduleInput) {
+  return apiRequest<Schedule | { error: string }>('/api/admin/schedules', { method: 'POST', body: input })
+}
+
+export function updateSchedule(id: string, input: ScheduleInput) {
+  return apiRequest<Schedule | { error: string }>(`/api/admin/schedules/${id}`, { method: 'PUT', body: input })
+}
+
+export function deleteSchedule(id: string) {
+  return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/schedules/${id}`, { method: 'DELETE' })
+}

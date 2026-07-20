@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
     public DbSet<ManagedLocation> ManagedLocations => Set<ManagedLocation>();
     public DbSet<NonWorkingDay> NonWorkingDays => Set<NonWorkingDay>();
     public DbSet<LeaveRecord> LeaveRecords => Set<LeaveRecord>();
+    public DbSet<Schedule> Schedules => Set<Schedule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +56,7 @@ public class AppDbContext : DbContext
             typeof(Employee), typeof(Location), typeof(AttendanceRecord), typeof(DeviceBinding),
             typeof(DeviceChangeRequest), typeof(MissedCheckoutRequest), typeof(DailySummary),
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
+            typeof(Schedule),
         };
         foreach (var t in tenantScoped)
         {
@@ -79,6 +81,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ManagedLocation>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<NonWorkingDay>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<LeaveRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Schedule>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

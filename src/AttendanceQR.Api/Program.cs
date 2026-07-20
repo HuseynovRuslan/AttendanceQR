@@ -262,6 +262,39 @@ using (var scope = app.Services.CreateScope())
         }
     }
 
+    // Seed two default schedule templates ("Gündüz" / "Gecə") for any tenant that has none, so the
+    // location form's picker is never empty. Idempotent (per-tenant "has any"); TenantId is set
+    // explicitly so the auto-stamp leaves it, and IgnoreQueryFilters lets one pass cover every tenant.
+    try
+    {
+        var tenantIds = await db.Tenants.Select(t => t.Id).ToListAsync();
+        var tenantsWithSchedules = await db.Schedules.IgnoreQueryFilters()
+            .Select(s => s.TenantId).Distinct().ToListAsync();
+        var needing = tenantIds.Except(tenantsWithSchedules).ToList();
+        foreach (var tid in needing)
+        {
+            db.Schedules.Add(new Schedule
+            {
+                TenantId = tid, Name = "Gündüz", ShiftStart = new TimeOnly(9, 0), ShiftEnd = new TimeOnly(18, 0),
+                LateThresholdMinutes = 15, WorkDaysMask = 126,
+            });
+            db.Schedules.Add(new Schedule
+            {
+                TenantId = tid, Name = "Gecə növbəsi", ShiftStart = new TimeOnly(22, 0), ShiftEnd = new TimeOnly(6, 0),
+                LateThresholdMinutes = 15, WorkDaysMask = 126,
+            });
+        }
+        if (needing.Count > 0)
+        {
+            await db.SaveChangesAsync();
+            startupLogger.LogInformation("Seeded default schedules for {Count} tenant(s).", needing.Count);
+        }
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex, "Default-schedule seeding skipped (non-fatal).");
+    }
+
     // First-run admin bootstrap: if Bootstrap:AdminEmail/AdminPassword are configured and no
     // Admin exists yet, create one — plus a starter location, since Employee.LocationId is
     // required. Idempotent: once any Admin exists this is skipped, so it is safe to leave the

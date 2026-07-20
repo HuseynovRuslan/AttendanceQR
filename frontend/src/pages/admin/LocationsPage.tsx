@@ -2,12 +2,15 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   createLocation,
+  createSchedule,
   deleteLocation,
   getAdminLocations,
+  getSchedules,
   setLocationActive,
   updateLocation,
   type AdminLocation,
   type LocationInput,
+  type Schedule,
 } from '../../api/admin'
 import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../components/icons'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
@@ -78,15 +81,53 @@ export function LocationsPage() {
   // a row's "Redaktə" opens it.
   const [showForm, setShowForm] = useState(false)
 
+  // Schedule (qrafik) library — reusable shift templates. Picking one fills the shift fields; the
+  // location still stores its own copy, so schedules are a convenience, not a live link.
+  const [schedules, setSchedules] = useState<Schedule[]>([])
+
   async function refresh() {
     const { status, data } = await getAdminLocations()
     if (status === 200 && Array.isArray(data)) setRows(data)
     else if (status === 403) setError('İcazəniz yoxdur')
   }
 
+  async function loadSchedules() {
+    const { status, data } = await getSchedules()
+    if (status === 200 && Array.isArray(data)) setSchedules(data)
+  }
+
   useEffect(() => {
     void refresh()
+    void loadSchedules()
   }, [])
+
+  function applySchedule(s: Schedule) {
+    setForm((f) => ({
+      ...f,
+      shiftStart: s.shiftStart,
+      shiftEnd: s.shiftEnd,
+      lateThresholdMinutes: String(s.lateThresholdMinutes),
+      workDaysMask: s.workDaysMask,
+    }))
+  }
+
+  async function saveCurrentAsSchedule() {
+    const name = window.prompt('Bu qrafikin adı (məs. "Gecə növbəsi"):')?.trim()
+    if (!name) return
+    const { status, data } = await createSchedule({
+      name,
+      shiftStart: form.shiftStart,
+      shiftEnd: form.shiftEnd,
+      lateThresholdMinutes: Number(form.lateThresholdMinutes) || 15,
+      workDaysMask: form.workDaysMask,
+    })
+    if (status === 200 && data && !('error' in data)) {
+      await loadSchedules()
+      setOk(`"${name}" qrafiki yadda saxlanıldı`)
+    } else {
+      setError('Qrafik saxlanılmadı')
+    }
+  }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -285,6 +326,37 @@ export function LocationsPage() {
           <div>
             <label className="form-label">Gecikmə həddi (dəqiqə)</label>
             <input className="inp" type="number" min="0" required value={form.lateThresholdMinutes} onChange={(e) => set('lateThresholdMinutes', e.target.value)} />
+          </div>
+        </div>
+
+        {/* Schedule picker — pick a saved template to fill the hours, or fine-tune below and save the
+            result as a new schedule. Templates only; the location keeps its own copy of the times. */}
+        <div style={{ marginBottom: 12 }}>
+          <label className="form-label">Qrafik</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              className="inp"
+              style={{ flex: '1 1 220px' }}
+              value=""
+              onChange={(e) => {
+                const s = schedules.find((x) => x.id === e.target.value)
+                if (s) applySchedule(s)
+              }}
+            >
+              <option value="">Qrafik seçin (saatları doldurur)…</option>
+              {schedules.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.isOvernight ? '🌙 ' : ''}{s.name} ({s.shiftStart}–{s.shiftEnd})
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-sm" onClick={() => void saveCurrentAsSchedule()}>
+              ＋ Aşağıdakını qrafik kimi saxla
+            </button>
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            Qrafik seçmək saatları doldurur; istəsəniz aşağıda dəyişə bilərsiniz. Qrafiki dəyişmək köhnə
+            lokasiyalara təsir etmir.
           </div>
         </div>
 
