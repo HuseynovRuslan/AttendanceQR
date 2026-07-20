@@ -51,7 +51,10 @@ export function AnnouncementBanner() {
           className="flex items-start gap-3 rounded-3xl border border-amber-200 bg-amber-50 p-4 shadow-sm"
         >
           <span className="text-xl leading-none">📣</span>
-          <p className="min-w-0 flex-1 whitespace-pre-line text-sm font-medium text-amber-900">{a.message}</p>
+          <div className="min-w-0 flex-1">
+            {a.title && <div className="font-bold text-amber-900">{a.title}</div>}
+            <p className="whitespace-pre-line text-sm font-medium text-amber-900">{a.message}</p>
+          </div>
           <button
             onClick={() => dismiss(a.id)}
             aria-label="Bağla"

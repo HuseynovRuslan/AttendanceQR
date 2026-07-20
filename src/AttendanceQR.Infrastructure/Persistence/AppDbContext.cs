@@ -43,6 +43,7 @@ public class AppDbContext : DbContext
     public DbSet<Schedule> Schedules => Set<Schedule>();
     public DbSet<ProcessedScan> ProcessedScans => Set<ProcessedScan>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
+    public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,7 +59,7 @@ public class AppDbContext : DbContext
             typeof(Employee), typeof(Location), typeof(AttendanceRecord), typeof(DeviceBinding),
             typeof(DeviceChangeRequest), typeof(MissedCheckoutRequest), typeof(DailySummary),
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
-            typeof(Schedule), typeof(ProcessedScan), typeof(Announcement),
+            typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
         };
         foreach (var t in tenantScoped)
         {
@@ -86,6 +87,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Schedule>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<ProcessedScan>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Announcement>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AnnouncementRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AnnouncementRecipient>().HasIndex(r => r.AnnouncementId);
 
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.
