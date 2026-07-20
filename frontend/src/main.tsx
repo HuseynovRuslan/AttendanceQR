@@ -4,8 +4,13 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './auth/AuthContext'
 import { BrandingProvider } from './branding/BrandingContext'
+import { initDevice } from './lib/device'
 import './index.css'
 import './theme.css'
+
+// Request persistent storage + self-heal the device id from its IndexedDB mirror BEFORE the app
+// renders (so the first scan uses the recovered id, not a fresh one). Best-effort, never blocks.
+void initDevice()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
