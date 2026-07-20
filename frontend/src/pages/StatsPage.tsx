@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getMyAttendance, getMySummary, type AttendanceRecord } from '../api/attendance'
+import { useAuth } from '../auth/AuthContext'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 
 interface Totals {
@@ -16,6 +17,7 @@ function ymd(d: Date): string {
 }
 
 export function StatsPage() {
+  const { employeeId } = useAuth()
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,7 +35,14 @@ export function StatsPage() {
     if (a.status === 200 && Array.isArray(a.data)) {
       setRecords([...a.data].sort((x, y) => (x.attendanceDate < y.attendanceDate ? 1 : -1)))
     }
-    if (s.status === 200 && s.data && 'totals' in s.data) setTotals(s.data.totals as Totals)
+    // This screen is PERSONAL, but /reports/summary is role-scoped: for an admin it returns the whole
+    // company (rows for everyone + a company-wide `totals`). Reading `totals` there showed the whole
+    // company as "your" hours — identical and meaningless on every look. Take the caller's OWN row
+    // instead; for a plain employee that is the only row, so this is correct for both.
+    if (s.status === 200 && s.data && 'rows' in s.data) {
+      const mine = s.data.rows.find((r) => r.employeeId === employeeId)
+      setTotals(mine ? { ...mine } : null)
+    }
     setLoading(false)
   }
 
