@@ -76,6 +76,15 @@ public class AttendanceController : ControllerBase
     {
         var employeeId = User.EmployeeId();
 
+        // Record "Son aktivlik" — the mobile home/menu load this on open, so it's our signal for
+        // "opened the app". Throttled to once per 15 min so a refresh-happy client doesn't write on
+        // every load; best-effort, and it never blocks the profile response.
+        var now = DateTime.UtcNow;
+        var activityCutoff = now.AddMinutes(-15);
+        await _db.Employees
+            .Where(e => e.Id == employeeId && (e.LastActiveAtUtc == null || e.LastActiveAtUtc < activityCutoff))
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.LastActiveAtUtc, now), HttpContext.RequestAborted);
+
         var profile = await _db.Employees
             .Where(e => e.Id == employeeId)
             .Select(e => new

@@ -884,6 +884,7 @@ export function EmployeesPage() {
               <th>Filial</th>
               <th>Rol</th>
               <th>Cihaz</th>
+              <th>Son aktivlik</th>
               <th>Qeydiyyat</th>
               <th style={{ textAlign: 'right' }}>Əməliyyat</th>
             </tr>
@@ -934,6 +935,7 @@ export function EmployeesPage() {
                   )}
                 </td>
                 <td>{deviceBadge(e.hasDevice, e.deviceLabel)}</td>
+                <td>{lastActiveBadge(e.lastActiveAtUtc)}</td>
                 <td>{statusBadge(e.activated)}</td>
                 <td>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -1029,4 +1031,20 @@ function statusBadge(activated: boolean) {
   return activated
     ? pill('Tamamlandı', '#2e7d32', 'rgba(124,179,66,0.15)')
     : pill('Gözləyir', '#9a6a00', 'rgba(227,150,62,0.16)')
+}
+
+// "Son aktivlik" — when the employee last opened the app. Colour by recency so a glance down the
+// column shows who's dropped off: green today, amber this week, muted older, clay if never.
+function lastActiveBadge(lastActiveAtUtc: string | null) {
+  if (!lastActiveAtUtc) return pill('Heç vaxt açmayıb', '#9a3412', 'rgba(154,52,18,0.12)')
+  const d = new Date(lastActiveAtUtc)
+  const ageMs = Date.now() - d.getTime()
+  const day = 24 * 60 * 60 * 1000
+  const label = ageMs < day
+    ? d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit' }) +
+      ' ' + d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
+  if (ageMs < day) return pill(label, '#2e7d32', 'rgba(124,179,66,0.15)')
+  if (ageMs < 7 * day) return pill(label, '#9a6a00', 'rgba(227,150,62,0.16)')
+  return <span style={{ fontSize: 11, color: 'var(--c400)', fontFamily: "'IBM Plex Mono',monospace" }}>{label}</span>
 }

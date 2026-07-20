@@ -335,6 +335,8 @@ export interface AdminEmployee {
   managedLocationNames: string[]
   isActive: boolean
   activated: boolean
+  /** "Son aktivlik" — last time the employee opened the app (home/menu load). null = never opened. */
+  lastActiveAtUtc: string | null
   hasDevice: boolean
   deviceLabel: string | null
   boundAtUtc: string | null

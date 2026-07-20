@@ -87,6 +87,7 @@ public class AdminController : ControllerBase
                     : [],
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
+                lastActiveAtUtc = e.LastActiveAtUtc,
                 hasDevice = newest != null,
                 deviceLabel = newest?.DeviceLabel,
                 boundAtUtc = newest?.BoundAtUtc,
