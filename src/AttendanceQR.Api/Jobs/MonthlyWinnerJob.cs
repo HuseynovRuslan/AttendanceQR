@@ -25,12 +25,15 @@ public sealed class MonthlyWinnerJob : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeZoneInfo _timeZone;
+    private readonly VoteOptions _vote;
     private readonly ILogger<MonthlyWinnerJob> _logger;
 
-    public MonthlyWinnerJob(IServiceScopeFactory scopeFactory, AppOptions appOptions, ILogger<MonthlyWinnerJob> logger)
+    public MonthlyWinnerJob(
+        IServiceScopeFactory scopeFactory, AppOptions appOptions, VoteOptions vote, ILogger<MonthlyWinnerJob> logger)
     {
         _scopeFactory = scopeFactory;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
+        _vote = vote;
         _logger = logger;
     }
 
@@ -83,6 +86,9 @@ public sealed class MonthlyWinnerJob : BackgroundService
                 var pending = tallies
                     .GroupBy(t => t.LocationId)
                     .Where(g => !alreadyDecided.Contains(g.Key))
+                    // Too few votes to mean anything — announcing a winner chosen by a handful of
+                    // people devalues the award, so that branch simply gets no winner this month.
+                    .Where(g => g.Sum(t => t.Votes) >= _vote.MinVotesToDecide)
                     .ToList();
                 if (pending.Count == 0) continue;
 

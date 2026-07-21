@@ -13,4 +13,9 @@ public sealed class VoteOptions
     /// <summary>Below this many eligible colleagues a "secret" ballot isn't secret — who voted for whom
     /// is guessable — so the branch holds no vote at all.</summary>
     public int MinCandidates { get; set; } = 3;
+
+    /// <summary>A branch needs at least this many votes before anyone is crowned. Three people out of
+    /// fifty deciding "employee of the month" — and it being announced company-wide — devalues the
+    /// award and stings whoever actually worked hardest; better to publish nothing that month.</summary>
+    public int MinVotesToDecide { get; set; } = 5;
 }

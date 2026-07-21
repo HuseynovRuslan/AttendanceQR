@@ -12,6 +12,7 @@ const MONTHS = [
  *  to scan and little else, so anything longer than pick-a-name would simply not get used. */
 export function VotePage() {
   const [status, setStatus] = useState<VoteStatus | null>(null)
+  const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
@@ -88,8 +89,23 @@ export function VotePage() {
               </p>
             </div>
 
-            <div className="mt-4 flex flex-col gap-2">
-              {status.candidates.map((c) => {
+            {/* A branch can be 50+ people — scrolling to find one name is the difference between
+                voting and giving up. The picked person stays in the list even while filtering. */}
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Ad üzrə axtar…"
+              className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base outline-none focus:border-blue-500"
+            />
+
+            <div className="mt-3 flex flex-col gap-2">
+              {status.candidates
+                .filter((c) => {
+                  const q = search.trim().toLowerCase()
+                  return !q || c.employeeId === picked || c.fullName.toLowerCase().includes(q)
+                })
+                .map((c) => {
                 const on = picked === c.employeeId
                 return (
                   <button
