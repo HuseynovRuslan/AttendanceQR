@@ -25,15 +25,13 @@ public sealed class MonthlyWinnerJob : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeZoneInfo _timeZone;
-    private readonly VoteOptions _vote;
     private readonly ILogger<MonthlyWinnerJob> _logger;
 
     public MonthlyWinnerJob(
-        IServiceScopeFactory scopeFactory, AppOptions appOptions, VoteOptions vote, ILogger<MonthlyWinnerJob> logger)
+        IServiceScopeFactory scopeFactory, AppOptions appOptions, ILogger<MonthlyWinnerJob> logger)
     {
         _scopeFactory = scopeFactory;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
-        _vote = vote;
         _logger = logger;
     }
 
@@ -78,6 +76,9 @@ public sealed class MonthlyWinnerJob : BackgroundService
                 var thisPeriod = new DateOnly(todayLocal.Year, todayLocal.Month, 1);
                 var lastPeriod = thisPeriod.AddMonths(-1);
 
+                var cfg = await scope.ServiceProvider.GetRequiredService<IVoteSettingsProvider>().GetAsync(ct);
+                if (!cfg.Enabled) continue;
+
                 var tallies = await db.MonthlyVoteTallies.Where(t => t.Period == lastPeriod).ToListAsync(ct);
                 if (tallies.Count == 0) continue;
 
@@ -88,7 +89,7 @@ public sealed class MonthlyWinnerJob : BackgroundService
                     .Where(g => !alreadyDecided.Contains(g.Key))
                     // Too few votes to mean anything — announcing a winner chosen by a handful of
                     // people devalues the award, so that branch simply gets no winner this month.
-                    .Where(g => g.Sum(t => t.Votes) >= _vote.MinVotesToDecide)
+                    .Where(g => g.Sum(t => t.Votes) >= cfg.MinVotesToDecide)
                     .ToList();
                 if (pending.Count == 0) continue;
 

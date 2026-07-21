@@ -128,6 +128,8 @@ builder.Services.AddHostedService<FaceMatchWorker>();
 // options above — Infrastructure takes them without an IOptions dependency.
 var voteOptions = builder.Configuration.GetSection(VoteOptions.SectionName).Get<VoteOptions>() ?? new VoteOptions();
 builder.Services.AddSingleton(voteOptions);
+// Per-tenant ballot settings (admin-editable), falling back to the options above.
+builder.Services.AddScoped<IVoteSettingsProvider, VoteSettingsProvider>();
 
 var pushOptions = builder.Configuration.GetSection(PushOptions.SectionName).Get<PushOptions>() ?? new PushOptions();
 builder.Services.AddSingleton(pushOptions);

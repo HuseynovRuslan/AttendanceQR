@@ -30,25 +30,17 @@ public class VoteController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
-    private readonly VoteOptions _vote;
+    private readonly IVoteSettingsProvider _settings;
 
-    public VoteController(AppDbContext db, AppOptions options, VoteOptions vote)
+    public VoteController(AppDbContext db, AppOptions options, IVoteSettingsProvider settings)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
-        _vote = vote;
+        _settings = settings;
     }
 
     private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
     private static DateOnly PeriodOf(DateOnly d) => new(d.Year, d.Month, 1);
-
-    private (bool open, DateOnly opensOn, DateOnly closesOn) Window(DateOnly today)
-    {
-        var lastDay = DateTime.DaysInMonth(today.Year, today.Month);
-        var closesOn = new DateOnly(today.Year, today.Month, lastDay);
-        var opensOn = closesOn.AddDays(-(_vote.OpenDaysBeforeEnd - 1));
-        return (today >= opensOn, opensOn, closesOn);
-    }
 
     /// <summary>Everything the voting screen needs: whether it's open, whether I already voted, and my
     /// branch colleagues with this month's attendance behind each name.</summary>
@@ -63,7 +55,8 @@ public class VoteController : ControllerBase
 
         var today = TodayLocal();
         var period = PeriodOf(today);
-        var (open, opensOn, closesOn) = Window(today);
+        var cfg = await _settings.GetAsync(ct);
+        var (open, opensOn, closesOn) = cfg.Window(today);
 
         var colleagues = await _db.Employees
             .Where(e => e.IsActive && e.LocationId == me.LocationId && e.Id != me.Id && e.Role == EmployeeRole.Employee)
@@ -94,8 +87,9 @@ public class VoteController : ControllerBase
             closesOn,
             hasVoted,
             // Everyone at the branch votes, managers included.
-            canVote = colleagues.Count >= _vote.MinCandidates,
-            tooFewColleagues = colleagues.Count < _vote.MinCandidates,
+            enabled = cfg.Enabled,
+            canVote = cfg.Enabled && colleagues.Count >= cfg.MinCandidates,
+            tooFewColleagues = colleagues.Count < cfg.MinCandidates,
             locationName,
             period,
             candidates = colleagues.Select(c => new
@@ -118,8 +112,9 @@ public class VoteController : ControllerBase
             return Unauthorized(new { error = "EmployeeNotFound" });
         var today = TodayLocal();
         var period = PeriodOf(today);
-        var (open, _, _) = Window(today);
-        if (!open)
+        var cfg = await _settings.GetAsync(ct);
+        var (open, _, _) = cfg.Window(today);
+        if (!cfg.Enabled || !open)
             return BadRequest(new { error = "VotingClosed" });
 
         if (request.CandidateEmployeeId == employeeId)
@@ -173,7 +168,7 @@ public class VoteController : ControllerBase
         var today = TodayLocal();
         var p = period is null ? PeriodOf(today) : PeriodOf(period.Value);
         var isCurrent = p == PeriodOf(today);
-        var (open, _, _) = Window(today);
+        var (open, _, _) = (await _settings.GetAsync(ct)).Window(today);
         // Employees see no running scoreboard while the ballot is open; whoever runs the vote does,
         // because they need to watch turnout and chase the branches that haven't voted.
         var organiser = User.Role() is EmployeeRole.Admin or EmployeeRole.Manager;

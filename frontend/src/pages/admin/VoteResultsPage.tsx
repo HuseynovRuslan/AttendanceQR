@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { getVoteResults, type VoteResults } from '../../api/vote'
+import { VoteSettingsCard } from './VoteSettingsCard'
 
 const MONTHS = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun',
@@ -37,6 +38,8 @@ export function VoteResultsPage() {
 
   return (
     <div>
+      <VoteSettingsCard />
+
       <div className="chip-row">
         <span className={`chip${offset === 0 ? ' active' : ''}`} onClick={() => setOffset(0)}>Bu ay</span>
         <span className={`chip${offset === -1 ? ' active' : ''}`} onClick={() => setOffset(-1)}>Keçən ay</span>

@@ -60,3 +60,36 @@ export function castVote(candidateEmployeeId: string) {
 export function getVoteResults(period?: string) {
   return apiRequest<VoteResults>(`/api/vote/results${period ? `?period=${period}` : ''}`)
 }
+
+// --- admin settings ---------------------------------------------------------
+
+export interface VoteSettings {
+  enabled: boolean
+  openDaysBeforeEnd: number
+  manualFrom: string | null
+  manualTo: string | null
+  minCandidates: number
+  minVotesToDecide: number
+  /** What the settings mean right now — the real dates, not just the number of days. */
+  currentWindowFrom: string
+  currentWindowTo: string
+  isOpenNow: boolean
+}
+
+export function getVoteSettings() {
+  return apiRequest<VoteSettings>('/api/admin/vote-settings')
+}
+
+export function saveVoteSettings(input: {
+  enabled: boolean
+  openDaysBeforeEnd: number
+  manualFrom: string | null
+  manualTo: string | null
+  minCandidates: number
+  minVotesToDecide: number
+}) {
+  return apiRequest<VoteSettings | { error: string }>('/api/admin/vote-settings', {
+    method: 'PUT',
+    body: input,
+  })
+}
