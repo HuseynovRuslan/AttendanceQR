@@ -46,6 +46,9 @@ public class AppDbContext : DbContext
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
+    public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
+    public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();
+    public DbSet<MonthlyWinner> MonthlyWinners => Set<MonthlyWinner>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,6 +66,7 @@ public class AppDbContext : DbContext
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
+            typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner),
         };
         foreach (var t in tenantScoped)
         {
@@ -100,6 +104,18 @@ public class AppDbContext : DbContext
         // sweeps every few minutes can't send the same nudge twice.
         modelBuilder.Entity<EmployeeNotification>()
             .HasIndex(n => new { n.TenantId, n.EmployeeId, n.Type, n.RelatedDate }).IsUnique();
+
+        // Employee of the month. One ballot per voter per period — this index IS the "one vote" rule.
+        modelBuilder.Entity<MonthlyVoteBallot>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<MonthlyVoteBallot>()
+            .HasIndex(b => new { b.TenantId, b.Period, b.VoterEmployeeId }).IsUnique();
+        // One tally row per candidate per period — incremented, never linked back to a voter.
+        modelBuilder.Entity<MonthlyVoteTally>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<MonthlyVoteTally>()
+            .HasIndex(t => new { t.TenantId, t.Period, t.CandidateEmployeeId }).IsUnique();
+        modelBuilder.Entity<MonthlyWinner>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<MonthlyWinner>()
+            .HasIndex(w => new { w.TenantId, w.Period, w.LocationId }).IsUnique();
 
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.

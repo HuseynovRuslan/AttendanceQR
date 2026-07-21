@@ -1,0 +1,208 @@
+using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace AttendanceQR.Api.Controllers;
+
+/// <summary>
+/// "Ayın işçisi" — a secret ballot held inside each branch over the last days of the month.
+///
+/// Design decisions worth keeping:
+///  • Per BRANCH, because voting for someone you've never met is noise, and the biggest branch would
+///    otherwise win every time.
+///  • Employees only. A manager's vote reads as pressure, so they see the result but don't cast one.
+///  • Candidates are shown WITH their attendance figures, so it's a judgement about work rather than
+///    a pure popularity contest.
+///  • Truly anonymous: the ballot row and the tally row are separate, so no row anywhere links a
+///    voter to a candidate (see MonthlyVoteBallot).
+/// </summary>
+[ApiController]
+[Authorize]
+[Route("api/vote")]
+public class VoteController : ControllerBase
+{
+    /// <summary>Voting opens this many days before the month ends.</summary>
+    private const int OpenDaysBeforeEnd = 3;
+    /// <summary>Below this many eligible colleagues a "secret" ballot isn't secret — who voted for
+    /// whom is guessable — so the branch simply doesn't hold one.</summary>
+    private const int MinCandidates = 3;
+
+    private readonly AppDbContext _db;
+    private readonly TimeZoneInfo _timeZone;
+
+    public VoteController(AppDbContext db, AppOptions options)
+    {
+        _db = db;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+    }
+
+    private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+    private static DateOnly PeriodOf(DateOnly d) => new(d.Year, d.Month, 1);
+
+    private (bool open, DateOnly opensOn, DateOnly closesOn) Window(DateOnly today)
+    {
+        var lastDay = DateTime.DaysInMonth(today.Year, today.Month);
+        var closesOn = new DateOnly(today.Year, today.Month, lastDay);
+        var opensOn = closesOn.AddDays(-(OpenDaysBeforeEnd - 1));
+        return (today >= opensOn, opensOn, closesOn);
+    }
+
+    /// <summary>Everything the voting screen needs: whether it's open, whether I already voted, and my
+    /// branch colleagues with this month's attendance behind each name.</summary>
+    [HttpGet("status")]
+    public async Task<IActionResult> Status()
+    {
+        var ct = HttpContext.RequestAborted;
+        var employeeId = User.EmployeeId();
+        var me = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (me is null)
+            return Unauthorized(new { error = "EmployeeNotFound" });
+
+        var today = TodayLocal();
+        var period = PeriodOf(today);
+        var (open, opensOn, closesOn) = Window(today);
+
+        var colleagues = await _db.Employees
+            .Where(e => e.IsActive && e.LocationId == me.LocationId && e.Id != me.Id && e.Role == EmployeeRole.Employee)
+            .OrderBy(e => e.FullName)
+            .ToListAsync(ct);
+
+        var hasVoted = await _db.MonthlyVoteBallots
+            .AnyAsync(b => b.Period == period && b.VoterEmployeeId == employeeId, ct);
+
+        // This month's attendance behind each candidate, so the choice rests on something.
+        var from = period;
+        var ids = colleagues.Select(c => c.Id).ToList();
+        var records = await _db.AttendanceRecords
+            .Where(r => ids.Contains(r.EmployeeId) && r.AttendanceDate >= from && r.CheckInAtUtc != null)
+            .Select(r => new { r.EmployeeId, r.AttendanceDate })
+            .ToListAsync(ct);
+        var daysByEmployee = records
+            .GroupBy(r => r.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.AttendanceDate).Distinct().Count());
+
+        var locationName = await _db.Locations
+            .Where(l => l.Id == me.LocationId).Select(l => l.Name).FirstOrDefaultAsync(ct);
+
+        return Ok(new
+        {
+            isOpen = open,
+            opensOn,
+            closesOn,
+            hasVoted,
+            // Managers/admins watch, they don't vote — their ballot would read as pressure.
+            canVote = me.Role == EmployeeRole.Employee && colleagues.Count >= MinCandidates,
+            tooFewColleagues = colleagues.Count < MinCandidates,
+            locationName,
+            period,
+            candidates = colleagues.Select(c => new
+            {
+                employeeId = c.Id,
+                fullName = c.FullName,
+                position = c.Position,
+                daysPresent = daysByEmployee.GetValueOrDefault(c.Id, 0),
+            }),
+        });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Cast([FromBody] VoteRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var employeeId = User.EmployeeId();
+        var me = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (me is null)
+            return Unauthorized(new { error = "EmployeeNotFound" });
+        if (me.Role != EmployeeRole.Employee)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagersDoNotVote" });
+
+        var today = TodayLocal();
+        var period = PeriodOf(today);
+        var (open, _, _) = Window(today);
+        if (!open)
+            return BadRequest(new { error = "VotingClosed" });
+
+        if (request.CandidateEmployeeId == employeeId)
+            return BadRequest(new { error = "CannotVoteForSelf" });
+
+        var candidate = await _db.Employees.FirstOrDefaultAsync(
+            e => e.Id == request.CandidateEmployeeId && e.IsActive && e.LocationId == me.LocationId, ct);
+        if (candidate is null)
+            return BadRequest(new { error = "CandidateNotInYourBranch" });
+
+        // The ballot goes in FIRST: its unique (period, voter) index is what makes the vote single-use,
+        // and if it loses that race nothing is tallied.
+        var ballot = _db.MonthlyVoteBallots.Add(new MonthlyVoteBallot { Period = period, VoterEmployeeId = employeeId });
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            ballot.State = EntityState.Detached;
+            return Conflict(new { error = "AlreadyVoted" });
+        }
+
+        var tally = await _db.MonthlyVoteTallies
+            .FirstOrDefaultAsync(t => t.Period == period && t.CandidateEmployeeId == candidate.Id, ct);
+        if (tally is null)
+        {
+            _db.MonthlyVoteTallies.Add(new MonthlyVoteTally
+            {
+                Period = period,
+                LocationId = me.LocationId,
+                CandidateEmployeeId = candidate.Id,
+                Votes = 1,
+            });
+        }
+        else
+        {
+            tally.Votes++;
+        }
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Results. While voting is open only the total turnout is returned — publishing a running
+    /// scoreboard turns the last day into a bandwagon.</summary>
+    [HttpGet("results")]
+    public async Task<IActionResult> Results([FromQuery] DateOnly? period)
+    {
+        var ct = HttpContext.RequestAborted;
+        var today = TodayLocal();
+        var p = period is null ? PeriodOf(today) : PeriodOf(period.Value);
+        var isCurrent = p == PeriodOf(today);
+        var (open, _, _) = Window(today);
+        var hidden = isCurrent && open;
+
+        var tallies = await _db.MonthlyVoteTallies.Where(t => t.Period == p).ToListAsync(ct);
+        var castCount = await _db.MonthlyVoteBallots.CountAsync(b => b.Period == p, ct);
+
+        if (hidden)
+            return Ok(new { period = p, open = true, votesCast = castCount, branches = Array.Empty<object>() });
+
+        var names = await _db.Employees
+            .Where(e => tallies.Select(t => t.CandidateEmployeeId).Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var locations = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+
+        var branches = tallies
+            .GroupBy(t => t.LocationId)
+            .Select(g => new
+            {
+                locationId = g.Key,
+                locationName = locations.GetValueOrDefault(g.Key, ""),
+                results = g.OrderByDescending(t => t.Votes)
+                    .Select(t => new { employeeId = t.CandidateEmployeeId, fullName = names.GetValueOrDefault(t.CandidateEmployeeId, "—"), votes = t.Votes }),
+            })
+            .OrderBy(b => b.locationName);
+
+        return Ok(new { period = p, open = false, votesCast = castCount, branches });
+    }
+}

@@ -6,7 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
-import { IconChart, IconClock, IconLogout, IconPhone, IconUser } from '../components/icons'
+import { IconChart, IconCheck, IconClock, IconLogout, IconPhone, IconUser } from '../components/icons'
 
 const APP_VERSION = '2.0.0'
 
@@ -54,6 +54,7 @@ export function MenuPage() {
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
+        <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />
       </div>
 
