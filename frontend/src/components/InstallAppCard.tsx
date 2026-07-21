@@ -25,13 +25,13 @@ export function InstallAppCard() {
 
   return (
     <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
-      <div className="font-bold text-blue-900">Proqramı telefonun ekranına çıxarın</div>
+      <div className="font-bold text-blue-900">Daha rahat istifadə üçün tətbiqi quraşdırın</div>
       <button
         onClick={() => void install()}
         disabled={busy}
         className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white disabled:opacity-60"
       >
-        {busy ? 'Əlavə olunur…' : 'Ekrana çıxart'}
+        {busy ? 'Quraşdırılır…' : 'Tətbiqi quraşdır'}
       </button>
       <p className="mt-2 text-[13px] text-blue-700">
         Telefon soruşanda <b>«Quraşdır»</b> (və ya <b>«Əlavə et»</b>) düyməsinə basın.

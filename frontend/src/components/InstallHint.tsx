@@ -46,7 +46,7 @@ export function InstallHint() {
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-blue-900">Proqramı telefonun ekranına çıxarın</div>
+          <div className="font-bold text-blue-900">Daha rahat istifadə üçün tətbiqi quraşdırın</div>
           {/* One tap where the browser allows it (Chromium); iOS exposes no such API, so there the
               only honest option is showing exactly which two taps to make. */}
           {installable ? (
@@ -56,7 +56,7 @@ export function InstallHint() {
                 disabled={busy}
                 className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white disabled:opacity-60"
               >
-                {busy ? 'Əlavə olunur…' : 'Ekrana çıxart'}
+                {busy ? 'Quraşdırılır…' : 'Tətbiqi quraşdır'}
               </button>
               <p className="mt-2 text-[13px] text-blue-700">
                 Telefon soruşanda <b>«Quraşdır»</b> (və ya <b>«Əlavə et»</b>) düyməsinə basın.
