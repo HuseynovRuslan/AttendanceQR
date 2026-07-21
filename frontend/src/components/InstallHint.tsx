@@ -46,33 +46,46 @@ export function InstallHint() {
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-blue-900">Tətbiqi ana ekrana əlavə edin</div>
+          <div className="font-bold text-blue-900">Proqramı telefonun ekranına çıxarın</div>
           <p className="mt-1 leading-relaxed text-blue-800">
-            Belə etməsəniz, telefon vaxtaşırı sizi «yeni cihaz» kimi tanıya bilər və yenidən icazə
-            lazım olar. Ana ekrandan açanda bu problem olmur.
+            Bundan sonra proqram telefonunuzda — <b>WhatsApp kimi</b> — öz şəkli ilə duracaq. Hər dəfə
+            internetdə axtarmayacaqsınız: şəklə bir dəfə toxunursunuz, proqram açılır.
+            <br />
+            Həm də telefon sizi yadda saxlayacaq — təkrar-təkrar şifrə soruşmayacaq.
           </p>
           {/* One tap where the browser allows it (Chromium); iOS exposes no such API, so there the
               only honest option is showing exactly which two taps to make. */}
           {installable ? (
-            <button
-              onClick={() => void install()}
-              disabled={busy}
-              className="mt-3 w-full rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-            >
-              {busy ? 'Quraşdırılır…' : 'Tətbiqi quraşdır'}
-            </button>
+            <>
+              <button
+                onClick={() => void install()}
+                disabled={busy}
+                className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white disabled:opacity-60"
+              >
+                {busy ? 'Əlavə olunur…' : 'Ekrana çıxart'}
+              </button>
+              <p className="mt-2 text-[13px] text-blue-700">
+                Telefon soruşanda <b>«Quraşdır»</b> (və ya <b>«Əlavə et»</b>) düyməsinə basın.
+              </p>
+            </>
           ) : (
-            <p className="mt-2 text-[13px] text-blue-700">
+            // Where the button physically IS, described so someone who has never heard the word
+            // "menu" can still find it. Numbered because they will follow it with the phone in hand.
+            <div className="mt-2 space-y-1 text-[13px] leading-relaxed text-blue-700">
               {ios ? (
                 <>
-                  <b>Safari</b>-də aşağıdakı <b>Paylaş</b> düyməsi → <b>«Ana ekrana əlavə et»</b>.
+                  <p><b>1.</b> Ekranın <b>aşağısında, ortada</b> içindən yuxarı ox çıxan kvadrat şəkil var — ona toxunun.</p>
+                  <p><b>2.</b> Açılan siyahını <b>yuxarı sürüşdürün</b>.</p>
+                  <p><b>3.</b> <b>«Ana ekrana əlavə et»</b> yazısına toxunun, sonra <b>«Əlavə et»</b>.</p>
                 </>
               ) : (
                 <>
-                  Brauzer menyusu (⋮) → <b>«Ana ekrana əlavə et»</b> / <b>«Tətbiqi quraşdır»</b>.
+                  <p><b>1.</b> Ekranın <b>yuxarı sağ küncündə</b> alt-alta üç xırda nöqtə var (⋮) — ona toxunun.</p>
+                  <p><b>2.</b> Açılan siyahıdan <b>«Ana ekrana əlavə et»</b> seçin.</p>
+                  <p><b>3.</b> Sonra <b>«Əlavə et»</b> düyməsinə basın.</p>
                 </>
               )}
-            </p>
+            </div>
           )}
           <button onClick={dismiss} className="mt-3 text-[13px] font-semibold text-blue-600 underline underline-offset-2">
             Anladım, gizlət

@@ -25,18 +25,21 @@ export function InstallAppCard() {
 
   return (
     <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
-      <div className="font-bold text-blue-900">Tətbiqi quraşdırın</div>
-      <div className="mt-1 text-sm text-blue-800">
-        Ana ekrandan açılan tətbiq daha sürətli işləyir, bildirişləri düzgün alır və sizi «yeni cihaz»
-        kimi tanımır.
+      <div className="font-bold text-blue-900">Proqramı telefonun ekranına çıxarın</div>
+      <div className="mt-1 text-sm leading-relaxed text-blue-800">
+        Proqram telefonunuzda <b>WhatsApp kimi</b> öz şəkli ilə duracaq — bir toxunuşla açılacaq.
+        Bildirişlər düzgün gələcək və telefon sizdən təkrar şifrə soruşmayacaq.
       </div>
       <button
         onClick={() => void install()}
         disabled={busy}
-        className="mt-3 w-full rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+        className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-base font-bold text-white disabled:opacity-60"
       >
-        {busy ? 'Quraşdırılır…' : 'Tətbiqi quraşdır'}
+        {busy ? 'Əlavə olunur…' : 'Ekrana çıxart'}
       </button>
+      <p className="mt-2 text-[13px] text-blue-700">
+        Telefon soruşanda <b>«Quraşdır»</b> (və ya <b>«Əlavə et»</b>) düyməsinə basın.
+      </p>
     </div>
   )
 }
