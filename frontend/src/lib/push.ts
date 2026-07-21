@@ -35,11 +35,33 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return out
 }
 
-/** True when this browser already has a live subscription registered. */
-export async function isSubscribed(): Promise<boolean> {
-  if (!pushSupported()) return false
+/**
+ * The active registration, or null — bounded by a timeout.
+ *
+ * `navigator.serviceWorker.ready` NEVER settles while no worker is active (it doesn't reject, it just
+ * hangs), which silently froze the enable-prompt: its `isSubscribed()` check never resolved, so the
+ * prompt never appeared. Everything here must therefore be time-bounded.
+ */
+async function activeRegistration(timeoutMs = 3000): Promise<ServiceWorkerRegistration | null> {
+  if (!pushSupported()) return null
   try {
-    const reg = await navigator.serviceWorker.ready
+    // getRegistration() settles immediately (undefined when there is none) — unlike `ready`.
+    const existing = await navigator.serviceWorker.getRegistration()
+    if (existing?.active) return existing
+    const ready = navigator.serviceWorker.ready.then((r) => r).catch(() => null)
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs))
+    return await Promise.race([ready, timeout])
+  } catch {
+    return null
+  }
+}
+
+/** True when this browser already has a live subscription registered. Never hangs: when the worker
+ *  isn't up we answer "not subscribed", so the prompt is shown rather than silently swallowed. */
+export async function isSubscribed(): Promise<boolean> {
+  const reg = await activeRegistration()
+  if (!reg) return false
+  try {
     return (await reg.pushManager.getSubscription()) !== null
   } catch {
     return false
@@ -61,7 +83,10 @@ export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'd
   if (permission !== 'granted') return 'denied'
 
   try {
-    const reg = await navigator.serviceWorker.ready
+    // Give the worker a moment longer here: the employee just tapped, so a short wait is fine — but
+    // still bounded, never the open-ended `ready`.
+    const reg = await activeRegistration(8000)
+    if (!reg) return 'failed'
     const sub =
       (await reg.pushManager.getSubscription()) ??
       (await reg.pushManager.subscribe({
@@ -86,7 +111,8 @@ export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'd
 export async function disablePush(): Promise<boolean> {
   if (!pushSupported()) return false
   try {
-    const reg = await navigator.serviceWorker.ready
+    const reg = await activeRegistration()
+    if (!reg) return true
     const sub = await reg.pushManager.getSubscription()
     if (!sub) return true
     const endpoint = sub.endpoint

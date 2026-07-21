@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { enablePush, isSubscribed, pushPermission, pushSupported } from '../lib/push'
+import { isStandalone } from '../lib/device'
 
 /**
  * One-tap "turn the checkout reminder on", placed where the employee actually is — on the check-in
@@ -39,6 +40,23 @@ export function PushEnablePrompt({
     else if (r === 'denied') setFailed('İcazə verilmədi')
     else if (r === 'disabled') setShow(false)
     else setFailed('Alınmadı, yenidən yoxlayın')
+  }
+
+  // iPhone in a Safari tab has no push at all until the app is installed. Say so — silently rendering
+  // nothing just looks like the feature is missing, and the employee never learns the one step that
+  // would fix it.
+  if (!pushSupported() && !isStandalone()) {
+    return (
+      <div className={dark ? 'mt-5 rounded-2xl bg-black/30 p-4 text-left ring-1 ring-white/25' : 'rounded-3xl border-2 border-blue-200 bg-blue-50 p-4'}>
+        <div className={`${dark ? 'text-base' : 'text-sm'} font-bold ${dark ? '' : 'text-blue-900'}`}>
+          🔔 Çıxış xatırlatması
+        </div>
+        <div className={`mt-1 ${dark ? 'text-sm opacity-90' : 'text-xs text-blue-800'}`}>
+          Bildiriş almaq üçün proqramı <b>ana ekrana əlavə edin</b> (Paylaş → «Ana ekrana əlavə et»),
+          sonra oradan açın — bu səhifədə bildiriş işləmir.
+        </div>
+      </div>
+    )
   }
 
   if (!show) return null
