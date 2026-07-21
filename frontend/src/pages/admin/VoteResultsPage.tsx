@@ -23,6 +23,9 @@ export function VoteResultsPage() {
   const [loaded, setLoaded] = useState(false)
   // Bumped when the campaign card changes something, so the results below reload with it.
   const [reloadKey, setReloadKey] = useState(0)
+  // Results belong to a ballot. With no campaign for the month there is nothing to show — any
+  // tallies left behind by a deleted one are not a result.
+  const [hasCampaign, setHasCampaign] = useState(true)
 
   const period = periodOf(offset)
 
@@ -48,16 +51,21 @@ export function VoteResultsPage() {
         <span className={`chip${offset === -2 ? ' active' : ''}`} onClick={() => setOffset(-2)}>2 ay əvvəl</span>
       </div>
 
-      <VoteCampaignCard period={period} label={label} onChanged={() => setReloadKey((k) => k + 1)} />
+      <VoteCampaignCard
+        period={period}
+        label={label}
+        onChanged={() => setReloadKey((k) => k + 1)}
+        onCampaign={setHasCampaign}
+      />
 
-      {loaded && (!data || data.branches.length === 0) && (
+      {hasCampaign && loaded && (!data || data.branches.length === 0) && (
         <div className="card card-pad muted" style={{ textAlign: 'center' }}>
           Hələ səs verilməyib.
         </div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-        {data?.branches.map((b) => {
+        {hasCampaign && data?.branches.map((b) => {
           const winner = winnerFor(b.locationId)
           const total = b.results.reduce((s, r) => s + r.votes, 0) || 1
           return (

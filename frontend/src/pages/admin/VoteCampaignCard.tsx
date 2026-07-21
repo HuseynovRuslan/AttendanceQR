@@ -42,10 +42,13 @@ export function VoteCampaignCard({
   period,
   label,
   onChanged,
+  onCampaign,
 }: {
   period: string
   label: string
   onChanged: () => void
+  /** Tells the page whether this month has a ballot, so it can hide results that belong to none. */
+  onCampaign: (exists: boolean) => void
 }) {
   const [campaign, setCampaign] = useState<VoteCampaign | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -64,7 +67,9 @@ export function VoteCampaignCard({
   async function load() {
     setLoaded(false)
     const { status, data } = await getVoteCampaign(period)
-    if (status === 200 && data && 'campaign' in data) setCampaign(data.campaign)
+    const found = status === 200 && data && 'campaign' in data ? data.campaign : null
+    setCampaign(found)
+    onCampaign(found !== null)
     setLoaded(true)
     setEditing(false)
     setShowAdvanced(false)
@@ -111,6 +116,7 @@ export function VoteCampaignCard({
     setBusy(false)
     if (status === 200 && data && 'campaign' in data) {
       setCampaign(data.campaign)
+      onCampaign(data.campaign !== null)
       setEditing(false)
       setMsg(campaign ? 'Dəyişikliklər yadda saxlanıldı' : 'Səsvermə yaradıldı')
       onChanged()
@@ -130,6 +136,7 @@ export function VoteCampaignCard({
     await deleteVoteCampaign(campaign.id)
     setBusy(false)
     setCampaign(null)
+    onCampaign(false)
     setMsg('Səsvermə silindi')
     onChanged()
   }
