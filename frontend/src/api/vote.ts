@@ -31,6 +31,18 @@ export interface VoteResults {
   open: boolean
   votesCast: number
   branches: VoteBranchResult[]
+  /** Settled winners for the period (empty while it is still being voted on). */
+  winners?: { locationId: string; employeeId: string; votes: number }[]
+}
+
+export interface MyAward {
+  period: string
+  votes: number
+}
+
+/** The caller's own wins — powers the 🏆 badge on their home screen. */
+export function getMyAwards() {
+  return apiRequest<MyAward[]>('/api/vote/my-awards')
 }
 
 export function getVoteStatus() {

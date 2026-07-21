@@ -15,7 +15,8 @@ namespace AttendanceQR.Api.Controllers;
 /// Design decisions worth keeping:
 ///  • Per BRANCH, because voting for someone you've never met is noise, and the biggest branch would
 ///    otherwise win every time.
-///  • Employees only. A manager's vote reads as pressure, so they see the result but don't cast one.
+///  • Everyone at the branch votes, managers included (the owner's call). Candidates stay employees —
+///    it is the employee of the month, not the boss of the month.
 ///  • Candidates are shown WITH their attendance figures, so it's a judgement about work rather than
 ///    a pure popularity contest.
 ///  • Truly anonymous: the ballot row and the tally row are separate, so no row anywhere links a
@@ -95,8 +96,8 @@ public class VoteController : ControllerBase
             opensOn,
             closesOn,
             hasVoted,
-            // Managers/admins watch, they don't vote — their ballot would read as pressure.
-            canVote = me.Role == EmployeeRole.Employee && colleagues.Count >= MinCandidates,
+            // Everyone at the branch votes, managers included.
+            canVote = colleagues.Count >= MinCandidates,
             tooFewColleagues = colleagues.Count < MinCandidates,
             locationName,
             period,
@@ -118,9 +119,6 @@ public class VoteController : ControllerBase
         var me = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
         if (me is null)
             return Unauthorized(new { error = "EmployeeNotFound" });
-        if (me.Role != EmployeeRole.Employee)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagersDoNotVote" });
-
         var today = TodayLocal();
         var period = PeriodOf(today);
         var (open, _, _) = Window(today);
@@ -179,7 +177,10 @@ public class VoteController : ControllerBase
         var p = period is null ? PeriodOf(today) : PeriodOf(period.Value);
         var isCurrent = p == PeriodOf(today);
         var (open, _, _) = Window(today);
-        var hidden = isCurrent && open;
+        // Employees see no running scoreboard while the ballot is open; whoever runs the vote does,
+        // because they need to watch turnout and chase the branches that haven't voted.
+        var organiser = User.Role() is EmployeeRole.Admin or EmployeeRole.Manager;
+        var hidden = isCurrent && open && !organiser;
 
         var tallies = await _db.MonthlyVoteTallies.Where(t => t.Period == p).ToListAsync(ct);
         var castCount = await _db.MonthlyVoteBallots.CountAsync(b => b.Period == p, ct);
@@ -203,6 +204,24 @@ public class VoteController : ControllerBase
             })
             .OrderBy(b => b.locationName);
 
-        return Ok(new { period = p, open = false, votesCast = castCount, branches });
+        var winners = await _db.MonthlyWinners
+            .Where(w => w.Period == p)
+            .Select(w => new { w.LocationId, w.EmployeeId, w.Votes })
+            .ToListAsync(ct);
+
+        return Ok(new { period = p, open = isCurrent && open, votesCast = castCount, branches, winners });
+    }
+
+    /// <summary>The caller's own wins — powers the 🏆 badge on their home screen.</summary>
+    [HttpGet("my-awards")]
+    public async Task<IActionResult> MyAwards()
+    {
+        var employeeId = User.EmployeeId();
+        var rows = await _db.MonthlyWinners
+            .Where(w => w.EmployeeId == employeeId)
+            .OrderByDescending(w => w.Period)
+            .Select(w => new { period = w.Period, votes = w.Votes })
+            .ToListAsync(HttpContext.RequestAborted);
+        return Ok(rows);
     }
 }

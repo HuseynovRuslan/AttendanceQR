@@ -136,6 +136,9 @@ builder.Services.AddScoped<IPushNotifier, PushNotifier>();
 // reaches someone who already left. Never auto-closes anything.
 builder.Services.AddHostedService<ReminderJob>();
 
+// Closes the "Ayın işçisi" ballot once a month ends: decides each branch winner and announces it.
+builder.Services.AddHostedService<MonthlyWinnerJob>();
+
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
