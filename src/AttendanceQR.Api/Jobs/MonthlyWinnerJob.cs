@@ -76,8 +76,14 @@ public sealed class MonthlyWinnerJob : BackgroundService
                 var thisPeriod = new DateOnly(todayLocal.Year, todayLocal.Month, 1);
                 var lastPeriod = thisPeriod.AddMonths(-1);
 
-                var cfg = await scope.ServiceProvider.GetRequiredService<IVoteSettingsProvider>().GetAsync(ct);
-                if (!cfg.Enabled) continue;
+                // A ballot nobody is told about gets a handful of votes. The notice goes out on the
+                // opening day only — OpenedNotifiedAtUtc makes it once per campaign, not once an hour.
+                await AnnounceOpeningAsync(db, notifier, todayLocal, thisPeriod, ct);
+
+                // Only months someone actually ran a ballot for get a winner. Stray tallies from a
+                // campaign that was later deleted must never surface as a company-wide announcement.
+                var campaign = await db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == lastPeriod, ct);
+                if (campaign is null) continue;
 
                 var tallies = await db.MonthlyVoteTallies.Where(t => t.Period == lastPeriod).ToListAsync(ct);
                 if (tallies.Count == 0) continue;
@@ -89,7 +95,7 @@ public sealed class MonthlyWinnerJob : BackgroundService
                     .Where(g => !alreadyDecided.Contains(g.Key))
                     // Too few votes to mean anything — announcing a winner chosen by a handful of
                     // people devalues the award, so that branch simply gets no winner this month.
-                    .Where(g => g.Sum(t => t.Votes) >= cfg.MinVotesToDecide)
+                    .Where(g => g.Sum(t => t.Votes) >= campaign.MinVotesToDecide)
                     .ToList();
                 if (pending.Count == 0) continue;
 
@@ -167,6 +173,34 @@ public sealed class MonthlyWinnerJob : BackgroundService
                 _logger.LogError(ex, "MonthlyWinnerJob: tenant {Tenant} failed", tenantId);
             }
         }
+    }
+
+    /// <summary>Tells everyone the ballot is open, the first time the sweep sees it open.</summary>
+    private async Task AnnounceOpeningAsync(
+        AppDbContext db, IPushNotifier notifier, DateOnly today, DateOnly period, CancellationToken ct)
+    {
+        var campaign = await db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == period, ct);
+        if (campaign is null || campaign.OpenedNotifiedAtUtc is not null || !campaign.IsOpenOn(today))
+            return;
+
+        var monthName = AzMonth(period.Month);
+        var lastDay = campaign.EndsOn.ToString("dd.MM.yyyy");
+        campaign.OpenedNotifiedAtUtc = DateTime.UtcNow;
+        db.Announcements.Add(new Announcement
+        {
+            Title = $"{monthName} ayının işçisi — səsvermə açıldı 🗳️",
+            Message = $"Öz filialınızdan bir nəfəri seçin. Səsiniz tam gizlidir — kimə səs verdiyinizi " +
+                      $"heç kim, rəhbər də görmür.\n\nSon tarix: {lastDay}. Bir dəfə səs verilir.",
+            Audience = AnnouncementAudience.All,
+        });
+        await db.SaveChangesAsync(ct);
+
+        var everyone = await db.Employees.Where(e => e.IsActive).Select(e => e.Id).ToListAsync(ct);
+        await notifier.NotifyEmployeesAsync(
+            everyone, $"{monthName} ayının işçisi 🗳️",
+            $"Səsvermə açıqdır — {lastDay} tarixinə qədər səs verin.", "/vote", ct);
+
+        _logger.LogInformation("MonthlyWinnerJob: announced ballot opening for {Period}", period);
     }
 
     private static string AzMonth(int m) => m switch

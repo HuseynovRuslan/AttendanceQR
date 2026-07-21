@@ -9,11 +9,11 @@ export interface VoteCandidate {
 }
 
 export interface VoteStatus {
-  /** Company master switch — off means the ballot isn't running at all this month. */
+  /** False when no ballot was created for this month — the award simply isn't being run. */
   enabled: boolean
   isOpen: boolean
-  opensOn: string
-  closesOn: string
+  opensOn: string | null
+  closesOn: string | null
   hasVoted: boolean
   canVote: boolean
   tooFewColleagues: boolean
@@ -63,43 +63,63 @@ export function getVoteResults(period?: string) {
   return apiRequest<VoteResults>(`/api/vote/results${period ? `?period=${period}` : ''}`)
 }
 
-// --- admin settings ---------------------------------------------------------
+// --- admin: the monthly ballot -----------------------------------------------
 
-export interface VoteSettings {
-  enabled: boolean
-  openDaysBeforeEnd: number
-  manualFrom: string | null
-  manualTo: string | null
+/** A ballot an admin created for one month. No campaign for a month = no vote that month. */
+export interface VoteCampaign {
+  id: string
+  period: string
+  startsOn: string
+  endsOn: string
   minCandidates: number
   minVotesToDecide: number
-  /** What the settings mean right now — the real dates, not just the number of days. */
-  currentWindowFrom: string
-  currentWindowTo: string
-  isOpenNow: boolean
+  votesCast: number
+  isOpen: boolean
+  /** scheduled = created but not started yet, open = running, finished = window has passed. */
+  state: 'scheduled' | 'open' | 'finished'
 }
 
-export function getVoteSettings() {
-  return apiRequest<VoteSettings>('/api/admin/vote-settings')
+export interface VoteCampaignResponse {
+  period: string
+  campaign: VoteCampaign | null
 }
 
-export function saveVoteSettings(input: {
-  enabled: boolean
-  openDaysBeforeEnd: number
-  manualFrom: string | null
-  manualTo: string | null
+export interface VoteCampaignInput {
+  startsOn: string
+  endsOn: string
   minCandidates: number
   minVotesToDecide: number
-}) {
-  return apiRequest<VoteSettings | { error: string }>('/api/admin/vote-settings', {
+}
+
+export function getVoteCampaign(period: string) {
+  return apiRequest<VoteCampaignResponse>(`/api/admin/vote-campaigns?period=${period}`)
+}
+
+export function createVoteCampaign(input: VoteCampaignInput) {
+  return apiRequest<VoteCampaignResponse | { error: string }>('/api/admin/vote-campaigns', {
+    method: 'POST',
+    body: input,
+  })
+}
+
+export function updateVoteCampaign(id: string, input: VoteCampaignInput) {
+  return apiRequest<VoteCampaignResponse | { error: string }>(`/api/admin/vote-campaigns/${id}`, {
     method: 'PUT',
     body: input,
   })
 }
 
-/** Wipes a month's ballot — votes, tallies and any decided winner. Used to clear a trial run. */
-export function resetVotes(period: string) {
-  return apiRequest<{ period: string; removedVotes: number; removedWinners: number } | { error: string }>(
-    '/api/admin/vote-settings/reset',
-    { method: 'POST', body: { period } },
+/** Removes the ballot and everything cast in it — the month goes back to having no vote. */
+export function deleteVoteCampaign(id: string) {
+  return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/vote-campaigns/${id}`, {
+    method: 'DELETE',
+  })
+}
+
+/** Keeps the ballot, clears the votes — restarting a round after a trial run. */
+export function resetVoteCampaignVotes(id: string) {
+  return apiRequest<{ removedVotes: number } | { error: string }>(
+    `/api/admin/vote-campaigns/${id}/reset-votes`,
+    { method: 'POST' },
   )
 }

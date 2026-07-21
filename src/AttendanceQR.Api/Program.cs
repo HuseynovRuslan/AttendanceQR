@@ -129,7 +129,6 @@ builder.Services.AddHostedService<FaceMatchWorker>();
 var voteOptions = builder.Configuration.GetSection(VoteOptions.SectionName).Get<VoteOptions>() ?? new VoteOptions();
 builder.Services.AddSingleton(voteOptions);
 // Per-tenant ballot settings (admin-editable), falling back to the options above.
-builder.Services.AddScoped<IVoteSettingsProvider, VoteSettingsProvider>();
 
 var pushOptions = builder.Configuration.GetSection(PushOptions.SectionName).Get<PushOptions>() ?? new PushOptions();
 builder.Services.AddSingleton(pushOptions);

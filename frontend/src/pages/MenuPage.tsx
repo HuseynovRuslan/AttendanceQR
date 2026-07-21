@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ComponentType, SVGProps } from 'react'
 import { getMyDeviceStatus, getMyProfile, type MyDeviceStatus, type MyProfile } from '../api/attendance'
+import { getVoteStatus } from '../api/vote'
 import { useAuth } from '../auth/AuthContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
@@ -14,6 +15,8 @@ export function MenuPage() {
   const { logout, email, role } = useAuth()
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
+  // Months without a ballot have no vote screen worth opening, so the row isn't offered at all.
+  const [hasBallot, setHasBallot] = useState(false)
 
   useEffect(() => {
     void getMyProfile().then((r) => {
@@ -21,6 +24,9 @@ export function MenuPage() {
     })
     void getMyDeviceStatus(getDeviceFingerprint()).then((r) => {
       if (r.status === 200 && r.data && 'bound' in r.data) setDevice(r.data)
+    })
+    void getVoteStatus().then((r) => {
+      if (r.status === 200 && r.data && 'candidates' in r.data) setHasBallot(r.data.enabled)
     })
   }, [])
 
@@ -54,7 +60,7 @@ export function MenuPage() {
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
-        <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />
+        {hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />
       </div>
 

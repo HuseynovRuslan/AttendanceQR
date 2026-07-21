@@ -30,13 +30,10 @@ public class VoteController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
-    private readonly IVoteSettingsProvider _settings;
-
-    public VoteController(AppDbContext db, AppOptions options, IVoteSettingsProvider settings)
+    public VoteController(AppDbContext db, AppOptions options)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
-        _settings = settings;
     }
 
     private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
@@ -55,8 +52,10 @@ public class VoteController : ControllerBase
 
         var today = TodayLocal();
         var period = PeriodOf(today);
-        var cfg = await _settings.GetAsync(ct);
-        var (open, opensOn, closesOn) = cfg.Window(today);
+        // No campaign for this month means the company chose not to run the award — not a
+        // misconfiguration, and the screen says exactly that.
+        var campaign = await _db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == period, ct);
+        var open = campaign?.IsOpenOn(today) ?? false;
 
         var colleagues = await _db.Employees
             .Where(e => e.IsActive && e.LocationId == me.LocationId && e.Id != me.Id && e.Role == EmployeeRole.Employee)
@@ -83,13 +82,13 @@ public class VoteController : ControllerBase
         return Ok(new
         {
             isOpen = open,
-            opensOn,
-            closesOn,
+            opensOn = campaign?.StartsOn,
+            closesOn = campaign?.EndsOn,
             hasVoted,
             // Everyone at the branch votes, managers included.
-            enabled = cfg.Enabled,
-            canVote = cfg.Enabled && colleagues.Count >= cfg.MinCandidates,
-            tooFewColleagues = colleagues.Count < cfg.MinCandidates,
+            enabled = campaign is not null,
+            canVote = campaign is not null && colleagues.Count >= campaign.MinCandidates,
+            tooFewColleagues = campaign is not null && colleagues.Count < campaign.MinCandidates,
             locationName,
             period,
             candidates = colleagues.Select(c => new
@@ -112,9 +111,8 @@ public class VoteController : ControllerBase
             return Unauthorized(new { error = "EmployeeNotFound" });
         var today = TodayLocal();
         var period = PeriodOf(today);
-        var cfg = await _settings.GetAsync(ct);
-        var (open, _, _) = cfg.Window(today);
-        if (!cfg.Enabled || !open)
+        var campaign = await _db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == period, ct);
+        if (campaign is null || !campaign.IsOpenOn(today))
             return BadRequest(new { error = "VotingClosed" });
 
         if (request.CandidateEmployeeId == employeeId)
@@ -168,7 +166,8 @@ public class VoteController : ControllerBase
         var today = TodayLocal();
         var p = period is null ? PeriodOf(today) : PeriodOf(period.Value);
         var isCurrent = p == PeriodOf(today);
-        var (open, _, _) = (await _settings.GetAsync(ct)).Window(today);
+        var campaign = await _db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == p, ct);
+        var open = campaign?.IsOpenOn(today) ?? false;
         // Employees see no running scoreboard while the ballot is open; whoever runs the vote does,
         // because they need to watch turnout and chase the branches that haven't voted.
         var organiser = User.Role() is EmployeeRole.Admin or EmployeeRole.Manager;

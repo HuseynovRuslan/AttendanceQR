@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { getVoteResults, resetVotes, type VoteResults } from '../../api/vote'
-import { VoteSettingsCard } from './VoteSettingsCard'
+import { getVoteResults, type VoteResults } from '../../api/vote'
+import { VoteCampaignCard } from './VoteCampaignCard'
 
 const MONTHS = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun',
@@ -21,16 +21,18 @@ export function VoteResultsPage() {
   const [offset, setOffset] = useState(0)
   const [data, setData] = useState<VoteResults | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [resetting, setResetting] = useState(false)
-  const [resetMsg, setResetMsg] = useState<string | null>(null)
+  // Bumped when the campaign card changes something, so the results below reload with it.
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const period = periodOf(offset)
 
   useEffect(() => {
     setLoaded(false)
-    void getVoteResults(periodOf(offset)).then(({ status, data }) => {
-      if (status === 200 && data && 'branches' in data) setData(data)
+    void getVoteResults(period).then(({ status, data }) => {
+      setData(status === 200 && data && 'branches' in data ? data : null)
       setLoaded(true)
     })
-  }, [offset])
+  }, [period, reloadKey])
 
   const d = new Date()
   d.setDate(1)
@@ -38,66 +40,19 @@ export function VoteResultsPage() {
   const label = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`
   const winnerFor = (locationId: string) => data?.winners?.find((w) => w.locationId === locationId)
 
-  async function onReset() {
-    const period = periodOf(offset)
-    if (!window.confirm(`${label} ayının BÜTÜN səsləri silinəcək. Bu geri qaytarılmır. Davam edilsin?`)) return
-    setResetting(true)
-    setResetMsg(null)
-    const { status, data: res } = await resetVotes(period)
-    setResetting(false)
-    if (status === 200 && res && 'removedVotes' in res) {
-      setResetMsg(`${res.removedVotes} səs silindi`)
-      const r = await getVoteResults(period)
-      if (r.status === 200 && r.data && 'branches' in r.data) setData(r.data)
-    }
-  }
-
   return (
     <div>
-      <VoteSettingsCard />
-
       <div className="chip-row">
         <span className={`chip${offset === 0 ? ' active' : ''}`} onClick={() => setOffset(0)}>Bu ay</span>
         <span className={`chip${offset === -1 ? ' active' : ''}`} onClick={() => setOffset(-1)}>Keçən ay</span>
         <span className={`chip${offset === -2 ? ' active' : ''}`} onClick={() => setOffset(-2)}>2 ay əvvəl</span>
       </div>
 
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <div className="card-title" style={{ marginBottom: 4 }}>{label} — səsvermə</div>
-            {/* "Bağlıdır" meant two different things — "hasn't opened yet" for this month and
-                "finished" for a past one — and read as if the feature were switched off. */}
-            <div className="muted" style={{ fontSize: 13 }}>
-              {data?.open
-                ? `Səsvermə davam edir · indiyə qədər ${data.votesCast} səs verilib`
-                : offset === 0
-                  ? `Səsvermə hələ açılmayıb (tarixlər yuxarıda) · indiyədək ${data?.votesCast ?? 0} səs`
-                  : `Səsvermə bitib · cəmi ${data?.votesCast ?? 0} səs`}
-            </div>
-          </div>
-          {/* The way out of a trial run: without it, test votes sit in the real month and a handful
-              of them could crown someone company-wide. Irreversible, so it asks first. */}
-          {(data?.votesCast ?? 0) > 0 && (
-            <button className="btn btn-sm btn-danger" disabled={resetting} onClick={() => void onReset()}>
-              {resetting ? 'Silinir…' : 'Səsləri sıfırla'}
-            </button>
-          )}
-        </div>
-        {resetMsg && <div className="fb fb-ok" style={{ marginTop: 12 }}><span>{resetMsg}</span></div>}
-        {data?.open && (
-          <div className="fb fb-info" style={{ marginTop: 12 }}>
-            <span>
-              Bu nəticələri yalnız siz görürsünüz — işçilər səsvermə bağlanana qədər heç bir sıralama
-              görmür (yoxsa son gün sürü effekti yaranır).
-            </span>
-          </div>
-        )}
-      </div>
+      <VoteCampaignCard period={period} label={label} onChanged={() => setReloadKey((k) => k + 1)} />
 
       {loaded && (!data || data.branches.length === 0) && (
         <div className="card card-pad muted" style={{ textAlign: 'center' }}>
-          Bu ay üçün hələ səs verilməyib.
+          Hələ səs verilməyib.
         </div>
       )}
 

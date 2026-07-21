@@ -8,6 +8,8 @@ const MONTHS = [
   'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr',
 ]
 
+const fmtDate = (iso: string) => iso.split('-').reverse().join('.')
+
 /** "Ayın işçisi" — one tap, one vote, secret. Deliberately a single screen: employees open this app
  *  to scan and little else, so anything longer than pick-a-name would simply not get used. */
 export function VotePage() {
@@ -64,11 +66,11 @@ export function VotePage() {
             </p>
           </div>
         ) : !status.enabled ? (
-          // The company switched the ballot off from the admin panel.
+          // No campaign was created for this month — the company isn't running the award now.
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-600">
             <div className="text-4xl">🗳️</div>
-            <div className="mt-2 font-bold text-slate-800">Səsvermə keçirilmir</div>
-            <p className="mt-1 text-sm">Hazırda bu bölmə bağlıdır.</p>
+            <div className="mt-2 font-bold text-slate-800">Bu ay səsvermə keçirilmir</div>
+            <p className="mt-1 text-sm">Səsvermə başlayanda sizə bildiriş göndərəcəyik.</p>
           </div>
         ) : status.tooFewColleagues ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-600">
@@ -79,7 +81,8 @@ export function VotePage() {
             <div className="text-4xl">🗳️</div>
             <div className="mt-2 font-bold text-slate-800">Səsvermə hələ başlamayıb</div>
             <p className="mt-1 text-sm">
-              {monthName} ayının son günlərində açılacaq. Başlayanda bildiriş göndərəcəyik.
+              {status.opensOn ? `${fmtDate(status.opensOn)} tarixində açılacaq` : `${monthName} ayında açılacaq`}
+              . Başlayanda bildiriş göndərəcəyik.
             </p>
           </div>
         ) : (

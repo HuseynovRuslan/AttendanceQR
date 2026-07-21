@@ -49,7 +49,7 @@ public class AppDbContext : DbContext
     public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
     public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();
     public DbSet<MonthlyWinner> MonthlyWinners => Set<MonthlyWinner>();
-    public DbSet<VoteSettings> VoteSettings => Set<VoteSettings>();
+    public DbSet<VoteCampaign> VoteCampaigns => Set<VoteCampaign>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,7 +67,7 @@ public class AppDbContext : DbContext
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
-            typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteSettings),
+            typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign),
         };
         foreach (var t in tenantScoped)
         {
@@ -117,9 +117,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MonthlyWinner>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<MonthlyWinner>()
             .HasIndex(w => new { w.TenantId, w.Period, w.LocationId }).IsUnique();
-        modelBuilder.Entity<VoteSettings>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
-        // One settings row per company.
-        modelBuilder.Entity<VoteSettings>().HasIndex(s => s.TenantId).IsUnique();
+        modelBuilder.Entity<VoteCampaign>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        // One ballot per month — creating a second for the same period is a mistake, not a feature.
+        modelBuilder.Entity<VoteCampaign>().HasIndex(c => new { c.TenantId, c.Period }).IsUnique();
 
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.

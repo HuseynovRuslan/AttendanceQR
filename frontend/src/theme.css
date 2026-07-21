@@ -314,3 +314,16 @@ select.inp{cursor:pointer}
 .dash-rank-v{font-family:'Manrope',sans-serif;font-weight:800;color:var(--clay);font-size:14px;flex-shrink:0}
 
 @media(max-width:680px){.dash-hero{padding:24px 20px}.dash-hero-inner{gap:22px}.dash-hero h2{font-size:22px}}
+
+/* Status badge — the state of a thing, read at a glance next to its title.
+   Neutral by default; the coloured variants are for "running" and "scheduled". */
+.pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.02em;
+  padding:3px 10px;border-radius:999px;background:var(--c100);color:var(--c600);border:1px solid var(--c200)}
+.pill-ok{background:var(--leaf-bg);color:var(--leaf-d);border-color:color-mix(in srgb,var(--leaf) 35%,transparent)}
+.pill-info{background:var(--blue-bg);color:var(--blue);border-color:color-mix(in srgb,var(--blue) 30%,transparent)}
+
+/* A secondary action that shouldn't compete with the primary button — used to reveal
+   settings that have good defaults and are rarely touched. */
+.btn-link{background:none;border:none;padding:0;margin-top:4px;font-family:inherit;font-size:12px;
+  font-weight:700;color:var(--c600);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.btn-link:hover{color:var(--c900)}
