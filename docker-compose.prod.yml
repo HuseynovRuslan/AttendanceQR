@@ -50,6 +50,10 @@ services:
       Rekognition__AccessKey: ${Rekognition__AccessKey:-}
       Rekognition__SecretKey: ${Rekognition__SecretKey:-}
       Rekognition__Region: ${Rekognition__Region:-us-east-1}
+      # Web Push (VAPID). Empty = push off: the sender no-ops and the reminder job stays idle.
+      Push__PublicKey: ${Push__PublicKey:-}
+      Push__PrivateKey: ${Push__PrivateKey:-}
+      Push__Subject: ${Push__Subject:-mailto:admin@qrlog.az}
       DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
       DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
       DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}

@@ -123,6 +123,17 @@ builder.Services.AddHostedService<PhotoCleanupJob>();
 // Background face-match worker — drains the queue enqueued by check-ins / admin re-check.
 builder.Services.AddHostedService<FaceMatchWorker>();
 
+// Web Push (VAPID). Empty keys = push is off: the sender no-ops and the reminder job stays idle, so
+// the app runs unchanged without it. Registered as a plain singleton for the same reason as the
+// options above — Infrastructure takes them without an IOptions dependency.
+var pushOptions = builder.Configuration.GetSection(PushOptions.SectionName).Get<PushOptions>() ?? new PushOptions();
+builder.Services.AddSingleton(pushOptions);
+builder.Services.AddSingleton<IPushSender, WebPushSender>();
+
+// Pushes "you forgot to check out" once a shift has been over for a while — the only reminder that
+// reaches someone who already left. Never auto-closes anything.
+builder.Services.AddHostedService<CheckoutReminderJob>();
+
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");

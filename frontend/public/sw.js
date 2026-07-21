@@ -82,3 +82,45 @@ self.addEventListener('fetch', (event) => {
 
   // Anything else: default network handling (no respondWith).
 })
+
+/* --- Web Push -------------------------------------------------------------
+ * The server sends {title, body, url} (see WebPushSender). Used for the
+ * "you forgot to check out" reminder — the one nudge that reaches an employee
+ * who has already left the building. */
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch {
+    data = { body: event.data ? event.data.text() : '' }
+  }
+  const title = data.title || 'QRLog'
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      // One notification per topic: a second reminder replaces the first rather than stacking.
+      tag: 'qrlog-checkout',
+      renotify: true,
+      data: { url: data.url || '/' },
+    }),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = (event.notification.data && event.notification.data.url) || '/'
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Focus an already-open tab of the app rather than opening a second one.
+      for (const client of clients) {
+        if ('focus' in client) {
+          client.navigate(target).catch(() => {})
+          return client.focus()
+        }
+      }
+      return self.clients.openWindow(target)
+    }),
+  )
+})

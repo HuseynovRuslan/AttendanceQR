@@ -44,6 +44,7 @@ public class AppDbContext : DbContext
     public DbSet<ProcessedScan> ProcessedScans => Set<ProcessedScan>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,7 @@ public class AppDbContext : DbContext
             typeof(DeviceChangeRequest), typeof(MissedCheckoutRequest), typeof(DailySummary),
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
+            typeof(PushSubscription),
         };
         foreach (var t in tenantScoped)
         {
@@ -89,6 +91,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Announcement>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AnnouncementRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AnnouncementRecipient>().HasIndex(r => r.AnnouncementId);
+        modelBuilder.Entity<PushSubscription>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        // The push endpoint is globally unique — one row per browser; re-subscribing updates that row.
+        modelBuilder.Entity<PushSubscription>().HasIndex(p => p.Endpoint).IsUnique();
 
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.

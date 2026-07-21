@@ -35,6 +35,10 @@ public class AttendanceRecord : ITenantScoped
 
     public DateTime? SubmittedAtUtc { get; set; }
 
+    // Set once the "you forgot to check out" push went out for this day, so the reminder job never
+    // nags the same person twice for the same record. Null = not reminded (yet, or not needed).
+    public DateTime? CheckoutReminderSentAtUtc { get; set; }
+
     // Optional reason the employee gives when they arrive late / leave early (preset chip or free text).
     // Skippable at the scan, so usually null. Surfaced to the admin on the attendance board.
     public string? LateArrivalReason { get; set; }
