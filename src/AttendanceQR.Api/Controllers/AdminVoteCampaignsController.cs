@@ -66,7 +66,42 @@ public class AdminVoteCampaignsController : ControllerBase
             return Ok(new { period = p, campaign = (object?)null });
 
         var votes = await _db.MonthlyVoteBallots.CountAsync(b => b.Period == p, ct);
-        return Ok(new { period = p, campaign = Project(campaign, now, votes) });
+        return Ok(new { period = p, campaign = Project(campaign, now, votes), result = await ResultAsync(campaign, votes, ct) });
+    }
+
+    /// <summary>
+    /// What the ballot actually produced, once it has closed.
+    ///
+    /// A finished campaign with no winner looks identical to a broken one: the admin sees a vote count
+    /// and nothing else, and cannot tell whether the award was withheld on purpose (too few votes) or
+    /// something failed. This says which.
+    /// </summary>
+    private async Task<object?> ResultAsync(VoteCampaign campaign, int votesCast, CancellationToken ct)
+    {
+        if (campaign.IsOpenAt(NowLocal()) || NowLocal() < campaign.OpensAtLocal)
+            return null;
+
+        var winners = await _db.MonthlyWinners.Where(w => w.Period == campaign.Period).ToListAsync(ct);
+        var names = await _db.Employees
+            .Where(e => winners.Select(w => w.EmployeeId).Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var locations = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+
+        return new
+        {
+            winners = winners.Select(w => new
+            {
+                locationName = locations.GetValueOrDefault(w.LocationId, ""),
+                employeeId = w.EmployeeId,
+                fullName = names.GetValueOrDefault(w.EmployeeId, "—"),
+                votes = w.Votes,
+            }),
+            // The two reasons a closed ballot can have no winner, told apart.
+            noVotes = votesCast == 0,
+            belowMinimum = votesCast > 0 && winners.Count == 0,
+            minVotesToDecide = campaign.MinVotesToDecide,
+            votesCast,
+        };
     }
 
     [HttpPost]

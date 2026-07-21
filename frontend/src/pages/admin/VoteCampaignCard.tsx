@@ -6,6 +6,7 @@ import {
   resetVoteCampaignVotes,
   updateVoteCampaign,
   type VoteCampaign,
+  type VoteCampaignResult,
 } from '../../api/vote'
 import { getPositions } from '../../api/positions'
 import { IconCheck, IconX } from '../../components/icons'
@@ -54,6 +55,7 @@ export function VoteCampaignCard({
   onCampaign: (exists: boolean) => void
 }) {
   const [campaign, setCampaign] = useState<VoteCampaign | null>(null)
+  const [result, setResult] = useState<VoteCampaignResult | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -76,6 +78,7 @@ export function VoteCampaignCard({
     const { status, data } = await getVoteCampaign(period)
     const found = status === 200 && data && 'campaign' in data ? data.campaign : null
     setCampaign(found)
+    setResult(status === 200 && data && 'result' in data ? data.result ?? null : null)
     onCampaign(found !== null)
     setLoaded(true)
     setEditing(false)
@@ -214,6 +217,34 @@ export function VoteCampaignCard({
                   ? `${fmtAt(campaign.startsOn, campaign.startsAt)} tarixində açılacaq, ${fmtAt(campaign.endsOn, campaign.endsAt)} bağlanacaq. Açılanda işçilərə bildiriş gedəcək.`
                   : `${fmtAt(campaign.startsOn, campaign.startsAt)} – ${fmtAt(campaign.endsOn, campaign.endsAt)} · cəmi ${campaign.votesCast} səs`}
           </div>
+
+          {/* A closed ballot with no winner looks exactly like a broken one. Say which it is —
+              withheld on purpose, or nobody voted — and how to get a result if that's wanted. */}
+          {campaign?.state === 'finished' && result && (
+            <div style={{ marginTop: 10 }}>
+              {result.winners.length > 0 ? (
+                <div className="fb fb-ok" style={{ display: 'block' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>🏆 Qaliblər elan olundu</div>
+                  {result.winners.map((w) => (
+                    <div key={w.employeeId} style={{ fontSize: 13 }}>
+                      {w.locationName}: <b>{w.fullName}</b> — {w.votes} səs
+                    </div>
+                  ))}
+                </div>
+              ) : result.noVotes ? (
+                <div className="fb fb-info"><span>Heç kim səs vermədi — qalib elan olunmadı.</span></div>
+              ) : (
+                <div className="fb fb-info" style={{ display: 'block' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Qalib elan olunmadı</div>
+                  <div style={{ fontSize: 13 }}>
+                    Cəmi {result.votesCast} səs verilib, qalib üçün ən azı {result.minVotesToDecide} səs
+                    tələb olunur. «Redaktə et» → «Əlavə parametrlər»dən bu həddi azaltsanız, qalib bir
+                    neçə dəqiqə ərzində avtomatik elan olunacaq.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Whether employees actually heard about it — the ballot being "open" says nothing about
               that, and an unannounced ballot collects almost no votes. */}

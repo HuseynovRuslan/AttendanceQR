@@ -86,9 +86,20 @@ export interface VoteCampaign {
   notified: boolean
 }
 
+/** What a closed ballot produced. Null while it hasn't finished yet. */
+export interface VoteCampaignResult {
+  winners: { locationName: string; employeeId: string; fullName: string; votes: number }[]
+  noVotes: boolean
+  /** Closed with votes but no winner — the minimum threshold wasn't reached. */
+  belowMinimum: boolean
+  minVotesToDecide: number
+  votesCast: number
+}
+
 export interface VoteCampaignResponse {
   period: string
   campaign: VoteCampaign | null
+  result?: VoteCampaignResult | null
 }
 
 export interface VoteCampaignInput {
