@@ -84,4 +84,30 @@ public class AdminVoteSettingsController : ControllerBase
 
         return await Get();
     }
+
+    /// <summary>
+    /// Wipes a period's ballot: every vote, the tallies, and any winner already decided. The way out
+    /// of a trial run (or a round that went wrong) — without it, test votes would sit in the real
+    /// month and a handful of them could crown someone company-wide.
+    ///
+    /// Deliberately explicit about the period rather than "the current one": deleting the wrong
+    /// month's votes is not recoverable.
+    /// </summary>
+    [HttpPost("reset")]
+    public async Task<IActionResult> Reset([FromBody] VoteResetRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var period = new DateOnly(request.Period.Year, request.Period.Month, 1);
+
+        var ballots = await _db.MonthlyVoteBallots.Where(b => b.Period == period).ToListAsync(ct);
+        var tallies = await _db.MonthlyVoteTallies.Where(t => t.Period == period).ToListAsync(ct);
+        var winners = await _db.MonthlyWinners.Where(w => w.Period == period).ToListAsync(ct);
+
+        _db.MonthlyVoteBallots.RemoveRange(ballots);
+        _db.MonthlyVoteTallies.RemoveRange(tallies);
+        _db.MonthlyWinners.RemoveRange(winners);
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { period, removedVotes = ballots.Count, removedWinners = winners.Count });
+    }
 }

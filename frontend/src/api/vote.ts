@@ -95,3 +95,11 @@ export function saveVoteSettings(input: {
     body: input,
   })
 }
+
+/** Wipes a month's ballot — votes, tallies and any decided winner. Used to clear a trial run. */
+export function resetVotes(period: string) {
+  return apiRequest<{ period: string; removedVotes: number; removedWinners: number } | { error: string }>(
+    '/api/admin/vote-settings/reset',
+    { method: 'POST', body: { period } },
+  )
+}

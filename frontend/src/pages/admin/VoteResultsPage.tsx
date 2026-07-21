@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { getVoteResults, type VoteResults } from '../../api/vote'
+import { getVoteResults, resetVotes, type VoteResults } from '../../api/vote'
 import { VoteSettingsCard } from './VoteSettingsCard'
 
 const MONTHS = [
@@ -21,6 +21,8 @@ export function VoteResultsPage() {
   const [offset, setOffset] = useState(0)
   const [data, setData] = useState<VoteResults | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetMsg, setResetMsg] = useState<string | null>(null)
 
   useEffect(() => {
     setLoaded(false)
@@ -36,6 +38,20 @@ export function VoteResultsPage() {
   const label = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`
   const winnerFor = (locationId: string) => data?.winners?.find((w) => w.locationId === locationId)
 
+  async function onReset() {
+    const period = periodOf(offset)
+    if (!window.confirm(`${label} ayının BÜTÜN səsləri silinəcək. Bu geri qaytarılmır. Davam edilsin?`)) return
+    setResetting(true)
+    setResetMsg(null)
+    const { status, data: res } = await resetVotes(period)
+    setResetting(false)
+    if (status === 200 && res && 'removedVotes' in res) {
+      setResetMsg(`${res.removedVotes} səs silindi`)
+      const r = await getVoteResults(period)
+      if (r.status === 200 && r.data && 'branches' in r.data) setData(r.data)
+    }
+  }
+
   return (
     <div>
       <VoteSettingsCard />
@@ -47,12 +63,24 @@ export function VoteResultsPage() {
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-title">{label} — səsvermə</div>
-        <div className="muted" style={{ fontSize: 13, marginTop: -10 }}>
-          {data?.open
-            ? `Səsvermə davam edir · indiyə qədər ${data.votesCast} səs verilib`
-            : `Səsvermə bağlıdır · cəmi ${data?.votesCast ?? 0} səs`}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div className="card-title" style={{ marginBottom: 4 }}>{label} — səsvermə</div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              {data?.open
+                ? `Səsvermə davam edir · indiyə qədər ${data.votesCast} səs verilib`
+                : `Səsvermə bağlıdır · cəmi ${data?.votesCast ?? 0} səs`}
+            </div>
+          </div>
+          {/* The way out of a trial run: without it, test votes sit in the real month and a handful
+              of them could crown someone company-wide. Irreversible, so it asks first. */}
+          {(data?.votesCast ?? 0) > 0 && (
+            <button className="btn btn-sm btn-danger" disabled={resetting} onClick={() => void onReset()}>
+              {resetting ? 'Silinir…' : 'Səsləri sıfırla'}
+            </button>
+          )}
         </div>
+        {resetMsg && <div className="fb fb-ok" style={{ marginTop: 12 }}><span>{resetMsg}</span></div>}
         {data?.open && (
           <div className="fb fb-info" style={{ marginTop: 12 }}>
             <span>

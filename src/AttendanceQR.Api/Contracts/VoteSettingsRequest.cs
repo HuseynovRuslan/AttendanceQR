@@ -9,3 +9,6 @@ public record VoteSettingsRequest(
     DateOnly? ManualTo,
     int MinCandidates,
     int MinVotesToDecide);
+
+/// <summary>Which month's ballot to wipe. Any date inside the month; the first day is used.</summary>
+public record VoteResetRequest(DateOnly Period);
