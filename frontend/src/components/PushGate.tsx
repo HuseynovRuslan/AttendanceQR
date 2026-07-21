@@ -62,17 +62,17 @@ export function PushGate({ onDone }: { onDone: () => void }) {
 
       {state === 'ask' && (
         <>
-          <h2 className="mt-3 text-xl font-bold">Bildirişi aç</h2>
+          <h2 className="mt-3 text-xl font-bold">Bildirişləri aktiv edin</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Davam etmək üçün bildirişə icazə verin. Elanlar, giriş və çıxış xatırlatmaları bu bildirişlə
-            gəlir — çıxışı unutsanız o gün <b className="text-white">0 saat</b> sayılır.
+            Şirkət elanları, növbənin başlaması və bitməsi barədə xatırlatmalar telefonunuza bu yolla
+            çatdırılır. Çıxış qeyd edilmədikdə həmin gün <b className="text-white">0 saat</b> hesablanır.
           </p>
           <button
             onClick={() => void turnOn()}
             disabled={busy}
             className="mt-5 w-full rounded-xl bg-white py-3.5 text-base font-extrabold text-slate-900 disabled:opacity-60"
           >
-            {busy ? 'Açılır…' : 'Bildirişi aç və davam et'}
+            {busy ? 'Aktivləşdirilir…' : 'Aktiv et və davam et'}
           </button>
           {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
         </>
@@ -82,8 +82,8 @@ export function PushGate({ onDone }: { onDone: () => void }) {
         <>
           <h2 className="mt-3 text-xl font-bold">Proqramı ana ekrana əlavə edin</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Bu səhifədə bildiriş işləmir. Aşağıdakı <b>Paylaş</b> düyməsi → <b>«Ana ekrana əlavə et»</b>,
-            sonra proqramı oradan açın — bildirişlər işləyəcək.
+            Brauzer səhifəsində bildiriş dəstəklənmir. Aşağıdakı <b>Paylaş</b> düyməsi →
+            <b> «Ana ekrana əlavə et»</b> seçin və proqramı oradan açın — bildirişlər işləyəcək.
           </p>
           <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
@@ -93,10 +93,10 @@ export function PushGate({ onDone }: { onDone: () => void }) {
 
       {state === 'blocked' && (
         <>
-          <h2 className="mt-3 text-xl font-bold">Bildiriş bağlıdır</h2>
+          <h2 className="mt-3 text-xl font-bold">Bildirişlər bağlıdır</h2>
           <p className="mt-2 text-sm text-slate-300">
-            Bildirişə icazə bloklanıb. Brauzer parametrlərindən bu sayta bildiriş icazəsi verin —
-            elanları və xatırlatmaları ala biləsiniz.
+            Bildirişlərə icazə bloklanıb. Elanları və xatırlatmaları almaq üçün brauzer
+            parametrlərindən bu sayta bildiriş icazəsi verin.
           </p>
           <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et

@@ -3,8 +3,8 @@ import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, s
 import { isStandalone } from '../lib/device'
 
 /**
- * Turns the checkout reminder on for this device. Honest about the platform: on an iPhone the APIs
- * only exist inside the installed PWA, so a Safari tab is told to add the app to the home screen
+ * Notification on/off for this device (announcements + shift reminders). Honest about the platform:
+ * on an iPhone the APIs only exist inside the installed PWA, so a Safari tab is told to install it
  * rather than being shown a button that cannot work.
  */
 export function PushToggle() {
@@ -25,13 +25,13 @@ export function PushToggle() {
     setBusy(false)
     if (r === 'ok') {
       setOn(true)
-      setMsg('Bildirişlər açıldı ✓')
+      setMsg('Bildirişlər aktivləşdirildi ✓')
     } else if (r === 'denied') {
-      setMsg('Bildirişə icazə verilmədi. Brauzer parametrlərindən icazə verin.')
+      setMsg('İcazə verilmədi. Brauzer parametrlərindən bildiriş icazəsi verin.')
     } else if (r === 'disabled') {
-      setMsg('Bildiriş serverdə hələ aktiv deyil.')
+      setMsg('Bildirişlər serverdə aktiv deyil.')
     } else if (r === 'unsupported') {
-      setMsg('Bu cihaz bildirişi dəstəkləmir.')
+      setMsg('Bu cihaz bildirişləri dəstəkləmir.')
     } else {
       setMsg('Alınmadı, bir azdan yenidən yoxlayın.')
     }
@@ -59,11 +59,11 @@ export function PushToggle() {
   if (!supported) {
     return (
       <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="font-bold">Çıxış xatırlatması</div>
+        <div className="font-bold">Bildirişlər</div>
         <div className="mt-1 text-sm text-slate-500">
           {isStandalone()
-            ? 'Bu cihaz bildirişi dəstəkləmir.'
-            : 'Bildiriş almaq üçün proqramı ana ekrana əlavə edin, sonra buradan aktiv edin.'}
+            ? 'Bu cihaz bildirişləri dəstəkləmir.'
+            : 'Bildirişləri almaq üçün proqramı ana ekrana əlavə edin və oradan açın.'}
         </div>
       </div>
     )
@@ -73,9 +73,9 @@ export function PushToggle() {
     <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <div className="font-bold">Çıxış xatırlatması</div>
+          <div className="font-bold">Bildirişlər</div>
           <div className="mt-0.5 text-sm text-slate-500">
-            İş vaxtınız bitəndə çıxışı unutmusunuzsa telefonunuza bildiriş gəlsin.
+            Şirkət elanları və növbə xatırlatmaları telefonunuza göndərilir.
           </div>
         </div>
         {on ? (
@@ -98,7 +98,7 @@ export function PushToggle() {
       </div>
       {on && (
         <div className="mt-2 flex items-center gap-3">
-          <span className="text-sm font-semibold text-green-700">Bildirişlər açıqdır ✓</span>
+          <span className="text-sm font-semibold text-green-700">Bildirişlər aktivdir ✓</span>
           <button
             onClick={() => void runTest()}
             disabled={busy}
@@ -110,7 +110,7 @@ export function PushToggle() {
       )}
       {denied && !on && (
         <div className="mt-2 text-sm text-amber-700">
-          Bildirişə icazə bloklanıb — brauzer parametrlərindən icazə verməlisiniz.
+          Bildirişlər bloklanıb — brauzer parametrlərindən icazə verməlisiniz.
         </div>
       )}
       {msg && <div className="mt-2 text-sm text-slate-500">{msg}</div>}

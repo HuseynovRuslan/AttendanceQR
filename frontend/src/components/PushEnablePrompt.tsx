@@ -49,11 +49,11 @@ export function PushEnablePrompt({
     return (
       <div className={dark ? 'mt-5 rounded-2xl bg-black/30 p-4 text-left ring-1 ring-white/25' : 'rounded-3xl border-2 border-blue-200 bg-blue-50 p-4'}>
         <div className={`${dark ? 'text-base' : 'text-sm'} font-bold ${dark ? '' : 'text-blue-900'}`}>
-          🔔 Çıxış xatırlatması
+          Bildirişlər
         </div>
         <div className={`mt-1 ${dark ? 'text-sm opacity-90' : 'text-xs text-blue-800'}`}>
-          Bildiriş almaq üçün proqramı <b>ana ekrana əlavə edin</b> (Paylaş → «Ana ekrana əlavə et»),
-          sonra oradan açın — bu səhifədə bildiriş işləmir.
+          Bildirişləri almaq üçün proqramı <b>ana ekrana əlavə edin</b> (Paylaş → «Ana ekrana əlavə et»)
+          və oradan açın. Brauzer səhifəsində bildiriş dəstəklənmir.
         </div>
       </div>
     )
@@ -64,7 +64,7 @@ export function PushEnablePrompt({
   if (done) {
     return (
       <div className={`mt-4 rounded-xl px-4 py-3 text-sm font-bold ${dark ? 'bg-black/25' : 'bg-green-50 text-green-800'}`}>
-        ✓ Bildiriş açıldı — çıxışı unutmayacaqsınız
+        Bildirişlər aktivdir ✓
       </div>
     )
   }
@@ -81,14 +81,14 @@ export function PushEnablePrompt({
   return (
     <div className={wrap}>
       <div className={`${dark ? 'text-base' : 'text-sm'} font-bold ${dark ? '' : 'text-blue-900'}`}>
-        🔔 Çıxış xatırlatmasını aç
+        Bildirişləri aktiv edin
       </div>
       <div className={`mt-1 ${dark ? 'text-sm opacity-90' : 'text-xs text-blue-800'}`}>
-        İş vaxtın bitməyinə <b>10 dəqiqə</b> qalanda telefonuna bildiriş gələcək — çıxışı unutmayasan.
-        Çıxış olmasa o gün <b>0 saat</b> sayılır.
+        Şirkət elanları, növbənin başlaması və bitməsi barədə xatırlatmalar telefonunuza göndəriləcək.
+        Çıxış qeyd edilmədikdə həmin gün <b>0 saat</b> hesablanır.
       </div>
       <button onClick={() => void turnOn()} disabled={busy} className={`${btn} disabled:opacity-60`}>
-        {busy ? 'Açılır…' : 'Bildirişi aç'}
+        {busy ? 'Aktivləşdirilir…' : 'Bildirişləri aktiv et'}
       </button>
       {failed && <div className={`mt-2 text-xs ${dark ? 'opacity-85' : 'text-blue-800'}`}>{failed}</div>}
     </div>
