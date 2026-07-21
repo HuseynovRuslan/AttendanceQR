@@ -6,4 +6,6 @@ public record VoteCampaignRequest(
     DateOnly StartsOn,
     DateOnly EndsOn,
     int MinCandidates,
-    int MinVotesToDecide);
+    int MinVotesToDecide,
+    /// <summary>Positions barred from being nominated. Empty means everyone is eligible.</summary>
+    List<string>? ExcludedPositions);

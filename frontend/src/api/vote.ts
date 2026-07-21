@@ -73,6 +73,8 @@ export interface VoteCampaign {
   endsOn: string
   minCandidates: number
   minVotesToDecide: number
+  /** Positions barred from being nominated. Empty = everyone is eligible. */
+  excludedPositions: string[]
   votesCast: number
   isOpen: boolean
   /** scheduled = created but not started yet, open = running, finished = window has passed. */
@@ -89,6 +91,12 @@ export interface VoteCampaignInput {
   endsOn: string
   minCandidates: number
   minVotesToDecide: number
+  excludedPositions: string[]
+}
+
+/** Positions actually in use, so the admin picks from what exists instead of retyping a title. */
+export function getPositionsInUse() {
+  return apiRequest<{ position: string; count: number }[]>('/api/admin/vote-campaigns/positions')
 }
 
 export function getVoteCampaign(period: string) {

@@ -32,6 +32,16 @@ public class VoteCampaign : ITenantScoped
     /// <summary>A branch with fewer votes than this gets no winner announced.</summary>
     public int MinVotesToDecide { get; set; } = 5;
 
+    /// <summary>
+    /// Positions that cannot be nominated — typically leadership, who would win on standing rather
+    /// than on the month's work.
+    ///
+    /// Deliberately a list of who is OUT, not who is IN: Position is free text and may be empty, so an
+    /// allow-list would silently drop every employee with no position set and every newly-typed one.
+    /// Empty (the default) means everyone at the branch is a candidate.
+    /// </summary>
+    public List<string> ExcludedPositions { get; set; } = new();
+
     /// <summary>Set once employees have been told voting opened, so the notice goes out exactly once.</summary>
     public DateTime? OpenedNotifiedAtUtc { get; set; }
 

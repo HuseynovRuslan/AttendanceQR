@@ -36,6 +36,7 @@ public class AdminVoteCampaignsController : ControllerBase
         endsOn = c.EndsOn,
         minCandidates = c.MinCandidates,
         minVotesToDecide = c.MinVotesToDecide,
+        excludedPositions = c.ExcludedPositions,
         votesCast = votes,
         isOpen = c.IsOpenOn(today),
         // Three distinct states the admin needs to tell apart at a glance.
@@ -76,6 +77,7 @@ public class AdminVoteCampaignsController : ControllerBase
             EndsOn = request.EndsOn,
             MinCandidates = request.MinCandidates,
             MinVotesToDecide = request.MinVotesToDecide,
+            ExcludedPositions = Clean(request.ExcludedPositions),
         };
         _db.VoteCampaigns.Add(campaign);
         await _db.SaveChangesAsync(ct);
@@ -105,6 +107,7 @@ public class AdminVoteCampaignsController : ControllerBase
         campaign.EndsOn = request.EndsOn;
         campaign.MinCandidates = request.MinCandidates;
         campaign.MinVotesToDecide = request.MinVotesToDecide;
+        campaign.ExcludedPositions = Clean(request.ExcludedPositions);
         await _db.SaveChangesAsync(ct);
 
         var today = TodayLocal();
@@ -150,6 +153,23 @@ public class AdminVoteCampaignsController : ControllerBase
 
         return Ok(new { removedVotes = ballots.Count });
     }
+
+    /// <summary>The positions in use, with how many active people hold each — the admin picks from
+    /// what exists rather than retyping a title and having it silently match nothing.</summary>
+    [HttpGet("positions")]
+    public async Task<IActionResult> Positions()
+    {
+        var rows = await _db.Employees
+            .Where(e => e.IsActive && e.Position != null && e.Position != "")
+            .GroupBy(e => e.Position!)
+            .Select(g => new { position = g.Key, count = g.Count() })
+            .OrderBy(x => x.position)
+            .ToListAsync(HttpContext.RequestAborted);
+        return Ok(rows);
+    }
+
+    private static List<string> Clean(List<string>? positions) =>
+        positions?.Select(p => p.Trim()).Where(p => p.Length > 0).Distinct().ToList() ?? new List<string>();
 
     private static string? Validate(VoteCampaignRequest r)
     {

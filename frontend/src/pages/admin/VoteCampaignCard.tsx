@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   createVoteCampaign,
   deleteVoteCampaign,
+  getPositionsInUse,
   getVoteCampaign,
   resetVoteCampaignVotes,
   updateVoteCampaign,
@@ -63,6 +64,8 @@ export function VoteCampaignCard({
   const [endsOn, setEndsOn] = useState('')
   const [minCandidates, setMinCandidates] = useState(3)
   const [minVotes, setMinVotes] = useState(5)
+  const [excluded, setExcluded] = useState<string[]>([])
+  const [positions, setPositions] = useState<{ position: string; count: number }[]>([])
 
   async function load() {
     setLoaded(false)
@@ -82,6 +85,12 @@ export function VoteCampaignCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
+  useEffect(() => {
+    void getPositionsInUse().then(({ status, data }) => {
+      if (status === 200 && Array.isArray(data)) setPositions(data)
+    })
+  }, [])
+
   function startCreate() {
     // The award is for the whole month, so voting belongs at the end of it — people can only judge a
     // month they've lived through. Three days is enough to catch everyone's shifts.
@@ -90,6 +99,7 @@ export function VoteCampaignCard({
     setEndsOn(last)
     setMinCandidates(3)
     setMinVotes(5)
+    setExcluded([])
     setEditing(true)
     setErr(null)
     setMsg(null)
@@ -100,6 +110,10 @@ export function VoteCampaignCard({
     setEndsOn(c.endsOn)
     setMinCandidates(c.minCandidates)
     setMinVotes(c.minVotesToDecide)
+    setExcluded(c.excludedPositions ?? [])
+    // A campaign that bars positions was configured deliberately — show that section straight away
+    // rather than hiding a rule the admin is about to look for.
+    setShowAdvanced((c.excludedPositions?.length ?? 0) > 0)
     setEditing(true)
     setErr(null)
     setMsg(null)
@@ -109,7 +123,7 @@ export function VoteCampaignCard({
     setBusy(true)
     setErr(null)
     setMsg(null)
-    const input = { startsOn, endsOn, minCandidates, minVotesToDecide: minVotes }
+    const input = { startsOn, endsOn, minCandidates, minVotesToDecide: minVotes, excludedPositions: excluded }
     const { status, data } = campaign
       ? await updateVoteCampaign(campaign.id, input)
       : await createVoteCampaign(input)
@@ -183,6 +197,13 @@ export function VoteCampaignCard({
                   : `${fmt(campaign.startsOn)} – ${fmt(campaign.endsOn)} · cəmi ${campaign.votesCast} səs`}
           </div>
 
+          {/* A rule that changes who appears on the ballot shouldn't live only behind an edit form. */}
+          {campaign && campaign.excludedPositions?.length > 0 && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Namizəd ola bilməz: {campaign.excludedPositions.join(', ')}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             {!campaign ? (
               <button className="btn btn-primary" onClick={startCreate}>Səsvermə yarat</button>
@@ -223,6 +244,7 @@ export function VoteCampaignCard({
               Əlavə parametrlər
             </button>
           ) : (
+            <>
             <div className="form-row cols2">
               <div>
                 <label className="form-label">Minimum namizəd sayı</label>
@@ -241,6 +263,37 @@ export function VoteCampaignCard({
                 </div>
               </div>
             </div>
+
+            {/* Named as who is OUT rather than who is IN. Position is optional free text, so an
+                allow-list would quietly drop everyone whose position is blank. */}
+            {positions.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <label className="form-label">Namizəd ola bilməyən vəzifələr</label>
+                <div className="chip-row" style={{ marginTop: 4 }}>
+                  {positions.map((p) => {
+                    const on = excluded.includes(p.position)
+                    return (
+                      <span
+                        key={p.position}
+                        className={`chip${on ? ' active' : ''}`}
+                        onClick={() =>
+                          setExcluded((prev) =>
+                            on ? prev.filter((x) => x !== p.position) : [...prev, p.position])
+                        }
+                      >
+                        {p.position} · {p.count}
+                      </span>
+                    )
+                  })}
+                </div>
+                <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                  Seçilən vəzifələr işçilərin siyahısında namizəd kimi görünməyəcək — məsələn layihə
+                  rəhbərləri. Heç nə seçməsəniz, filialdakı hər kəs namizəddir. Vəzifəsi yazılmamış
+                  işçilər həmişə namizəd qalır.
+                </div>
+              </div>
+            )}
+            </>
           )}
 
           {err && <div className="fb fb-err" style={{ marginTop: 10 }}><IconX /><span>{err}</span></div>}

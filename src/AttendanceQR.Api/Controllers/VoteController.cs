@@ -62,6 +62,11 @@ public class VoteController : ControllerBase
             .OrderBy(e => e.FullName)
             .ToListAsync(ct);
 
+        // Positions the campaign bars from being nominated. Filtered in memory: Position is nullable
+        // free text, and someone with no position set stays a candidate.
+        if (campaign is { ExcludedPositions.Count: > 0 })
+            colleagues = colleagues.Where(e => !campaign.ExcludedPositions.Contains(e.Position ?? "")).ToList();
+
         var hasVoted = await _db.MonthlyVoteBallots
             .AnyAsync(b => b.Period == period && b.VoterEmployeeId == employeeId, ct);
 
@@ -122,6 +127,10 @@ public class VoteController : ControllerBase
             e => e.Id == request.CandidateEmployeeId && e.IsActive && e.LocationId == me.LocationId, ct);
         if (candidate is null)
             return BadRequest(new { error = "CandidateNotInYourBranch" });
+        // Re-checked here, not just hidden from the list: a stale screen must not be able to nominate
+        // someone the campaign excluded.
+        if (campaign.ExcludedPositions.Contains(candidate.Position ?? ""))
+            return BadRequest(new { error = "CandidateNotEligible" });
 
         // The ballot goes in FIRST: its unique (period, voter) index is what makes the vote single-use,
         // and if it loses that race nothing is tallied.
