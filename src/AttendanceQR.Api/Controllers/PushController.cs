@@ -48,6 +48,28 @@ public class PushController : ControllerBase
     public IActionResult PublicKey()
         => Ok(new { enabled = _options.IsConfigured, publicKey = _options.PublicKey });
 
+    /// <summary>GET /api/push/inbox — the reminders sent to this employee, newest first. A push banner
+    /// is gone the moment it's swiped away, so the app keeps its own copy for the notifications tab.</summary>
+    [HttpGet("inbox")]
+    public async Task<IActionResult> Inbox()
+    {
+        var employeeId = User.EmployeeId();
+        var rows = await _db.EmployeeNotifications
+            .Where(n => n.EmployeeId == employeeId)
+            .OrderByDescending(n => n.CreatedAtUtc)
+            .Take(50)
+            .Select(n => new
+            {
+                id = n.Id,
+                type = n.Type.ToString(),
+                title = n.Title,
+                body = n.Body,
+                createdAtUtc = n.CreatedAtUtc,
+            })
+            .ToListAsync(HttpContext.RequestAborted);
+        return Ok(rows);
+    }
+
     [HttpPost("subscribe")]
     public async Task<IActionResult> Subscribe([FromBody] PushSubscribeRequest request)
     {

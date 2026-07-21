@@ -2,17 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType, SVGProps } from 'react'
 import { getMyAttendance, type AttendanceRecord } from '../api/attendance'
 import { EmptyCard, SkeletonList } from '../components/employeeBits'
-import { IconCheck, IconLogout } from '../components/icons'
+import { IconBell, IconCheck, IconClock, IconLogout } from '../components/icons'
+import { getAnnouncements } from '../api/announcements'
+import { getInbox } from '../lib/push'
 import { fmtDate, fmtTime } from '../lib/format'
 
 // No 'late': a check-in is a check-in. Every employee keeps their own hours, so a location-wide
 // shift cannot say who was late — telling someone they were is simply wrong.
-type FeedType = 'checkin' | 'checkout'
+// 'announcement' and 'reminder' join the feed so this tab is the one place everything the employee
+// was told actually lives — a push banner is gone the moment it's swiped away.
+type FeedType = 'checkin' | 'checkout' | 'announcement' | 'reminder'
 interface FeedItem {
   id: string
   at: string
   date: string
   type: FeedType
+  /** Set on announcements/reminders, which carry their own words rather than a fixed label. */
+  title?: string
+  body?: string
 }
 
 const SEEN_KEY = 'attendanceqr.notifSeen'
@@ -23,6 +30,8 @@ const META: Record<
 > = {
   checkin: { title: 'Giriş qeydə alındı', Icon: IconCheck, ring: 'bg-green-100 text-green-600' },
   checkout: { title: 'Çıxış qeydə alındı', Icon: IconLogout, ring: 'bg-blue-100 text-blue-600' },
+  announcement: { title: 'Elan', Icon: IconBell, ring: 'bg-amber-100 text-amber-600' },
+  reminder: { title: 'Xatırlatma', Icon: IconClock, ring: 'bg-slate-100 text-slate-600' },
 }
 
 function buildFeed(records: AttendanceRecord[]): FeedItem[] {
@@ -37,19 +46,51 @@ function buildFeed(records: AttendanceRecord[]): FeedItem[] {
 
 export function NotificationsPage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [extra, setExtra] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [onlyUnread, setOnlyUnread] = useState(false)
   const [seenBefore] = useState<string>(() => localStorage.getItem(SEEN_KEY) ?? '')
 
   useEffect(() => {
     void (async () => {
-      const a = await getMyAttendance()
+      // Three sources, one list: own scans, company announcements, and the reminders the server sent.
+      const [a, ann, inbox] = await Promise.all([getMyAttendance(), getAnnouncements(), getInbox()])
       if (a.status === 200 && Array.isArray(a.data)) setRecords(a.data)
+
+      const items: FeedItem[] = []
+      if (ann.status === 200 && Array.isArray(ann.data)) {
+        for (const x of ann.data) {
+          items.push({
+            id: `a:${x.id}`,
+            at: x.createdAtUtc,
+            date: x.createdAtUtc.slice(0, 10),
+            type: 'announcement',
+            title: x.title ?? 'Elan',
+            body: x.message,
+          })
+        }
+      }
+      if (inbox.status === 200 && Array.isArray(inbox.data)) {
+        for (const x of inbox.data) {
+          items.push({
+            id: `r:${x.id}`,
+            at: x.createdAtUtc,
+            date: x.createdAtUtc.slice(0, 10),
+            type: 'reminder',
+            title: x.title,
+            body: x.body,
+          })
+        }
+      }
+      setExtra(items)
       setLoading(false)
     })()
   }, [])
 
-  const feed = useMemo(() => buildFeed(records), [records])
+  const feed = useMemo(
+    () => [...buildFeed(records), ...extra].sort((a, b) => (a.at < b.at ? 1 : -1)),
+    [records, extra],
+  )
 
   // Once loaded, mark the newest event as "seen" so a later visit shows these as read.
   useEffect(() => {
@@ -111,7 +152,10 @@ function FeedList({ items, unreadSince }: { items: FeedItem[]; unreadSince: stri
                     <m.Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold">{m.title}</div>
+                    <div className="font-semibold">{it.title ?? m.title}</div>
+                    {it.body ? (
+                      <div className="whitespace-pre-line text-sm text-slate-600">{it.body}</div>
+                    ) : null}
                     <div className="text-sm text-slate-500">Saat {fmtTime(it.at)}</div>
                   </div>
                   {unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" />}

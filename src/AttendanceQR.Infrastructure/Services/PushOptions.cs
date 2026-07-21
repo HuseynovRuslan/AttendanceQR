@@ -20,5 +20,8 @@ public sealed class PushOptions
     /// can no longer scan out.</summary>
     public int CheckoutReminderLeadMinutes { get; set; } = 10;
 
+    /// <summary>How many minutes BEFORE the shift starts to nudge someone who has not checked in.</summary>
+    public int CheckInReminderLeadMinutes { get; set; } = 10;
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(PublicKey) && !string.IsNullOrWhiteSpace(PrivateKey);
 }

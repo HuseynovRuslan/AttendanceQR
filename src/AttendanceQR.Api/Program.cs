@@ -134,7 +134,7 @@ builder.Services.AddScoped<IPushNotifier, PushNotifier>();
 
 // Pushes "you forgot to check out" once a shift has been over for a while — the only reminder that
 // reaches someone who already left. Never auto-closes anything.
-builder.Services.AddHostedService<CheckoutReminderJob>();
+builder.Services.AddHostedService<ReminderJob>();
 
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()

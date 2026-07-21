@@ -138,6 +138,21 @@ export function markPushGateShown(): void {
   }
 }
 
+/** One reminder the server sent to this employee (kept so the notifications tab has something to
+ *  show — a push banner disappears the moment it's swiped away). */
+export interface InboxItem {
+  id: string
+  type: 'CheckInSoon' | 'CheckOutSoon' | 'MissedCheckOut'
+  title: string
+  body: string
+  createdAtUtc: string
+}
+
+/** GET /api/push/inbox — reminders sent to this employee, newest first. */
+export function getInbox() {
+  return apiRequest<InboxItem[]>('/api/push/inbox')
+}
+
 /** Sends a test notification to this employee's own devices. Returns how many were reached — 0 means
  *  the subscription didn't survive (re-enable), so the UI can say something useful. */
 export async function sendTestPush(): Promise<number | null> {

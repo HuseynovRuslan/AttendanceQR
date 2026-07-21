@@ -45,6 +45,7 @@ public class AppDbContext : DbContext
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,7 +62,7 @@ public class AppDbContext : DbContext
             typeof(DeviceChangeRequest), typeof(MissedCheckoutRequest), typeof(DailySummary),
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
-            typeof(PushSubscription),
+            typeof(PushSubscription), typeof(EmployeeNotification),
         };
         foreach (var t in tenantScoped)
         {
@@ -94,6 +95,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PushSubscription>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         // The push endpoint is globally unique — one row per browser; re-subscribing updates that row.
         modelBuilder.Entity<PushSubscription>().HasIndex(p => p.Endpoint).IsUnique();
+        modelBuilder.Entity<EmployeeNotification>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        // One reminder of each kind per employee per day — this index IS the dedupe, so a job that
+        // sweeps every few minutes can't send the same nudge twice.
+        modelBuilder.Entity<EmployeeNotification>()
+            .HasIndex(n => new { n.TenantId, n.EmployeeId, n.Type, n.RelatedDate }).IsUnique();
 
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.
