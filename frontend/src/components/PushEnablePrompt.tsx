@@ -8,7 +8,14 @@ import { enablePush, isSubscribed, pushPermission, pushSupported } from '../lib/
  * Self-hiding: renders nothing when push is unsupported, already on, or permission was refused, so it
  * can be dropped in unconditionally and simply disappears once the job is done.
  */
-export function PushEnablePrompt({ dark = false }: { dark?: boolean }) {
+export function PushEnablePrompt({
+  dark = false,
+  onShown,
+}: {
+  dark?: boolean
+  /** Tells the parent whether the ask is on screen, so it can demote its own buttons around it. */
+  onShown?: (shown: boolean) => void
+}) {
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
@@ -18,6 +25,10 @@ export function PushEnablePrompt({ dark = false }: { dark?: boolean }) {
     if (!pushSupported() || pushPermission() === 'denied') return
     void isSubscribed().then((sub) => setShow(!sub))
   }, [])
+
+  useEffect(() => {
+    onShown?.(show && !done)
+  }, [show, done, onShown])
 
   async function turnOn() {
     setBusy(true)
@@ -40,18 +51,23 @@ export function PushEnablePrompt({ dark = false }: { dark?: boolean }) {
     )
   }
 
+  // On the scan card this is deliberately the loudest thing on screen: employees only ever open the
+  // app to scan, so this is the single moment the reminder can realistically be switched on.
   const wrap = dark
-    ? 'mt-4 rounded-xl bg-black/25 px-4 py-3 text-left'
+    ? 'mt-5 rounded-2xl bg-black/30 p-4 text-left ring-1 ring-white/25'
     : 'rounded-3xl border-2 border-blue-200 bg-blue-50 p-4'
   const btn = dark
-    ? 'mt-3 w-full rounded-lg bg-white py-2.5 text-sm font-bold text-slate-900'
+    ? 'mt-3 w-full rounded-xl bg-white py-3.5 text-base font-extrabold text-slate-900 shadow-lg'
     : 'mt-3 w-full rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white'
 
   return (
     <div className={wrap}>
-      <div className={`text-sm font-bold ${dark ? '' : 'text-blue-900'}`}>🔔 Çıxış xatırlatmasını aç</div>
-      <div className={`mt-0.5 text-xs ${dark ? 'opacity-85' : 'text-blue-800'}`}>
-        İş vaxtın bitməyinə 10 dəqiqə qalanda telefonuna bildiriş gələcək — çıxışı unutmayasan.
+      <div className={`${dark ? 'text-base' : 'text-sm'} font-bold ${dark ? '' : 'text-blue-900'}`}>
+        🔔 Çıxış xatırlatmasını aç
+      </div>
+      <div className={`mt-1 ${dark ? 'text-sm opacity-90' : 'text-xs text-blue-800'}`}>
+        İş vaxtın bitməyinə <b>10 dəqiqə</b> qalanda telefonuna bildiriş gələcək — çıxışı unutmayasan.
+        Çıxış olmasa o gün <b>0 saat</b> sayılır.
       </div>
       <button onClick={() => void turnOn()} disabled={busy} className={`${btn} disabled:opacity-60`}>
         {busy ? 'Açılır…' : 'Bildirişi aç'}

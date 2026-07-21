@@ -471,6 +471,8 @@ export function ScanPage() {
           note: 'Sabaha qədər!',
           warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
           final: true,
+          // Offered here too — more chances to get it switched on; it self-hides once it is.
+          offerPush: true,
         })
         return
       }
@@ -712,6 +714,10 @@ function recordToTodayInfo(record: AttendanceRecord | undefined): TodayInfo {
 // --- result card -----------------------------------------------------------
 
 function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => void; onClose: () => void }) {
+  // While the notification ask is on screen it owns the primary button — "Bağla" shrinks to a link so
+  // the obvious next tap is turning the reminder on, not dismissing it. Never blocks: skipping is
+  // always one tap away, because a hard gate would lock out anyone on iOS Safari or who once refused.
+  const [askingPush, setAskingPush] = useState(false)
   const tone = {
     green: 'bg-green-500 text-white',
     red: 'bg-red-500 text-white',
@@ -742,7 +748,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
 
       {/* The moment the employee is certainly looking at the screen — so this is where the checkout
           reminder gets switched on, not in a menu nobody opens. Self-hides once it's on. */}
-      {card.offerPush && <PushEnablePrompt dark />}
+      {card.offerPush && <PushEnablePrompt dark onShown={setAskingPush} />}
 
       {/* Showing the photo back closes the loop: the employee sees exactly what was stored. */}
       {card.photo && (
@@ -755,12 +761,18 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
 
       {/* The only button on a settled result is "close". Anything else invites the second scan. */}
       {card.final ? (
-        <button
-          onClick={onClose}
-          className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
-        >
-          Bağla
-        </button>
+        askingPush ? (
+          <button onClick={onClose} className="mt-4 w-full py-2 text-sm font-semibold opacity-70 underline">
+            İndi yox, bağla
+          </button>
+        ) : (
+          <button
+            onClick={onClose}
+            className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
+          >
+            Bağla
+          </button>
+        )
       ) : (
         <button
           onClick={onRetry}
