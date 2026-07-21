@@ -10,6 +10,7 @@ import {
 } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
 import { enqueueScan } from '../lib/offlineQueue'
+import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
 import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
@@ -34,6 +35,8 @@ type Card = {
   /** Past days left open (checked in, never out). Shown as the running COST of forgetting to scan
    *  out — those days count as zero hours. Information only: nothing is auto-closed, nothing asked. */
   openDays?: number
+  /** Offer to switch the checkout reminder on right here (check-in only). */
+  offerPush?: boolean
 }
 type Phase = 'scanning' | 'intro' | 'photo' | 'processing' | 'done'
 
@@ -453,6 +456,9 @@ export function ScanPage() {
           final: true,
           photo: photoBase64 ?? undefined,
           openDays: data.openDays,
+          // Check-in is the moment to ask: they're at work, looking at the screen, and the reminder
+          // they're being offered fires later the same day.
+          offerPush: true,
         })
         return
       }
@@ -733,6 +739,10 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
           </div>
         </div>
       ) : null}
+
+      {/* The moment the employee is certainly looking at the screen — so this is where the checkout
+          reminder gets switched on, not in a menu nobody opens. Self-hides once it's on. */}
+      {card.offerPush && <PushEnablePrompt dark />}
 
       {/* Showing the photo back closes the loop: the employee sees exactly what was stored. */}
       {card.photo && (

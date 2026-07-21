@@ -7,17 +7,17 @@ using Microsoft.EntityFrameworkCore;
 namespace AttendanceQR.Api.Jobs;
 
 /// <summary>
-/// Pushes "you forgot to check out" to anyone still checked in a while after their shift ended.
-/// The one nudge that reaches an employee who has already left the building — every other reminder
-/// only works if they happen to open the app.
+/// Pushes "your shift ends soon — don't forget to scan out" shortly BEFORE the shift ends, to anyone
+/// still checked in. Sent ahead of time on purpose: a reminder that arrives after the shift finds the
+/// employee already home, where scanning out is no longer possible.
 ///
 /// Deliberately conservative: one push per open day (CheckoutReminderSentAtUtc), never auto-closing
-/// anything, and a silent no-op when push isn't configured. Sweeps every 10 minutes, per tenant,
-/// following the same scope/tenant pattern as DailySummaryJob.
+/// anything, and a silent no-op when push isn't configured. Sweeps every 5 minutes (half the lead
+/// window, so the window is never stepped over), per tenant, following DailySummaryJob's pattern.
 /// </summary>
 public sealed class CheckoutReminderJob : BackgroundService
 {
-    private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PushOptions _push;
@@ -125,10 +125,11 @@ public sealed class CheckoutReminderJob : BackgroundService
                     var endLocal = endLocalDate.ToDateTime(shiftEnd);
                     var endUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(endLocal, DateTimeKind.Unspecified), _timeZone);
 
-                    // Due once the shift ended far enough ago — and give up after 12h so a long-forgotten
-                    // day doesn't produce a push the next morning out of nowhere.
-                    var since = nowUtc - endUtc;
-                    if (since >= TimeSpan.FromMinutes(_push.CheckoutReminderDelayMinutes) && since <= TimeSpan.FromHours(12))
+                    // Due in the window just BEFORE the shift ends, while they are still at work and
+                    // can actually scan out. Once the end has passed we stay quiet — by then they are
+                    // on their way home and a buzz only annoys.
+                    var untilEnd = endUtc - nowUtc;
+                    if (untilEnd > TimeSpan.Zero && untilEnd <= TimeSpan.FromMinutes(_push.CheckoutReminderLeadMinutes))
                         due.Add(r);
                 }
                 if (due.Count == 0)
@@ -151,8 +152,8 @@ public sealed class CheckoutReminderJob : BackgroundService
                     {
                         var alive = await sender.SendAsync(
                             s.Endpoint, s.P256dh, s.Auth,
-                            "Çıxış etməyi unutmayın",
-                            "İş vaxtınız bitib, amma çıxış qeyd olunmayıb. Çıxışı skan etməsəniz bu gün 0 saat sayılacaq.",
+                            "İş vaxtınız bitir",
+                            $"{_push.CheckoutReminderLeadMinutes} dəqiqəyə növbəniz bitir. Çıxışı skan etməyi unutmayın — yoxsa bu gün 0 saat sayılacaq.",
                             "/scan", ct);
                         if (alive) sentAny = true;
                         else dead.Add(s);

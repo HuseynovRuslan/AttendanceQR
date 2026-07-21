@@ -4,6 +4,7 @@ import { getMyAttendance, getMyProfile, type AttendanceRecord, type MyProfile } 
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
+import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { firstName, initials, todayState, type TodayState } from '../lib/att'
 import { fmtDuration, fmtTime } from '../lib/format'
@@ -63,6 +64,9 @@ export function HomePage() {
           <div className="mt-1 text-sm text-slate-600">Bütün komanda səni təbrik edir 🎉</div>
         </div>
       )}
+
+      {/* Second place the reminder can be switched on — self-hides once it is. */}
+      <PushEnablePrompt />
 
       <MissedCheckoutBanner />
 

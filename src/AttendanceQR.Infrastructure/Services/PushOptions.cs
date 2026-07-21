@@ -15,8 +15,10 @@ public sealed class PushOptions
     /// <summary>VAPID subject: a mailto: or https: URL identifying this application server.</summary>
     public string Subject { get; set; } = "mailto:admin@qrlog.az";
 
-    /// <summary>How long after the shift ends before the "you forgot to check out" push goes out.</summary>
-    public int CheckoutReminderDelayMinutes { get; set; } = 20;
+    /// <summary>How many minutes BEFORE the shift ends the checkout reminder goes out. Deliberately
+    /// ahead of time: a reminder sent after the shift arrives when the employee is already home and
+    /// can no longer scan out.</summary>
+    public int CheckoutReminderLeadMinutes { get; set; } = 10;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(PublicKey) && !string.IsNullOrWhiteSpace(PrivateKey);
 }
