@@ -82,7 +82,9 @@ export function VotePage() {
             <div className="text-4xl">🗳️</div>
             <div className="mt-2 font-bold text-slate-800">Səsvermə hələ başlamayıb</div>
             <p className="mt-1 text-sm">
-              {status.opensOn ? `${fmtDate(status.opensOn)} tarixində açılacaq` : `${monthName} ayında açılacaq`}
+              {status.opensOn
+                ? `${fmtDate(status.opensOn)}${status.opensAt ? ` saat ${status.opensAt}` : ''} tarixində açılacaq`
+                : `${monthName} ayında açılacaq`}
               . Başlayanda bildiriş göndərəcəyik.
             </p>
           </div>
@@ -92,8 +94,13 @@ export function VotePage() {
               <div className="font-bold text-blue-900">{monthName} ayının işçisini seçin</div>
               <p className="mt-1 text-sm text-blue-800">
                 {status.locationName} üzrə bir nəfər seçin. Səsiniz <b>gizlidir</b> — kimə səs
-                verdiyinizi heç kim, rəhbər də görmür. Bir dəfə səs verilir.
+                verdiyinizi heç kim görmür. Bir dəfə səs verilir.
               </p>
+              {status.closesOn && (
+                <p className="mt-1 text-sm font-semibold text-blue-900">
+                  Son tarix: {fmtDate(status.closesOn)}{status.closesAt ? ` · ${status.closesAt}` : ''}
+                </p>
+              )}
             </div>
 
             {/* A branch can be 50+ people — scrolling to find one name is the difference between

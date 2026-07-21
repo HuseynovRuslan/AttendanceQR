@@ -26,21 +26,24 @@ public class AdminVoteCampaignsController : ControllerBase
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
     }
 
-    private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+    private DateTime NowLocal() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone);
+    private DateOnly TodayLocal() => DateOnly.FromDateTime(NowLocal());
 
-    private object Project(VoteCampaign c, DateOnly today, int votes) => new
+    private object Project(VoteCampaign c, DateTime now, int votes) => new
     {
         id = c.Id,
         period = c.Period,
         startsOn = c.StartsOn,
         endsOn = c.EndsOn,
+        startsAt = c.StartsAt.ToString("HH:mm"),
+        endsAt = c.EndsAt.ToString("HH:mm"),
         minCandidates = c.MinCandidates,
         minVotesToDecide = c.MinVotesToDecide,
         excludedPositions = c.ExcludedPositions,
         votesCast = votes,
-        isOpen = c.IsOpenOn(today),
+        isOpen = c.IsOpenAt(now),
         // Three distinct states the admin needs to tell apart at a glance.
-        state = c.IsOpenOn(today) ? "open" : today < c.StartsOn ? "scheduled" : "finished",
+        state = c.IsOpenAt(now) ? "open" : now < c.OpensAtLocal ? "scheduled" : "finished",
     };
 
     /// <summary>The campaign for a month (null when none was created — that month has no ballot).</summary>
@@ -48,6 +51,7 @@ public class AdminVoteCampaignsController : ControllerBase
     public async Task<IActionResult> Get([FromQuery] DateOnly? period)
     {
         var ct = HttpContext.RequestAborted;
+        var now = NowLocal();
         var today = TodayLocal();
         var p = period is null ? new DateOnly(today.Year, today.Month, 1) : new DateOnly(period.Value.Year, period.Value.Month, 1);
 
@@ -56,7 +60,7 @@ public class AdminVoteCampaignsController : ControllerBase
             return Ok(new { period = p, campaign = (object?)null });
 
         var votes = await _db.MonthlyVoteBallots.CountAsync(b => b.Period == p, ct);
-        return Ok(new { period = p, campaign = Project(campaign, today, votes) });
+        return Ok(new { period = p, campaign = Project(campaign, now, votes) });
     }
 
     [HttpPost]
@@ -77,13 +81,14 @@ public class AdminVoteCampaignsController : ControllerBase
             EndsOn = request.EndsOn,
             MinCandidates = request.MinCandidates,
             MinVotesToDecide = request.MinVotesToDecide,
+            StartsAt = ParseTime(request.StartsAt) ?? new TimeOnly(0, 0),
+            EndsAt = ParseTime(request.EndsAt) ?? new TimeOnly(23, 59),
             ExcludedPositions = Clean(request.ExcludedPositions),
         };
         _db.VoteCampaigns.Add(campaign);
         await _db.SaveChangesAsync(ct);
 
-        var today = TodayLocal();
-        return Ok(new { period, campaign = Project(campaign, today, 0) });
+        return Ok(new { period, campaign = Project(campaign, NowLocal(), 0) });
     }
 
     [HttpPut("{id:guid}")]
@@ -107,12 +112,13 @@ public class AdminVoteCampaignsController : ControllerBase
         campaign.EndsOn = request.EndsOn;
         campaign.MinCandidates = request.MinCandidates;
         campaign.MinVotesToDecide = request.MinVotesToDecide;
+        campaign.StartsAt = ParseTime(request.StartsAt) ?? new TimeOnly(0, 0);
+        campaign.EndsAt = ParseTime(request.EndsAt) ?? new TimeOnly(23, 59);
         campaign.ExcludedPositions = Clean(request.ExcludedPositions);
         await _db.SaveChangesAsync(ct);
 
-        var today = TodayLocal();
         var votes = await _db.MonthlyVoteBallots.CountAsync(b => b.Period == campaign.Period, ct);
-        return Ok(new { period = campaign.Period, campaign = Project(campaign, today, votes) });
+        return Ok(new { period = campaign.Period, campaign = Project(campaign, NowLocal(), votes) });
     }
 
     /// <summary>Deletes the ballot AND everything cast in it — the way to undo a trial run or a
@@ -157,9 +163,15 @@ public class AdminVoteCampaignsController : ControllerBase
     private static List<string> Clean(List<string>? positions) =>
         positions?.Select(p => p.Trim()).Where(p => p.Length > 0).Distinct().ToList() ?? new List<string>();
 
+    private static TimeOnly? ParseTime(string? value) =>
+        TimeOnly.TryParse(value, out var t) ? t : null;
+
     private static string? Validate(VoteCampaignRequest r)
     {
         if (r.EndsOn < r.StartsOn) return "EndBeforeStart";
+        // A same-day window closing before it opens would never be open at all.
+        if (r.EndsOn == r.StartsOn && ParseTime(r.EndsAt) is { } end && ParseTime(r.StartsAt) is { } start
+            && end <= start) return "EndBeforeStart";
         // Votes are filed by month; a window spanning two months would split them.
         if (r.StartsOn.Year != r.EndsOn.Year || r.StartsOn.Month != r.EndsOn.Month) return "WindowSpansTwoMonths";
         if (r.MinCandidates < 2) return "MinCandidatesTooLow";

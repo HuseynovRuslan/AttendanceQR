@@ -11,6 +11,8 @@ import { getPositions } from '../../api/positions'
 import { IconCheck, IconX } from '../../components/icons'
 
 const fmt = (iso: string) => iso.split('-').reverse().join('.')
+/** Date with its time of day, e.g. "29.07.2026 09:00". */
+const fmtAt = (iso: string, time: string) => `${fmt(iso)} ${time}`
 
 /** Last day of the month a period belongs to, as an ISO date. */
 function lastDayOf(period: string): string {
@@ -62,6 +64,8 @@ export function VoteCampaignCard({
   // Form state
   const [startsOn, setStartsOn] = useState('')
   const [endsOn, setEndsOn] = useState('')
+  const [startsAt, setStartsAt] = useState('00:00')
+  const [endsAt, setEndsAt] = useState('23:59')
   const [minCandidates, setMinCandidates] = useState(3)
   const [minVotes, setMinVotes] = useState(5)
   const [excluded, setExcluded] = useState<string[]>([])
@@ -97,6 +101,9 @@ export function VoteCampaignCard({
     const last = lastDayOf(period)
     setStartsOn(addDays(last, -2))
     setEndsOn(last)
+    // Whole days by default — a time-of-day window is the exception, not the norm.
+    setStartsAt('00:00')
+    setEndsAt('23:59')
     setMinCandidates(3)
     setMinVotes(5)
     setExcluded([])
@@ -108,6 +115,8 @@ export function VoteCampaignCard({
   function startEdit(c: VoteCampaign) {
     setStartsOn(c.startsOn)
     setEndsOn(c.endsOn)
+    setStartsAt(c.startsAt ?? '00:00')
+    setEndsAt(c.endsAt ?? '23:59')
     setMinCandidates(c.minCandidates)
     setMinVotes(c.minVotesToDecide)
     setExcluded(c.excludedPositions ?? [])
@@ -123,7 +132,7 @@ export function VoteCampaignCard({
     setBusy(true)
     setErr(null)
     setMsg(null)
-    const input = { startsOn, endsOn, minCandidates, minVotesToDecide: minVotes, excludedPositions: excluded }
+    const input = { startsOn, endsOn, startsAt, endsAt, minCandidates, minVotesToDecide: minVotes, excludedPositions: excluded }
     const { status, data } = campaign
       ? await updateVoteCampaign(campaign.id, input)
       : await createVoteCampaign(input)
@@ -191,10 +200,10 @@ export function VoteCampaignCard({
             {!campaign
               ? 'Bu ay üçün səsvermə yaradılmayıb — işçilərdə səsvermə görünmür.'
               : campaign.state === 'open'
-                ? `${fmt(campaign.startsOn)} – ${fmt(campaign.endsOn)} · indiyədək ${campaign.votesCast} səs verilib`
+                ? `${fmtAt(campaign.startsOn, campaign.startsAt)} – ${fmtAt(campaign.endsOn, campaign.endsAt)} · indiyədək ${campaign.votesCast} səs verilib`
                 : campaign.state === 'scheduled'
-                  ? `${fmt(campaign.startsOn)} tarixində açılacaq, ${fmt(campaign.endsOn)} tarixində bağlanacaq. Açılanda işçilərə bildiriş gedəcək.`
-                  : `${fmt(campaign.startsOn)} – ${fmt(campaign.endsOn)} · cəmi ${campaign.votesCast} səs`}
+                  ? `${fmtAt(campaign.startsOn, campaign.startsAt)} tarixində açılacaq, ${fmtAt(campaign.endsOn, campaign.endsAt)} bağlanacaq. Açılanda işçilərə bildiriş gedəcək.`
+                  : `${fmtAt(campaign.startsOn, campaign.startsAt)} – ${fmtAt(campaign.endsOn, campaign.endsAt)} · cəmi ${campaign.votesCast} səs`}
           </div>
 
           {/* A rule that changes who appears on the ballot shouldn't live only behind an edit form. */}
@@ -226,14 +235,24 @@ export function VoteCampaignCard({
 
       {editing && (
         <div style={{ marginTop: 12 }}>
+          {/* Date and time together: "closes on the 31st" still leaves the ballot open during the
+              shift the result is announced on, and a vote meant for one evening needed a whole day. */}
           <div className="form-row cols2">
             <div>
               <label className="form-label">Başlanğıc</label>
-              <input className="inp" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="inp" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+                <input className="inp" type="time" value={startsAt} style={{ maxWidth: 120 }}
+                  onChange={(e) => setStartsAt(e.target.value)} />
+              </div>
             </div>
             <div>
               <label className="form-label">Bitmə</label>
-              <input className="inp" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input className="inp" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+                <input className="inp" type="time" value={endsAt} style={{ maxWidth: 120 }}
+                  onChange={(e) => setEndsAt(e.target.value)} />
+              </div>
             </div>
           </div>
 

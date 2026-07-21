@@ -25,6 +25,18 @@ public class VoteCampaign : ITenantScoped
 
     public DateOnly EndsOn { get; set; }
 
+    /// <summary>Local time of day the ballot opens on <see cref="StartsOn"/>. Defaults to midnight.</summary>
+    public TimeOnly StartsAt { get; set; } = new(0, 0);
+
+    /// <summary>
+    /// Local time of day the ballot closes on <see cref="EndsOn"/>. Defaults to one minute to midnight.
+    ///
+    /// Whole days were too blunt: a vote that closes "on the 31st" is still open during the shift on
+    /// which the winner is announced, and a vote meant to run through one evening meeting had to be
+    /// given the entire day.
+    /// </summary>
+    public TimeOnly EndsAt { get; set; } = new(23, 59);
+
     /// <summary>Below this many colleagues a branch holds no ballot — a "secret" vote among three
     /// people is not secret.</summary>
     public int MinCandidates { get; set; } = 3;
@@ -47,6 +59,12 @@ public class VoteCampaign : ITenantScoped
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
-    /// <summary>True while today falls inside the window.</summary>
-    public bool IsOpenOn(DateOnly today) => today >= StartsOn && today <= EndsOn;
+    /// <summary>Opening moment in the company's local time.</summary>
+    public DateTime OpensAtLocal => StartsOn.ToDateTime(StartsAt);
+
+    /// <summary>Closing moment in the company's local time.</summary>
+    public DateTime ClosesAtLocal => EndsOn.ToDateTime(EndsAt);
+
+    /// <summary>True while the given local moment falls inside the window.</summary>
+    public bool IsOpenAt(DateTime localNow) => localNow >= OpensAtLocal && localNow <= ClosesAtLocal;
 }

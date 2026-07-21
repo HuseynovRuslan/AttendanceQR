@@ -5,6 +5,9 @@ namespace AttendanceQR.Api.Contracts;
 public record VoteCampaignRequest(
     DateOnly StartsOn,
     DateOnly EndsOn,
+    /// <summary>Local times of day, "HH:mm". Omitted means the whole of the first and last day.</summary>
+    string? StartsAt,
+    string? EndsAt,
     int MinCandidates,
     int MinVotesToDecide,
     /// <summary>Positions barred from being nominated. Empty means everyone is eligible.</summary>

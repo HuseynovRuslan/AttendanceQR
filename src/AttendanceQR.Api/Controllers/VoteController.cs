@@ -36,7 +36,8 @@ public class VoteController : ControllerBase
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
     }
 
-    private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+    private DateTime NowLocal() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone);
+    private DateOnly TodayLocal() => DateOnly.FromDateTime(NowLocal());
     private static DateOnly PeriodOf(DateOnly d) => new(d.Year, d.Month, 1);
 
     /// <summary>Everything the voting screen needs: whether it's open, whether I already voted, and my
@@ -55,7 +56,7 @@ public class VoteController : ControllerBase
         // No campaign for this month means the company chose not to run the award — not a
         // misconfiguration, and the screen says exactly that.
         var campaign = await _db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == period, ct);
-        var open = campaign?.IsOpenOn(today) ?? false;
+        var open = campaign?.IsOpenAt(NowLocal()) ?? false;
 
         var colleagues = await _db.Employees
             .Where(e => e.IsActive && e.LocationId == me.LocationId && e.Id != me.Id && e.Role == EmployeeRole.Employee)
@@ -78,6 +79,8 @@ public class VoteController : ControllerBase
             isOpen = open,
             opensOn = campaign?.StartsOn,
             closesOn = campaign?.EndsOn,
+            opensAt = campaign?.StartsAt.ToString("HH:mm"),
+            closesAt = campaign?.EndsAt.ToString("HH:mm"),
             hasVoted,
             // Everyone at the branch votes, managers included.
             enabled = campaign is not null,
@@ -105,7 +108,7 @@ public class VoteController : ControllerBase
         var today = TodayLocal();
         var period = PeriodOf(today);
         var campaign = await _db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == period, ct);
-        if (campaign is null || !campaign.IsOpenOn(today))
+        if (campaign is null || !campaign.IsOpenAt(NowLocal()))
             return BadRequest(new { error = "VotingClosed" });
 
         if (request.CandidateEmployeeId == employeeId)
@@ -164,7 +167,7 @@ public class VoteController : ControllerBase
         var p = period is null ? PeriodOf(today) : PeriodOf(period.Value);
         var isCurrent = p == PeriodOf(today);
         var campaign = await _db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == p, ct);
-        var open = campaign?.IsOpenOn(today) ?? false;
+        var open = campaign?.IsOpenAt(NowLocal()) ?? false;
         // Employees see no running scoreboard while the ballot is open; whoever runs the vote does,
         // because they need to watch turnout and chase the branches that haven't voted.
         var organiser = User.Role() is EmployeeRole.Admin or EmployeeRole.Manager;

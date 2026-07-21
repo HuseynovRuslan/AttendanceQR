@@ -12,6 +12,8 @@ export interface VoteStatus {
   isOpen: boolean
   opensOn: string | null
   closesOn: string | null
+  opensAt: string | null
+  closesAt: string | null
   hasVoted: boolean
   canVote: boolean
   tooFewColleagues: boolean
@@ -69,6 +71,9 @@ export interface VoteCampaign {
   period: string
   startsOn: string
   endsOn: string
+  /** Local time of day, "HH:mm". */
+  startsAt: string
+  endsAt: string
   minCandidates: number
   minVotesToDecide: number
   /** Positions barred from being nominated. Empty = everyone is eligible. */
@@ -87,6 +92,8 @@ export interface VoteCampaignResponse {
 export interface VoteCampaignInput {
   startsOn: string
   endsOn: string
+  startsAt: string
+  endsAt: string
   minCandidates: number
   minVotesToDecide: number
   excludedPositions: string[]
