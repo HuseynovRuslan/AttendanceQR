@@ -9,6 +9,8 @@ export interface VoteCandidate {
 }
 
 export interface VoteStatus {
+  /** Company master switch — off means the ballot isn't running at all this month. */
+  enabled: boolean
   isOpen: boolean
   opensOn: string
   closesOn: string

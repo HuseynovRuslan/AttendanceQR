@@ -63,13 +63,16 @@ export function VotePage() {
               verdiyinizi heç kim görmür.
             </p>
           </div>
+        ) : !status.enabled ? (
+          // The company switched the ballot off from the admin panel.
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-600">
+            <div className="text-4xl">🗳️</div>
+            <div className="mt-2 font-bold text-slate-800">Səsvermə keçirilmir</div>
+            <p className="mt-1 text-sm">Hazırda bu bölmə bağlıdır.</p>
+          </div>
         ) : status.tooFewColleagues ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-600">
             Bu filialda səsvermə keçirilmir — komanda kiçik olduğu üçün səsin gizli qalması mümkün deyil.
-          </div>
-        ) : !status.canVote ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-600">
-            Səsvermədə yalnız işçilər iştirak edir. Nəticəni ayın sonunda görəcəksiniz.
           </div>
         ) : !status.isOpen ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-slate-600">
