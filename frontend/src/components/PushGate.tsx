@@ -12,6 +12,17 @@ import { isStandalone } from '../lib/device'
  * which is far worse than a missed notification. So the gate stands firm where it can work, and steps
  * aside (with an explanation) where it cannot.
  */
+// Employees who CAN enable see this every scan until they do. Those who cannot — iOS Safari tab, or a
+// browser that already refused — have nothing to act on right now, so showing them a wall on every
+// single check-in is pure friction: they see it once a day instead.
+const SEEN_KEY = 'attendanceqr.pushGateSeen'
+const SEEN_FOR_MS = 24 * 60 * 60 * 1000
+
+function seenRecently(): boolean {
+  const at = Number(localStorage.getItem(SEEN_KEY) ?? 0)
+  return at > 0 && Date.now() - at < SEEN_FOR_MS
+}
+
 export function PushGate({ onDone }: { onDone: () => void }) {
   const [state, setState] = useState<'checking' | 'ask' | 'install' | 'blocked'>('checking')
   const [busy, setBusy] = useState(false)
@@ -20,6 +31,12 @@ export function PushGate({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     let cancelled = false
     void (async () => {
+      // Nothing the employee can do about it right now — show at most once a day.
+      const cannotAct = !pushSupported() || pushPermission() === 'denied'
+      if (cannotAct && seenRecently()) {
+        onDone()
+        return
+      }
       if (!pushSupported()) {
         // No push in this context at all. On iOS that means "not installed to the home screen yet".
         if (!cancelled) setState(isStandalone() ? 'blocked' : 'install')
@@ -38,6 +55,11 @@ export function PushGate({ onDone }: { onDone: () => void }) {
       cancelled = true
     }
   }, [onDone])
+
+  function continueAnyway() {
+    localStorage.setItem(SEEN_KEY, String(Date.now()))
+    onDone()
+  }
 
   async function turnOn() {
     setBusy(true)
@@ -81,7 +103,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             Bu səhifədə bildiriş işləmir. Aşağıdakı <b>Paylaş</b> düyməsi → <b>«Ana ekrana əlavə et»</b>,
             sonra proqramı oradan açın — bildirişlər işləyəcək.
           </p>
-          <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
+          <button onClick={continueAnyway} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
           </button>
         </>
@@ -94,7 +116,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             Bildirişə icazə bloklanıb. Brauzer parametrlərindən bu sayta bildiriş icazəsi verin —
             elanları və xatırlatmaları ala biləsiniz.
           </p>
-          <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
+          <button onClick={continueAnyway} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
           </button>
         </>

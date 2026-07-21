@@ -141,12 +141,17 @@ export function ScanPage() {
     // A scan just finished and its result is on screen — don't re-verify (that would wipe it). The
     // employee restarts via "Yenidən skan et", which calls runChecks itself.
     if (scanDoneRef.current) return
+    // Wait for the notification gate. runChecks ends by attaching html5-qrcode to the reader element,
+    // which is hidden while the gate is up — attaching then fails and, since nothing re-ran when the
+    // gate closed, the camera never opened at all. Depending on pushGate makes it start the moment
+    // the gate goes away.
+    if (pushGate) return
     void runChecks()
     return () => {
       void stopCamera()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today.kind])
+  }, [today.kind, pushGate])
 
   // Failsafe: the checklist overlay must never stick. runChecks always clears `verifying` itself, but
   // if some await hangs unexpectedly, drop the overlay after 25s so the employee is never trapped.
