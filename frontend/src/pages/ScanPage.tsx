@@ -9,6 +9,7 @@ import {
   type AttendanceRecord,
 } from '../api/attendance'
 import { getDeviceFingerprint } from '../lib/device'
+import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan } from '../lib/offlineQueue'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
@@ -89,9 +90,10 @@ export function ScanPage() {
   // True while a scan result is on screen — keeps the today-status reload (which flips today.kind)
   // from re-running the camera effect and wiping the result message. Cleared when scanning restarts.
   const scanDoneRef = useRef(false)
-  // Notification gate, shown over the scanner on entry. PushGate decides for itself whether it has
-  // anything to ask and calls onDone immediately when it doesn't.
-  const [pushGate, setPushGate] = useState(true)
+  // Notification gate. 'undecided' until today's status is known — only then can we tell a check-IN
+  // (where the ask belongs) from a check-OUT (where it is pure friction). Rationed further by
+  // shouldShowPushGate: once a day, and only for the first few days.
+  const [pushGate, setPushGate] = useState<'undecided' | 'show' | 'skip'>('undecided')
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
   const [result, setResult] = useState<Card | null>(null)
@@ -132,6 +134,13 @@ export function ScanPage() {
     void loadTodayStatus()
   }, [])
 
+  // Decide the gate as soon as today's status is known: ask only before a check-IN, and only when the
+  // day/age allowance permits. Everything else skips straight to the scanner.
+  useEffect(() => {
+    if (today.kind === 'loading' || pushGate !== 'undecided') return
+    setPushGate(today.kind === 'none' && shouldShowPushGate() ? 'show' : 'skip')
+  }, [today.kind, pushGate])
+
   // Run the pre-scan verification once today's status is known (and re-run on an explicit retry).
   // The day being already complete needs no camera at all.
   useEffect(() => {
@@ -148,7 +157,7 @@ export function ScanPage() {
     // which is hidden while the gate is up — attaching then fails and, since nothing re-ran when the
     // gate closed, the camera never opened at all. Depending on pushGate makes it start the moment
     // the gate goes away.
-    if (pushGate) return
+    if (pushGate !== 'skip') return
     void runChecks()
     return () => {
       void stopCamera()
@@ -532,7 +541,7 @@ export function ScanPage() {
   // Don't open the camera behind the notification gate — nothing should be filming while the employee
   // is looking at a permission prompt.
   const showCamera =
-    !pushGate && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
+    pushGate === 'skip' && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
@@ -551,9 +560,9 @@ export function ScanPage() {
             employee opens the app, so it's the only moment this can be asked. An overlay rather than a
             branch, so the page underneath is untouched; it steps aside by itself where push cannot work
             (iOS Safari tab, previously refused) rather than blocking someone out of recording work. */}
-        {pushGate && (
+        {pushGate === 'show' && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/95 p-4">
-            <PushGate onDone={() => setPushGate(false)} />
+            <PushGate onDone={() => setPushGate('skip')} />
           </div>
         )}
 

@@ -107,6 +107,37 @@ export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'd
   }
 }
 
+// --- how insistent the mandatory gate is allowed to be -----------------------
+// Asking on every scan turns into a wall: a morning queue slows down, and someone who mis-taps
+// "block" gets a daily obstacle they cannot resolve from inside the app. Once a day, only before a
+// check-IN, and only for the first few days — after that the soft in-card prompt carries on alone.
+const GATE_DAY_KEY = 'attendanceqr.pushGateDay'
+const GATE_FIRST_KEY = 'attendanceqr.pushGateFirst'
+const GATE_MAX_DAYS = 3
+
+/** Whether the mandatory gate may appear right now (day- and age-limited). */
+export function shouldShowPushGate(): boolean {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    if (localStorage.getItem(GATE_DAY_KEY) === today) return false
+    const first = Number(localStorage.getItem(GATE_FIRST_KEY) ?? 0)
+    if (first > 0 && Date.now() - first > GATE_MAX_DAYS * 86_400_000) return false
+    return true
+  } catch {
+    return true
+  }
+}
+
+/** Records that the gate was actually put in front of the employee today. */
+export function markPushGateShown(): void {
+  try {
+    localStorage.setItem(GATE_DAY_KEY, new Date().toISOString().slice(0, 10))
+    if (!localStorage.getItem(GATE_FIRST_KEY)) localStorage.setItem(GATE_FIRST_KEY, String(Date.now()))
+  } catch {
+    /* private mode — just show it again next time */
+  }
+}
+
 /** Sends a test notification to this employee's own devices. Returns how many were reached — 0 means
  *  the subscription didn't survive (re-enable), so the UI can say something useful. */
 export async function sendTestPush(): Promise<number | null> {

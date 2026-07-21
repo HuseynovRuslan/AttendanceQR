@@ -1,28 +1,18 @@
 import { useEffect, useState } from 'react'
-import { enablePush, isSubscribed, pushPermission, pushSupported } from '../lib/push'
+import { enablePush, isSubscribed, markPushGateShown, pushPermission, pushSupported } from '../lib/push'
 import { isStandalone } from '../lib/device'
 
 /**
- * The mandatory "turn notifications on" step, shown when the employee opens the scanner. Scanning is
- * the only time they open the app at all, so it is the only place this can realistically be asked.
+ * The "turn notifications on" step shown before a check-in. Scanning is the only time employees open
+ * the app at all, so it is the only place this can realistically be asked — but it is rationed, or it
+ * becomes a wall: at most once a day, only before a check-IN (never on the way out), and only for the
+ * first few days (see shouldShowPushGate). After that the soft in-card prompt carries on alone.
  *
- * It has no "later" button — but it is NOT a hard wall, and cannot be: on iPhone in a Safari tab the
- * push APIs do not exist, and a browser that was once refused will never prompt again. Gating the
- * scan on something those people physically cannot do would stop them recording attendance at all,
- * which is far worse than a missed notification. So the gate stands firm where it can work, and steps
- * aside (with an explanation) where it cannot.
+ * It offers no "later" on the ask itself — but it is not a hard block, and cannot be: on iPhone in a
+ * Safari tab the push APIs do not exist, and a browser that was once refused will never prompt again.
+ * Gating the scan on something those people physically cannot do would stop them recording attendance,
+ * which matters far more than a notification.
  */
-// Employees who CAN enable see this every scan until they do. Those who cannot — iOS Safari tab, or a
-// browser that already refused — have nothing to act on right now, so showing them a wall on every
-// single check-in is pure friction: they see it once a day instead.
-const SEEN_KEY = 'attendanceqr.pushGateSeen'
-const SEEN_FOR_MS = 24 * 60 * 60 * 1000
-
-function seenRecently(): boolean {
-  const at = Number(localStorage.getItem(SEEN_KEY) ?? 0)
-  return at > 0 && Date.now() - at < SEEN_FOR_MS
-}
-
 export function PushGate({ onDone }: { onDone: () => void }) {
   const [state, setState] = useState<'checking' | 'ask' | 'install' | 'blocked'>('checking')
   const [busy, setBusy] = useState(false)
@@ -31,35 +21,27 @@ export function PushGate({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      // Nothing the employee can do about it right now — show at most once a day.
-      const cannotAct = !pushSupported() || pushPermission() === 'denied'
-      if (cannotAct && seenRecently()) {
-        onDone()
+      // Already on — nothing to ask, and it must not cost them a tap.
+      if (pushSupported() && pushPermission() !== 'denied' && (await isSubscribed())) {
+        if (!cancelled) onDone()
         return
       }
+      if (cancelled) return
+      // From here the gate is genuinely shown, so it counts against today's one allowance.
+      markPushGateShown()
       if (!pushSupported()) {
         // No push in this context at all. On iOS that means "not installed to the home screen yet".
-        if (!cancelled) setState(isStandalone() ? 'blocked' : 'install')
-        return
+        setState(isStandalone() ? 'blocked' : 'install')
+      } else if (pushPermission() === 'denied') {
+        setState('blocked')
+      } else {
+        setState('ask')
       }
-      if (pushPermission() === 'denied') {
-        if (!cancelled) setState('blocked')
-        return
-      }
-      const already = await isSubscribed()
-      if (cancelled) return
-      if (already) onDone()
-      else setState('ask')
     })()
     return () => {
       cancelled = true
     }
   }, [onDone])
-
-  function continueAnyway() {
-    localStorage.setItem(SEEN_KEY, String(Date.now()))
-    onDone()
-  }
 
   async function turnOn() {
     setBusy(true)
@@ -103,7 +85,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             Bu səhifədə bildiriş işləmir. Aşağıdakı <b>Paylaş</b> düyməsi → <b>«Ana ekrana əlavə et»</b>,
             sonra proqramı oradan açın — bildirişlər işləyəcək.
           </p>
-          <button onClick={continueAnyway} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
+          <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
           </button>
         </>
@@ -116,7 +98,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             Bildirişə icazə bloklanıb. Brauzer parametrlərindən bu sayta bildiriş icazəsi verin —
             elanları və xatırlatmaları ala biləsiniz.
           </p>
-          <button onClick={continueAnyway} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
+          <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
           </button>
         </>
