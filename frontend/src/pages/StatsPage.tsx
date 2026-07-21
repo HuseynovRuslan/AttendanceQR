@@ -65,6 +65,18 @@ export function StatsPage() {
         </div>
       )}
 
+      {/* The cost of forgetting to scan out, in the employee's own numbers: those days added zero
+          hours. Shown only when it is actually happening — no nagging otherwise. */}
+      {totals && totals.incompleteDays > 0 && (
+        <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-4">
+          <div className="font-bold text-red-800">⚠️ {totals.incompleteDays} gün çıxış etməmisiniz</div>
+          <div className="mt-1 text-sm text-red-700">
+            Bu günlər <b>0 saat</b> sayılıb — yuxarıdakı işlənmiş saata əlavə olunmayıb. İş bitəndə
+            çıxışı skan etməyi unutmayın.
+          </div>
+        </div>
+      )}
+
       <div>
         <h2 className="mb-2 px-1 font-bold">Skan tarixçəsi</h2>
         {loading ? (

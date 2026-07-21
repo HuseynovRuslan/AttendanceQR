@@ -31,6 +31,9 @@ type Card = {
   /** The check-in selfie, shown back to the employee — the capture is disclosed, not covert. */
   photo?: string
   showDeviceChangeLink?: boolean
+  /** Past days left open (checked in, never out). Shown as the running COST of forgetting to scan
+   *  out — those days count as zero hours. Information only: nothing is auto-closed, nothing asked. */
+  openDays?: number
 }
 type Phase = 'scanning' | 'intro' | 'photo' | 'processing' | 'done'
 
@@ -449,6 +452,7 @@ export function ScanPage() {
           warn: data.late ? 'Gecikdiniz' : undefined,
           final: true,
           photo: photoBase64 ?? undefined,
+          openDays: data.openDays,
         })
         return
       }
@@ -719,6 +723,17 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
       {card.detail && <p className="mt-2 text-base opacity-90">{card.detail}</p>}
       {card.note && <p className="mt-1 text-sm opacity-75">{card.note}</p>}
 
+      {/* The running cost of forgetting to check out — shown at the one moment the employee is
+          certainly looking at the screen. No auto-close, no reason asked; just the number. */}
+      {card.openDays ? (
+        <div className="mt-4 rounded-xl bg-black/25 px-4 py-3 text-left">
+          <div className="text-sm font-bold">⚠️ {card.openDays} gün çıxış etməmisiniz</div>
+          <div className="mt-0.5 text-xs opacity-85">
+            O günlər <b>0 saat</b> sayılıb. İş bitəndə çıxışı skan etməyi unutmayın.
+          </div>
+        </div>
+      ) : null}
+
       {/* Showing the photo back closes the loop: the employee sees exactly what was stored. */}
       {card.photo && (
         <img
@@ -772,6 +787,8 @@ interface ScanResponse {
   error?: string
   distanceMeters?: number
   minutes?: number
+  /** Past days this employee left open (checked in, never out) — each counts as zero hours. */
+  openDays?: number
 }
 
 interface MeRecord {

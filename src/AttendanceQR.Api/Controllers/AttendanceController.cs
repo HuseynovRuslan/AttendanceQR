@@ -460,6 +460,14 @@ public class AttendanceController : ControllerBase
         await TryStoreCheckInPhotoAsync(employee, record, photoBase64);
 
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, null, ip);
+
+        // How many PAST days this employee left open (checked in, never out). Those days count as zero
+        // hours, so the check-in card can show the running cost — the nudge that breaks the habit
+        // without auto-closing anything or asking for a reason.
+        var openDays = await _db.AttendanceRecords.CountAsync(r =>
+            r.EmployeeId == employee.Id && r.AttendanceDate < today
+            && r.CheckInAtUtc != null && r.CheckOutAtUtc == null);
+
         return Ok(new
         {
             action = "CheckIn",
@@ -469,7 +477,8 @@ public class AttendanceController : ControllerBase
             // hours when set (EffectiveShiftStart).
             late = record.Status == AttendanceStatus.Late,
             checkInAtUtc = nowUtc,
-            photoStored = record.CheckInPhotoKey is not null
+            photoStored = record.CheckInPhotoKey is not null,
+            openDays
         });
     }
 
