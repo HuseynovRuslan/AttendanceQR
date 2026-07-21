@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported } from '../lib/push'
+import { disablePush, enablePush, isSubscribed, pushPermission, pushSupported, sendTestPush } from '../lib/push'
 import { isStandalone } from '../lib/device'
 
 /**
@@ -35,6 +35,16 @@ export function PushToggle() {
     } else {
       setMsg('Alınmadı, bir azdan yenidən yoxlayın.')
     }
+  }
+
+  async function runTest() {
+    setBusy(true)
+    setMsg(null)
+    const reached = await sendTestPush()
+    setBusy(false)
+    if (reached === null) setMsg('Test göndərilmədi')
+    else if (reached === 0) setMsg('Abunə tapılmadı — söndürüb yenidən açın')
+    else setMsg('Test göndərildi — bildiriş bir neçə saniyəyə gəlməlidir')
   }
 
   async function turnOff() {
@@ -86,7 +96,18 @@ export function PushToggle() {
           </button>
         )}
       </div>
-      {on && <div className="mt-2 text-sm font-semibold text-green-700">Bildirişlər açıqdır ✓</div>}
+      {on && (
+        <div className="mt-2 flex items-center gap-3">
+          <span className="text-sm font-semibold text-green-700">Bildirişlər açıqdır ✓</span>
+          <button
+            onClick={() => void runTest()}
+            disabled={busy}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-50"
+          >
+            Test göndər
+          </button>
+        </div>
+      )}
       {denied && !on && (
         <div className="mt-2 text-sm text-amber-700">
           Bildirişə icazə bloklanıb — brauzer parametrlərindən icazə verməlisiniz.

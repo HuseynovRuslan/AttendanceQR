@@ -8,6 +8,7 @@ import {
   type AnnouncementAudience,
 } from '../../api/announcements'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
+import { sendTestPush } from '../../lib/push'
 import { IconSend, IconTrash, IconX } from '../../components/icons'
 
 const AUDIENCE: { value: AnnouncementAudience; label: string; hint: string }[] = [
@@ -37,6 +38,8 @@ export function AnnouncementsPage() {
   const [scheduledFor, setScheduledFor] = useState('')
 
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testMsg, setTestMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -89,6 +92,16 @@ export function AnnouncementsPage() {
     } else {
       setError('Elan göndərilmədi')
     }
+  }
+
+  async function onTest() {
+    setTesting(true)
+    setTestMsg(null)
+    const reached = await sendTestPush()
+    setTesting(false)
+    if (reached === null) setTestMsg('Göndərilmədi')
+    else if (reached === 0) setTestMsg('Sizdə bildiriş açıq deyil — telefonda skan edib açın')
+    else setTestMsg(`Göndərildi (${reached} cihaz)`)
   }
 
   async function onRetire(id: string) {
@@ -200,11 +213,16 @@ export function AnnouncementsPage() {
           </div>
         )}
 
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" disabled={saving || !message.trim()} onClick={onPost}>
             <IconSend />
             {saving ? 'Göndərilir…' : schedule ? 'Yadda saxla & planlaşdır' : 'Göndər'}
           </button>
+          {/* Verify the whole push chain on your own phone before broadcasting to everyone. */}
+          <button className="btn" disabled={testing} onClick={onTest}>
+            {testing ? 'Göndərilir…' : 'Özümə test bildirişi göndər'}
+          </button>
+          {testMsg && <span className="muted" style={{ fontSize: 12 }}>{testMsg}</span>}
         </div>
       </div>
 

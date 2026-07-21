@@ -107,6 +107,13 @@ export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'd
   }
 }
 
+/** Sends a test notification to this employee's own devices. Returns how many were reached — 0 means
+ *  the subscription didn't survive (re-enable), so the UI can say something useful. */
+export async function sendTestPush(): Promise<number | null> {
+  const res = await apiRequest<{ reached: number }>('/api/push/test', { method: 'POST' })
+  return res.status === 200 && res.data ? res.data.reached : null
+}
+
 /** Unsubscribes this browser and tells the server to forget it. */
 export async function disablePush(): Promise<boolean> {
   if (!pushSupported()) return false

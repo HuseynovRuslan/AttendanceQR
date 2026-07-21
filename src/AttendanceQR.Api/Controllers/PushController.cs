@@ -19,11 +19,27 @@ public class PushController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly PushOptions _options;
+    private readonly IPushNotifier _notifier;
 
-    public PushController(AppDbContext db, PushOptions options)
+    public PushController(AppDbContext db, PushOptions options, IPushNotifier notifier)
     {
         _db = db;
         _options = options;
+        _notifier = notifier;
+    }
+
+    /// <summary>Sends a test notification to the caller's OWN devices — the way to check the whole
+    /// chain (subscription → server → push service → phone) without broadcasting to anyone else.</summary>
+    [HttpPost("test")]
+    public async Task<IActionResult> Test()
+    {
+        var reached = await _notifier.NotifyEmployeesAsync(
+            new[] { User.EmployeeId() },
+            "Test bildirişi",
+            "Bildirişlər işləyir ✓ Elanlar və xatırlatmalar bu cür gələcək.",
+            "/home",
+            HttpContext.RequestAborted);
+        return Ok(new { reached });
     }
 
     /// <summary>The VAPID public key the browser needs to subscribe. `enabled:false` = push is not
