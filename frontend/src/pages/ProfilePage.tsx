@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { changePassword } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
 import { SubPageHeader } from '../components/SubPageHeader'
+import { PushToggle } from '../components/PushToggle'
 
 export function ProfilePage() {
   const { saveToken, email } = useAuth()
@@ -136,6 +137,17 @@ export function ProfilePage() {
             Yeni telefon tələbi göndər
           </Link>
         </div>
+
+        {/* Deliberately tucked away behind a details toggle: notifications carry the announcements and
+            the checkout reminder, so turning them off should be possible but never a casual tap. */}
+        <details className="mt-6">
+          <summary className="cursor-pointer list-none text-center text-sm text-slate-400">
+            Bildiriş ayarları
+          </summary>
+          <div className="mt-3">
+            <PushToggle />
+          </div>
+        </details>
       </main>
     </div>
   )

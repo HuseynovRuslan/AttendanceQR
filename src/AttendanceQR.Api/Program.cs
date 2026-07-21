@@ -129,6 +129,8 @@ builder.Services.AddHostedService<FaceMatchWorker>();
 var pushOptions = builder.Configuration.GetSection(PushOptions.SectionName).Get<PushOptions>() ?? new PushOptions();
 builder.Services.AddSingleton(pushOptions);
 builder.Services.AddSingleton<IPushSender, WebPushSender>();
+// Scoped: fans a notification out over an employee's subscriptions (needs the DbContext).
+builder.Services.AddScoped<IPushNotifier, PushNotifier>();
 
 // Pushes "you forgot to check out" once a shift has been over for a while — the only reminder that
 // reaches someone who already left. Never auto-closes anything.

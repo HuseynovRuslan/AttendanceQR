@@ -3,6 +3,7 @@ using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -75,11 +76,13 @@ public class AdminAnnouncementsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IPushNotifier _notifier;
 
-    public AdminAnnouncementsController(AppDbContext db, AppOptions options)
+    public AdminAnnouncementsController(AppDbContext db, AppOptions options, IPushNotifier notifier)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        _notifier = notifier;
     }
 
     [HttpGet]
@@ -139,7 +142,47 @@ public class AdminAnnouncementsController : ControllerBase
 
         _db.Announcements.Add(announcement);
         await _db.SaveChangesAsync(ct);
-        return Ok(new { id = announcement.Id });
+
+        // Push it out straight away — an announcement nobody is told about is an announcement nobody
+        // reads. A scheduled one waits: the reminder job picks it up when it comes due.
+        var pushed = 0;
+        if (scheduledUtc is null)
+            pushed = await NotifyAudienceAsync(announcement, ct);
+
+        return Ok(new { id = announcement.Id, pushed });
+    }
+
+    /// <summary>Resolves an announcement's audience to employee ids and pushes to them. Mirrors the
+    /// employee-side filter in <see cref="AnnouncementsController"/> so both agree on who it's for.</summary>
+    private async Task<int> NotifyAudienceAsync(Announcement a, CancellationToken ct)
+    {
+        List<Guid> ids;
+        if (a.Audience == AnnouncementAudience.Selected)
+        {
+            ids = await _db.AnnouncementRecipients
+                .Where(r => r.AnnouncementId == a.Id).Select(r => r.EmployeeId).ToListAsync(ct);
+        }
+        else
+        {
+            var active = _db.Employees.Where(e => e.IsActive);
+            if (a.Audience is AnnouncementAudience.AtWork or AnnouncementAudience.NotAtWork)
+            {
+                // "At work" = checked in today. Records are keyed by the server UTC day (scan handler).
+                var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+                var inToday = _db.AttendanceRecords
+                    .Where(r => r.AttendanceDate == todayUtc && r.CheckInAtUtc != null)
+                    .Select(r => r.EmployeeId);
+                active = a.Audience == AnnouncementAudience.AtWork
+                    ? active.Where(e => inToday.Contains(e.Id))
+                    : active.Where(e => !inToday.Contains(e.Id));
+            }
+            ids = await active.Select(e => e.Id).ToListAsync(ct);
+        }
+
+        var title = string.IsNullOrWhiteSpace(a.Title) ? "Yeni elan" : a.Title!;
+        // The banner carries the full text; the notification just has to get them to open it.
+        var body = a.Message.Length > 160 ? a.Message[..157] + "…" : a.Message;
+        return await _notifier.NotifyEmployeesAsync(ids, title, body, "/home", ct);
     }
 
     // Retire (soft-delete) so it disappears for employees without vanishing from the admin's history.

@@ -11,6 +11,7 @@ import {
 import { getDeviceFingerprint } from '../lib/device'
 import { enqueueScan } from '../lib/offlineQueue'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
+import { PushGate } from '../components/PushGate'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
 import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
@@ -88,6 +89,9 @@ export function ScanPage() {
   // True while a scan result is on screen — keeps the today-status reload (which flips today.kind)
   // from re-running the camera effect and wiping the result message. Cleared when scanning restarts.
   const scanDoneRef = useRef(false)
+  // Notification gate, shown over the scanner on entry. PushGate decides for itself whether it has
+  // anything to ask and calls onDone immediately when it doesn't.
+  const [pushGate, setPushGate] = useState(true)
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
   const [result, setResult] = useState<Card | null>(null)
@@ -506,8 +510,10 @@ export function ScanPage() {
   }
 
   // Only while actually scanning — the QR frame must give way to the selfie preview, not sit behind it.
+  // Don't open the camera behind the notification gate — nothing should be filming while the employee
+  // is looking at a permission prompt.
   const showCamera =
-    today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
+    !pushGate && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
@@ -522,6 +528,16 @@ export function ScanPage() {
       </header>
 
       <main className="relative flex-1 flex flex-col items-center justify-center p-4 gap-5">
+        {/* Notifications are asked for here, before the scanner — the scan is the only moment an
+            employee opens the app, so it's the only moment this can be asked. An overlay rather than a
+            branch, so the page underneath is untouched; it steps aside by itself where push cannot work
+            (iOS Safari tab, previously refused) rather than blocking someone out of recording work. */}
+        {pushGate && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/95 p-4">
+            <PushGate onDone={() => setPushGate(false)} />
+          </div>
+        )}
+
         {verifying && today.kind !== 'completed' && <ScanChecklist checks={checks} />}
 
         <TodayBanner today={today} />

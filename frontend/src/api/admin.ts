@@ -419,6 +419,8 @@ export interface AdminEmployee {
   activated: boolean
   /** "Son aktivlik" — last time the employee opened the app (home/menu load). null = never opened. */
   lastActiveAtUtc: string | null
+  /** True when at least one device is subscribed to push — i.e. announcements actually reach them. */
+  pushEnabled?: boolean
   hasDevice: boolean
   deviceLabel: string | null
   boundAtUtc: string | null

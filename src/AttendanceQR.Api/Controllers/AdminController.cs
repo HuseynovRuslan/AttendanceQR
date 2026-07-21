@@ -58,6 +58,14 @@ public class AdminController : ControllerBase
             .GroupBy(m => m.EmployeeId)
             .ToDictionary(g => g.Key, g => g.Select(m => m.LocationId).ToList());
 
+        // Who can actually be reached by a push (announcement or reminder) — an employee with no
+        // subscription silently receives nothing, which the admin otherwise has no way to see.
+        var pushEmployeeIds = (await _db.PushSubscriptions
+                .Select(p => p.EmployeeId)
+                .Distinct()
+                .ToListAsync(HttpContext.RequestAborted))
+            .ToHashSet();
+
         var result = employees.Select(e =>
         {
             // An employee may hold several contexts (Safari, the installed PWA). The list still shows
@@ -90,6 +98,8 @@ public class AdminController : ControllerBase
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
                 lastActiveAtUtc = e.LastActiveAtUtc,
+                // Whether this employee will actually receive announcements/reminders on their phone.
+                pushEnabled = pushEmployeeIds.Contains(e.Id),
                 hasDevice = newest != null,
                 deviceLabel = newest?.DeviceLabel,
                 boundAtUtc = newest?.BoundAtUtc,
