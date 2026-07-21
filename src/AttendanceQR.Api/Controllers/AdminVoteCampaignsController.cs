@@ -2,6 +2,7 @@ using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,11 +20,13 @@ public class AdminVoteCampaignsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IVoteAnnouncer _announcer;
 
-    public AdminVoteCampaignsController(AppDbContext db, AppOptions options)
+    public AdminVoteCampaignsController(AppDbContext db, AppOptions options, IVoteAnnouncer announcer)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        _announcer = announcer;
     }
 
     private DateTime NowLocal() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone);
@@ -44,6 +47,9 @@ public class AdminVoteCampaignsController : ControllerBase
         isOpen = c.IsOpenAt(now),
         // Three distinct states the admin needs to tell apart at a glance.
         state = c.IsOpenAt(now) ? "open" : now < c.OpensAtLocal ? "scheduled" : "finished",
+        // Whether employees have been told. Without this the admin cannot tell a ballot that quietly
+        // opened from one whose notice went out.
+        notified = c.OpenedNotifiedAtUtc is not null,
     };
 
     /// <summary>The campaign for a month (null when none was created — that month has no ballot).</summary>
@@ -88,7 +94,12 @@ public class AdminVoteCampaignsController : ControllerBase
         _db.VoteCampaigns.Add(campaign);
         await _db.SaveChangesAsync(ct);
 
-        return Ok(new { period, campaign = Project(campaign, NowLocal(), 0) });
+        // A ballot created inside its own window is open the moment it is saved — announce it now
+        // rather than leaving the admin watching for a notice the next sweep would send minutes later.
+        var now = NowLocal();
+        await _announcer.AnnounceOpeningAsync(campaign, now, ct);
+
+        return Ok(new { period, campaign = Project(campaign, now, 0) });
     }
 
     [HttpPut("{id:guid}")]
@@ -116,6 +127,9 @@ public class AdminVoteCampaignsController : ControllerBase
         campaign.EndsAt = ParseTime(request.EndsAt) ?? new TimeOnly(23, 59);
         campaign.ExcludedPositions = Clean(request.ExcludedPositions);
         await _db.SaveChangesAsync(ct);
+
+        // Editing a scheduled ballot's dates can bring it into the present.
+        await _announcer.AnnounceOpeningAsync(campaign, NowLocal(), ct);
 
         var votes = await _db.MonthlyVoteBallots.CountAsync(b => b.Period == campaign.Period, ct);
         return Ok(new { period = campaign.Period, campaign = Project(campaign, NowLocal(), votes) });

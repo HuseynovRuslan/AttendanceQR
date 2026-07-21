@@ -141,7 +141,16 @@ export function VoteCampaignCard({
       setCampaign(data.campaign)
       onCampaign(data.campaign !== null)
       setEditing(false)
-      setMsg(campaign ? 'Dəyişikliklər yadda saxlanıldı' : 'Səsvermə yaradıldı')
+      // The admin creates a ballot and then watches their phone. Say plainly whether the notice has
+      // already gone out or when it will — silence here is what made it look broken.
+      const c = data.campaign
+      setMsg(
+        !c ? 'Yadda saxlanıldı'
+          : c.notified ? 'Səsvermə açıldı və bütün işçilərə bildiriş göndərildi ✓'
+          : c.state === 'scheduled'
+            ? `Səsvermə yaradıldı — bildiriş ${fmtAt(c.startsOn, c.startsAt)} tarixində avtomatik göndəriləcək`
+            : campaign ? 'Dəyişikliklər yadda saxlanıldı' : 'Səsvermə yaradıldı',
+      )
       onChanged()
     } else {
       const code = data && 'error' in data ? data.error : ''
@@ -205,6 +214,16 @@ export function VoteCampaignCard({
                   ? `${fmtAt(campaign.startsOn, campaign.startsAt)} tarixində açılacaq, ${fmtAt(campaign.endsOn, campaign.endsAt)} bağlanacaq. Açılanda işçilərə bildiriş gedəcək.`
                   : `${fmtAt(campaign.startsOn, campaign.startsAt)} – ${fmtAt(campaign.endsOn, campaign.endsAt)} · cəmi ${campaign.votesCast} səs`}
           </div>
+
+          {/* Whether employees actually heard about it — the ballot being "open" says nothing about
+              that, and an unannounced ballot collects almost no votes. */}
+          {campaign && campaign.state !== 'finished' && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              {campaign.notified
+                ? '✓ İşçilərə bildiriş göndərilib'
+                : `Bildiriş ${fmtAt(campaign.startsOn, campaign.startsAt)} tarixində göndəriləcək`}
+            </div>
+          )}
 
           {/* A rule that changes who appears on the ballot shouldn't live only behind an edit form. */}
           {campaign && campaign.excludedPositions?.length > 0 && (

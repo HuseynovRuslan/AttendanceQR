@@ -82,6 +82,8 @@ export interface VoteCampaign {
   isOpen: boolean
   /** scheduled = created but not started yet, open = running, finished = window has passed. */
   state: 'scheduled' | 'open' | 'finished'
+  /** True once the "voting is open" notice has gone out to employees. */
+  notified: boolean
 }
 
 export interface VoteCampaignResponse {

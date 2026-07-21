@@ -81,7 +81,13 @@ public sealed class MonthlyWinnerJob : BackgroundService
 
                 // A ballot nobody is told about gets a handful of votes. The notice goes out on the
                 // opening day only — OpenedNotifiedAtUtc makes it once per campaign, not once an hour.
-                await AnnounceOpeningAsync(db, notifier, nowLocal, thisPeriod, ct);
+                var thisCampaign = await db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == thisPeriod, ct);
+                if (thisCampaign is not null)
+                {
+                    var announcer = scope.ServiceProvider.GetRequiredService<IVoteAnnouncer>();
+                    if (await announcer.AnnounceOpeningAsync(thisCampaign, nowLocal, ct))
+                        _logger.LogInformation("MonthlyWinnerJob: announced ballot opening for {Period}", thisPeriod);
+                }
 
                 // Only months someone actually ran a ballot for get a winner. Stray tallies from a
                 // campaign that was later deleted must never surface as a company-wide announcement.
@@ -176,34 +182,6 @@ public sealed class MonthlyWinnerJob : BackgroundService
                 _logger.LogError(ex, "MonthlyWinnerJob: tenant {Tenant} failed", tenantId);
             }
         }
-    }
-
-    /// <summary>Tells everyone the ballot is open, the first time the sweep sees it open.</summary>
-    private async Task AnnounceOpeningAsync(
-        AppDbContext db, IPushNotifier notifier, DateTime nowLocal, DateOnly period, CancellationToken ct)
-    {
-        var campaign = await db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == period, ct);
-        if (campaign is null || campaign.OpenedNotifiedAtUtc is not null || !campaign.IsOpenAt(nowLocal))
-            return;
-
-        var monthName = AzMonth(period.Month);
-        var closesAt = campaign.ClosesAtLocal.ToString("dd.MM.yyyy HH:mm");
-        campaign.OpenedNotifiedAtUtc = DateTime.UtcNow;
-        db.Announcements.Add(new Announcement
-        {
-            Title = $"{monthName} ayının işçisi — səsvermə açıldı 🗳️",
-            Message = $"Öz filialınızdan bir nəfəri seçin. Səsiniz tam gizlidir — kimə səs verdiyinizi " +
-                      $"heç kim görmür.\n\nSon tarix: {closesAt}. Bir dəfə səs verilir.",
-            Audience = AnnouncementAudience.All,
-        });
-        await db.SaveChangesAsync(ct);
-
-        var everyone = await db.Employees.Where(e => e.IsActive).Select(e => e.Id).ToListAsync(ct);
-        await notifier.NotifyEmployeesAsync(
-            everyone, $"{monthName} ayının işçisi 🗳️",
-            $"Səsvermə açıqdır — {closesAt} tarixinə qədər səs verin.", "/vote", ct);
-
-        _logger.LogInformation("MonthlyWinnerJob: announced ballot opening for {Period}", period);
     }
 
     private static string AzMonth(int m) => m switch

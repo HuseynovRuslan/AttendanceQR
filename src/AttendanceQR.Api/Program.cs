@@ -135,6 +135,7 @@ builder.Services.AddSingleton(pushOptions);
 builder.Services.AddSingleton<IPushSender, WebPushSender>();
 // Scoped: fans a notification out over an employee's subscriptions (needs the DbContext).
 builder.Services.AddScoped<IPushNotifier, PushNotifier>();
+builder.Services.AddScoped<IVoteAnnouncer, VoteAnnouncer>();
 
 // Pushes "you forgot to check out" once a shift has been over for a while — the only reminder that
 // reaches someone who already left. Never auto-closes anything.
