@@ -26,10 +26,6 @@ export function InstallAppCard() {
   return (
     <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
       <div className="font-bold text-blue-900">Proqramı telefonun ekranına çıxarın</div>
-      <div className="mt-1 text-sm leading-relaxed text-blue-800">
-        Proqram telefonunuzda <b>WhatsApp kimi</b> öz şəkli ilə duracaq — bir toxunuşla açılacaq.
-        Bildirişlər düzgün gələcək və telefon sizdən təkrar şifrə soruşmayacaq.
-      </div>
       <button
         onClick={() => void install()}
         disabled={busy}

@@ -47,12 +47,6 @@ export function InstallHint() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-bold text-blue-900">Proqramı telefonun ekranına çıxarın</div>
-          <p className="mt-1 leading-relaxed text-blue-800">
-            Bundan sonra proqram telefonunuzda — <b>WhatsApp kimi</b> — öz şəkli ilə duracaq. Hər dəfə
-            internetdə axtarmayacaqsınız: şəklə bir dəfə toxunursunuz, proqram açılır.
-            <br />
-            Həm də telefon sizi yadda saxlayacaq — təkrar-təkrar şifrə soruşmayacaq.
-          </p>
           {/* One tap where the browser allows it (Chromium); iOS exposes no such API, so there the
               only honest option is showing exactly which two taps to make. */}
           {installable ? (
