@@ -5,6 +5,7 @@ import { getMyDeviceStatus, getMyProfile, type MyDeviceStatus, type MyProfile } 
 import { useAuth } from '../auth/AuthContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
+import { InstallAppCard } from '../components/InstallAppCard'
 import { IconChart, IconClock, IconLogout, IconPhone, IconUser } from '../components/icons'
 
 const APP_VERSION = '2.0.0'
@@ -42,6 +43,8 @@ export function MenuPage() {
       </div>
 
       <DeviceCard device={device} />
+
+      <InstallAppCard />
 
       <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
         {/* Staff who also run the panel (admin/manager) get a way back — mirror of the sidebar's
