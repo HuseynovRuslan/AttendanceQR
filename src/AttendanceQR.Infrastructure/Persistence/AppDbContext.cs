@@ -51,6 +51,8 @@ public class AppDbContext : DbContext
     public DbSet<MonthlyWinner> MonthlyWinners => Set<MonthlyWinner>();
     public DbSet<VoteCampaign> VoteCampaigns => Set<VoteCampaign>();
 
+    public DbSet<JobPosition> JobPositions => Set<JobPosition>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -67,7 +69,7 @@ public class AppDbContext : DbContext
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
-            typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign),
+            typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
         };
         foreach (var t in tenantScoped)
         {
@@ -117,6 +119,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MonthlyWinner>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<MonthlyWinner>()
             .HasIndex(w => new { w.TenantId, w.Period, w.LocationId }).IsUnique();
+        modelBuilder.Entity<JobPosition>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        // The whole point of the catalogue is that one job has one spelling.
+        modelBuilder.Entity<JobPosition>().HasIndex(p => new { p.TenantId, p.Name }).IsUnique();
         modelBuilder.Entity<VoteCampaign>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         // One ballot per month — creating a second for the same period is a mistake, not a feature.
         modelBuilder.Entity<VoteCampaign>().HasIndex(c => new { c.TenantId, c.Period }).IsUnique();

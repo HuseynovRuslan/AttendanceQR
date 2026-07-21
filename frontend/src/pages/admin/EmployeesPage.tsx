@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { PositionSelect } from '../../components/PositionSelect'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   deleteEmployee,
@@ -601,7 +602,7 @@ export function EmployeesPage() {
           <div className="form-row cols2">
             <div>
               <label className="form-label">Vəzifə</label>
-              <input className="inp" value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="məs. Bağban" />
+              <PositionSelect value={form.position} onChange={(v) => set('position', v)} />
             </div>
             <div>
               <label className="form-label">Doğum tarixi</label>

@@ -37,6 +37,7 @@ const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ 
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
+const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
 const LocationsPage = lazy(() => import('./pages/admin/LocationsPage').then(m => ({ default: m.LocationsPage })))
@@ -211,6 +212,14 @@ function AppRoutes() {
           element={
             <AdminOnly>
               <AnnouncementsPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="positions"
+          element={
+            <AdminOnly>
+              <PositionsPage />
             </AdminOnly>
           }
         />

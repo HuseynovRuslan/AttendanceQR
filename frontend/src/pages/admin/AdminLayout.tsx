@@ -37,6 +37,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
   '/admin/birthdays': { title: 'Doğum günləri', sub: 'Bu ay doğum günü olan işçilər' },
+  '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/vote': { title: 'Ayın işçisi', sub: 'Filial üzrə səsvermə nəticələri' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
   '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
@@ -104,6 +105,7 @@ export function AdminLayout() {
     ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
     ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
     ...(isAdmin ? [{ to: '/admin/bulk-invite', label: 'Toplu əlavə', Icon: IconUsers }] : []),
+    ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconClipboard }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
     // Across every company, not inside one — only the operator sees it.
     ...(isSuperAdmin ? [{ to: '/admin/tenants', label: 'Şirkətlər', Icon: IconUsers }] : []),

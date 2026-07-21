@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import {
   createVoteCampaign,
   deleteVoteCampaign,
-  getPositionsInUse,
   getVoteCampaign,
   resetVoteCampaignVotes,
   updateVoteCampaign,
   type VoteCampaign,
 } from '../../api/vote'
+import { getPositions } from '../../api/positions'
 import { IconCheck, IconX } from '../../components/icons'
 
 const fmt = (iso: string) => iso.split('-').reverse().join('.')
@@ -65,7 +65,7 @@ export function VoteCampaignCard({
   const [minCandidates, setMinCandidates] = useState(3)
   const [minVotes, setMinVotes] = useState(5)
   const [excluded, setExcluded] = useState<string[]>([])
-  const [positions, setPositions] = useState<{ position: string; count: number }[]>([])
+  const [positions, setPositions] = useState<{ name: string; count: number }[]>([])
 
   async function load() {
     setLoaded(false)
@@ -86,8 +86,8 @@ export function VoteCampaignCard({
   }, [period])
 
   useEffect(() => {
-    void getPositionsInUse().then(({ status, data }) => {
-      if (status === 200 && Array.isArray(data)) setPositions(data)
+    void getPositions().then(({ status, data }) => {
+      if (status === 200 && Array.isArray(data)) setPositions(data.map((p) => ({ name: p.name, count: p.count })))
     })
   }, [])
 
@@ -271,17 +271,17 @@ export function VoteCampaignCard({
                 <label className="form-label">Namizəd ola bilməyən vəzifələr</label>
                 <div className="chip-row" style={{ marginTop: 4 }}>
                   {positions.map((p) => {
-                    const on = excluded.includes(p.position)
+                    const on = excluded.includes(p.name)
                     return (
                       <span
-                        key={p.position}
+                        key={p.name}
                         className={`chip${on ? ' active' : ''}`}
                         onClick={() =>
                           setExcluded((prev) =>
-                            on ? prev.filter((x) => x !== p.position) : [...prev, p.position])
+                            on ? prev.filter((x) => x !== p.name) : [...prev, p.name])
                         }
                       >
-                        {p.position} · {p.count}
+                        {p.name} · {p.count}
                       </span>
                     )
                   })}

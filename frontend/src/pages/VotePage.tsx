@@ -53,7 +53,8 @@ export function VotePage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <SubPageHeader title="Ayın işçisi" />
-      <main className="mx-auto max-w-md p-4">
+      {/* Room for the sticky confirm bar so the last candidate is never hidden behind it. */}
+      <main className="mx-auto max-w-md p-4 pb-32">
         {!status ? (
           <div className="h-40" aria-busy="true" />
         ) : done || status.hasVoted ? (
@@ -126,9 +127,9 @@ export function VotePage() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-bold text-slate-900">{c.fullName}</span>
-                      <span className="block truncate text-sm text-slate-500">
-                        {c.position ? `${c.position} · ` : ''}bu ay {c.daysPresent} gün işləyib
-                      </span>
+                      {c.position && (
+                        <span className="block truncate text-sm text-slate-500">{c.position}</span>
+                      )}
                     </span>
                     <span
                       className={`h-5 w-5 shrink-0 rounded-full border-2 ${
@@ -142,14 +143,22 @@ export function VotePage() {
 
             {error && <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-            <button
-              onClick={() => void submit()}
-              disabled={!picked || busy}
-              className="mt-4 w-full rounded-2xl bg-blue-600 py-4 text-base font-bold text-white disabled:opacity-50"
-            >
-              {busy ? 'Göndərilir…' : 'Səs ver'}
-            </button>
-            <p className="mt-2 text-center text-xs text-slate-400">Səs verdikdən sonra dəyişmək olmur.</p>
+            {/* The confirm button follows the selection instead of waiting at the end of a 50-name
+                list — picking someone and then having to scroll to act on it loses votes. */}
+            {picked && (
+              <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 pb-5 pt-3 backdrop-blur">
+                <div className="mx-auto max-w-md">
+                  <button
+                    onClick={() => void submit()}
+                    disabled={busy}
+                    className="w-full rounded-2xl bg-blue-600 py-4 text-base font-bold text-white disabled:opacity-50"
+                  >
+                    {busy ? 'Göndərilir…' : `Səs ver — ${status.candidates.find((c) => c.employeeId === picked)?.fullName ?? ''}`}
+                  </button>
+                  <p className="mt-2 text-center text-xs text-slate-400">Səs verdikdən sonra dəyişmək olmur.</p>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

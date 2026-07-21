@@ -167,6 +167,7 @@ public class AdminController : ControllerBase
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         _db.Employees.Add(employee!);
+        await RegisterPositionsAsync();
         await _db.SaveChangesAsync();
 
         // No email/SMS channel yet — return the PLAINTEXT token so it can be shared by hand.
@@ -272,7 +273,10 @@ public class AdminController : ControllerBase
         }
 
         if (created.Count > 0)
+        {
+            await RegisterPositionsAsync();
             await _db.SaveChangesAsync();
+        }
 
         return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
     }
@@ -326,7 +330,10 @@ public class AdminController : ControllerBase
         }
 
         if (created.Count > 0)
+        {
+            await RegisterPositionsAsync();
             await _db.SaveChangesAsync();
+        }
 
         return Ok(new { createdCount = created.Count, failedCount = failed.Count, created, failed });
     }
@@ -656,6 +663,7 @@ public class AdminController : ControllerBase
         employee.PhoneNumber = phone;
         employee.FatherName = request.FatherName;
         employee.Position = request.Position;
+        await RegisterPositionsAsync();
         employee.BirthDate = request.BirthDate;
         // Full date wins; keep the year in sync from it so the fallback display agrees.
         employee.BirthYear = request.BirthDate?.Year ?? request.BirthYear;
@@ -711,6 +719,34 @@ public class AdminController : ControllerBase
     }
 
     // "HH:mm" (or empty) → TimeOnly?; empty/unparseable clears the per-employee override.
+    /// <summary>
+    /// Adds any title the catalogue is missing. Bulk import and the API accept a position as text, and
+    /// a title that exists on an employee but not in the list is exactly how the duplicates started —
+    /// the next person types it again, slightly differently, because nothing offered it to them.
+    /// </summary>
+    private async Task RegisterPositionsAsync()
+    {
+        // Read from the change tracker rather than each call site: every path that sets a position —
+        // single invite, bulk invite, bulk import, edit — is covered without being remembered.
+        var names = _db.ChangeTracker.Entries<Employee>()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified)
+            .Select(e => e.Entity.Position)
+            .ToList()
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!.Trim())
+            .Distinct()
+            .ToList();
+        if (names.Count == 0) return;
+
+        var known = await _db.JobPositions
+            .Where(p => names.Contains(p.Name))
+            .Select(p => p.Name)
+            .ToListAsync(HttpContext.RequestAborted);
+
+        foreach (var name in names.Except(known))
+            _db.JobPositions.Add(new JobPosition { Name = name });
+    }
+
     private static TimeOnly? ParseTimeOrNull(string? value)
         => TimeOnly.TryParse(value, out var t) ? t : null;
 

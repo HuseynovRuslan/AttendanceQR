@@ -18,8 +18,8 @@ namespace AttendanceQR.Api.Controllers;
 ///    otherwise win every time.
 ///  • Everyone at the branch votes, managers included (the owner's call). Candidates stay employees —
 ///    it is the employee of the month, not the boss of the month.
-///  • Candidates are shown WITH their attendance figures, so it's a judgement about work rather than
-///    a pure popularity contest.
+///  • Candidates are shown as names only. Attendance figures used to sit under each name; they turned
+///    the ballot into a scoreboard and made the choice look pre-decided, so the owner removed them.
 ///  • Truly anonymous: the ballot row and the tally row are separate, so no row anywhere links a
 ///    voter to a candidate (see MonthlyVoteBallot).
 /// </summary>
@@ -70,17 +70,6 @@ public class VoteController : ControllerBase
         var hasVoted = await _db.MonthlyVoteBallots
             .AnyAsync(b => b.Period == period && b.VoterEmployeeId == employeeId, ct);
 
-        // This month's attendance behind each candidate, so the choice rests on something.
-        var from = period;
-        var ids = colleagues.Select(c => c.Id).ToList();
-        var records = await _db.AttendanceRecords
-            .Where(r => ids.Contains(r.EmployeeId) && r.AttendanceDate >= from && r.CheckInAtUtc != null)
-            .Select(r => new { r.EmployeeId, r.AttendanceDate })
-            .ToListAsync(ct);
-        var daysByEmployee = records
-            .GroupBy(r => r.EmployeeId)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.AttendanceDate).Distinct().Count());
-
         var locationName = await _db.Locations
             .Where(l => l.Id == me.LocationId).Select(l => l.Name).FirstOrDefaultAsync(ct);
 
@@ -101,7 +90,6 @@ public class VoteController : ControllerBase
                 employeeId = c.Id,
                 fullName = c.FullName,
                 position = c.Position,
-                daysPresent = daysByEmployee.GetValueOrDefault(c.Id, 0),
             }),
         });
     }
