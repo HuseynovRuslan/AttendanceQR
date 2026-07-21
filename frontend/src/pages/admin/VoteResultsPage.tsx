@@ -66,10 +66,14 @@ export function VoteResultsPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div className="card-title" style={{ marginBottom: 4 }}>{label} — səsvermə</div>
+            {/* "Bağlıdır" meant two different things — "hasn't opened yet" for this month and
+                "finished" for a past one — and read as if the feature were switched off. */}
             <div className="muted" style={{ fontSize: 13 }}>
               {data?.open
                 ? `Səsvermə davam edir · indiyə qədər ${data.votesCast} səs verilib`
-                : `Səsvermə bağlıdır · cəmi ${data?.votesCast ?? 0} səs`}
+                : offset === 0
+                  ? `Səsvermə hələ açılmayıb (tarixlər yuxarıda) · indiyədək ${data?.votesCast ?? 0} səs`
+                  : `Səsvermə bitib · cəmi ${data?.votesCast ?? 0} səs`}
             </div>
           </div>
           {/* The way out of a trial run: without it, test votes sit in the real month and a handful
