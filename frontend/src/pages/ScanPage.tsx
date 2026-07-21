@@ -98,7 +98,10 @@ export function ScanPage() {
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // The visible pre-scan verification (device → location → camera). An overlay while it runs.
-  const [verifying, setVerifying] = useState(true)
+  // Starts false: runChecks turns it on the moment the checks really begin. It used to start true, so
+  // any wait before that (today's status loading, the notification gate) showed a checklist with three
+  // dead rows and no progress — which reads as a frozen app.
+  const [verifying, setVerifying] = useState(false)
   const [checks, setChecks] = useState<ScanChecks>({ device: 'idle', location: 'idle', camera: 'idle' })
   // Set when the geofence pre-check finds the employee outside their workplace radius — surfaced
   // before scanning (with a "scan anyway" escape, since the QR's own location is the final word).
@@ -260,7 +263,18 @@ export function ScanPage() {
 
   async function loadTodayStatus() {
     try {
-      const { status, data } = await getMyAttendance()
+      // Bounded: a request that never settles used to leave `today` on 'loading' forever, and the
+      // whole scan flow waits on that — the screen simply never moved. Falling back to 'none' lets the
+      // checks (and the camera) start; the server is the authority on check-in vs check-out anyway.
+      const res = await Promise.race([
+        getMyAttendance(),
+        delay(8000).then(() => null),
+      ])
+      if (!res) {
+        setToday({ kind: 'none' })
+        return
+      }
+      const { status, data } = res
       if (status !== 200 || !Array.isArray(data)) {
         setToday({ kind: 'none' })
         return
