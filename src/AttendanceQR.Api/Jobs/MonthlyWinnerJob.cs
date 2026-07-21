@@ -9,12 +9,16 @@ using Microsoft.EntityFrameworkCore;
 namespace AttendanceQR.Api.Jobs;
 
 /// <summary>
-/// Closes the "Ayın işçisi" ballot: once a month is over, decides each branch's winner, records it,
-/// and announces the result to everyone (in-app banner + push).
+/// Closes the "Ayın işçisi" ballot: once a campaign's window has passed, decides each branch's winner,
+/// records it, congratulates the winners personally and announces the result to everyone.
+///
+/// Keyed on the campaign closing, not on the month rolling over. A ballot that ends at 18:00 on the
+/// 31st used to wait until the 1st for its result — and one that ran mid-month waited a fortnight.
+/// The moment people vote is the moment they want to know.
 ///
 /// Idempotent by construction — the winner row's unique (period, location) index means a second pass
-/// simply loses the insert, so an hourly sweep can never announce twice. That is also why this is a
-/// sweep rather than a precisely-timed job: if the server is down at midnight on the 1st, the result
+/// simply loses the insert, so a repeated sweep can never announce twice. That is also why this is a
+/// sweep rather than a precisely-timed job: if the server is down when a ballot closes, the result
 /// is still published as soon as it comes back.
 ///
 /// Ties break on attendance: with equal votes the one who actually turned up more days wins.
@@ -89,99 +93,119 @@ public sealed class MonthlyWinnerJob : BackgroundService
                         _logger.LogInformation("MonthlyWinnerJob: announced ballot opening for {Period}", thisPeriod);
                 }
 
-                // Only months someone actually ran a ballot for get a winner. Stray tallies from a
-                // campaign that was later deleted must never surface as a company-wide announcement.
-                var campaign = await db.VoteCampaigns.FirstOrDefaultAsync(c => c.Period == lastPeriod, ct);
-                if (campaign is null) continue;
-
-                var tallies = await db.MonthlyVoteTallies.Where(t => t.Period == lastPeriod).ToListAsync(ct);
-                if (tallies.Count == 0) continue;
-
-                var alreadyDecided = await db.MonthlyWinners
-                    .Where(w => w.Period == lastPeriod).Select(w => w.LocationId).ToListAsync(ct);
-                var pending = tallies
-                    .GroupBy(t => t.LocationId)
-                    .Where(g => !alreadyDecided.Contains(g.Key))
-                    // Too few votes to mean anything — announcing a winner chosen by a handful of
-                    // people devalues the award, so that branch simply gets no winner this month.
-                    .Where(g => g.Sum(t => t.Votes) >= campaign.MinVotesToDecide)
-                    .ToList();
-                if (pending.Count == 0) continue;
-
-                // Tie-break data: days actually worked in the month being decided.
-                var candidateIds = tallies.Select(t => t.CandidateEmployeeId).Distinct().ToList();
-                var monthEnd = lastPeriod.AddMonths(1);
-                var attended = (await db.AttendanceRecords
-                        .Where(r => candidateIds.Contains(r.EmployeeId) && r.AttendanceDate >= lastPeriod
-                                    && r.AttendanceDate < monthEnd && r.CheckInAtUtc != null)
-                        .Select(r => new { r.EmployeeId, r.AttendanceDate })
+                // Every ballot whose window has passed. Two periods is enough: a closed campaign is
+                // decided within one sweep, and looking further back would only re-scan settled months.
+                var closed = (await db.VoteCampaigns
+                        .Where(c => c.Period == thisPeriod || c.Period == lastPeriod)
                         .ToListAsync(ct))
-                    .GroupBy(x => x.EmployeeId)
-                    .ToDictionary(g => g.Key, g => g.Select(x => x.AttendanceDate).Distinct().Count());
+                    .Where(c => nowLocal > c.ClosesAtLocal);
 
-                var names = await db.Employees
-                    .Where(e => candidateIds.Contains(e.Id))
-                    .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
-                var locations = await db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
-
-                var decided = new List<(string Location, string Name, int Votes)>();
-                foreach (var group in pending)
-                {
-                    var best = group
-                        .OrderByDescending(t => t.Votes)
-                        .ThenByDescending(t => attended.GetValueOrDefault(t.CandidateEmployeeId, 0))
-                        .First();
-
-                    db.MonthlyWinners.Add(new MonthlyWinner
-                    {
-                        Period = lastPeriod,
-                        LocationId = group.Key,
-                        EmployeeId = best.CandidateEmployeeId,
-                        Votes = best.Votes,
-                    });
-                    decided.Add((
-                        locations.GetValueOrDefault(group.Key, ""),
-                        names.GetValueOrDefault(best.CandidateEmployeeId, "—"),
-                        best.Votes));
-                }
-
-                try
-                {
-                    await db.SaveChangesAsync(ct);
-                }
-                catch (DbUpdateException)
-                {
-                    // Another instance decided it first — nothing to announce.
-                    continue;
-                }
-
-                // Announce: the same channel employees already watch (home banner + notifications tab),
-                // and a push so it actually reaches them.
-                var monthName = AzMonth(lastPeriod.Month);
-                var lines = decided.Select(d => $"{d.Location}: {d.Name}").ToList();
-                var message = $"{monthName} ayının işçiləri seçildi 🏆\n" + string.Join("\n", lines) +
-                              "\n\nSəs verən hər kəsə təşəkkür edirik!";
-
-                db.Announcements.Add(new Announcement
-                {
-                    Title = $"{monthName} ayının işçisi",
-                    Message = message,
-                    Audience = AnnouncementAudience.All,
-                });
-                await db.SaveChangesAsync(ct);
-
-                var everyone = await db.Employees.Where(e => e.IsActive).Select(e => e.Id).ToListAsync(ct);
-                await notifier.NotifyEmployeesAsync(
-                    everyone, $"{monthName} ayının işçisi 🏆", string.Join(" · ", lines), "/home", ct);
-
-                _logger.LogInformation(
-                    "MonthlyWinnerJob: tenant {Tenant} decided {Count} winners for {Period}", tenantId, decided.Count, lastPeriod);
+                foreach (var closedCampaign in closed)
+                    await DecideAsync(db, notifier, closedCampaign, tenantId, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "MonthlyWinnerJob: tenant {Tenant} failed", tenantId);
             }
         }
+    }
+
+    /// <summary>Decides and announces one campaign's winners. Does nothing once they are settled.</summary>
+    private async Task DecideAsync(
+        AppDbContext db, IPushNotifier notifier, VoteCampaign campaign, Guid tenantId, CancellationToken ct)
+    {
+        var period = campaign.Period;
+        var tallies = await db.MonthlyVoteTallies.Where(t => t.Period == period).ToListAsync(ct);
+        if (tallies.Count == 0) return;
+
+        var alreadyDecided = await db.MonthlyWinners
+            .Where(w => w.Period == period).Select(w => w.LocationId).ToListAsync(ct);
+        var pending = tallies
+            .GroupBy(t => t.LocationId)
+            .Where(g => !alreadyDecided.Contains(g.Key))
+            // Too few votes to mean anything — announcing a winner chosen by a handful of people
+            // devalues the award, so that branch simply gets no winner this month.
+            .Where(g => g.Sum(t => t.Votes) >= campaign.MinVotesToDecide)
+            .ToList();
+        if (pending.Count == 0) return;
+
+        // Tie-break data: days actually worked in the month being decided.
+        var candidateIds = tallies.Select(t => t.CandidateEmployeeId).Distinct().ToList();
+        var monthEnd = period.AddMonths(1);
+        var attended = (await db.AttendanceRecords
+                .Where(r => candidateIds.Contains(r.EmployeeId) && r.AttendanceDate >= period
+                            && r.AttendanceDate < monthEnd && r.CheckInAtUtc != null)
+                .Select(r => new { r.EmployeeId, r.AttendanceDate })
+                .ToListAsync(ct))
+            .GroupBy(x => x.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.AttendanceDate).Distinct().Count());
+
+        var names = await db.Employees
+            .Where(e => candidateIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var locations = await db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+
+        var decided = new List<(Guid EmployeeId, string Location, string Name, int Votes)>();
+        foreach (var group in pending)
+        {
+            var best = group
+                .OrderByDescending(t => t.Votes)
+                .ThenByDescending(t => attended.GetValueOrDefault(t.CandidateEmployeeId, 0))
+                .First();
+
+            db.MonthlyWinners.Add(new MonthlyWinner
+            {
+                Period = period,
+                LocationId = group.Key,
+                EmployeeId = best.CandidateEmployeeId,
+                Votes = best.Votes,
+            });
+            decided.Add((
+                best.CandidateEmployeeId,
+                locations.GetValueOrDefault(group.Key, ""),
+                names.GetValueOrDefault(best.CandidateEmployeeId, "—"),
+                best.Votes));
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Another instance decided it first — nothing to announce.
+            return;
+        }
+
+        var monthName = AzMonth(period.Month);
+        var lines = decided.Select(d => $"{d.Location}: {d.Name}").ToList();
+
+        // Announce: the same channel employees already watch (home banner + notifications tab), and a
+        // push so it actually reaches them.
+        db.Announcements.Add(new Announcement
+        {
+            Title = $"{monthName} ayının işçisi 🏆",
+            Message = $"{monthName} ayının işçiləri seçildi 🏆\n" + string.Join("\n", lines) +
+                      "\n\nSəs verən hər kəsə təşəkkür edirik!",
+            Audience = AnnouncementAudience.All,
+        });
+        await db.SaveChangesAsync(ct);
+
+        var everyone = await db.Employees.Where(e => e.IsActive).Select(e => e.Id).ToListAsync(ct);
+        await notifier.NotifyEmployeesAsync(
+            everyone, $"{monthName} ayının işçisi 🏆", string.Join(" · ", lines), "/home", ct);
+
+        // And a word to each winner personally. Reading your own name in a company-wide list is not
+        // the same as being congratulated, and this award is worth nothing if it doesn't feel personal.
+        foreach (var winner in decided)
+            await notifier.NotifyEmployeesAsync(
+                new[] { winner.EmployeeId },
+                "Təbrik edirik! 🏆",
+                $"{monthName} ayının işçisi seçildiniz. Komandanız sizə {winner.Votes} səs verdi.",
+                "/home", ct);
+
+        _logger.LogInformation(
+            "MonthlyWinnerJob: tenant {Tenant} decided {Count} winners for {Period}", tenantId, decided.Count, period);
     }
 
     private static string AzMonth(int m) => m switch

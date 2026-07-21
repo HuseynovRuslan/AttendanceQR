@@ -4,6 +4,7 @@ import { getMyAttendance, getMyProfile, type AttendanceRecord, type MyProfile } 
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
+import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { firstName, initials, todayState, type TodayState } from '../lib/att'
@@ -45,6 +46,7 @@ export function HomePage() {
     <div className="flex flex-col gap-4">
       <InstallHint />
       <AnnouncementBanner />
+      <AwardCard />
       <div className="flex items-center gap-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-blue-700">
           {initials(profile?.fullName)}
