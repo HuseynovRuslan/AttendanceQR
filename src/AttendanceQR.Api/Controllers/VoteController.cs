@@ -3,6 +3,7 @@ using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,19 +28,15 @@ namespace AttendanceQR.Api.Controllers;
 [Route("api/vote")]
 public class VoteController : ControllerBase
 {
-    /// <summary>Voting opens this many days before the month ends.</summary>
-    private const int OpenDaysBeforeEnd = 3;
-    /// <summary>Below this many eligible colleagues a "secret" ballot isn't secret — who voted for
-    /// whom is guessable — so the branch simply doesn't hold one.</summary>
-    private const int MinCandidates = 3;
-
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
+    private readonly VoteOptions _vote;
 
-    public VoteController(AppDbContext db, AppOptions options)
+    public VoteController(AppDbContext db, AppOptions options, VoteOptions vote)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        _vote = vote;
     }
 
     private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
@@ -49,7 +46,7 @@ public class VoteController : ControllerBase
     {
         var lastDay = DateTime.DaysInMonth(today.Year, today.Month);
         var closesOn = new DateOnly(today.Year, today.Month, lastDay);
-        var opensOn = closesOn.AddDays(-(OpenDaysBeforeEnd - 1));
+        var opensOn = closesOn.AddDays(-(_vote.OpenDaysBeforeEnd - 1));
         return (today >= opensOn, opensOn, closesOn);
     }
 
@@ -97,8 +94,8 @@ public class VoteController : ControllerBase
             closesOn,
             hasVoted,
             // Everyone at the branch votes, managers included.
-            canVote = colleagues.Count >= MinCandidates,
-            tooFewColleagues = colleagues.Count < MinCandidates,
+            canVote = colleagues.Count >= _vote.MinCandidates,
+            tooFewColleagues = colleagues.Count < _vote.MinCandidates,
             locationName,
             period,
             candidates = colleagues.Select(c => new

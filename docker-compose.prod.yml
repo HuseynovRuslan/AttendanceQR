@@ -54,6 +54,9 @@ services:
       Push__PublicKey: ${Push__PublicKey:-}
       Push__PrivateKey: ${Push__PrivateKey:-}
       Push__Subject: ${Push__Subject:-mailto:admin@qrlog.az}
+      # "Ayın işçisi" ballot window (days before month end) — widened temporarily for a trial.
+      Vote__OpenDaysBeforeEnd: ${Vote__OpenDaysBeforeEnd:-3}
+      Vote__MinCandidates: ${Vote__MinCandidates:-3}
       DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
       DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
       DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}

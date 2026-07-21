@@ -126,6 +126,9 @@ builder.Services.AddHostedService<FaceMatchWorker>();
 // Web Push (VAPID). Empty keys = push is off: the sender no-ops and the reminder job stays idle, so
 // the app runs unchanged without it. Registered as a plain singleton for the same reason as the
 // options above — Infrastructure takes them without an IOptions dependency.
+var voteOptions = builder.Configuration.GetSection(VoteOptions.SectionName).Get<VoteOptions>() ?? new VoteOptions();
+builder.Services.AddSingleton(voteOptions);
+
 var pushOptions = builder.Configuration.GetSection(PushOptions.SectionName).Get<PushOptions>() ?? new PushOptions();
 builder.Services.AddSingleton(pushOptions);
 builder.Services.AddSingleton<IPushSender, WebPushSender>();
