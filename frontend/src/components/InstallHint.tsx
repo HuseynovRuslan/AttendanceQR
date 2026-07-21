@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { isStandalone } from '../lib/device'
+import { canInstall, onInstallAvailability, promptInstall } from '../lib/installPrompt'
 
 const DISMISS_KEY = 'attendanceqr.installHintDismissed'
 
@@ -13,6 +14,12 @@ export function InstallHint() {
   const [hidden, setHidden] = useState(
     () => isStandalone() || localStorage.getItem(DISMISS_KEY) === '1',
   )
+  // Chromium can install in one tap; availability arrives asynchronously, so track it.
+  const [installable, setInstallable] = useState(canInstall)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => onInstallAvailability(setInstallable), [])
+
   if (hidden) return null
 
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -20,6 +27,14 @@ export function InstallHint() {
   const dismiss = () => {
     localStorage.setItem(DISMISS_KEY, '1')
     setHidden(true)
+  }
+
+  async function install() {
+    setBusy(true)
+    const accepted = await promptInstall()
+    setBusy(false)
+    // Accepted → the app is installed and this banner has nothing left to say.
+    if (accepted) setHidden(true)
   }
 
   return (
@@ -36,17 +51,29 @@ export function InstallHint() {
             Belə etməsəniz, telefon vaxtaşırı sizi «yeni cihaz» kimi tanıya bilər və yenidən icazə
             lazım olar. Ana ekrandan açanda bu problem olmur.
           </p>
-          <p className="mt-2 text-[13px] text-blue-700">
-            {ios ? (
-              <>
-                <b>Safari</b>-də aşağıdakı <b>Paylaş</b> düyməsi → <b>«Ana ekrana əlavə et»</b>.
-              </>
-            ) : (
-              <>
-                Brauzer menyusu (⋮) → <b>«Ana ekrana əlavə et»</b> / <b>«Tətbiqi quraşdır»</b>.
-              </>
-            )}
-          </p>
+          {/* One tap where the browser allows it (Chromium); iOS exposes no such API, so there the
+              only honest option is showing exactly which two taps to make. */}
+          {installable ? (
+            <button
+              onClick={() => void install()}
+              disabled={busy}
+              className="mt-3 w-full rounded-xl bg-blue-600 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {busy ? 'Quraşdırılır…' : 'Tətbiqi quraşdır'}
+            </button>
+          ) : (
+            <p className="mt-2 text-[13px] text-blue-700">
+              {ios ? (
+                <>
+                  <b>Safari</b>-də aşağıdakı <b>Paylaş</b> düyməsi → <b>«Ana ekrana əlavə et»</b>.
+                </>
+              ) : (
+                <>
+                  Brauzer menyusu (⋮) → <b>«Ana ekrana əlavə et»</b> / <b>«Tətbiqi quraşdır»</b>.
+                </>
+              )}
+            </p>
+          )}
           <button onClick={dismiss} className="mt-3 text-[13px] font-semibold text-blue-600 underline underline-offset-2">
             Anladım, gizlət
           </button>

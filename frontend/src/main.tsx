@@ -6,6 +6,9 @@ import { AuthProvider } from './auth/AuthContext'
 import { BrandingProvider } from './branding/BrandingContext'
 import { initDevice } from './lib/device'
 import { registerServiceWorker } from './lib/registerSW'
+// Side-effect import: registers the beforeinstallprompt listener BEFORE React renders. The event
+// fires early and is never replayed, so a listener added later would miss it entirely.
+import './lib/installPrompt'
 import './index.css'
 import './theme.css'
 
