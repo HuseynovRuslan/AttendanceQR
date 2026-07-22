@@ -95,6 +95,9 @@ public class AttendanceController : ControllerBase
                 position = e.Position,
                 // For the home-screen birthday greeting; the client compares day/month to today.
                 birthDate = e.BirthDate,
+                // The scan screen skips the selfie entirely for an exempted employee — showing a
+                // camera it will then discard would just teach them the step is optional.
+                photoRequired = !e.PhotoExempt,
                 locationName = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.Name)
@@ -105,7 +108,29 @@ public class AttendanceController : ControllerBase
         if (profile is null)
             return NotFound(new { error = "NotFound" });
 
-        return Ok(profile);
+        // Check-ins this month whose photo showed no face. Told to the employee themselves, not only
+        // to an auditor: people correct a habit they can see a count of, long before anyone has to
+        // raise it with them.
+        var monthStart = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1 - DateTime.UtcNow.Day);
+        var unverified = await _db.AttendanceRecords
+            .CountAsync(r => r.EmployeeId == employeeId && r.AttendanceDate >= monthStart
+                             && r.FaceMatchStatus == FaceMatchStatus.NoFace, HttpContext.RequestAborted);
+
+        // Whether the LAST check-in was one of them — the scan screen warns before the camera opens,
+        // which is the only moment the warning can still change what they do.
+        var lastWasUnverified = await _db.AttendanceRecords
+            .Where(r => r.EmployeeId == employeeId && r.CheckInAtUtc != null)
+            .OrderByDescending(r => r.AttendanceDate)
+            .Select(r => r.FaceMatchStatus)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted) == FaceMatchStatus.NoFace;
+
+        return Ok(new
+        {
+            profile.fullName, profile.email, profile.role, profile.position, profile.birthDate,
+            profile.photoRequired, profile.locationName,
+            unverifiedCheckIns = unverified,
+            lastCheckInUnverified = lastWasUnverified,
+        });
     }
 
     // POST /api/attendance/me/reference-photo — the caller sets their OWN reference selfie (the

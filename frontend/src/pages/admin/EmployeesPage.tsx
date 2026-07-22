@@ -86,6 +86,7 @@ type FormState = {
   workEnd: string
   /** Fixed monthly salary in AZN for the payroll report; blank = not set. Kept as a string while typing. */
   monthlySalary: string
+  photoExempt: boolean
   /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
    *  they clock in. Empty on a manager means an empty panel. */
   managedLocationIds: string[]
@@ -105,6 +106,7 @@ const EMPTY: FormState = {
   workStart: '',
   workEnd: '',
   monthlySalary: '',
+  photoExempt: false,
   managedLocationIds: [],
 }
 
@@ -199,6 +201,7 @@ export function EmployeesPage() {
       workStart: e.workStart ?? '',
       workEnd: e.workEnd ?? '',
       monthlySalary: e.monthlySalary != null ? String(e.monthlySalary) : '',
+      photoExempt: e.photoExempt === true,
       managedLocationIds: e.managedLocationIds ?? [],
     })
     setError(null)
@@ -233,6 +236,7 @@ export function EmployeesPage() {
       birthYear: form.birthYear ? Number(form.birthYear) : null,
       birthDate: form.birthDate || null,
       monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
+      photoExempt: form.photoExempt,
       // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
       workStart: form.workStart || null,
       workEnd: form.workEnd || null,
@@ -749,6 +753,24 @@ export function EmployeesPage() {
           <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
             Maaş hesabatı üçün. Boş buraxsanız işçi maaş cədvəlinə düşmür.
           </p>
+
+          {/* Someone who refuses to be photographed will point the camera at the ceiling instead —
+              which reads as a verified check-in and quietly teaches everyone else the same trick.
+              An exemption granted here keeps the refusal on the record and the audit meaningful. */}
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '10px 0 4px' }}>
+            <input
+              type="checkbox"
+              checked={form.photoExempt}
+              onChange={(e) => set('photoExempt', e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>Giriş şəkli tələb olunmasın</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
+                Bu işçidə skan zamanı kamera açılmır. Lokasiya və cihaz yoxlaması qüvvədə qalır.
+              </span>
+            </span>
+          </label>
 
           <div className="form-row cols2">
             <div>

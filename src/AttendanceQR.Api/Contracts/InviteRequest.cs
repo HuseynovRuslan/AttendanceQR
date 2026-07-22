@@ -48,4 +48,7 @@ public record EmployeeUpdateRequest(
     string? WorkEnd = null,
     // Fixed monthly salary in AZN for the payroll report; null = not set.
     decimal? MonthlySalary = null,
+    // Waives the check-in selfie for this employee. Defaults to false, so — like every field here —
+    // a caller that omits it turns it OFF. Every updateEmployee caller must send it.
+    bool PhotoExempt = false,
     IReadOnlyList<Guid>? ManagedLocationIds = null);

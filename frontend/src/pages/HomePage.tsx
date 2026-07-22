@@ -47,6 +47,19 @@ export function HomePage() {
       <InstallHint />
       <AnnouncementBanner />
       <AwardCard />
+
+      {/* Their own count, not just an auditor's list. Someone who can see the number climbing fixes
+          the habit themselves, well before it has to become a conversation with a manager. */}
+      {(profile?.unverifiedCheckIns ?? 0) > 0 && (
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+          <div className="font-bold text-amber-900">
+            ⚠️ Bu ay {profile?.unverifiedCheckIns} girişinizin şəkli təsdiqlənməyib
+          </div>
+          <p className="mt-1 text-sm text-amber-800">
+            Giriş şəklində üzünüz görünmür. Növbəti dəfə telefonu üzünüzə tutub çəkin.
+          </p>
+        </div>
+      )}
       <div className="flex items-center gap-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-blue-700">
           {initials(profile?.fullName)}

@@ -121,6 +121,7 @@ export function EmployeeProfilePage() {
       // Re-send these too, or this partial update would blank them (the request defaults them to null).
       birthDate: emp.birthDate ?? null,
       monthlySalary: emp.monthlySalary ?? null,
+      photoExempt: emp.photoExempt === true,
       workStart: emp.workStart ?? null,
       workEnd: emp.workEnd ?? null,
       isActive: !emp.isActive,

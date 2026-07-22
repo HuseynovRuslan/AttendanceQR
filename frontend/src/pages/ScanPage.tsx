@@ -18,6 +18,8 @@ import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
+import { checkForFace } from '../lib/faceCheck'
+import { getMyProfile, type MyProfile } from '../api/attendance'
 import { fmtTime } from '../lib/format'
 
 type Card = {
@@ -40,7 +42,7 @@ type Card = {
   /** Offer to switch the checkout reminder on right here (check-in only). */
   offerPush?: boolean
 }
-type Phase = 'scanning' | 'intro' | 'photo' | 'processing' | 'done'
+type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'processing' | 'done'
 
 // The employee reads what is about to happen before the front camera opens. Auto-advances so a
 // hesitant person cannot block the queue by never tapping "Hazıram".
@@ -111,6 +113,11 @@ export function ScanPage() {
   // True once the front camera is actually producing frames, so the preview says "look at the
   // camera" rather than showing a black circle while it warms up.
   const [photoLive, setPhotoLive] = useState(false)
+  // Set when the phone found no face in the selfie. The check-in still goes through — this only
+  // offers a retake, because a camera that refuses to record attendance costs someone a day's pay.
+  const [profile, setProfile] = useState<MyProfile | null>(null)
+  const [noFacePhoto, setNoFacePhoto] = useState<string | null>(null)
+  const recheckChoiceRef = useRef<((retake: boolean) => void) | null>(null)
   const photoProgress = useCaptureProgress(photoLive, PHOTO_HOLD_MS)
   const secondsLeft = Math.max(1, Math.ceil(((1 - photoProgress) * PHOTO_HOLD_MS) / 1000))
 
@@ -132,6 +139,11 @@ export function ScanPage() {
   // day is already complete (the backend would just reject with AlreadyCompleted anyway).
   useEffect(() => {
     void loadTodayStatus()
+    // Photo settings: whether this employee is exempt, and whether their last check-in showed no
+    // face. Best-effort — a failure here must not delay or block the scan, so nothing awaits it.
+    void getMyProfile().then((r) => {
+      if (r.status === 200 && r.data && 'fullName' in r.data) setProfile(r.data)
+    })
   }, [])
 
   // Decide the gate as soon as today's status is known: ask only before a check-IN, and only when the
@@ -422,13 +434,29 @@ export function ScanPage() {
     }
   }
 
+  /** Shows the retake prompt and resolves with what they chose. Never rejects — either answer
+   *  continues the check-in. */
+  function askForRetake(photo: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      setNoFacePhoto(photo)
+      setPhase('recheck')
+      recheckChoiceRef.current = (retake) => {
+        recheckChoiceRef.current = null
+        setNoFacePhoto(null)
+        resolve(retake)
+      }
+    })
+  }
+
   async function onDecoded(text: string) {
     if (busyRef.current) return
     busyRef.current = true
     // Release the QR (back) camera FIRST — iOS Safari won't open the front camera while another is
     // active. Then show feedback and grab the selfie (check-in only; check-out never captures one).
     await stopCamera()
-    const willPhotograph = today.kind === 'none'
+    // An exempted employee never sees the camera: opening one and then throwing the frame away
+    // would only teach everyone watching that the step is skippable.
+    const willPhotograph = today.kind === 'none' && profile?.photoRequired !== false
     if (willPhotograph) {
       setPhase('intro')
       await waitForIntro()
@@ -436,7 +464,20 @@ export function ScanPage() {
     } else {
       setPhase('processing')
     }
-    const photoBase64 = willPhotograph ? await captureSelfie() : null
+    let photoBase64 = willPhotograph ? await captureSelfie() : null
+
+    // Ask on the spot, while they are still standing there with the phone in their hand. Finding out
+    // a week later in an audit changes nobody's habit — they don't remember the day, and by then the
+    // photo is one of forty. Capped at one retake: a second prompt reads as nagging, and anyone
+    // pointing the camera away on purpose has already got the message.
+    if (photoBase64 && (await checkForFace(photoBase64)) === 'noface') {
+      const retake = await askForRetake(photoBase64)
+      if (retake) {
+        setPhase('photo')
+        photoBase64 = (await captureSelfie()) ?? photoBase64
+      }
+    }
+
     setPhase('processing')
     await submitScan(text, photoBase64)
     setPhase('done')
@@ -583,7 +624,11 @@ export function ScanPage() {
         )}
 
         {phase === 'intro' && (
-          <PhotoIntro secondsLeft={introSecondsLeft} onReady={() => introSkipRef.current?.()} />
+          <PhotoIntro
+            secondsLeft={introSecondsLeft}
+            onReady={() => introSkipRef.current?.()}
+            lastUnverified={profile?.lastCheckInUnverified === true}
+          />
         )}
 
         {today.kind !== 'completed' && geo.kind === 'failed' && (
@@ -663,6 +708,34 @@ export function ScanPage() {
             <p className="text-lg font-semibold">Kamera hazırlanır…</p>
           )}
         </div>
+
+        {phase === 'recheck' && noFacePhoto && (
+          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+            <img
+              src={noFacePhoto}
+              alt=""
+              className="h-40 w-40 rounded-2xl object-cover opacity-70"
+            />
+            <p className="text-xl font-bold text-amber-400">⚠️ Üzünüz görünmür</p>
+            <p className="text-center text-base text-slate-300">
+              Şəkildə üz aşkarlanmadı. Kameranı üzünüzə tutub yenidən çəkin.
+            </p>
+            <button
+              onClick={() => recheckChoiceRef.current?.(true)}
+              className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
+            >
+              Yenidən çək
+            </button>
+            {/* Deliberately small and plain, never removed: a dark shift, a cracked lens or a face
+                the detector simply misses must not stop someone recording that they came to work. */}
+            <button
+              onClick={() => recheckChoiceRef.current?.(false)}
+              className="text-sm text-slate-400 underline underline-offset-4"
+            >
+              Yenə də göndər
+            </button>
+          </div>
+        )}
 
         {phase === 'processing' && (
           <p className="text-lg animate-pulse">Yoxlanılır…</p>

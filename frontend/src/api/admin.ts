@@ -394,6 +394,9 @@ export interface InvitePayload {
   workEnd?: string | null
   // Fixed monthly salary in AZN for the payroll report; null/omitted → not set.
   monthlySalary?: number | null
+  // Waives the check-in selfie. Defaults to FALSE server-side, so every caller must send it or the
+  // exemption is silently switched off by an unrelated edit.
+  photoExempt?: boolean
 }
 
 export interface AdminEmployee {
@@ -407,6 +410,8 @@ export interface AdminEmployee {
   workStart?: string | null
   workEnd?: string | null
   monthlySalary?: number | null
+  /** True when an admin has waived the check-in selfie for this employee. */
+  photoExempt?: boolean
   email: string
   phoneNumber: string | null
   role: Role

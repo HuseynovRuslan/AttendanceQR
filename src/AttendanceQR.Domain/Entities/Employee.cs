@@ -89,6 +89,17 @@ public class Employee : ITenantScoped
     // throttled (~15 min) on the profile endpoint. Null = has never opened the app.
     public DateTime? LastActiveAtUtc { get; set; }
 
+    /// <summary>
+    /// Skips the check-in selfie for this employee, by an admin's decision.
+    ///
+    /// Someone who genuinely objects to being photographed will not comply — they will point the
+    /// camera at the ceiling, and that is worse than an exemption: the record looks verified, the
+    /// audit fills with junk, and colleagues learn that opting out silently works. An explicit
+    /// exemption keeps the refusal visible and deliberate, and leaves the audit meaningful for
+    /// everyone else. Location and device binding still apply — only the photo is waived.
+    /// </summary>
+    public bool PhotoExempt { get; set; }
+
     // One binding per browser storage context (Safari, the installed PWA, a spare phone). Empty
     // until the employee activates. Capped and least-recently-used-evicted — see DeviceBindingRules.
     public ICollection<DeviceBinding> DeviceBindings { get; set; } = new List<DeviceBinding>();

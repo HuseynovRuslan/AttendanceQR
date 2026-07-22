@@ -51,12 +51,30 @@ function Example({ good }: { good: boolean }) {
   )
 }
 
-export function PhotoIntro({ secondsLeft, onReady }: { secondsLeft: number; onReady: () => void }) {
+export function PhotoIntro({
+  secondsLeft,
+  onReady,
+  lastUnverified = false,
+}: {
+  secondsLeft: number
+  onReady: () => void
+  /** Their previous check-in photo showed no face. */
+  lastUnverified?: boolean
+}) {
   return (
     <div className="w-full max-w-sm rounded-2xl bg-slate-800 p-5 text-center shadow-lg">
       <div className="text-4xl">📷</div>
       <h2 className="mt-2 text-xl font-bold text-white">İndi şəkil çəkiləcək</h2>
       <p className="mt-1 text-sm text-slate-300">Giriş qeydiyyatı üçün ön kamera açılacaq.</p>
+
+      {/* The one moment a warning can still change what they do — after the fact it is an argument
+          about a day nobody remembers. Shown on every phone, including those whose browser cannot
+          check the photo itself: the server flagged the last one, so this always reaches them. */}
+      {lastUnverified && (
+        <p className="mt-3 rounded-xl bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-300">
+          ⚠️ Son girişinizin şəklində üz görünmürdü. Bu dəfə üzünüz aydın görünsün.
+        </p>
+      )}
 
       <div className="mt-4 flex items-start justify-center gap-6">
         <Example good />

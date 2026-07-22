@@ -65,6 +65,12 @@ export interface MyProfile {
   locationName: string | null
   /** Full date of birth "yyyy-MM-dd" (null if unset) — for the home-screen birthday greeting. */
   birthDate?: string | null
+  /** False when an admin has waived the check-in selfie for this employee. */
+  photoRequired?: boolean
+  /** Check-ins this month whose photo showed no face — shown to the employee themselves. */
+  unverifiedCheckIns?: number
+  /** Whether the most recent check-in was one of them; the scan screen warns before the camera opens. */
+  lastCheckInUnverified?: boolean
 }
 
 /** GET /api/attendance/me/profile — the caller's own name/location for the home greeting + menu. */

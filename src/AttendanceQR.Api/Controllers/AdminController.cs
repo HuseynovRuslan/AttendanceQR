@@ -83,6 +83,7 @@ public class AdminController : ControllerBase
                 workStart = e.WorkStart?.ToString("HH:mm"),
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
                 monthlySalary = e.MonthlySalary,
+                photoExempt = e.PhotoExempt,
                 email = e.Email,
                 role = e.Role.ToString(),
                 phoneNumber = e.PhoneNumber,
@@ -663,6 +664,7 @@ public class AdminController : ControllerBase
         employee.PhoneNumber = phone;
         employee.FatherName = request.FatherName;
         employee.Position = request.Position;
+        employee.PhotoExempt = request.PhotoExempt;
         await RegisterPositionsAsync();
         employee.BirthDate = request.BirthDate;
         // Full date wins; keep the year in sync from it so the fallback display agrees.
