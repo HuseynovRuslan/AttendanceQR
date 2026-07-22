@@ -9,7 +9,10 @@ set -euo pipefail
 
 APP_DIR=/opt/attendanceqr
 LOG="$APP_DIR/backups/watchdog.log"
-HEALTH_URL=${HEALTH_URL:-http://127.0.0.1:8080/health}
+# The public URL rather than the container: the backend port is not published to the host, and
+# checking end-to-end also covers Caddy and the certificate, which are just as capable of taking the
+# service down as the API itself.
+HEALTH_URL=${HEALTH_URL:-https://api.qrlog.az/health}
 
 exec >>"$LOG" 2>&1
 
