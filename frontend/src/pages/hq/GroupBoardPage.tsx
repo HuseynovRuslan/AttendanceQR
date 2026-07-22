@@ -185,11 +185,15 @@ export function GroupBoardPage() {
       <div className="hq-inner">
         <header className="hq-head hq-reveal hq-d1">
           <div className="hq-brand">
-            <div className="hq-mark">Q</div>
+            {/* The real lockup, on a white plate: the mark is dark navy and would vanish into a dark
+                board. With the brand carrying the name, the title beside it no longer has to shout —
+                it states what the screen is and hands the emphasis back to the logo. */}
+            <img className="hq-logo" src="/brand/qrlog-logo.png" alt="QRLog" />
+            <span className="hq-rule" aria-hidden="true" />
             <div>
-              <div className="hq-title">Qrup İdarəetmə Paneli</div>
+              <div className="hq-title">Qrup idarəetmə paneli</div>
               <div className="hq-sub">
-                QRLog · {totals.companies} şirkət · {totals.locations} ərazi
+                {totals.companies} şirkət · {totals.locations} ərazi · {fmt.format(totals.employees)} işçi
               </div>
             </div>
           </div>
