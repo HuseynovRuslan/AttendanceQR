@@ -545,7 +545,10 @@ app.UseAuthorization();
 //
 // It touches the database, because a process that is running while Postgres is unreachable answers
 // every real request with an error and would otherwise look healthy.
-app.MapGet("/health", async (AppDbContext db, CancellationToken ct) =>
+// GET and HEAD both: HEAD is what uptime checkers send by default (it is the cheapest possible
+// probe — no body), and MapGet alone answers it with 405, which a monitor correctly reports as an
+// outage. Fixing it in one monitor's settings would leave the next one to rediscover this.
+app.MapMethods("/health", new[] { "GET", "HEAD" }, async (AppDbContext db, CancellationToken ct) =>
 {
     try
     {
