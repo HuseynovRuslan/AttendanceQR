@@ -52,3 +52,39 @@ It will then tell you the API is down before a customer does — which is the en
 
 The dumps are taken with `--clean --if-exists`, so this replaces the current contents. Stop the
 backend first unless you intend it to be writing during the restore.
+
+---
+
+# Staging — test.qrlog.az
+
+Same code, its own database, on the same machine. Production and staging share nothing but the
+Docker network Caddy uses to reach them.
+
+Until this existed, every change went straight to the system 114 people use to record that they came
+to work. That held only because nothing had gone wrong yet.
+
+## Deploying to staging
+
+    cd /opt/attendanceqr
+    git pull
+    docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+
+Then open https://test.qrlog.az and check the change. Log in with the seeded admin from
+`.env.staging` (`TenantSeed__AdminPhone` / `TenantSeed__AdminPin`).
+
+## Then production
+
+    docker compose -f docker-compose.prod.yml up -d --build backend frontend
+
+## What staging deliberately cannot do
+
+Photo upload, face matching and push notifications are switched off — the app no-ops each rather
+than failing. Staging must never send a notification to a real employee, write into the real photo
+bucket, or spend money on a face API. If a change touches those paths, that part is verified in
+production during a quiet hour, with the change already proven everywhere else.
+
+## Release rule
+
+Never deploy to production between **07:30–09:30** or **17:00–19:00**. Those are the scan peaks: a
+mistake there means people cannot record that they came to work, and the record is what they are
+paid on.

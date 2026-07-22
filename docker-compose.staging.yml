@@ -1,0 +1,96 @@
+# Staging: the same code, its own database, reachable at test.qrlog.az.
+#
+# Every change went straight to the machine 114 people use to record that they came to work. That
+# held only because nothing had gone wrong yet — a mistake in the scan path at 08:00 means nobody
+# clocks in, and no amount of care makes a first deploy of a change safe. This is where a release
+# gets to be wrong.
+#
+#   cd /opt/attendanceqr
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+#
+# It joins production's network so the existing Caddy can route to it, and touches nothing else:
+# separate containers, separate volume, separate secrets, separate database.
+#
+# Every external integration is deliberately OFF (see .env.staging.example). Staging must never send
+# a push to a real employee, upload to the real photo bucket, or spend money on face matching.
+
+name: qrlog-staging
+
+services:
+  stg-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - stgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  stg-backend:
+    container_name: qrlog-stg-backend
+    build:
+      context: .
+      dockerfile: src/AttendanceQR.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=stg-db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey}
+      QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret}
+      Cors__AllowedOrigins: ${Cors__AllowedOrigins}
+      App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # Left empty on purpose — the app no-ops each of these rather than failing, and staging has no
+      # business touching the real photo bucket, the real push subscriptions or a paid face API.
+      Storage__Minio__Endpoint: ""
+      Storage__Minio__AccessKey: ""
+      Storage__Minio__SecretKey: ""
+      Rekognition__AccessKey: ""
+      Rekognition__SecretKey: ""
+      Push__PublicKey: ""
+      Push__PrivateKey: ""
+      DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
+      DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
+      DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}
+      # Bootstraps the one tenant staging needs, so test.qrlog.az resolves to a company on first run.
+      TenantSeed__Slug: ${TenantSeed__Slug:-}
+      TenantSeed__Name: ${TenantSeed__Name:-}
+      TenantSeed__AdminPhone: ${TenantSeed__AdminPhone:-}
+      TenantSeed__AdminPin: ${TenantSeed__AdminPin:-}
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      stg-db:
+        condition: service_healthy
+    networks:
+      - default
+      - edge
+
+  stg-frontend:
+    container_name: qrlog-stg-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - stg-backend
+    networks:
+      - default
+      - edge
+
+networks:
+  default:
+  # Production's own network, joined rather than recreated: Caddy already sits on it, so it can reach
+  # these containers by name without production's compose file being touched at all.
+  edge:
+    external: true
+    name: attendanceqr_default
+
+volumes:
+  stgdata:
