@@ -117,6 +117,7 @@ export function ScanPage() {
   // offers a retake, because a camera that refuses to record attendance costs someone a day's pay.
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [noFacePhoto, setNoFacePhoto] = useState<string | null>(null)
+  const [recheckMode, setRecheckMode] = useState<'ask' | 'final'>('ask')
   const recheckChoiceRef = useRef<((retake: boolean) => void) | null>(null)
   const photoProgress = useCaptureProgress(photoLive, PHOTO_HOLD_MS)
   const secondsLeft = Math.max(1, Math.ceil(((1 - photoProgress) * PHOTO_HOLD_MS) / 1000))
@@ -435,10 +436,12 @@ export function ScanPage() {
   }
 
   /** Shows the retake prompt and resolves with what they chose. Never rejects — either answer
-   *  continues the check-in. */
-  function askForRetake(photo: string): Promise<boolean> {
+   *  continues the check-in. In 'final' mode there is nothing left to choose: it states what will be
+   *  recorded and waits for an acknowledgement. */
+  function askForRetake(photo: string, mode: 'ask' | 'final'): Promise<boolean> {
     return new Promise((resolve) => {
       setNoFacePhoto(photo)
+      setRecheckMode(mode)
       setPhase('recheck')
       recheckChoiceRef.current = (retake) => {
         recheckChoiceRef.current = null
@@ -475,10 +478,15 @@ export function ScanPage() {
     if (photoBase64) setPhase('processing')
 
     if (photoBase64 && (await checkForFace(photoBase64)) === 'noface') {
-      const retake = await askForRetake(photoBase64)
-      if (retake) {
+      if (await askForRetake(photoBase64, 'ask')) {
         setPhase('photo')
         photoBase64 = (await captureSelfie()) ?? photoBase64
+        setPhase('processing')
+        // The retake is checked too. A second faceless photo is a deliberate one, and letting it
+        // through in silence reads as the system giving up — which is how this spread in the first
+        // place. No third prompt: they are told what was recorded, and the check-in proceeds.
+        if ((await checkForFace(photoBase64)) === 'noface')
+          await askForRetake(photoBase64, 'final')
       }
     }
 
@@ -720,24 +728,44 @@ export function ScanPage() {
               alt=""
               className="h-40 w-40 rounded-2xl object-cover opacity-70"
             />
-            <p className="text-xl font-bold text-amber-400">⚠️ Üzünüz görünmür</p>
-            <p className="text-center text-base text-slate-300">
-              Şəkildə üz aşkarlanmadı. Kameranı üzünüzə tutub yenidən çəkin.
-            </p>
-            <button
-              onClick={() => recheckChoiceRef.current?.(true)}
-              className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
-            >
-              Yenidən çək
-            </button>
-            {/* Deliberately small and plain, never removed: a dark shift, a cracked lens or a face
-                the detector simply misses must not stop someone recording that they came to work. */}
-            <button
-              onClick={() => recheckChoiceRef.current?.(false)}
-              className="text-sm text-slate-400 underline underline-offset-4"
-            >
-              Yenə də göndər
-            </button>
+            {recheckMode === 'ask' ? (
+              <>
+                <p className="text-xl font-bold text-amber-400">⚠️ Üzünüz görünmür</p>
+                <p className="text-center text-base text-slate-300">
+                  Şəkildə üz aşkarlanmadı. Kameranı üzünüzə tutub yenidən çəkin.
+                </p>
+                <button
+                  onClick={() => recheckChoiceRef.current?.(true)}
+                  className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
+                >
+                  Yenidən çək
+                </button>
+                {/* Deliberately small and plain, never removed: a dark shift, a cracked lens or a
+                    face the detector simply misses must not stop someone recording that they came
+                    to work. */}
+                <button
+                  onClick={() => recheckChoiceRef.current?.(false)}
+                  className="text-sm text-slate-400 underline underline-offset-4"
+                >
+                  Yenə də göndər
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-bold text-amber-400">Şəkil təsdiqlənmədi</p>
+                <p className="text-center text-base text-slate-300">
+                  Şəkildə yenə üz görünmür. Girişiniz qeydə alınacaq, lakin{' '}
+                  <b className="text-amber-300">təsdiqlənməmiş</b> sayılacaq və rəhbərinizin
+                  siyahısında görünəcək.
+                </p>
+                <button
+                  onClick={() => recheckChoiceRef.current?.(false)}
+                  className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
+                >
+                  Başa düşdüm
+                </button>
+              </>
+            )}
           </div>
         )}
 
