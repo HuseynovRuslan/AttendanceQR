@@ -470,6 +470,10 @@ export function ScanPage() {
     // a week later in an audit changes nobody's habit — they don't remember the day, and by then the
     // photo is one of forty. Capped at one retake: a second prompt reads as nagging, and anyone
     // pointing the camera away on purpose has already got the message.
+    // The check can take a second or two over a weak connection; leaving the capture screen up would
+    // read as "the camera is still working" while nothing is happening.
+    if (photoBase64) setPhase('processing')
+
     if (photoBase64 && (await checkForFace(photoBase64)) === 'noface') {
       const retake = await askForRetake(photoBase64)
       if (retake) {

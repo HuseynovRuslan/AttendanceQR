@@ -21,6 +21,30 @@ public sealed class RekognitionFaceMatchService : IFaceMatchService
 
     public bool Enabled => !string.IsNullOrWhiteSpace(_options.AccessKey) && !string.IsNullOrWhiteSpace(_options.SecretKey);
 
+    public async Task<int> DetectFaceCountAsync(byte[] photoBytes, CancellationToken ct = default)
+    {
+        if (!Enabled) return -1;
+
+        try
+        {
+            using var stream = new MemoryStream(photoBytes, writable: false);
+            var resp = await _reko.DetectFacesAsync(new DetectFacesRequest
+            {
+                Image = new Image { Bytes = stream },
+                // Default attributes only: the count is all this call is for, and asking for the rest
+                // costs more and takes longer while someone waits at the scanner.
+                Attributes = new List<string> { "DEFAULT" },
+            }, ct);
+            return resp.FaceDetails?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            // Unknown, not zero — a network blip must never accuse someone of hiding their face.
+            _logger.LogWarning(ex, "Face match: DetectFaces failed");
+            return -1;
+        }
+    }
+
     public async Task<FaceMatchOutcome> CompareAsync(byte[] referenceBytes, byte[] checkInBytes, CancellationToken ct = default)
     {
         if (!Enabled)

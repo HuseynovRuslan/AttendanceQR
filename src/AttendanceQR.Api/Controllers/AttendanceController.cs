@@ -34,6 +34,7 @@ public class AttendanceController : ControllerBase
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
     private readonly IFaceMatchQueue _faceQueue;
+    private readonly IFaceMatchService _faceMatch;
     private readonly DeviceBindingOptions _deviceOptions;
     private readonly TimeZoneInfo _timeZone;
     private readonly ILogger<AttendanceController> _logger;
@@ -44,6 +45,7 @@ public class AttendanceController : ControllerBase
         IAttendanceQueryService attendanceQuery,
         IPhotoStorageService photoStorage,
         IFaceMatchQueue faceQueue,
+        IFaceMatchService faceMatch,
         DeviceBindingOptions deviceOptions,
         AppOptions appOptions,
         ILogger<AttendanceController> logger)
@@ -53,6 +55,7 @@ public class AttendanceController : ControllerBase
         _attendanceQuery = attendanceQuery;
         _photoStorage = photoStorage;
         _faceQueue = faceQueue;
+        _faceMatch = faceMatch;
         _deviceOptions = deviceOptions;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
         _logger = logger;
@@ -154,6 +157,27 @@ public class AttendanceController : ControllerBase
         employee.ReferencePhotoTakenAtUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });
+    }
+
+    // POST /api/attendance/me/photo-check — "is there a face in this photo?", asked from the scan
+    // screen BEFORE the check-in is submitted.
+    //
+    // This lives on the server because the browsers people actually use cannot answer it: Chrome's
+    // FaceDetector is behind an experimental flag and Safari has nothing at all, so an on-device
+    // check is silent on every real phone. Rekognition already runs here for the audit; this is the
+    // same detection asked a few seconds earlier, when the employee can still retake the photo.
+    //
+    // Deliberately advisory: it records nothing, decides nothing, and answers -1 whenever it cannot
+    // tell. The check-in that follows is submitted either way.
+    [HttpPost("me/photo-check")]
+    public async Task<IActionResult> PhotoCheck([FromBody] ReferencePhotoRequest request)
+    {
+        var bytes = DecodeImage(request.PhotoBase64);
+        if (bytes.Length is <= 0 or > 2 * 1024 * 1024)
+            return Ok(new { faces = -1 });
+
+        var faces = await _faceMatch.DetectFaceCountAsync(bytes, HttpContext.RequestAborted);
+        return Ok(new { faces });
     }
 
     // GET /api/attendance/me/device?fingerprint=… — is the browser asking bound to the caller's own

@@ -14,4 +14,15 @@ public interface IFaceMatchService
     bool Enabled { get; }
 
     Task<FaceMatchOutcome> CompareAsync(byte[] referenceBytes, byte[] checkInBytes, CancellationToken ct = default);
+
+    /// <summary>
+    /// How many faces are in one photo — no reference needed, no comparison, just "is anybody there".
+    ///
+    /// Separate from CompareAsync because it answers a question that must be answered WHILE the
+    /// employee is still on the scan screen: comparing needs their reference photo fetched from
+    /// storage and costs more, and the retake prompt only cares whether a face is present at all.
+    /// Returns -1 when the answer is unknown (feature off, service error) — callers must treat that
+    /// as "don't warn" rather than as zero.
+    /// </summary>
+    Task<int> DetectFaceCountAsync(byte[] photoBytes, CancellationToken ct = default);
 }
