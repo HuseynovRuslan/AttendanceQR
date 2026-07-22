@@ -204,12 +204,29 @@
 
 @media (prefers-reduced-motion: reduce) { .hq-reveal { animation: none; } }
 
-/* Permanent site labels. Lighter than the hover tooltip they share a class with — six of these are
-   on screen at once, and they must read as annotation rather than compete with the markers. */
-.hq-tip-label.leaflet-tooltip {
-  background: rgba(10, 15, 28, 0.72); padding: 3px 8px; font-size: 11px; font-weight: 700;
-  box-shadow: none; white-space: nowrap;
+
+/* Map beside its own legend. The names came off the map because labels drawn on it collided into a
+   pile the moment two sites sat near each other — in a city, most of them. */
+.hq-mapwrap { display: grid; grid-template-columns: 1fr 210px; gap: 14px; }
+@media (max-width: 780px) { .hq-mapwrap { grid-template-columns: 1fr; } }
+
+.hq-sitelist {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
+  max-height: clamp(300px, 42vh, 460px); overflow-y: auto;
 }
-.hq-tip-label .hq-tip-n {
-  font-family: 'IBM Plex Mono', monospace; color: var(--live); margin-left: 5px;
+.hq-site {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  padding: 9px 10px; border-radius: 10px; border: 1px solid transparent;
+  transition: background .16s, border-color .16s;
 }
+.hq-site:hover { background: rgba(255, 255, 255, 0.05); }
+.hq-site.is-focused { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.18); }
+/* A site with nobody on it stays listed but recedes, the same way its marker does. */
+.hq-site.is-idle { opacity: 0.45; }
+.hq-site i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.hq-site-name {
+  flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hq-site-n { font-size: 13px; font-weight: 800; color: var(--live); flex-shrink: 0; }
+.hq-site.is-idle .hq-site-n { color: var(--fg-faint); }
