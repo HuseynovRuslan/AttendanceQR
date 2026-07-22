@@ -117,6 +117,7 @@
 
 /* --- map ---------------------------------------------------------------- */
 .hq-map {
+  position: relative;
   height: clamp(300px, 42vh, 460px); border-radius: 16px; overflow: hidden;
   border: 1px solid var(--line); background: #0B1020;
 }
@@ -137,4 +138,26 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hq-marker-live, .hq-live i, .hq-feed-row.is-new { animation: none; }
+}
+
+/* Zoom controls, drawn to match the board. Leaflet's own are a white box, which on a dark panel
+   reads as a rendering fault rather than a control. */
+.hq-map-ctl {
+  position: absolute; top: 12px; right: 12px; z-index: 500;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.hq-map-ctl button {
+  width: 34px; height: 34px; border-radius: 9px; cursor: pointer;
+  background: rgba(10, 15, 28, 0.86); border: 1px solid var(--line); color: var(--fg);
+  font-family: 'Manrope', sans-serif; font-size: 17px; font-weight: 700; line-height: 1;
+  backdrop-filter: blur(3px); transition: background .18s, border-color .18s;
+}
+.hq-map-ctl button:hover { background: rgba(28, 38, 60, 0.95); border-color: rgba(255, 255, 255, 0.24); }
+.hq-map-ctl .hq-map-ctl-wide { width: auto; padding: 0 11px; font-size: 12px; font-weight: 800; }
+
+/* Says why the wheel does nothing yet, and disappears the moment it does something. */
+.hq-map-hint {
+  position: absolute; left: 12px; bottom: 12px; z-index: 500; pointer-events: none;
+  background: rgba(10, 15, 28, 0.82); border: 1px solid var(--line); border-radius: 999px;
+  padding: 6px 13px; font-size: 11px; color: var(--fg-dim); backdrop-filter: blur(3px);
 }

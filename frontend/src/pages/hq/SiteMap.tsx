@@ -1,21 +1,24 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import type { Map as LeafletMap } from 'leaflet'
 import type { GroupSite } from '../../api/hq'
 
 /** Fits the view to every site once the list arrives, so the board never opens on the wrong city or
  *  zoomed into a car park. Re-fits only when the set of sites changes, not on every refresh — the
  *  map jumping every twenty seconds while someone is looking at it would be worse than useless. */
-function FitToSites({ sites }: { sites: GroupSite[] }) {
+function FitToSites({ sites, onFit }: { sites: GroupSite[]; onFit: (fit: () => void) => void }) {
   const map = useMap()
   const key = sites.map((s) => s.id).join(',')
 
   useEffect(() => {
     if (sites.length === 0) return
-    if (sites.length === 1) {
-      map.setView([sites[0].lat, sites[0].lng], 13)
-      return
+    const fit = () => {
+      if (sites.length === 1) map.setView([sites[0].lat, sites[0].lng], 13)
+      else map.fitBounds(sites.map((s) => [s.lat, s.lng] as [number, number]), { padding: [42, 42] })
     }
-    map.fitBounds(sites.map((s) => [s.lat, s.lng] as [number, number]), { padding: [42, 42] })
+    fit()
+    // Hand the same fit back up so the reset button returns to exactly the opening view.
+    onFit(fit)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
@@ -33,6 +36,13 @@ function FitToSites({ sites }: { sites: GroupSite[] }) {
  * through the middle of it.
  */
 export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i: number) => string }) {
+  const [map, setMap] = useState<LeafletMap | null>(null)
+  const [fitFn, setFitFn] = useState<{ run: () => void } | null>(null)
+  // The wheel is claimed only after a deliberate click on the map. Enabling it on hover would mean
+  // scrolling past the board zooms the map instead of moving the page — the kind of thing that
+  // happens exactly once, in front of the person you are demonstrating to.
+  const [wheelArmed, setWheelArmed] = useState(false)
+
   const centre = useMemo<[number, number]>(() => {
     if (sites.length === 0) return [40.4093, 49.8671] // Baku, until the first site loads
     const lat = sites.reduce((s, x) => s + x.lat, 0) / sites.length
@@ -45,9 +55,16 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
   const busiest = Math.max(1, ...sites.map((s) => s.onDuty))
   const radiusOf = (onDuty: number) => 7 + Math.sqrt(onDuty / busiest) * 15
 
+  function armWheel() {
+    if (!map || wheelArmed) return
+    map.scrollWheelZoom.enable()
+    setWheelArmed(true)
+  }
+
   return (
-    <div className="hq-map">
+    <div className="hq-map" onClick={armWheel}>
       <MapContainer
+        ref={setMap}
         center={centre}
         zoom={11}
         scrollWheelZoom={false}
@@ -56,7 +73,7 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
         style={{ height: '100%', width: '100%', background: '#0B1020' }}
       >
         <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
-        <FitToSites sites={sites} />
+        <FitToSites sites={sites} onFit={(run) => setFitFn({ run })} />
         {sites.map((s) => {
           const colour = accentOf(s.companyIndex < 0 ? 0 : s.companyIndex)
           const live = s.onDuty > 0
@@ -85,6 +102,24 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
           )
         })}
       </MapContainer>
+
+      {/* Our own controls rather than Leaflet's: its default chrome is a white box, which on a dark
+          board looks like something broke. */}
+      <div className="hq-map-ctl">
+        <button type="button" aria-label="Yaxınlaşdır" onClick={() => map?.zoomIn()}>+</button>
+        <button type="button" aria-label="Uzaqlaşdır" onClick={() => map?.zoomOut()}>−</button>
+        <button
+          type="button"
+          className="hq-map-ctl-wide"
+          onClick={() => fitFn?.run()}
+        >
+          Hamısı
+        </button>
+      </div>
+
+      {!wheelArmed && sites.length > 0 && (
+        <div className="hq-map-hint">Yaxınlaşdırmaq üçün xəritəyə klikləyin</div>
+      )}
     </div>
   )
 }
