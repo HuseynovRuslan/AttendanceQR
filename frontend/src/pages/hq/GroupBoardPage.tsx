@@ -138,6 +138,24 @@ export function GroupBoardPage() {
 
   const accentOf = (i: number) => ACCENTS[i % ACCENTS.length]
 
+  const hero = totals.onDuty > 0
+    ? {
+        label: 'İndi iş başında',
+        value: onDuty,
+        note: `Bu gün ${fmt.format(totals.present)} nəfər işə gəlib · davamiyyət ${totals.attendancePct}%`,
+      }
+    : totals.present > 0
+      ? {
+          label: 'Bu gün işə gəldi',
+          value: present,
+          note: `İş günü tamamlanıb · davamiyyət ${totals.attendancePct}%`,
+        }
+      : {
+          label: 'Sistemdə qeydiyyatda',
+          value: employees,
+          note: `${totals.companies} şirkət · ${totals.locations} ərazi · bu gün hələ skan olmayıb`,
+        }
+
   return (
     <div className="hq">
       <div className="hq-inner">
@@ -159,17 +177,18 @@ export function GroupBoardPage() {
           </div>
         </header>
 
-        {/* The one number worth putting on a wall: how many people are at work right now. Everything
-            else on this screen is context for it. */}
+        {/* The one number worth putting on a wall. Which number that IS depends on the hour: after
+            the last shift ends "İndi iş başında" is honestly zero, and a board whose headline figure
+            is a huge 0 reads as broken to anyone who doesn't know the shift pattern — which is
+            exactly who this screen gets shown to. It falls back to the largest true statement
+            available instead. */}
         <section className="hq-hero">
           <div>
-            <div className="hq-hero-label">İndi iş başında</div>
+            <div className="hq-hero-label">{hero.label}</div>
             <div className="hq-hero-value hq-num">
-              {fmt.format(onDuty)}<span className="hq-hero-unit">nəfər</span>
+              {fmt.format(hero.value)}<span className="hq-hero-unit">nəfər</span>
             </div>
-            <div className="hq-hero-note">
-              Bu gün {fmt.format(present)} nəfər işə gəlib · davamiyyət {totals.attendancePct}%
-            </div>
+            <div className="hq-hero-note">{hero.note}</div>
           </div>
           <div className="hq-stats">
             <div className="hq-stat">
