@@ -538,6 +538,27 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
+// GET /health — is this instance actually able to serve? Deliberately outside /api so the
+// fail-closed tenant check never sees it: an uptime probe arrives with no Origin and belongs to no
+// company, and a monitor that reports "down" because a request could not be attributed to a tenant
+// is worse than no monitor at all.
+//
+// It touches the database, because a process that is running while Postgres is unreachable answers
+// every real request with an error and would otherwise look healthy.
+app.MapGet("/health", async (AppDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
+        return Results.Ok(new { status = "ok" });
+    }
+    catch (Exception)
+    {
+        // No detail in the body: this endpoint is public, and what is broken is nobody else's business.
+        return Results.Json(new { status = "degraded" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
+
 app.MapControllers();
 
 app.Run();
