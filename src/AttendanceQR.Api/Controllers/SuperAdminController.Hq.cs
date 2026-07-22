@@ -189,6 +189,14 @@ public partial class SuperAdminController
                 // use", which is the whole point of showing the board to someone who is being sold to.
                 totalScans = await _db.AttendanceRecords.IgnoreQueryFilters()
                     .CountAsync(r => r.CheckInAtUtc != null, ct),
+                // Days since the first check-in ever recorded. "Running for N days without a break"
+                // is the one reliability claim a director can weigh without being an engineer.
+                daysLive = await _db.AttendanceRecords.IgnoreQueryFilters()
+                        .OrderBy(r => r.AttendanceDate)
+                        .Select(r => (DateOnly?)r.AttendanceDate)
+                        .FirstOrDefaultAsync(ct) is { } firstDay
+                    ? Math.Max(1, today.DayNumber - firstDay.DayNumber + 1)
+                    : 0,
             },
             companies,
             sites,

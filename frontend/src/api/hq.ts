@@ -36,6 +36,8 @@ export interface GroupOverview {
     payroll: number
     attendancePct: number
     totalScans: number
+    /** Days since the first check-in ever — "running N days without a break". */
+    daysLive: number
   }
   companies: GroupCompany[]
   sites: GroupSite[]

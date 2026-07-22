@@ -161,3 +161,45 @@
   background: rgba(10, 15, 28, 0.82); border: 1px solid var(--line); border-radius: 999px;
   padding: 6px 13px; font-size: 11px; color: var(--fg-dim); backdrop-filter: blur(3px);
 }
+
+/* --- entrance ----------------------------------------------------------- */
+/* The board assembles itself over about a second. Everything arriving at once is what a screenshot
+   does; arriving in order is what a designed thing does, and this screen gets roughly two seconds to
+   establish which of the two it is. */
+.hq-reveal { animation: hq-rise .62s cubic-bezier(.22,.61,.36,1) backwards; }
+@keyframes hq-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.hq-d1 { animation-delay: .05s } .hq-d2 { animation-delay: .17s } .hq-d3 { animation-delay: .29s }
+.hq-d4 { animation-delay: .41s } .hq-d5 { animation-delay: .53s } .hq-d6 { animation-delay: .65s }
+
+/* --- header extras ------------------------------------------------------ */
+.hq-fs {
+  width: 38px; height: 38px; margin-left: 12px; border-radius: 11px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--fg-dim);
+  display: inline-grid; place-items: center; transition: background .18s, color .18s;
+}
+.hq-fs:hover { background: rgba(255, 255, 255, 0.11); color: var(--fg); }
+
+/* --- delta chip --------------------------------------------------------- */
+/* Direction before magnitude: a director reads the arrow, then decides whether to read the number. */
+.hq-delta {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 10px;
+  font-size: 12px; font-weight: 800; padding: 3px 9px; border-radius: 999px;
+  background: rgba(52, 211, 153, 0.13); color: var(--live);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+}
+.hq-delta.down { background: rgba(248, 113, 113, 0.12); color: #F87171; border-color: rgba(248, 113, 113, 0.3); }
+.hq-delta.flat { background: rgba(255, 255, 255, 0.06); color: var(--fg-dim); border-color: var(--line); }
+
+/* --- capability strip --------------------------------------------------- */
+/* What the system actually does, stated plainly. The numbers show it is used; this shows what is
+   being used — the difference between "a spreadsheet with a chart" and a product. */
+.hq-caps { display: flex; flex-wrap: wrap; gap: 8px; }
+.hq-cap {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 700; color: var(--fg-dim);
+  border: 1px solid var(--line); background: var(--surface);
+  border-radius: 999px; padding: 7px 13px;
+}
+.hq-cap i { width: 6px; height: 6px; border-radius: 50%; background: var(--live); flex-shrink: 0; }
+
+@media (prefers-reduced-motion: reduce) { .hq-reveal { animation: none; } }

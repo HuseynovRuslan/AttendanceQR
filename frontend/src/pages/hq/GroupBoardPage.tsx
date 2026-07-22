@@ -105,6 +105,20 @@ export function GroupBoardPage() {
   const [denied, setDenied] = useState(false)
   const [clock, setClock] = useState(() => new Date())
   const newestRef = useRef<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // A demo should not begin with someone hunting for F11 — and fullscreen also takes the address bar
+  // away, which otherwise shows one company's subdomain above a screen about all three.
+  function toggleFullscreen() {
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void document.documentElement.requestFullscreen?.()
+  }
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -140,6 +154,14 @@ export function GroupBoardPage() {
 
   const accentOf = (i: number) => ACCENTS[i % ACCENTS.length]
 
+  // This week against the one before it, straight out of the fortnight already on screen. Directors
+  // read the arrow first and decide from it whether the number is worth reading.
+  const half = Math.floor(data.trend.length / 2)
+  const mean = (xs: { present: number }[]) => (xs.length ? xs.reduce((a, b) => a + b.present, 0) / xs.length : 0)
+  const prevWeek = mean(data.trend.slice(0, half))
+  const thisWeek = mean(data.trend.slice(half))
+  const deltaPct = prevWeek === 0 ? 0 : Math.round(((thisWeek - prevWeek) / prevWeek) * 100)
+
   const hero = totals.onDuty > 0
     ? {
         label: 'İndi iş başında',
@@ -161,7 +183,7 @@ export function GroupBoardPage() {
   return (
     <div className="hq">
       <div className="hq-inner">
-        <header className="hq-head">
+        <header className="hq-head hq-reveal hq-d1">
           <div className="hq-brand">
             <div className="hq-mark">Q</div>
             <div>
@@ -176,6 +198,19 @@ export function GroupBoardPage() {
             <span className="hq-clock hq-num">
               {clock.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
+            <button
+              type="button"
+              className="hq-fs"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Tam ekrandan çıx' : 'Tam ekran'}
+              aria-label={isFullscreen ? 'Tam ekrandan çıx' : 'Tam ekran'}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                {isFullscreen
+                  ? <><path d="M9 3v6H3" /><path d="M15 21v-6h6" /></>
+                  : <><path d="M3 9V3h6" /><path d="M21 15v6h-6" /></>}
+              </svg>
+            </button>
           </div>
         </header>
 
@@ -184,7 +219,7 @@ export function GroupBoardPage() {
             is a huge 0 reads as broken to anyone who doesn't know the shift pattern — which is
             exactly who this screen gets shown to. It falls back to the largest true statement
             available instead. */}
-        <section className="hq-hero">
+        <section className="hq-hero hq-reveal hq-d2">
           <div>
             <div className="hq-hero-label">{hero.label}</div>
             <div className="hq-hero-value hq-num">
@@ -212,7 +247,7 @@ export function GroupBoardPage() {
           </div>
         </section>
 
-        <section className="hq-companies">
+        <section className="hq-companies hq-reveal hq-d3">
           {data.companies.map((c, i) => (
             <article className="hq-co" key={c.id} style={{ ['--accent' as string]: accentOf(i) }}>
               <div className="hq-co-name">{c.name}</div>
@@ -230,7 +265,7 @@ export function GroupBoardPage() {
           ))}
         </section>
 
-        <section className="hq-grid">
+        <section className="hq-grid hq-reveal hq-d4">
           {/* The map leads, not the chart: a director recognises their own sites in a second, and
               "our people are at these places right now" is the thing a table cannot say. */}
           <div className="hq-panel">
@@ -275,14 +310,28 @@ export function GroupBoardPage() {
           </div>
         </section>
 
-        <section className="hq-panel">
-          <div className="hq-panel-title">Son 14 gün · qrup üzrə davamiyyət</div>
+        <section className="hq-panel hq-reveal hq-d5">
+          <div className="hq-panel-title">
+            Son 14 gün · qrup üzrə davamiyyət
+            <span className={`hq-delta ${deltaPct > 0 ? '' : deltaPct < 0 ? 'down' : 'flat'}`}>
+              {deltaPct > 0 ? '▲' : deltaPct < 0 ? '▼' : '■'} {Math.abs(deltaPct)}%
+              <span style={{ fontWeight: 600, opacity: 0.75 }}>keçən həftəyə görə</span>
+            </span>
+          </div>
           <TrendArea points={data.trend} />
+        </section>
+
+        {/* The figures say the system is used; this says what is being used. Without it a director
+            sees a chart, not a product. */}
+        <section className="hq-caps hq-reveal hq-d6">
+          {['QR ilə giriş', 'GPS ərazi nəzarəti', 'Üz yoxlaması', 'Oflayn skan', 'Push bildiriş', 'Maaş hesabatı', 'Ayın işçisi']
+            .map((cap) => <span className="hq-cap" key={cap}><i />{cap}</span>)}
         </section>
 
         <footer className="hq-foot">
           <span>
-            Sistem işə düşdüyündən bəri <b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(scans)}</b> giriş qeydə alınıb
+            <b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(totals.daysLive)}</b> gündür fasiləsiz işləyir ·
+            {' '}<b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(scans)}</b> giriş qeydə alınıb
           </span>
           <span>Hər {REFRESH_MS / 1000} saniyədə avtomatik yenilənir</span>
         </footer>
