@@ -1,9 +1,11 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro'
 import Hero from '../components/Hero.astro'
+import Stats from '../components/Stats.astro'
 import Features from '../components/Features.astro'
 import HowItWorks from '../components/HowItWorks.astro'
 import Audience from '../components/Audience.astro'
+import Pricing from '../components/Pricing.astro'
 import FAQ from '../components/FAQ.astro'
 import CTA from '../components/CTA.astro'
 import { SITE, FEATURES, FAQ as FAQ_ITEMS } from '../data/site'
@@ -22,7 +24,7 @@ const softwareLd = {
   description,
   inLanguage: 'az',
   featureList: FEATURES.map((f) => f.title),
-  offers: { '@type': 'Offer', priceCurrency: 'AZN', price: '0' },
+  // No price advertised — packages are quoted per business, so we don't claim a "0" offer.
 }
 
 const faqLd = {
@@ -43,15 +45,16 @@ const faqLd = {
   </Fragment>
 
   <Hero />
+  <Stats />
 
-  <!-- "QRLog nədir?" — qısa, faktiki tərif (AI-lar bunu götürür) -->
-  <section class="bg-white pb-4 pt-8">
+  <!-- "QRLog nədir?" — qısa, faktiki tərif (AI-lar bunu götürür / SEO) -->
+  <section class="bg-base pb-4 pt-10">
     <div class="mx-auto max-w-3xl px-4 text-center sm:px-6">
-      <h2 class="text-2xl font-bold text-ink sm:text-3xl">QRLog nədir?</h2>
-      <p class="mt-4 text-lg leading-relaxed text-muted">
+      <h2 class="display text-2xl font-extrabold text-body sm:text-3xl">QRLog nədir?</h2>
+      <p class="mt-4 text-lg leading-relaxed text-dim">
         QRLog — QR koda əsaslanan işçi davamiyyəti sistemidir. İşçi telefonu ilə iş yerindəki QR kodu
-        skan edir, sistem isə giriş və çıxışı avtomatik qeydə alır. GPS məkan yoxlaması, foto təsdiqi
-        və cihaz bağlaması ilə başqasının yerinə giriş etməyin qarşısını alır.
+        skan edir, sistem isə giriş və çıxışı avtomatik qeydə alır. GPS məkan yoxlaması və cihaz
+        bağlaması ilə başqasının yerinə giriş etməyin qarşısını alır.
       </p>
     </div>
   </section>
@@ -59,6 +62,7 @@ const faqLd = {
   <Features />
   <HowItWorks />
   <Audience />
+  <Pricing />
   <FAQ />
   <CTA />
 </BaseLayout>

@@ -1,7 +1,13 @@
 @import "tailwindcss";
 
-/* Tailwind v4 is configured in CSS, not a tailwind.config file. These custom properties become
-   utilities automatically: --color-ink -> text-ink/bg-ink, --color-primary -> bg-primary, etc. */
+/* ===========================================================================
+   QRLog — premium design system.  Art direction: "control room, night shift."
+   Dark-first depth (layered night-navy, blue glow, fine grain, live data), with
+   a separately-tuned light mode ("precise, quiet instrument"). Legacy @theme
+   colours stay so the secondary pages keep building; the homepage uses only the
+   semantic tokens + component classes below.
+=========================================================================== */
+
 @theme {
   --color-ink: #0F1B2D;
   --color-primary: #1E70C8;
@@ -9,21 +15,201 @@
   --color-soft: #F4F7FA;
   --color-muted: #5B6B7C;
 
-  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-html {
-  scroll-behavior: smooth;
-  -webkit-text-size-adjust: 100%;
+/* --- semantic tokens: light ("precise, quiet instrument") ---------------- */
+:root {
+  --bg: #ffffff;
+  --bg-2: #f6f9fd;
+  --surface: #ffffff;
+  --surface-2: #f2f7fc;
+  --panel: #0a1626;          /* deep panel that stays dark in both themes */
+  --panel-2: #0f1f34;
+  --text: #0c1826;
+  --text-muted: #58697b;
+  --border: rgba(12, 24, 38, 0.09);
+  --border-strong: rgba(12, 24, 38, 0.15);
+  --accent: #1E70C8;
+  --accent-2: #3b8ee0;
+  --accent-strong: #155cae;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(30, 112, 200, 0.10);
+  --good: #16a34a;
+  --good-soft: rgba(22, 163, 74, 0.12);
+  --glow: rgba(30, 112, 200, 0.18);
+  --grid-line: rgba(12, 24, 38, 0.045);
+  --shadow-sm: 0 1px 2px rgba(12, 24, 38, .05);
+  --shadow: 0 4px 14px -6px rgba(12, 24, 38, .12), 0 1px 3px rgba(12,24,38,.05);
+  --shadow-lg: 0 30px 60px -28px rgba(12, 24, 38, .30);
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --on-panel: #eaf2fb;
+  --on-panel-dim: #8fa6bf;
+  --panel-border: rgba(255,255,255,.08);
+  --panel-surface: rgba(255,255,255,.045);
 }
 
+/* --- semantic tokens: dark ("control room, night shift") ----------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #070d16;
+    --bg-2: #0a121e;
+    --surface: #0e1826;
+    --surface-2: #131f30;
+    --panel: #0a1424;
+    --panel-2: #0f1d31;
+    --text: #e9f1fa;
+    --text-muted: #93a7bd;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --accent: #58a2ec;
+    --accent-2: #7cbaf3;
+    --accent-strong: #2f83d8;
+    --accent-ink: #06101d;
+    --accent-soft: rgba(88, 162, 236, 0.14);
+    --good: #34d399;
+    --good-soft: rgba(52, 211, 153, 0.14);
+    --glow: rgba(59, 130, 220, 0.30);
+    --grid-line: rgba(255, 255, 255, 0.04);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.5);
+    --shadow: 0 8px 26px -10px rgba(0,0,0,.6);
+    --shadow-lg: 0 40px 80px -30px rgba(0,0,0,.75);
+    --on-panel: #eaf2fb;
+    --on-panel-dim: #8fa6bf;
+    --panel-border: rgba(255,255,255,.09);
+    --panel-surface: rgba(255,255,255,.05);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#070d16; --bg-2:#0a121e; --surface:#0e1826; --surface-2:#131f30; --panel:#0a1424; --panel-2:#0f1d31;
+  --text:#e9f1fa; --text-muted:#93a7bd; --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.16);
+  --accent:#58a2ec; --accent-2:#7cbaf3; --accent-strong:#2f83d8; --accent-ink:#06101d; --accent-soft:rgba(88,162,236,.14);
+  --good:#34d399; --good-soft:rgba(52,211,153,.14); --glow:rgba(59,130,220,.30); --grid-line:rgba(255,255,255,.04);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.5); --shadow:0 8px 26px -10px rgba(0,0,0,.6); --shadow-lg:0 40px 80px -30px rgba(0,0,0,.75);
+}
+:root[data-theme="light"] {
+  --bg:#fff; --bg-2:#f6f9fd; --surface:#fff; --surface-2:#f2f7fc; --text:#0c1826; --text-muted:#58697b;
+  --border:rgba(12,24,38,.09); --border-strong:rgba(12,24,38,.15);
+  --accent:#1E70C8; --accent-2:#3b8ee0; --accent-strong:#155cae; --accent-ink:#fff; --accent-soft:rgba(30,112,200,.10);
+  --good:#16a34a; --good-soft:rgba(22,163,74,.12); --glow:rgba(30,112,200,.18); --grid-line:rgba(12,24,38,.045);
+}
+
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body {
   font-family: var(--font-sans);
-  color: var(--color-ink);
-  background: #ffffff;
+  color: var(--text);
+  background: var(--bg);
+  transition: background-color .35s var(--ease), color .35s var(--ease);
+  overflow-x: hidden;
+}
+:target { scroll-margin-top: 88px; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* --- fine grain over the whole page (very subtle) ------------------------ */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+main, header, footer { position: relative; z-index: 1; }
+
+/* --- semantic colour utilities ------------------------------------------ */
+.bg-base { background: var(--bg); }
+.bg-2 { background: var(--bg-2); }
+.bg-surface { background: var(--surface); }
+.bg-surface-2 { background: var(--surface-2); }
+.bg-panel { background: var(--panel); }
+.text-body { color: var(--text); }
+.text-dim { color: var(--text-muted); }
+.text-accent { color: var(--accent); }
+.text-good { color: var(--good); }
+.border-hair { border: 1px solid var(--border); }
+.display { font-family: var(--font-display); letter-spacing: -0.03em; text-wrap: balance; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* --- atmospheric glow blob ---------------------------------------------- */
+.glow-blob { position: absolute; border-radius: 50%; filter: blur(70px); background: var(--glow); pointer-events: none; z-index: 0; }
+
+/* --- eyebrow ------------------------------------------------------------- */
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .55rem;
+  font-size: .74rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent);
+}
+.eyebrow::before { content:""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.eyebrow.centered { justify-content: center; }
+
+/* --- buttons (with press feel) ------------------------------------------ */
+.btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  border-radius: .8rem; padding: .72rem 1.35rem; font-weight: 700; font-size: .95rem; white-space: nowrap;
+  transition: transform .18s var(--spring), box-shadow .25s var(--ease), background-color .2s var(--ease), border-color .2s var(--ease);
+  cursor: pointer;
+}
+.btn:active { transform: translateY(1px) scale(.985); }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--accent-soft); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow), 0 0 0 0 var(--glow); }
+.btn-primary:hover { background: var(--accent-strong); transform: translateY(-2px); box-shadow: var(--shadow-lg), 0 10px 40px -8px var(--glow); }
+.btn-ghost { color: var(--text); border: 1px solid var(--border-strong); background: transparent; }
+.btn-ghost:hover { background: var(--surface-2); transform: translateY(-2px); }
+.btn-white { background: #fff; color: #0c1826; box-shadow: var(--shadow); }
+.btn-white:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.btn-lg { padding: .92rem 1.8rem; font-size: 1.02rem; border-radius: .9rem; }
+
+/* --- card (layered, subtle top highlight) ------------------------------- */
+.card {
+  position: relative; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 1.15rem; box-shadow: var(--shadow-sm);
+}
+.card-hover { transition: transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease); }
+.card-hover:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--accent); }
+.tile-icon {
+  display: grid; place-items: center; width: 2.9rem; height: 2.9rem; border-radius: .8rem;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border);
 }
 
-/* Anchored sections shouldn't hide under the sticky header when jumped to. */
-:target {
-  scroll-margin-top: 90px;
+/* --- chip / status ------------------------------------------------------ */
+.chip { display:inline-flex; align-items:center; gap:.4rem; font-size:.72rem; font-weight:700; padding:.28rem .6rem; border-radius:999px; }
+.chip-good { background: var(--good-soft); color: var(--good); }
+.dot { width:.5rem; height:.5rem; border-radius:50%; }
+
+/* --- panel (dark UI surface, same in both themes) ----------------------- */
+.on-panel { color: var(--on-panel); }
+.on-panel-dim { color: var(--on-panel-dim); }
+.panel-card { background: var(--panel-surface); border: 1px solid var(--panel-border); border-radius: 1rem; }
+
+/* --- hero grid + scanline ----------------------------------------------- */
+.grid-texture {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% -5%, #000 40%, transparent 82%);
+  mask-image: radial-gradient(ellipse 90% 60% at 50% -5%, #000 40%, transparent 82%);
+}
+
+/* --- scroll reveal (staggered) ------------------------------------------ */
+.reveal { opacity: 0; transform: translateY(22px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+.reveal.in { opacity: 1; transform: none; }
+.reveal[data-d="1"] { transition-delay: .06s; }
+.reveal[data-d="2"] { transition-delay: .12s; }
+.reveal[data-d="3"] { transition-delay: .18s; }
+.reveal[data-d="4"] { transition-delay: .24s; }
+.reveal[data-d="5"] { transition-delay: .30s; }
+
+/* --- header + theme toggle icon swap ------------------------------------ */
+.header-bg { background: color-mix(in srgb, var(--bg) 82%, transparent); }
+.icon-sun { display: none; } .icon-moon { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .icon-sun { display: block; }
+  :root:not([data-theme="light"]) .icon-moon { display: none; }
+}
+:root[data-theme="dark"] .icon-sun { display: block; } :root[data-theme="dark"] .icon-moon { display: none; }
+:root[data-theme="light"] .icon-sun { display: none; } :root[data-theme="light"] .icon-moon { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
+  .anim-cycle * { animation: none !important; transition: none !important; }
 }

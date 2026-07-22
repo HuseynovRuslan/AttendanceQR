@@ -1,31 +1,46 @@
 ---
-import Button from './Button.astro'
 import HeroAnimation from './HeroAnimation.astro'
-import { SITE } from '../data/site'
+
+const checks = ['Ayrıca cihaz yoxdur', 'Mağazasız — PWA', 'Həmin gün qurulur']
 ---
 
-<section class="relative overflow-hidden bg-white">
-  <div class="mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 md:grid-cols-2 md:py-24">
-    <div>
-      <span class="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
-        QR əsaslı davamiyyət sistemi
-      </span>
-      <h1 class="mt-5 text-4xl font-bold leading-tight text-ink sm:text-5xl">
-        İşçi davamiyyətini <span class="text-primary">QR ilə</span> idarə edin
+<section class="relative overflow-hidden bg-base pb-8 pt-14 sm:pt-16 md:pb-16 md:pt-20">
+  <div class="grid-texture pointer-events-none absolute inset-0" aria-hidden="true"></div>
+  <span class="glow-blob" style="width:520px;height:420px;top:-160px;left:-120px;opacity:.6"></span>
+
+  <div class="relative mx-auto grid max-w-6xl items-center gap-14 px-5 sm:px-6 md:grid-cols-[1.02fr_.98fr]">
+    <!-- Copy -->
+    <div class="reveal in">
+      <span class="eyebrow">QR ilə davamiyyət · Azərbaycan</span>
+      <h1 class="display mt-6 text-[2.6rem] font-extrabold leading-[1.04] text-body sm:text-6xl lg:text-[4.1rem]">
+        İşçi giriş-çıxışı,<br /><span class="text-accent">bir skan</span> qədər sadə.
       </h1>
-      <p class="mt-5 max-w-lg text-lg leading-relaxed text-muted">
-        QRLog — işçilərin telefonu ilə QR kodu skan edərək giriş-çıxışını qeydə alan onlayn
-        davamiyyət proqramıdır. GPS, foto təsdiqi və cihaz bağlaması ilə saxtakarlığa qarşı qorunur.
+      <p class="mt-7 max-w-lg text-lg leading-relaxed text-dim">
+        İşçilər öz telefonu ilə iş yerindəki QR-ı skan edir — giriş-çıxış, iş saatı və
+        gecikmə avtomatik hesablanır. Bahalı turniket yox; <span class="font-semibold text-body">GPS və cihaz bağlaması</span>
+        uzaqdan saxta girişin qarşısını alır.
       </p>
-      <div class="mt-8 flex flex-wrap gap-4">
-        <Button href={SITE.appUrl} external>İşçi girişi</Button>
-        <Button href="/#xususiyyetler" variant="ghost">Ətraflı</Button>
+
+      <div class="mt-9 flex flex-wrap items-center gap-3">
+        <a href="/elaqe" class="btn btn-primary btn-lg">Pulsuz demo istə</a>
+        <a href="/#nece-isleyir" class="btn btn-ghost btn-lg">
+          Necə işləyir?
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
       </div>
-      <p class="mt-4 text-sm text-muted">Ayrıca cihaz yoxdur · Telefonla işləyir · Dəqiqələr içində qurulur</p>
+
+      <ul class="mt-9 flex flex-wrap gap-x-7 gap-y-2.5 text-sm font-semibold text-dim">
+        {checks.map((c) => (
+          <li class="flex items-center gap-2">
+            <svg class="h-4 w-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            {c}
+          </li>
+        ))}
+      </ul>
     </div>
 
-    <!-- Animasiya: giriş prosesinin üç addımı canlı olaraq dövr edir. -->
-    <div class="relative">
+    <!-- Signature moment -->
+    <div class="reveal in" data-d="2">
       <HeroAnimation />
     </div>
   </div>

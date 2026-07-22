@@ -1,0 +1,4 @@
+# Shell scripts must check out with LF wherever they land. Checked out with CRLF on Windows and then
+# copied to the server, every one of them dies with "bad interpreter: no such file or directory" —
+# and the workaround (sed -i on the server) leaves the working tree dirty so the next git pull fails.
+*.sh text eol=lf

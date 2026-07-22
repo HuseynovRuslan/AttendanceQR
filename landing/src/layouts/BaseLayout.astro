@@ -48,7 +48,17 @@ const organizationLd = {
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     <meta name="robots" content="index, follow" />
-    <meta name="theme-color" content="#0F1B2D" />
+    <meta name="theme-color" content="#0b1420" />
+
+    <!-- Apply the saved theme before first paint (no flash). -->
+    <script is:inline>
+      (function () {
+        try {
+          var t = localStorage.getItem('qrlog-theme')
+          if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t)
+        } catch (e) {}
+      })()
+    </script>
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -69,12 +79,12 @@ const organizationLd = {
     <link rel="icon" href="/favicon.png" sizes="any" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Fonts: Poppins -->
+    <!-- Fonts: Sora (display) + Manrope (body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap"
     />
 
     <script type="application/ld+json" set:html={JSON.stringify(organizationLd)} />
@@ -86,5 +96,23 @@ const organizationLd = {
       <slot />
     </main>
     <Footer />
+
+    <!-- Scroll reveal: adds .in when a .reveal enters the viewport, once. -->
+    <script is:inline>
+      (function () {
+        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        var els = document.querySelectorAll('.reveal:not(.in)')
+        if (reduce || !('IntersectionObserver' in window)) {
+          els.forEach(function (el) { el.classList.add('in') })
+          return
+        }
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) }
+          })
+        }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' })
+        els.forEach(function (el) { io.observe(el) })
+      })()
+    </script>
   </body>
 </html>

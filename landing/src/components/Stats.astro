@@ -1,0 +1,16 @@
+---
+import { STATS } from '../data/site'
+---
+
+<section class="bg-base pb-6">
+  <div class="mx-auto max-w-6xl px-4 sm:px-6">
+    <div class="card grid grid-cols-2 gap-px overflow-hidden bg-surface-2 md:grid-cols-4">
+      {STATS.map((s) => (
+        <div class="bg-surface p-6 text-center">
+          <div class="num display text-2xl font-extrabold text-body sm:text-3xl">{s.value}</div>
+          <div class="mt-1 text-xs font-medium leading-snug text-dim sm:text-sm">{s.label}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

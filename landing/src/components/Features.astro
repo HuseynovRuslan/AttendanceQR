@@ -3,23 +3,31 @@ import Icon from './Icon.astro'
 import { FEATURES } from '../data/site'
 ---
 
-<section id="xususiyyetler" class="bg-white py-16 sm:py-24">
+<section id="xususiyyetler" class="bg-base py-18 sm:py-24">
   <div class="mx-auto max-w-6xl px-4 sm:px-6">
-    <div class="mx-auto max-w-2xl text-center">
-      <h2 class="text-3xl font-bold text-ink sm:text-4xl">Niyə QRLog?</h2>
-      <p class="mt-4 text-lg text-muted">
-        İşçi giriş-çıxış qeydiyyatını sadələşdirən, saxtakarlığa qarşı qoruyan xüsusiyyətlər.
+    <div class="max-w-2xl">
+      <span class="eyebrow">Niyə QRLog</span>
+      <h2 class="display mt-4 text-3xl font-extrabold text-body sm:text-4xl">
+        Davamiyyəti sadələşdirən, saxtakarlığı dayandıran sistem
+      </h2>
+      <p class="mt-4 text-lg text-dim">
+        Bir QR poster və işçilərin telefonu — qalanını QRLog edir.
       </p>
     </div>
 
-    <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {FEATURES.map((f) => (
-        <article class="rounded-2xl bg-soft p-7 ring-1 ring-ink/5 transition hover:shadow-md">
-          <div class="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
-            <Icon name={f.icon} class="h-6 w-6" />
+    <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {FEATURES.map((f, i) => (
+        <article class={`card card-hover p-6 ${i === 0 ? 'sm:col-span-2 lg:row-span-2 lg:flex lg:flex-col lg:justify-between' : ''}`}>
+          <div>
+            <span class="tile-icon"><Icon name={f.icon} class="h-6 w-6" /></span>
+            <h3 class={`mt-5 font-bold text-body ${i === 0 ? 'text-xl' : 'text-lg'}`}>{f.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-dim">{f.text}</p>
           </div>
-          <h3 class="mt-5 text-lg font-bold text-ink">{f.title}</h3>
-          <p class="mt-2 text-sm leading-relaxed text-muted">{f.text}</p>
+          {i === 0 && (
+            <div class="mt-6 hidden items-center gap-2 text-sm font-semibold text-accent lg:flex">
+              <Icon name="shield" class="h-4 w-4" /> Saxta girişə qarşı iki qat qorunma
+            </div>
+          )}
         </article>
       ))}
     </div>

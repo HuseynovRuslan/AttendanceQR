@@ -2,21 +2,25 @@
 import { STEPS } from '../data/site'
 ---
 
-<section id="nece-isleyir" class="bg-soft py-16 sm:py-24">
+<section id="nece-isleyir" class="bg-surface py-18 sm:py-24">
   <div class="mx-auto max-w-6xl px-4 sm:px-6">
     <div class="mx-auto max-w-2xl text-center">
-      <h2 class="text-3xl font-bold text-ink sm:text-4xl">Necə işləyir?</h2>
-      <p class="mt-4 text-lg text-muted">Üç sadə addım — quraşdırma dəqiqələr çəkir.</p>
+      <span class="eyebrow centered">Necə işləyir</span>
+      <h2 class="display mt-4 text-3xl font-extrabold text-body sm:text-4xl">Dörd addım — həmin gün işə düşür</h2>
+      <p class="mt-4 text-lg text-dim">Quraşdırma dəqiqələr çəkir, öyrənmək lazım deyil.</p>
     </div>
 
-    <ol class="mt-14 grid gap-8 md:grid-cols-3">
-      {STEPS.map((s) => (
-        <li class="relative rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-ink/5">
-          <span class="mx-auto grid h-12 w-12 place-items-center rounded-full bg-primary text-lg font-bold text-white">
-            {s.n}
-          </span>
-          <h3 class="mt-5 text-lg font-bold text-ink">{s.title}</h3>
-          <p class="mt-2 text-sm leading-relaxed text-muted">{s.text}</p>
+    <ol class="mt-14 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      {STEPS.map((s, i) => (
+        <li class="relative">
+          {i < STEPS.length - 1 && (
+            <span class="absolute right-0 top-7 hidden h-px w-full translate-x-1/2 bg-border lg:block" style="background:var(--border)" aria-hidden="true"></span>
+          )}
+          <div class="card relative h-full p-6">
+            <span class="num display grid h-11 w-11 place-items-center rounded-xl text-lg font-extrabold" style="background:var(--accent-soft); color:var(--accent)">{s.n}</span>
+            <h3 class="mt-5 text-lg font-bold text-body">{s.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-dim">{s.text}</p>
+          </div>
         </li>
       ))}
     </ol>
