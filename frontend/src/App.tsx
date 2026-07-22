@@ -32,6 +32,7 @@ const KioskPage = lazy(() => import('./pages/KioskPage').then(m => ({ default: m
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ default: m.TodayPage })))
+const GroupBoardPage = lazy(() => import('./pages/hq/GroupBoardPage').then(m => ({ default: m.GroupBoardPage })))
 const LiveBoardPage = lazy(() => import('./pages/admin/LiveBoardPage').then(m => ({ default: m.LiveBoardPage })))
 const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
@@ -143,6 +144,16 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <VotePage />
+          </ProtectedRoute>
+        }
+      />
+      {/* Outside the admin layout on purpose: this is shown full-screen, often on a projector, and
+          a sidebar of a single company's menu items would undercut what it is showing. */}
+      <Route
+        path="/hq"
+        element={
+          <ProtectedRoute>
+            <GroupBoardPage />
           </ProtectedRoute>
         }
       />

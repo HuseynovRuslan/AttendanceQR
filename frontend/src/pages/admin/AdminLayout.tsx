@@ -109,6 +109,7 @@ export function AdminLayout() {
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
     // Across every company, not inside one — only the operator sees it.
     ...(isSuperAdmin ? [{ to: '/admin/tenants', label: 'Şirkətlər', Icon: IconUsers }] : []),
+    ...(isSuperAdmin ? [{ to: '/hq', label: 'Qrup paneli', Icon: IconChart }] : []),
   ]
 
   return (

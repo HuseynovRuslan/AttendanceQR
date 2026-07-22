@@ -32,6 +32,7 @@ public partial class SuperAdminController : ControllerBase
     private readonly ITenantContext _tenant;
     private readonly IPasswordHasher _passwordHasher;
     private readonly Guid[] _superAdminIds;
+    private readonly AppOptions _appOptions;
 
     public SuperAdminController(AppDbContext db, ITenantContext tenant, IPasswordHasher passwordHasher, AppOptions options)
     {
@@ -39,6 +40,7 @@ public partial class SuperAdminController : ControllerBase
         _tenant = tenant;
         _passwordHasher = passwordHasher;
         _superAdminIds = options.SuperAdminIdList();
+        _appOptions = options;
     }
 
     private bool IsSuperAdmin => _superAdminIds.Contains(User.EmployeeId());
