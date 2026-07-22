@@ -329,9 +329,18 @@ export function GroupBoardPage() {
         </section>
 
         <footer className="hq-foot">
+          {/* Uptime is only worth saying once it is long. On a young system "15 gündür işləyir" reads
+              as "brand new" — the opposite of the reliability it was meant to claim — so below a
+              couple of months the line simply doesn't make the claim. */}
           <span>
-            <b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(totals.daysLive)}</b> gündür fasiləsiz işləyir ·
-            {' '}<b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(scans)}</b> giriş qeydə alınıb
+            {totals.daysLive >= 60 && (
+              <>
+                <b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(totals.daysLive)}</b> gündür
+                fasiləsiz işləyir ·{' '}
+              </>
+            )}
+            <b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(scans)}</b> giriş qeydə alınıb
+            {' · '}<b className="hq-num" style={{ color: 'var(--fg)' }}>{fmt.format(totals.employees)}</b> işçi
           </span>
           <span>Hər {REFRESH_MS / 1000} saniyədə avtomatik yenilənir</span>
         </footer>
