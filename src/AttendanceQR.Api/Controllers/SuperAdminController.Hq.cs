@@ -51,7 +51,7 @@ public partial class SuperAdminController
             .ToListAsync(ct);
 
         var allLocations = await _db.Locations.IgnoreQueryFilters()
-            .Select(l => new { l.Id, l.TenantId, l.Name, l.Latitude, l.Longitude })
+            .Select(l => new { l.Id, l.TenantId, l.Name, l.Latitude, l.Longitude, l.RadiusMeters })
             .ToListAsync(ct);
         var locationCount = allLocations
             .GroupBy(l => l.TenantId)
@@ -129,6 +129,10 @@ public partial class SuperAdminController
                 companyIndex = tenantOrder.IndexOf(l.TenantId),
                 lat = l.Latitude,
                 lng = l.Longitude,
+                // The geofence itself, drawn on the map: it turns a scatter of dots into a picture of
+                // the ground the company actually covers, and it is the only place the GPS rule is
+                // ever visible rather than merely claimed.
+                radiusMeters = l.RadiusMeters,
                 onDuty = onDutyByLocation.GetValueOrDefault(l.Id, 0),
                 present = presentByLocation.GetValueOrDefault(l.Id, 0),
                 staff = employees.Count(e => e.LocationId == l.Id),

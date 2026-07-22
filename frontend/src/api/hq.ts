@@ -20,6 +20,8 @@ export interface GroupSite {
   companyIndex: number
   lat: number
   lng: number
+  /** Geofence radius — the area a check-in must happen inside. */
+  radiusMeters: number
   onDuty: number
   present: number
   staff: number

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import type { Map as LeafletMap } from 'leaflet'
 import type { GroupSite } from '../../api/hq'
 
@@ -78,27 +78,45 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
           const colour = accentOf(s.companyIndex < 0 ? 0 : s.companyIndex)
           const live = s.onDuty > 0
           return (
-            <CircleMarker
-              key={s.id}
-              center={[s.lat, s.lng]}
-              radius={radiusOf(s.onDuty)}
-              pathOptions={{
-                color: colour,
-                fillColor: colour,
-                // A site with nobody on it stays visible but recedes — the eye should go to where
-                // work is actually happening.
-                fillOpacity: live ? 0.45 : 0.12,
-                opacity: live ? 0.95 : 0.35,
-                weight: 2,
-                className: live ? 'hq-marker-live' : undefined,
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -6]} opacity={1} className="hq-tip">
-                <b>{s.name}</b>
-                <br />
-                {s.onDuty > 0 ? `${s.onDuty} nəfər iş başında` : 'hazırda boş'}
-              </Tooltip>
-            </CircleMarker>
+            // Fragment, not a wrapper element: react-leaflet renders children into the map
+            // container, and a stray div there sits on top of the map and swallows clicks.
+            <Fragment key={s.id}>
+              {/* The geofence, to scale. Six dots on a city map look like nothing; six areas look
+                  like coverage — and this is the only place the GPS rule is shown rather than said. */}
+              <Circle
+                center={[s.lat, s.lng]}
+                radius={s.radiusMeters}
+                pathOptions={{
+                  color: colour,
+                  fillColor: colour,
+                  fillOpacity: live ? 0.1 : 0.04,
+                  opacity: live ? 0.4 : 0.18,
+                  weight: 1,
+                  dashArray: '4 5',
+                }}
+              />
+              <CircleMarker
+                center={[s.lat, s.lng]}
+                radius={radiusOf(s.onDuty)}
+                pathOptions={{
+                  color: colour,
+                  fillColor: colour,
+                  // A site with nobody on it stays visible but recedes — the eye should go to where
+                  // work is actually happening.
+                  fillOpacity: live ? 0.45 : 0.12,
+                  opacity: live ? 0.95 : 0.35,
+                  weight: 2,
+                  className: live ? 'hq-marker-live' : undefined,
+                }}
+              >
+                {/* Permanent, not on hover: during a demo nobody is touching the laptop, and an
+                    unlabelled dot raises the question the map exists to answer. */}
+                <Tooltip permanent direction="right" offset={[9, 0]} opacity={1} className="hq-tip hq-tip-label">
+                  <b>{s.name}</b>
+                  {s.onDuty > 0 && <span className="hq-tip-n"> {s.onDuty}</span>}
+                </Tooltip>
+              </CircleMarker>
+            </Fragment>
           )
         })}
       </MapContainer>
