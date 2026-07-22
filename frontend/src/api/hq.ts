@@ -12,6 +12,19 @@ export interface GroupCompany {
   payroll: number
 }
 
+/** One site on the map: where it is, and how many people are working there right now. */
+export interface GroupSite {
+  id: string
+  name: string
+  /** Index into the company list, so the marker takes that company's accent. */
+  companyIndex: number
+  lat: number
+  lng: number
+  onDuty: number
+  present: number
+  staff: number
+}
+
 export interface GroupOverview {
   generatedAtUtc: string
   totals: {
@@ -25,6 +38,7 @@ export interface GroupOverview {
     totalScans: number
   }
   companies: GroupCompany[]
+  sites: GroupSite[]
   trend: { date: string; present: number }[]
   feed: { fullName: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' }[]
 }

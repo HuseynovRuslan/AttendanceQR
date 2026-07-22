@@ -114,3 +114,27 @@
 .hq-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--fg-faint); padding-top: 4px; }
 
 .hq-gate { min-height: 100vh; display: grid; place-items: center; color: var(--fg-dim); font-family: 'Manrope', sans-serif; background: var(--ink, #070B16); }
+
+/* --- map ---------------------------------------------------------------- */
+.hq-map {
+  height: clamp(300px, 42vh, 460px); border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--line); background: #0B1020;
+}
+/* Leaflet paints its own light chrome; the board is dark, so both are removed rather than themed. */
+.hq-map .leaflet-container { background: #0B1020; font-family: 'Manrope', sans-serif; }
+.hq-map .leaflet-control-attribution { display: none; }
+
+/* A slow breath on the sites that currently have people on them — the map should look occupied,
+   not decorated, so nothing else on it moves. */
+.hq-marker-live { animation: hq-breathe 3.2s ease-in-out infinite; transform-origin: center; }
+@keyframes hq-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.hq-tip.leaflet-tooltip {
+  background: rgba(10, 15, 28, 0.95); border: 1px solid var(--line); color: var(--fg);
+  border-radius: 9px; font-size: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); padding: 7px 10px;
+}
+.hq-tip.leaflet-tooltip::before { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hq-marker-live, .hq-live i, .hq-feed-row.is-new { animation: none; }
+}

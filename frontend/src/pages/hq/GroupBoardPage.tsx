@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getGroupOverview, type GroupOverview } from '../../api/hq'
+import { SiteMap } from './SiteMap'
+import 'leaflet/dist/leaflet.css'
 import './hq.css'
 
 /** Refresh cadence. Fast enough that a figure visibly moves while someone watches, slow enough that
@@ -229,9 +231,13 @@ export function GroupBoardPage() {
         </section>
 
         <section className="hq-grid">
+          {/* The map leads, not the chart: a director recognises their own sites in a second, and
+              "our people are at these places right now" is the thing a table cannot say. */}
           <div className="hq-panel">
-            <div className="hq-panel-title">Son 14 gün · qrup üzrə davamiyyət</div>
-            <TrendArea points={data.trend} />
+            <div className="hq-panel-title">
+              Ərazilər · hazırda iş gedən nöqtələr
+            </div>
+            <SiteMap sites={data.sites} accentOf={accentOf} />
           </div>
 
           {/* The feed is what makes the screen read as live: rows arrive while you are looking at it. */}
@@ -267,6 +273,11 @@ export function GroupBoardPage() {
               })}
             </div>
           </div>
+        </section>
+
+        <section className="hq-panel">
+          <div className="hq-panel-title">Son 14 gün · qrup üzrə davamiyyət</div>
+          <TrendArea points={data.trend} />
         </section>
 
         <footer className="hq-foot">

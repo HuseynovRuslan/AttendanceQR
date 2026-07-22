@@ -50,14 +50,16 @@ public partial class SuperAdminController
             .Select(e => new { e.Id, e.TenantId, e.FullName, e.MonthlySalary, e.LocationId })
             .ToListAsync(ct);
 
-        var locationCount = await _db.Locations.IgnoreQueryFilters()
+        var allLocations = await _db.Locations.IgnoreQueryFilters()
+            .Select(l => new { l.Id, l.TenantId, l.Name, l.Latitude, l.Longitude })
+            .ToListAsync(ct);
+        var locationCount = allLocations
             .GroupBy(l => l.TenantId)
-            .Select(g => new { TenantId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.TenantId, x => x.Count, ct);
+            .ToDictionary(g => g.Key, g => g.Count());
 
         var todayRecords = await _db.AttendanceRecords.IgnoreQueryFilters()
             .Where(r => r.AttendanceDate == today && r.CheckInAtUtc != null)
-            .Select(r => new { r.TenantId, r.EmployeeId, r.CheckOutAtUtc })
+            .Select(r => new { r.TenantId, r.EmployeeId, r.LocationId, r.CheckOutAtUtc })
             .ToListAsync(ct);
 
         var trendRows = await _db.AttendanceRecords.IgnoreQueryFilters()
@@ -104,6 +106,34 @@ public partial class SuperAdminController
                         .Select(r => r.EmployeeId).Distinct().Count(),
                 };
             })
+            .ToList();
+
+        // Where the work is happening right now. The point of putting this on a map is that a
+        // director recognises their own sites instantly — a table of the same numbers does not carry
+        // the same thing at all.
+        var onDutyByLocation = todayRecords.Where(r => r.CheckOutAtUtc == null)
+            .GroupBy(r => r.LocationId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EmployeeId).Distinct().Count());
+        var presentByLocation = todayRecords
+            .GroupBy(r => r.LocationId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EmployeeId).Distinct().Count());
+        var tenantOrder = tenants.Select(t => t.Id).ToList();
+
+        var sites = allLocations
+            // A site with no coordinates cannot be drawn, and a marker at (0,0) lands in the Atlantic.
+            .Where(l => l.Latitude != 0 || l.Longitude != 0)
+            .Select(l => new
+            {
+                id = l.Id,
+                name = l.Name,
+                companyIndex = tenantOrder.IndexOf(l.TenantId),
+                lat = l.Latitude,
+                lng = l.Longitude,
+                onDuty = onDutyByLocation.GetValueOrDefault(l.Id, 0),
+                present = presentByLocation.GetValueOrDefault(l.Id, 0),
+                staff = employees.Count(e => e.LocationId == l.Id),
+            })
+            .OrderByDescending(s => s.onDuty)
             .ToList();
 
         var names = employees.ToDictionary(e => e.Id, e => e.FullName);
@@ -161,6 +191,7 @@ public partial class SuperAdminController
                     .CountAsync(r => r.CheckInAtUtc != null, ct),
             },
             companies,
+            sites,
             trend,
             feed,
         });
