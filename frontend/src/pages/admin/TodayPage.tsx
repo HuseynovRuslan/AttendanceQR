@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
+import { addLeave, type LeaveType } from '../../api/leaves'
+import { createManagerLeave } from '../../api/manager'
+import { useAuth } from '../../auth/AuthContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
@@ -35,6 +38,8 @@ function statusMatches(status: string, filter: string): boolean {
 }
 
 export function TodayPage() {
+  const { role } = useAuth()
+  const [assigningId, setAssigningId] = useState<string | null>(null)
   const todayISO = useMemo(() => localDateISO(new Date()), [])
   const [date, setDate] = useState(todayISO)
   const isToday = date === todayISO
@@ -64,6 +69,19 @@ export function TodayPage() {
       return
     }
     setModal({ title: row.employeeName, photo: data })
+  }
+
+  // Assign a reason to an absent employee straight from this board: a single-day leave for the date
+  // being viewed. Managers file through their own scoped endpoint, admins through the admin one — the
+  // server re-checks scope either way. The board then reloads and the row flips from Qayıb to its
+  // real reason.
+  async function assignLeave(employeeId: string, type: LeaveType) {
+    setAssigningId(employeeId)
+    const res = role === 'Manager'
+      ? await createManagerLeave({ employeeId, fromDate: date, toDate: date, type, note: null })
+      : await addLeave(employeeId, date, date, type)
+    setAssigningId(null)
+    if (res.status === 200) await load()
   }
 
   const load = useCallback(async () => {
@@ -297,6 +315,24 @@ export function TodayPage() {
                 <td data-label="Filial">{r.locationName}</td>
                 <td data-label="Status">
                   <StatusBadge status={r.status} override={r.status === 'Incomplete' ? incompleteOverride : undefined} />
+                  {/* Fix a Qayıb without leaving the board: pick a reason and it becomes a one-day
+                      leave for this date, flipping the row to İcazə / Məzuniyyət / İstirahət etc. */}
+                  {r.status === 'Absent' && (
+                    <select
+                      className="inp"
+                      style={{ marginTop: 6, fontSize: 12, padding: '4px 8px', height: 'auto', maxWidth: 170 }}
+                      value=""
+                      disabled={assigningId === r.employeeId}
+                      onChange={(e) => { if (e.target.value) void assignLeave(r.employeeId, e.target.value as LeaveType) }}
+                    >
+                      <option value="">{assigningId === r.employeeId ? 'Təyin edilir…' : '+ Səbəb təyin et'}</option>
+                      <option value="Permission">İcazə</option>
+                      <option value="Vacation">Məzuniyyət</option>
+                      <option value="Sick">Xəstəlik</option>
+                      <option value="Unpaid">Ödənişsiz məzuniyyət</option>
+                      <option value="Rest">İstirahət</option>
+                    </select>
+                  )}
                 </td>
                 <td className="mono" data-label="Giriş">
                   {fmtTime(r.checkInAtUtc)}
