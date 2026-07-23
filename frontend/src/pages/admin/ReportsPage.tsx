@@ -100,7 +100,7 @@ export function ReportsPage() {
       )}
 
       {report && (
-        <div className="tbl-wrap tbl-center-nums">
+        <div className="tbl-wrap tbl-center-nums tbl-cards">
           <table>
             <thead>
               <tr>
