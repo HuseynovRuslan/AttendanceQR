@@ -155,7 +155,7 @@ export function LeavesPage() {
         ))}
       </div>
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -169,11 +169,11 @@ export function LeavesPage() {
           <tbody>
             {visible.map((l) => (
               <tr key={l.id}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={l.employeeId} name={l.employeeName} /></td>
-                <td>{TYPE_LABELS[l.type]}</td>
-                <td className="mono">{fmtDate(l.fromDate)}–{fmtDate(l.toDate)}</td>
-                <td>{l.note ?? '—'}</td>
-                <td style={{ textAlign: 'right' }}>
+                <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={l.employeeId} name={l.employeeName} /></td>
+                <td data-label="Növ">{TYPE_LABELS[l.type]}</td>
+                <td data-label="Tarix" className="mono">{fmtDate(l.fromDate)}–{fmtDate(l.toDate)}</td>
+                <td data-label="Qeyd">{l.note ?? '—'}</td>
+                <td data-label="">
                   <button className="btn btn-danger btn-sm" disabled={deletingId === l.id} onClick={() => onDelete(l)}>
                     <IconTrash /> Sil
                   </button>

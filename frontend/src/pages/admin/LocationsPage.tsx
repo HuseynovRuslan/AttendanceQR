@@ -476,7 +476,7 @@ export function LocationsPage() {
       </form>
       )}
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -492,12 +492,12 @@ export function LocationsPage() {
           <tbody>
             {rows.map((l) => (
               <tr key={l.id} style={{ opacity: l.isActive ? 1 : 0.55 }}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}>{l.name}</td>
-                <td className="mono">{l.latitude.toFixed(4)}, {l.longitude.toFixed(4)}</td>
-                <td className="num mono">{l.radiusMeters} m</td>
-                <td className="mono">{l.shiftStart}–{l.shiftEnd}</td>
-                <td className="num mono">{l.lateThresholdMinutes} dəq</td>
-                <td>
+                <td data-label="Ad" style={{ fontWeight: 700, color: 'var(--c900)' }}>{l.name}</td>
+                <td data-label="Koordinat" className="mono">{l.latitude.toFixed(4)}, {l.longitude.toFixed(4)}</td>
+                <td data-label="Radius" className="num mono">{l.radiusMeters} m</td>
+                <td data-label="Növbə" className="mono">{l.shiftStart}–{l.shiftEnd}</td>
+                <td data-label="Gecikmə" className="num mono">{l.lateThresholdMinutes} dəq</td>
+                <td data-label="Status">
                   <span
                     style={{
                       display: 'inline-block',
@@ -512,7 +512,7 @@ export function LocationsPage() {
                     {l.isActive ? 'Aktiv' : 'Deaktiv'}
                   </span>
                 </td>
-                <td>
+                <td data-label="">
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     {l.isActive && (
                       <>

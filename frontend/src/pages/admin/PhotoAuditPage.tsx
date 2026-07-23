@@ -197,7 +197,7 @@ export function PhotoAuditPage() {
         )}
 
       {records.length > 0 && (
-        <div className="tbl-wrap">
+        <div className="tbl-wrap tbl-cards">
           <table>
             <thead>
               <tr>

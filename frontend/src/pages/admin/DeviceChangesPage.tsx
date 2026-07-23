@@ -162,7 +162,7 @@ function BoundDevices() {
         </div>
       )}
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -177,16 +177,16 @@ function BoundDevices() {
           <tbody>
             {rows.map((b) => (
               <tr key={b.id}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={b.employeeId} name={b.employeeName} /></td>
-                <td>{b.deviceLabel ?? <span className="muted">Naməlum cihaz</span>}</td>
+                <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={b.employeeId} name={b.employeeName} /></td>
+                <td data-label="Cihaz">{b.deviceLabel ?? <span className="muted">Naməlum cihaz</span>}</td>
                 <td>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${ORIGIN[b.boundVia].cls}`}>
                     {ORIGIN[b.boundVia].label}
                   </span>
                 </td>
-                <td className="mono">{fmtDateTime(b.boundAtUtc)}</td>
-                <td className="mono">{fmtDateTime(b.lastSeenAtUtc)}</td>
-                <td style={{ textAlign: 'right' }}>
+                <td data-label="Bağlanıb" className="mono">{fmtDateTime(b.boundAtUtc)}</td>
+                <td data-label="Son istifadə" className="mono">{fmtDateTime(b.lastSeenAtUtc)}</td>
+                <td data-label="">
                   <button className="btn btn-danger btn-sm" disabled={busyId === b.id} onClick={() => revoke(b)}>
                     <IconTrash /> Ləğv et
                   </button>

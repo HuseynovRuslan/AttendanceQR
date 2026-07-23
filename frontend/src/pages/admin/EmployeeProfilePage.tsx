@@ -250,7 +250,7 @@ export function EmployeeProfilePage() {
         {recent.length === 0 ? (
           <p className="muted" style={{ fontSize: 13 }}>Qeyd yoxdur.</p>
         ) : (
-          <div className="tbl-wrap">
+          <div className="tbl-wrap tbl-cards">
             <table>
               <thead>
                 <tr><th>Tarix</th><th>Status</th><th>Giriş</th><th>Çıxış</th><th>Müddət</th></tr>

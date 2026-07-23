@@ -120,7 +120,7 @@ export function NonWorkingDaysPage() {
         </button>
       </form>
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -133,10 +133,10 @@ export function NonWorkingDaysPage() {
           <tbody>
             {rows.map((d) => (
               <tr key={d.id}>
-                <td className="mono">{fmtDate(d.date)}</td>
-                <td>{d.description}</td>
-                <td>{d.locationName ?? 'Hamısı'}</td>
-                <td style={{ textAlign: 'right' }}>
+                <td data-label="Tarix" className="mono">{fmtDate(d.date)}</td>
+                <td data-label="Təsvir">{d.description}</td>
+                <td data-label="Lokasiya">{d.locationName ?? 'Hamısı'}</td>
+                <td data-label="">
                   <button className="btn btn-danger btn-sm" disabled={deletingId === d.id} onClick={() => onDelete(d)}>
                     <IconTrash /> Sil
                   </button>

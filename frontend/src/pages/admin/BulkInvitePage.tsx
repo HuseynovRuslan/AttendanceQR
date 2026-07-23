@@ -279,7 +279,7 @@ export function BulkInvitePage() {
               <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
                 Hər işçiyə telefon nömrəsini və müvəqqəti PIN-ini verin. İlk girişdə öz PIN-ini təyin edəcək.
               </div>
-              <div className="tbl-wrap">
+              <div className="tbl-wrap tbl-cards">
                 <table>
                   <thead>
                     <tr><th>İşçi</th><th>Telefon</th><th>Müvəqqəti PIN</th><th /></tr>
@@ -317,7 +317,7 @@ export function BulkInvitePage() {
               <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
                 Hər işçiyə öz linkini göndərin — o, linki açıb PIN təyin edərək hesabını aktivləşdirəcək.
               </div>
-              <div className="tbl-wrap">
+              <div className="tbl-wrap tbl-cards">
                 <table>
                   <thead>
                     <tr><th>İşçi</th><th>Telefon</th><th>Aktivləşdirmə linki</th><th /></tr>
@@ -351,7 +351,7 @@ export function BulkInvitePage() {
               <h2 style={{ fontSize: 15, fontWeight: 800, color: '#991b1b', marginBottom: 8 }}>
                 Keçməyən sətirlər ({failed.length})
               </h2>
-              <div className="tbl-wrap">
+              <div className="tbl-wrap tbl-cards">
                 <table>
                   <thead><tr><th>İşçi</th><th>Səbəb</th></tr></thead>
                   <tbody>

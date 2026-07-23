@@ -117,14 +117,14 @@ export function ReportsPage() {
             <tbody>
               {report.rows.map((r) => (
                 <tr key={r.employeeId}>
-                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                  <td>{r.locationName}</td>
-                  <td className="num mono">{r.workDays}</td>
-                  <td className="num mono">{r.absentDays}</td>
-                  <td className="num mono">{r.leaveDays}</td>
-                  <td className="num mono">{r.permissionDays}</td>
-                  <td className="num mono">{fmtHM(r.totalWorkedHours)}</td>
-                  <td className="num mono">{fmtHM(r.overtimeHours)}</td>
+                  <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
+                  <td data-label="Filial">{r.locationName}</td>
+                  <td data-label="İş günləri" className="num mono">{r.workDays}</td>
+                  <td data-label="Qayıb" className="num mono">{r.absentDays}</td>
+                  <td data-label="Məzuniyyət" className="num mono">{r.leaveDays}</td>
+                  <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
+                  <td data-label="Ümumi saat" className="num mono">{fmtHM(r.totalWorkedHours)}</td>
+                  <td data-label="Overtime" className="num mono">{fmtHM(r.overtimeHours)}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (

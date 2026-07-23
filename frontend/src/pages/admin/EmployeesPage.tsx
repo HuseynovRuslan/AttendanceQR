@@ -883,7 +883,7 @@ export function EmployeesPage() {
 
           {attendanceLoading && <p className="muted">Yüklənir…</p>}
 
-          <div className="tbl-wrap">
+          <div className="tbl-wrap tbl-cards">
             <table>
               <thead>
                 <tr>
@@ -966,7 +966,7 @@ export function EmployeesPage() {
       )}
 
       {/* employees table */}
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -984,7 +984,7 @@ export function EmployeesPage() {
           <tbody>
             {visible.map((e) => (
               <tr key={e.id} style={{ opacity: e.isActive ? 1 : 0.55 }}>
-                <td>
+                <td data-label="İşçi">
                   <div style={{ fontWeight: 700 }}>
                     <Link to={`/admin/employees/${e.id}`} style={{ color: 'var(--c900)', textDecoration: 'none' }}>
                       {e.fullName}
@@ -1014,8 +1014,8 @@ export function EmployeesPage() {
                     ID: {e.id.slice(0, 8)}
                   </div>
                 </td>
-                <td>{e.position || '—'}</td>
-                <td>
+                <td data-label="Vəzifə">{e.position || '—'}</td>
+                <td data-label="Filial">
                   {e.locationName ?? '—'}
                   {/* The employee's own shift when set — so it's visible which schedule (day/night)
                       they're on at a location that runs several. */}
@@ -1025,7 +1025,7 @@ export function EmployeesPage() {
                     </div>
                   )}
                 </td>
-                <td>
+                <td data-label="Rol">
                   {ROLE_LABEL[e.role] ?? e.role}
                   {/* A manager with no branches is not a lesser manager — they see nothing at all.
                       That is invisible from the admin's side unless the list says so. */}

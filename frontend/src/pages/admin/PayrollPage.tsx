@@ -143,21 +143,21 @@ export function PayrollPage() {
             <tbody>
               {report.rows.map((r) => (
                 <tr key={r.employeeId} style={{ opacity: r.monthlySalary == null ? 0.6 : 1 }}>
-                  <td style={{ fontWeight: 700, color: 'var(--c900)' }}>
+                  <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}>
                     <EmployeeLink id={r.employeeId} name={r.employeeName} />
                   </td>
-                  <td>{r.locationName}</td>
-                  <td className="num mono">{azn(r.monthlySalary)}</td>
-                  <td className="num mono">{r.scheduledDays}</td>
-                  <td className="num mono">{r.workDays}</td>
-                  <td className="num mono" style={{ color: r.absentDays > 0 ? 'var(--clay)' : undefined }}>
+                  <td data-label="Filial">{r.locationName}</td>
+                  <td data-label="Aylıq maaş" className="num mono">{azn(r.monthlySalary)}</td>
+                  <td data-label="İş günü" className="num mono">{r.scheduledDays}</td>
+                  <td data-label="Gəlib" className="num mono">{r.workDays}</td>
+                  <td data-label="Qayıb" className="num mono" style={{ color: r.absentDays > 0 ? 'var(--clay)' : undefined }}>
                     {r.absentDays}
                   </td>
-                  <td className="num mono">{r.leaveDays + r.permissionDays}</td>
-                  <td className="num mono" style={{ color: r.deduction > 0 ? 'var(--clay)' : undefined }}>
+                  <td data-label="Məz./İcazə" className="num mono">{r.leaveDays + r.permissionDays}</td>
+                  <td data-label="Çıxılan" className="num mono" style={{ color: r.deduction > 0 ? 'var(--clay)' : undefined }}>
                     {r.monthlySalary == null ? '—' : azn(r.deduction)}
                   </td>
-                  <td className="num mono" style={{ fontWeight: 700, color: 'var(--c900)' }}>
+                  <td data-label="Ödəniləcək" className="num mono" style={{ fontWeight: 700, color: 'var(--c900)' }}>
                     {r.monthlySalary == null ? '—' : azn(r.payable)}
                   </td>
                 </tr>

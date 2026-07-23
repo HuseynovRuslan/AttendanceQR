@@ -43,7 +43,7 @@ export function MissedCheckoutPage() {
       ) : rows.length === 0 ? (
         <div className="card card-pad muted">Gözləyən tələb yoxdur ✓</div>
       ) : (
-        <div className="tbl-wrap">
+        <div className="tbl-wrap tbl-cards">
           <table>
             <thead>
               <tr>
@@ -62,9 +62,9 @@ export function MissedCheckoutPage() {
                     {r.employeeName}
                     <div className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{r.locationName}</div>
                   </td>
-                  <td>{fmtDayMonth(r.attendanceDate)}</td>
-                  <td className="mono" style={{ fontWeight: 700 }}>{fmtTime(r.requestedCheckOutAtUtc)}</td>
-                  <td style={{ maxWidth: 220 }}>{r.reason}</td>
+                  <td data-label="Gün">{fmtDayMonth(r.attendanceDate)}</td>
+                  <td data-label="Getdiyi saat" className="mono" style={{ fontWeight: 700 }}>{fmtTime(r.requestedCheckOutAtUtc)}</td>
+                  <td data-label="Səbəb" style={{ maxWidth: 220 }}>{r.reason}</td>
                   <td>
                     <span
                       style={{
@@ -82,7 +82,7 @@ export function MissedCheckoutPage() {
                       {r.monthlyCount}
                     </span>
                   </td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td data-label="">
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.id}

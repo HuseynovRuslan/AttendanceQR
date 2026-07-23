@@ -136,7 +136,7 @@ export function OpenRecordsPage() {
         )
       })()}
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -154,8 +154,8 @@ export function OpenRecordsPage() {
                   <div style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.locationName}</div>
                 </td>
-                <td className="mono">{fmtDate(r.attendanceDate)}</td>
-                <td className="mono" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <td data-label="Tarix" className="mono">{fmtDate(r.attendanceDate)}</td>
+                <td data-label="Giriş" className="mono" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <IconClock /> {fmtTime(r.checkInAtUtc)}
                 </td>
                 <td>
@@ -166,7 +166,7 @@ export function OpenRecordsPage() {
                     onChange={(e) => setTimes((prev) => ({ ...prev, [r.recordId]: e.target.value }))}
                   />
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td data-label="">
                   <button className="btn btn-primary btn-sm" disabled={busyId === r.recordId} onClick={() => close(r)}>
                     <IconCheck /> Bağla
                   </button>
