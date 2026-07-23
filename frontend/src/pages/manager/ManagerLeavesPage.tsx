@@ -15,6 +15,7 @@ const TYPES = [
   { value: 'Sick', label: 'Xəstəlik' },
   { value: 'Unpaid', label: 'Ödənişsiz' },
   { value: 'Permission', label: 'İcazə' },
+  { value: 'Rest', label: 'İstirahət' },
 ]
 const TYPE_LABEL: Record<string, string> = Object.fromEntries(TYPES.map((t) => [t.value, t.label]))
 const fmt = (iso: string) => iso.split('-').reverse().join('.')

@@ -34,7 +34,14 @@ public static class AttendanceCalculator
     public static DailySummaryStatus ResolveNoRecordStatus(bool isWorkingDay, LeaveType? leaveType)
     {
         if (leaveType is not null)
-            return leaveType == LeaveType.Permission ? DailySummaryStatus.Permission : DailySummaryStatus.OnLeave;
+            return leaveType switch
+            {
+                // A rest day is a day off, not planned leave — it shows as İstirahət and, unlike
+                // Absent, never costs the employee pay.
+                LeaveType.Rest => DailySummaryStatus.DayOff,
+                LeaveType.Permission => DailySummaryStatus.Permission,
+                _ => DailySummaryStatus.OnLeave,
+            };
         return isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;
     }
 

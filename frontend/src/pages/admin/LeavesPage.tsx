@@ -16,6 +16,7 @@ const TYPE_LABELS: Record<LeaveType, string> = {
   Sick: 'Xəstəlik',
   Unpaid: 'Ödənişsiz',
   Permission: 'İcazə',
+  Rest: 'İstirahət',
 }
 
 export function LeavesPage() {
@@ -82,7 +83,7 @@ export function LeavesPage() {
     <div>
       <div className="fb" style={{ marginBottom: 16, background: 'var(--c50, #f6f8f4)', color: 'var(--c500)' }}>
         <span>
-          Bu aralıqdakı günlərdə işçi <b>"Qayıb"</b> sayılmır — Məzuniyyət/Xəstəlik/Ödənişsiz
+          Bu aralıqdakı günlərdə işçi <b>"Qayıb"</b> sayılmır — İstirahət tabeldə istirahət (H) kimi, Məzuniyyət/Xəstəlik/Ödənişsiz
           "Məzuniyyət", İcazə isə "İcazə" statusu göstərir. Həmin gündə giriş edilsə, yenə normal
           işlənmiş kimi sayılır.
         </span>
