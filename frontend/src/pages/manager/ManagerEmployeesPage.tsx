@@ -186,10 +186,10 @@ export function ManagerEmployeesPage() {
       )}
 
       {!editing && (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <table className="tbl">
+        <div className="tbl-wrap">
+          <table>
             <thead>
-              <tr><th>Ad Soyad</th><th>Vəzifə</th><th>Filial</th><th>Status</th><th></th></tr>
+              <tr><th>Ad Soyad</th><th>Vəzifə</th><th>Filial</th><th>Status</th><th style={{ textAlign: 'right' }}>Əməliyyat</th></tr>
             </thead>
             <tbody>
               {loading && <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>Yüklənir…</td></tr>}
@@ -200,10 +200,11 @@ export function ManagerEmployeesPage() {
                   <td>{e.position || '—'}</td>
                   <td>{e.locationName}</td>
                   <td>{e.isActive ? <span className="pill pill-ok">Aktiv</span> : <span className="pill">Deaktiv</span>}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
-                    {' '}
-                    <button className="btn btn-sm" onClick={() => void resetPin(e)}>PIN sıfırla</button>
+                  <td>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
+                      <button className="btn btn-sm" onClick={() => void resetPin(e)}>PIN sıfırla</button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -103,10 +103,10 @@ export function ManagerLeavesPage() {
         </button>
       </div>
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <table className="tbl">
+      <div className="tbl-wrap">
+        <table>
           <thead>
-            <tr><th>İşçi</th><th>Növ</th><th>Tarix</th><th>Qeyd</th><th></th></tr>
+            <tr><th>İşçi</th><th>Növ</th><th>Tarix</th><th>Qeyd</th><th style={{ textAlign: 'right' }}>Əməliyyat</th></tr>
           </thead>
           <tbody>
             {loading && <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>Yüklənir…</td></tr>}
@@ -117,8 +117,10 @@ export function ManagerLeavesPage() {
                 <td>{TYPE_LABEL[l.type] ?? l.type}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{fmt(l.fromDate)} – {fmt(l.toDate)}</td>
                 <td className="muted">{l.note || '—'}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="btn btn-sm btn-danger" onClick={() => void remove(l)}>Sil</button>
+                <td>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn btn-sm btn-danger" onClick={() => void remove(l)}>Sil</button>
+                  </div>
                 </td>
               </tr>
             ))}
