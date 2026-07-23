@@ -38,6 +38,8 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
   '/admin/birthdays': { title: 'Doğum günləri', sub: 'Bu ay doğum günü olan işçilər' },
   '/admin/tabel': { title: 'Aylıq tabel', sub: 'Günlər üzrə davamiyyət cədvəli — çap və Excel' },
+  '/admin/my-employees': { title: 'İşçilərim', sub: 'Öz filialınızın işçiləri — əlavə et, redaktə et' },
+  '/admin/my-leaves': { title: 'Məzuniyyət / İcazə', sub: 'Öz işçiləriniz üçün icazə və məzuniyyət' },
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/vote': { title: 'Ayın işçisi', sub: 'Filial üzrə səsvermə nəticələri' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
@@ -59,6 +61,7 @@ export function AdminLayout() {
   const branding = useBranding()
   const location = useLocation()
   const isAdmin = role === 'Admin'
+  const isManager = role === 'Manager'
 
   // Managing tenants is not a role — it is a config allowlist of employee ids, so only the server can
   // answer this. Asked once here rather than guessed, so the menu never offers a screen that 403s.
@@ -93,6 +96,8 @@ export function AdminLayout() {
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },
+    ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
+    ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
     ...(isAdmin ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
     ...(isAdmin ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
     ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),

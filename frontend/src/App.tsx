@@ -38,6 +38,8 @@ const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ 
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
+const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
+const ManagerLeavesPage = lazy(() => import('./pages/manager/ManagerLeavesPage').then(m => ({ default: m.ManagerLeavesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
@@ -229,6 +231,9 @@ function AppRoutes() {
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
         <Route path="tabel" element={<TabelPage />} />
+        {/* Manager write surface — the endpoints are Manager-only + location-scoped server-side. */}
+        <Route path="my-employees" element={<ManagerEmployeesPage />} />
+        <Route path="my-leaves" element={<ManagerLeavesPage />} />
         <Route
           path="positions"
           element={
