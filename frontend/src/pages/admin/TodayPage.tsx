@@ -277,7 +277,7 @@ export function TodayPage() {
         </div>
       )}
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
@@ -293,12 +293,12 @@ export function TodayPage() {
           <tbody>
             {visible.map((r) => (
               <tr key={r.employeeId}>
-                <td style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                <td>{r.locationName}</td>
-                <td>
+                <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
+                <td data-label="Filial">{r.locationName}</td>
+                <td data-label="Status">
                   <StatusBadge status={r.status} override={r.status === 'Incomplete' ? incompleteOverride : undefined} />
                 </td>
-                <td className="mono">
+                <td className="mono" data-label="Giriş">
                   {fmtTime(r.checkInAtUtc)}
                   {r.wasOffline && (
                     <span
@@ -315,7 +315,7 @@ export function TodayPage() {
                     </div>
                   )}
                 </td>
-                <td className="mono">
+                <td className="mono" data-label="Çıxış">
                   {fmtTime(r.checkOutAtUtc)}
                   {r.earlyDepartureReason && (
                     <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
@@ -323,7 +323,7 @@ export function TodayPage() {
                     </div>
                   )}
                 </td>
-                <td>
+                <td data-label="Foto">
                   {r.hasPhoto && r.recordId ? (
                     <button
                       className="btn btn-sm"
@@ -338,7 +338,7 @@ export function TodayPage() {
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td>
+                <td data-label="Üz">
                   <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} />
                 </td>
               </tr>

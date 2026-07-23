@@ -327,3 +327,30 @@ select.inp{cursor:pointer}
 .btn-link{background:none;border:none;padding:0;margin-top:4px;font-family:inherit;font-size:12px;
   font-weight:700;color:var(--c600);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .btn-link:hover{color:var(--c900)}
+
+/* Responsive table → cards. Add .tbl-cards to a .tbl-wrap and give each <td> a data-label; below the
+   phone breakpoint the header hides and every row becomes a stacked card with the column name printed
+   beside each value. A dense attendance table stops forcing a sideways scroll to reach the far
+   columns, and no data is dropped to achieve it. Desktop is untouched. */
+@media (max-width: 640px) {
+  .tbl-cards table, .tbl-cards tbody, .tbl-cards tr, .tbl-cards td { display: block; width: 100%; }
+  .tbl-cards thead { display: none; }
+  .tbl-cards { border: none; background: transparent; overflow: visible; }
+  .tbl-cards tr {
+    border: 1px solid var(--c100); border-radius: var(--r); background: var(--white);
+    margin-bottom: 10px; padding: 6px 4px;
+  }
+  .tbl-cards tbody tr:hover td { background: transparent; }
+  .tbl-cards td {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 8px 12px; border-bottom: 1px solid var(--c50); text-align: right;
+  }
+  .tbl-cards tr td:last-child { border-bottom: none; }
+  /* The column name, printed on the left of each stacked cell. */
+  .tbl-cards td::before {
+    content: attr(data-label); text-align: left; flex-shrink: 0;
+    font-size: 11px; font-weight: 700; color: var(--c500); text-transform: uppercase; letter-spacing: .5px;
+  }
+  /* A cell with no label (or the empty-state row) shouldn't reserve the label gutter. */
+  .tbl-cards td[data-label=""]::before, .tbl-cards td:not([data-label])::before { content: none; }
+}
