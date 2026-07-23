@@ -11,6 +11,7 @@ import {
   type ManagerLocation,
 } from '../../api/manager'
 import { IconX } from '../../components/icons'
+import './manager.css'
 
 const EMPTY: ManagerEmployeeInput = {
   fullName: '', email: null, phoneNumber: null, fatherName: null, position: null,
@@ -186,31 +187,33 @@ export function ManagerEmployeesPage() {
       )}
 
       {!editing && (
-        <div className="tbl-wrap">
-          <table>
-            <thead>
-              <tr><th>Ad Soyad</th><th>Vəzifə</th><th>Filial</th><th>Status</th><th style={{ textAlign: 'right' }}>Əməliyyat</th></tr>
-            </thead>
-            <tbody>
-              {loading && <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>Yüklənir…</td></tr>}
-              {!loading && rows.length === 0 && <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>İşçi yoxdur.</td></tr>}
-              {rows.map((e) => (
-                <tr key={e.id}>
-                  <td style={{ fontWeight: 700 }}>{e.fullName}{e.fatherName ? <span className="muted" style={{ fontWeight: 400 }}> {e.fatherName}</span> : ''}</td>
-                  <td>{e.position || '—'}</td>
-                  <td>{e.locationName}</td>
-                  <td>{e.isActive ? <span className="pill pill-ok">Aktiv</span> : <span className="pill">Deaktiv</span>}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
-                      <button className="btn btn-sm" onClick={() => void resetPin(e)}>PIN sıfırla</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {loading && <div className="card card-pad muted">Yüklənir…</div>}
+          {!loading && rows.length === 0 && <div className="card card-pad muted" style={{ textAlign: 'center' }}>İşçi yoxdur.</div>}
+          <div className="mgr-list">
+            {rows.map((e) => (
+              <div className="mgr-item" key={e.id}>
+                <div className="mgr-main">
+                  <div className="mgr-name">
+                    {e.fullName}{e.fatherName ? <span className="father"> {e.fatherName}</span> : ''}
+                  </div>
+                  <div className="mgr-meta">
+                    {e.position || '—'}<span className="dot">·</span>{e.locationName}
+                  </div>
+                </div>
+                <div className="mgr-side">
+                  {e.isActive
+                    ? <span className="pill pill-ok">Aktiv</span>
+                    : <span className="pill">Deaktiv</span>}
+                  <div className="mgr-actions">
+                    <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
+                    <button className="btn btn-sm" onClick={() => void resetPin(e)}>PIN</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

@@ -1,0 +1,29 @@
+/* The manager screens are the ones most likely to be used on a phone — a branch manager standing in
+   their own site, adding a new hire. So the employee list is a responsive card list, never a wide
+   table: on a narrow screen the actions must be reachable without scrolling sideways to find them. */
+
+.mgr-list { display: flex; flex-direction: column; gap: 10px; }
+
+.mgr-item {
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--c100); border-radius: var(--r); background: var(--white);
+  padding: 13px 15px;
+}
+
+.mgr-main { flex: 1; min-width: 0; }
+.mgr-name { font-weight: 700; font-size: 14px; color: var(--c900); }
+.mgr-name .father { font-weight: 400; color: var(--c500); }
+.mgr-meta { font-size: 12px; color: var(--c500); margin-top: 2px; }
+.mgr-meta .dot { margin: 0 6px; opacity: .5; }
+
+.mgr-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.mgr-actions { display: flex; gap: 8px; }
+
+/* On a phone the row stacks: identity on top, then status + actions on their own line, full width and
+   tappable. Nothing lives off the right edge. */
+@media (max-width: 620px) {
+  .mgr-item { flex-direction: column; align-items: stretch; gap: 11px; }
+  .mgr-side { justify-content: space-between; border-top: 1px solid var(--c50); padding-top: 11px; }
+  .mgr-actions { flex: 1; justify-content: flex-end; }
+  .mgr-actions .btn { flex: 1; max-width: 160px; }
+}

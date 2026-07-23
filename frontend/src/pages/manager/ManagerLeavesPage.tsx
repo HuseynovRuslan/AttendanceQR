@@ -8,6 +8,7 @@ import {
   type ManagerLeave,
 } from '../../api/manager'
 import { IconX } from '../../components/icons'
+import './manager.css'
 
 const TYPES = [
   { value: 'Vacation', label: 'Məzuniyyət' },
@@ -103,29 +104,25 @@ export function ManagerLeavesPage() {
         </button>
       </div>
 
-      <div className="tbl-wrap">
-        <table>
-          <thead>
-            <tr><th>İşçi</th><th>Növ</th><th>Tarix</th><th>Qeyd</th><th style={{ textAlign: 'right' }}>Əməliyyat</th></tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>Yüklənir…</td></tr>}
-            {!loading && leaves.length === 0 && <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>Qeyd yoxdur.</td></tr>}
-            {leaves.map((l) => (
-              <tr key={l.id}>
-                <td style={{ fontWeight: 700 }}>{l.employeeName}</td>
-                <td>{TYPE_LABEL[l.type] ?? l.type}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>{fmt(l.fromDate)} – {fmt(l.toDate)}</td>
-                <td className="muted">{l.note || '—'}</td>
-                <td>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button className="btn btn-sm btn-danger" onClick={() => void remove(l)}>Sil</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {loading && <div className="card card-pad muted">Yüklənir…</div>}
+      {!loading && leaves.length === 0 && <div className="card card-pad muted" style={{ textAlign: 'center' }}>Qeyd yoxdur.</div>}
+      <div className="mgr-list">
+        {leaves.map((l) => (
+          <div className="mgr-item" key={l.id}>
+            <div className="mgr-main">
+              <div className="mgr-name">{l.employeeName}</div>
+              <div className="mgr-meta">
+                {TYPE_LABEL[l.type] ?? l.type}<span className="dot">·</span>{fmt(l.fromDate)} – {fmt(l.toDate)}
+                {l.note ? <><span className="dot">·</span>{l.note}</> : ''}
+              </div>
+            </div>
+            <div className="mgr-side">
+              <div className="mgr-actions">
+                <button className="btn btn-sm btn-danger" onClick={() => void remove(l)}>Sil</button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
