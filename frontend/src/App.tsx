@@ -38,6 +38,7 @@ const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ 
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
+const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
@@ -226,6 +227,8 @@ function AppRoutes() {
             </AdminOnly>
           }
         />
+        {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
+        <Route path="tabel" element={<TabelPage />} />
         <Route
           path="positions"
           element={

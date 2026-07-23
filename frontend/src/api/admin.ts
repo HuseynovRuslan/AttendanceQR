@@ -808,3 +808,59 @@ export function updateSchedule(id: string, input: ScheduleInput) {
 export function deleteSchedule(id: string) {
   return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/schedules/${id}`, { method: 'DELETE' })
 }
+
+// --- Aylıq Tabel ------------------------------------------------------------
+
+export interface TabelLegendItem {
+  code: string
+  label: string
+}
+
+export interface TabelRow {
+  employeeId: string
+  employeeName: string
+  position: string | null
+  locationName: string
+  /** One code per day of the month, index 0 = day 1. Empty string = a day not yet reached. */
+  days: string[]
+  workedDays: number
+  absentDays: number
+  leaveDays: number
+  workedHours: number
+}
+
+export interface TabelReport {
+  year: number
+  month: number
+  scopeLabel: string
+  daysInMonth: number
+  rows: TabelRow[]
+  legend: TabelLegendItem[]
+}
+
+/** The monthly timesheet grid. Manager-visible (scoped server-side to their own branch). */
+export function getTabel(year: number, month: number, locationId?: string) {
+  const q = new URLSearchParams({ year: String(year), month: String(month) })
+  if (locationId) q.set('locationId', locationId)
+  return apiRequest<TabelReport | { error: string }>(`/api/reports/tabel?${q}`)
+}
+
+/** Streams the tabel .xlsx back as a blob and triggers a browser download. */
+export async function downloadTabelExcel(year: number, month: number, locationId?: string): Promise<void> {
+  const q = new URLSearchParams({ year: String(year), month: String(month) })
+  if (locationId) q.set('locationId', locationId)
+  const token = getToken()
+  const res = await fetch(`${API_BASE_URL}/api/reports/tabel/export?${q}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error(`tabel export failed: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `tabel_${year}_${String(month).padStart(2, '0')}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}

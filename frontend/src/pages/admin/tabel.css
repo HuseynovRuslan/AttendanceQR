@@ -1,0 +1,69 @@
+/* Aylıq Tabel. A 31-column grid is only useful if it stays readable — so the name column freezes, the
+   cells are tight and centred, and each code carries a faint colour so a bad month reads as a shape
+   before it reads as text. */
+
+.tb-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+.tb-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tb-month { display: flex; align-items: center; gap: 6px; }
+.tb-month .inp { width: auto; }
+.tb-actions { display: flex; gap: 8px; margin-left: auto; }
+
+.tb-title { font-size: 18px; font-weight: 800; color: var(--c900); }
+.tb-scope { font-weight: 600; color: var(--c500); font-size: 14px; }
+
+/* The only thing that scrolls sideways is the grid, never the page. */
+.tb-scroll { overflow-x: auto; border: 1px solid var(--c200); border-radius: 12px; background: var(--white); }
+
+.tb-grid { border-collapse: collapse; font-size: 12px; width: 100%; }
+.tb-grid th, .tb-grid td { border: 1px solid var(--c100); text-align: center; }
+.tb-grid td { width: 26px; height: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Day-number header: number over its weekday initial. */
+.tb-grid thead th { background: var(--c50); padding: 4px 2px; color: var(--c600); font-weight: 700; }
+.tb-daynum { display: block; font-size: 12px; color: var(--c900); }
+.tb-dow { display: block; font-size: 9px; color: var(--c400); text-transform: uppercase; }
+.tb-rest-col { background: var(--c100) !important; }
+
+/* The frozen name column — the one anchor while the days scroll under it. */
+.tb-name-col {
+  position: sticky; left: 0; z-index: 2;
+  background: var(--white); text-align: left !important;
+  min-width: 170px; max-width: 170px; padding: 5px 10px;
+}
+thead .tb-name-col { background: var(--c50); z-index: 3; }
+.tb-name { font-weight: 700; color: var(--c900); font-size: 12px; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-pos { font-size: 10px; color: var(--c500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tb-total-col { min-width: 38px; background: var(--c50); color: var(--c700); }
+.tb-total-work { color: var(--leaf-d); }
+.tb-total-absent { color: var(--clay); }
+
+/* One tint per code. Kept pale: forty of them on screen at once, the colour is a hint not a highlight. */
+.tb-work    { background: #F1F8E9; color: #4E7D26; }   /* İ  — worked */
+.tb-absent  { background: #FBECE8; color: #C0492B; }   /* Q  — absent */
+.tb-leave   { background: #EFF6FF; color: #2563EB; }   /* M/ÖM — leave */
+.tb-sick    { background: #F5F3FF; color: #7C3AED; }   /* X  — sick */
+.tb-perm    { background: #FEF3E2; color: #B4690E; }   /* İC — permission */
+.tb-holiday { background: #FEF9C3; color: #A16207; }   /* B  — holiday */
+.tb-off     { background: var(--c50); color: var(--c400); }  /* H — rest day */
+.tb-future  { background: repeating-linear-gradient(45deg, #fff, #fff 3px, #fafafa 3px, #fafafa 6px); }
+
+.tb-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 4px 2px; font-size: 12px; color: var(--c600); }
+.tb-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.tb-legend-code {
+  display: inline-grid; place-items: center; min-width: 22px; height: 20px;
+  border-radius: 5px; font-weight: 800; font-size: 11px; padding: 0 4px;
+}
+
+/* Print: drop everything but the grid + legend, and let it break across pages by row. */
+@media print {
+  .no-print { display: none !important; }
+  .tb-scroll { overflow: visible; border: none; }
+  .tb-grid { font-size: 10px; }
+  .tb-grid td { height: 22px; }
+  .tb-name-col { position: static; }
+  .app, .main, .content { display: block !important; }
+  .sidebar, .topbar, .admin-nav { display: none !important; }
+}

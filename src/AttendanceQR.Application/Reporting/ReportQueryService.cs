@@ -48,6 +48,14 @@ public interface IReportQueryService
     /// </summary>
     Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
+    /// The monthly timesheet grid ("Aylıq Tabel"): one row per in-scope employee, one code per day.
+    /// Built on the same per-day computation as the summary, so it shares its scope authority and its
+    /// day-counting — the tabel and the summary can never disagree about who worked when.
+    /// </summary>
+    Task<(ReportAccess Access, TabelReport? Report)> GetTabelAsync(
+        int year, int month, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 }
 
 public sealed class ReportQueryService : IReportQueryService
@@ -239,6 +247,185 @@ public sealed class ReportQueryService : IReportQueryService
         }
 
         return (ReportAccess.Allowed, rows, scoped.Label);
+    }
+
+    // The Azerbaijani T-13 codes the tabel prints. Kept here so the legend the UI shows and the codes
+    // the grid fills always come from one place — a legend that disagrees with the cells is worse than
+    // no legend.
+    private const string CodeWorked = "İ";      // işlədi — turned up
+    private const string CodeAbsent = "Q";      // qayıb — unexcused absence on a working day
+    private const string CodeVacation = "M";    // məzuniyyət — annual leave
+    private const string CodeSick = "X";        // xəstəlik
+    private const string CodeUnpaid = "ÖM";     // ödənişsiz məzuniyyət
+    private const string CodePermission = "İC"; // icazə — short excused absence
+    private const string CodeHoliday = "B";     // bayram / admin-declared non-working day
+    private const string CodeWeekend = "H";     // həftələrarası istirahət — off per the work-day mask
+    private const string CodeFuture = "";       // a day that has not happened yet this month
+
+    private static readonly IReadOnlyList<TabelLegendItem> TabelLegend = new[]
+    {
+        new TabelLegendItem(CodeWorked, "İşlədi"),
+        new TabelLegendItem(CodeAbsent, "Qayıb (icazəsiz)"),
+        new TabelLegendItem(CodeVacation, "Məzuniyyət"),
+        new TabelLegendItem(CodeSick, "Xəstəlik"),
+        new TabelLegendItem(CodeUnpaid, "Ödənişsiz məzuniyyət"),
+        new TabelLegendItem(CodePermission, "İcazə"),
+        new TabelLegendItem(CodeHoliday, "Bayram / qeyri-iş günü"),
+        new TabelLegendItem(CodeWeekend, "İstirahət günü"),
+    };
+
+    public async Task<(ReportAccess Access, TabelReport? Report)> GetTabelAsync(
+        int year, int month, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        if (month is < 1 or > 12)
+            return (ReportAccess.Forbidden, null);
+
+        var daysInMonth = DateTime.DaysInMonth(year, month);
+        var from = new DateOnly(year, month, 1);
+        var to = new DateOnly(year, month, daysInMonth);
+        var today = LocalToday();
+
+        // The same computed day rows the summary uses — status + worked minutes per employee per day,
+        // scoped to the caller. Reusing it is what keeps the tabel honest against every other report.
+        var (access, dayRows, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, null);
+
+        // The roster itself, so an employee who was absent all month still gets a row — reports that
+        // only list who showed up hide exactly the people a timesheet exists to catch.
+        var (empAccess, employees) = await ScopedEmployeesAsync(locationId, requesterId, role, ct);
+        if (empAccess == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, null);
+
+        var employeeIds = employees.Select(e => e.Id).ToList();
+        var meta = await _db.Employees
+            .Where(e => employeeIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.Position, e.LocationId })
+            .ToListAsync(ct);
+        var positionById = meta.ToDictionary(m => m.Id, m => m.Position);
+        var locationById = meta.ToDictionary(m => m.Id, m => m.LocationId);
+        var allLocations = await _db.Locations.ToListAsync(ct);
+        var locationNames = allLocations.ToDictionary(l => l.Id, l => l.Name);
+        var maskByLocation = allLocations.ToDictionary(l => l.Id, l => l.WorkDaysMask);
+
+        // DailySummaryStatus collapses every kind of approved leave into OnLeave; the tabel has to
+        // tell M from X from ÖM, so the leave type comes straight from the LeaveRecords for the month.
+        var leaves = await _db.LeaveRecords
+            .Where(l => employeeIds.Contains(l.EmployeeId) && l.FromDate <= to && l.ToDate >= from)
+            .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate, l.Type })
+            .ToListAsync(ct);
+
+        string LeaveCodeFor(Guid employeeId, DateOnly date)
+        {
+            var leave = leaves.FirstOrDefault(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date);
+            return leave?.Type switch
+            {
+                LeaveType.Vacation => CodeVacation,
+                LeaveType.Sick => CodeSick,
+                LeaveType.Unpaid => CodeUnpaid,
+                LeaveType.Permission => CodePermission,
+                _ => CodeVacation, // OnLeave with no matching row (shouldn't happen) — treat as leave, not absence
+            };
+        }
+
+        // Fast lookup of the computed day per (employee, date).
+        var byKey = dayRows.ToDictionary(r => (r.EmployeeId, r.Date));
+
+        var rows = new List<TabelRow>(employees.Count);
+        foreach (var e in employees.OrderBy(e => e.FullName))
+        {
+            var codes = new string[daysInMonth];
+            int worked = 0, absent = 0, leave = 0, workedMinutes = 0;
+
+            for (var day = 1; day <= daysInMonth; day++)
+            {
+                var date = new DateOnly(year, month, day);
+
+                // A day that hasn't arrived yet is not an absence — the month isn't over.
+                if (date > today)
+                {
+                    codes[day - 1] = CodeFuture;
+                    continue;
+                }
+
+                string code;
+                if (byKey.TryGetValue((e.Id, date), out var d))
+                {
+                    code = d.Status switch
+                    {
+                        // Any activity is worked time, including a missing check-out — that is a
+                        // check-out problem for another screen, not an absence here.
+                        DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete => CodeWorked,
+                        DailySummaryStatus.Absent => CodeAbsent,
+                        DailySummaryStatus.OnLeave => LeaveCodeFor(e.Id, date),
+                        DailySummaryStatus.Permission => CodePermission,
+                        DailySummaryStatus.DayOff => CodeWeekend,
+                        _ => CodeAbsent,
+                    };
+                    workedMinutes += d.WorkedMinutes;
+                }
+                else
+                {
+                    // No computed row (e.g. an employee added mid-month): fall back to the calendar —
+                    // a work day with no record is absent, a non-work day is rest.
+                    var mask = maskByLocation.GetValueOrDefault(locationById.GetValueOrDefault(e.Id), 126);
+                    code = AttendanceCalculator.IsWorkingDayOfWeek(mask, date.DayOfWeek) ? CodeAbsent : CodeWeekend;
+                }
+
+                codes[day - 1] = code;
+                if (code == CodeWorked) worked++;
+                else if (code == CodeAbsent) absent++;
+                else if (code is CodeVacation or CodeSick or CodeUnpaid or CodePermission) leave++;
+            }
+
+            // Admin-declared holidays turn a weekend/absent cell into B. Applied last so it wins over
+            // the calendar but never over a real check-in.
+            rows.Add(new TabelRow(
+                e.Id, e.FullName,
+                positionById.GetValueOrDefault(e.Id),
+                locationNames.GetValueOrDefault(e.LocationId, ""),
+                codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1)));
+        }
+
+        // Overlay admin-declared non-working days (bayram) as B, on the cells that are otherwise empty
+        // rest days — done once for the whole grid rather than per employee-day.
+        await ApplyHolidaysAsync(rows, employees, year, month, daysInMonth, today, ct);
+
+        return (ReportAccess.Allowed, new TabelReport(year, month, label, daysInMonth, rows, TabelLegend));
+    }
+
+    /// <summary>Marks admin-declared non-working days as B (bayram) across the grid, on rest cells
+    /// only — a holiday someone still came in for stays İ.</summary>
+    private async Task ApplyHolidaysAsync(
+        List<TabelRow> rows, List<ScopedEmployee> employees, int year, int month, int daysInMonth,
+        DateOnly today, CancellationToken ct)
+    {
+        var from = new DateOnly(year, month, 1);
+        var to = new DateOnly(year, month, daysInMonth);
+        var holidays = await _db.NonWorkingDays
+            .Where(n => n.Date >= from && n.Date <= to)
+            .Select(n => new { n.Date, n.LocationId })
+            .ToListAsync(ct);
+        if (holidays.Count == 0) return;
+
+        var locationByEmployee = employees.ToDictionary(e => e.Id, e => e.LocationId);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var empLoc = locationByEmployee.GetValueOrDefault(row.EmployeeId);
+            var codes = row.Days.ToArray();
+            foreach (var h in holidays)
+            {
+                if (h.Date > today) continue;
+                if (h.LocationId is Guid hl && hl != empLoc) continue; // location-specific holiday
+                var idx = h.Date.Day - 1;
+                // Only recolour a rest cell → holiday. Never touch worked time, leave, or an absence:
+                // recolouring an absence would silently drop it from the AbsentDays total computed above.
+                if (codes[idx] == CodeWeekend)
+                    codes[idx] = CodeHoliday;
+            }
+            rows[i] = row with { Days = codes };
+        }
     }
 
     public async Task<(ReportAccess Access, AttendanceReport? Report)> GetSummaryAsync(

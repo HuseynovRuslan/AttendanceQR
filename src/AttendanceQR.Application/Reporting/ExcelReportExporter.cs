@@ -9,6 +9,10 @@ public interface IExcelReportExporter
     /// <summary>Renders the payroll (Maaş) report to a formatted .xlsx — AZN money columns, the
     /// accountant's hand-off.</summary>
     byte[] BuildPayroll(PayrollReport report);
+
+    /// <summary>Renders the monthly timesheet (Tabel) — the days-across-employees grid the accountant
+    /// reconciles, with the code legend on the sheet so it stands on its own once printed.</summary>
+    byte[] BuildTabel(TabelReport report);
 }
 
 /// <summary>Renders an <see cref="AttendanceReport"/> to a formatted .xlsx via ClosedXML (MIT).</summary>
@@ -156,5 +160,91 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
+    }
+
+    private static readonly string[] AzMonths =
+    {
+        "Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun",
+        "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"
+    };
+
+    public byte[] BuildTabel(TabelReport report)
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Tabel");
+        var days = report.DaysInMonth;
+        // Columns: name, position, then one per day, then three totals.
+        var totalCols = 2 + days + 3;
+
+        // Title across the whole grid.
+        var monthName = AzMonths[Math.Clamp(report.Month - 1, 0, 11)];
+        ws.Cell(1, 1).Value = $"Tabel — {monthName} {report.Year} · {report.ScopeLabel}";
+        ws.Range(1, 1, 1, totalCols).Merge();
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(1, 1).Style.Font.FontSize = 14;
+
+        // Header row: day numbers, then totals.
+        var hr = 2;
+        ws.Cell(hr, 1).Value = "İşçi";
+        ws.Cell(hr, 2).Value = "Vəzifə";
+        for (var d = 1; d <= days; d++)
+            ws.Cell(hr, 2 + d).Value = d;
+        ws.Cell(hr, 2 + days + 1).Value = "İş günü";
+        ws.Cell(hr, 2 + days + 2).Value = "Qayıb";
+        ws.Cell(hr, 2 + days + 3).Value = "Saat";
+
+        var header = ws.Range(hr, 1, hr, totalCols);
+        header.Style.Font.Bold = true;
+        header.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E70C8");
+        header.Style.Font.FontColor = XLColor.White;
+        header.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+        var row = hr + 1;
+        foreach (var r in report.Rows)
+        {
+            ws.Cell(row, 1).Value = r.EmployeeName;
+            ws.Cell(row, 2).Value = r.Position ?? "";
+            for (var d = 0; d < days; d++)
+            {
+                var cell = ws.Cell(row, 3 + d);
+                cell.Value = r.Days[d];
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+            ws.Cell(row, 2 + days + 1).Value = r.WorkedDays;
+            ws.Cell(row, 2 + days + 2).Value = r.AbsentDays;
+            ws.Cell(row, 2 + days + 3).Value = r.WorkedHours;
+            row++;
+        }
+
+        if (row > hr + 1)
+        {
+            var table = ws.Range(hr, 1, row - 1, totalCols);
+            table.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            table.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        }
+
+        // Legend below the grid, so a printed sheet explains its own codes.
+        var lr = row + 1;
+        ws.Cell(lr, 1).Value = "İşarələr:";
+        ws.Cell(lr, 1).Style.Font.Bold = true;
+        lr++;
+        foreach (var item in report.Legend)
+        {
+            ws.Cell(lr, 1).Value = item.Code;
+            ws.Cell(lr, 1).Style.Font.Bold = true;
+            ws.Cell(lr, 2).Value = item.Label;
+            lr++;
+        }
+
+        ws.Column(1).Width = 26;
+        ws.Column(2).Width = 16;
+        for (var d = 0; d < days; d++)
+            ws.Column(3 + d).Width = 4;
+        ws.SheetView.FreezeColumns(2);
+        ws.SheetView.FreezeRows(2);
+
+        using var s2 = new MemoryStream();
+        workbook.SaveAs(s2);
+        return s2.ToArray();
     }
 }

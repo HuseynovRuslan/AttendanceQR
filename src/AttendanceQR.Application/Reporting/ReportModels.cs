@@ -157,3 +157,36 @@ public sealed record DashboardReport(
     IReadOnlyList<DailyTrendPoint> Trend,
     IReadOnlyList<WeekdayPoint> WeekdayBreakdown,
     IReadOnlyList<TopLateRow> TopLate);
+
+/// <summary>
+/// The monthly attendance timesheet ("Aylıq Tabel") — the grid an accountant reconciles at month end:
+/// employees down the side, the days of the month across the top, one code per cell.
+///
+/// The codes follow the Azerbaijani T-13 convention so a bookkeeper recognises them without a key,
+/// and each is derived from data the system already holds — a check-in, an approved leave, a declared
+/// holiday, the location's work-day mask — rather than typed by hand. See ReportQueryService for the
+/// precedence between them (showing up beats everything: a scan on a leave day is worked time).
+/// </summary>
+public sealed record TabelReport(
+    int Year,
+    int Month,
+    string ScopeLabel,
+    int DaysInMonth,
+    IReadOnlyList<TabelRow> Rows,
+    IReadOnlyList<TabelLegendItem> Legend);
+
+public sealed record TabelRow(
+    Guid EmployeeId,
+    string EmployeeName,
+    string? Position,
+    string LocationName,
+    // One code per day of the month, index 0 = day 1. Empty string for days outside the employee's
+    // employment is not used — every day of the month gets a code.
+    IReadOnlyList<string> Days,
+    // Month totals the accountant actually copies out.
+    int WorkedDays,
+    int AbsentDays,
+    int LeaveDays,
+    double WorkedHours);
+
+public sealed record TabelLegendItem(string Code, string Label);

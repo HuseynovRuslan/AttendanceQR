@@ -196,6 +196,37 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
+    // GET /api/reports/tabel?year=&month=&locationId= — the monthly timesheet grid (Aylıq Tabel).
+    // Manager-visible (scoped in the service), because a manager reconciles their own branch's month.
+    [HttpGet("tabel")]
+    public async Task<IActionResult> Tabel(
+        [FromQuery] int year, [FromQuery] int month, [FromQuery] Guid? locationId)
+    {
+        var (access, report) = await _reports.GetTabelAsync(
+            year, month, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        return Ok(report);
+    }
+
+    // GET /api/reports/tabel/export — the same grid as a printable/archivable .xlsx.
+    [HttpGet("tabel/export")]
+    public async Task<IActionResult> TabelExport(
+        [FromQuery] int year, [FromQuery] int month, [FromQuery] Guid? locationId)
+    {
+        var (access, report) = await _reports.GetTabelAsync(
+            year, month, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        var bytes = _exporter.BuildTabel(report!);
+        var fileName = $"tabel_{year}_{month:D2}.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
     // GET /api/reports/problems?date=yyyy-MM-dd — every rejected scan on that local day: who could
     // not check in/out, and why. Without this the failures only live in AuditLogs, invisible to staff.
     [HttpGet("problems")]
