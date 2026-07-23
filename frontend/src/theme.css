@@ -38,12 +38,12 @@ h1,h2,h3,h4{font-family:'Manrope',sans-serif;color:var(--c900)}
 .nav-item.active{background:color-mix(in srgb,var(--leaf) 15%,transparent);color:var(--leaf)}
 .nav-item.active svg{opacity:1;color:var(--leaf)}
 .sidebar-footer{padding:12px 8px}
-.main{margin-left:240px;flex:1;display:flex;flex-direction:column;min-height:100vh;background:var(--sand)}
+.main{margin-left:240px;flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;background:var(--sand)}
 .topbar{background:var(--white);border-bottom:1px solid var(--c100);padding:0 28px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
 .topbar-title{font-family:'Manrope',sans-serif;font-weight:700;font-size:17px;color:var(--c900)}
 .topbar-sub{font-size:12px;color:var(--c400);margin-top:1px}
 .topbar-right{display:flex;align-items:center;gap:12px}
-.content{padding:24px 28px;flex:1}
+.content{padding:24px 28px;flex:1;min-width:0}
 
 /* Cards */
 .card{background:var(--white);border:1px solid var(--c100);border-radius:var(--r-lg);box-shadow:var(--sh-sm)}
