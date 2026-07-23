@@ -53,6 +53,10 @@ public class AppDbContext : DbContext
 
     public DbSet<JobPosition> JobPositions => Set<JobPosition>();
 
+    public DbSet<TaskItem> Tasks => Set<TaskItem>();
+
+    public DbSet<TaskAssignPermission> TaskAssignPermissions => Set<TaskAssignPermission>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -70,6 +74,7 @@ public class AppDbContext : DbContext
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
+            typeof(TaskItem), typeof(TaskAssignPermission),
         };
         foreach (var t in tenantScoped)
         {
@@ -129,6 +134,13 @@ public class AppDbContext : DbContext
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.
         modelBuilder.Entity<ProcessedScan>().HasIndex(p => new { p.TenantId, p.ClientScanId }).IsUnique();
+
+        modelBuilder.Entity<TaskItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+
+        modelBuilder.Entity<TaskAssignPermission>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        // One row per (assigner, recipient) — this index IS the "grant once" rule; re-granting is a no-op.
+        modelBuilder.Entity<TaskAssignPermission>()
+            .HasIndex(p => new { p.TenantId, p.AssignerEmployeeId, p.RecipientEmployeeId }).IsUnique();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

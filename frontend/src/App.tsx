@@ -56,6 +56,8 @@ const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => (
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const TenantsPage = lazy(() => import('./pages/admin/TenantsPage').then(m => ({ default: m.TenantsPage })))
+const TasksPage = lazy(() => import('./pages/admin/TasksPage').then(m => ({ default: m.TasksPage })))
+const TaskPermissionsPage = lazy(() => import('./pages/admin/TaskPermissionsPage').then(m => ({ default: m.TaskPermissionsPage })))
 
 /** Reloads the app once a newer build exists. Silent by design: employees will not tap an "update"
  *  banner, and an installed PWA is otherwise stuck on whatever bundle it launched with. Never fires
@@ -263,6 +265,18 @@ function AppRoutes() {
         <Route path="photo-audit" element={<PhotoAuditPage />} />
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<ProblemsPage />} />
+        {/* Tasks — Admin + Manager. A rəhbər assigns; the assignee marks complete; both are notified.
+            The nav item is gated by task access; the page itself is safe for any Admin/Manager to open. */}
+        <Route path="tasks" element={<TasksPage />} />
+        {/* Task permissions — Admin only: who may assign tasks, and to whom. */}
+        <Route
+          path="task-permissions"
+          element={
+            <AdminOnly>
+              <TaskPermissionsPage />
+            </AdminOnly>
+          }
+        />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
         <Route
           path="open-records"

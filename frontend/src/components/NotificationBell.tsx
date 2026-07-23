@@ -4,7 +4,7 @@ import { getNotifications, type NotificationsSummary } from '../api/notification
 import { usePolling } from '../lib/usePolling'
 import { IconBell } from './icons'
 
-/** Admin-only bell icon — live count + dropdown, no read/unread state (see api/notifications.ts). */
+/** Bell icon (Admin + Manager) — live count + dropdown, no read/unread state (see api/notifications.ts). */
 export function NotificationBell() {
   const [summary, setSummary] = useState<NotificationsSummary | null>(null)
   const [open, setOpen] = useState(false)

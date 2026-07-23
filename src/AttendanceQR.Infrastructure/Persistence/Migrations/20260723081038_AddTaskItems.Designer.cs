@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AttendanceQR.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260723081038_AddTaskItems")]
+    partial class AddTaskItems
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -878,38 +881,6 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("Schedules");
                 });
 
-            modelBuilder.Entity("AttendanceQR.Domain.Entities.TaskAssignPermission", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AssignerEmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("RecipientEmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AssignerEmployeeId");
-
-                    b.HasIndex("RecipientEmployeeId");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("TenantId", "AssignerEmployeeId", "RecipientEmployeeId")
-                        .IsUnique();
-
-                    b.ToTable("TaskAssignPermissions", (string)null);
-                });
-
             modelBuilder.Entity("AttendanceQR.Domain.Entities.TaskItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1333,27 +1304,6 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.Schedule", b =>
                 {
-                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("AttendanceQR.Domain.Entities.TaskAssignPermission", b =>
-                {
-                    b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
-                        .WithMany()
-                        .HasForeignKey("AssignerEmployeeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
-                        .WithMany()
-                        .HasForeignKey("RecipientEmployeeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")

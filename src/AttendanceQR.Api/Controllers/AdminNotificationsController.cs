@@ -17,7 +17,7 @@ namespace AttendanceQR.Api.Controllers;
 /// approving a device change or the day rolling over naturally drops the count on the next poll.
 /// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/notifications")]
 public class AdminNotificationsController : ControllerBase
 {
@@ -43,30 +43,71 @@ public class AdminNotificationsController : ControllerBase
     public async Task<IActionResult> Get()
     {
         var requesterId = User.EmployeeId();
+        var isAdmin = User.Role() == EmployeeRole.Admin;
 
-        var pending = await _deviceChangeService.GetPendingAsync(HttpContext.RequestAborted);
+        var items = new List<object>();
+        var badge = 0;
 
-        // No "N employees were late today": every employee keeps their own hours, so a location-wide
-        // shift cannot decide who was late — the alert was simply wrong, every morning.
-        var items = pending
-            .Take(MaxPendingItems)
-            .Select(p => new
-            {
-                type = "PendingDeviceChange",
-                message = $"{p.EmployeeName} — yeni cihaz təsdiqi gözləyir",
-                linkTo = "/admin/device-changes"
-            })
-            .ToList<object>();
-
-        var birthdays = await BirthdayItemsAsync();
-        items.AddRange(birthdays);
-
-        return Ok(new
+        // Device-change approvals + birthdays are admin-wide reminders — a Manager's bell carries only
+        // their own task alerts, nothing tenant-wide.
+        if (isAdmin)
         {
+            var pending = await _deviceChangeService.GetPendingAsync(HttpContext.RequestAborted);
+
+            // No "N employees were late today": every employee keeps their own hours, so a location-wide
+            // shift cannot decide who was late — the alert was simply wrong, every morning.
+            items.AddRange(pending
+                .Take(MaxPendingItems)
+                .Select(p => new
+                {
+                    type = "PendingDeviceChange",
+                    message = $"{p.EmployeeName} — yeni cihaz təsdiqi gözləyir",
+                    linkTo = "/admin/device-changes"
+                }));
+
+            var birthdays = await BirthdayItemsAsync();
+            items.AddRange(birthdays);
             // Birthdays count toward the badge so the reminder is actually noticed.
-            totalCount = pending.Count + birthdays.Count,
-            items
-        });
+            badge += pending.Count + birthdays.Count;
+        }
+
+        var taskItems = await TaskItemsAsync(requesterId);
+        items.AddRange(taskItems);
+        badge += taskItems.Count;
+
+        return Ok(new { totalCount = badge, items });
+    }
+
+    // Task alerts for whoever is asking, both directions:
+    //   • a Pending task assigned to me            → "Yeni tapşırıq: …"  (clears when it's completed)
+    //   • a Completed task I assigned, not yet seen → "Tamamlandı: …"    (clears when I acknowledge it)
+    // Computed live from the Tasks table — like the rest of the bell, nothing persisted or read/unread.
+    private async Task<List<object>> TaskItemsAsync(Guid me)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var incoming = await _db.Tasks
+            .Where(t => t.AssignedToEmployeeId == me && t.Status == TaskItemStatus.Pending)
+            .OrderByDescending(t => t.CreatedAtUtc)
+            .Select(t => t.Title)
+            .Take(MaxPendingItems)
+            .ToListAsync(ct);
+
+        var completed = await _db.Tasks
+            .Where(t => t.AssignedByEmployeeId == me
+                && t.Status == TaskItemStatus.Completed
+                && t.AcknowledgedByAssignerAtUtc == null)
+            .OrderByDescending(t => t.CompletedAtUtc)
+            .Select(t => t.Title)
+            .Take(MaxPendingItems)
+            .ToListAsync(ct);
+
+        var result = new List<object>();
+        foreach (var title in incoming)
+            result.Add(new { type = "TaskAssigned", message = $"Yeni tapşırıq: {title}", linkTo = "/admin/tasks" });
+        foreach (var title in completed)
+            result.Add(new { type = "TaskCompleted", message = $"Tamamlandı: {title}", linkTo = "/admin/tasks" });
+        return result;
     }
 
     // Today's and tomorrow's birthdays, as bell reminders ("Sabah Əlinin doğum günüdür"). Only

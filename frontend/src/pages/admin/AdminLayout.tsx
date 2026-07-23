@@ -5,6 +5,7 @@ import { useBranding } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import { getIsSuperAdmin } from '../../api/admin'
+import { getTaskAccess } from '../../api/tasks'
 import {
   IconAlert,
   IconBell,
@@ -49,6 +50,8 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/locations': { title: 'Lokasiyalar', sub: 'Filial əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
   '/admin/leaves': { title: 'Məzuniyyət / İcazə', sub: 'Təsdiqlənmiş yoxluq qeydləri' },
+  '/admin/tasks': { title: 'Tapşırıqlar', sub: 'Menecer və sahə nəzarətçilərinə tapşırıq ver, icrasını izlə' },
+  '/admin/task-permissions': { title: 'Tapşırıq icazələri', sub: 'Kim kimə tapşırıq verə bilər — bölmə yalnız onlarda görünür' },
   '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
   '/admin/bulk-invite': { title: 'Toplu əlavə', sub: 'Çoxlu işçini birdən əlavə et' },
   '/admin/device-changes': { title: 'Cihazlar', sub: 'Gözləyən tələblər və bağlı cihazlar' },
@@ -72,6 +75,16 @@ export function AdminLayout() {
       if (r.status === 200 && r.data) setIsSuperAdmin(r.data.isSuperAdmin)
     })
   }, [isAdmin])
+
+  // The Tapşırıqlar nav item is shown only to admins, granted assigners and their recipients — not
+  // to every manager. The server answers who this is (see AdminTasksController.Access).
+  const [canSeeTasks, setCanSeeTasks] = useState(false)
+  useEffect(() => {
+    void getTaskAccess().then((r) => {
+      if (r.status === 200 && r.data) setCanSeeTasks(r.data.canSee)
+    })
+  }, [])
+
   const meta = PAGE_META[location.pathname]
     ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' }
       : location.pathname.startsWith('/admin/employees/') ? { title: 'İşçi profili', sub: 'İşçinin tam məlumatı və əməliyyatlar' }
@@ -98,6 +111,9 @@ export function AdminLayout() {
     { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },
     ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
     ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
+    // Tapşırıqlar — shown only to admins + granted assigners/recipients (not every manager).
+    ...((isAdmin || canSeeTasks) ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconClipboard }] : []),
+    ...(isAdmin ? [{ to: '/admin/task-permissions', label: 'Tapşırıq icazələri', Icon: IconCheck }] : []),
     ...(isAdmin ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
     ...(isAdmin ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
     ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),
@@ -186,7 +202,8 @@ export function AdminLayout() {
               <div className="topbar-sub">{meta.sub}</div>
             </div>
           </div>
-          <div className="topbar-right">{isAdmin && <NotificationBell />}</div>
+          {/* Managers see the bell too now — it carries their task alerts (admins also get device/birthday). */}
+          <div className="topbar-right"><NotificationBell /></div>
         </div>
         <div className="content">
           <Outlet />
