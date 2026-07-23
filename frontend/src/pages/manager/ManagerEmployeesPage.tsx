@@ -94,10 +94,12 @@ export function ManagerEmployeesPage() {
     }
   }
 
-  async function resetPin(e: ManagerEmployee) {
-    if (!window.confirm(`${e.fullName} üçün yeni müvəqqəti PIN yaradılsın? Köhnə PIN işləməyəcək.`)) return
-    const { status, data } = await resetManagerEmployeePin(e.id)
-    if (status === 200 && data && 'tempPin' in data) setPin({ name: e.fullName, pin: data.tempPin as string })
+  async function resetPin(id: string, name: string) {
+    if (!window.confirm(`${name} üçün yeni müvəqqəti PIN yaradılsın?
+
+Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) return
+    const { status, data } = await resetManagerEmployeePin(id)
+    if (status === 200 && data && 'tempPin' in data) { setPin({ name, pin: data.tempPin as string }); setEditing(null) }
   }
 
   return (
@@ -183,6 +185,20 @@ export function ManagerEmployeesPage() {
             </button>
             <button className="btn" onClick={() => setEditing(null)}>Ləğv et</button>
           </div>
+
+          {/* Reset-PIN lives inside the edit screen, not on every list row — it is destructive (the
+              employee's current PIN stops working), so it must be a deliberate step, not a tap next
+              to "Redaktə" that anyone could hit by accident. */}
+          {editing !== 'new' && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c100)' }}>
+              <button className="btn btn-sm" onClick={() => void resetPin(editing!, form.fullName)}>
+                PIN-i sıfırla
+              </button>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                İşçi PIN-ini unudubsa, yeni müvəqqəti PIN yaradın. Köhnəsi işləməyəcək.
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -207,7 +223,6 @@ export function ManagerEmployeesPage() {
                     : <span className="pill">Deaktiv</span>}
                   <div className="mgr-actions">
                     <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
-                    <button className="btn btn-sm" onClick={() => void resetPin(e)}>PIN</button>
                   </div>
                 </div>
               </div>
