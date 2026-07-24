@@ -3,7 +3,6 @@ import { Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { ConsentGate } from './components/ConsentGate'
 import { AdminRoute, AdminOnly } from './components/AdminRoute'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
@@ -39,7 +38,6 @@ const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ 
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
-const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
 const ManagerLeavesPage = lazy(() => import('./pages/manager/ManagerLeavesPage').then(m => ({ default: m.ManagerLeavesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
@@ -112,17 +110,12 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      {/* Deliberately outside ConsentGate: the consent screen links here, so it must be reachable
-          before consent is given. */}
-      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/activate" element={<ActivatePage />} />
       {/* Employee mobile shell: bottom-tab pages share the EmployeeLayout (light theme + tab bar). */}
       <Route
         element={
           <ProtectedRoute>
-            <ConsentGate>
-              <EmployeeLayout />
-            </ConsentGate>
+            <EmployeeLayout />
           </ProtectedRoute>
         }
       >
@@ -137,9 +130,7 @@ function AppRoutes() {
         path="/scan"
         element={
           <ProtectedRoute>
-            <ConsentGate>
-              <ScanPage />
-            </ConsentGate>
+            <ScanPage />
           </ProtectedRoute>
         }
       />

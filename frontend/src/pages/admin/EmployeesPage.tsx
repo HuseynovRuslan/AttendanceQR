@@ -976,7 +976,6 @@ export function EmployeesPage() {
               <th>Rol</th>
               <th>Cihaz</th>
               <th>Bildiriş</th>
-              <th>Razılıq</th>
               <th>Son aktivlik</th>
               <th>Qeydiyyat</th>
               <th style={{ textAlign: 'right' }}>Əməliyyat</th>
@@ -1048,13 +1047,6 @@ export function EmployeesPage() {
                   {e.pushEnabled
                     ? pill('Açıq', '#2e7d32', 'rgba(124,179,66,0.15)')
                     : pill('Bağlı', '#9a3412', 'rgba(154,52,18,0.12)')}
-                </td>
-                <td data-label="Razılıq">
-                  {/* The data-processing notice: accepted, or still pending. This is the record that
-                      answers "did this employee agree" — the digital stand-in for a signature. */}
-                  {e.consentAcceptedAtUtc
-                    ? pill('Verilib', '#2e7d32', 'rgba(124,179,66,0.15)')
-                    : pill('Gözlənilir', '#9a3412', 'rgba(154,52,18,0.12)')}
                 </td>
                 <td>{lastActiveBadge(e.lastActiveAtUtc)}</td>
                 <td>{statusBadge(e.activated)}</td>
