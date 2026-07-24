@@ -13,8 +13,9 @@ namespace AttendanceQR.Api.Jobs;
 ///   • CheckInSoon    — the shift starts shortly and there is still no check-in.
 ///   • CheckOutSoon   — the shift ends shortly and they are still checked in. Sent BEFORE the end on
 ///                      purpose: after it, the employee is already home and can no longer scan out.
-///   • MissedCheckOut — the shift is well over and no check-out was ever recorded; that day counts as
-///                      zero hours until an admin closes it.
+///   • MissedCheckOut — a day that never closed, reported the MORNING AFTER rather than the same
+///                      evening: people routinely scan out well past their nominal end, so an evening
+///                      message accused the hardest workers of forgetting.
 ///
 /// Each send is recorded as an <see cref="EmployeeNotification"/>, which does double duty: its unique
 /// (employee, type, day) index is the dedupe — a 5-minute sweep can't nag twice — and the rows are the
@@ -26,10 +27,23 @@ namespace AttendanceQR.Api.Jobs;
 public sealed class ReminderJob : BackgroundService
 {
     private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(5);
-    // How long after the shift ends before "you never checked out" goes out, and how long we keep
-    // trying — past that the day is stale and the admin closes it from /admin/open-records.
-    private static readonly TimeSpan MissedAfter = TimeSpan.FromMinutes(45);
-    private static readonly TimeSpan MissedGiveUpAfter = TimeSpan.FromHours(6);
+
+    // "You never checked out" is told the MORNING AFTER, not the same evening.
+    //
+    // It used to fire 45 minutes past the shift end, which accused precisely the people who work
+    // longest: over 14 days, half of all check-outs land within a minute of the nominal end but a
+    // tenth are still more than an hour and a half later. On 22 July it went to 27 people and 21 of
+    // them had simply not finished yet — Tərlan's shift ended at 18:00, the message went at 18:45,
+    // he scanned out at 19:46. By the next morning anyone merely working late has long since scanned
+    // out, so what remains is a genuine open day, and saying so is both true and actionable.
+    //
+    // The shift must also be well over before it counts, which keeps a night shift ending at 07:00
+    // from being reported at 09:00 the same morning.
+    private static readonly TimeSpan MissedMinAge = TimeSpan.FromHours(8);
+    private static readonly TimeSpan MissedGiveUpAfter = TimeSpan.FromHours(48);
+    // A civil hour: the message is informational, so it waits for the working day to start.
+    private static readonly TimeOnly MissedWindowFrom = new(9, 0);
+    private static readonly TimeOnly MissedWindowTo = new(10, 0);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PushOptions _push;
@@ -150,6 +164,8 @@ public sealed class ReminderJob : BackgroundService
                     var endUtc = ToUtc(endDate, shiftEnd);
                     var openDay = DateOnly.FromDateTime(checkInLocal);
 
+                    // 2) The shift ends shortly and they are still checked in — the one nudge that can
+                    //    still change the outcome, so it goes out BEFORE the end while they can scan.
                     var untilEnd = endUtc - nowUtc;
                     if (untilEnd > TimeSpan.Zero && untilEnd <= TimeSpan.FromMinutes(_push.CheckoutReminderLeadMinutes))
                     {
@@ -158,16 +174,19 @@ public sealed class ReminderJob : BackgroundService
                             $"{_push.CheckoutReminderLeadMinutes} dəqiqəyə növbəniz bitir. Çıxışı skan etməyi unutmayın — yoxsa bu gün 0 saat sayılacaq.",
                             ct);
                     }
-                    else
+
+                    // 3) The day never closed. Reported the next morning (see MissedMinAge) — by then
+                    //    working late is no longer an explanation, so the message is finally true.
+                    var since = nowUtc - endUtc;
+                    if (since >= MissedMinAge && since <= MissedGiveUpAfter
+                        && nowLocal.TimeOfDay >= MissedWindowFrom.ToTimeSpan()
+                        && nowLocal.TimeOfDay < MissedWindowTo.ToTimeSpan())
                     {
-                        var since = nowUtc - endUtc;
-                        if (since >= MissedAfter && since <= MissedGiveUpAfter)
-                        {
-                            await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.MissedCheckOut, openDay,
-                                "Çıxış qeyd olunmayıb",
-                                "İş vaxtınız bitdi, amma çıxış etmədiniz. Bu gün 0 saat sayılır — rəhbərlə əlaqə saxlayın.",
-                                ct);
-                        }
+                        await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.MissedCheckOut, openDay,
+                            "Çıxış qeyd olunmayıb",
+                            $"{openDay:dd.MM.yyyy} tarixində çıxışınız qeyd olunmayıb — həmin gün 0 saat sayılır. " +
+                            "Düzəldilməsi üçün rəhbərinizlə əlaqə saxlayın.",
+                            ct);
                     }
                 }
             }
