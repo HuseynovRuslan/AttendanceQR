@@ -1,0 +1,37 @@
+---
+import type { Lang } from '../i18n/ui'
+import { PRICING } from '../data/site'
+import Hero from './Hero.astro'
+import Trust from './Trust.astro'
+import HowItWorks from './HowItWorks.astro'
+import PhoneDemo from './PhoneDemo.astro'
+import Features from './Features.astro'
+import Stats from './Stats.astro'
+import Dashboard from './Dashboard.astro'
+import Audience from './Audience.astro'
+import Security from './Security.astro'
+import Modules from './Modules.astro'
+import Testimonials from './Testimonials.astro'
+import Pricing from './Pricing.astro'
+import FAQ from './FAQ.astro'
+import Pwa from './Pwa.astro'
+import CTA from './CTA.astro'
+
+const { lang } = Astro.props as { lang: Lang }
+---
+
+<Hero lang={lang} />
+<Trust lang={lang} />
+<HowItWorks lang={lang} />
+<PhoneDemo lang={lang} />
+<Features lang={lang} />
+<Stats lang={lang} />
+<Dashboard lang={lang} />
+<Audience lang={lang} />
+<Security lang={lang} />
+<Modules lang={lang} />
+<Testimonials lang={lang} />
+{PRICING.enabled && <Pricing lang={lang} />}
+<FAQ lang={lang} />
+<Pwa lang={lang} />
+<CTA lang={lang} />

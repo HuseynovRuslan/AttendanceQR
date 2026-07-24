@@ -1,0 +1,16 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import PageHero from '../../components/PageHero.astro'
+import Pricing from '../../components/Pricing.astro'
+import FAQ from '../../components/FAQ.astro'
+import CTA from '../../components/CTA.astro'
+import { useTranslations } from '../../i18n/ui'
+const lang = 'ru' as const
+const t = useTranslations(lang)
+---
+<BaseLayout lang={lang} path="/qiymet/" title={t('pricing.metaTitle')} description={t('pricing.metaDesc')}>
+  <PageHero title={t('price.title')} subtitle={t('price.sub')} />
+  <Pricing lang={lang} bare />
+  <FAQ lang={lang} />
+  <CTA lang={lang} />
+</BaseLayout>

@@ -1,0 +1,48 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// This replaced the template's "Integrations" strip. QRLog has no Slack, Google Sheets, SAML or
+// webhook integration — what it does have is these modules, in the same admin panel.
+const icons = {
+  board: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>',
+  sheet: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>',
+  money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/>',
+  leave: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="m9 15 2 2 4-4"/>',
+  shift: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  mega: '<path d="M4 10v4a1 1 0 0 0 1 1h3l5 4V5L8 9H5a1 1 0 0 0-1 1Z"/><path d="M17 9a4 4 0 0 1 0 6"/>',
+  task: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 11 2.5 2.5L16 8"/><path d="M8 17h6"/>',
+  bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  kiosk: '<rect x="5" y="3" width="14" height="14" rx="2"/><path d="M9 21h6M12 17v4"/>',
+  branch: '<path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6"/><circle cx="6" cy="3" r="1.6"/><circle cx="18" cy="21" r="1.6"/>',
+}
+const chips = [
+  { l: 'mod.m1', p: icons.board },
+  { l: 'mod.m2', p: icons.sheet },
+  { l: 'mod.m3', p: icons.money },
+  { l: 'mod.m4', p: icons.leave },
+  { l: 'mod.m5', p: icons.shift },
+  { l: 'mod.m6', p: icons.mega },
+  { l: 'mod.m7', p: icons.task },
+  { l: 'mod.m8', p: icons.bell },
+  { l: 'mod.m9', p: icons.kiosk },
+  { l: 'mod.m10', p: icons.branch },
+]
+---
+
+<section id="modules">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('mod.eyebrow')}</span>
+      <h2>{t('mod.title')}</h2>
+      <p>{t('mod.sub')}</p>
+    </div>
+    <div class="int-grid">
+      {chips.map((c, i) => (
+        <span class={`chip rv d${(i % 6) + 1}`}><svg viewBox="0 0 24 24" set:html={c.p} />{t(c.l as any)}</span>
+      ))}
+    </div>
+  </div>
+</section>

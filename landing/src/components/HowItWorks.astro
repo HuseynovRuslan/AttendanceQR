@@ -1,28 +1,19 @@
 ---
-import { STEPS } from '../data/site'
+import { useTranslations, type Lang } from '../i18n/ui';
+const { lang } = Astro.props as { lang: Lang };
+const t = useTranslations(lang);
 ---
-
-<section id="nece-isleyir" class="bg-surface py-18 sm:py-24">
-  <div class="mx-auto max-w-6xl px-4 sm:px-6">
-    <div class="mx-auto max-w-2xl text-center">
-      <span class="eyebrow centered">Necə işləyir</span>
-      <h2 class="display mt-4 text-3xl font-extrabold text-body sm:text-4xl">Dörd addım — həmin gün işə düşür</h2>
-      <p class="mt-4 text-lg text-dim">Quraşdırma dəqiqələr çəkir, öyrənmək lazım deyil.</p>
+<section class="how" id="how">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('how.eyebrow')}</span>
+      <h2>{t('how.title')}</h2>
+      <p>{t('how.sub')}</p>
     </div>
-
-    <ol class="mt-14 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-      {STEPS.map((s, i) => (
-        <li class="relative">
-          {i < STEPS.length - 1 && (
-            <span class="absolute right-0 top-7 hidden h-px w-full translate-x-1/2 bg-border lg:block" style="background:var(--border)" aria-hidden="true"></span>
-          )}
-          <div class="card relative h-full p-6">
-            <span class="num display grid h-11 w-11 place-items-center rounded-xl text-lg font-extrabold" style="background:var(--accent-soft); color:var(--accent)">{s.n}</span>
-            <h3 class="mt-5 text-lg font-bold text-body">{s.title}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-dim">{s.text}</p>
-          </div>
-        </li>
-      ))}
-    </ol>
+    <div class="steps">
+      <div class="step rv d1"><div class="n">01</div><h3>{t('how.s1t')}</h3><p>{t('how.s1d')}</p></div>
+      <div class="step rv d2"><div class="n">02</div><h3>{t('how.s2t')}</h3><p>{t('how.s2d')}</p></div>
+      <div class="step rv d3"><div class="n">03</div><h3>{t('how.s3t')}</h3><p>{t('how.s3d')}</p></div>
+    </div>
   </div>
 </section>

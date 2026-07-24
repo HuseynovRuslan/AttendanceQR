@@ -1,0 +1,26 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+import { TRUST_SECTORS } from '../data/site'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Sectors, not customer logos. Naming a client publicly needs their consent, and invented company
+// names would be worse than none — see TRUST_SECTORS in src/data/site.ts.
+const icon =
+  '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>'
+const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
+---
+
+<div class="trust">
+  <div class="wrap">
+    <p>{t('trust.title')}</p>
+  </div>
+  <div class="marquee">
+    <div class="marquee-track">
+      {loop.map((o) => (
+        <span class="mq-item"><Fragment set:html={icon} />{o}</span>
+      ))}
+    </div>
+  </div>
+</div>

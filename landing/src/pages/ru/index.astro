@@ -1,0 +1,8 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import Landing from '../../components/Landing.astro'
+const lang = 'ru' as const
+---
+<BaseLayout lang={lang} path="/" home>
+  <Landing lang={lang} />
+</BaseLayout>

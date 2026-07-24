@@ -1,0 +1,34 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import PageHero from '../../components/PageHero.astro'
+import { useTranslations } from '../../i18n/ui'
+import { getCollection, render, type CollectionEntry } from 'astro:content'
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog')
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }))
+}
+
+const lang = 'az' as const
+const t = useTranslations(lang)
+const { post } = Astro.props as { post: CollectionEntry<'blog'> }
+const { Content } = await render(post)
+
+const fmt = (d: Date) =>
+  d.toLocaleDateString('az-AZ', { year: 'numeric', month: 'long', day: 'numeric' })
+---
+
+<BaseLayout
+  lang={lang}
+  path={`/bloq/${post.id}/`}
+  title={`${post.data.title} — QRLog`}
+  description={post.data.description}
+>
+  <PageHero title={post.data.title} subtitle={fmt(post.data.pubDate)} />
+  <section class="prose-section">
+    <article class="wrap prose">
+      <Content />
+      <p class="prose-cta"><a class="btn btn-ghost" href="/bloq/">{t('blog.back')}</a></p>
+    </article>
+  </section>
+</BaseLayout>

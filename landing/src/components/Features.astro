@@ -1,34 +1,30 @@
 ---
-import Icon from './Icon.astro'
-import { FEATURES } from '../data/site'
+import { useTranslations, type Lang } from '../i18n/ui';
+const { lang } = Astro.props as { lang: Lang };
+const t = useTranslations(lang);
+const feats = [
+  { t: 'feat.f1t', d: 'feat.f1d', p: '<path d="M3 12a9 9 0 1 0 9-9"/><path d="M12 7v5l3 2"/>' },
+  { t: 'feat.f2t', d: 'feat.f2d', p: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h4"/>' },
+  { t: 'feat.f3t', d: 'feat.f3d', p: '<circle cx="9" cy="7" r="3"/><path d="M2 21v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><path d="M16 3.1a3 3 0 0 1 0 5.8M22 21v-1a5 5 0 0 0-3-4.6"/>' },
+  { t: 'feat.f4t', d: 'feat.f4d', p: '<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/>' },
+  { t: 'feat.f5t', d: 'feat.f5d', p: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>' },
+  { t: 'feat.f6t', d: 'feat.f6d', p: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.5 6 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-6-3.5-9S9.5 5.5 12 3Z"/>' },
+];
 ---
-
-<section id="xususiyyetler" class="bg-base py-18 sm:py-24">
-  <div class="mx-auto max-w-6xl px-4 sm:px-6">
-    <div class="max-w-2xl">
-      <span class="eyebrow">Niyə QRLog</span>
-      <h2 class="display mt-4 text-3xl font-extrabold text-body sm:text-4xl">
-        Davamiyyəti sadələşdirən, saxtakarlığı dayandıran sistem
-      </h2>
-      <p class="mt-4 text-lg text-dim">
-        Bir QR poster və işçilərin telefonu — qalanını QRLog edir.
-      </p>
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('feat.eyebrow')}</span>
+      <h2>{t('feat.title')}</h2>
+      <p>{t('feat.sub')}</p>
     </div>
-
-    <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      {FEATURES.map((f, i) => (
-        <article class={`card card-hover p-6 ${i === 0 ? 'sm:col-span-2 lg:row-span-2 lg:flex lg:flex-col lg:justify-between' : ''}`}>
-          <div>
-            <span class="tile-icon"><Icon name={f.icon} class="h-6 w-6" /></span>
-            <h3 class={`mt-5 font-bold text-body ${i === 0 ? 'text-xl' : 'text-lg'}`}>{f.title}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-dim">{f.text}</p>
-          </div>
-          {i === 0 && (
-            <div class="mt-6 hidden items-center gap-2 text-sm font-semibold text-accent lg:flex">
-              <Icon name="shield" class="h-4 w-4" /> Saxta girişə qarşı iki qat qorunma
-            </div>
-          )}
-        </article>
+    <div class="feat-grid">
+      {feats.map((f, i) => (
+        <div class={`feat rv d${(i % 3) + 1}`}>
+          <div class="ic"><svg viewBox="0 0 24 24" set:html={f.p} /></div>
+          <h3>{t(f.t as any)}</h3>
+          <p>{t(f.d as any)}</p>
+        </div>
       ))}
     </div>
   </div>
