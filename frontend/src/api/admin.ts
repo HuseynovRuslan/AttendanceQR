@@ -397,9 +397,12 @@ export interface InvitePayload {
   // Waives the check-in selfie. Defaults to FALSE server-side, so every caller must send it or the
   // exemption is silently switched off by an unrelated edit.
   photoExempt?: boolean
-  // Rotation ("növbə"): cycle length, how many of its first days are worked, and one date the
-  // employee IS working. null days = no rotation, the branch's weekly calendar applies. Same
-  // null-default rule as photoExempt — omit them on an edit and the rotation is dropped.
+  // The named shift this employee is on. Set → it decides hours, days AND rotation, and the three
+  // workCycle fields below are ignored server-side. Same null-default rule as photoExempt: omit it on
+  // an edit and the assignment is dropped.
+  scheduleId?: string | null
+  // Rotation, used only when scheduleId is null. Cycle length, how many of its first days are worked,
+  // and one date the employee IS working.
   workCycleDays?: number | null
   workCycleOnDays?: number | null
   workCycleAnchor?: string | null
@@ -418,7 +421,10 @@ export interface AdminEmployee {
   monthlySalary?: number | null
   /** True when an admin has waived the check-in selfie for this employee. */
   photoExempt?: boolean
-  /** Rotation; null = none, the branch's weekly calendar applies. */
+  /** The named shift they are on, if any, plus its name for display. */
+  scheduleId?: string | null
+  scheduleName?: string | null
+  /** Rotation, used only when scheduleId is null. */
   workCycleDays?: number | null
   workCycleOnDays?: number | null
   workCycleAnchor?: string | null
@@ -793,6 +799,8 @@ export function setTenantBranding(id: string, input: { displayName?: string; col
 
 // --- schedules (qrafik) — reusable shift templates for the location form ------
 
+/** A named shift ("növbə"): hours, working days and an optional rotation, assigned to employees.
+ *  Live, not a template — editing one changes how everyone on it is judged, past days included. */
 export interface Schedule {
   id: string
   name: string
@@ -800,6 +808,10 @@ export interface Schedule {
   shiftEnd: string
   lateThresholdMinutes: number
   workDaysMask: number
+  /** Rotation; null = none and workDaysMask decides. */
+  workCycleDays: number | null
+  workCycleOnDays: number | null
+  workCycleAnchor: string | null
   isOvernight: boolean
 }
 

@@ -1,16 +1,26 @@
 namespace AttendanceQR.Domain.Entities;
 
 /// <summary>
-/// A named, reusable work schedule (qrafik) — a template of shift hours the admin can pick when
-/// creating or editing a location, instead of re-typing the times each time. "Gündüz" (09:00–18:00),
-/// "Gecə" (22:00–06:00), and any custom ones.
+/// A named shift ("növbə") — hours, working days, and an optional rotation, defined once and assigned
+/// to people. "Gündüz", "Gecə A", "Gecə B", and any custom one.
 ///
-/// Deliberately a TEMPLATE, not a live reference: picking a schedule copies its values onto the
-/// location's own shift fields, which stay the source of truth for scan/late/overtime. So editing a
-/// schedule does not silently change how a live location computes attendance — that keeps the scan and
-/// report paths untouched. (A managed/propagating model was considered and rejected for that reason.)
+/// It began as a template that merely copied its hours onto a location, and that is why the three
+/// companies ended up with a "Gecə növbəsi" row saying 22:00–06:00 while the eight people actually
+/// working nights were on 21:00–07:00, plus a duplicate "gece" nobody noticed. Copying loses the
+/// link, and once the link is lost the library drifts from reality — the same disease the job-title
+/// catalogue was built to cure.
+///
+/// So it is now a LIVE reference: <see cref="Employee.ScheduleId"/> points here, and every screen
+/// resolves an employee's hours and days through it. The consequence has to be understood before
+/// editing one: changing a shift's hours changes how PAST days are reported too, because reports are
+/// recomputed from the schedule rather than from a copy taken at the time. That is the accepted
+/// trade — versioning shifts would be a much larger feature — and the admin UI says so out loud.
+///
+/// Assigning a shift is optional. An employee with no ScheduleId keeps the older behaviour: their own
+/// WorkStart/WorkEnd if set, otherwise the location's. See AttendanceQR.Application EffectiveShift,
+/// the single place that decides between the three.
 /// </summary>
-public class Schedule : ITenantScoped
+public class Schedule : ITenantScoped, IHasWorkCycle
 {
     public Schedule()
     {
@@ -34,8 +44,25 @@ public class Schedule : ITenantScoped
     public int LateThresholdMinutes { get; set; } = 15;
 
     /// <summary>Working-days bitmask, same layout as Location.WorkDaysMask (Sunday=0 … Saturday=6).
-    /// Default 126 = every day except Sunday.</summary>
+    /// Default 126 = every day except Sunday. Ignored when <see cref="WorkCycleDays"/> is set — a
+    /// rotation replaces the weekly calendar rather than layering on it.</summary>
     public int WorkDaysMask { get; set; } = 126;
+
+    /// <summary>
+    /// Rotation, same three fields and same meaning as on <see cref="Employee"/>: cycle length, how
+    /// many of its first days are worked, and one date the shift is known to be ON. Null length = no
+    /// rotation, the weekly mask decides.
+    ///
+    /// The anchor lives HERE rather than on the employee on purpose. Two crews alternating on the
+    /// same rotation are two shifts — "Gecə A" and "Gecə B", anchored a day apart — which is how a
+    /// manager already talks about them, and it means assigning someone is one choice rather than a
+    /// choice plus a date they have to get right.
+    /// </summary>
+    public int? WorkCycleDays { get; set; }
+
+    public int WorkCycleOnDays { get; set; } = 1;
+
+    public DateOnly? WorkCycleAnchor { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

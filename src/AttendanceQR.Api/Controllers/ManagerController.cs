@@ -91,6 +91,29 @@ public class ManagerController : ControllerBase
         return Ok(rows);
     }
 
+    // GET /api/manager/schedules — the named shifts, read-only. A manager assigns people to a shift
+    // but does not define them; the hours a company runs on are an admin decision.
+    [HttpGet("schedules")]
+    public async Task<IActionResult> Schedules()
+    {
+        var rows = await _db.Schedules
+            .OrderBy(sc => sc.Name)
+            .Select(sc => new
+            {
+                id = sc.Id,
+                name = sc.Name,
+                shiftStart = sc.ShiftStart.ToString("HH:mm"),
+                shiftEnd = sc.ShiftEnd.ToString("HH:mm"),
+                workDaysMask = sc.WorkDaysMask,
+                workCycleDays = sc.WorkCycleDays,
+                workCycleOnDays = sc.WorkCycleOnDays,
+                workCycleAnchor = sc.WorkCycleAnchor,
+                isOvernight = sc.ShiftEnd < sc.ShiftStart,
+            })
+            .ToListAsync(HttpContext.RequestAborted);
+        return Ok(rows);
+    }
+
     // --- employees --------------------------------------------------------------
 
     // GET /api/manager/employees — the manager's own branches' staff. No salary field is projected —
@@ -119,6 +142,7 @@ public class ManagerController : ControllerBase
                 birthYear = e.BirthYear,
                 workStart = e.WorkStart == null ? null : e.WorkStart.Value.ToString("HH:mm"),
                 workEnd = e.WorkEnd == null ? null : e.WorkEnd.Value.ToString("HH:mm"),
+                scheduleId = e.ScheduleId,
                 workCycleDays = e.WorkCycleDays,
                 workCycleOnDays = e.WorkCycleOnDays,
                 workCycleAnchor = e.WorkCycleAnchor,
@@ -133,7 +157,7 @@ public class ManagerController : ControllerBase
             r.id, r.fullName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.isActive, r.activated,
-            r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
+            r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
     }
 
@@ -182,6 +206,8 @@ public class ManagerController : ControllerBase
         };
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+        if (await ApplyScheduleAsync(employee, request.ScheduleId) is { } scheduleError)
+            return BadRequest(new { error = scheduleError });
 
         _db.Employees.Add(employee);
         await RegisterPositionAsync(employee.Position, ct);
@@ -231,6 +257,8 @@ public class ManagerController : ControllerBase
         employee.IsActive = request.IsActive;
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+        if (await ApplyScheduleAsync(employee, request.ScheduleId) is { } scheduleError)
+            return BadRequest(new { error = scheduleError });
         // Deliberately NOT touched: Role, MonthlySalary. A manager cannot change either, so the fields
         // are simply never read from the request.
         await RegisterPositionAsync(employee.Position, ct);
@@ -358,4 +386,23 @@ public class ManagerController : ControllerBase
 
     private static TimeOnly? ParseTimeOrNull(string? value) =>
         TimeOnly.TryParse(value, out var t) ? t : null;
+
+    /// <summary>
+    /// Assigns (or clears) the employee's named shift. Returns an error code, or null on success.
+    ///
+    /// A shift from another company would be an outright tenant leak, so the id is verified against
+    /// the query-filtered set rather than trusted from the body.
+    /// </summary>
+    private async Task<string?> ApplyScheduleAsync(Employee employee, Guid? scheduleId)
+    {
+        if (scheduleId is not Guid id)
+        {
+            employee.ScheduleId = null;
+            return null;
+        }
+        if (!await _db.Schedules.AnyAsync(s => s.Id == id, HttpContext.RequestAborted))
+            return "ScheduleNotFound";
+        employee.ScheduleId = id;
+        return null;
+    }
 }

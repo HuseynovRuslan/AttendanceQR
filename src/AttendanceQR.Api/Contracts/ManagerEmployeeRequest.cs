@@ -17,8 +17,9 @@ public record ManagerEmployeeRequest(
     string? WorkStart = null,
     string? WorkEnd = null,
     bool PhotoExempt = false,
-    // Rotation ("növbə") — see EmployeeUpdateRequest. A manager is usually the person who actually
-    // knows who is on which half of the cycle, so they can set it for their own staff.
+    // Shift assignment and rotation — see EmployeeUpdateRequest. A manager is usually the person who
+    // actually knows who is on which shift, so they may set it for their own staff.
+    Guid? ScheduleId = null,
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
     DateOnly? WorkCycleAnchor = null,

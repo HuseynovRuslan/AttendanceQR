@@ -39,11 +39,15 @@ public class AttendanceCalculatorTests
         };
     }
 
+    /// <summary>Resolves the shift exactly as production does — no schedule assigned, so the
+    /// employee's own hours win over the location's when given.</summary>
     private static DayComputation Run(
         AttendanceRecord? record, Location location, TimeOnly? workStart = null, TimeOnly? workEnd = null,
         bool isWorkingDay = true) =>
         AttendanceCalculator.Compute(
-            record, location, Baku, isWorkingDay, DailySummaryStatus.Absent, workStart, workEnd);
+            record,
+            EffectiveShift.Resolve(workStart, workEnd, null, 1, null, null, location),
+            Baku, isWorkingDay, DailySummaryStatus.Absent);
 
     // --- overnight / night shift (22:00–06:00, crosses midnight) --------------------------------
 

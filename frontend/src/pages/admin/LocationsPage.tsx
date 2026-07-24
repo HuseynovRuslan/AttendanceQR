@@ -133,6 +133,10 @@ export function LocationsPage() {
       shiftEnd: newSchedule.end,
       lateThresholdMinutes: Number(form.lateThresholdMinutes) || 15,
       workDaysMask: form.workDaysMask,
+      // A shift created from here is a plain weekly one; rotations are set on the Növbələr page.
+      workCycleDays: null,
+      workCycleOnDays: null,
+      workCycleAnchor: null,
     })
     if (status === 200 && data && !('error' in data) && 'id' in data) {
       const created = data as Schedule

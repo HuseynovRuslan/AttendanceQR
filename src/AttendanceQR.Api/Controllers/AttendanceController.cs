@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Application.Common;
@@ -433,6 +434,10 @@ public class AttendanceController : ControllerBase
         }
         var today = DateOnly.FromDateTime(nowUtc);
 
+        // Resolved once here and carried through both branches, so a single scan cannot judge its
+        // check-in against one set of hours and its check-out against another.
+        var shift = await ResolveShiftAsync(employee, location);
+
         var record = await _db.AttendanceRecords
             .FirstOrDefaultAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == today);
 
@@ -443,10 +448,8 @@ public class AttendanceController : ControllerBase
             // wrongly open a fresh check-in and leave last night's shift forever un-closed. Strictly
             // additive — the branch only runs for an overnight shift (end earlier than start) scanned
             // before noon, so ordinary day shifts are completely unaffected.
-            var shiftStart = EffectiveShiftStart(employee, location);
-            var shiftEnd = EffectiveShiftEnd(employee, location);
             var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
-            if (shiftEnd < shiftStart && nowLocal.Hour < 12)
+            if (shift.IsOvernight && nowLocal.Hour < 12)
             {
                 var yesterday = today.AddDays(-1);
                 var openNight = await _db.AttendanceRecords.FirstOrDefaultAsync(r =>
@@ -460,12 +463,12 @@ public class AttendanceController : ControllerBase
                         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                         return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
                     }
-                    return await CheckOutAsync(openNight, employee, location, nowUtc, ip,
+                    return await CheckOutAsync(openNight, employee, location, shift, nowUtc, ip,
                         request.ClientScanId, request.Offline, serverNow);
                 }
             }
 
-            return await CheckInAsync(employee, location, today, nowUtc, ip, request.PhotoBase64,
+            return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
                 request.ClientScanId, request.Offline, serverNow);
         }
 
@@ -480,7 +483,7 @@ public class AttendanceController : ControllerBase
                 await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                 return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
             }
-            return await CheckOutAsync(record, employee, location, nowUtc, ip,
+            return await CheckOutAsync(record, employee, location, shift, nowUtc, ip,
                 request.ClientScanId, request.Offline, serverNow);
         }
 
@@ -490,7 +493,7 @@ public class AttendanceController : ControllerBase
     }
 
     private async Task<IActionResult> CheckInAsync(
-        Employee employee, Location location, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64,
+        Employee employee, Location location, EffectiveShift shift, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64,
         Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
     {
         var record = new AttendanceRecord
@@ -499,7 +502,7 @@ public class AttendanceController : ControllerBase
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
-            Status = DetermineStatus(EffectiveShiftStart(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone),
+            Status = DetermineStatus(shift.Start, shift.LateThresholdMinutes, nowUtc, _timeZone),
             WasOffline = wasOffline,
             SubmittedAtUtc = wasOffline ? submittedAtUtc : null,
         };
@@ -617,7 +620,7 @@ public class AttendanceController : ControllerBase
     }
 
     private async Task<IActionResult> CheckOutAsync(
-        AttendanceRecord record, Employee employee, Location location, DateTime nowUtc, string? ip,
+        AttendanceRecord record, Employee employee, Location location, EffectiveShift shift, DateTime nowUtc, string? ip,
         Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
     {
         record.CheckOutAtUtc = nowUtc;
@@ -637,7 +640,7 @@ public class AttendanceController : ControllerBase
             recordId = record.Id,
             checkOutAtUtc = nowUtc,
             // Tells the app to prompt for an early-departure reason (skippable).
-            earlyDeparture = IsEarlyDeparture(EffectiveShiftEnd(employee, location), location.LateThresholdMinutes, nowUtc, _timeZone)
+            earlyDeparture = IsEarlyDeparture(shift.End, shift.LateThresholdMinutes, nowUtc, _timeZone)
         });
     }
 
@@ -660,14 +663,21 @@ public class AttendanceController : ControllerBase
         }
     }
 
-    // The effective shift bounds for an employee: their own WorkStart/WorkEnd when set, else the
-    // location's. Staff at one location can keep different hours (the reason "Gecikmə" was dropped as a
-    // location-wide label) — this makes late/early detection per-person when needed.
-    internal static TimeOnly EffectiveShiftStart(Employee employee, Location location)
-        => employee.WorkStart ?? location.ShiftStart;
-
-    internal static TimeOnly EffectiveShiftEnd(Employee employee, Location location)
-        => employee.WorkEnd ?? location.ShiftEnd;
+    /// <summary>
+    /// The hours that apply to this employee: their assigned shift ("növbə") if they are on one, else
+    /// their own WorkStart/WorkEnd, else the location's. The rule itself lives in
+    /// <see cref="EffectiveShift.Resolve(Employee, Schedule?, Location)"/> — the scan must judge a day
+    /// exactly the way the reports later will, so neither side is allowed its own copy of it.
+    ///
+    /// One extra read, and only for an employee actually on a shift.
+    /// </summary>
+    internal async Task<EffectiveShift> ResolveShiftAsync(Employee employee, Location location)
+    {
+        var schedule = employee.ScheduleId is Guid id
+            ? await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted)
+            : null;
+        return EffectiveShift.Resolve(employee, schedule, location);
+    }
 
     /// <summary>
     /// OnTime unless the current time is past shiftStart + lateThreshold. shiftStart is the employee's

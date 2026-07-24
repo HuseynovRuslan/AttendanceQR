@@ -101,8 +101,11 @@ type FormState = {
   /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
    *  they clock in. Empty on a manager means an empty panel. */
   managedLocationIds: string[]
-  /** Rotation ("növbə"); NO_CYCLE = the branch's weekly calendar applies. */
+  /** Rotation ("növbə"); NO_CYCLE = the branch's weekly calendar applies. Ignored when scheduleId
+   *  is set — the shift carries its own. */
   cycle: WorkCycleValue
+  /** The named shift this employee is on; '' = none. */
+  scheduleId: string
 }
 
 const EMPTY: FormState = {
@@ -122,6 +125,7 @@ const EMPTY: FormState = {
   photoExempt: false,
   managedLocationIds: [],
   cycle: NO_CYCLE,
+  scheduleId: '',
 }
 
 export function EmployeesPage() {
@@ -220,6 +224,7 @@ export function EmployeesPage() {
       cycle: e.workCycleDays
         ? { days: e.workCycleDays, onDays: e.workCycleOnDays ?? 1, anchor: e.workCycleAnchor ?? '' }
         : NO_CYCLE,
+      scheduleId: e.scheduleId ?? '',
     })
     setError(null)
     setOk(null)
@@ -260,6 +265,10 @@ export function EmployeesPage() {
       // Rotation. Sent on BOTH paths and always — the server null-defaults every field it isn't
       // given, so omitting these on an unrelated edit would silently drop someone's rotation and
       // start marking their rest days absent.
+      // Always sent, so clearing a shift actually clears it — the server null-defaults it otherwise.
+      scheduleId: form.scheduleId || null,
+      // The server ignores these while a shift is assigned; sending them keeps whatever the employee
+      // had, so unassigning the shift restores their own hours rather than blanking them.
       workCycleDays: form.cycle.days,
       workCycleOnDays: form.cycle.days ? form.cycle.onDays : null,
       workCycleAnchor: form.cycle.days ? form.cycle.anchor || null : null,
@@ -816,6 +825,27 @@ export function EmployeesPage() {
             </div>
             <div />
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <label className="form-label">Növbə</label>
+            <select className="inp" value={form.scheduleId} onChange={(e) => set('scheduleId', e.target.value)}>
+              <option value="">— növbə yoxdur (fərdi saatlar) —</option>
+              {schedules.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
+                </option>
+              ))}
+            </select>
+            <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 6, marginBottom: 0, lineHeight: 1.6 }}>
+              {form.scheduleId
+                ? 'Saatlar, iş günləri və rotasiya bu növbədən gəlir. Aşağıdakı fərdi sahələr tətbiq olunmur.'
+                : 'Növbə seçilməyibsə, aşağıdakı fərdi saatlar, o da boşdursa filialın saatları tətbiq olunur.'}
+            </p>
+          </div>
+
+          {/* Hidden while a shift is assigned: two visible sources for one answer is how the old
+              "Gecə növbəsi 22:00–06:00" drifted from the eight people actually on 21:00–07:00. */}
+          {!form.scheduleId && (
+          <>
           <div className="form-row cols2">
             <div>
               <label className="form-label">İş başlanğıcı</label>
@@ -832,6 +862,8 @@ export function EmployeesPage() {
           </p>
 
           <WorkCyclePicker value={form.cycle} onChange={(cycle) => setForm((f) => ({ ...f, cycle }))} />
+          </>
+          )}
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-primary" disabled={saving || !form.locationId}>
@@ -1044,7 +1076,13 @@ export function EmployeesPage() {
                   {e.locationName ?? '—'}
                   {/* The employee's own shift when set — so it's visible which schedule (day/night)
                       they're on at a location that runs several. */}
-                  {e.workStart && e.workEnd && (
+                  {/* The shift decides hours and days, so it replaces the raw times in the list. */}
+                  {e.scheduleName && (
+                    <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
+                      🗓️ {e.scheduleName}
+                    </div>
+                  )}
+                  {!e.scheduleName && e.workStart && e.workEnd && (
                     <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
                       🕒 {e.workStart}–{e.workEnd}{e.workEnd < e.workStart ? ' 🌙' : ''}
                     </div>
@@ -1052,7 +1090,7 @@ export function EmployeesPage() {
                   {/* A rotation changes which DAYS count, not just the hours — and it silently
                       decides whether a blank day is rest or an unpaid absence, so it belongs in the
                       list rather than only inside the edit form. */}
-                  {e.workCycleDays && (
+                  {!e.scheduleName && e.workCycleDays && (
                     <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
                       🔄 {cycleLabel(e.workCycleDays, e.workCycleOnDays ?? 1)}
                     </div>

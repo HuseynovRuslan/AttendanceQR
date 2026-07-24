@@ -116,6 +116,7 @@ public sealed class ReminderJob : BackgroundService
                 if (employees.Count == 0) continue;
 
                 var locations = await db.Locations.ToDictionaryAsync(l => l.Id, ct);
+                var schedules = await db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
                 var records = await db.AttendanceRecords
                     .Where(r => r.AttendanceDate >= todayUtc.AddDays(-1))
                     .ToListAsync(ct);
@@ -132,14 +133,20 @@ public sealed class ReminderJob : BackgroundService
                 {
                     if (!locations.TryGetValue(employee.LocationId, out var location)) continue;
 
-                    var shiftStart = employee.WorkStart ?? location.ShiftStart;
-                    var shiftEnd = employee.WorkEnd ?? location.ShiftEnd;
+                    // Same resolution the scan and the reports use — a nudge sent against different
+                    // hours than the ones the day is judged by is worse than no nudge at all.
+                    var shift = EffectiveShift.Resolve(
+                        employee,
+                        employee.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null,
+                        location);
+                    var shiftStart = shift.Start;
+                    var shiftEnd = shift.End;
                     var mine = byEmployee.GetValueOrDefault(employee.Id) ?? new List<AttendanceRecord>();
                     var todayRecord = mine.FirstOrDefault(r => r.AttendanceDate == todayUtc);
 
                     var offToday =
                         holidays.Any(h => h.LocationId == null || h.LocationId == employee.LocationId) ||
-                        !AttendanceCalculator.IsScheduledWorkingDay(employee, location.WorkDaysMask, todayLocal);
+                        !shift.IsWorkingDay(todayLocal);
 
                     // 1) Shift starts soon and nobody has checked in.
                     if (!offToday && todayRecord?.CheckInAtUtc is null)

@@ -21,7 +21,9 @@ export interface ManagerEmployee {
   birthYear: number | null
   workStart: string | null
   workEnd: string | null
-  /** Rotation ("növbə"); null days = none, the branch's weekly calendar applies. */
+  /** The named shift they are on; set → it decides hours, days and rotation. */
+  scheduleId: string | null
+  /** Rotation, used only when scheduleId is null. */
   workCycleDays: number | null
   workCycleOnDays: number | null
   workCycleAnchor: string | null
@@ -42,7 +44,9 @@ export interface ManagerEmployeeInput {
   birthYear: number | null
   workStart: string | null
   workEnd: string | null
-  /** Rotation ("növbə"); null days = none, the branch's weekly calendar applies. */
+  /** The named shift they are on; set → it decides hours, days and rotation. */
+  scheduleId: string | null
+  /** Rotation, used only when scheduleId is null. */
   workCycleDays: number | null
   workCycleOnDays: number | null
   workCycleAnchor: string | null
@@ -120,4 +124,21 @@ export function deleteManagerLeave(id: string) {
   return apiRequest<{ deleted: string } | { error: string }>(`/api/manager/leaves/${id}`, {
     method: 'DELETE',
   })
+}
+
+/** The named shifts, read-only — a manager assigns people to a shift but does not define one. */
+export interface ManagerSchedule {
+  id: string
+  name: string
+  shiftStart: string
+  shiftEnd: string
+  workDaysMask: number
+  workCycleDays: number | null
+  workCycleOnDays: number | null
+  workCycleAnchor: string | null
+  isOvernight: boolean
+}
+
+export function getManagerSchedules() {
+  return apiRequest<ManagerSchedule[]>('/api/manager/schedules')
 }

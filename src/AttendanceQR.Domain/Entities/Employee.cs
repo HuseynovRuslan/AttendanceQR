@@ -2,7 +2,7 @@ using AttendanceQR.Domain.Enums;
 
 namespace AttendanceQR.Domain.Entities;
 
-public class Employee : ITenantScoped
+public class Employee : ITenantScoped, IHasWorkCycle
 {
     public Employee()
     {
@@ -62,6 +62,17 @@ public class Employee : ITenantScoped
     public TimeOnly? WorkStart { get; set; }
 
     public TimeOnly? WorkEnd { get; set; }
+
+    // The named shift ("növbə") this employee is on, when they are on one. Set → the schedule decides
+    // their hours, working days and rotation outright, and the four fields below are not consulted.
+    // Null → the older per-employee behaviour, which is what every existing employee has.
+    //
+    // One choice instead of four fields is the whole point: fixing the eight CleanFix night workers
+    // whose hours were wrong meant eight separate edits, and would now mean one.
+    //
+    // AttendanceQR.Application EffectiveShift is the single place that resolves this. Nothing else
+    // should read Schedule, Employee and Location hours and decide between them itself.
+    public Guid? ScheduleId { get; set; }
 
     // Rotation ("növbə"). The location's weekly WorkDaysMask can only express patterns that repeat
     // every 7 days, so it cannot describe a rotation at all: "every other day" is a 2-day cycle, and

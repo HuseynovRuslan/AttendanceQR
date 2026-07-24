@@ -12,12 +12,13 @@ import {
 } from '../../api/manager'
 import { IconX } from '../../components/icons'
 import { WorkCyclePicker } from '../../components/WorkCyclePicker'
+import { getManagerSchedules, type ManagerSchedule } from '../../api/manager'
 import './manager.css'
 
 const EMPTY: ManagerEmployeeInput = {
   fullName: '', email: null, phoneNumber: null, fatherName: null, position: null,
   locationId: '', birthDate: null, birthYear: null, workStart: null, workEnd: null,
-  workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
+  scheduleId: null, workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
   photoExempt: false, isActive: true,
 }
 
@@ -41,6 +42,7 @@ export function ManagerEmployeesPage() {
   const [rows, setRows] = useState<ManagerEmployee[]>([])
   const [locations, setLocations] = useState<ManagerLocation[]>([])
   const [positions, setPositions] = useState<string[]>([])
+  const [schedules, setSchedules] = useState<ManagerSchedule[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<string | null>(null) // id, or 'new', or null
   const [form, setForm] = useState<ManagerEmployeeInput>(EMPTY)
@@ -50,10 +52,13 @@ export function ManagerEmployeesPage() {
 
   async function load() {
     setLoading(true)
-    const [e, l, p] = await Promise.all([getManagerEmployees(), getManagerLocations(), getManagerPositions()])
+    const [e, l, p, sc] = await Promise.all([
+      getManagerEmployees(), getManagerLocations(), getManagerPositions(), getManagerSchedules(),
+    ])
     if (e.status === 200 && Array.isArray(e.data)) setRows(e.data)
     if (l.status === 200 && Array.isArray(l.data)) setLocations(l.data)
     if (p.status === 200 && Array.isArray(p.data)) setPositions(p.data.map((x) => x.name))
+    if (sc.status === 200 && Array.isArray(sc.data)) setSchedules(sc.data)
     setLoading(false)
   }
 
@@ -76,6 +81,7 @@ export function ManagerEmployeesPage() {
       phoneNumber: e.phoneNumber, fatherName: e.fatherName, position: e.position,
       locationId: e.locationId, birthDate: e.birthDate, birthYear: e.birthYear,
       workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt, isActive: e.isActive,
+      scheduleId: e.scheduleId,
       workCycleDays: e.workCycleDays, workCycleOnDays: e.workCycleOnDays, workCycleAnchor: e.workCycleAnchor,
     })
     setEditing(e.id)
@@ -165,19 +171,43 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               </select>
             </div>
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <label className="form-label">Növbə</label>
+            <select
+              className="inp"
+              value={form.scheduleId ?? ''}
+              onChange={(e) => set('scheduleId', e.target.value || null)}
+            >
+              <option value="">— növbə yoxdur (fərdi saatlar) —</option>
+              {schedules.map((sc) => (
+                <option key={sc.id} value={sc.id}>
+                  {sc.name} · {sc.shiftStart}–{sc.shiftEnd}{sc.isOvernight ? ' 🌙' : ''}
+                </option>
+              ))}
+            </select>
+            {form.scheduleId && (
+              <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 6, marginBottom: 0, lineHeight: 1.6 }}>
+                Saatlar, iş günləri və rotasiya bu növbədən gəlir.
+              </p>
+            )}
+          </div>
+
           <div className="form-row cols2">
             <div>
               <label className="form-label">Doğum tarixi</label>
               <input className="inp" type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value || null)} />
             </div>
-            <div>
-              <label className="form-label">İş saatları (istəyə bağlı)</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input className="inp" type="time" value={form.workStart ?? ''} onChange={(e) => set('workStart', e.target.value || null)} />
-                <input className="inp" type="time" value={form.workEnd ?? ''} onChange={(e) => set('workEnd', e.target.value || null)} />
+            {!form.scheduleId && (
+              <div>
+                <label className="form-label">İş saatları (istəyə bağlı)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="inp" type="time" value={form.workStart ?? ''} onChange={(e) => set('workStart', e.target.value || null)} />
+                  <input className="inp" type="time" value={form.workEnd ?? ''} onChange={(e) => set('workEnd', e.target.value || null)} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
+          {!form.scheduleId && (
           <WorkCyclePicker
             value={{
               days: form.workCycleDays,
@@ -193,6 +223,7 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               }))
             }
           />
+          )}
 
           <label style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <input type="checkbox" checked={!form.isActive} onChange={(e) => set('isActive', !e.target.checked)} />

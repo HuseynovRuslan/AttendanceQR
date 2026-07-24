@@ -83,6 +83,8 @@ public class AdminController : ControllerBase
                 birthDate = e.BirthDate,
                 workStart = e.WorkStart?.ToString("HH:mm"),
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
+                scheduleId = e.ScheduleId,
+                scheduleName = e.ScheduleId == null ? null : _db.Schedules.Where(sc => sc.Id == e.ScheduleId).Select(sc => sc.Name).FirstOrDefault(),
                 workCycleDays = e.WorkCycleDays,
                 workCycleOnDays = e.WorkCycleOnDays,
                 workCycleAnchor = e.WorkCycleAnchor,
@@ -176,6 +178,8 @@ public class AdminController : ControllerBase
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+        if (await ApplyScheduleAsync(employee, request.ScheduleId) is { } scheduleError)
+            return BadRequest(new { error = scheduleError });
         _db.Employees.Add(employee!);
         await RegisterPositionsAsync();
         await _db.SaveChangesAsync();
@@ -686,6 +690,8 @@ public class AdminController : ControllerBase
         employee.MonthlySalary = request.MonthlySalary;
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+        if (await ApplyScheduleAsync(employee, request.ScheduleId) is { } scheduleError)
+            return BadRequest(new { error = scheduleError });
 
         var scopeError = await ApplyManagedLocationsAsync(employee, request.ManagedLocationIds);
         if (scopeError is not null)
@@ -867,5 +873,24 @@ public class AdminController : ControllerBase
             _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
 
         return Ok(new { tempPin = pin });
+    }
+
+    /// <summary>
+    /// Assigns (or clears) the employee's named shift. Returns an error code, or null on success.
+    ///
+    /// A shift from another company would be an outright tenant leak, so the id is verified against
+    /// the query-filtered set rather than trusted from the body.
+    /// </summary>
+    private async Task<string?> ApplyScheduleAsync(Employee employee, Guid? scheduleId)
+    {
+        if (scheduleId is not Guid id)
+        {
+            employee.ScheduleId = null;
+            return null;
+        }
+        if (!await _db.Schedules.AnyAsync(s => s.Id == id, HttpContext.RequestAborted))
+            return "ScheduleNotFound";
+        employee.ScheduleId = id;
+        return null;
     }
 }

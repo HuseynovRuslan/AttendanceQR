@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -8,10 +9,12 @@ using Microsoft.EntityFrameworkCore;
 namespace AttendanceQR.Api.Controllers;
 
 /// <summary>
-/// The schedule (qrafik) library — reusable shift templates the admin picks when setting up a
-/// location, so the hours aren't retyped every time. Templates only: picking one fills the location's
-/// own shift fields (see <see cref="Schedule"/>), so nothing here touches the scan or report paths.
-/// Tenant-scoped by the DbContext query filter; Admin only.
+/// Named shifts ("növbə") — hours, working days and an optional rotation, defined once and assigned
+/// to employees. Tenant-scoped by the DbContext query filter; Admin only.
+///
+/// These are LIVE now, not templates. Editing one changes how every employee on it is judged,
+/// including on days already past, because reports resolve through the shift rather than through a
+/// copy taken at the time. Both the delete guard below and the admin UI say so.
 /// </summary>
 [ApiController]
 [Authorize(Roles = "Admin")]
@@ -46,6 +49,8 @@ public class SchedulesController : ControllerBase
             LateThresholdMinutes = request.LateThresholdMinutes,
             WorkDaysMask = request.WorkDaysMask,
         };
+        if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
         _db.Schedules.Add(schedule);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
@@ -65,18 +70,27 @@ public class SchedulesController : ControllerBase
         schedule.ShiftEnd = end;
         schedule.LateThresholdMinutes = request.LateThresholdMinutes;
         schedule.WorkDaysMask = request.WorkDaysMask;
+        if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
     }
 
-    // Deleting a schedule does NOT affect any location — locations hold their own copy of the hours,
-    // so this only removes the template from the picker.
+    // Refused while anyone is on the shift. There is no foreign key doing this for us, so deleting a
+    // shift in use would leave those employees pointing at nothing — they would silently fall back to
+    // their branch's hours, which is a change to how their pay is calculated that nobody asked for.
+    // The count comes back with the error so the UI can say who is affected.
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
         if (schedule is null)
             return NotFound(new { error = "ScheduleNotFound" });
+
+        var assigned = await _db.Employees.CountAsync(e => e.ScheduleId == id, HttpContext.RequestAborted);
+        if (assigned > 0)
+            return Conflict(new { error = "ScheduleInUse", employeeCount = assigned });
+
         _db.Schedules.Remove(schedule);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(new { deleted = id });
@@ -116,6 +130,9 @@ public class SchedulesController : ControllerBase
         shiftEnd = s.ShiftEnd.ToString("HH:mm"),
         lateThresholdMinutes = s.LateThresholdMinutes,
         workDaysMask = s.WorkDaysMask,
+        workCycleDays = s.WorkCycleDays,
+        workCycleOnDays = s.WorkCycleOnDays,
+        workCycleAnchor = s.WorkCycleAnchor,
         // Convenience for the UI so it can badge night schedules without re-deriving.
         isOvernight = s.ShiftEnd < s.ShiftStart,
     };

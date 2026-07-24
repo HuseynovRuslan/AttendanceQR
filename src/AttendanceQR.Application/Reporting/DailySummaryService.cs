@@ -35,8 +35,12 @@ public sealed class DailySummaryService : IDailySummaryService
         // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
         var employees = await _db.Employees
             .Where(e => e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()))
-            .Select(e => new { e.Id, e.LocationId, e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor })
+            .Select(e => new { e.Id, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor })
             .ToListAsync(ct);
+
+        // A handful of rows per tenant, so they are loaded whole and looked up in memory rather
+        // than joined into every employee projection.
+        var schedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
 
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
         var locations = await _db.Locations
@@ -79,16 +83,18 @@ public sealed class DailySummaryService : IDailySummaryService
             if (!locations.TryGetValue(emp.LocationId, out var location))
                 continue; // defensive: employee's location vanished
 
-            var isWorkingDay = AttendanceCalculator.IsScheduledWorkingDay(
-                                    emp.WorkCycleDays, emp.WorkCycleOnDays, emp.WorkCycleAnchor, location.WorkDaysMask, date)
+            var shift = EffectiveShift.Resolve(
+                emp.WorkStart, emp.WorkEnd, emp.WorkCycleDays, emp.WorkCycleOnDays, emp.WorkCycleAnchor,
+                emp.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null, location);
+
+            var isWorkingDay = shift.IsWorkingDay(date)
                                 && !isGloballyNonWorking
                                 && !nonWorkingLocationIdSet.Contains(location.Id);
             LeaveType? leaveType = leaveByEmployee.TryGetValue(emp.Id, out var lt) ? lt : null;
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(emp.Id, out var record);
-            var computed = Compute(
-                emp.Id, emp.LocationId, date, record, location, isWorkingDay, noRecordStatus, emp.WorkStart, emp.WorkEnd);
+            var computed = Compute(emp.Id, emp.LocationId, date, record, shift, isWorkingDay, noRecordStatus);
 
             if (existing.TryGetValue(emp.Id, out var summary))
             {
@@ -111,12 +117,12 @@ public sealed class DailySummaryService : IDailySummaryService
     }
 
     private DailySummary Compute(
-        Guid employeeId, Guid locationId, DateOnly date, AttendanceRecord? record, Location location,
-        bool isWorkingDay, DailySummaryStatus noRecordStatus, TimeOnly? workStart, TimeOnly? workEnd)
+        Guid employeeId, Guid locationId, DateOnly date, AttendanceRecord? record, EffectiveShift shift,
+        bool isWorkingDay, DailySummaryStatus noRecordStatus)
     {
-        // Shared timezone/late/overtime logic (also used by the live "today" query). The employee's own
-        // hours override the location shift when set — same rule as at scan time.
-        var c = AttendanceCalculator.Compute(record, location, _timeZone, isWorkingDay, noRecordStatus, workStart, workEnd);
+        // Shared timezone/late/overtime logic (also used by the live "today" query), against the shift
+        // already resolved for this employee — the same one the scan endpoint judged them by.
+        var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
         return new DailySummary
         {
             EmployeeId = employeeId,

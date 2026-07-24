@@ -93,20 +93,18 @@ public static class AttendanceCalculator
     /// Status to report when nobody checked in — Absent on a working day, DayOff otherwise (or,
     /// once leave/permission exists, OnLeave/Permission — the caller decides).
     /// </param>
-    /// <param name="employeeWorkStart">
-    /// The employee's own <see cref="Employee.WorkStart"/>, when set — it overrides the location's
-    /// ShiftStart for THIS employee (staff at one location can keep different hours). Null → the
-    /// location's shift. Must mirror AttendanceController.EffectiveShiftStart, or a day would read
-    /// one way at scan time and another in the report.
+    /// <param name="shift">
+    /// The hours and lateness threshold that apply to this employee, already resolved by
+    /// <see cref="EffectiveShift.Resolve(Employee, Schedule?, Location)"/>. Taking it pre-resolved is
+    /// deliberate: this method used to fall back to the location itself, which meant the rule for
+    /// "whose hours count" existed here AND at the scan endpoint, and the two could drift.
     /// </param>
-    /// <param name="employeeWorkEnd">Same as employeeWorkStart, for the shift end (overtime).</param>
     public static DayComputation Compute(
-        AttendanceRecord? record, Location location, TimeZoneInfo timeZone,
-        bool isWorkingDay, DailySummaryStatus noRecordStatus,
-        TimeOnly? employeeWorkStart = null, TimeOnly? employeeWorkEnd = null)
+        AttendanceRecord? record, EffectiveShift shift, TimeZoneInfo timeZone,
+        bool isWorkingDay, DailySummaryStatus noRecordStatus)
     {
-        var shiftStart = employeeWorkStart ?? location.ShiftStart;
-        var shiftEnd = employeeWorkEnd ?? location.ShiftEnd;
+        var shiftStart = shift.Start;
+        var shiftEnd = shift.End;
 
         // No record → the employee never showed up (or it wasn't a working day / they were on
         // leave — whichever the caller determined via noRecordStatus).
@@ -146,7 +144,7 @@ public static class AttendanceCalculator
         // A non-working day has no concept of "late" — showing up at all is a bonus, not tardy.
         DailySummaryStatus status;
         var lateMinutes = 0;
-        if (isWorkingDay && minutesAfterStart > location.LateThresholdMinutes)
+        if (isWorkingDay && minutesAfterStart > shift.LateThresholdMinutes)
         {
             status = DailySummaryStatus.Late;
             lateMinutes = minutesAfterStart;

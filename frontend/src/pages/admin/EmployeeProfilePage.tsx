@@ -124,6 +124,9 @@ export function EmployeeProfilePage() {
       photoExempt: emp.photoExempt === true,
       workStart: emp.workStart ?? null,
       workEnd: emp.workEnd ?? null,
+      // Re-sent for the same reason as the rest: an omitted field is nulled, so toggling active
+      // would silently take this employee off their shift.
+      scheduleId: emp.scheduleId ?? null,
       workCycleDays: emp.workCycleDays ?? null,
       workCycleOnDays: emp.workCycleOnDays ?? null,
       workCycleAnchor: emp.workCycleAnchor ?? null,

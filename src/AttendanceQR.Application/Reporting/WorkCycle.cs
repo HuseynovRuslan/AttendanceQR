@@ -6,8 +6,8 @@ namespace AttendanceQR.Application.Reporting;
 /// Writing a rotation onto an employee. The reading half — deciding whether a given date falls on a
 /// working day — lives in <see cref="AttendanceCalculator.IsScheduledWorkingDay"/>.
 ///
-/// Shared by the admin and manager edit paths so the two can never disagree about what a valid
-/// rotation is; a manager is usually the one who actually knows who works which half of the cycle.
+/// Shared by every path that writes one — a named shift, an employee without one, admin or manager —
+/// so no two routes into the data can disagree about what a valid rotation is.
 /// </summary>
 public static class WorkCycle
 {
@@ -24,15 +24,15 @@ public static class WorkCycle
     /// unexcused absence comes straight off that person's salary in the payroll report. Either all
     /// three values are coherent or the employee keeps the location's weekly calendar.
     /// </summary>
-    public static string? Apply(Employee employee, int? days, int? onDays, DateOnly? anchor)
+    public static string? Apply(IHasWorkCycle target, int? days, int? onDays, DateOnly? anchor)
     {
         if (days is null)
         {
             // Clear the other two as well, so re-enabling a rotation months later cannot inherit a
             // stale anchor and land the person on the wrong half of the cycle.
-            employee.WorkCycleDays = null;
-            employee.WorkCycleOnDays = 1;
-            employee.WorkCycleAnchor = null;
+            target.WorkCycleDays = null;
+            target.WorkCycleOnDays = 1;
+            target.WorkCycleAnchor = null;
             return null;
         }
 
@@ -43,9 +43,9 @@ public static class WorkCycle
         if (on < 1 || on >= days) return "WorkCycleOnDaysInvalid";
         if (anchor is null) return "WorkCycleAnchorRequired";
 
-        employee.WorkCycleDays = days;
-        employee.WorkCycleOnDays = on;
-        employee.WorkCycleAnchor = anchor;
+        target.WorkCycleDays = days;
+        target.WorkCycleOnDays = on;
+        target.WorkCycleAnchor = anchor;
         return null;
     }
 }

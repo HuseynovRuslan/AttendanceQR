@@ -19,7 +19,8 @@ public record InviteRequest(
     // right away instead of only after activation. Empty/null → falls back to the location's shift.
     string? WorkStart = null,
     string? WorkEnd = null,
-    // Rotation ("növbə") at creation — see EmployeeUpdateRequest for the meaning of the three fields.
+    // Shift assignment and rotation at creation — see EmployeeUpdateRequest.
+    Guid? ScheduleId = null,
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
     DateOnly? WorkCycleAnchor = null);
@@ -55,9 +56,12 @@ public record EmployeeUpdateRequest(
     // Waives the check-in selfie for this employee. Defaults to false, so — like every field here —
     // a caller that omits it turns it OFF. Every updateEmployee caller must send it.
     bool PhotoExempt = false,
-    // Rotation ("növbə"). Null WorkCycleDays = no rotation, the location's weekly work days decide.
-    // Days is the cycle length and OnDays how many of its first days are worked, anchored to one date
-    // the employee works: "bir gündən bir" is (2, 1), sutka (3, 1), "2 iş / 2 istirahət" (4, 2).
+    // The named shift ("növbə") this employee is on. Set → it decides their hours, working days AND
+    // rotation, and the three WorkCycle fields below are ignored. Null → the per-employee fields.
+    Guid? ScheduleId = null,
+    // Rotation, used only when ScheduleId is null. Null WorkCycleDays = no rotation and the location's
+    // weekly work days decide. Days is the cycle length and OnDays how many of its first days are
+    // worked: "bir gündən bir" is (2, 1), sutka (3, 1), "2 iş / 2 istirahət" (4, 2).
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
     DateOnly? WorkCycleAnchor = null,

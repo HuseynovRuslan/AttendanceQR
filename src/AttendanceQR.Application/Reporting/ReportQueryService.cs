@@ -87,7 +87,8 @@ public sealed class ReportQueryService : IReportQueryService
 
     /// <summary>An in-scope employee plus the fields the day computation needs.</summary>
     private sealed record ScopedEmployee(
-        Guid Id, string FullName, Guid LocationId, TimeOnly? WorkStart, TimeOnly? WorkEnd,
+        Guid Id, string FullName, Guid LocationId, Guid? ScheduleId,
+        TimeOnly? WorkStart, TimeOnly? WorkEnd,
         int? WorkCycleDays, int WorkCycleOnDays, DateOnly? WorkCycleAnchor);
 
     /// <summary>One employee's computed day with everything it was computed from still attached — so
@@ -140,7 +141,7 @@ public sealed class ReportQueryService : IReportQueryService
 
         var employees = await query
             .Select(e => new ScopedEmployee(
-                e.Id, e.FullName, e.LocationId, e.WorkStart, e.WorkEnd,
+                e.Id, e.FullName, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd,
                 e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor))
             .ToListAsync(ct);
         return (ReportAccess.Allowed, employees);
@@ -168,6 +169,9 @@ public sealed class ReportQueryService : IReportQueryService
             .Where(r => r.AttendanceDate == date && employeeIds.Contains(r.EmployeeId))
             .ToDictionaryAsync(r => r.EmployeeId, ct);
 
+        // A handful of rows per tenant; loaded whole and looked up in memory.
+        var schedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
+
         var nonWorkingLocationIds = await _db.NonWorkingDays
             .Where(n => n.Date == date && (n.LocationId == null || locationIds.Contains(n.LocationId.Value)))
             .Select(n => n.LocationId)
@@ -187,17 +191,19 @@ public sealed class ReportQueryService : IReportQueryService
             if (!locations.TryGetValue(e.LocationId, out var location))
                 continue; // defensive: the employee's location vanished
 
-            var isWorkingDay = AttendanceCalculator.IsScheduledWorkingDay(
-                                   e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, location.WorkDaysMask, date)
+            var shift = EffectiveShift.Resolve(
+                e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                e.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null, location);
+
+            var isWorkingDay = shift.IsWorkingDay(date)
                                && !isGloballyNonWorking
                                && !nonWorkingLocationIdSet.Contains(location.Id);
             LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(e.Id, out var record);
-            // The employee's own hours override the location shift when set — same rule as at scan time.
-            var c = AttendanceCalculator.Compute(
-                record, location, _timeZone, isWorkingDay, noRecordStatus, e.WorkStart, e.WorkEnd);
+            // Judged against the same resolved shift the scan endpoint used.
+            var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
             rows.Add(new LiveDay(e, location, record, c));
         }
@@ -311,7 +317,8 @@ public sealed class ReportQueryService : IReportQueryService
         var locationById = meta.ToDictionary(m => m.Id, m => m.LocationId);
         var allLocations = await _db.Locations.ToListAsync(ct);
         var locationNames = allLocations.ToDictionary(l => l.Id, l => l.Name);
-        var maskByLocation = allLocations.ToDictionary(l => l.Id, l => l.WorkDaysMask);
+        var locationEntityById = allLocations.ToDictionary(l => l.Id);
+        var tabelSchedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
 
         // DailySummaryStatus collapses every kind of approved leave into OnLeave; the tabel has to
         // tell M from X from ÖM, so the leave type comes straight from the LeaveRecords for the month.
@@ -372,10 +379,15 @@ public sealed class ReportQueryService : IReportQueryService
                 else
                 {
                     // No computed row (e.g. an employee added mid-month): fall back to the calendar —
-                    // a work day with no record is absent, a non-work day is rest.
-                    var mask = maskByLocation.GetValueOrDefault(locationById.GetValueOrDefault(e.Id), 126);
-                    code = AttendanceCalculator.IsScheduledWorkingDay(
-                        e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, mask, date) ? CodeAbsent : CodeWeekend;
+                    // a work day with no record is absent, a non-work day is rest. Resolved through
+                    // the same shift rule as everything else, so a rotation still reads correctly here.
+                    var loc = locationEntityById.GetValueOrDefault(locationById.GetValueOrDefault(e.Id));
+                    code = loc is null
+                        ? CodeAbsent
+                        : EffectiveShift.Resolve(
+                              e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                              e.ScheduleId is Guid sid2 ? tabelSchedules.GetValueOrDefault(sid2) : null, loc)
+                          .IsWorkingDay(date) ? CodeAbsent : CodeWeekend;
                 }
 
                 codes[day - 1] = code;

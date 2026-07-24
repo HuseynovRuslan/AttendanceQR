@@ -90,11 +90,14 @@ public class AdminAttendanceController : ControllerBase
         if (request.CheckInAtUtc is not null)
         {
             record.CheckInAtUtc = request.CheckInAtUtc;
+            // Recomputed the same way the scan would have, so an admin correcting a time cannot
+            // produce a status the employee's own shift would never have given.
             var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId);
-            var shiftStart = employee is null
-                ? location.ShiftStart
-                : AttendanceController.EffectiveShiftStart(employee, location);
-            record.Status = AttendanceController.DetermineStatus(shiftStart, location.LateThresholdMinutes, request.CheckInAtUtc.Value, _timeZone);
+            var shift = employee is null
+                ? EffectiveShift.Resolve(null, null, null, 1, null, null, location)
+                : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location);
+            record.Status = AttendanceController.DetermineStatus(
+                shift.Start, shift.LateThresholdMinutes, request.CheckInAtUtc.Value, _timeZone);
         }
         if (request.CheckOutAtUtc is not null)
             record.CheckOutAtUtc = request.CheckOutAtUtc;
@@ -137,7 +140,8 @@ public class AdminAttendanceController : ControllerBase
             CheckInAtUtc = request.CheckInAtUtc,
             CheckOutAtUtc = request.CheckOutAtUtc,
             Status = AttendanceController.DetermineStatus(
-                AttendanceController.EffectiveShiftStart(employee, location), location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
+                EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location).Start,
+                location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
         };
         _db.AttendanceRecords.Add(record);
         await _db.SaveChangesAsync();
@@ -218,4 +222,10 @@ public class AdminAttendanceController : ControllerBase
         checkOutAtUtc = r.CheckOutAtUtc,
         status = r.Status.ToString()
     };
+
+    /// <summary>The employee's assigned shift, or null when they are not on one.</summary>
+    private Task<Schedule?> ScheduleForAsync(Employee employee) =>
+        employee.ScheduleId is Guid id
+            ? _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == id, HttpContext.RequestAborted)
+            : Task.FromResult<Schedule?>(null);
 }
