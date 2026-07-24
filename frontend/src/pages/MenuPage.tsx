@@ -62,6 +62,7 @@ export function MenuPage() {
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
         {hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />
+        <MenuRow to="/privacy" Icon={IconUser} label="Məxfilik bildirişi" />
       </div>
 
       <button

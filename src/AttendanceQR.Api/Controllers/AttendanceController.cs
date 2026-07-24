@@ -101,6 +101,8 @@ public class AttendanceController : ControllerBase
                 // The scan screen skips the selfie entirely for an exempted employee — showing a
                 // camera it will then discard would just teach them the step is optional.
                 photoRequired = !e.PhotoExempt,
+                // The app blocks on the consent screen until this is accepted.
+                consentRequired = e.ConsentAcceptedAtUtc == null,
                 locationName = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.Name)
@@ -130,7 +132,7 @@ public class AttendanceController : ControllerBase
         return Ok(new
         {
             profile.fullName, profile.email, profile.role, profile.position, profile.birthDate,
-            profile.photoRequired, profile.locationName,
+            profile.photoRequired, profile.consentRequired, profile.locationName,
             unverifiedCheckIns = unverified,
             lastCheckInUnverified = lastWasUnverified,
         });
@@ -157,6 +159,21 @@ public class AttendanceController : ControllerBase
         employee.ReferencePhotoTakenAtUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });
+    }
+
+    // POST /api/attendance/me/consent — the employee agrees to the data-processing notice. Idempotent:
+    // the first acceptance stamps the time; later calls leave it untouched (the original consent stands).
+    [HttpPost("me/consent")]
+    public async Task<IActionResult> AcceptConsent()
+    {
+        var employeeId = User.EmployeeId();
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, HttpContext.RequestAborted);
+        if (employee is null)
+            return Unauthorized(new { error = "EmployeeNotFound" });
+
+        employee.ConsentAcceptedAtUtc ??= DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        return Ok(new { acceptedAtUtc = employee.ConsentAcceptedAtUtc });
     }
 
     // POST /api/attendance/me/photo-check — "is there a face in this photo?", asked from the scan

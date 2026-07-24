@@ -67,10 +67,20 @@ export interface MyProfile {
   birthDate?: string | null
   /** False when an admin has waived the check-in selfie for this employee. */
   photoRequired?: boolean
+  /** True until the employee has accepted the data-processing notice — the app blocks until then. */
+  consentRequired?: boolean
   /** Check-ins this month whose photo showed no face — shown to the employee themselves. */
   unverifiedCheckIns?: number
   /** Whether the most recent check-in was one of them; the scan screen warns before the camera opens. */
   lastCheckInUnverified?: boolean
+}
+
+/** Records the employee's acceptance of the data-processing notice. Idempotent — the first
+ *  acceptance is the one that stands. */
+export function acceptConsent() {
+  return apiRequest<{ acceptedAtUtc: string } | { error: string }>('/api/attendance/me/consent', {
+    method: 'POST',
+  })
 }
 
 /** GET /api/attendance/me/profile — the caller's own name/location for the home greeting + menu. */

@@ -412,6 +412,8 @@ export interface AdminEmployee {
   monthlySalary?: number | null
   /** True when an admin has waived the check-in selfie for this employee. */
   photoExempt?: boolean
+  /** When the employee accepted the data-processing notice; null = not yet. */
+  consentAcceptedAtUtc?: string | null
   email: string
   phoneNumber: string | null
   role: Role

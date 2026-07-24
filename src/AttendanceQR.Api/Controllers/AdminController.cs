@@ -84,6 +84,9 @@ public class AdminController : ControllerBase
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
                 monthlySalary = e.MonthlySalary,
                 photoExempt = e.PhotoExempt,
+                // Who has accepted the data-processing notice — the answer to "did this employee
+                // agree, and when", which is the whole point of recording it.
+                consentAcceptedAtUtc = e.ConsentAcceptedAtUtc,
                 email = e.Email,
                 role = e.Role.ToString(),
                 phoneNumber = e.PhoneNumber,

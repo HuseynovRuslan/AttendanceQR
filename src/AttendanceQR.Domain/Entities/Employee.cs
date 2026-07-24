@@ -100,6 +100,16 @@ public class Employee : ITenantScoped
     /// </summary>
     public bool PhotoExempt { get; set; }
 
+    /// <summary>
+    /// When the employee accepted the data-processing notice (GPS, check-in selfie, work data).
+    ///
+    /// The digital stand-in for a signature: the app stores face + location + salary, which is
+    /// personal — and biometric — data, so before it collects any of that the employee is shown what
+    /// is collected and why and taps "Razıyam". Null means not yet accepted; the app blocks on the
+    /// consent screen until it is set, and an admin can see who has and hasn't agreed.
+    /// </summary>
+    public DateTime? ConsentAcceptedAtUtc { get; set; }
+
     // One binding per browser storage context (Safari, the installed PWA, a spare phone). Empty
     // until the employee activates. Capped and least-recently-used-evicted — see DeviceBindingRules.
     public ICollection<DeviceBinding> DeviceBindings { get; set; } = new List<DeviceBinding>();
