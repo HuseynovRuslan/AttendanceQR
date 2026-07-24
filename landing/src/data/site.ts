@@ -56,19 +56,23 @@ export const PRICING = {
 //
 // Spelling is theirs, not ours: it is "EastCaf", not "EastCafe" — they have corrected this before.
 // ---------------------------------------------------------------------------------------------
-// `logo` is a path under landing/public/. Drop a file in (ideally a transparent PNG or SVG, roughly
-// 400×120, the wordmark on its own) and set it here — the card swaps the monogram for the real mark
-// with no other change. Until then the monogram tile is the deliberate stand-in: three companies'
-// logos in three different styles and crops would look worse than three marks built to match.
+// `logo` is a path under landing/public/. The two we have came in as JPEGs on their own opaque
+// squares — CleanFix blue-on-white, EastCaf a navy roundel on black — so both were cut out to
+// transparent PNGs (see landing/public/customers/). Each still carries its own background inside the
+// artwork, which is why the card puts every logo on a WHITE tile rather than straight onto the dark
+// band: EastCaf's navy roundel is within a few shades of the band itself and would simply vanish.
 //
-// `accent` tints the monogram and the card's hover glow. Picked to hint at the sector rather than at
-// random — green for grounds and cleaning, amber for the café — so the row reads as considered.
+// Bakı Abadlıq Xidməti has no logo yet and falls back to a monogram on the same white tile, so the
+// three read as one row. Drop a file in and set `logo` here — nothing else changes.
+//
+// `accent` tints the monogram and the card's hover glow. Taken from each company's own artwork
+// (CleanFix blue, EastCaf gold) or from its sector where there is none, so the row is not arbitrary.
 export const CUSTOMERS = {
   show: true,
   items: [
     { key: 'c1', name: 'Bakı Abadlıq Xidməti', mark: 'BA', accent: '#2FA36B', logo: null },
-    { key: 'c2', name: 'CleanFix', mark: 'CF', accent: '#1E63E9', logo: null },
-    { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D9932B', logo: null },
+    { key: 'c2', name: 'CleanFix', mark: 'CF', accent: '#3A9BDE', logo: '/customers/cleanfix.png' },
+    { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D8C486', logo: '/customers/eastcaf.png' },
   ],
 } as const
 

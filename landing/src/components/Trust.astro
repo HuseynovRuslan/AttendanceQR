@@ -14,9 +14,12 @@ const t = useTranslations(lang)
 // stage. It borrows the hero's own dot grid and blue glow rather than introducing a second visual
 // language for one section.
 //
-// Real logos drop straight in — see CUSTOMERS in src/data/site.ts. Until a company hands one over,
-// a monogram built to the same size and weight as its neighbours looks better than three logos in
-// three different crops, which is what a "logo wall" usually degenerates into.
+// Every logo sits on a WHITE tile. Both of the real ones were drawn for their own background —
+// CleanFix blue-on-white, EastCaf a navy roundel — and EastCaf's navy is within a few shades of this
+// band, so dropping it straight on would erase it. A white tile is also what keeps three logos of
+// different shapes, crops and colour reading as one row instead of three pasted images.
+//
+// A company with no logo yet gets a monogram on the same tile, so the row stays even.
 const icon =
   '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>'
 const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
@@ -32,10 +35,10 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
       <div class="cust-grid">
         {CUSTOMERS.items.map((c, i) => (
           <article class={`cust-card rv d${i + 1}`} style={`--accent:${c.accent}`}>
-            <div class="cust-mark">
+            <div class="cust-tile">
               {c.logo
                 ? <img src={c.logo} alt={c.name} loading="lazy" decoding="async" />
-                : <span>{c.mark}</span>}
+                : <span class="cust-mono">{c.mark}</span>}
             </div>
             <h3>{c.name}</h3>
             <p>{t(`cust.${c.key}s` as any)}</p>
