@@ -89,6 +89,8 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The marketing site is a static build, not a service. Compose never produces it —
+      # ops/build-landing.sh does, into this directory. See landing/README.md.
       - ./landing-dist:/srv/qrlog:ro
       - caddy_data:/data
       - caddy_config:/config

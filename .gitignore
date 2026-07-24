@@ -490,3 +490,9 @@ src/AttendanceQR.Api/appsettings.Development.json
 
 # SSH askpass helper — holds the server password, must never be committed
 ap.sh
+
+# Marketing site (landing/): build artefacts. The server builds these from source via
+# ops/build-landing.sh, so a committed dist/ is only ever a stale copy of the truth.
+landing/dist/
+landing/.astro/
+landing-dist/

@@ -1,0 +1,84 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+const tick = '<path d="m5 12 5 5 9-10"/>'
+const deviceIcon = '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'
+const pinIcon = '<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/>'
+const faceIcon = '<circle cx="12" cy="9" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/>'
+---
+
+<section class="pdemo" id="demo">
+  <div class="wrap pdemo-grid">
+    <div class="pdemo-copy rv">
+      <span class="eyebrow">{t('demo.eyebrow')}</span>
+      <h2>{t('demo.title')}</h2>
+      <p>{t('demo.sub')}</p>
+      <div class="pdemo-steps" id="pdemoSteps">
+        <div class="pstep" data-step="0"><div class="pnum">1</div><div class="ptxt">{t('demo.step1')}</div></div>
+        <div class="pstep" data-step="1"><div class="pnum">2</div><div class="ptxt">{t('demo.step2')}</div></div>
+        <div class="pstep" data-step="2"><div class="pnum">3</div><div class="ptxt">{t('demo.step3')}</div></div>
+        <div class="pstep" data-step="3"><div class="pnum">4</div><div class="ptxt">{t('demo.step4')}</div></div>
+      </div>
+    </div>
+
+    <div class="phone-stage rv">
+      <div class="aura"></div>
+      <div class="phone" id="phone" data-state="scan">
+        <div class="phone-screen">
+          <!-- 1. SCAN -->
+          <div class="pscreen screen-scan">
+            <div class="p-status"><span>09:01</span><span>QRLog</span></div>
+            <div class="p-frame">
+              <div class="corner tl"></div><div class="corner tr"></div>
+              <div class="corner bl"></div><div class="corner br"></div>
+              <div class="p-scanline"></div>
+              <svg class="p-qr" viewBox="0 0 25 25" id="pqr" aria-hidden="true"></svg>
+            </div>
+            <div class="scan-label"><span class="blink"></span>{t('demo.scanning')}</div>
+          </div>
+          <!-- 2. VERIFY device + location -->
+          <div class="pscreen screen-verify">
+            <div class="p-status"><span>09:01</span><span>QRLog</span></div>
+            <h4>{t('demo.verify.title')}</h4>
+            <div class="vrow r1">
+              <div class="vi"><svg viewBox="0 0 24 24" set:html={deviceIcon} /></div>
+              <div class="vt">{t('demo.verify.device')}</div>
+              <div class="vs"><div class="spin"></div><div class="tick"><svg viewBox="0 0 24 24" set:html={tick} /></div></div>
+            </div>
+            <div class="vrow r2">
+              <div class="vi"><svg viewBox="0 0 24 24" set:html={pinIcon} /></div>
+              <div class="vt">{t('demo.verify.location')}</div>
+              <div class="vs"><div class="spin"></div><div class="tick"><svg viewBox="0 0 24 24" set:html={tick} /></div></div>
+            </div>
+          </div>
+          <!-- 3. PHOTO check -->
+          <div class="pscreen screen-face">
+            <div class="p-status"><span>09:01</span><span>QRLog</span></div>
+            <div class="face-oval">
+              <div class="fring"></div>
+              <div class="face-corner tl"></div><div class="face-corner tr"></div>
+              <div class="face-corner bl"></div><div class="face-corner br"></div>
+              <div class="face-scan"></div>
+              <svg class="face-ico" viewBox="0 0 24 24" set:html={faceIcon} />
+            </div>
+            <div class="face-label"><span class="blink"></span>{t('demo.face.title')}</div>
+          </div>
+          <!-- 4. DONE -->
+          <div class="pscreen screen-done">
+            <div class="p-status"><span>09:01</span><span>QRLog</span></div>
+            <svg class="done-check" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="42"></circle>
+              <path d="M32 51l12 12 24-26"></path>
+            </svg>
+            <div class="done-title">{t('demo.done')}</div>
+            <div class="done-name">Aygün Məmmədova</div>
+            <div class="done-meta">09:01 · {t('demo.checkin')}</div>
+            <div class="done-badge"><i></i>{t('demo.recorded')}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

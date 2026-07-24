@@ -1,16 +1,36 @@
 ---
-import { STATS } from '../data/site'
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Only figures that are true of the product itself. Usage numbers (scans per day, customer count,
+// uptime, star rating) are deliberately absent: we do not publish numbers we cannot stand behind.
 ---
 
-<section class="bg-base pb-6">
-  <div class="mx-auto max-w-6xl px-4 sm:px-6">
-    <div class="card grid grid-cols-2 gap-px overflow-hidden bg-surface-2 md:grid-cols-4">
-      {STATS.map((s) => (
-        <div class="bg-surface p-6 text-center">
-          <div class="num display text-2xl font-extrabold text-body sm:text-3xl">{s.value}</div>
-          <div class="mt-1 text-xs font-medium leading-snug text-dim sm:text-sm">{s.label}</div>
-        </div>
-      ))}
+<section class="statsband" id="stats">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('stats.title')}</span>
+      <h2>{t('stats.sub')}</h2>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card rv d1">
+        <div class="big"><span data-count="10" data-prefix="~">0</span></div>
+        <div class="cap">{t('stats.s1')}</div>
+      </div>
+      <div class="stat-card rv d2">
+        <div class="big"><span data-count="0" data-suffix=" ₼">0</span></div>
+        <div class="cap">{t('stats.s2')}</div>
+      </div>
+      <div class="stat-card rv d3">
+        <div class="big"><span data-count="3">0</span></div>
+        <div class="cap">{t('stats.s3')}</div>
+      </div>
+      <div class="stat-card rv d4">
+        <div class="big">{t('stats.s4v')}</div>
+        <div class="cap">{t('stats.s4')}</div>
+      </div>
     </div>
   </div>
 </section>

@@ -1,0 +1,49 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+import { SITE } from '../data/site'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Phone first, e-mail second: the phone is the channel that is certain to answer.
+// A mailto link, not a form. The landing page is a static build with no backend of its own, and the
+// old `<form action="mailto:">` silently dropped messages in most browsers — a contact form that
+// loses enquiries is worse than an honest link.
+const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('QRLog — sorğu')}`
+---
+
+<section class="prose-section">
+  <div class="wrap contact-grid">
+    <div class="contact-card">
+      <h2>{t('contact.infoTitle')}</h2>
+      <ul class="contact-list">
+        {SITE.phone && (
+          <li>
+            <span>{t('contact.phone')}</span>
+            <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>{SITE.phone}</a>
+          </li>
+        )}
+        <li>
+          <span>{t('contact.email')}</span>
+          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+        </li>
+        {SITE.whatsapp && (
+          <li>
+            <span>WhatsApp</span>
+            <a href={SITE.whatsapp} rel="noopener">{SITE.whatsapp.replace(/^https?:\/\//, '')}</a>
+          </li>
+        )}
+        <li>
+          <span>{t('contact.address')}</span>
+          <b>{SITE.address}</b>
+        </li>
+      </ul>
+    </div>
+
+    <div class="contact-card accent">
+      <h2>{t('contact.writeTitle')}</h2>
+      <p>{t('contact.writeText')}</p>
+      <a class="btn btn-primary" href={mailto}>{t('contact.writeBtn')}</a>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,19 @@
+---
+import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+---
+
+<section class="prose-section">
+  <div class="wrap prose">
+    <p class="lead">{t('about.p1')}</p>
+    <p>{t('about.p2')}</p>
+    <p>{t('about.p3')}</p>
+    <h2>{t('about.h2')}</h2>
+    <p>{t('about.p4')}</p>
+    <div class="prose-cta">
+      <a class="btn btn-primary" href={localizedPath(lang, '/elaqe/')}>{t('cta.btn1')}</a>
+    </div>
+  </div>
+</section>

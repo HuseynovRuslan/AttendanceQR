@@ -1,0 +1,34 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+import { TESTIMONIALS } from '../data/site'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Renders nothing while TESTIMONIALS is empty. The template shipped three invented customers with
+// invented names and job titles; a landing page that quotes people who do not exist is not a
+// design detail. Add real, permission-granted quotes to src/data/site.ts and the section returns.
+---
+
+{TESTIMONIALS.length > 0 && (
+  <section id="testimonials">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <span class="eyebrow">{t('test.eyebrow')}</span>
+        <h2>{t('test.title')}</h2>
+        <p>{t('test.sub')}</p>
+      </div>
+      <div class="test-grid">
+        {TESTIMONIALS.map((it, i) => (
+          <figure class={`quote rv d${(i % 3) + 1}`}>
+            <p>“{it.quote}”</p>
+            <figcaption class="by">
+              <div class="av" style={`background:${it.color}`}>{it.initial}</div>
+              <div class="who"><b>{it.name}</b><span>{it.role}</span></div>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  </section>
+)}

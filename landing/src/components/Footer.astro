@@ -1,53 +1,46 @@
 ---
-import { SITE } from '../data/site'
+import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
+import { SITE, PRICING } from '../data/site'
 
-const year = 2026
-const links = [
-  { label: 'Xüsusiyyətlər', href: '/#xususiyyetler' },
-  { label: 'Necə işləyir', href: '/#nece-isleyir' },
-  { label: 'Qiymət', href: '/#qiymet' },
-  { label: 'Haqqımızda', href: '/haqqimizda' },
-  { label: 'Əlaqə', href: '/elaqe' },
-]
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+const year = new Date().getFullYear()
+const home = localizedPath(lang, '/')
 ---
 
-<footer class="border-t border-hair bg-surface">
-  <div class="mx-auto max-w-6xl px-4 py-14 sm:px-6">
-    <div class="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
-      <div class="md:col-span-2">
-        <a href="/" class="flex items-center gap-2.5" aria-label="QRLog">
-          <svg class="h-7 w-7 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v3M14 21h7M21 17v4"/>
-          </svg>
-          <span class="display text-lg font-extrabold text-body">QRLog</span>
-        </a>
-        <p class="mt-3 max-w-sm text-sm leading-relaxed text-dim">
-          QR əsaslı işçi davamiyyəti sistemi — telefonla giriş-çıxış, GPS məkan yoxlaması və cihaz
-          bağlaması ilə saxta girişə qarşı qorunma.
-        </p>
-      </div>
-
-      <nav aria-label="Alt naviqasiya">
-        <h2 class="text-sm font-bold text-body">Səhifələr</h2>
-        <ul class="mt-3 space-y-2">
-          {links.map((l) => (
-            <li><a href={l.href} class="text-sm text-dim transition hover:text-accent">{l.label}</a></li>
-          ))}
-        </ul>
-      </nav>
-
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
       <div>
-        <h2 class="text-sm font-bold text-body">Əlaqə</h2>
-        <ul class="mt-3 space-y-2 text-sm text-dim">
-          <li><a href={`mailto:${SITE.email}`} class="transition hover:text-accent">{SITE.email}</a></li>
-          <li>{SITE.address}</li>
-          <li><a href={SITE.appUrl} target="_blank" rel="noopener noreferrer" class="font-semibold text-accent">İşçi girişi →</a></li>
-        </ul>
+        <div class="flogo">
+          <img src="/logo-mark-white.png" alt={SITE.name} height="30" />
+          <span class="fword">QR<span>Log</span></span>
+        </div>
+        <p>{t('foot.tag')}</p>
+      </div>
+      <div class="fcol">
+        <h4>{t('foot.product')}</h4>
+        <a href={`${home}#features`}>{t('nav.features')}</a>
+        <a href={`${home}#how`}>{t('nav.how')}</a>
+        {PRICING.enabled && <a href={localizedPath(lang, '/qiymet/')}>{t('nav.pricing')}</a>}
+        <a href={`${home}#faq`}>{t('nav.faq')}</a>
+      </div>
+      <div class="fcol">
+        <h4>{t('foot.company')}</h4>
+        <a href={localizedPath(lang, '/haqqimizda/')}>{t('foot.about')}</a>
+        <!-- The blog is written in Azerbaijani only, so every language points at the AZ index. -->
+        <a href="/bloq/">{t('foot.blog')}</a>
+        <a href={localizedPath(lang, '/elaqe/')}>{t('nav.contact')}</a>
+      </div>
+      <div class="fcol">
+        <h4>{t('foot.contact')}</h4>
+        <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+        {SITE.phone && <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>{SITE.phone}</a>}
       </div>
     </div>
-
-    <div class="mt-10 border-t border-hair pt-6 text-center text-xs text-dim">
-      © {year} {SITE.name} · {SITE.domain}
+    <div class="foot-bot">
+      <span>© {year} {SITE.name}. {t('foot.rights')}</span>
+      <span>{SITE.address}</span>
     </div>
   </div>
 </footer>

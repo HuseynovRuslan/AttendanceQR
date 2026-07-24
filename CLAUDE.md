@@ -23,7 +23,8 @@ payroll and announcements.
     src/AttendanceQR.Infrastructure  EF Core, services, migrations
     src/AttendanceQR.Api             controllers, background jobs
     frontend/src/pages               employee screens + pages/admin
-    ops/                             backups, watchdog, staging deploy
+    landing/                         qrlog.az marketing site (Astro, AZ/RU/EN) — static, not a service
+    ops/                             backups, watchdog, staging deploy, landing build
 
 Plain layered architecture — controllers, contracts, services. No MediatR, no CQRS, despite what the
 folder names might suggest.

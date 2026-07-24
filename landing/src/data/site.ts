@@ -1,114 +1,83 @@
-// Single source of truth for site-wide constants and the content that must stay in sync between the
-// rendered page and the JSON-LD structured data (features, FAQ). Editing here updates both.
+// Single source of truth for everything that is *not* translated text: domains, contact details,
+// prices and the social-proof lists. Translated strings live in src/i18n/ui.ts.
 //
-// NOTE: face/photo verification is intentionally NOT marketed here — the biometric-data legal review
-// is still open. The anti-fraud story is told entirely through GPS geofencing + device binding, which
-// are the product's real primary controls and carry no such exposure.
+// Anything a non-developer is likely to want to change is here on purpose — one edit, one rebuild.
 
 export const SITE = {
   name: 'QRLog',
   domain: 'qrlog.az',
   url: 'https://qrlog.az',
-  appUrl: 'https://bax.qrlog.az',
+  // No appUrl on purpose: the marketing site has no staff-login entry point at all. Every CTA goes
+  // to /elaqe/, and people who already use QRLog reach the app (bax.qrlog.az, or their own tenant
+  // subdomain) directly. Adding a login button back means adding this constant back with it.
   email: 'info@qrlog.az',
-  // TODO: real number before launch — used in the header/contact CTAs.
-  phone: '+994 __ ___ __ __',
-  whatsapp: '', // e.g. https://wa.me/994XXXXXXXXX — leave empty to hide the WhatsApp button
+  // Written in international form because the site is also served in Russian and English. The tel:
+  // link strips everything but digits and the +, so the spacing here is purely for reading.
+  phone: '+994 50 600 16 55',
+  // e.g. 'https://wa.me/994506001655' — empty hides the WhatsApp button. Left empty until someone
+  // has confirmed the number actually answers on WhatsApp: a dead button costs more than no button.
+  whatsapp: '',
   address: 'Bakı, Azərbaycan',
-  description:
-    'QRLog — işçi giriş-çıxışını telefonla QR skanı, GPS məkan yoxlaması və cihaz bağlaması ilə qeydə alan müasir davamiyyət sistemi. Bahalı avadanlıq yox, canlı hesabat, saxtakarlığa qarşı qorunma.',
 } as const
 
-// Value-framed, honest figures for the trust band — no fabricated adoption numbers.
-export const STATS = [
-  { value: '~10 san', label: 'Bir girişin qeydə alınması' },
-  { value: '0 ₼', label: 'Avadanlıq xərci — telefon kifayətdir' },
-  { value: 'Canlı', label: 'Kim işdədir — anlıq görünür' },
-  { value: 'Limitsiz', label: 'Filial və işçi sayı' },
+// ---------------------------------------------------------------------------------------------
+// PRICING
+//
+// `showPlans: false` — the current, deliberate state. The /qiymet/ page still exists and still
+// ranks (people search "davamiyyət sistemi qiymət"), but it shows no numbers and no plan limits:
+// just a short line saying the price is worked out per organisation, and a way to get in touch.
+//
+// The plan table below is the Astro template's invented pricing. Publishing it would have promised
+// "Pulsuz, 50 işçiyə qədər" — and two of the three companies already paying for QRLog are under
+// that line. A published price is very hard to walk back, so it stays off until the real plans
+// exist. Set showPlans: true once they do, and correct `amount` + the price.p* keys in i18n/ui.ts.
+//
+// `amount: null` renders the translated `price.pNa` string instead.
+// ---------------------------------------------------------------------------------------------
+export const PRICING = {
+  showPlans: false,
+  // `featureCount` is how many price.p<id>f<n> bullet keys exist for that plan in src/i18n/ui.ts.
+  plans: [
+    { id: 1, amount: null, featured: false, featureCount: 3 },
+    { id: 2, amount: '₼19', featured: true, featureCount: 4 },
+    { id: 3, amount: null, featured: false, featureCount: 3 },
+  ],
+} as const
+
+// ---------------------------------------------------------------------------------------------
+// CUSTOMERS — the companies actually running QRLog, shown by name once each has agreed to it.
+//
+// `show: false` until that agreement exists. Naming a client on a public sales page is a reference,
+// and a reference given without asking is the kind of thing that costs the account — particularly
+// for an organisation like Bakı Abadlıq Xidməti. A written "yes" is not needed; a message from the
+// person who signs is enough. Flip `show` to true and the strip appears above the sector list.
+//
+// Spelling is theirs, not ours: it is "EastCaf", not "EastCafe" — they have corrected this before.
+// ---------------------------------------------------------------------------------------------
+export const CUSTOMERS = {
+  show: false,
+  names: ['Bakı Abadlıq Xidməti', 'CleanFix', 'EastCaf'],
+} as const
+
+// Sectors QRLog is actually used in. Deliberately NOT customer logos: naming a client publicly
+// needs their written consent, and invented company names are worse than none.
+export const TRUST_SECTORS = [
+  'Təmizlik & abadlıq',
+  'Kafe & restoran',
+  'Mağaza şəbəkələri',
+  'Tikinti',
+  'İdarə & qurumlar',
+  'Xidmət sahələri',
 ] as const
 
-export const FEATURES = [
-  {
-    icon: 'qr',
-    title: 'QR ilə giriş-çıxış',
-    text: 'İşçi telefonu ilə iş yerindəki QR kodu skan edir — giriş və çıxış saniyələr içində yazılır. Turniket və ya barmaq izi cihazı almağa ehtiyac yoxdur.',
-  },
-  {
-    icon: 'pin',
-    title: 'GPS məkan yoxlaması',
-    text: 'Skan yalnız iş yerinin ərazisində (təyin olunmuş radiusda) qəbul edilir. İşçi evdən və ya başqa yerdən “gəldim” deyə bilməz — məkan avtomatik yoxlanılır.',
-  },
-  {
-    icon: 'shield',
-    title: 'Cihaz bağlaması',
-    text: 'Hər işçi öz telefonuna bağlanır. Tanınmayan cihazdan giriş nəzarət altındadır — bir işçi başqasının yerinə skan edə bilməz.',
-  },
-  {
-    icon: 'chart',
-    title: 'Canlı panel və hesabatlar',
-    text: 'Kim işdədir, kim gəlməyib, kim gecikib — hamısı canlı. Tarix üzrə hesabatlar, Excel ixracı və problemli skanların ayrıca ekranı.',
-  },
-  {
-    icon: 'users',
-    title: 'Sürətli başlanğıc',
-    text: 'İşçiləri Excel-dən toplu əlavə edin — hər kəsə müvəqqəti PIN yaranır, ilk girişdə özü təyin edir. Yüzlərlə işçi dəqiqələr içində sistemdə.',
-  },
-  {
-    icon: 'branch',
-    title: 'Çoxfilial idarəetmə',
-    text: 'Bütün filialları bir paneldən idarə edin. Menecerlər yalnız öz filiallarını görür; hər filialın öz iş qrafiki və radiusu olur.',
-  },
-  {
-    icon: 'phone',
-    title: 'Quraşdırma yoxdur (PWA)',
-    text: 'Sistem telefona tətbiq kimi əlavə olunur, amma App Store və ya Play Market lazım deyil — brauzerdən açılır və işləyir.',
-  },
-  {
-    icon: 'lock',
-    title: 'Sadə giriş',
-    text: 'İşçi telefon nömrəsi və 4 rəqəmli PIN ilə daxil olur. Email tələb olunmur — hər kəs asanlıqla istifadə edir.',
-  },
-] as const
-
-export const STEPS = [
-  { n: 1, title: 'Filiala QR asın', text: 'Hər iş yeri üçün bir dəfə sabit QR poster çap edib divara asırsınız.' },
-  { n: 2, title: 'İşçi telefonla skan edir', text: 'Gələndə və gedəndə işçi telefonunun kamerası ilə QR-ı skan edir.' },
-  { n: 3, title: 'Sistem yoxlayır', text: 'GPS ilə məkan və işçinin cihazı avtomatik təsdiqlənir — saxta giriş keçmir.' },
-  { n: 4, title: 'Rəhbərlik canlı görür', text: 'Giriş-çıxış, iş saatları və gecikmələr dərhal admin paneldə əks olunur.' },
-]
-
-export const AUDIENCE = [
-  { icon: 'clean', title: 'Təmizlik & abadlıq', text: 'İşçiləri müxtəlif obyektlərdə olan xidmət şirkətləri.' },
-  { icon: 'cafe', title: 'Kafe & restoran', text: 'Növbəli heyətin dəqiq giriş-çıxışı.' },
-  { icon: 'shop', title: 'Mağaza şəbəkələri', text: 'Bir neçə filial üzrə satış heyəti.' },
-  { icon: 'build', title: 'Tikinti', text: 'Obyektlərdə fəhlə davamiyyətinin izlənməsi.' },
-  { icon: 'gov', title: 'İdarə & qurumlar', text: 'Çoxişçili müəssisələrdə dəqiq uçot.' },
-  { icon: 'service', title: 'Xidmət sahələri', text: 'Klinika, logistika və digər heyət.' },
-]
-
-export const FAQ = [
-  {
-    q: 'QRLog nədir?',
-    a: 'QRLog — QR koda əsaslanan işçi davamiyyəti (giriş-çıxış) sistemidir. İşçi telefonu ilə iş yerindəki QR kodu skan edir və sistem giriş/çıxışı avtomatik qeydə alır. GPS məkan yoxlaması və cihaz bağlaması ilə saxta girişin qarşısını alır.',
-  },
-  {
-    q: 'Ayrıca cihaz almaq lazımdırmı?',
-    a: 'Xeyr. İşçilər öz telefonlarından istifadə edir. Turniket, barmaq izi cihazı və ya xüsusi terminal almağa ehtiyac yoxdur — yalnız çap edilmiş QR poster kifayətdir.',
-  },
-  {
-    q: 'İşçi evdən və ya başqa yerdən skan edə bilər?',
-    a: 'Yox. Hər iş yerinin GPS koordinatı və radiusu təyin olunur; skan yalnız o ərazidə qəbul edilir. Əlavə olaraq hər işçi öz cihazına bağlıdır, ona görə başqasının yerinə giriş də mümkün deyil.',
-  },
-  {
-    q: 'Telefona tətbiq yükləmək lazımdırmı?',
-    a: 'Mağazadan yükləmək lazım deyil. QRLog PWA-dır — brauzerdən açılır və istəyə görə telefonun ana ekranına tətbiq kimi əlavə edilir.',
-  },
-  {
-    q: 'Neçə filial və işçi dəstəkləyir?',
-    a: 'Filial və işçi sayında limit yoxdur. Hər filial üçün ayrıca QR, məkan və iş qrafiki təyin edilir; rəhbərlik hamısını bir admin paneldən idarə edir, menecerlər isə yalnız öz filiallarını görür.',
-  },
-  {
-    q: 'Başlamaq nə qədər çəkir?',
-    a: 'Çox qısa. Filialı və işçiləri əlavə edir (işçiləri Excel-dən toplu da olar), QR posteri çap edib asırsınız — həmin gün işə düşür. Bizimlə əlaqə saxlayın, quraşdırmada kömək edək.',
-  },
-]
+// Real, attributed customer quotes only — with the person's permission to be named. The section
+// renders nothing while this list is empty, which is the correct state until such quotes exist.
+//
+//   { quote: '…', name: 'Ad Soyad', role: 'Vəzifə, şirkət', initial: 'A', color: '#1E63E9' }
+export const TESTIMONIALS: {
+  quote: string
+  name: string
+  role: string
+  initial: string
+  color: string
+}[] = []

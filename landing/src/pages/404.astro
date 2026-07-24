@@ -1,0 +1,21 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import PageHero from '../components/PageHero.astro'
+import { useTranslations, localizedPath } from '../i18n/ui'
+
+// Caddy serves this file for any unmatched path (see the `handle_errors` block in the Caddyfile).
+const lang = 'az' as const
+const t = useTranslations(lang)
+---
+
+<BaseLayout lang={lang} path="/404/" title={`404 — ${t('nf.title')}`} description={t('nf.sub')} noindex>
+  <PageHero title="404" subtitle={t('nf.title')} />
+  <section class="prose-section">
+    <div class="wrap prose" style="text-align:center">
+      <p class="lead">{t('nf.sub')}</p>
+      <p class="prose-cta" style="justify-content:center">
+        <a class="btn btn-primary" href={localizedPath(lang, '/')}>{t('nf.btn')}</a>
+      </p>
+    </div>
+  </section>
+</BaseLayout>

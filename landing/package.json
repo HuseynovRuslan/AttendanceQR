@@ -1,8 +1,9 @@
 {
   "name": "qrlog-landing",
   "type": "module",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "QRLog — QR əsaslı işçi davamiyyəti sisteminin marketinq saytı (AZ/RU/EN)",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -10,9 +11,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^5.2.0",
-    "@astrojs/sitemap": "^3.2.1",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/vite": "^4.0.0"
+    "astro": "^5.13.0",
+    "@astrojs/sitemap": "^3.6.0"
   }
 }

@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://qrlog.az/sitemap-index.xml

@@ -1,47 +1,70 @@
 ---
-import HeroAnimation from './HeroAnimation.astro'
+import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
 
-const checks = ['Ayrıca cihaz yoxdur', 'Mağazasız — PWA', 'Həmin gün qurulur']
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+const home = localizedPath(lang, '/')
+
+// Illustrative names for the mock feed — the card is labelled as a sample screen.
+const people = [
+  { n: 'Aygün Məmmədova', i: 'AM', c: '#1E63E9', t: '09:01' },
+  { n: 'Rəşad Əliyev', i: 'RƏ', c: '#0EA5A5', t: '09:02' },
+  { n: 'Nigar Hüseynova', i: 'NH', c: '#7C3AED', t: '09:03' },
+  { n: 'Elvin Qasımov', i: 'EQ', c: '#F97316', t: '09:03' },
+]
 ---
 
-<section class="relative overflow-hidden bg-base pb-8 pt-14 sm:pt-16 md:pb-16 md:pt-20">
-  <div class="grid-texture pointer-events-none absolute inset-0" aria-hidden="true"></div>
-  <span class="glow-blob" style="width:520px;height:420px;top:-160px;left:-120px;opacity:.6"></span>
-
-  <div class="relative mx-auto grid max-w-6xl items-center gap-14 px-5 sm:px-6 md:grid-cols-[1.02fr_.98fr]">
-    <!-- Copy -->
-    <div class="reveal in">
-      <span class="eyebrow">QR ilə davamiyyət · Azərbaycan</span>
-      <h1 class="display mt-6 text-[2.6rem] font-extrabold leading-[1.04] text-body sm:text-6xl lg:text-[4.1rem]">
-        İşçi giriş-çıxışı,<br /><span class="text-accent">bir skan</span> qədər sadə.
+<section class="hero" id="top">
+  <div class="hero-bg"></div>
+  <div class="aurora a1"></div>
+  <div class="aurora a2"></div>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="badge fade-up d1"><span class="dot"></span>{t('hero.badge')}</span>
+      <h1 class="hero-title fade-up d2">
+        {t('hero.title.a')}<span class="hl">{t('hero.title.hl')}</span>{t('hero.title.b')}
       </h1>
-      <p class="mt-7 max-w-lg text-lg leading-relaxed text-dim">
-        İşçilər öz telefonu ilə iş yerindəki QR-ı skan edir — giriş-çıxış, iş saatı və
-        gecikmə avtomatik hesablanır. Bahalı turniket yox; <span class="font-semibold text-body">GPS və cihaz bağlaması</span>
-        uzaqdan saxta girişin qarşısını alır.
-      </p>
-
-      <div class="mt-9 flex flex-wrap items-center gap-3">
-        <a href="/elaqe" class="btn btn-primary btn-lg">Pulsuz demo istə</a>
-        <a href="/#nece-isleyir" class="btn btn-ghost btn-lg">
-          Necə işləyir?
-          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </a>
+      <p class="hero-sub fade-up d3">{t('hero.sub')}</p>
+      <div class="hero-cta fade-up d4">
+        <a href={localizedPath(lang, '/elaqe/')} class="btn btn-primary">{t('cta.btn1')}</a>
+        <a href={`${home}#how`} class="btn btn-ghost">{t('hero.cta2')}</a>
       </div>
-
-      <ul class="mt-9 flex flex-wrap gap-x-7 gap-y-2.5 text-sm font-semibold text-dim">
-        {checks.map((c) => (
-          <li class="flex items-center gap-2">
-            <svg class="h-4 w-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            {c}
-          </li>
-        ))}
-      </ul>
+      <div class="stats fade-up d5">
+        <div class="stat"><div class="num">{t('hero.s1n')}</div><div class="lab">{t('hero.s1l')}</div></div>
+        <div class="stat"><div class="num">{t('hero.s2n')}</div><div class="lab">{t('hero.s2l')}</div></div>
+        <div class="stat"><div class="num">{t('hero.s3n')}</div><div class="lab">{t('hero.s3l')}</div></div>
+      </div>
     </div>
 
-    <!-- Signature moment -->
-    <div class="reveal in" data-d="2">
-      <HeroAnimation />
+    <div class="scan-card">
+      <div class="scan-head">
+        <span class="live"><i></i>{t('scan.live')}</span>
+        <span class="clock mono" id="clock">09:03:14</span>
+      </div>
+      <div class="scanner">
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <div class="scanline"></div>
+        <svg class="qr" viewBox="0 0 25 25" id="qrsvg" aria-hidden="true"></svg>
+      </div>
+      <div class="feed">
+        <div class="feed-label">{t('scan.feed')} · {t('scan.demo')}</div>
+        <div id="rows">
+          {people.map((p, idx) => (
+            <div class="row" style={`animation-delay:${0.5 + idx * 0.35}s`}>
+              <div class="av" style={`background:${p.c}`}>{p.i}</div>
+              <div><div class="who">{p.n}</div></div>
+              <div style="margin-left:auto">
+                <div class="status">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg>
+                  {t('scan.status')}
+                </div>
+                <div class="t">{p.t}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   </div>
 </section>

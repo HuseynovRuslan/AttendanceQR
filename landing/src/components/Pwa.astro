@@ -1,0 +1,33 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// This replaced the template's "coming soon to the App Store / Google Play" badges. There is no
+// store app and none is planned — QRLog is a PWA, which is the actual selling point here.
+const steps = [
+  { l: 'pwa.b1', p: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/>' },
+  { l: 'pwa.b2', p: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 7v6M9 10h6"/>' },
+  { l: 'pwa.b3', p: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="m9.5 12 2 2 3.5-4"/>' },
+]
+---
+
+<section class="store" id="app">
+  <div class="wrap">
+    <div class="sec-head rv" style="margin-bottom:34px">
+      <span class="eyebrow">{t('pwa.eyebrow')}</span>
+      <h2>{t('pwa.title')}</h2>
+      <p>{t('pwa.sub')}</p>
+    </div>
+    <div class="pwa-steps rv">
+      {steps.map((s, i) => (
+        <div class="pwa-step">
+          <span class="n">{i + 1}</span>
+          <svg viewBox="0 0 24 24" set:html={s.p} />
+          <b>{t(s.l as any)}</b>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

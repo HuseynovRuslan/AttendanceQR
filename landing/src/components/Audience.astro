@@ -1,24 +1,37 @@
 ---
-import Icon from './Icon.astro'
-import { AUDIENCE } from '../data/site'
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+const items = [
+  // cleaning / facilities
+  { t: 'aud.a1t', d: 'aud.a1d', p: '<path d="M5 21h14M8 21V10l4-7 4 7v11"/><path d="M8 14h8"/>' },
+  // café / restaurant
+  { t: 'aud.a2t', d: 'aud.a2d', p: '<path d="M6 3v8a3 3 0 0 0 6 0V3M9 11v10"/><path d="M17 3c-1.5 2-2 4-2 6h4c0-2-.5-4-2-6ZM17 9v12"/>' },
+  // retail
+  { t: 'aud.a3t', d: 'aud.a3d', p: '<path d="M4 8h16l-1 12H5L4 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>' },
+  // construction
+  { t: 'aud.a4t', d: 'aud.a4d', p: '<path d="M3 18h18v3H3z"/><path d="M5 18V9l7-5 7 5v9"/><path d="M9 18v-5h6v5"/>' },
+  // public institutions
+  { t: 'aud.a5t', d: 'aud.a5d', p: '<path d="M3 10 12 4l9 6"/><path d="M5 10v9M19 10v9M9 10v9M15 10v9M3 20h18"/>' },
+  // services
+  { t: 'aud.a6t', d: 'aud.a6d', p: '<circle cx="9" cy="8" r="3"/><path d="M3 20v-1a5 5 0 0 1 5-5h2"/><path d="M15 11v6M12 14h6"/>' },
+]
 ---
 
-<section class="bg-base py-18 sm:py-24">
-  <div class="mx-auto max-w-6xl px-4 sm:px-6">
-    <div class="mx-auto max-w-2xl text-center">
-      <span class="eyebrow centered">Kimlər üçün</span>
-      <h2 class="display mt-4 text-3xl font-extrabold text-body sm:text-4xl">İşçiləri müxtəlif yerlərdə olan biznes üçün</h2>
-      <p class="mt-4 text-lg text-dim">Xüsusən bir neçə obyekt, filial və ya növbəli heyəti idarə edənlər üçün.</p>
+<section id="audience">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('aud.eyebrow')}</span>
+      <h2>{t('aud.title')}</h2>
+      <p>{t('aud.sub')}</p>
     </div>
-
-    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {AUDIENCE.map((a) => (
-        <div class="card card-hover flex items-start gap-4 p-5">
-          <span class="tile-icon shrink-0"><Icon name={a.icon} class="h-6 w-6" /></span>
-          <div>
-            <h3 class="text-base font-bold text-body">{a.title}</h3>
-            <p class="mt-1 text-sm text-dim">{a.text}</p>
-          </div>
+    <div class="aud-grid">
+      {items.map((a, i) => (
+        <div class={`aud rv d${(i % 3) + 1}`}>
+          <div class="top"><svg viewBox="0 0 24 24" set:html={a.p} /></div>
+          <div class="bd"><h3>{t(a.t as any)}</h3><p>{t(a.d as any)}</p></div>
         </div>
       ))}
     </div>

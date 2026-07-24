@@ -2,117 +2,334 @@
 import '../styles/global.css'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
+import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
 
 interface Props {
-  title: string
+  lang: Lang
+  /** Route without the language prefix, always with a trailing slash: '/', '/elaqe/', … */
+  path?: string
+  title?: string
   description?: string
-  canonical?: string
-  ogImage?: string
+  /** Home page only: emits SoftwareApplication + FAQPage structured data. */
+  home?: boolean
+  noindex?: boolean
 }
 
-const {
-  title,
-  description = SITE.description,
-  canonical = new URL(Astro.url.pathname, Astro.site).href,
-  ogImage = '/og.png',
-} = Astro.props
+const { lang, path = '/', title, description, home = false, noindex = false } = Astro.props
+const t = useTranslations(lang)
 
-const ogImageUrl = new URL(ogImage, Astro.site).href
+const site = SITE.url
+const canonical = site + localizedPath(lang, path)
+const ogImage = site + '/og-image.png'
 
-// Site-wide structured data. Individual pages add their own via <slot name="head" />.
-const organizationLd = {
+const pageTitle = title ?? t('meta.title')
+const pageDesc = description ?? t('meta.description')
+
+// hreflang: the same page in the other languages IT EXISTS IN, plus x-default on Azerbaijani.
+// A route that is Azerbaijani-only (the blog, 404) gets no alternates at all — a single hreflang
+// says nothing, and listing the other two would point Google at URLs that were never built.
+const routeLangs = availableLangs(path)
+const alternates =
+  routeLangs.length < 2
+    ? []
+    : [
+        ...routeLangs.map((l) => ({ hreflang: l as string, href: site + localizedPath(l, path) })),
+        { hreflang: 'x-default', href: site + localizedPath('az', path) },
+      ]
+
+// ---- Structured data ----
+// Organization is site-wide. There is deliberately no aggregateRating and no offers: we have no
+// collected reviews, and an invented rating in schema.org markup is both false and against
+// Google's structured-data policy.
+const orgLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: SITE.name,
-  url: SITE.url,
-  logo: new URL('/logo.png', Astro.site).href,
+  url: site + '/',
+  logo: site + '/logo-mark.png',
   contactPoint: {
     '@type': 'ContactPoint',
     email: SITE.email,
     contactType: 'customer support',
     areaServed: 'AZ',
-    availableLanguage: 'az',
+    availableLanguage: ['az', 'ru', 'en'],
   },
+}
+
+const faqKeys = [1, 2, 3, 4, 5, 6] as const
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqKeys.map((i) => ({
+    '@type': 'Question',
+    name: t(`faq.q${i}` as any),
+    acceptedAnswer: { '@type': 'Answer', text: t(`faq.a${i}` as any) },
+  })),
+}
+
+const appLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: SITE.name,
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web (PWA), iOS, Android',
+  description: t('meta.description'),
+  url: canonical,
+  inLanguage: ['az', 'ru', 'en'],
 }
 ---
 
 <!doctype html>
-<html lang="az">
+<html lang={htmlLang[lang]} dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
 
-    <title>{title}</title>
-    <meta name="description" content={description} />
+    <!-- Primary SEO -->
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDesc} />
+    <meta name="keywords" content={t('meta.keywords')} />
+    <meta name="author" content={SITE.name} />
+    <meta name="robots" content={noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'} />
+    <meta name="theme-color" content="#0B1726" />
     <link rel="canonical" href={canonical} />
-    <meta name="robots" content="index, follow" />
-    <meta name="theme-color" content="#0b1420" />
 
-    <!-- Apply the saved theme before first paint (no flash). -->
-    <script is:inline>
-      (function () {
-        try {
-          var t = localStorage.getItem('qrlog-theme')
-          if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t)
-        } catch (e) {}
-      })()
-    </script>
+    {!noindex && alternates.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={ogImageUrl} />
-    <meta property="og:locale" content="az_AZ" />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content={localeMap[lang]} />
+    {routeLangs
+      .filter((l) => l !== lang)
+      .map((l) => <meta property="og:locale:alternate" content={localeMap[l]} />)}
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
-    <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={ogImageUrl} />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDesc} />
+    <meta name="twitter:image" content={ogImage} />
 
     <!-- Icons -->
-    <link rel="icon" href="/favicon.png" sizes="any" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/logo-mark.png" />
 
-    <!-- Fonts: Sora (display) + Manrope (body) -->
+    <!--
+      Fonts. Inter carries the body text *and* covers Cyrillic; Plus Jakarta Sans (headings) ships
+      no basic-Cyrillic subset, so Russian headings fall back to Inter through the stack in
+      global.css rather than to a random system font.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap"
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap"
     />
 
-    <script type="application/ld+json" set:html={JSON.stringify(organizationLd)} />
-    <slot name="head" />
+    <!-- Structured data -->
+    <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />
+    {home && <script type="application/ld+json" set:html={JSON.stringify(appLd)} />}
+    {home && <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />}
   </head>
-  <body class="antialiased">
-    <Header />
-    <main>
+  <body>
+    <a class="skip" href="#main">{t('a11y.skip')}</a>
+    <Header lang={lang} path={path} />
+    <main id="main">
       <slot />
     </main>
-    <Footer />
+    <Footer lang={lang} />
 
-    <!-- Scroll reveal: adds .in when a .reveal enters the viewport, once. -->
-    <script is:inline>
-      (function () {
-        var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        var els = document.querySelectorAll('.reveal:not(.in)')
-        if (reduce || !('IntersectionObserver' in window)) {
-          els.forEach(function (el) { el.classList.add('in') })
+    <script>
+      // ---------- QR pattern (decorative, deterministic) ----------
+      function paintQr(id: string, seed: number) {
+        const svg = document.getElementById(id)
+        if (!svg) return
+        const N = 25
+        let s = seed
+        const rnd = () => {
+          s = (s * 1103515245 + 12345) & 0x7fffffff
+          return s / 0x7fffffff
+        }
+        let cells = ''
+        for (let y = 0; y < N; y++)
+          for (let x = 0; x < N; x++) {
+            if (rnd() > 0.5) cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`
+          }
+        const finder = (ox: number, oy: number) =>
+          `<rect x="${ox}" y="${oy}" width="7" height="7"/>` +
+          `<rect x="${ox + 1}" y="${oy + 1}" width="5" height="5" fill="#0B1726"/>` +
+          `<rect x="${ox + 2}" y="${oy + 2}" width="3" height="3" fill="#fff"/>`
+        svg.innerHTML = cells + finder(0, 0) + finder(18, 0) + finder(0, 18)
+      }
+      paintQr('qrsvg', 1234567)
+      paintQr('pqr', 987654)
+
+      // ---------- Live clock ----------
+      ;(function () {
+        const el = document.getElementById('clock')
+        if (!el) return
+        const tick = () => {
+          const d = new Date()
+          el.textContent = [d.getHours(), d.getMinutes(), d.getSeconds()]
+            .map((n) => String(n).padStart(2, '0'))
+            .join(':')
+        }
+        tick()
+        setInterval(tick, 1000)
+      })()
+
+      // ---------- Mobile menu ----------
+      const mt = document.getElementById('menuToggle')
+      const nl = document.getElementById('navlinks')
+      if (mt && nl) {
+        mt.addEventListener('click', () => {
+          const open = nl.classList.toggle('open')
+          mt.setAttribute('aria-expanded', String(open))
+        })
+        nl.querySelectorAll('a').forEach((a) =>
+          a.addEventListener('click', () => {
+            nl.classList.remove('open')
+            mt.setAttribute('aria-expanded', 'false')
+          })
+        )
+      }
+
+      // ---------- Scroll reveal ----------
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              e.target.classList.add('in')
+              io.unobserve(e.target)
+            }
+          })
+        },
+        { threshold: 0.14 }
+      )
+      document.querySelectorAll('.rv, .bars, .donut').forEach((el) => io.observe(el))
+
+      // ---------- Count-up counters ----------
+      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3)
+      function countUp(el: HTMLElement) {
+        const target = parseFloat(el.dataset.count || '0')
+        const dec = parseInt(el.dataset.dec || '0')
+        const suffix = el.dataset.suffix || ''
+        const prefix = el.dataset.prefix || ''
+        const dur = 1600
+        const start = performance.now()
+        function frame(now: number) {
+          const p = Math.min((now - start) / dur, 1)
+          const val = target * easeOut(p)
+          el.textContent =
+            prefix +
+            val.toLocaleString('en-US', {
+              minimumFractionDigits: dec,
+              maximumFractionDigits: dec,
+            }) +
+            suffix
+          if (p < 1) requestAnimationFrame(frame)
+        }
+        requestAnimationFrame(frame)
+      }
+      const cio = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) {
+              countUp(e.target as HTMLElement)
+              cio.unobserve(e.target)
+            }
+          })
+        },
+        { threshold: 0.5 }
+      )
+      document.querySelectorAll<HTMLElement>('[data-count]').forEach((el) => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          const dec = parseInt(el.dataset.dec || '0')
+          el.textContent =
+            (el.dataset.prefix || '') +
+            parseFloat(el.dataset.count || '0').toLocaleString('en-US', {
+              minimumFractionDigits: dec,
+              maximumFractionDigits: dec,
+            }) +
+            (el.dataset.suffix || '')
+        } else {
+          cio.observe(el)
+        }
+      })
+
+      // ---------- Phone demo state machine ----------
+      ;(function () {
+        const phone = document.getElementById('phone')
+        if (!phone) return
+        const steps = Array.from(document.querySelectorAll<HTMLElement>('#pdemoSteps .pstep'))
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        const seq: [string, number][] = [
+          ['scan', 2400],
+          ['verify', 2600],
+          ['face', 2400],
+          ['done', 2800],
+        ]
+        function paint(i: number) {
+          phone!.dataset.state = seq[i][0]
+          steps.forEach((st, k) => {
+            st.classList.toggle('active', k === i)
+            st.classList.toggle('done', k < i)
+          })
+        }
+        if (reduce) {
+          paint(3)
           return
         }
-        var io = new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) {
-            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) }
-          })
-        }, { threshold: 0.14, rootMargin: '0px 0px -8% 0px' })
-        els.forEach(function (el) { io.observe(el) })
+        let i = 0
+        paint(0)
+        function loop() {
+          setTimeout(() => {
+            i = (i + 1) % seq.length
+            paint(i)
+            loop()
+          }, seq[i][1])
+        }
+        // Only start once the phone is on screen, to save CPU on the rest of the page.
+        const dio = new IntersectionObserver(
+          (entries, obs) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                loop()
+                obs.disconnect()
+              }
+            })
+          },
+          { threshold: 0.3 }
+        )
+        dio.observe(phone)
       })()
+
+      // ---------- FAQ accordion ----------
+      document.querySelectorAll('.faq-q').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const item = btn.parentElement as HTMLElement
+          const ans = item.querySelector('.faq-a') as HTMLElement
+          const isOpen = item.classList.contains('open')
+          document.querySelectorAll('.faq-item.open').forEach((o) => {
+            o.classList.remove('open')
+            ;(o.querySelector('.faq-a') as HTMLElement).style.maxHeight = '0px'
+            o.querySelector('.faq-q')?.setAttribute('aria-expanded', 'false')
+          })
+          if (!isOpen) {
+            item.classList.add('open')
+            ans.style.maxHeight = ans.scrollHeight + 'px'
+            btn.setAttribute('aria-expanded', 'true')
+          }
+        })
+      })
     </script>
   </body>
 </html>

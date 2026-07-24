@@ -1,26 +1,30 @@
 ---
-import { FAQ } from '../data/site'
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Keep this list and the FAQPage JSON-LD in BaseLayout.astro on the same range of keys.
+const qs = [1, 2, 3, 4, 5, 6]
+const plus = '<path d="M12 5v14M5 12h14"/>'
 ---
 
-<section id="faq" class="bg-base py-18 sm:py-24">
-  <div class="mx-auto max-w-3xl px-4 sm:px-6">
-    <div class="text-center">
-      <span class="eyebrow centered">FAQ</span>
-      <h2 class="display mt-4 text-3xl font-extrabold text-body sm:text-4xl">Tez-tez verilən suallar</h2>
-      <p class="mt-4 text-lg text-dim">QRLog haqqında ən çox soruşulanlar.</p>
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('faq.eyebrow')}</span>
+      <h2>{t('faq.title')}</h2>
+      <p>{t('faq.sub')}</p>
     </div>
-
-    <div class="mt-12 space-y-3">
-      {FAQ.map((item) => (
-        <details class="group card p-6">
-          <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-bold text-body">
-            {item.q}
-            <span class="grid h-7 w-7 shrink-0 place-items-center rounded-full transition group-open:rotate-45" style="background:var(--accent-soft); color:var(--accent)">
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            </span>
-          </summary>
-          <p class="mt-4 text-base leading-relaxed text-dim">{item.a}</p>
-        </details>
+    <div class="faq-list">
+      {qs.map((i, idx) => (
+        <div class={`faq-item rv d${(idx % 5) + 1}`}>
+          <button class="faq-q" aria-expanded="false">
+            <span>{t(`faq.q${i}` as any)}</span>
+            <span class="ico"><svg viewBox="0 0 24 24" set:html={plus} /></span>
+          </button>
+          <div class="faq-a"><p>{t(`faq.a${i}` as any)}</p></div>
+        </div>
       ))}
     </div>
   </div>

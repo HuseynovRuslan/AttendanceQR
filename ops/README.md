@@ -1,6 +1,7 @@
 # Ops
 
-Three scripts, installed on the server at `/opt/attendanceqr/ops/` and driven by cron.
+Three cron scripts, installed on the server at `/opt/attendanceqr/ops/`, plus `build-landing.sh`,
+which runs on deploy rather than on a schedule.
 
 ## backup.sh — nightly, 03:15
 
@@ -38,6 +39,28 @@ server. For that, point any external checker at the health endpoint:
 5. Alert contact: email + phone
 
 It will then tell you the API is down before a customer does — which is the entire point.
+
+## build-landing.sh — on deploy, not on a timer
+
+Builds `landing/` (the qrlog.az marketing site) inside `node:22-alpine` and syncs the output into
+`landing-dist/`, which Caddy bind-mounts as `/srv/qrlog`. The VM needs no Node installed.
+
+The site is static, so it is the one part of the stack that compose does **not** rebuild — without
+this script `qrlog.az` keeps serving whatever was in `landing-dist` the last time somebody ran it.
+Run it on its own whenever the marketing copy changes — it touches nothing else, so it needs none
+of the release ceremony the app does:
+
+    cd /opt/attendanceqr && git pull && bash ops/build-landing.sh
+
+If the Caddyfile changed in the same pull, reload Caddy after it — but validate first, because an
+invalid config takes qrlog.az, bax.qrlog.az and api.qrlog.az down together:
+
+    docker compose -f docker-compose.prod.yml exec caddy caddy validate --config /etc/caddy/Caddyfile \
+      && docker compose -f docker-compose.prod.yml exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+It writes to a temp directory first and refuses to publish a build with no `index.html`, so a broken
+build leaves the live site alone. It touches nothing but `landing-dist/` — never the app, the API or
+the database.
 
 ## Logs
 

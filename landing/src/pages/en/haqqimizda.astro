@@ -1,9 +1,9 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro'
-import PageHero from '../components/PageHero.astro'
-import AboutBody from '../components/AboutBody.astro'
-import { useTranslations } from '../i18n/ui'
-const lang = 'az' as const
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import PageHero from '../../components/PageHero.astro'
+import AboutBody from '../../components/AboutBody.astro'
+import { useTranslations } from '../../i18n/ui'
+const lang = 'en' as const
 const t = useTranslations(lang)
 ---
 <BaseLayout lang={lang} path="/haqqimizda/" title={t('about.metaTitle')} description={t('about.metaDesc')}>

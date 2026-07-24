@@ -1,0 +1,58 @@
+---
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Azerbaijani weekday abbreviations, Monday first — the order the admin board uses.
+const days = ['B.e', 'Ç.a', 'Ç', 'C.a', 'C', 'Ş', 'B']
+const heights = [55, 78, 64, 88, 72, 95, 81]
+
+// The KPI wording matches the real board: there is no "Gecikmə" (lateness) tile in the product —
+// every employee has their own hours, so a global lateness figure would be meaningless.
+---
+
+<section class="dash">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">{t('dash.eyebrow')}</span>
+      <h2>{t('dash.title')}</h2>
+      <p>{t('dash.sub')}</p>
+    </div>
+    <div class="board rv">
+      <div class="board-bar">
+        <i></i><i></i><i></i>
+        <!-- Deliberately not the app's real address — the site does not hand out a login target. -->
+        <span class="title">QRLog / panel · {t('dash.demo')}</span>
+      </div>
+      <div class="board-body">
+        <div>
+          <div class="kpis">
+            <div class="kpi green"><div class="v">184</div><div class="k">{t('dash.present')}</div></div>
+            <div class="kpi blue"><div class="v">46</div><div class="k">{t('dash.out')}</div></div>
+            <div class="kpi amber"><div class="v">8</div><div class="k">{t('dash.absent')}</div></div>
+          </div>
+          <div class="bars">
+            {heights.map((h, i) => (
+              <div class="bar" style={`--h:${h}%`}><span>{days[i]}</span></div>
+            ))}
+          </div>
+        </div>
+        <div class="donut-wrap">
+          <div class="donut">
+            <svg viewBox="0 0 120 120" width="150" height="150">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="#243449" stroke-width="14"></circle>
+              <circle class="arc" cx="60" cy="60" r="50" fill="none" stroke="#1E63E9" stroke-width="14"
+                stroke-linecap="round" transform="rotate(-90 60 60)"></circle>
+            </svg>
+            <div class="lab"><b>92%</b><small>{t('dash.rate')}</small></div>
+          </div>
+          <div class="legend">
+            <span><i style="background:#1E63E9"></i>{t('dash.present')}</span>
+            <span><i style="background:#243449"></i>{t('dash.absent')}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
