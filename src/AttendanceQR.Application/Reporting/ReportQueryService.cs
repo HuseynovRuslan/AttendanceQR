@@ -598,6 +598,13 @@ public sealed class ReportQueryService : IReportQueryService
 
         var computed = await ComputeDayLiveAsync(day, employees, ct);
 
+        // A night shift is still running when the calendar turns over. Records are keyed by the day
+        // the shift STARTED, so at 01:00 someone who scanned in at 21:00 has a record dated yesterday
+        // and simply vanished from "today" — the board showed them as absent while they were at work.
+        // Only for the live board: a past day must stay exactly what it was.
+        if (date is null || date == LocalToday())
+            computed = await CarryOverOpenShiftsAsync(day, employees, computed, ct);
+
         return computed
             .Select(d => new DayAttendanceRow(
                 d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name, d.Computed.Status.ToString(),
@@ -607,6 +614,35 @@ public sealed class ReportQueryService : IReportQueryService
                 d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
                 d.Record?.WasOffline ?? false))
             .OrderBy(r => r.EmployeeName)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Replaces "absent today" with the shift they are actually still on.
+    ///
+    /// Someone checked in and not yet out is at work right now, whatever date their record carries —
+    /// so for anyone with nothing today, yesterday's row is used instead if it is still open. Applied
+    /// to the live board only; a historical day must not borrow from its neighbour.
+    /// </summary>
+    private async Task<List<LiveDay>> CarryOverOpenShiftsAsync(
+        DateOnly day, List<ScopedEmployee> employees, List<LiveDay> computed, CancellationToken ct)
+    {
+        var withoutToday = computed
+            .Where(d => d.Record?.CheckInAtUtc is null)
+            .Select(d => d.Employee)
+            .ToList();
+        if (withoutToday.Count == 0)
+            return computed;
+
+        var yesterday = await ComputeDayLiveAsync(day.AddDays(-1), withoutToday, ct);
+        var stillOpen = yesterday
+            .Where(d => d.Record?.CheckInAtUtc is not null && d.Record.CheckOutAtUtc is null)
+            .ToDictionary(d => d.Employee.Id);
+        if (stillOpen.Count == 0)
+            return computed;
+
+        return computed
+            .Select(d => stillOpen.TryGetValue(d.Employee.Id, out var open) ? open : d)
             .ToList();
     }
 
