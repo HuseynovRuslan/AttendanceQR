@@ -34,7 +34,7 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
 
       <div class="cust-grid">
         {CUSTOMERS.items.map((c, i) => (
-          <article class={`cust-card rv d${i + 1}`} style={`--accent:${c.accent}`}>
+          <article class={`cust-card rv d${i + 1}`} style={`--accent:${c.accent};--logo-h:${c.logoH ?? 56}px`}>
             <div class="cust-tile">
               {c.logo
                 ? <img src={c.logo} alt={c.name} loading="lazy" decoding="async" />

@@ -522,9 +522,11 @@ footer{background:#08111E;color:#8FA1B8;padding:56px 0 34px}
 /* Every logo on a white tile of the same size: the two real ones were drawn for their own
    backgrounds (CleanFix blue-on-white, EastCaf a navy roundel), and EastCaf's navy is within a few
    shades of this band. The tile is what makes three different shapes read as one row. */
-.cust-tile{height:88px;margin-bottom:18px;border-radius:14px;background:#fff;display:grid;
-  place-items:center;padding:14px 20px;box-shadow:0 10px 26px -18px rgba(0,0,0,.8)}
-.cust-tile img{max-height:56px;max-width:84%;width:auto;height:auto;object-fit:contain;display:block}
+.cust-tile{height:110px;margin-bottom:18px;border-radius:14px;background:#fff;display:grid;
+  place-items:center;padding:18px 22px;box-shadow:0 10px 26px -18px rgba(0,0,0,.8)}
+/* Height comes from the item's own logoH — see CUSTOMERS in site.ts for why it is not shared. */
+.cust-tile img{max-height:var(--logo-h,56px);max-width:88%;width:auto;height:auto;
+  object-fit:contain;display:block}
 /* No logo yet — a monogram at the same optical weight keeps the row even. */
 .cust-mono{width:56px;height:56px;border-radius:14px;display:grid;place-items:center;
   font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;font-weight:800;font-size:20px;

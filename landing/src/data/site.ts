@@ -62,17 +62,21 @@ export const PRICING = {
 // artwork, which is why the card puts every logo on a WHITE tile rather than straight onto the dark
 // band: EastCaf's navy roundel is within a few shades of the band itself and would simply vanish.
 //
-// Bakı Abadlıq Xidməti has no logo yet and falls back to a monogram on the same white tile, so the
-// three read as one row. Drop a file in and set `logo` here — nothing else changes.
+// `logoH` is the rendered height in px, set per logo rather than shared. Equal heights would NOT
+// look equal: CleanFix is a wordmark 3.6× wider than it is tall, so at the same height it carries
+// far more ink than a circular badge and dominates the row. These are balanced by eye, not by
+// formula — a wide lockup sits lower, a square or round mark sits taller.
 //
-// `accent` tints the monogram and the card's hover glow. Taken from each company's own artwork
-// (CleanFix blue, EastCaf gold) or from its sector where there is none, so the row is not arbitrary.
+// `accent` tints the hover glow and any monogram fallback, sampled from each company's own artwork.
 export const CUSTOMERS = {
   show: true,
   items: [
-    { key: 'c1', name: 'Bakı Abadlıq Xidməti', mark: 'BA', accent: '#2FA36B', logo: null },
-    { key: 'c2', name: 'CleanFix', mark: 'CF', accent: '#3A9BDE', logo: '/customers/cleanfix.png' },
-    { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D8C486', logo: '/customers/eastcaf.png' },
+    { key: 'c1', name: 'Bakı Abadlıq Xidməti', mark: 'BA', accent: '#78C048',
+      logo: '/customers/bakiabadliq.png', logoH: 70 },
+    { key: 'c2', name: 'CleanFix', mark: 'CF', accent: '#3A9BDE',
+      logo: '/customers/cleanfix.png', logoH: 44 },
+    { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D8C486',
+      logo: '/customers/eastcaf.png', logoH: 74 },
   ],
 } as const
 
