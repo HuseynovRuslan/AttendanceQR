@@ -243,14 +243,9 @@ function AppRoutes() {
             </AdminOnly>
           }
         />
-        <Route
-          path="schedules"
-          element={
-            <AdminOnly>
-              <SchedulesPage />
-            </AdminOnly>
-          }
-        />
+        {/* Admin + Manager. A manager's writes are scope-checked server-side: they may define a
+            shift, but not edit one another branch's staff are on. */}
+        <Route path="schedules" element={<SchedulesPage />} />
         <Route
           path="vote"
           element={

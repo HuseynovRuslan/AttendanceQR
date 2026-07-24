@@ -104,6 +104,7 @@ public class ManagerController : ControllerBase
                 name = sc.Name,
                 shiftStart = sc.ShiftStart.ToString("HH:mm"),
                 shiftEnd = sc.ShiftEnd.ToString("HH:mm"),
+                lateThresholdMinutes = sc.LateThresholdMinutes,
                 workDaysMask = sc.WorkDaysMask,
                 workCycleDays = sc.WorkCycleDays,
                 workCycleOnDays = sc.WorkCycleOnDays,
@@ -112,6 +113,99 @@ public class ManagerController : ControllerBase
             })
             .ToListAsync(HttpContext.RequestAborted);
         return Ok(rows);
+    }
+
+    // POST /api/manager/schedules — a manager may define a shift. They are the person who knows what
+    // hours their crews actually work; the whole reason the old library drifted from reality is that
+    // only an admin could correct it.
+    //
+    // Shifts are company-wide, not branch-scoped, so a new one simply joins the list.
+    [HttpPost("schedules")]
+    public async Task<IActionResult> CreateSchedule([FromBody] ScheduleRequest request)
+    {
+        if (!TryParseSchedule(request, out var start, out var end, out var error))
+            return BadRequest(new { error });
+
+        var schedule = new Schedule
+        {
+            Name = request.Name.Trim(),
+            ShiftStart = start,
+            ShiftEnd = end,
+            LateThresholdMinutes = request.LateThresholdMinutes,
+            WorkDaysMask = request.WorkDaysMask,
+        };
+        if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
+
+        _db.Schedules.Add(schedule);
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        return Ok(new { id = schedule.Id });
+    }
+
+    // PUT /api/manager/schedules/{id} — allowed only while every employee on the shift is one of this
+    // manager's own. A shift is shared company-wide, and editing its hours re-judges past days for
+    // everyone on it — so changing one that another branch depends on would move somebody else's pay.
+    [HttpPut("schedules/{id:guid}")]
+    public async Task<IActionResult> UpdateSchedule(Guid id, [FromBody] ScheduleRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var schedule = await _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == id, ct);
+        if (schedule is null)
+            return NotFound(new { error = "ScheduleNotFound" });
+        if (!TryParseSchedule(request, out var start, out var end, out var error))
+            return BadRequest(new { error });
+        if (await HasOutsideUseAsync(id))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "ScheduleUsedOutsideBranch" });
+
+        schedule.Name = request.Name.Trim();
+        schedule.ShiftStart = start;
+        schedule.ShiftEnd = end;
+        schedule.LateThresholdMinutes = request.LateThresholdMinutes;
+        schedule.WorkDaysMask = request.WorkDaysMask;
+        if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { id = schedule.Id });
+    }
+
+    // DELETE /api/manager/schedules/{id} — only while nobody at all is on it. Same rule the admin
+    // path uses: without a foreign key, deleting a shift in use drops those employees back to their
+    // branch's hours, which changes how their pay is worked out.
+    [HttpDelete("schedules/{id:guid}")]
+    public async Task<IActionResult> DeleteSchedule(Guid id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var schedule = await _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == id, ct);
+        if (schedule is null)
+            return NotFound(new { error = "ScheduleNotFound" });
+
+        var assigned = await _db.Employees.CountAsync(e => e.ScheduleId == id, ct);
+        if (assigned > 0)
+            return Conflict(new { error = "ScheduleInUse", employeeCount = assigned });
+
+        _db.Schedules.Remove(schedule);
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { deleted = id });
+    }
+
+    /// <summary>True when anyone outside this manager's branches is on the shift.</summary>
+    private async Task<bool> HasOutsideUseAsync(Guid scheduleId)
+    {
+        var managed = await ManagedLocationIdsAsync();
+        return await _db.Employees.AnyAsync(
+            e => e.ScheduleId == scheduleId && !managed.Contains(e.LocationId), HttpContext.RequestAborted);
+    }
+
+    /// <summary>Shift-field validation, identical to the admin path's.</summary>
+    private static bool TryParseSchedule(ScheduleRequest r, out TimeOnly start, out TimeOnly end, out string? error)
+    {
+        start = default; end = default; error = null;
+        if (string.IsNullOrWhiteSpace(r.Name)) { error = "NameRequired"; return false; }
+        if (!TimeOnly.TryParse(r.ShiftStart, out start)) { error = "ShiftStartInvalid"; return false; }
+        if (!TimeOnly.TryParse(r.ShiftEnd, out end)) { error = "ShiftEndInvalid"; return false; }
+        if (r.LateThresholdMinutes < 0) { error = "LateThresholdNegative"; return false; }
+        return true;
     }
 
     // --- employees --------------------------------------------------------------

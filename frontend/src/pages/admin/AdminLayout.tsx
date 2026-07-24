@@ -99,6 +99,7 @@ export function AdminLayout() {
     { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },
     ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
     ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
+    ...(isManager ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
     ...(isAdmin ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
     ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),

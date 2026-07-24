@@ -132,6 +132,7 @@ export interface ManagerSchedule {
   name: string
   shiftStart: string
   shiftEnd: string
+  lateThresholdMinutes: number
   workDaysMask: number
   workCycleDays: number | null
   workCycleOnDays: number | null
@@ -141,4 +142,30 @@ export interface ManagerSchedule {
 
 export function getManagerSchedules() {
   return apiRequest<ManagerSchedule[]>('/api/manager/schedules')
+}
+
+/** Create/update payload for a shift — same shape the admin path uses. */
+export interface ManagerScheduleInput {
+  name: string
+  shiftStart: string
+  shiftEnd: string
+  lateThresholdMinutes: number
+  workDaysMask: number
+  workCycleDays: number | null
+  workCycleOnDays: number | null
+  workCycleAnchor: string | null
+}
+
+export function createManagerSchedule(input: ManagerScheduleInput) {
+  return apiRequest<{ id: string } | { error: string }>('/api/manager/schedules', { method: 'POST', body: input })
+}
+
+/** Refused (403 ScheduleUsedOutsideBranch) while anyone outside this manager's branches is on it —
+ *  editing a shift re-judges past days for everyone on it. */
+export function updateManagerSchedule(id: string, input: ManagerScheduleInput) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/manager/schedules/${id}`, { method: 'PUT', body: input })
+}
+
+export function deleteManagerSchedule(id: string) {
+  return apiRequest<{ deleted: string } | { error: string }>(`/api/manager/schedules/${id}`, { method: 'DELETE' })
 }

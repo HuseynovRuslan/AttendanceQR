@@ -9,6 +9,14 @@ import {
   type Schedule,
   type ScheduleInput,
 } from '../../api/admin'
+import {
+  createManagerSchedule,
+  deleteManagerSchedule,
+  getManagerEmployees,
+  getManagerSchedules,
+  updateManagerSchedule,
+} from '../../api/manager'
+import { useAuth } from '../../auth/AuthContext'
 import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
 
@@ -20,12 +28,19 @@ import { IconCheck, IconTrash, IconX } from '../../components/icons'
  * location form, three companies each with a "Gecə növbəsi" row saying 22:00–06:00 while the eight
  * people working nights were on 21:00–07:00, and a duplicate "gece" nobody noticed. A library you
  * cannot see all of drifts from the thing it describes.
+ *
+ * Shared by admins and managers — a manager is usually the one who knows what hours their crews
+ * actually work, and only being able to report a wrong shift rather than fix it is how the old
+ * library drifted in the first place. The endpoints differ: a manager's edit is refused server-side
+ * once anyone outside their branches is on the shift, since editing re-judges their past days too.
  */
 
 const DAYS = ['B.e', 'Ç.a', 'Ç', 'C.a', 'C', 'Ş', 'B'] // Monday-first for reading; bit index below
 const BIT = [1, 2, 3, 4, 5, 6, 0] // .NET DayOfWeek: Sunday = 0
 
 const ERRORS: Record<string, string> = {
+  ScheduleUsedOutsideBranch: 'Bu növbədə başqa filialın işçiləri var — dəyişiklik yalnız admin tərəfindən edilə bilər',
+  ScheduleInUse: 'Bu növbədə işçi var — silmək olmaz',
   NameRequired: 'Ad tələb olunur',
   ShiftStartInvalid: 'Başlama saatı düzgün deyil',
   ShiftEndInvalid: 'Bitmə saatı düzgün deyil',
@@ -55,6 +70,25 @@ const EMPTY: FormState = {
 }
 
 export function SchedulesPage() {
+  const { role } = useAuth()
+  const isManager = role === 'Manager'
+  // Same screen, different surface: a manager's writes are scope-checked server-side.
+  const api = isManager
+    ? {
+        list: getManagerSchedules,
+        staff: getManagerEmployees,
+        create: createManagerSchedule,
+        update: updateManagerSchedule,
+        remove: deleteManagerSchedule,
+      }
+    : {
+        list: getSchedules,
+        staff: getEmployees,
+        create: createSchedule,
+        update: updateSchedule,
+        remove: deleteSchedule,
+      }
+
   const [rows, setRows] = useState<Schedule[]>([])
   const [employees, setEmployees] = useState<AdminEmployee[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,9 +101,9 @@ export function SchedulesPage() {
 
   async function refresh() {
     setLoading(true)
-    const [s, e] = await Promise.all([getSchedules(), getEmployees()])
-    if (s.status === 200 && Array.isArray(s.data)) setRows(s.data)
-    if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data)
+    const [s, e] = await Promise.all([api.list(), api.staff()])
+    if (s.status === 200 && Array.isArray(s.data)) setRows(s.data as Schedule[])
+    if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data as AdminEmployee[])
     setLoading(false)
   }
 
@@ -119,7 +153,7 @@ export function SchedulesPage() {
       workCycleOnDays: form.cycle.days ? form.cycle.onDays : null,
       workCycleAnchor: form.cycle.days ? form.cycle.anchor || null : null,
     }
-    const res = editingId ? await updateSchedule(editingId, payload) : await createSchedule(payload)
+    const res = editingId ? await api.update(editingId, payload) : await api.create(payload)
     setSaving(false)
     if (res.status === 200 && res.data && !('error' in res.data)) {
       setOk(editingId ? 'Növbə yeniləndi' : 'Növbə yaradıldı')
@@ -138,7 +172,7 @@ export function SchedulesPage() {
       return
     }
     if (!window.confirm(`"${s.name}" növbəsi silinsin?`)) return
-    const { status, data } = await deleteSchedule(s.id)
+    const { status, data } = await api.remove(s.id)
     if (status === 200) { setOk('Növbə silindi'); void refresh() }
     else if (data && 'error' in data && data.error === 'ScheduleInUse')
       setErr('Bu növbədə işçi var — silmək olmaz')
@@ -165,6 +199,7 @@ export function SchedulesPage() {
         <p className="muted" style={{ fontSize: 13, margin: 0, maxWidth: '62ch', lineHeight: 1.6 }}>
           Növbəni bir dəfə qurursunuz, sonra işçiləri ona təyin edirsiniz. Saatları dəyişsəniz, o
           növbədəki <b>bütün</b> işçilərə — keçmiş günlərin hesabatına da — təsir edir.
+          {isManager && ' Başqa filialın işçisi olan növbəni dəyişə bilməzsiniz.'}
         </p>
         <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>
       </div>
