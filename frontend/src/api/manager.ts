@@ -21,6 +21,10 @@ export interface ManagerEmployee {
   birthYear: number | null
   workStart: string | null
   workEnd: string | null
+  /** Rotation ("növbə"); null days = none, the branch's weekly calendar applies. */
+  workCycleDays: number | null
+  workCycleOnDays: number | null
+  workCycleAnchor: string | null
   photoExempt: boolean
   isActive: boolean
   activated: boolean
@@ -38,6 +42,10 @@ export interface ManagerEmployeeInput {
   birthYear: number | null
   workStart: string | null
   workEnd: string | null
+  /** Rotation ("növbə"); null days = none, the branch's weekly calendar applies. */
+  workCycleDays: number | null
+  workCycleOnDays: number | null
+  workCycleAnchor: string | null
   photoExempt: boolean
   isActive: boolean
 }

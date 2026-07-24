@@ -397,6 +397,12 @@ export interface InvitePayload {
   // Waives the check-in selfie. Defaults to FALSE server-side, so every caller must send it or the
   // exemption is silently switched off by an unrelated edit.
   photoExempt?: boolean
+  // Rotation ("növbə"): cycle length, how many of its first days are worked, and one date the
+  // employee IS working. null days = no rotation, the branch's weekly calendar applies. Same
+  // null-default rule as photoExempt — omit them on an edit and the rotation is dropped.
+  workCycleDays?: number | null
+  workCycleOnDays?: number | null
+  workCycleAnchor?: string | null
 }
 
 export interface AdminEmployee {
@@ -412,6 +418,10 @@ export interface AdminEmployee {
   monthlySalary?: number | null
   /** True when an admin has waived the check-in selfie for this employee. */
   photoExempt?: boolean
+  /** Rotation; null = none, the branch's weekly calendar applies. */
+  workCycleDays?: number | null
+  workCycleOnDays?: number | null
+  workCycleAnchor?: string | null
   /** When the employee accepted the data-processing notice; null = not yet. */
   consentAcceptedAtUtc?: string | null
   email: string

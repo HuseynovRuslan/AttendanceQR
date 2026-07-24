@@ -42,6 +42,12 @@ work — their pay depends on that record. Optional checks flag; they do not sto
 **`EmployeeUpdateRequest` null-defaults every field.** A partial update blanks what it omits. Adding
 a field to `Employee` means adding it to *every* `updateEmployee(` caller in the frontend.
 
+**A rotation replaces the weekly calendar, it does not layer on it.** `Location.WorkDaysMask` is a
+7-day bitmask, so it cannot express "every other day" (a 2-day cycle drifts across the week). An
+employee with `WorkCycleDays` set ignores the mask entirely — see `AttendanceCalculator`
+`.IsScheduledWorkingDay`, the one place this is decided, and `WorkCycle.Apply`, the one place it is
+written. Holidays (`NonWorkingDay`) still apply on top.
+
 **A value in `.env` alone reaches nothing.** Compose only passes variables named in the service's
 `environment:` block. Add it in both places.
 

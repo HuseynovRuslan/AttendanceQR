@@ -35,7 +35,7 @@ public sealed class DailySummaryService : IDailySummaryService
         // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
         var employees = await _db.Employees
             .Where(e => e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()))
-            .Select(e => new { e.Id, e.LocationId, e.WorkStart, e.WorkEnd })
+            .Select(e => new { e.Id, e.LocationId, e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor })
             .ToListAsync(ct);
 
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
@@ -79,7 +79,8 @@ public sealed class DailySummaryService : IDailySummaryService
             if (!locations.TryGetValue(emp.LocationId, out var location))
                 continue; // defensive: employee's location vanished
 
-            var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, date.DayOfWeek)
+            var isWorkingDay = AttendanceCalculator.IsScheduledWorkingDay(
+                                    emp.WorkCycleDays, emp.WorkCycleOnDays, emp.WorkCycleAnchor, location.WorkDaysMask, date)
                                 && !isGloballyNonWorking
                                 && !nonWorkingLocationIdSet.Contains(location.Id);
             LeaveType? leaveType = leaveByEmployee.TryGetValue(emp.Id, out var lt) ? lt : null;

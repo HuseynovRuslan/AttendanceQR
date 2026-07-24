@@ -86,7 +86,9 @@ public sealed class ReportQueryService : IReportQueryService
         int LateMinutes);
 
     /// <summary>An in-scope employee plus the fields the day computation needs.</summary>
-    private sealed record ScopedEmployee(Guid Id, string FullName, Guid LocationId, TimeOnly? WorkStart, TimeOnly? WorkEnd);
+    private sealed record ScopedEmployee(
+        Guid Id, string FullName, Guid LocationId, TimeOnly? WorkStart, TimeOnly? WorkEnd,
+        int? WorkCycleDays, int WorkCycleOnDays, DateOnly? WorkCycleAnchor);
 
     /// <summary>One employee's computed day with everything it was computed from still attached — so
     /// the two callers can each project what they need (the board wants the record's photo/face/reason
@@ -137,7 +139,9 @@ public sealed class ReportQueryService : IReportQueryService
         }
 
         var employees = await query
-            .Select(e => new ScopedEmployee(e.Id, e.FullName, e.LocationId, e.WorkStart, e.WorkEnd))
+            .Select(e => new ScopedEmployee(
+                e.Id, e.FullName, e.LocationId, e.WorkStart, e.WorkEnd,
+                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor))
             .ToListAsync(ct);
         return (ReportAccess.Allowed, employees);
     }
@@ -183,7 +187,8 @@ public sealed class ReportQueryService : IReportQueryService
             if (!locations.TryGetValue(e.LocationId, out var location))
                 continue; // defensive: the employee's location vanished
 
-            var isWorkingDay = AttendanceCalculator.IsWorkingDayOfWeek(location.WorkDaysMask, date.DayOfWeek)
+            var isWorkingDay = AttendanceCalculator.IsScheduledWorkingDay(
+                                   e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, location.WorkDaysMask, date)
                                && !isGloballyNonWorking
                                && !nonWorkingLocationIdSet.Contains(location.Id);
             LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
@@ -369,7 +374,8 @@ public sealed class ReportQueryService : IReportQueryService
                     // No computed row (e.g. an employee added mid-month): fall back to the calendar —
                     // a work day with no record is absent, a non-work day is rest.
                     var mask = maskByLocation.GetValueOrDefault(locationById.GetValueOrDefault(e.Id), 126);
-                    code = AttendanceCalculator.IsWorkingDayOfWeek(mask, date.DayOfWeek) ? CodeAbsent : CodeWeekend;
+                    code = AttendanceCalculator.IsScheduledWorkingDay(
+                        e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, mask, date) ? CodeAbsent : CodeWeekend;
                 }
 
                 codes[day - 1] = code;

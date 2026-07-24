@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { PositionSelect } from '../../components/PositionSelect'
+import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   deleteEmployee,
@@ -56,6 +57,13 @@ function fromLocalInputValue(local: string): string | undefined {
 
 const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
 
+/** Names the common rotations the way a manager says them; anything else falls back to the numbers. */
+function cycleLabel(days: number, onDays: number): string {
+  if (days === 2 && onDays === 1) return 'Bir gündən bir'
+  if (days === 3 && onDays === 1) return 'Sutka (1/2)'
+  return `${onDays} iş / ${days - onDays} istirahət`
+}
+
 const ERRORS: Record<string, string> = {
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
@@ -67,6 +75,9 @@ const ERRORS: Record<string, string> = {
   CannotChangeOwnRole: 'Öz rolunuzu dəyişə bilməzsiniz — panelə girişinizi itirə bilərsiniz',
   AlreadyActivated: 'İşçi artıq qeydiyyatdan keçib',
   EmployeeNotFound: 'İşçi tapılmadı',
+  WorkCycleDaysInvalid: 'Növbə dövrü 2–28 gün aralığında olmalıdır',
+  WorkCycleOnDaysInvalid: 'İş günlərinin sayı dövrədən az olmalıdır',
+  WorkCycleAnchorRequired: 'Növbə üçün işlədiyi bir gün seçilməlidir',
 }
 
 type FormState = {
@@ -90,6 +101,8 @@ type FormState = {
   /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
    *  they clock in. Empty on a manager means an empty panel. */
   managedLocationIds: string[]
+  /** Rotation ("növbə"); NO_CYCLE = the branch's weekly calendar applies. */
+  cycle: WorkCycleValue
 }
 
 const EMPTY: FormState = {
@@ -108,6 +121,7 @@ const EMPTY: FormState = {
   monthlySalary: '',
   photoExempt: false,
   managedLocationIds: [],
+  cycle: NO_CYCLE,
 }
 
 export function EmployeesPage() {
@@ -203,6 +217,9 @@ export function EmployeesPage() {
       monthlySalary: e.monthlySalary != null ? String(e.monthlySalary) : '',
       photoExempt: e.photoExempt === true,
       managedLocationIds: e.managedLocationIds ?? [],
+      cycle: e.workCycleDays
+        ? { days: e.workCycleDays, onDays: e.workCycleOnDays ?? 1, anchor: e.workCycleAnchor ?? '' }
+        : NO_CYCLE,
     })
     setError(null)
     setOk(null)
@@ -240,6 +257,12 @@ export function EmployeesPage() {
       // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
       workStart: form.workStart || null,
       workEnd: form.workEnd || null,
+      // Rotation. Sent on BOTH paths and always — the server null-defaults every field it isn't
+      // given, so omitting these on an unrelated edit would silently drop someone's rotation and
+      // start marking their rest days absent.
+      workCycleDays: form.cycle.days,
+      workCycleOnDays: form.cycle.days ? form.cycle.onDays : null,
+      workCycleAnchor: form.cycle.days ? form.cycle.anchor || null : null,
     }
     const res = editingId
       ? await updateEmployee(editingId, {
@@ -803,10 +826,12 @@ export function EmployeesPage() {
               <input className="inp" type="time" value={form.workEnd} onChange={(e) => set('workEnd', e.target.value)} />
             </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
+          <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 14 }}>
             Qrafik seçsəniz saatlar avtomatik dolur. Boş buraxsanız filialın iş saatları tətbiq olunur —
             beləcə bir lokasiyada fərqli işçilər fərqli qrafikdə (gündüz/gecə) ola bilər.
           </p>
+
+          <WorkCyclePicker value={form.cycle} onChange={(cycle) => setForm((f) => ({ ...f, cycle }))} />
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-primary" disabled={saving || !form.locationId}>
@@ -1022,6 +1047,14 @@ export function EmployeesPage() {
                   {e.workStart && e.workEnd && (
                     <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
                       🕒 {e.workStart}–{e.workEnd}{e.workEnd < e.workStart ? ' 🌙' : ''}
+                    </div>
+                  )}
+                  {/* A rotation changes which DAYS count, not just the hours — and it silently
+                      decides whether a blank day is rest or an unpaid absence, so it belongs in the
+                      list rather than only inside the edit form. */}
+                  {e.workCycleDays && (
+                    <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
+                      🔄 {cycleLabel(e.workCycleDays, e.workCycleOnDays ?? 1)}
                     </div>
                   )}
                 </td>

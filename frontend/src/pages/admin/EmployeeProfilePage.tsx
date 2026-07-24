@@ -124,6 +124,9 @@ export function EmployeeProfilePage() {
       photoExempt: emp.photoExempt === true,
       workStart: emp.workStart ?? null,
       workEnd: emp.workEnd ?? null,
+      workCycleDays: emp.workCycleDays ?? null,
+      workCycleOnDays: emp.workCycleOnDays ?? null,
+      workCycleAnchor: emp.workCycleAnchor ?? null,
       isActive: !emp.isActive,
     })
     setBusy(false)

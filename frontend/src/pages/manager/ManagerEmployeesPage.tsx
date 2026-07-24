@@ -11,11 +11,13 @@ import {
   type ManagerLocation,
 } from '../../api/manager'
 import { IconX } from '../../components/icons'
+import { WorkCyclePicker } from '../../components/WorkCyclePicker'
 import './manager.css'
 
 const EMPTY: ManagerEmployeeInput = {
   fullName: '', email: null, phoneNumber: null, fatherName: null, position: null,
   locationId: '', birthDate: null, birthYear: null, workStart: null, workEnd: null,
+  workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
   photoExempt: false, isActive: true,
 }
 
@@ -25,6 +27,9 @@ const ERRORS: Record<string, string> = {
   EmailAlreadyExists: 'Bu e-poçt artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon artıq mövcuddur',
   LocationNotManaged: 'Bu filial sizə aid deyil',
+  WorkCycleDaysInvalid: 'Növbə dövrü 2–28 gün aralığında olmalıdır',
+  WorkCycleOnDaysInvalid: 'İş günlərinin sayı dövrədən az olmalıdır',
+  WorkCycleAnchorRequired: 'Növbə üçün işlədiyi bir gün seçilməlidir',
 }
 
 /**
@@ -71,6 +76,7 @@ export function ManagerEmployeesPage() {
       phoneNumber: e.phoneNumber, fatherName: e.fatherName, position: e.position,
       locationId: e.locationId, birthDate: e.birthDate, birthYear: e.birthYear,
       workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt, isActive: e.isActive,
+      workCycleDays: e.workCycleDays, workCycleOnDays: e.workCycleOnDays, workCycleAnchor: e.workCycleAnchor,
     })
     setEditing(e.id)
     setErr(null)
@@ -172,6 +178,22 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               </div>
             </div>
           </div>
+          <WorkCyclePicker
+            value={{
+              days: form.workCycleDays,
+              onDays: form.workCycleOnDays ?? 1,
+              anchor: form.workCycleAnchor ?? '',
+            }}
+            onChange={(c) =>
+              setForm((f) => ({
+                ...f,
+                workCycleDays: c.days,
+                workCycleOnDays: c.days ? c.onDays : null,
+                workCycleAnchor: c.days ? c.anchor || null : null,
+              }))
+            }
+          />
+
           <label style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <input type="checkbox" checked={!form.isActive} onChange={(e) => set('isActive', !e.target.checked)} />
             <span style={{ fontSize: 13 }}>Deaktiv (girişi bağlı)</span>

@@ -25,6 +25,45 @@ public static class AttendanceCalculator
         => (workDaysMask & (1 << (int)dayOfWeek)) != 0;
 
     /// <summary>
+    /// Whether <paramref name="date"/> is a scheduled working day for this employee, before holidays
+    /// are considered.
+    ///
+    /// An employee on a rotation (<see cref="Employee.WorkCycleDays"/>) ignores the location's weekly
+    /// mask entirely — a cycle whose length isn't 7 cannot be expressed as one, so mixing them would
+    /// silently drop half the rotation's days. Everyone else falls through to the mask, which is what
+    /// every employee did before rotations existed.
+    ///
+    /// The cycle is anchored to <see cref="Employee.WorkCycleAnchor"/>: that date is day 0 of the
+    /// cycle, and the first <see cref="Employee.WorkCycleOnDays"/> days of each repeat are worked.
+    /// An incompletely configured rotation (no anchor, or nonsense values an older row could hold)
+    /// falls back to the mask rather than marking someone absent on every day of their life.
+    /// </summary>
+    /// <remarks>
+    /// Takes the three cycle values loose rather than an <see cref="Employee"/> because most callers
+    /// read employees through a narrow projection, not the whole entity.
+    /// </remarks>
+    public static bool IsScheduledWorkingDay(
+        int? cycleDays, int cycleOnDays, DateOnly? cycleAnchor, int workDaysMask, DateOnly date)
+    {
+        if (cycleDays is null or < 2 || cycleAnchor is null)
+            return IsWorkingDayOfWeek(workDaysMask, date.DayOfWeek);
+
+        var onDays = Math.Clamp(cycleOnDays, 1, cycleDays.Value - 1);
+
+        // DayNumber difference, floored into [0, cycle) so dates BEFORE the anchor land on the right
+        // day of the cycle too — C#'s % keeps the sign of the dividend, which would put them outside.
+        var offset = date.DayNumber - cycleAnchor.Value.DayNumber;
+        var dayInCycle = ((offset % cycleDays.Value) + cycleDays.Value) % cycleDays.Value;
+
+        return dayInCycle < onDays;
+    }
+
+    /// <inheritdoc cref="IsScheduledWorkingDay(int?, int, DateOnly?, int, DateOnly)"/>
+    public static bool IsScheduledWorkingDay(Employee employee, int workDaysMask, DateOnly date)
+        => IsScheduledWorkingDay(
+            employee.WorkCycleDays, employee.WorkCycleOnDays, employee.WorkCycleAnchor, workDaysMask, date);
+
+    /// <summary>
     /// Resolves the status to report when an employee has no check-in for the date, in priority
     /// order: an approved LeaveRecord beats everything (even a non-working day — being on
     /// vacation over a weekend still reads as leave, not "day off"), then DayOff on a non-working

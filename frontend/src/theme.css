@@ -357,3 +357,25 @@ select.inp{cursor:pointer}
   .tbl-cards td[data-label=""] { display: block; text-align: left; }
   .tbl-cards td[data-label=""]::before { content: none; }
 }
+
+/* Work-cycle (növbə) picker — the calendar strip is what makes an anchor date checkable by eye.
+   Scrolls inside itself on a phone so 14 chips never widen the form. */
+.wc{margin-bottom:14px}
+.wc-custom{margin-top:12px}
+.wc-anchor{margin-top:12px}
+.wc-note{font-size:11px;color:var(--c400);margin-top:5px;line-height:1.5}
+.wc-missing{margin-top:10px}
+.wc-preview{margin-top:14px;border:1px solid var(--c100);border-radius:var(--r);background:var(--c50);padding:12px}
+.wc-preview-head{display:flex;align-items:baseline;justify-content:space-between;font-size:12px;font-weight:700;color:var(--c600);margin-bottom:9px}
+.wc-count{font-weight:600;color:var(--c400)}
+.wc-strip{display:flex;gap:5px;overflow-x:auto;padding-bottom:3px}
+.wc-day{flex:0 0 auto;width:36px;border-radius:9px;padding:6px 0;text-align:center;border:1px solid transparent}
+.wc-day .wc-dow{display:block;font-size:9px;font-weight:700;letter-spacing:.4px;opacity:.75}
+.wc-day .wc-num{display:block;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.3}
+.wc-day.on{background:var(--leaf-bg);color:var(--leaf-d);border-color:color-mix(in srgb,var(--leaf) 35%,transparent)}
+.wc-day.off{background:var(--white);color:var(--c400);border-color:var(--c200)}
+.wc-legend{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:10px;font-size:11px;color:var(--c500)}
+.wc-legend i.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.wc-legend i.sw.on{background:var(--leaf-bg);border:1px solid var(--leaf)}
+.wc-legend i.sw.off{background:var(--white);border:1px solid var(--c200)}
+.wc-check{color:var(--c400)}

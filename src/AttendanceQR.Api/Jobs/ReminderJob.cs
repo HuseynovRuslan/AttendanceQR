@@ -1,4 +1,5 @@
 using AttendanceQR.Application.Common;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
@@ -138,7 +139,7 @@ public sealed class ReminderJob : BackgroundService
 
                     var offToday =
                         holidays.Any(h => h.LocationId == null || h.LocationId == employee.LocationId) ||
-                        (location.WorkDaysMask & (1 << (int)todayLocal.DayOfWeek)) == 0;
+                        !AttendanceCalculator.IsScheduledWorkingDay(employee, location.WorkDaysMask, todayLocal);
 
                     // 1) Shift starts soon and nobody has checked in.
                     if (!offToday && todayRecord?.CheckInAtUtc is null)

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using ClosedXML.Excel;
@@ -82,6 +83,9 @@ public class AdminController : ControllerBase
                 birthDate = e.BirthDate,
                 workStart = e.WorkStart?.ToString("HH:mm"),
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
+                workCycleDays = e.WorkCycleDays,
+                workCycleOnDays = e.WorkCycleOnDays,
+                workCycleAnchor = e.WorkCycleAnchor,
                 monthlySalary = e.MonthlySalary,
                 photoExempt = e.PhotoExempt,
                 // Who has accepted the data-processing notice — the answer to "did this employee
@@ -170,6 +174,8 @@ public class AdminController : ControllerBase
             employee.BirthYear = dob.Year;   // keep the year in sync so the fallback display agrees
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
+        if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
         _db.Employees.Add(employee!);
         await RegisterPositionsAsync();
         await _db.SaveChangesAsync();
@@ -678,6 +684,8 @@ public class AdminController : ControllerBase
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         employee.MonthlySalary = request.MonthlySalary;
+        if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
 
         var scopeError = await ApplyManagedLocationsAsync(employee, request.ManagedLocationIds);
         if (scopeError is not null)

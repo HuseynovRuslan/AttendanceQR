@@ -119,6 +119,9 @@ public class ManagerController : ControllerBase
                 birthYear = e.BirthYear,
                 workStart = e.WorkStart == null ? null : e.WorkStart.Value.ToString("HH:mm"),
                 workEnd = e.WorkEnd == null ? null : e.WorkEnd.Value.ToString("HH:mm"),
+                workCycleDays = e.WorkCycleDays,
+                workCycleOnDays = e.WorkCycleOnDays,
+                workCycleAnchor = e.WorkCycleAnchor,
                 photoExempt = e.PhotoExempt,
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
@@ -130,6 +133,7 @@ public class ManagerController : ControllerBase
             r.id, r.fullName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.isActive, r.activated,
+            r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
     }
 
@@ -176,6 +180,9 @@ public class ManagerController : ControllerBase
             ActivatedAtUtc = DateTime.UtcNow,      // temp-PIN account — no activation link
             MustChangePin = true,
         };
+        if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
+
         _db.Employees.Add(employee);
         await RegisterPositionAsync(employee.Position, ct);
         await _db.SaveChangesAsync(ct);
@@ -222,6 +229,8 @@ public class ManagerController : ControllerBase
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         employee.PhotoExempt = request.PhotoExempt;
         employee.IsActive = request.IsActive;
+        if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
+            return BadRequest(new { error = cycleError });
         // Deliberately NOT touched: Role, MonthlySalary. A manager cannot change either, so the fields
         // are simply never read from the request.
         await RegisterPositionAsync(employee.Position, ct);

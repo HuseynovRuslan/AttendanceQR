@@ -487,3 +487,6 @@ src/AttendanceQR.Api/appsettings.Development.json
 # Docker Compose local env
 /.env
 .coolify-tmp/
+
+# SSH askpass helper — holds the server password, must never be committed
+ap.sh

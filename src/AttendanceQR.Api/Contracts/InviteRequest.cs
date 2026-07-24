@@ -18,7 +18,11 @@ public record InviteRequest(
     // Optional per-employee work hours ("HH:mm") at creation — lets a schedule (day/night) be assigned
     // right away instead of only after activation. Empty/null → falls back to the location's shift.
     string? WorkStart = null,
-    string? WorkEnd = null);
+    string? WorkEnd = null,
+    // Rotation ("növbə") at creation — see EmployeeUpdateRequest for the meaning of the three fields.
+    int? WorkCycleDays = null,
+    int? WorkCycleOnDays = null,
+    DateOnly? WorkCycleAnchor = null);
 
 /// <summary>Edit an existing employee's profile, role, location and enabled state.</summary>
 /// <param name="LocationId">Where this person WORKS — the geofence their own scans are checked against.</param>
@@ -51,4 +55,10 @@ public record EmployeeUpdateRequest(
     // Waives the check-in selfie for this employee. Defaults to false, so — like every field here —
     // a caller that omits it turns it OFF. Every updateEmployee caller must send it.
     bool PhotoExempt = false,
+    // Rotation ("növbə"). Null WorkCycleDays = no rotation, the location's weekly work days decide.
+    // Days is the cycle length and OnDays how many of its first days are worked, anchored to one date
+    // the employee works: "bir gündən bir" is (2, 1), sutka (3, 1), "2 iş / 2 istirahət" (4, 2).
+    int? WorkCycleDays = null,
+    int? WorkCycleOnDays = null,
+    DateOnly? WorkCycleAnchor = null,
     IReadOnlyList<Guid>? ManagedLocationIds = null);

@@ -63,6 +63,29 @@ public class Employee : ITenantScoped
 
     public TimeOnly? WorkEnd { get; set; }
 
+    // Rotation ("növbə"). The location's weekly WorkDaysMask can only express patterns that repeat
+    // every 7 days, so it cannot describe a rotation at all: "every other day" is a 2-day cycle, and
+    // 2 does not divide 7 — the pattern drifts across the week (Mon/Wed/Fri/Sun, then Tue/Thu/Sat).
+    // The mask also lives on the Location, so two people at one site could never be on opposite days,
+    // which is the whole point of a rotation.
+    //
+    // A cycle is described by its length and how many days at the START of it are worked, anchored to
+    // one date the employee is known to have been ON:
+    //     bir gündən bir   → Days 2, OnDays 1
+    //     sutka (24/48)    → Days 3, OnDays 1
+    //     2 iş / 2 istirahət → Days 4, OnDays 2
+    //
+    // Null Days = no rotation: the location's weekly mask decides, exactly as it did before this
+    // existed. That is the default, so every employee in production is untouched.
+    //
+    // Holidays (NonWorkingDay) still apply on top — a rotation replaces the weekly mask, not the
+    // calendar. See AttendanceCalculator.IsWorkingDay, the single place this is interpreted.
+    public int? WorkCycleDays { get; set; }
+
+    public int WorkCycleOnDays { get; set; } = 1;
+
+    public DateOnly? WorkCycleAnchor { get; set; }
+
     // Fixed monthly salary in AZN, for the payroll report. Null = not set (that employee is left out of
     // the money totals). The report starts from this figure and deducts a per-day share for each
     // unexcused absence — approved leave/permission are NOT deducted. Overtime is shown as hours only,
