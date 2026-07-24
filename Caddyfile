@@ -80,6 +80,26 @@ api.qrlog.az {
 	reverse_proxy backend:8080
 }
 
+# Staging (docker-compose.staging.yml). Its containers join the same Docker network under the
+# aliases stg-frontend / stg-backend; nothing else is shared with production, not even the database.
+#
+# These two blocks used to exist only as a hand edit of this file ON THE SERVER, and nothing in the
+# repository knew about them. Recreating the Caddy container for an unrelated change was therefore
+# enough to take staging off the internet — which is exactly what happened on 2026-07-24, silently,
+# because a working staging deploy still reports success while nobody can reach it.
+#
+# Both names must stay above the catch-all's reach: without a block they would be matched by the
+# on-demand `https://` site at the bottom and proxied to PRODUCTION, which is worse than a 404.
+test.qrlog.az {
+	encode zstd gzip
+	reverse_proxy stg-frontend:80
+}
+
+api-test.qrlog.az {
+	encode zstd gzip
+	reverse_proxy stg-backend:8080
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #

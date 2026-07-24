@@ -86,6 +86,16 @@ Docker network Caddy uses to reach them.
 Until this existed, every change went straight to the system 114 people use to record that they came
 to work. That held only because nothing had gone wrong yet.
 
+## How it is reached
+
+`test.qrlog.az` and `api-test.qrlog.az` are two blocks in the repository's `Caddyfile`, pointing at
+the `stg-frontend` / `stg-backend` aliases on the shared Docker network.
+
+They belong in git, and the reason is not tidiness. They previously existed only as a hand edit of
+the file on the server, so recreating the Caddy container for an unrelated change was enough to take
+staging off the internet — with the staging deploy still logging "deployed" every time, because
+building and starting had in fact worked. Nothing reported a problem until someone tried the URL.
+
 ## Deploying to staging
 
     cd /opt/attendanceqr
