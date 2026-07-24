@@ -489,12 +489,53 @@ footer{background:#08111E;color:#8FA1B8;padding:56px 0 34px}
 .post-card h2{font-size:20px;font-weight:600;margin:6px 0 8px}
 .post-card p{color:var(--muted);font-size:15px}
 
-/* Named customers (Trust.astro, shown only once CUSTOMERS.show is on) and the individual-quote
-   panel that stands in for the plan table while PRICING.showPlans is off. */
-.cust-row{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 14px;margin-top:14px}
-.cust-name{border:1px solid var(--line);border-radius:999px;padding:8px 18px;font-weight:650;
-  font-size:.95rem;color:var(--ink);background:#fff}
+/* ---------- Named customers (Trust.astro) ----------
+   A dark band under a light hero. Everything above is white-to-paper, so ink here stops the
+   customers reading as one more pale row and gives the three names a stage of their own. The glow
+   and dot grid are the hero's, reused rather than reinvented. */
+.cust{position:relative;overflow:hidden;background:var(--ink);color:#fff;padding:64px 0 68px}
+.cust-bg{position:absolute;inset:0;
+  background:
+    radial-gradient(60% 70% at 50% -10%, rgba(30,99,233,.30), transparent 70%),
+    radial-gradient(40% 60% at 90% 110%, rgba(47,163,107,.16), transparent 70%);}
+.cust-bg::after{content:"";position:absolute;inset:0;opacity:.30;
+  background-image:radial-gradient(rgba(255,255,255,.22) 1.1px,transparent 1.1px);background-size:26px 26px;
+  -webkit-mask-image:radial-gradient(75% 70% at 50% 40%,#000,transparent 78%);
+  mask-image:radial-gradient(75% 70% at 50% 40%,#000,transparent 78%)}
+.cust-inner{position:relative;z-index:1}
+.cust-eyebrow{text-align:center;font-family:'JetBrains Mono',monospace;font-size:11.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:#8FB3FF;margin-bottom:12px}
+.cust-h{text-align:center;font-size:clamp(24px,3.2vw,34px);font-weight:700;color:#fff;
+  margin:0 auto 38px;max-width:22ch;text-wrap:balance}
 
+.cust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.cust-card{position:relative;border:1px solid rgba(255,255,255,.11);border-radius:var(--radius);
+  background:rgba(255,255,255,.045);padding:28px 24px 26px;text-align:center;
+  transition:transform .28s cubic-bezier(.2,.7,.3,1),border-color .28s,background .28s,box-shadow .28s}
+.cust-card::before{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 26%,transparent),transparent 55%);
+  opacity:0;transition:opacity .28s}
+.cust-card:hover{transform:translateY(-6px);border-color:color-mix(in srgb,var(--accent) 55%,transparent);
+  background:rgba(255,255,255,.07);box-shadow:0 26px 60px -30px color-mix(in srgb,var(--accent) 75%,transparent)}
+.cust-card:hover::before{opacity:.5}
+
+.cust-mark{width:64px;height:64px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 92%,#fff),color-mix(in srgb,var(--accent) 62%,#000));
+  box-shadow:0 12px 28px -14px color-mix(in srgb,var(--accent) 90%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+.cust-mark span{font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;font-weight:800;
+  font-size:22px;letter-spacing:.02em;color:#fff}
+/* A real logo replaces the monogram: contained so any aspect ratio sits correctly in the tile. */
+.cust-mark img{width:100%;height:100%;object-fit:contain;padding:12px;border-radius:inherit}
+
+.cust-card h3{font-size:18px;font-weight:700;color:#fff;margin-bottom:5px;letter-spacing:-.01em}
+.cust-card p{font-size:13.5px;color:#9DB0C7;line-height:1.55;margin:0}
+
+@media(max-width:860px){
+  .cust-grid{grid-template-columns:1fr;max-width:420px;margin:0 auto}
+  .cust{padding:52px 0 56px}
+}
+
+/* The individual-quote panel that stands in for the plan table while PRICING.showPlans is off. */
 .quote-card{max-width:640px;margin:0 auto;text-align:center;border:1px solid var(--line);
   border-radius:var(--radius);padding:36px 28px;background:#fff;box-shadow:var(--shadow-sm)}
 .quote-card h3{font-size:1.5rem;margin:0 0 10px}

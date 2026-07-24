@@ -56,9 +56,20 @@ export const PRICING = {
 //
 // Spelling is theirs, not ours: it is "EastCaf", not "EastCafe" — they have corrected this before.
 // ---------------------------------------------------------------------------------------------
+// `logo` is a path under landing/public/. Drop a file in (ideally a transparent PNG or SVG, roughly
+// 400×120, the wordmark on its own) and set it here — the card swaps the monogram for the real mark
+// with no other change. Until then the monogram tile is the deliberate stand-in: three companies'
+// logos in three different styles and crops would look worse than three marks built to match.
+//
+// `accent` tints the monogram and the card's hover glow. Picked to hint at the sector rather than at
+// random — green for grounds and cleaning, amber for the café — so the row reads as considered.
 export const CUSTOMERS = {
   show: true,
-  names: ['Bakı Abadlıq Xidməti', 'CleanFix', 'EastCaf'],
+  items: [
+    { key: 'c1', name: 'Bakı Abadlıq Xidməti', mark: 'BA', accent: '#2FA36B', logo: null },
+    { key: 'c2', name: 'CleanFix', mark: 'CF', accent: '#1E63E9', logo: null },
+    { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D9932B', logo: null },
+  ],
 } as const
 
 // Sectors QRLog is actually used in. Deliberately NOT customer logos: naming a client publicly

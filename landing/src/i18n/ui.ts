@@ -214,6 +214,10 @@ export const ui = {
       'Məbləğ işçi sayına, filial sayına və ehtiyac duyduğunuz imkanlara görə dəyişir. Bir neçə sual verib dəqiq təklif göndəririk — gizli ödəniş yoxdur.',
     'price.quoteBtn': 'Təklif alın',
     'cust.title': 'QRLog-dan istifadə edən şirkətlər',
+    'cust.eyebrow': 'Onlar QRLog ilə işləyir',
+    'cust.c1s': 'Abadlıq və şəhər təsərrüfatı',
+    'cust.c2s': 'Peşəkar təmizlik xidmətləri',
+    'cust.c3s': 'Kafe və restoran',
 
     'faq.eyebrow': 'Suallar',
     'faq.title': 'Tez-tez verilən suallar',
@@ -494,6 +498,10 @@ export const ui = {
       'Сумма зависит от числа сотрудников, количества филиалов и нужных вам возможностей. Зададим несколько вопросов и пришлём точное предложение — без скрытых платежей.',
     'price.quoteBtn': 'Получить предложение',
     'cust.title': 'Компании, работающие на QRLog',
+    'cust.eyebrow': 'Они работают на QRLog',
+    'cust.c1s': 'Городское благоустройство',
+    'cust.c2s': 'Профессиональный клининг',
+    'cust.c3s': 'Кафе и рестораны',
 
     'faq.eyebrow': 'Вопросы',
     'faq.title': 'Часто задаваемые вопросы',
@@ -775,6 +783,10 @@ export const ui = {
       'The figure depends on how many people you have, how many sites, and which capabilities you need. A few questions and we send an exact quote — no hidden fees.',
     'price.quoteBtn': 'Get a quote',
     'cust.title': 'Companies running QRLog',
+    'cust.eyebrow': 'They run on QRLog',
+    'cust.c1s': 'Municipal grounds and upkeep',
+    'cust.c2s': 'Professional cleaning services',
+    'cust.c3s': 'Café and restaurant',
 
     'faq.eyebrow': 'FAQ',
     'faq.title': 'Frequently asked questions',

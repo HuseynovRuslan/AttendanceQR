@@ -5,28 +5,50 @@ import { TRUST_SECTORS, CUSTOMERS } from '../data/site'
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// Named customers when we have them, the sector list when we do not — one or the other, never both.
-// Three real names under "companies running QRLog" is a stronger and more honest claim than six
-// sectors, which reads as breadth we have not actually earned yet.
+// Named customers when we have them, the sector marquee when we do not — one or the other, never
+// both. Three real names is a stronger and more honest claim than six sectors, which reads as a
+// breadth of adoption we have not earned yet.
 //
-// The names themselves still have to be ones the companies agreed to appear; see CUSTOMERS in
-// src/data/site.ts. An invented customer would be worse than none, and a real one used without
-// asking costs the relationship rather than just the credibility.
+// The named version is a DARK band, deliberately: the page above it is white-to-paper with a blue
+// aurora, so going to ink here stops the customers reading as one more pale row and gives them a
+// stage. It borrows the hero's own dot grid and blue glow rather than introducing a second visual
+// language for one section.
+//
+// Real logos drop straight in — see CUSTOMERS in src/data/site.ts. Until a company hands one over,
+// a monogram built to the same size and weight as its neighbours looks better than three logos in
+// three different crops, which is what a "logo wall" usually degenerates into.
 const icon =
   '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>'
 const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
 ---
 
-<div class="trust">
-  <div class="wrap">
-    <p>{CUSTOMERS.show ? t('cust.title') : t('trust.title')}</p>
-  </div>
+{CUSTOMERS.show ? (
+  <section class="cust" aria-labelledby="cust-h">
+    <div class="cust-bg" aria-hidden="true"></div>
+    <div class="wrap cust-inner">
+      <p class="cust-eyebrow rv">{t('cust.eyebrow')}</p>
+      <h2 id="cust-h" class="cust-h rv">{t('cust.title')}</h2>
 
-  {CUSTOMERS.show ? (
-    <div class="wrap cust-row">
-      {CUSTOMERS.names.map((n) => <span class="cust-name">{n}</span>)}
+      <div class="cust-grid">
+        {CUSTOMERS.items.map((c, i) => (
+          <article class={`cust-card rv d${i + 1}`} style={`--accent:${c.accent}`}>
+            <div class="cust-mark">
+              {c.logo
+                ? <img src={c.logo} alt={c.name} loading="lazy" decoding="async" />
+                : <span>{c.mark}</span>}
+            </div>
+            <h3>{c.name}</h3>
+            <p>{t(`cust.${c.key}s` as any)}</p>
+          </article>
+        ))}
+      </div>
     </div>
-  ) : (
+  </section>
+) : (
+  <div class="trust">
+    <div class="wrap">
+      <p>{t('trust.title')}</p>
+    </div>
     <div class="marquee">
       <div class="marquee-track">
         {loop.map((o) => (
@@ -34,5 +56,5 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
         ))}
       </div>
     </div>
-  )}
-</div>
+  </div>
+)}
