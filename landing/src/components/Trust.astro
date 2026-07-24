@@ -1,12 +1,13 @@
 ---
 import { useTranslations, type Lang } from '../i18n/ui'
-import { TRUST_SECTORS } from '../data/site'
+import { TRUST_SECTORS, CUSTOMERS } from '../data/site'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// Sectors, not customer logos. Naming a client publicly needs their consent, and invented company
-// names would be worse than none — see TRUST_SECTORS in src/data/site.ts.
+// Sectors by default, named customers only once CUSTOMERS.show is turned on — which waits on each
+// company agreeing to be named. Invented company names would be worse than none; real ones used
+// without asking are worse still, because they cost the relationship rather than just credibility.
 const icon =
   '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>'
 const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
@@ -14,8 +15,14 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
 
 <div class="trust">
   <div class="wrap">
-    <p>{t('trust.title')}</p>
+    <p>{CUSTOMERS.show ? t('cust.title') : t('trust.title')}</p>
   </div>
+
+  {CUSTOMERS.show && (
+    <div class="wrap cust-row">
+      {CUSTOMERS.names.map((n) => <span class="cust-name">{n}</span>)}
+    </div>
+  )}
   <div class="marquee">
     <div class="marquee-track">
       {loop.map((o) => (

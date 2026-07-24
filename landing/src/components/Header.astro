@@ -1,6 +1,6 @@
 ---
-import { useTranslations, localizedPath, languages, type Lang } from '../i18n/ui'
-import { SITE, PRICING } from '../data/site'
+import { useTranslations, localizedPath, availableLangs, type Lang } from '../i18n/ui'
+import { SITE } from '../data/site'
 
 interface Props {
   lang: Lang
@@ -10,12 +10,19 @@ interface Props {
 const { lang, path = '/' } = Astro.props
 const t = useTranslations(lang)
 
+// The switcher only offers languages this route was actually built in, and disappears entirely on
+// an Azerbaijani-only page (the blog, 404) — a one-button switcher is noise, and the missing
+// buttons used to lead to 404s.
+const routeLangs = availableLangs(path)
+
 // Section links are absolute (home + hash) so the same header works on /elaqe/ and /bloq/ too.
 const home = localizedPath(lang, '/')
 const links = [
   { href: `${home}#how`, label: t('nav.how') },
   { href: `${home}#features`, label: t('nav.features') },
-  ...(PRICING.enabled ? [{ href: localizedPath(lang, '/qiymet/'), label: t('nav.pricing') }] : []),
+  // Always shown: /qiymet/ exists whether or not the plan table does. With plans off it answers the
+  // price question with an individual quote, which is still the page people came looking for.
+  { href: localizedPath(lang, '/qiymet/'), label: t('nav.pricing') },
   { href: `${home}#faq`, label: t('nav.faq') },
   { href: localizedPath(lang, '/elaqe/'), label: t('nav.contact') },
 ]
@@ -30,8 +37,9 @@ const links = [
       {links.map((l) => <a href={l.href}>{l.label}</a>)}
     </nav>
     <div class="nav-right">
+      {routeLangs.length > 1 && (
       <div class="lang" role="group" aria-label={t('a11y.lang')}>
-        {languages.map((l) => (
+        {routeLangs.map((l) => (
           <a
             href={localizedPath(l, path)}
             class={l === lang ? 'active' : ''}
@@ -40,6 +48,7 @@ const links = [
           >{l.toUpperCase()}</a>
         ))}
       </div>
+      )}
       <!--
         No staff-login link anywhere on this site: the marketing pages point at sales, and people
         who already use QRLog reach the app by its own address. Under 560px this button is hidden

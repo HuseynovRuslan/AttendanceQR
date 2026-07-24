@@ -5,6 +5,7 @@ import { SITE } from '../data/site'
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
+// Phone first, e-mail second: the phone is the channel that is certain to answer.
 // A mailto link, not a form. The landing page is a static build with no backend of its own, and the
 // old `<form action="mailto:">` silently dropped messages in most browsers — a contact form that
 // loses enquiries is worse than an honest link.
@@ -16,16 +17,16 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('QRLog — sor
     <div class="contact-card">
       <h2>{t('contact.infoTitle')}</h2>
       <ul class="contact-list">
-        <li>
-          <span>{t('contact.email')}</span>
-          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
-        </li>
         {SITE.phone && (
           <li>
             <span>{t('contact.phone')}</span>
             <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>{SITE.phone}</a>
           </li>
         )}
+        <li>
+          <span>{t('contact.email')}</span>
+          <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+        </li>
         {SITE.whatsapp && (
           <li>
             <span>WhatsApp</span>

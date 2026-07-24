@@ -11,30 +11,52 @@ export const SITE = {
   // to /elaqe/, and people who already use QRLog reach the app (bax.qrlog.az, or their own tenant
   // subdomain) directly. Adding a login button back means adding this constant back with it.
   email: 'info@qrlog.az',
-  // TODO: real number before launch. Empty string hides every phone link on the site rather than
-  // shipping a placeholder like "+994 12 000 00 00" that nobody answers.
-  phone: '',
-  // e.g. 'https://wa.me/994XXXXXXXXX' — empty hides the WhatsApp button.
+  // Written in international form because the site is also served in Russian and English. The tel:
+  // link strips everything but digits and the +, so the spacing here is purely for reading.
+  phone: '+994 50 600 16 55',
+  // e.g. 'https://wa.me/994506001655' — empty hides the WhatsApp button. Left empty until someone
+  // has confirmed the number actually answers on WhatsApp: a dead button costs more than no button.
   whatsapp: '',
   address: 'Bakı, Azərbaycan',
 } as const
 
 // ---------------------------------------------------------------------------------------------
-// PRICING — PLACEHOLDER. These are the template's demo numbers, kept deliberately until the real
-// plans are decided. Change `amount` (and the feature keys in src/i18n/ui.ts) here only; nothing
-// else in the site hardcodes a price.
+// PRICING
 //
-// `amount: null` renders the translated `price.pNa` string instead ("Pulsuz" / "Fərdi").
+// `showPlans: false` — the current, deliberate state. The /qiymet/ page still exists and still
+// ranks (people search "davamiyyət sistemi qiymət"), but it shows no numbers and no plan limits:
+// just a short line saying the price is worked out per organisation, and a way to get in touch.
+//
+// The plan table below is the Astro template's invented pricing. Publishing it would have promised
+// "Pulsuz, 50 işçiyə qədər" — and two of the three companies already paying for QRLog are under
+// that line. A published price is very hard to walk back, so it stays off until the real plans
+// exist. Set showPlans: true once they do, and correct `amount` + the price.p* keys in i18n/ui.ts.
+//
+// `amount: null` renders the translated `price.pNa` string instead.
 // ---------------------------------------------------------------------------------------------
 export const PRICING = {
-  // Set to false to drop the whole pricing section and its nav entry in one move.
-  enabled: true,
+  showPlans: false,
   // `featureCount` is how many price.p<id>f<n> bullet keys exist for that plan in src/i18n/ui.ts.
   plans: [
     { id: 1, amount: null, featured: false, featureCount: 3 },
     { id: 2, amount: '₼19', featured: true, featureCount: 4 },
     { id: 3, amount: null, featured: false, featureCount: 3 },
   ],
+} as const
+
+// ---------------------------------------------------------------------------------------------
+// CUSTOMERS — the companies actually running QRLog, shown by name once each has agreed to it.
+//
+// `show: false` until that agreement exists. Naming a client on a public sales page is a reference,
+// and a reference given without asking is the kind of thing that costs the account — particularly
+// for an organisation like Bakı Abadlıq Xidməti. A written "yes" is not needed; a message from the
+// person who signs is enough. Flip `show` to true and the strip appears above the sector list.
+//
+// Spelling is theirs, not ours: it is "EastCaf", not "EastCafe" — they have corrected this before.
+// ---------------------------------------------------------------------------------------------
+export const CUSTOMERS = {
+  show: false,
+  names: ['Bakı Abadlıq Xidməti', 'CleanFix', 'EastCaf'],
 } as const
 
 // Sectors QRLog is actually used in. Deliberately NOT customer logos: naming a client publicly

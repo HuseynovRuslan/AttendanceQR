@@ -182,6 +182,7 @@ export const ui = {
     'price.eyebrow': 'Qiymət',
     'price.title': 'Sadə və şəffaf qiymət',
     'price.sub': 'Təşkilatınızın ölçüsünə uyğun plan seçin. Gizli ödəniş yoxdur.',
+    'price.subQuote': 'Ehtiyacınıza uyğun təklif hazırlayırıq. Gizli ödəniş yoxdur.',
     'price.popular': 'POPULYAR',
     'price.mo': '/ay',
     'price.note': 'Qiymətlər dəqiqləşdirilir — yekun təklif üçün bizimlə əlaqə saxlayın.',
@@ -208,6 +209,11 @@ export const ui = {
     'price.p3f2': 'Öz subdomeniniz',
     'price.p3f3': 'Quraşdırma dəstəyi',
     'price.p3c': 'Əlaqə saxlayın',
+    'price.quoteTitle': 'Qiymət fərdi hesablanır',
+    'price.quoteText':
+      'Məbləğ işçi sayına, filial sayına və ehtiyac duyduğunuz imkanlara görə dəyişir. Bir neçə sual verib dəqiq təklif göndəririk — gizli ödəniş yoxdur.',
+    'price.quoteBtn': 'Təklif alın',
+    'cust.title': 'QRLog-dan istifadə edən şirkətlər',
 
     'faq.eyebrow': 'Suallar',
     'faq.title': 'Tez-tez verilən suallar',
@@ -457,6 +463,7 @@ export const ui = {
     'price.eyebrow': 'Цены',
     'price.title': 'Простые и прозрачные цены',
     'price.sub': 'Выберите план под размер организации. Без скрытых платежей.',
+    'price.subQuote': 'Готовим предложение под ваши задачи. Без скрытых платежей.',
     'price.popular': 'ПОПУЛЯРНЫЙ',
     'price.mo': '/мес',
     'price.note': 'Цены уточняются — свяжитесь с нами для окончательного предложения.',
@@ -482,6 +489,11 @@ export const ui = {
     'price.p3f2': 'Свой поддомен',
     'price.p3f3': 'Помощь при внедрении',
     'price.p3c': 'Связаться',
+    'price.quoteTitle': 'Стоимость рассчитывается индивидуально',
+    'price.quoteText':
+      'Сумма зависит от числа сотрудников, количества филиалов и нужных вам возможностей. Зададим несколько вопросов и пришлём точное предложение — без скрытых платежей.',
+    'price.quoteBtn': 'Получить предложение',
+    'cust.title': 'Компании, работающие на QRLog',
 
     'faq.eyebrow': 'Вопросы',
     'faq.title': 'Часто задаваемые вопросы',
@@ -732,6 +744,7 @@ export const ui = {
     'price.eyebrow': 'Pricing',
     'price.title': 'Simple, transparent pricing',
     'price.sub': 'Pick the plan that matches your size. No hidden fees.',
+    'price.subQuote': 'We put together a quote that fits what you need. No hidden fees.',
     'price.popular': 'POPULAR',
     'price.mo': '/mo',
     'price.note': 'Pricing is being finalised — contact us for a firm quote.',
@@ -757,6 +770,11 @@ export const ui = {
     'price.p3f2': 'Your own subdomain',
     'price.p3f3': 'Onboarding support',
     'price.p3c': 'Contact us',
+    'price.quoteTitle': 'Priced per organisation',
+    'price.quoteText':
+      'The figure depends on how many people you have, how many sites, and which capabilities you need. A few questions and we send an exact quote — no hidden fees.',
+    'price.quoteBtn': 'Get a quote',
+    'cust.title': 'Companies running QRLog',
 
     'faq.eyebrow': 'FAQ',
     'faq.title': 'Frequently asked questions',
@@ -864,6 +882,25 @@ export function useTranslations(lang: Lang) {
 
 // Build a localized URL for a given path. Slugs stay Azerbaijani in every language on purpose:
 // /haqqimizda/ is already indexed, and translating the slug would have broken it for no gain.
+/**
+ * Routes that exist in Azerbaijani only.
+ *
+ * The blog is written in Azerbaijani and 404.html is generated once, so there is no /ru/bloq/ and no
+ * /en/404/. Offering those languages anyway is not a cosmetic slip: the switcher sends the reader to
+ * a 404, and the hreflang tags point search engines at URLs that were never built.
+ *
+ * Add a route here the moment it stops being translated, or remove it when translations land.
+ */
+const azOnlyRoutes = ['/bloq/', '/404/'] as const
+
+/**
+ * Which languages a given route is actually available in. Everything not listed above exists in all
+ * three, which is why this returns the full list rather than an empty one by default.
+ */
+export function availableLangs(path = '/'): Lang[] {
+  return azOnlyRoutes.some((p) => path.startsWith(p)) ? ['az'] : [...languages]
+}
+
 export function localizedPath(lang: Lang, path = '/'): string {
   const prefix = localePrefix[lang]
   if (path === '/') return prefix === '' ? '/' : `${prefix}/`

@@ -5,11 +5,12 @@ import Pricing from '../../components/Pricing.astro'
 import FAQ from '../../components/FAQ.astro'
 import CTA from '../../components/CTA.astro'
 import { useTranslations } from '../../i18n/ui'
+import { PRICING } from '../../data/site'
 const lang = 'ru' as const
 const t = useTranslations(lang)
 ---
 <BaseLayout lang={lang} path="/qiymet/" title={t('pricing.metaTitle')} description={t('pricing.metaDesc')}>
-  <PageHero title={t('price.title')} subtitle={t('price.sub')} />
+  <PageHero title={t('price.title')} subtitle={PRICING.showPlans ? t('price.sub') : t('price.subQuote')} />
   <Pricing lang={lang} bare />
   <FAQ lang={lang} />
   <CTA lang={lang} />

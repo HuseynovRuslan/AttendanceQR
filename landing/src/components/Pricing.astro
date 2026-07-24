@@ -12,8 +12,10 @@ const t = useTranslations(lang)
 const contact = localizedPath(lang, '/elaqe/')
 const check = '<path d="m5 13 4 4L19 7"/>'
 
-// Amounts come from PRICING in src/data/site.ts — placeholder figures until the real plans are set.
-// The note under the plans says so out loud, so nobody quotes a number we have not committed to.
+// Amounts come from PRICING in src/data/site.ts. While showPlans is false the plan table is not
+// rendered at all — the page keeps its heading and answers with "we quote per organisation".
+// Hiding only the nav link would have left these pages live and indexable with invented numbers on
+// them, which is the failure this guard exists to prevent.
 const plans = PRICING.plans.map((p) => ({
   amount: p.amount as string | null,
   featured: p.featured as boolean,
@@ -34,6 +36,15 @@ const plans = PRICING.plans.map((p) => ({
         <p>{t('price.sub')}</p>
       </div>
     )}
+    {!PRICING.showPlans && (
+      <div class="quote-card rv">
+        <h3>{t('price.quoteTitle')}</h3>
+        <p>{t('price.quoteText')}</p>
+        <a href={contact} class="btn btn-primary">{t('price.quoteBtn')}</a>
+      </div>
+    )}
+
+    {PRICING.showPlans && (
     <div class="plans">
       {plans.map((p, i) => (
         <div class={`plan rv d${i + 1}${p.featured ? ' feat-plan' : ''}`}>
@@ -52,6 +63,7 @@ const plans = PRICING.plans.map((p) => ({
         </div>
       ))}
     </div>
-    <p class="price-note rv">{t('price.note')}</p>
+    )}
+    {PRICING.showPlans && <p class="price-note rv">{t('price.note')}</p>}
   </div>
 </section>
