@@ -47,15 +47,17 @@ export const PRICING = {
 // ---------------------------------------------------------------------------------------------
 // CUSTOMERS — the companies actually running QRLog, shown by name once each has agreed to it.
 //
-// `show: false` until that agreement exists. Naming a client on a public sales page is a reference,
-// and a reference given without asking is the kind of thing that costs the account — particularly
-// for an organisation like Bakı Abadlıq Xidməti. A written "yes" is not needed; a message from the
-// person who signs is enough. Flip `show` to true and the strip appears above the sector list.
+// All three belong to the same group as QRLog itself, and the owner confirmed on 2026-07-24 that
+// they may be named. That confirmation is the bar: naming a client on a public sales page is a
+// reference, and a reference taken rather than given costs the account, not just the credibility.
+// Anyone adding a fourth name here needs the same "yes" first.
+//
+// Shown INSTEAD OF the sector marquee, not above it — see Trust.astro.
 //
 // Spelling is theirs, not ours: it is "EastCaf", not "EastCafe" — they have corrected this before.
 // ---------------------------------------------------------------------------------------------
 export const CUSTOMERS = {
-  show: false,
+  show: true,
   names: ['Bakı Abadlıq Xidməti', 'CleanFix', 'EastCaf'],
 } as const
 
