@@ -81,6 +81,15 @@ export function ProblemsMap({ rows, geofences }: { rows: ProblemRow[]; geofences
           Mavi dairə — icazə verilən ərazi. Qırmızı nöqtələr — «iş yerindən kənarda» rədd alınan yerlər.
           Nöqtələr bir tərəfə yığılıbsa mərkəz səhvdir; kənarda düzülübsə ərazi radiusdan böyükdür.
         </div>
+        {points.length === 0 && (
+          <div className="fb fb-info" style={{ marginTop: 8, fontSize: 12 }}>
+            <span>
+              Hələ koordinatlı nöqtə yoxdur — rədlərin yerini qeyd etmə bu gün əlavə olundu. Yeni
+              «iş yerindən kənarda» rədləri gəldikcə xəritədə görünəcək. Aşağıdakı dairə isə sistemin
+              bu ərazini harada bildiyini göstərir.
+            </span>
+          </div>
+        )}
       </div>
       <div style={{ height: 380, width: '100%' }}>
         <MapContainer

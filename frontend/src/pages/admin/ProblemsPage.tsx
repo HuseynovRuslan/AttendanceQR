@@ -171,9 +171,10 @@ export function ProblemsPage() {
         </div>
       </div>
 
-      {/* Where the OutsideRadius rejections actually happened. Only rows captured since this feature
-          shipped carry coordinates, so it fills in over a day or two. */}
-      {report && parseRejectPoints(report.rows).length > 0 && (
+      {/* Shown whenever any site had an OutsideRadius rejection — the geofence circle is drawn even
+          before any point has coordinates, so the map is visible (with a note) rather than absent.
+          Points fill in as new rejections are captured. */}
+      {report && (report.geofences.length > 0 || parseRejectPoints(report.rows).length > 0) && (
         <ProblemsMap rows={report.rows} geofences={report.geofences} />
       )}
 
