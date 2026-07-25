@@ -150,10 +150,10 @@ export function DashboardPage() {
   }, 30_000)
 
   const activity = useMemo(() => {
-    const ev: { id: string; name: string; loc: string; type: 'in' | 'out'; at: string }[] = []
+    const ev: { id: string; empId: string; name: string; loc: string; type: 'in' | 'out'; at: string }[] = []
     for (const r of rows) {
-      if (r.checkInAtUtc) ev.push({ id: r.employeeId + 'i', name: r.employeeName, loc: r.locationName, type: 'in', at: r.checkInAtUtc })
-      if (r.checkOutAtUtc) ev.push({ id: r.employeeId + 'o', name: r.employeeName, loc: r.locationName, type: 'out', at: r.checkOutAtUtc })
+      if (r.checkInAtUtc) ev.push({ id: r.employeeId + 'i', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'in', at: r.checkInAtUtc })
+      if (r.checkOutAtUtc) ev.push({ id: r.employeeId + 'o', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'out', at: r.checkOutAtUtc })
     }
     // The whole day, newest first — the panel scrolls (see .lux-feed), so every check-in and
     // check-out of today is here, not just the last handful. The cap is only a DOM backstop.
@@ -355,7 +355,7 @@ export function DashboardPage() {
               {activity.map((e, i) => (
                 <div key={e.id} className={`lux-feed-row${i === 0 ? ' is-new' : ''}`}>
                   <span className="lux-feed-dot" style={{ background: e.type === 'in' ? 'var(--leaf)' : 'var(--blue)' }} />
-                  <span className="lux-feed-nm">{e.name}</span>
+                  <span className="lux-feed-nm"><EmployeeLink id={e.empId} name={e.name} /></span>
                   <span className="muted lux-feed-a">{e.type === 'in' ? 'giriş' : 'çıxış'} · {e.loc}</span>
                   <span className="mono lux-feed-t">{fmtTime(e.at)}</span>
                 </div>

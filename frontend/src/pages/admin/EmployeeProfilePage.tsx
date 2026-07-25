@@ -14,7 +14,8 @@ import {
   type InviteResult,
 } from '../../api/admin'
 import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecord, adminClearCheckout } from '../../api/attendance'
-import type { AttendanceRecord } from '../../api/attendance'
+import type { AttendanceRecord, PhotoUrlResponse } from '../../api/attendance'
+import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { RecordBadge } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime } from '../../lib/format'
@@ -42,6 +43,10 @@ export function EmployeeProfilePage() {
   const [invite, setInvite] = useState<InviteResult | null>(null)
   // Attendance correction, in place — so a wrong day is fixed from the profile, not by hopping back
   // to the employees list. Same admin endpoints the list used.
+  // Per-record selfie viewer — "Şəklə bax" on a row opens that day's check-in photo (vs the
+  // reference) in the same modal the today board and photo audit use.
+  const [photoModal, setPhotoModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
+  const [photoBusyId, setPhotoBusyId] = useState<string | null>(null)
   const [editRecId, setEditRecId] = useState<string | null>(null)
   const [editIn, setEditIn] = useState('')
   const [editOut, setEditOut] = useState('')
@@ -188,6 +193,20 @@ export function EmployeeProfilePage() {
     setRecBusy(false)
     if (status === 200) void load()
     else setRecErr('Çıxış silinmədi')
+  }
+
+  async function viewRecordPhoto(r: AttendanceRecord) {
+    setPhotoBusyId(r.recordId)
+    setRecErr(null)
+    // URLs are short-lived — fetch fresh each open, never cache.
+    const { status, data } = await getPhotoUrl(r.recordId)
+    setPhotoBusyId(null)
+    if (status === 200 && data && 'hasPhoto' in data) {
+      if (!data.checkInPhotoUrl) { setRecErr('Bu gün üçün şəkil yoxdur'); return }
+      setPhotoModal({ title: `${emp?.fullName ?? ''} · ${fmtDate(r.attendanceDate)}`, photo: data })
+    } else {
+      setRecErr('Şəkil açılmadı')
+    }
   }
 
   async function createRecord() {
@@ -376,6 +395,11 @@ export function EmployeeProfilePage() {
                       <td className="mono" data-label="Müddət">{r.checkInAtUtc && r.checkOutAtUtc ? fmtDuration(r.checkInAtUtc, r.checkOutAtUtc) : '—'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          {r.checkInAtUtc && (
+                            <button className="btn btn-sm" disabled={photoBusyId === r.recordId} onClick={() => void viewRecordPhoto(r)}>
+                              <IconCamera /> {photoBusyId === r.recordId ? '…' : 'Şəklə bax'}
+                            </button>
+                          )}
                           <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
                           {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
                         </div>
@@ -411,6 +435,18 @@ export function EmployeeProfilePage() {
           </div>
         )}
       </div>
+
+      {photoModal && (
+        <PhotoCompareModal
+          title={photoModal.title}
+          referenceUrl={photoModal.photo.referencePhotoUrl}
+          checkInUrl={photoModal.photo.checkInPhotoUrl}
+          checkInTakenAtUtc={photoModal.photo.checkInPhotoTakenAtUtc}
+          faceMatchStatus={photoModal.photo.faceMatchStatus}
+          faceMatchScore={photoModal.photo.faceMatchScore}
+          onClose={() => setPhotoModal(null)}
+        />
+      )}
     </div>
   )
 }
