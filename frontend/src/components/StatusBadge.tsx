@@ -12,6 +12,10 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   OnTime: { cls: 'b-present', label: 'Tamamlayıb', icon: 'check' },
   Late: { cls: 'b-present', label: 'Tamamlayıb', icon: 'check' },
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
+  // Board-only: a scheduled worker whose shift hasn't started yet. Neutral, NOT the red Qayıb — a
+  // 21:00 night worker at 10:00 is not a no-show, their shift is later. Set by the live board; the
+  // stored DailySummaryStatus never carries it.
+  Pending: { cls: 'b-pending', label: 'Gözlənilir', icon: 'clock' },
   // Checked in, no check-out yet. On a live "today" view this just means "still at work" — correct.
   // On a PAST day it means a check-out was never recorded (a real problem) — callers viewing a past
   // date should override this via StatusBadge's `override` prop (see TodayPage.tsx).

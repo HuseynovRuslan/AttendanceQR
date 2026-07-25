@@ -59,6 +59,7 @@ h1,h2,h3,h4{font-family:'Manrope',sans-serif;color:var(--c900)}
 .stat-card.clay::before{background:var(--clay)}
 .stat-card.blue::before{background:var(--blue)}
 .stat-card.purple::before{background:var(--purple)}
+.stat-card.slate::before{background:var(--c400)}
 .stat-lbl{font-size:12px;font-weight:600;color:var(--c500)}
 .stat-val{font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:var(--c900);margin-top:6px;line-height:1.08;text-wrap:balance;font-variant-numeric:tabular-nums}
 .stat-sub{font-size:11px;color:var(--c400);margin-top:4px}
@@ -112,6 +113,7 @@ select.inp{cursor:pointer}
 .b-nodevice{background:var(--clay-bg);color:var(--clay)}
 .b-leave{background:var(--purple-bg);color:var(--purple)}
 .b-permission{background:var(--c100);color:var(--c600)}
+.b-pending{background:var(--c50);color:var(--c500);border:1px solid var(--c200)}
 
 /* Feedback */
 .fb{border-radius:var(--r);padding:12px 14px;display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5}

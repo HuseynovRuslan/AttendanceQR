@@ -621,12 +621,16 @@ public sealed class ReportQueryService : IReportQueryService
         // the shift STARTED, so at 01:00 someone who scanned in at 21:00 has a record dated yesterday
         // and simply vanished from "today" — the board showed them as absent while they were at work.
         // Only for the live board: a past day must stay exactly what it was.
-        if (date is null || date == LocalToday())
+        var isToday = date is null || date == LocalToday();
+        if (isToday)
             computed = await CarryOverOpenShiftsAsync(day, employees, computed, ct);
+
+        var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
         return computed
             .Select(d => new DayAttendanceRow(
-                d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name, d.Computed.Status.ToString(),
+                d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
+                BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal),
                 d.Record?.CheckInAtUtc, d.Record?.CheckOutAtUtc,
                 d.Record?.Id, d.Record?.CheckInPhotoKey != null,
                 d.Record?.FaceMatchScore, d.Record?.FaceMatchStatus.ToString() ?? "NotChecked",
@@ -678,6 +682,36 @@ public sealed class ReportQueryService : IReportQueryService
         return computed
             .Select(d => stillOpen.TryGetValue(d.Employee.Id, out var open) ? open : d)
             .ToList();
+    }
+
+    /// <summary>
+    /// The status the LIVE board should show — the same as the computed one, except that a scheduled
+    /// worker whose shift has not started yet reads "Pending" rather than "Absent".
+    ///
+    /// "Qayıb" (absent) on the board could not tell two very different things apart: someone who was
+    /// due and did not come, and someone whose shift begins later today. A night worker on 21:00–07:00
+    /// showed up red "Qayıb" all morning, indistinguishable from a real no-show, when their shift was
+    /// still ten hours away. Until their start time plus its late grace has passed, that is not an
+    /// absence — it is "not due yet". Once the grace passes with no check-in, it becomes a real Qayıb.
+    ///
+    /// Board only, and only for today: a finished past day's Absent is a genuine absence and stays.
+    /// The <see cref="DailySummaryStatus"/> enum, the nightly summary, the tabel and payroll are all
+    /// untouched — this is purely how the live board labels a not-yet-due worker.
+    /// </summary>
+    internal static string BoardDisplayStatus(
+        DailySummaryStatus computed, EffectiveShift shift, bool isToday, TimeOnly nowLocal)
+    {
+        if (!isToday || computed != DailySummaryStatus.Absent)
+            return computed.ToString();
+
+        // Integer minutes rather than TimeOnly.AddMinutes so a grace that would spill past midnight
+        // (a shift starting at 23:5x) is capped at end-of-day instead of wrapping to 00:1x and
+        // flipping the comparison. "Due" = shift start + the shift's own late threshold.
+        var startMin = (int)shift.Start.ToTimeSpan().TotalMinutes;
+        var dueMin = Math.Min(startMin + shift.LateThresholdMinutes, 24 * 60 - 1);
+        var nowMin = (int)nowLocal.ToTimeSpan().TotalMinutes;
+
+        return nowMin <= dueMin ? "Pending" : nameof(DailySummaryStatus.Absent);
     }
 
     /// <summary>

@@ -24,6 +24,8 @@ function statusMatches(status: string, filter: string): boolean {
       return status === 'OnTime' || status === 'Late'
     case 'absent':
       return status === 'Absent'
+    case 'pending':
+      return status === 'Pending'
     case 'dayOff':
       return status === 'DayOff'
     case 'onLeave':
@@ -31,7 +33,7 @@ function statusMatches(status: string, filter: string): boolean {
     case 'permission':
       return status === 'Permission'
     case 'incomplete':
-      return !['OnTime', 'Late', 'Absent', 'DayOff', 'OnLeave', 'Permission'].includes(status)
+      return !['OnTime', 'Late', 'Absent', 'Pending', 'DayOff', 'OnLeave', 'Permission'].includes(status)
     default:
       return true
   }
@@ -125,10 +127,11 @@ export function TodayPage() {
   // showing the day's real breakdown and stay usable as toggles.
   // present = checked in AND out ("Tamamlayıb"). incomplete = checked in, no check-out yet — reads as
   // "İşdə" (still at work) on today's board, or "Çıxış yoxdur" (forgot to check out) on a past date.
-  const counts = { present: 0, absent: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
+  const counts = { present: 0, absent: 0, pending: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
   for (const r of locFiltered) {
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
+    else if (r.status === 'Pending') counts.pending++
     else if (r.status === 'DayOff') counts.dayOff++
     else if (r.status === 'OnLeave') counts.onLeave++
     else if (r.status === 'Permission') counts.permission++
@@ -255,6 +258,15 @@ export function TodayPage() {
           <div className="stat-val">{counts.absent}</div>
           <div className="stat-sub">Heç giriş etməyib</div>
         </div>
+        {/* Shown only when someone is actually pending — an empty card on a day with no night shift
+            would be clutter. Neutral, next to Qayıb, so a not-yet-due worker never reads as a no-show. */}
+        {isToday && counts.pending > 0 && (
+          <div className="stat-card slate" style={cardStyle('pending')} onClick={() => toggleStatus('pending')}>
+            <div className="stat-lbl">{STATUS_MAP.Pending.label}</div>
+            <div className="stat-val">{counts.pending}</div>
+            <div className="stat-sub">Növbəsi hələ başlamayıb</div>
+          </div>
+        )}
         <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
           <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
           <div className="stat-val">{counts.present}</div>
