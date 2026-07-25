@@ -101,16 +101,25 @@ public sealed record ProblemRow(
     DateTime AtUtc,
     Guid? EmployeeId,
     string EmployeeName,
-    string Action,   // "CheckIn" | "CheckOut" | "Device" (blocked on the phone, never reached us)
+    // The site the employee is assigned to — so a geofence problem that hits one location (a poster
+    // beyond the radius) is visible as such rather than scattered across a name list.
+    string LocationName,
+    // "Scan" = rejected before we could tell check-in from check-out (geofence/device/token all fail
+    // ahead of that decision, so labelling them "Giriş" was misleading). "CheckOut" = a genuine
+    // check-out attempt (the employee already had an open record). "Device" = blocked on the phone.
+    string Action,
     string Reason,
     // Extra context some reasons carry — e.g. the ± metres behind "GpsInaccurate".
     string? Detail = null);
 
 public sealed record ReasonCount(string Reason, int Count);
 
-/// <summary>All rejected scans for one local day, plus a per-reason tally and the success count.</summary>
+/// <summary>Every rejected scan across a date RANGE, plus a per-reason tally and the success count.
+/// A range, not a single day, because a problem two days old is invisible on a one-day view — which
+/// is how a whole location's geofence failures and days of forgotten check-outs went unnoticed.</summary>
 public sealed record ProblemsReport(
-    DateOnly Date,
+    DateOnly From,
+    DateOnly To,
     int RejectedCount,
     int SuccessCount,
     IReadOnlyList<ReasonCount> Summary,

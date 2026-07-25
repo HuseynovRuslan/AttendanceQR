@@ -227,15 +227,19 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
-    // GET /api/reports/problems?date=yyyy-MM-dd — every rejected scan on that local day: who could
-    // not check in/out, and why. Without this the failures only live in AuditLogs, invisible to staff.
+    // GET /api/reports/problems?from=yyyy-MM-dd&to=yyyy-MM-dd — every rejected scan across the range:
+    // who could not check in/out, and why. A range, not a day, so a problem from earlier in the week
+    // does not silently age out of view. `date` is still accepted as a single-day shorthand.
     [HttpGet("problems")]
-    public async Task<IActionResult> Problems([FromQuery] DateOnly date)
+    public async Task<IActionResult> Problems([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] DateOnly? date)
     {
         var requesterId = User.EmployeeId();
         var role = User.Role();
 
-        var (access, report) = await _reports.GetProblemsAsync(date, requesterId, role, HttpContext.RequestAborted);
+        var toDay = to ?? date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var fromDay = from ?? date ?? toDay.AddDays(-6); // default: the last 7 days
+
+        var (access, report) = await _reports.GetProblemsAsync(fromDay, toDay, requesterId, role, HttpContext.RequestAborted);
 
         if (access == ReportAccess.Forbidden)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });

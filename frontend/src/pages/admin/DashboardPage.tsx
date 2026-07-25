@@ -112,7 +112,7 @@ export function DashboardPage() {
       getToday(),
       getOpenRecords(),
       getPendingDeviceChanges(),
-      getProblems(todayIso()),
+      getProblems(todayIso(), todayIso()),
     ])
     if (today.status === 200 && Array.isArray(today.data)) {
       setRows(today.data)

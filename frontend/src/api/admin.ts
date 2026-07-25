@@ -183,8 +183,11 @@ export interface ProblemRow {
   atUtc: string
   employeeId: string | null
   employeeName: string
-  /** "Device" = blocked on the phone (no GPS); the scan never reached the server. */
-  action: 'CheckIn' | 'CheckOut' | 'Device'
+  /** The employee's assigned site — so a geofence problem hitting one location is visible as such. */
+  locationName: string
+  /** "Scan" = rejected before check-in/out was decided (geofence/device/token). "Device" = blocked
+   *  on the phone (no GPS), scan never reached the server. */
+  action: 'Scan' | 'CheckOut' | 'Device'
   reason: string
   /** Extra context for some reasons — e.g. the ± metres behind "GpsInaccurate". */
   detail: string | null
@@ -196,16 +199,17 @@ export interface ReasonCount {
 }
 
 export interface ProblemsReport {
-  date: string
+  from: string
+  to: string
   rejectedCount: number
   successCount: number
   summary: ReasonCount[]
   rows: ProblemRow[]
 }
 
-/** GET /api/reports/problems?date=yyyy-MM-dd — who couldn't scan that day, and why. */
-export function getProblems(date: string) {
-  return apiRequest<ProblemsReport | { error: string }>(`/api/reports/problems?date=${date}`)
+/** GET /api/reports/problems?from=…&to=… — who couldn't scan across the range, and why. */
+export function getProblems(from: string, to: string) {
+  return apiRequest<ProblemsReport | { error: string }>(`/api/reports/problems?from=${from}&to=${to}`)
 }
 
 /** Face audit: re-queue a background face-match for every record that has a check-in photo. */
