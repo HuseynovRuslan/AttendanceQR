@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   createManagerEmployee,
   getManagerEmployees,
@@ -11,7 +12,6 @@ import {
   type ManagerLocation,
 } from '../../api/manager'
 import { IconX } from '../../components/icons'
-import { WorkCyclePicker } from '../../components/WorkCyclePicker'
 import { getManagerSchedules, type ManagerSchedule } from '../../api/manager'
 import './manager.css'
 
@@ -41,6 +41,7 @@ const ERRORS: Record<string, string> = {
 export function ManagerEmployeesPage() {
   const [rows, setRows] = useState<ManagerEmployee[]>([])
   const [locations, setLocations] = useState<ManagerLocation[]>([])
+  const navigate = useNavigate()
   const [positions, setPositions] = useState<string[]>([])
   const [schedules, setSchedules] = useState<ManagerSchedule[]>([])
   const [loading, setLoading] = useState(true)
@@ -171,24 +172,39 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               </select>
             </div>
           </div>
+          {/* One shift control — hours, work-days and rotation all come from the named shift chosen
+              here (created in the Növbələr panel), not retyped per person. Any old per-person hours
+              still ride along in `form` and are saved back untouched, so nothing is lost. */}
           <div style={{ marginBottom: 14 }}>
             <label className="form-label">Növbə</label>
             <select
               className="inp"
               value={form.scheduleId ?? ''}
-              onChange={(e) => set('scheduleId', e.target.value || null)}
+              onChange={(e) => {
+                if (e.target.value === '__new__') { navigate('/admin/schedules'); return }
+                set('scheduleId', e.target.value || null)
+              }}
             >
-              <option value="">— növbə yoxdur (fərdi saatlar) —</option>
+              <option value="">— növbə yoxdur (filialın saatları) —</option>
               {schedules.map((sc) => (
                 <option key={sc.id} value={sc.id}>
                   {sc.name} · {sc.shiftStart}–{sc.shiftEnd}{sc.isOvernight ? ' 🌙' : ''}
                 </option>
               ))}
+              <option value="__new__">＋ Yeni növbə yarat…</option>
             </select>
-            {form.scheduleId && (
-              <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 6, marginBottom: 0, lineHeight: 1.6 }}>
-                Saatlar, iş günləri və rotasiya bu növbədən gəlir.
-              </p>
+            <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 6, marginBottom: 0, lineHeight: 1.6 }}>
+              İşçinin saatları seçdiyiniz növbədən gəlir. İstədiyiniz növbə yoxdursa «＋ Yeni növbə
+              yarat» ilə Növbələr panelində yaradın.
+            </p>
+            {!form.scheduleId && (form.workStart || form.workCycleDays) && (
+              <div className="fb" style={{ marginTop: 10, background: '#FFF7ED', color: '#9a3412' }}>
+                <span>
+                  Bu işçidə köhnə fərdi qrafik var
+                  {form.workStart && form.workEnd ? ` (🕒 ${form.workStart}–${form.workEnd})` : ''}
+                  {form.workCycleDays ? ' 🔄' : ''}. Uyğun növbəni seçin — yoxdursa yaradıb təyin edin.
+                </span>
+              </div>
             )}
           </div>
 
@@ -197,33 +213,8 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               <label className="form-label">Doğum tarixi</label>
               <input className="inp" type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value || null)} />
             </div>
-            {!form.scheduleId && (
-              <div>
-                <label className="form-label">İş saatları (istəyə bağlı)</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input className="inp" type="time" value={form.workStart ?? ''} onChange={(e) => set('workStart', e.target.value || null)} />
-                  <input className="inp" type="time" value={form.workEnd ?? ''} onChange={(e) => set('workEnd', e.target.value || null)} />
-                </div>
-              </div>
-            )}
+            <div />
           </div>
-          {!form.scheduleId && (
-          <WorkCyclePicker
-            value={{
-              days: form.workCycleDays,
-              onDays: form.workCycleOnDays ?? 1,
-              anchor: form.workCycleAnchor ?? '',
-            }}
-            onChange={(c) =>
-              setForm((f) => ({
-                ...f,
-                workCycleDays: c.days,
-                workCycleOnDays: c.days ? c.onDays : null,
-                workCycleAnchor: c.days ? c.anchor || null : null,
-              }))
-            }
-          />
-          )}
 
           <label style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <input type="checkbox" checked={!form.isActive} onChange={(e) => set('isActive', !e.target.checked)} />

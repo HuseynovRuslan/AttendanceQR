@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { BulkInvitePage } from './BulkInvitePage'
 import { PositionSelect } from '../../components/PositionSelect'
-import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
-import { Link, useSearchParams } from 'react-router-dom'
+import { NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   deleteEmployee,
   getAdminLocations,
@@ -133,6 +133,7 @@ export function EmployeesPage() {
   const [rows, setRows] = useState<AdminEmployee[]>([])
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
+  const navigate = useNavigate()
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
   // "Bildirişsiz" — show only the people a reminder/announcement can NOT reach, so a manager can go
   // help them switch it on. A workforce that won't self-serve is what keeps reach stuck, and a name
@@ -886,66 +887,45 @@ export function EmployeesPage() {
             </span>
           </label>
 
-          <div className="form-row cols2">
-            <div>
-              <label className="form-label">Qrafik (növbə)</label>
-              <select
-                className="inp"
-                value={schedules.find((s) => s.shiftStart === form.workStart && s.shiftEnd === form.workEnd)?.id ?? ''}
-                onChange={(e) => {
-                  const s = schedules.find((x) => x.id === e.target.value)
-                  if (s) setForm((f) => ({ ...f, workStart: s.shiftStart, workEnd: s.shiftEnd }))
-                }}
-              >
-                <option value="">— Qrafik seçin (istəyə görə) —</option>
-                {schedules.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.shiftStart}–{s.shiftEnd}){s.isOvernight ? ' 🌙' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div />
-          </div>
+          {/* One shift control. A person's hours, work-days and rotation all come from the named shift
+              chosen here; shifts are created and edited in the Növbələr panel, not retyped per person.
+              The employee's own old per-person hours/rotation are still round-tripped in state (never
+              blanked on save) so nothing is lost before they are migrated onto a named shift. */}
           <div style={{ marginBottom: 14 }}>
             <label className="form-label">Növbə</label>
-            <select className="inp" value={form.scheduleId} onChange={(e) => set('scheduleId', e.target.value)}>
-              <option value="">— növbə yoxdur (fərdi saatlar) —</option>
+            <select
+              className="inp"
+              value={form.scheduleId}
+              onChange={(e) => {
+                if (e.target.value === '__new__') { navigate('/admin/schedules'); return }
+                set('scheduleId', e.target.value)
+              }}
+            >
+              <option value="">— növbə yoxdur (filialın saatları) —</option>
               {schedules.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} · {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
                 </option>
               ))}
+              <option value="__new__">＋ Yeni növbə yarat…</option>
             </select>
             <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 6, marginBottom: 0, lineHeight: 1.6 }}>
-              {form.scheduleId
-                ? 'Saatlar, iş günləri və rotasiya bu növbədən gəlir. Aşağıdakı fərdi sahələr tətbiq olunmur.'
-                : 'Növbə seçilməyibsə, aşağıdakı fərdi saatlar, o da boşdursa filialın saatları tətbiq olunur.'}
+              İşçinin saatları və iş günləri seçdiyiniz növbədən gəlir. İstədiyiniz növbə siyahıda
+              yoxdursa «＋ Yeni növbə yarat» ilə Növbələr panelində yaradın.
             </p>
+            {/* This employee still carries old per-person hours / rotation and no shift — nudge to
+                move them onto a named shift so the whole team is managed in one place. */}
+            {!form.scheduleId && (form.workStart || form.cycle.days) && (
+              <div className="fb" style={{ marginTop: 10, background: 'var(--amber-bg, #FFF7ED)', color: '#9a3412' }}>
+                <span>
+                  Bu işçidə köhnə fərdi qrafik var
+                  {form.workStart && form.workEnd ? ` (🕒 ${form.workStart}–${form.workEnd})` : ''}
+                  {form.cycle.days ? ' 🔄' : ''}. Yuxarıdan uyğun növbəni seçin —
+                  yoxdursa «＋ Yeni növbə yarat» ilə yaradıb təyin edin.
+                </span>
+              </div>
+            )}
           </div>
-
-          {/* Hidden while a shift is assigned: two visible sources for one answer is how the old
-              "Gecə növbəsi 22:00–06:00" drifted from the eight people actually on 21:00–07:00. */}
-          {!form.scheduleId && (
-          <>
-          <div className="form-row cols2">
-            <div>
-              <label className="form-label">İş başlanğıcı</label>
-              <input className="inp" type="time" value={form.workStart} onChange={(e) => set('workStart', e.target.value)} />
-            </div>
-            <div>
-              <label className="form-label">İş sonu</label>
-              <input className="inp" type="time" value={form.workEnd} onChange={(e) => set('workEnd', e.target.value)} />
-            </div>
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 14 }}>
-            Qrafik seçsəniz saatlar avtomatik dolur. Boş buraxsanız filialın iş saatları tətbiq olunur —
-            beləcə bir lokasiyada fərqli işçilər fərqli qrafikdə (gündüz/gecə) ola bilər.
-          </p>
-
-          <WorkCyclePicker value={form.cycle} onChange={(cycle) => setForm((f) => ({ ...f, cycle }))} />
-          </>
-          )}
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-primary" disabled={saving || !form.locationId}>
