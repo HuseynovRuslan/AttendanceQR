@@ -9,7 +9,7 @@ import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
-import { IconCamera, IconX } from '../../components/icons'
+import { IconCamera, IconClipboard, IconX } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 
 function localDateISO(d: Date): string {
@@ -378,12 +378,11 @@ export function TodayPage() {
                       </div>
                     ) : (
                       <button
-                        className="btn btn-sm"
-                        title="Səbəb təyin et"
+                        className="reason-chip"
+                        title="Bu qayıba səbəb təyin et"
                         onClick={() => setReasonFor(r.employeeId)}
-                        style={{ marginTop: 6, padding: '3px 10px', fontSize: 12 }}
                       >
-                        ＋ Səbəb
+                        <IconClipboard /> Səbəb yaz
                       </button>
                     )
                   )}
