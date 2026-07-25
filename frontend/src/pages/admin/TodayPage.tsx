@@ -144,13 +144,14 @@ export function TodayPage() {
   // showing the day's real breakdown and stay usable as toggles.
   // present = checked in AND out ("Tamamlayıb"). incomplete = checked in, no check-out yet — reads as
   // "İşdə" (still at work) on today's board, or "Çıxış yoxdur" (forgot to check out) on a past date.
-  const counts = { present: 0, absent: 0, pending: 0, incomplete: 0, dayOff: 0, onLeave: 0, permission: 0 }
+  const counts = { present: 0, absent: 0, pending: 0, incomplete: 0, dayOff: 0, onLeave: 0, sick: 0, permission: 0 }
   for (const r of locFiltered) {
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'Pending') counts.pending++
     else if (r.status === 'DayOff') counts.dayOff++
-    else if (r.status === 'OnLeave') counts.onLeave++
+    // Sick gets its own card; the Məzuniyyət card is every other leave (Vacation/Unpaid/Rest).
+    else if (r.status === 'OnLeave') { if (r.leaveType === 'Sick') counts.sick++; else counts.onLeave++ }
     else if (r.status === 'Permission') counts.permission++
     else counts.incomplete++
   }
@@ -161,7 +162,12 @@ export function TodayPage() {
   const q = search.trim().toLowerCase()
   const visible = locFiltered.filter((r) => {
     if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
-    if (statusFilter && !statusMatches(r.status, statusFilter)) return false
+    // Sick / Məzuniyyət both come from OnLeave, split by leaveType — so their filters need the row.
+    if (statusFilter === 'sick') {
+      if (!(r.status === 'OnLeave' && r.leaveType === 'Sick')) return false
+    } else if (statusFilter === 'onLeave') {
+      if (!(r.status === 'OnLeave' && r.leaveType !== 'Sick')) return false
+    } else if (statusFilter && !statusMatches(r.status, statusFilter)) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
     if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
     if (q && !r.employeeName.toLowerCase().includes(q)) return false
@@ -299,6 +305,13 @@ export function TodayPage() {
           <div className="stat-val">{counts.onLeave}</div>
           <div className="stat-sub">Təsdiqlənmiş məzuniyyətdədir</div>
         </div>
+        {counts.sick > 0 && (
+          <div className="stat-card blue" style={cardStyle('sick')} onClick={() => toggleStatus('sick')}>
+            <div className="stat-lbl">Xəstəlik</div>
+            <div className="stat-val">{counts.sick}</div>
+            <div className="stat-sub">Xəstəlik məzuniyyətindədir</div>
+          </div>
+        )}
         <div className="stat-card" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
           <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
           <div className="stat-val">{counts.permission}</div>
