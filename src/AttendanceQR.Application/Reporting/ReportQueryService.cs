@@ -96,7 +96,7 @@ public sealed class ReportQueryService : IReportQueryService
     /// fields; the reports want only the figures) without computing the day twice.</summary>
     private sealed record LiveDay(
         ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed,
-        EffectiveShift Shift, LeaveType? Leave);
+        EffectiveShift Shift, LeaveType? Leave, string? LeaveAssignedBy = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -181,11 +181,20 @@ public sealed class ReportQueryService : IReportQueryService
         var nonWorkingLocationIdSet = nonWorkingLocationIds
             .Where(id => id.HasValue).Select(id => id!.Value).ToHashSet();
 
-        var leaveByEmployee = await _db.LeaveRecords
+        var leaveRows = await _db.LeaveRecords
             .Where(l => l.FromDate <= date && l.ToDate >= date && employeeIds.Contains(l.EmployeeId))
+            .Select(l => new { l.EmployeeId, l.Type, l.CreatedByEmployeeId })
+            .ToListAsync(ct);
+        var leaveByEmployee = leaveRows
             .GroupBy(l => l.EmployeeId)
-            .Select(g => new { EmployeeId = g.Key, Type = g.First().Type })
-            .ToDictionaryAsync(x => x.EmployeeId, x => x.Type, ct);
+            .ToDictionary(g => g.Key, g => g.First());
+        // Who pinned each leave — surfaced on the board so an assigned reason is attributable to the
+        // admin/manager who set it, not an anonymous status flip.
+        var creatorIds = leaveRows.Select(l => l.CreatedByEmployeeId).Distinct().ToList();
+        var creatorNames = await _db.Employees
+            .Where(e => creatorIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.FullName })
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
 
         foreach (var e in employees)
         {
@@ -199,14 +208,20 @@ public sealed class ReportQueryService : IReportQueryService
             var isWorkingDay = shift.IsWorkingDay(date)
                                && !isGloballyNonWorking
                                && !nonWorkingLocationIdSet.Contains(location.Id);
-            LeaveType? leaveType = leaveByEmployee.TryGetValue(e.Id, out var lt) ? lt : null;
+            LeaveType? leaveType = null;
+            string? leaveAssignedBy = null;
+            if (leaveByEmployee.TryGetValue(e.Id, out var lr))
+            {
+                leaveType = lr.Type;
+                leaveAssignedBy = creatorNames.GetValueOrDefault(lr.CreatedByEmployeeId);
+            }
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(e.Id, out var record);
             // Judged against the same resolved shift the scan endpoint used.
             var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
-            rows.Add(new LiveDay(e, location, record, c, shift, leaveType));
+            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy));
         }
 
         return rows;
@@ -637,7 +652,7 @@ public sealed class ReportQueryService : IReportQueryService
                 d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
                 d.Record?.WasOffline ?? false,
                 d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
-                d.Leave?.ToString()))
+                d.Leave?.ToString(), d.LeaveAssignedBy))
             .OrderBy(r => r.EmployeeName)
             .ToList();
     }

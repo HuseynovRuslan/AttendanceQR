@@ -28,6 +28,8 @@ export interface DayAttendanceRow {
   /** The leave type on a leave day — "Vacation"/"Sick"/"Unpaid"/"Permission"/"Rest" — since the
    *  status collapses Vacation/Sick/Unpaid into OnLeave. Null on a non-leave day. */
   leaveType?: string | null
+  /** Name of the admin/manager who assigned the leave, for attribution on the board. */
+  leaveAssignedBy?: string | null
 }
 
 export interface EmployeeReportRow {

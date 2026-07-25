@@ -102,7 +102,10 @@ public sealed record DayAttendanceRow(
     // The approved leave type covering this day, when the status is a leave one — "Vacation" / "Sick"
     // / "Unpaid" / "Permission" / "Rest". Null otherwise. The status collapses Vacation/Sick/Unpaid
     // into OnLeave, so a screen that wants to tell Sick from Vacation reads this instead.
-    string? LeaveType = null);
+    string? LeaveType = null,
+    // Name of the admin/manager who pinned this leave (LeaveRecord.CreatedByEmployeeId), so the board
+    // can say who assigned the reason. Null when there is no leave for the day.
+    string? LeaveAssignedBy = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

@@ -40,9 +40,21 @@ function statusMatches(status: string, filter: string): boolean {
   }
 }
 
+// The reasons an admin/manager can pin on a Qayıb row, in the order they read on screen.
+const LEAVE_OPTIONS: { type: LeaveType; label: string }[] = [
+  { type: 'Permission', label: 'İcazə' },
+  { type: 'Vacation', label: 'Məzuniyyət' },
+  { type: 'Sick', label: 'Xəstəlik' },
+  { type: 'Unpaid', label: 'Ödənişsiz' },
+  { type: 'Rest', label: 'İstirahət' },
+]
+
 export function TodayPage() {
   const { role } = useAuth()
   const [assigningId, setAssigningId] = useState<string | null>(null)
+  // Which absent row currently has its reason-picker open. A quiet "+ Səbəb" opens it, so the board
+  // isn't a wall of dropdowns.
+  const [reasonFor, setReasonFor] = useState<string | null>(null)
   const todayISO = useMemo(() => localDateISO(new Date()), [])
   const [date, setDate] = useState(todayISO)
   const isToday = date === todayISO
@@ -87,6 +99,7 @@ export function TodayPage() {
       ? await createManagerLeave({ employeeId, fromDate: date, toDate: date, type, note: null })
       : await addLeave(employeeId, date, date, type)
     setAssigningId(null)
+    setReasonFor(null)
     if (res.status === 200) await load()
   }
 
@@ -340,23 +353,39 @@ export function TodayPage() {
                           : undefined
                     }
                   />
-                  {/* Fix a Qayıb without leaving the board: pick a reason and it becomes a one-day
-                      leave for this date, flipping the row to İcazə / Məzuniyyət / İstirahət etc. */}
+                  {/* Who pinned this reason — attribution so a status flip isn't anonymous. */}
+                  {r.status === 'OnLeave' && r.leaveAssignedBy && (
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                      Təyin edən: {r.leaveAssignedBy}
+                    </div>
+                  )}
+                  {/* Fix a Qayıb without leaving the board: a quiet "+ Səbəb" opens a small reason
+                      picker, and the choice becomes a one-day leave for this date, flipping the row to
+                      İcazə / Məzuniyyət / İstirahət etc. */}
                   {r.status === 'Absent' && (
-                    <select
-                      className="inp"
-                      style={{ marginTop: 6, fontSize: 12, padding: '4px 8px', height: 'auto', maxWidth: 170 }}
-                      value=""
-                      disabled={assigningId === r.employeeId}
-                      onChange={(e) => { if (e.target.value) void assignLeave(r.employeeId, e.target.value as LeaveType) }}
-                    >
-                      <option value="">{assigningId === r.employeeId ? 'Təyin edilir…' : '+ Səbəb təyin et'}</option>
-                      <option value="Permission">İcazə</option>
-                      <option value="Vacation">Məzuniyyət</option>
-                      <option value="Sick">Xəstəlik</option>
-                      <option value="Unpaid">Ödənişsiz məzuniyyət</option>
-                      <option value="Rest">İstirahət</option>
-                    </select>
+                    assigningId === r.employeeId ? (
+                      <span className="muted" style={{ marginTop: 6, display: 'inline-block', fontSize: 12 }}>Təyin edilir…</span>
+                    ) : reasonFor === r.employeeId ? (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                        {LEAVE_OPTIONS.map((o) => (
+                          <button key={o.type} className="btn btn-sm" onClick={() => void assignLeave(r.employeeId, o.type)}>
+                            {o.label}
+                          </button>
+                        ))}
+                        <button className="btn btn-sm" title="Bağla" onClick={() => setReasonFor(null)} style={{ padding: '4px 8px' }}>
+                          <IconX />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn-sm"
+                        title="Səbəb təyin et"
+                        onClick={() => setReasonFor(r.employeeId)}
+                        style={{ marginTop: 6, padding: '3px 10px', fontSize: 12 }}
+                      >
+                        ＋ Səbəb
+                      </button>
+                    )
                   )}
                 </td>
                 <td className="mono" data-label="Giriş">
