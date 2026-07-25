@@ -107,12 +107,13 @@ export function AdminLayout() {
     ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
     ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
-    ...(isAdmin ? [{ to: '/admin/bulk-invite', label: 'Toplu əlavə', Icon: IconUsers }] : []),
+    // "Toplu əlavə" is no longer its own sidebar row — it lives inside the "İşçi əlavə et" flow on
+    // the employees page (single-add first, then a bulk tab), so onboarding is one place. Route kept.
     ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconClipboard }] : []),
     ...(isAdmin ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
-    // Across every company, not inside one — only the operator sees it.
-    ...(isSuperAdmin ? [{ to: '/admin/tenants', label: 'Şirkətlər', Icon: IconUsers }] : []),
+    // Across every company, not inside one — only the operator sees it. "Şirkətlər" is hidden from
+    // the sidebar on request; the /admin/tenants route still works by URL for the operator.
     ...(isSuperAdmin ? [{ to: '/hq', label: 'Qrup paneli', Icon: IconChart }] : []),
   ]
 

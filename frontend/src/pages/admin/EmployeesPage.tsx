@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { BulkInvitePage } from './BulkInvitePage'
 import { PositionSelect } from '../../components/PositionSelect'
 import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -139,6 +140,9 @@ export function EmployeesPage() {
   const [onlyNoPush, setOnlyNoPush] = useState(false)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
+  // Adding can be one-at-a-time or in bulk — both live under the single "İşçi əlavə et" button now
+  // (Toplu əlavə was removed from the sidebar). Editing always uses the single form.
+  const [addMode, setAddMode] = useState<'single' | 'bulk'>('single')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState<string | null>(null)
@@ -200,6 +204,7 @@ export function EmployeesPage() {
 
   function startAdd() {
     setEditingId(null)
+    setAddMode('single')
     setForm({ ...EMPTY, locationId: locations[0]?.id ?? '' })
     setError(null)
     setOk(null)
@@ -676,7 +681,26 @@ export function EmployeesPage() {
       )}
 
       {/* add / edit form */}
-      {showForm && (
+      {/* Add flow: a single-vs-bulk switch shown only when adding (editing is always the single form).
+          Toplu əlavə used to be its own page; it now lives here so onboarding is one button. */}
+      {showForm && !editingId && (
+        <div className="chip-row" style={{ marginBottom: 10 }}>
+          <span className={`chip${addMode === 'single' ? ' active' : ''}`} onClick={() => setAddMode('single')}>
+            Tək-tək
+          </span>
+          <span className={`chip${addMode === 'bulk' ? ' active' : ''}`} onClick={() => setAddMode('bulk')}>
+            Toplu əlavə
+          </span>
+        </div>
+      )}
+
+      {showForm && !editingId && addMode === 'bulk' && (
+        <div className="card card-pad" style={{ marginBottom: 16, maxWidth: 900 }}>
+          <BulkInvitePage />
+        </div>
+      )}
+
+      {showForm && (editingId || addMode === 'single') && (
         <form onSubmit={onSubmit} className="card card-pad" style={{ marginBottom: 16, maxWidth: 760 }}>
           <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 14 }}>
             {editingId ? 'İşçini redaktə et' : 'Yeni işçi'}
