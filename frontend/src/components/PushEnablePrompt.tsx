@@ -18,12 +18,20 @@ export function PushEnablePrompt({
   onShown?: (shown: boolean) => void
 }) {
   const [show, setShow] = useState(false)
+  const [blocked, setBlocked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!pushSupported() || pushPermission() === 'denied') return
+    if (!pushSupported()) return
+    // Permission was refused in the browser: the API can no longer re-ask, so the button is useless.
+    // Instead of vanishing (a dead end — the employee just stops getting reminders forever), fall
+    // through to a recovery card that points at the one place that can still fix it: device settings.
+    if (pushPermission() === 'denied') {
+      setBlocked(true)
+      return
+    }
     void isSubscribed().then((sub) => setShow(!sub))
   }, [])
 
@@ -55,6 +63,30 @@ export function PushEnablePrompt({
           Bildirişləri almaq üçün proqramı <b>ana ekrana əlavə edin</b> (Paylaş → «Ana ekrana əlavə et»)
           və oradan açın. Brauzer səhifəsində bildiriş dəstəklənmir.
         </div>
+      </div>
+    )
+  }
+
+  // Blocked in the browser. The scan card stays silent — the morning queue shouldn't carry the same
+  // error every single day — but the home screen shows a quiet, actionable way back, per platform,
+  // so someone who once tapped "block" still has a route to fix it.
+  if (blocked) {
+    if (dark) return null
+    return (
+      <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
+        <div className="text-sm font-bold text-amber-900">Bildirişlər bağlıdır</div>
+        <div className="mt-1 text-xs text-amber-800">
+          Növbə xatırlatmaları və elanlar telefonunuza gəlmir. Açmaq üçün cihaz parametrlərindən
+          icazə verin:
+        </div>
+        <ul className="mt-2 space-y-1 text-xs text-amber-800">
+          <li>
+            <b>iPhone:</b> Ayarlar → Bildirişlər → <b>QRLog</b> → İcazə verin
+          </li>
+          <li>
+            <b>Android:</b> proqram ikonasını basıb saxlayın → <b>(i)</b> → Bildirişlər → Açın
+          </li>
+        </ul>
       </div>
     )
   }

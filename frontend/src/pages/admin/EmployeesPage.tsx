@@ -133,6 +133,10 @@ export function EmployeesPage() {
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  // "Bildirişsiz" — show only the people a reminder/announcement can NOT reach, so a manager can go
+  // help them switch it on. A workforce that won't self-serve is what keeps reach stuck, and a name
+  // list per branch is what actually converts.
+  const [onlyNoPush, setOnlyNoPush] = useState(false)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -512,9 +516,18 @@ export function EmployeesPage() {
   const q = search.trim().toLowerCase()
   const visible = rows.filter((r) => {
     if (filterLoc && r.locationId !== filterLoc) return false
+    if (onlyNoPush && r.pushEnabled) return false
     if (q && !`${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.id}`.toLowerCase().includes(q)) return false
     return true
   })
+
+  // Reach = the share of employees who can actually be reached, over the branch currently in view.
+  // Only active, activated staff count — a deactivated or not-yet-onboarded person needs no reminder,
+  // and counting them would understate how well the reachable ones are covered.
+  const reachPool = rows.filter((r) => r.isActive && r.activated && (!filterLoc || r.locationId === filterLoc))
+  const reachOn = reachPool.filter((r) => r.pushEnabled).length
+  const reachPct = reachPool.length > 0 ? Math.round((reachOn / reachPool.length) * 100) : 0
+  const noPushCount = reachPool.length - reachOn
 
   return (
     <div>
@@ -552,6 +565,51 @@ export function EmployeesPage() {
           </button>
         </div>
       </div>
+
+      {/* Reach strip: how many of the (active, onboarded) staff a reminder/announcement actually
+          reaches, for the branch in view — plus a one-tap way to list exactly who is missing so a
+          manager can help them turn it on. Hidden until the roster is loaded. */}
+      {reachPool.length > 0 && (
+        <div
+          className="card"
+          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 16px', marginBottom: 12 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 22 }}>🔔</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>
+                Bildiriş {reachOn}/{reachPool.length} işçiyə çatır{' '}
+                <span className="muted" style={{ fontWeight: 600 }}>({reachPct}%)</span>
+              </div>
+              <div className="muted" style={{ fontSize: 12 }}>
+                {noPushCount === 0
+                  ? 'Hamıya çatır — bütün işçilər bildirişi açıb.'
+                  : `${noPushCount} işçiyə növbə xatırlatması və elan çatmır.`}
+              </div>
+            </div>
+          </div>
+          {/* Track fill mirrors the percentage. */}
+          <div style={{ flex: 1, minWidth: 120, height: 8, borderRadius: 999, background: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${reachPct}%`,
+                height: '100%',
+                borderRadius: 999,
+                background: reachPct >= 80 ? '#2e7d32' : reachPct >= 50 ? '#c98a00' : '#c0392b',
+                transition: 'width .4s ease',
+              }}
+            />
+          </div>
+          {noPushCount > 0 && (
+            <button
+              className={`btn btn-sm${onlyNoPush ? ' btn-primary' : ''}`}
+              onClick={() => setOnlyNoPush((v) => !v)}
+            >
+              {onlyNoPush ? 'Hamısını göstər' : `Bildirişsiz (${noPushCount})`}
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="fb fb-err" style={{ marginBottom: 14 }}>
