@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   createSchedule,
   deleteSchedule,
@@ -98,6 +99,9 @@ export function SchedulesPage() {
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
+  // "Ərazi üzrə ayır" + "kim hansı növbədə": an area filter, and each shift row expands to its people.
+  const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
 
   async function refresh() {
     setLoading(true)
@@ -112,6 +116,16 @@ export function SchedulesPage() {
   /** How many people are on each shift — the number that decides whether it can be deleted, and the
    *  one an admin needs before editing hours that will move somebody's pay. */
   const usedBy = (id: string) => employees.filter((e) => e.scheduleId === id && e.isActive).length
+  // People on a shift within the chosen area (all areas when no filter) — for the shown count and the
+  // expander. Delete still checks usedBy (the true total), so a filter can't green-light a delete.
+  const staffOf = (id: string) =>
+    employees.filter((e) => e.scheduleId === id && e.isActive && (!filterLoc || e.locationId === filterLoc))
+  // Distinct areas that actually have staff, for the filter chips + per-shift grouping.
+  const areas = Array.from(
+    new Map(employees.filter((e) => e.isActive).map((e) => [e.locationId, e.locationName] as const)).entries(),
+  )
+    .map(([id, name]) => ({ id, name: name ?? '—' }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'az'))
 
   function startCreate() {
     setEditingId(null)
@@ -203,6 +217,20 @@ export function SchedulesPage() {
         </p>
         <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>
       </div>
+
+      {/* Ərazi üzrə ayır: filter the per-shift counts and the expander to one branch. */}
+      {areas.length > 1 && (
+        <div className="chip-row" style={{ marginBottom: 14 }}>
+          <span className={`chip${!filterLoc ? ' active' : ''}`} onClick={() => setFilterLoc(null)}>
+            Bütün ərazilər
+          </span>
+          {areas.map((a) => (
+            <span key={a.id} className={`chip${filterLoc === a.id ? ' active' : ''}`} onClick={() => setFilterLoc(a.id)}>
+              {a.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {ok && <div className="fb fb-ok" style={{ marginBottom: 12 }}><IconCheck /><span>{ok}</span></div>}
       {err && !showForm && <div className="fb fb-err" style={{ marginBottom: 12 }}><IconX /><span>{err}</span></div>}
@@ -297,22 +325,70 @@ export function SchedulesPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((s) => (
-                <tr key={s.id}>
-                  <td data-label="Ad"><b>{s.name}</b></td>
-                  <td data-label="Saatlar">
-                    {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
-                  </td>
-                  <td data-label="Günlər">{daysLabel(s)}</td>
-                  <td data-label="İşçi">{usedBy(s.id)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-sm" onClick={() => startEdit(s)}>Redaktə</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => void remove(s)}><IconTrash /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((s) => {
+                const people = staffOf(s.id)
+                const isOpen = expanded === s.id
+                // Group this shift's people by their branch — the "ərazi üzrə" cut of who is on it.
+                const byArea = new Map<string, typeof people>()
+                for (const e of people) {
+                  const key = e.locationName ?? '—'
+                  const arr = byArea.get(key)
+                  if (arr) arr.push(e)
+                  else byArea.set(key, [e])
+                }
+                const areaGroups = Array.from(byArea.entries()).sort((a, b) => a[0].localeCompare(b[0], 'az'))
+                return (
+                  <Fragment key={s.id}>
+                    <tr onClick={() => setExpanded(isOpen ? null : s.id)} style={{ cursor: 'pointer' }}>
+                      <td data-label="Ad"><b>{s.name}</b></td>
+                      <td data-label="Saatlar">
+                        {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
+                      </td>
+                      <td data-label="Günlər">{daysLabel(s)}</td>
+                      <td data-label="İşçi">
+                        <span style={{ fontWeight: 700 }}>{people.length}</span>
+                        {people.length > 0 && (
+                          <span style={{ marginLeft: 6, color: 'var(--c500)', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+                          <button className="btn btn-sm" onClick={() => startEdit(s)}>Redaktə</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => void remove(s)}><IconTrash /></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={5} style={{ background: 'var(--c50)' }}>
+                          {people.length === 0 ? (
+                            <span className="muted" style={{ fontSize: 13 }}>
+                              Bu növbədə {filterLoc ? 'bu ərazidə ' : ''}işçi yoxdur.
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {areaGroups.map(([loc, list]) => (
+                                <div key={loc}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c500)', marginBottom: 6 }}>
+                                    📍 {loc} · {list.length}
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {list.map((e) => (
+                                      <span key={e.id} style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 999, background: 'var(--white)', border: '1px solid var(--c200)', fontSize: 13 }}>
+                                        <EmployeeLink id={e.id} name={e.fullName} />
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
