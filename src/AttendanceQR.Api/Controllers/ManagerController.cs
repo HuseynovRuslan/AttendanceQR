@@ -272,8 +272,8 @@ public class ManagerController : ControllerBase
         if (!hasEmail && phone is null)
             return BadRequest(new { error = "NeedEmailOrPhone" });
 
-        var email = hasEmail ? request.Email!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
-        if (await _db.Employees.AnyAsync(e => e.Email == email, ct))
+        string? email = hasEmail ? request.Email!.Trim() : null;
+        if (email is not null && await _db.Employees.AnyAsync(e => e.Email == email, ct))
             return Conflict(new { error = "EmailAlreadyExists" });
         if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone, ct))
             return Conflict(new { error = "PhoneAlreadyExists" });

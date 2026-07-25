@@ -60,7 +60,8 @@ export function MenuPage() {
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
-        {hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
+        {/* Ayın işçisi modulu hələlik deaktivdir. */}
+        {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />
       </div>
 

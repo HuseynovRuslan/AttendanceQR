@@ -23,7 +23,6 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
             .HasMaxLength(200);
 
         builder.Property(e => e.Email)
-            .IsRequired()
             .HasMaxLength(256);
 
         builder.Property(e => e.PasswordHash)
@@ -40,9 +39,12 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.Property(e => e.ReferencePhotoKey)
             .HasMaxLength(256);
 
-        // Unique PER TENANT — the same email/phone may legitimately exist in two different companies.
+        // Unique PER TENANT, only where an email is present — a partial index so the many phone-only
+        // employees (Email NULL) don't collide with each other. NULLs are distinct in Postgres, but
+        // the filter also keeps the index small and the intent explicit.
         builder.HasIndex(e => new { e.TenantId, e.Email })
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("\"Email\" IS NOT NULL");
 
         builder.Property(e => e.PhoneNumber)
             .HasMaxLength(20);

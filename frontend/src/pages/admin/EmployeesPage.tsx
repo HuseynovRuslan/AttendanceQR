@@ -211,7 +211,7 @@ export function EmployeesPage() {
       position: e.position ?? '',
       birthYear: e.birthYear != null ? String(e.birthYear) : '',
       birthDate: e.birthDate ?? '',
-      email: e.email,
+      email: e.email ?? '',
       phoneNumber: e.phoneNumber ?? '',
       locationId: e.locationId,
       role: e.role,

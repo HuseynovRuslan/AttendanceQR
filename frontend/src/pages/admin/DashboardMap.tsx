@@ -104,7 +104,8 @@ export function DashboardMap({ sites, people }: { sites: DashSite[]; people: Das
         center={centre}
         zoom={13}
         scrollWheelZoom={false}
-        zoomControl={false}
+        zoomControl={true}
+        doubleClickZoom={true}
         attributionControl={false}
         style={{ height: '100%', width: '100%', background: '#eef2f7' }}
       >

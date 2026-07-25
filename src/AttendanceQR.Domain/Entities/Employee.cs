@@ -31,7 +31,9 @@ public class Employee : ITenantScoped, IHasWorkCycle
     // birthday greetings later. Null on older rows that only ever had a year.
     public DateOnly? BirthDate { get; set; }
 
-    public string Email { get; set; } = string.Empty;
+    // Optional — an employee may sign in by phone alone. Null when none was given (no more
+    // synthesised "emp-…@baki.local" placeholders). Unique per tenant only where present.
+    public string? Email { get; set; }
 
     // Optional alternative login identifier. Stored NORMALIZED (PhoneNumbers.Normalize) so it matches
     // however it's typed. Unique when present; null for accounts created before phone login existed.

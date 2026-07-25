@@ -451,7 +451,7 @@ export interface AdminEmployee {
   workCycleAnchor?: string | null
   /** When the employee accepted the data-processing notice; null = not yet. */
   consentAcceptedAtUtc?: string | null
-  email: string
+  email: string | null
   phoneNumber: string | null
   role: Role
   locationId: string

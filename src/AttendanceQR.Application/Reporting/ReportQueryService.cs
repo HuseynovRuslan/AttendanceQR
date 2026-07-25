@@ -112,7 +112,7 @@ public sealed class ReportQueryService : IReportQueryService
         // Admins/managers who also clock in ARE included (e.g. a director who scans); only the
         // system/root accounts in HiddenEmails are left out. Same rule as the nightly job.
         var query = _db.Employees.Where(e =>
-            e.IsActive && e.ActivatedAtUtc != null && !_hiddenEmails.Contains(e.Email.ToLower()));
+            e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())));
 
         switch (role)
         {

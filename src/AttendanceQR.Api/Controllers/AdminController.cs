@@ -46,7 +46,7 @@ public class AdminController : ControllerBase
         // accounts listed in AppOptions.HiddenEmails (e.g. admin@bms.az) — they're operators, not staff.
         var employees = await _db.Employees
             .Include(e => e.DeviceBindings)
-            .Where(e => !_hiddenEmails.Contains(e.Email.ToLower()))
+            .Where(e => e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()))
             .OrderBy(e => e.FullName)
             .ToListAsync(HttpContext.RequestAborted);
 
@@ -548,11 +548,10 @@ public class AdminController : ControllerBase
         if (!hasEmail && phone is null)
             return (null, null, "NeedEmailOrPhone");
 
-        // Email stays non-null (it's a JWT claim); synthesize a unique placeholder when only a phone
-        // was given. Login works by either identifier.
-        var email = hasEmail ? emailIn!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
+        // Phone-only employees keep a null email — no synthesised placeholder. Login works by phone.
+        string? email = hasEmail ? emailIn!.Trim() : null;
 
-        if (takenEmails.Contains(email))
+        if (email is not null && takenEmails.Contains(email))
             return (null, null, "EmailAlreadyExists");
         if (phone is not null && takenPhones.Contains(phone))
             return (null, null, "PhoneAlreadyExists");
@@ -600,8 +599,8 @@ public class AdminController : ControllerBase
         if (!hasEmail && phone is null)
             return (null, null, "NeedEmailOrPhone");
 
-        var email = hasEmail ? emailIn!.Trim() : $"emp-{Guid.NewGuid().ToString("N")[..10]}@baki.local";
-        if (takenEmails.Contains(email))
+        string? email = hasEmail ? emailIn!.Trim() : null;
+        if (email is not null && takenEmails.Contains(email))
             return (null, null, "EmailAlreadyExists");
         if (phone is not null && takenPhones.Contains(phone))
             return (null, null, "PhoneAlreadyExists");
