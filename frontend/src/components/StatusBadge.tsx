@@ -29,7 +29,28 @@ export function statusLabel(status: string): string {
   return STATUS_MAP[status]?.label ?? status
 }
 
-type StatusVisual = { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }
+export type StatusVisual = { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }
+
+// An "OnLeave" row is one of several kinds of leave, and the stored status collapses them all to one
+// value — so the badge must read the row's LeaveType to say which. Without this, every leave (sick,
+// unpaid, …) shows as "Məzuniyyət", which is simply wrong for anyone marked Xəstəlik. One place,
+// reused by every board that shows a leave row.
+export function leaveVisual(leaveType?: string | null): StatusVisual | undefined {
+  switch (leaveType) {
+    case 'Vacation':
+      return { cls: 'b-leave', label: 'Məzuniyyət', icon: 'calendar' }
+    case 'Sick':
+      return { cls: 'b-sick', label: 'Xəstəlik', icon: 'calendar' }
+    case 'Unpaid':
+      return { cls: 'b-leave', label: 'Ödənişsiz məzuniyyət', icon: 'calendar' }
+    case 'Rest':
+      return { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' }
+    case 'Permission':
+      return { cls: 'b-permission', label: 'İcazə', icon: 'check' }
+    default:
+      return undefined // unknown/missing → caller falls back to the plain status visual
+  }
+}
 
 /** `override` lets a caller replace the looked-up visual for one specific status in one context —
  *  e.g. TodayPage shows "Incomplete" as "Çıxış yoxdur" (not "İşdə") when viewing a past date. */

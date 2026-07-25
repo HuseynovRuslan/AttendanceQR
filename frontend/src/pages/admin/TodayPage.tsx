@@ -6,7 +6,7 @@ import { addLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave } from '../../api/manager'
 import { useAuth } from '../../auth/AuthContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
-import { StatusBadge, STATUS_MAP } from '../../components/StatusBadge'
+import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
 import { IconCamera, IconX } from '../../components/icons'
@@ -330,7 +330,16 @@ export function TodayPage() {
                 <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                 <td data-label="Filial">{r.locationName}</td>
                 <td data-label="Status">
-                  <StatusBadge status={r.status} override={r.status === 'Incomplete' ? incompleteOverride : undefined} />
+                  <StatusBadge
+                    status={r.status}
+                    override={
+                      r.status === 'Incomplete'
+                        ? incompleteOverride
+                        : r.status === 'OnLeave'
+                          ? leaveVisual(r.leaveType)
+                          : undefined
+                    }
+                  />
                   {/* Fix a Qayıb without leaving the board: pick a reason and it becomes a one-day
                       leave for this date, flipping the row to İcazə / Məzuniyyət / İstirahət etc. */}
                   {r.status === 'Absent' && (
