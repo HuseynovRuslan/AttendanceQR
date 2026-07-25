@@ -82,7 +82,8 @@ const ERRORS: Record<string, string> = {
 }
 
 type FormState = {
-  fullName: string
+  firstName: string
+  lastName: string
   fatherName: string
   position: string
   // Year kept only to preserve it for rows that were entered year-only (bulk import); the form edits
@@ -110,7 +111,8 @@ type FormState = {
 }
 
 const EMPTY: FormState = {
-  fullName: '',
+  firstName: '',
+  lastName: '',
   fatherName: '',
   position: '',
   birthYear: '',
@@ -127,6 +129,15 @@ const EMPTY: FormState = {
   managedLocationIds: [],
   cycle: NO_CYCLE,
   scheduleId: '',
+}
+
+/** The form edits Ad + Soyad separately. Prefer the stored parts; for a row not yet backfilled, fall
+ *  back to splitting FullName (last token = surname) so the two fields aren't empty on first edit. */
+function splitName(first: string | null | undefined, last: string | null | undefined, full: string): { first: string; last: string } {
+  if (first || last) return { first: first ?? '', last: last ?? '' }
+  const toks = (full ?? '').trim().split(/\s+/).filter(Boolean)
+  if (toks.length <= 1) return { first: toks[0] ?? '', last: '' }
+  return { first: toks.slice(0, -1).join(' '), last: toks[toks.length - 1] }
 }
 
 export function EmployeesPage() {
@@ -215,8 +226,10 @@ export function EmployeesPage() {
 
   function startEdit(e: AdminEmployee) {
     setEditingId(e.id)
+    const parts = splitName(e.firstName, e.lastName, e.fullName)
     setForm({
-      fullName: e.fullName,
+      firstName: parts.first,
+      lastName: parts.last,
       fatherName: e.fatherName ?? '',
       position: e.position ?? '',
       birthYear: e.birthYear != null ? String(e.birthYear) : '',
@@ -257,8 +270,13 @@ export function EmployeesPage() {
       return
     }
     setSaving(true)
+    const first = form.firstName.trim()
+    const last = form.lastName.trim()
     const payload = {
-      fullName: form.fullName.trim(),
+      // FullName stays the canonical display name (the backend also composes it from the parts).
+      fullName: `${first} ${last}`.trim(),
+      firstName: first || null,
+      lastName: last || null,
       email: form.email.trim() || null,
       phoneNumber: form.phoneNumber.trim() || null,
       locationId: form.locationId,
@@ -709,13 +727,20 @@ export function EmployeesPage() {
 
           <div className="form-row cols2">
             <div>
-              <label className="form-label">Ad Soyad</label>
-              <input className="inp" required value={form.fullName} onChange={(e) => set('fullName', e.target.value)} />
+              <label className="form-label">Ad</label>
+              <input className="inp" required value={form.firstName} onChange={(e) => set('firstName', e.target.value)} />
             </div>
+            <div>
+              <label className="form-label">Soyad</label>
+              <input className="inp" required value={form.lastName} onChange={(e) => set('lastName', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-row cols2">
             <div>
               <label className="form-label">Ata adı</label>
               <input className="inp" value={form.fatherName} onChange={(e) => set('fatherName', e.target.value)} />
             </div>
+            <div />
           </div>
 
           <div className="form-row cols2">

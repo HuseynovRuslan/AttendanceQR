@@ -23,7 +23,10 @@ public record InviteRequest(
     Guid? ScheduleId = null,
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
-    DateOnly? WorkCycleAnchor = null);
+    DateOnly? WorkCycleAnchor = null,
+    // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
+    string? FirstName = null,
+    string? LastName = null);
 
 /// <summary>Edit an existing employee's profile, role, location and enabled state.</summary>
 /// <param name="LocationId">Where this person WORKS — the geofence their own scans are checked against.</param>
@@ -65,4 +68,7 @@ public record EmployeeUpdateRequest(
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
     DateOnly? WorkCycleAnchor = null,
-    IReadOnlyList<Guid>? ManagedLocationIds = null);
+    IReadOnlyList<Guid>? ManagedLocationIds = null,
+    // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
+    string? FirstName = null,
+    string? LastName = null);

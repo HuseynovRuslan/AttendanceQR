@@ -30,6 +30,8 @@ export interface DayAttendanceRow {
   leaveType?: string | null
   /** Name of the admin/manager who assigned the leave, for attribution on the board. */
   leaveAssignedBy?: string | null
+  /** The single-day leave's id — lets the board revert/change it in place. Null for multi-day leaves. */
+  leaveId?: string | null
 }
 
 export interface EmployeeReportRow {
@@ -403,6 +405,9 @@ export interface InviteResult {
 
 export interface InvitePayload {
   fullName: string
+  /** Structured name parts; the backend composes fullName as "firstName lastName" when both are set. */
+  firstName?: string | null
+  lastName?: string | null
   email?: string | null
   phoneNumber?: string | null
   locationId: string
@@ -434,6 +439,8 @@ export interface InvitePayload {
 export interface AdminEmployee {
   id: string
   fullName: string
+  firstName: string | null
+  lastName: string | null
   fatherName: string | null
   position: string | null
   birthYear: number | null

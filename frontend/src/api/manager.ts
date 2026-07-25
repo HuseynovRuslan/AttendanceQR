@@ -11,6 +11,8 @@ export interface ManagerLocation {
 export interface ManagerEmployee {
   id: string
   fullName: string
+  firstName: string | null
+  lastName: string | null
   fatherName: string | null
   position: string | null
   phoneNumber: string | null
@@ -35,6 +37,8 @@ export interface ManagerEmployee {
 // No salary, no role — a manager sets neither, so the shape carries neither.
 export interface ManagerEmployeeInput {
   fullName: string
+  firstName?: string | null
+  lastName?: string | null
   email: string | null
   phoneNumber: string | null
   fatherName: string | null

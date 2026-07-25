@@ -23,4 +23,7 @@ public record ManagerEmployeeRequest(
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
     DateOnly? WorkCycleAnchor = null,
-    bool IsActive = true);
+    bool IsActive = true,
+    // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
+    string? FirstName = null,
+    string? LastName = null);

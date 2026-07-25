@@ -16,6 +16,12 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
             .IsRequired()
             .HasMaxLength(200);
 
+        builder.Property(e => e.FirstName)
+            .HasMaxLength(100);
+
+        builder.Property(e => e.LastName)
+            .HasMaxLength(100);
+
         builder.Property(e => e.FatherName)
             .HasMaxLength(200);
 

@@ -15,7 +15,15 @@ public class Employee : ITenantScoped, IHasWorkCycle
     // Multi-tenancy: which company (Tenant) this row belongs to.
     public Guid TenantId { get; set; }
 
+    // Canonical display name, kept as "Ad Soyad". Still the field the whole app reads, searches and
+    // sorts by — FirstName/LastName below are the structured source it is composed from on write, so
+    // no query, report or export had to change. Backfilled from the old FullName by surname suffix.
     public string FullName { get; set; } = string.Empty;
+
+    // Structured name parts. Nullable because older rows (and system accounts) predate the split; the
+    // employee form writes all three, and FullName is set to "FirstName LastName" whenever they are.
+    public string? FirstName { get; set; }
+    public string? LastName { get; set; }
 
     // Optional profile fields shown in the admin employee list. Nullable so existing rows and
     // admin/manager accounts that don't need them are unaffected.

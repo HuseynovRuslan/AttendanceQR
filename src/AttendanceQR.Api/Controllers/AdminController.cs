@@ -77,6 +77,8 @@ public class AdminController : ControllerBase
             {
                 id = e.Id,
                 fullName = e.FullName,
+                firstName = e.FirstName,
+                lastName = e.LastName,
                 fatherName = e.FatherName,
                 position = e.Position,
                 birthYear = e.BirthYear,
@@ -170,7 +172,10 @@ public class AdminController : ControllerBase
                 ? Conflict(new { error })
                 : BadRequest(new { error });
 
-        employee!.MonthlySalary = request.MonthlySalary;
+        // Structured name: compose FullName from Ad + Soyad when the form sent them.
+        (employee!.FullName, employee.FirstName, employee.LastName) =
+            EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
+        employee.MonthlySalary = request.MonthlySalary;
         employee.BirthDate = request.BirthDate;
         if (request.BirthDate is { } dob)
             employee.BirthYear = dob.Year;   // keep the year in sync so the fallback display agrees
@@ -671,7 +676,8 @@ public class AdminController : ControllerBase
         if (employee.Role != request.Role || employee.IsActive != request.IsActive)
             employee.TokenVersion++;
 
-        employee.FullName = request.FullName;
+        (employee.FullName, employee.FirstName, employee.LastName) =
+            EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
         employee.Email = email;
         employee.PhoneNumber = phone;
         employee.FatherName = request.FatherName;

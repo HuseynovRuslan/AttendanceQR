@@ -227,6 +227,8 @@ public class ManagerController : ControllerBase
             {
                 id = e.Id,
                 fullName = e.FullName,
+                firstName = e.FirstName,
+                lastName = e.LastName,
                 fatherName = e.FatherName,
                 position = e.Position,
                 phoneNumber = e.PhoneNumber,
@@ -248,7 +250,7 @@ public class ManagerController : ControllerBase
 
         return Ok(rows.Select(r => new
         {
-            r.id, r.fullName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
+            r.id, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
@@ -279,9 +281,13 @@ public class ManagerController : ControllerBase
             return Conflict(new { error = "PhoneAlreadyExists" });
 
         var tempPin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var (composedName, firstName, lastName) =
+            EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
         var employee = new Employee
         {
-            FullName = request.FullName.Trim(),
+            FullName = composedName,
+            FirstName = firstName,
+            LastName = lastName,
             Email = email,
             PhoneNumber = phone,
             FatherName = string.IsNullOrWhiteSpace(request.FatherName) ? null : request.FatherName.Trim(),
@@ -337,7 +343,8 @@ public class ManagerController : ControllerBase
         if (employee.IsActive != request.IsActive)
             employee.TokenVersion++;
 
-        employee.FullName = request.FullName.Trim();
+        (employee.FullName, employee.FirstName, employee.LastName) =
+            EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
         employee.Email = email;
         employee.PhoneNumber = phone;
         employee.FatherName = string.IsNullOrWhiteSpace(request.FatherName) ? null : request.FatherName.Trim();

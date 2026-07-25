@@ -16,10 +16,18 @@ import { getManagerSchedules, type ManagerSchedule } from '../../api/manager'
 import './manager.css'
 
 const EMPTY: ManagerEmployeeInput = {
-  fullName: '', email: null, phoneNumber: null, fatherName: null, position: null,
+  fullName: '', firstName: '', lastName: '', email: null, phoneNumber: null, fatherName: null, position: null,
   locationId: '', birthDate: null, birthYear: null, workStart: null, workEnd: null,
   scheduleId: null, workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
   photoExempt: false, isActive: true,
+}
+
+/** Prefer stored parts; fall back to splitting FullName (last token = surname) for un-backfilled rows. */
+function splitName(first: string | null | undefined, last: string | null | undefined, full: string): { first: string; last: string } {
+  if (first || last) return { first: first ?? '', last: last ?? '' }
+  const toks = (full ?? '').trim().split(/\s+/).filter(Boolean)
+  if (toks.length <= 1) return { first: toks[0] ?? '', last: '' }
+  return { first: toks.slice(0, -1).join(' '), last: toks[toks.length - 1] }
 }
 
 const ERRORS: Record<string, string> = {
@@ -77,8 +85,10 @@ export function ManagerEmployeesPage() {
   }
 
   function startEdit(e: ManagerEmployee) {
+    const nm = splitName(e.firstName, e.lastName, e.fullName)
     setForm({
-      fullName: e.fullName, email: e.email.endsWith('@baki.local') ? null : e.email,
+      fullName: e.fullName, firstName: nm.first, lastName: nm.last,
+      email: e.email.endsWith('@baki.local') ? null : e.email,
       phoneNumber: e.phoneNumber, fatherName: e.fatherName, position: e.position,
       locationId: e.locationId, birthDate: e.birthDate, birthYear: e.birthYear,
       workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt, isActive: e.isActive,
@@ -93,9 +103,11 @@ export function ManagerEmployeesPage() {
   async function save() {
     setBusy(true)
     setErr(null)
+    // FullName stays canonical (backend also composes it) — build it from the two name fields.
+    const payload = { ...form, fullName: `${(form.firstName ?? '').trim()} ${(form.lastName ?? '').trim()}`.trim() }
     const res = editing === 'new'
-      ? await createManagerEmployee(form)
-      : await updateManagerEmployee(editing!, form)
+      ? await createManagerEmployee(payload)
+      : await updateManagerEmployee(editing!, payload)
     setBusy(false)
     if (res.status === 200 && res.data && 'id' in res.data) {
       if ('tempPin' in res.data) setPin({ name: form.fullName, pin: res.data.tempPin as string })
@@ -141,9 +153,15 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           <div className="card-title">{editing === 'new' ? 'Yeni işçi' : 'İşçini redaktə et'}</div>
           <div className="form-row cols2">
             <div>
-              <label className="form-label">Ad Soyad *</label>
-              <input className="inp" value={form.fullName} onChange={(e) => set('fullName', e.target.value)} />
+              <label className="form-label">Ad *</label>
+              <input className="inp" value={form.firstName ?? ''} onChange={(e) => set('firstName', e.target.value)} />
             </div>
+            <div>
+              <label className="form-label">Soyad *</label>
+              <input className="inp" value={form.lastName ?? ''} onChange={(e) => set('lastName', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-row cols2">
             <div>
               <label className="form-label">Ata adı</label>
               <input className="inp" value={form.fatherName ?? ''} onChange={(e) => set('fatherName', e.target.value || null)} />

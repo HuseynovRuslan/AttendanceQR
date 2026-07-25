@@ -127,6 +127,10 @@ export function EmployeeProfilePage() {
     setErr(null)
     const r = await updateEmployee(emp.id, {
       fullName: emp.fullName,
+      // Re-sent like the rest — an omitted part would blank it and the backend would recompose the
+      // name from the remaining fields.
+      firstName: emp.firstName,
+      lastName: emp.lastName,
       email: emp.email || null,
       phoneNumber: emp.phoneNumber,
       locationId: emp.locationId,
