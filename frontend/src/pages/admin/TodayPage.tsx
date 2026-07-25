@@ -382,7 +382,8 @@ export function TodayPage() {
                         title="Bu qayıba səbəb təyin et"
                         onClick={() => setReasonFor(r.employeeId)}
                       >
-                        <IconClipboard /> Səbəb yaz
+                        <IconClipboard />
+                        <span className="lbl">Səbəb yaz</span>
                       </button>
                     )
                   )}
