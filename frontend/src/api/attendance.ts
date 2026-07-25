@@ -73,6 +73,10 @@ export interface MyProfile {
   unverifiedCheckIns?: number
   /** Whether the most recent check-in was one of them; the scan screen warns before the camera opens. */
   lastCheckInUnverified?: boolean
+  /** The employee's effective shift hours ("HH:mm"), so the home screen can tell when a still-open
+   *  check-in is overdue (shift is over) and nudge them to check out. */
+  shiftStart?: string | null
+  shiftEnd?: string | null
 }
 
 /** Records the employee's acceptance of the data-processing notice. Idempotent — the first

@@ -104,6 +104,8 @@ public class AttendanceController : ControllerBase
                 photoRequired = !e.PhotoExempt,
                 // The app blocks on the consent screen until this is accepted.
                 consentRequired = e.ConsentAcceptedAtUtc == null,
+                e.LocationId, e.ScheduleId,
+                e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
                 locationName = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.Name)
@@ -113,6 +115,23 @@ public class AttendanceController : ControllerBase
 
         if (profile is null)
             return NotFound(new { error = "NotFound" });
+
+        // The employee's effective shift END, so the home screen can escalate a still-open check-in to
+        // "your shift is over, don't forget to check out" — the mobile side of the forgotten-checkout
+        // problem. Resolved the same way the scan and reports do; null if the location vanished.
+        string? shiftEnd = null, shiftStart = null;
+        var loc = await _db.Locations.FirstOrDefaultAsync(l => l.Id == profile.LocationId, HttpContext.RequestAborted);
+        if (loc is not null)
+        {
+            var sched = profile.ScheduleId is Guid schId
+                ? await _db.Schedules.FirstOrDefaultAsync(s => s.Id == schId, HttpContext.RequestAborted)
+                : null;
+            var shift = EffectiveShift.Resolve(
+                profile.WorkStart, profile.WorkEnd, profile.WorkCycleDays, profile.WorkCycleOnDays,
+                profile.WorkCycleAnchor, sched, loc);
+            shiftStart = shift.Start.ToString("HH:mm");
+            shiftEnd = shift.End.ToString("HH:mm");
+        }
 
         // Check-ins this month whose photo showed no face. Told to the employee themselves, not only
         // to an auditor: people correct a habit they can see a count of, long before anyone has to
@@ -134,6 +153,7 @@ public class AttendanceController : ControllerBase
         {
             profile.fullName, profile.email, profile.role, profile.position, profile.birthDate,
             profile.photoRequired, profile.consentRequired, profile.locationName,
+            shiftStart, shiftEnd,
             unverifiedCheckIns = unverified,
             lastCheckInUnverified = lastWasUnverified,
         });
