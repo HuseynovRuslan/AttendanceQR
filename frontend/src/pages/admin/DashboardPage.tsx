@@ -155,7 +155,9 @@ export function DashboardPage() {
       if (r.checkInAtUtc) ev.push({ id: r.employeeId + 'i', name: r.employeeName, loc: r.locationName, type: 'in', at: r.checkInAtUtc })
       if (r.checkOutAtUtc) ev.push({ id: r.employeeId + 'o', name: r.employeeName, loc: r.locationName, type: 'out', at: r.checkOutAtUtc })
     }
-    return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 14)
+    // The whole day, newest first — the panel scrolls (see .lux-feed), so every check-in and
+    // check-out of today is here, not just the last handful. The cap is only a DOM backstop.
+    return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 500)
   }, [rows])
 
   const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, dayOff: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0 }
@@ -342,7 +344,10 @@ export function DashboardPage() {
         </div>
 
         <div className="card lux-panel">
-          <div className="lux-panel-h"><span>Son fəaliyyət</span></div>
+          <div className="lux-panel-h">
+            <span>Son fəaliyyət</span>
+            {activity.length > 0 && <span className="muted">bu gün · {activity.length} hərəkət</span>}
+          </div>
           {activity.length === 0 ? (
             <div className="muted" style={{ padding: '10px 16px' }}>Bu gün hələ hərəkət yoxdur</div>
           ) : (

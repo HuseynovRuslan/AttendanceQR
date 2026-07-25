@@ -95,7 +95,7 @@ export function ProblemsMap({ rows, geofences }: { rows: ProblemRow[]; geofences
         <MapContainer
           center={centre}
           zoom={14}
-          scrollWheelZoom={false}
+          scrollWheelZoom={true}
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer
