@@ -95,7 +95,8 @@ public sealed class ReportQueryService : IReportQueryService
     /// the two callers can each project what they need (the board wants the record's photo/face/reason
     /// fields; the reports want only the figures) without computing the day twice.</summary>
     private sealed record LiveDay(
-        ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed);
+        ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed,
+        EffectiveShift Shift);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -205,7 +206,7 @@ public sealed class ReportQueryService : IReportQueryService
             // Judged against the same resolved shift the scan endpoint used.
             var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
-            rows.Add(new LiveDay(e, location, record, c));
+            rows.Add(new LiveDay(e, location, record, c, shift));
         }
 
         return rows;
@@ -636,11 +637,23 @@ public sealed class ReportQueryService : IReportQueryService
     }
 
     /// <summary>
-    /// Replaces "absent today" with the shift they are actually still on.
+    /// Keeps a NIGHT worker on today's board when their shift began yesterday and crosses midnight.
     ///
-    /// Someone checked in and not yet out is at work right now, whatever date their record carries —
-    /// so for anyone with nothing today, yesterday's row is used instead if it is still open. Applied
-    /// to the live board only; a historical day must not borrow from its neighbour.
+    /// A record is keyed by the UTC day, but the board reads the local (Baku) day, and Baku is UTC+4 —
+    /// so between 00:00 and 04:00 local a night worker who checked in at 21:00 is dated "yesterday" and
+    /// would otherwise vanish from today's board while they are still standing at work. For anyone with
+    /// nothing today, yesterday's row is substituted instead.
+    ///
+    /// Two guards, both essential, or this does more harm than the bug it fixes:
+    ///   • Only OVERNIGHT shifts. A day worker who simply forgot to check out yesterday is not at work
+    ///     today — carrying their open record over showed them "İşdə" with yesterday's check-in time,
+    ///     a time that then reads as being in the future. Their unclosed day belongs on yesterday's
+    ///     board and in /admin/open-records, not on today's.
+    ///   • Only while the shift could still be running — up to its end time plus a couple of hours of
+    ///     grace. Past that, even a night worker's open record is a forgotten check-out, not a shift in
+    ///     progress, and must not sit on the board all day.
+    ///
+    /// Live board only; a historical day must never borrow from its neighbour.
     /// </summary>
     private async Task<List<LiveDay>> CarryOverOpenShiftsAsync(
         DateOnly day, List<ScopedEmployee> employees, List<LiveDay> computed, CancellationToken ct)
@@ -652,9 +665,12 @@ public sealed class ReportQueryService : IReportQueryService
         if (withoutToday.Count == 0)
             return computed;
 
+        var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+
         var yesterday = await ComputeDayLiveAsync(day.AddDays(-1), withoutToday, ct);
         var stillOpen = yesterday
             .Where(d => d.Record?.CheckInAtUtc is not null && d.Record.CheckOutAtUtc is null)
+            .Where(d => d.Shift.IsOvernight && WithinOvernightWindow(d.Shift, nowLocal))
             .ToDictionary(d => d.Employee.Id);
         if (stillOpen.Count == 0)
             return computed;
@@ -662,6 +678,19 @@ public sealed class ReportQueryService : IReportQueryService
         return computed
             .Select(d => stillOpen.TryGetValue(d.Employee.Id, out var open) ? open : d)
             .ToList();
+    }
+
+    /// <summary>
+    /// Whether an overnight shift that started yesterday could still be running at <paramref name="nowLocal"/>.
+    /// True from midnight up to the shift's end time plus two hours of grace — so a 21:00–07:00 shift
+    /// carries over until 09:00, covering both the "still working" window and a late check-out, then
+    /// stops so a forgotten check-out does not linger on the board into the evening.
+    /// </summary>
+    internal static bool WithinOvernightWindow(EffectiveShift shift, TimeOnly nowLocal)
+    {
+        var cutoff = shift.End.AddHours(2);
+        // End is a morning time for an overnight shift, so the window is simply [00:00, end+2h].
+        return nowLocal <= cutoff;
     }
 
     public async Task<(ReportAccess Access, ProblemsReport? Report)> GetProblemsAsync(

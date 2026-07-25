@@ -15,4 +15,8 @@
     <PackageReference Include="ClosedXML" Version="0.104.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AttendanceQR.Application.Tests" />
+  </ItemGroup>
+
 </Project>
