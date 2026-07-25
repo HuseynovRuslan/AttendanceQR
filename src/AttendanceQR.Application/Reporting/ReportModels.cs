@@ -105,7 +105,10 @@ public sealed record DayAttendanceRow(
     string? LeaveType = null,
     // Name of the admin/manager who pinned this leave (LeaveRecord.CreatedByEmployeeId), so the board
     // can say who assigned the reason. Null when there is no leave for the day.
-    string? LeaveAssignedBy = null);
+    string? LeaveAssignedBy = null,
+    // The single-day leave's id, so the board can undo/change it in place (revert to Qayıb). Null for
+    // a multi-day leave — those are managed in /admin/leaves, not wiped from one day's board.
+    Guid? LeaveId = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

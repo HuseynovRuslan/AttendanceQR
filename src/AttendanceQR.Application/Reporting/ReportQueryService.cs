@@ -96,7 +96,7 @@ public sealed class ReportQueryService : IReportQueryService
     /// fields; the reports want only the figures) without computing the day twice.</summary>
     private sealed record LiveDay(
         ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed,
-        EffectiveShift Shift, LeaveType? Leave, string? LeaveAssignedBy = null);
+        EffectiveShift Shift, LeaveType? Leave, string? LeaveAssignedBy = null, Guid? LeaveId = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -183,7 +183,7 @@ public sealed class ReportQueryService : IReportQueryService
 
         var leaveRows = await _db.LeaveRecords
             .Where(l => l.FromDate <= date && l.ToDate >= date && employeeIds.Contains(l.EmployeeId))
-            .Select(l => new { l.EmployeeId, l.Type, l.CreatedByEmployeeId })
+            .Select(l => new { l.Id, l.EmployeeId, l.Type, l.CreatedByEmployeeId, l.FromDate, l.ToDate })
             .ToListAsync(ct);
         var leaveByEmployee = leaveRows
             .GroupBy(l => l.EmployeeId)
@@ -210,10 +210,14 @@ public sealed class ReportQueryService : IReportQueryService
                                && !nonWorkingLocationIdSet.Contains(location.Id);
             LeaveType? leaveType = null;
             string? leaveAssignedBy = null;
+            Guid? leaveId = null;
             if (leaveByEmployee.TryGetValue(e.Id, out var lr))
             {
                 leaveType = lr.Type;
                 leaveAssignedBy = creatorNames.GetValueOrDefault(lr.CreatedByEmployeeId);
+                // Only a single-day leave is undoable from the board — deleting a multi-day vacation
+                // here would silently wipe its other days. Multi-day leaves are managed in /admin/leaves.
+                leaveId = lr.FromDate == lr.ToDate ? lr.Id : null;
             }
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
@@ -221,7 +225,7 @@ public sealed class ReportQueryService : IReportQueryService
             // Judged against the same resolved shift the scan endpoint used.
             var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
-            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy));
+            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId));
         }
 
         return rows;
@@ -652,7 +656,7 @@ public sealed class ReportQueryService : IReportQueryService
                 d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
                 d.Record?.WasOffline ?? false,
                 d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
-                d.Leave?.ToString(), d.LeaveAssignedBy))
+                d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId))
             .OrderBy(r => r.EmployeeName)
             .ToList();
     }

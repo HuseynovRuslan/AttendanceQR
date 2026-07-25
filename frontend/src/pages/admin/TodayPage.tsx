@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
-import { addLeave, type LeaveType } from '../../api/leaves'
-import { createManagerLeave } from '../../api/manager'
+import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
+import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
 import { useAuth } from '../../auth/AuthContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
-import { IconCamera, IconX } from '../../components/icons'
+import { IconCamera, IconPencil, IconX } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 
 function localDateISO(d: Date): string {
@@ -43,19 +43,27 @@ function statusMatches(status: string, filter: string): boolean {
 // The reasons an admin/manager can pin on a Qayıb row — each with the colour dot that matches the
 // badge it becomes (İcazə green, Məzuniyyət purple, Xəstəlik blue, Ödənişsiz amber, İstirahət grey).
 const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
-  { type: 'Permission', label: 'İcazə', dot: 'var(--leaf)' },
+  { type: 'Permission', label: 'İcazə', dot: 'var(--amber)' },
   { type: 'Vacation', label: 'Məzuniyyət', dot: 'var(--purple)' },
   { type: 'Sick', label: 'Xəstəlik', dot: 'var(--blue)' },
-  { type: 'Unpaid', label: 'Ödənişsiz', dot: 'var(--amber)' },
+  { type: 'Unpaid', label: 'Ödənişsiz', dot: 'var(--clay)' },
   { type: 'Rest', label: 'İstirahət', dot: 'var(--c400)' },
 ]
 
 export function TodayPage() {
   const { role } = useAuth()
   const [assigningId, setAssigningId] = useState<string | null>(null)
-  // Which absent row currently has its reason-picker open. A quiet "+ Səbəb" opens it, so the board
-  // isn't a wall of dropdowns.
+  // Which absent row's reason menu is open, and where to float it. A pencil next to the Qayıb badge
+  // opens a dropdown; it is position:fixed so the table's overflow never clips it.
   const [reasonFor, setReasonFor] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+
+  function openReasonMenu(e: MouseEvent, employeeId: string) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    // Clamp so a menu near the right/bottom edge stays on screen.
+    setMenuPos({ top: Math.min(r.bottom + 4, window.innerHeight - 250), left: Math.min(r.left, window.innerWidth - 210) })
+    setReasonFor(employeeId)
+  }
   const todayISO = useMemo(() => localDateISO(new Date()), [])
   const [date, setDate] = useState(todayISO)
   const isToday = date === todayISO
@@ -94,11 +102,22 @@ export function TodayPage() {
   // being viewed. Managers file through their own scoped endpoint, admins through the admin one — the
   // server re-checks scope either way. The board then reloads and the row flips from Qayıb to its
   // real reason.
-  async function assignLeave(employeeId: string, type: LeaveType) {
+  async function assignLeave(employeeId: string, type: LeaveType, existingLeaveId?: string | null) {
     setAssigningId(employeeId)
+    // Changing an already-assigned reason: drop the old single-day leave first, then add the new one.
+    if (existingLeaveId) await (role === 'Manager' ? deleteManagerLeave(existingLeaveId) : deleteLeave(existingLeaveId))
     const res = role === 'Manager'
       ? await createManagerLeave({ employeeId, fromDate: date, toDate: date, type, note: null })
       : await addLeave(employeeId, date, date, type)
+    setAssigningId(null)
+    setReasonFor(null)
+    if (res.status === 200) await load()
+  }
+
+  // Undo a mistaken reason — delete the single-day leave so the row goes back to Qayıb.
+  async function removeLeave(employeeId: string, leaveId: string) {
+    setAssigningId(employeeId)
+    const res = role === 'Manager' ? await deleteManagerLeave(leaveId) : await deleteLeave(leaveId)
     setAssigningId(null)
     setReasonFor(null)
     if (res.status === 200) await load()
@@ -242,8 +261,12 @@ export function TodayPage() {
         <span className={`chip${!flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(false)}>
           Bütün işçilər
         </span>
-        <span className={`chip${flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(true)}>
-          ⚠ Yalnız bayraqlananlar{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
+        <span
+          className={`chip${flaggedOnly ? ' active' : ''}`}
+          onClick={() => setFlaggedOnly(true)}
+          title="Giriş şəklindəki üz referans şəkillə uyğun gəlməyən — yoxlanmalı girişlər"
+        >
+          ⚠ Üzü uyğun gəlməyənlər{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
         </span>
         <span className={`chip${noPhotoOnly ? ' active' : ''}`} onClick={() => setNoPhotoOnly((v) => !v)}>
           📷 Şəkilsizlər
@@ -313,7 +336,7 @@ export function TodayPage() {
             <div className="stat-sub">Xəstəlik məzuniyyətindədir</div>
           </div>
         )}
-        <div className="stat-card" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
+        <div className="stat-card amber" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
           <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
           <div className="stat-val">{counts.permission}</div>
           <div className="stat-sub">Təsdiqlənmiş icazəlidir</div>
@@ -357,48 +380,54 @@ export function TodayPage() {
                 <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                 <td data-label="Filial">{r.locationName}</td>
                 <td data-label="Status">
-                  {r.status === 'Absent' ? (
-                    // The Qayıb badge itself is the trigger — the thing you fix is the thing you click.
-                    // Clicking it reveals coloured reason options (each dot = the badge it becomes).
-                    assigningId === r.employeeId ? (
-                      <span className="muted" style={{ fontSize: 12 }}>Təyin edilir…</span>
-                    ) : reasonFor === r.employeeId ? (
-                      <div className="reason-menu">
-                        {LEAVE_OPTIONS.map((o) => (
-                          <button key={o.type} className="reason-opt" onClick={() => void assignLeave(r.employeeId, o.type)}>
-                            <span className="reason-dot" style={{ background: o.dot }} />
-                            {o.label}
-                          </button>
-                        ))}
-                        <button className="reason-opt" title="Bağla" onClick={() => setReasonFor(null)} style={{ padding: '5px 8px' }}>
-                          <IconX />
+                  {/* Pencil next to the badge on a Qayıb row (to pin a reason) or an assigned single-day
+                      leave (to change it, or revert to Qayıb). Menu is fixed so the table can't clip it. */}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                    <StatusBadge
+                      status={r.status}
+                      override={
+                        r.status === 'Incomplete'
+                          ? incompleteOverride
+                          : r.status === 'OnLeave'
+                            ? leaveVisual(r.leaveType)
+                            : undefined
+                      }
+                    />
+                    {(r.status === 'Absent' || ((r.status === 'OnLeave' || r.status === 'Permission') && r.leaveId)) && (
+                      assigningId === r.employeeId ? (
+                        <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>…</span>
+                      ) : (
+                        <button className="reason-pencil" title="Səbəb təyin et / dəyiş" onClick={(e) => openReasonMenu(e, r.employeeId)}>
+                          <IconPencil />
                         </button>
-                      </div>
-                    ) : (
-                      <button className="status-edit" title="Səbəb təyin et" onClick={() => setReasonFor(r.employeeId)}>
-                        <StatusBadge status="Absent" />
-                        <span className="status-edit-caret">▾</span>
-                      </button>
-                    )
-                  ) : (
-                    <>
-                      <StatusBadge
-                        status={r.status}
-                        override={
-                          r.status === 'Incomplete'
-                            ? incompleteOverride
-                            : r.status === 'OnLeave'
-                              ? leaveVisual(r.leaveType)
-                              : undefined
-                        }
-                      />
-                      {/* Who pinned this reason — attribution so a status flip isn't anonymous. */}
-                      {r.status === 'OnLeave' && r.leaveAssignedBy && (
-                        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                          Təyin edən: {r.leaveAssignedBy}
+                      )
+                    )}
+                    {reasonFor === r.employeeId && menuPos && (
+                      <>
+                        <div className="reason-backdrop" onClick={() => setReasonFor(null)} />
+                        <div className="reason-pop" style={{ top: menuPos.top, left: menuPos.left }}>
+                          <div className="reason-pop-h">Səbəb seçin</div>
+                          {LEAVE_OPTIONS.map((o) => (
+                            <button key={o.type} className="reason-pop-item" onClick={() => void assignLeave(r.employeeId, o.type, r.leaveId)}>
+                              <span className="reason-dot" style={{ background: o.dot }} />
+                              {o.label}
+                            </button>
+                          ))}
+                          {r.leaveId && (
+                            <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void removeLeave(r.employeeId, r.leaveId!)}>
+                              <span className="reason-dot" style={{ background: 'var(--clay)' }} />
+                              Qayıba qaytar
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </>
+                      </>
+                    )}
+                  </span>
+                  {/* Who pinned this reason — for every assigned leave (Məzuniyyət, İcazə, …). */}
+                  {r.leaveAssignedBy && (
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                      Təyin edən: {r.leaveAssignedBy}
+                    </div>
                   )}
                 </td>
                 <td className="mono" data-label="Giriş">

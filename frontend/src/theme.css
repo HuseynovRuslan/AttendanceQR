@@ -128,17 +128,20 @@ select.inp{cursor:pointer}
 .chip{border:1px solid var(--c200);background:var(--white);border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--c600);cursor:pointer}
 .chip.active{background:var(--c900);border-color:var(--c900);color:#fff}
 .divider{height:1px;background:var(--c100);margin:16px 0}
-/* Assign a reason to a Qayıb row: the badge itself is the trigger (a small ▾ hints it's editable),
-   and clicking it reveals coloured reason pills — the thing you fix is the thing you click. */
-.status-edit{display:inline-flex;align-items:center;gap:4px;background:none;border:none;padding:0;cursor:pointer}
-.status-edit-caret{color:var(--c400);font-size:11px;line-height:1;transition:color .15s}
-.status-edit:hover .status-edit-caret{color:var(--purple)}
-.reason-menu{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
-.reason-opt{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
-  border:1px solid var(--c200);background:var(--white);cursor:pointer;font-size:12px;font-weight:600;
-  color:var(--c700);transition:border-color .13s,background .13s}
-.reason-opt:hover{border-color:var(--c400);background:var(--c50)}
-.reason-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+/* Assign a reason to a Qayıb row: a pencil next to the badge opens a dropdown menu of coloured
+   reasons. The menu is position:fixed (floated at the pencil) so the table overflow never clips it. */
+.reason-pencil{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;
+  padding:3px;margin-left:4px;border-radius:6px;cursor:pointer;color:var(--c400);transition:color .15s,background .15s}
+.reason-pencil:hover{color:var(--purple);background:var(--purple-bg)}
+.reason-pencil svg{width:14px;height:14px}
+.reason-backdrop{position:fixed;inset:0;z-index:40}
+.reason-pop{position:fixed;z-index:41;min-width:186px;background:var(--white);border:1px solid var(--c200);
+  border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.16);padding:6px}
+.reason-pop-h{font-size:11px;font-weight:700;color:var(--c400);text-transform:uppercase;letter-spacing:.04em;padding:5px 10px 4px}
+.reason-pop-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;background:none;
+  border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--c800);text-align:left}
+.reason-pop-item:hover{background:var(--c50)}
+.reason-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 .link-box{background:var(--c50);border:1px dashed var(--c200);border-radius:var(--r);padding:12px 14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--c600);word-break:break-all;line-height:1.6}
 .tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--c100);color:var(--c600)}
 .muted{color:var(--c400)}
