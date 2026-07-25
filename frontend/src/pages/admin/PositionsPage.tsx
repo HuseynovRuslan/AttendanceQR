@@ -8,7 +8,7 @@ import {
   renamePosition,
   type JobPosition,
 } from '../../api/positions'
-import { IconCheck, IconX } from '../../components/icons'
+import { IconCheck, IconTrash, IconX } from '../../components/icons'
 
 /**
  * The company's job titles.
@@ -108,8 +108,10 @@ export function PositionsPage() {
     void load()
   }
 
-  const catalogue = rows.filter((r) => r.inCatalogue)
-  const orphans = rows.filter((r) => !r.inCatalogue)
+  // Alphabetical (az) — an unsorted list of 20 titles reads as noise; sorted, it scans like a catalogue.
+  const byName = (a: JobPosition, b: JobPosition) => a.name.localeCompare(b.name, 'az')
+  const catalogue = rows.filter((r) => r.inCatalogue).sort(byName)
+  const orphans = rows.filter((r) => !r.inCatalogue).sort(byName)
 
   return (
     <div>
@@ -177,70 +179,86 @@ export function PositionsPage() {
       )}
 
       <div className="card card-pad">
-        <div className="card-title">Vəzifələr ({catalogue.length})</div>
+        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span>Vəzifələr</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c600)', background: 'var(--c100)', borderRadius: 999, padding: '2px 10px' }}>
+            {catalogue.length}
+          </span>
+        </div>
         {loaded && catalogue.length === 0 && (
           <div className="muted" style={{ marginTop: 8 }}>Hələ vəzifə əlavə edilməyib.</div>
         )}
-        <table className="tbl">
-          <tbody>
-            {catalogue.map((row) => (
-              <tr key={row.id}>
-                <td style={{ fontWeight: 700 }}>
-                  {editing === row.id ? (
-                    <input
-                      className="inp"
-                      autoFocus
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void saveRename(row)
-                        if (e.key === 'Escape') reset()
-                      }}
-                      style={{ maxWidth: 260 }}
-                    />
-                  ) : row.name}
-                </td>
-                <td style={{ width: 90 }} className="muted">{row.count} işçi</td>
-                <td style={{ width: 340, textAlign: 'right' }}>
-                  {editing === row.id ? (
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void saveRename(row)}>
-                        Yadda saxla
-                      </button>
-                      <button className="btn btn-sm" onClick={() => reset()}>Ləğv</button>
+        {/* A responsive grid of compact rows, not one long bare table — 20 titles read as a catalogue
+            this way. The name itself is the rename affordance (click it), so each row carries only the
+            two genuinely destructive actions instead of three text buttons. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8, marginTop: 12 }}>
+          {catalogue.map((row) => (
+            <div
+              key={row.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, minHeight: 54,
+                padding: '8px 12px', border: '1px solid var(--c100)', borderRadius: 12, background: 'var(--white)',
+              }}
+            >
+              {editing === row.id ? (
+                <>
+                  <input
+                    className="inp"
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void saveRename(row)
+                      if (e.key === 'Escape') reset()
+                    }}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void saveRename(row)}>Saxla</button>
+                  <button className="btn btn-sm" onClick={() => reset()}>Ləğv</button>
+                </>
+              ) : mergeFrom === row.name ? (
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 6 }}>{row.name}</div>
+                  <MergeControls
+                    options={catalogue.filter((c) => c.name !== row.name).map((c) => c.name)}
+                    value={mergeInto}
+                    onChange={setMergeInto}
+                    onCancel={() => reset()}
+                    onConfirm={() => void doMerge(row)}
+                    busy={busy}
+                  />
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    title="Adını dəyiş"
+                    onClick={() => { setEditing(row.id); setEditName(row.name); setErr(null) }}
+                    style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >
+                    <div style={{ fontWeight: 700, color: 'var(--c900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {row.name}
                     </div>
-                  ) : mergeFrom === row.name ? (
-                    <MergeControls
-                      options={catalogue.filter((c) => c.name !== row.name).map((c) => c.name)}
-                      value={mergeInto}
-                      onChange={setMergeInto}
-                      onCancel={() => reset()}
-                      onConfirm={() => void doMerge(row)}
-                      busy={busy}
-                    />
-                  ) : (
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button className="btn btn-sm" onClick={() => { setEditing(row.id); setEditName(row.name); setErr(null) }}>
-                        Adını dəyiş
-                      </button>
-                      {row.count > 0 && (
-                        <button className="btn btn-sm" onClick={() => { setMergeFrom(row.name); setMergeInto(''); setErr(null) }}>
-                          Birləşdir
-                        </button>
-                      )}
-                      <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => void remove(row)}>
-                        Sil
-                      </button>
-                    </div>
+                    <div className="muted" style={{ fontSize: 12 }}>{row.count} işçi</div>
+                  </button>
+                  {row.count > 0 && (
+                    <button className="btn btn-sm" title="Başqa vəzifəyə birləşdir"
+                      onClick={() => { setMergeFrom(row.name); setMergeInto(''); setErr(null) }}>
+                      Birləşdir
+                    </button>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <button className="btn btn-sm btn-danger" title="Sil" disabled={busy} onClick={() => void remove(row)}
+                    style={{ padding: '6px 8px' }}>
+                    <IconTrash />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
         <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-          Adını dəyişəndə həmin vəzifədəki bütün işçilər yeni ada keçir. Mövcud bir adı yazsanız, iki
-          vəzifə birləşir.
+          Ada klikləyib dəyişəndə həmin vəzifədəki bütün işçilər yeni ada keçir. Mövcud bir adı
+          yazsanız, iki vəzifə birləşir.
         </div>
       </div>
     </div>
