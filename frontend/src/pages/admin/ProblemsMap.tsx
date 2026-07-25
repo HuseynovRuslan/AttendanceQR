@@ -91,7 +91,7 @@ export function ProblemsMap({ rows, geofences }: { rows: ProblemRow[]; geofences
           </div>
         )}
       </div>
-      <div style={{ height: 380, width: '100%' }}>
+      <div className="lux-map" style={{ height: 380, width: '100%' }}>
         <MapContainer
           center={centre}
           zoom={14}

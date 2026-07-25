@@ -25,6 +25,9 @@ export interface DayAttendanceRow {
   /** Where the employee stood at check-in (scan position); null on older/admin records. */
   checkInLatitude?: number | null
   checkInLongitude?: number | null
+  /** The leave type on a leave day — "Vacation"/"Sick"/"Unpaid"/"Permission"/"Rest" — since the
+   *  status collapses Vacation/Sick/Unpaid into OnLeave. Null on a non-leave day. */
+  leaveType?: string | null
 }
 
 export interface EmployeeReportRow {
@@ -71,6 +74,8 @@ export interface DailyTrendPoint {
   date: string
   checkIns: number
   checkOuts: number
+  /** Attendance rate for that day (attended ÷ expected, 0–100) — what the sparkline plots. */
+  attendanceRate: number
 }
 
 export interface WeekdayPoint {

@@ -96,7 +96,7 @@ public sealed class ReportQueryService : IReportQueryService
     /// fields; the reports want only the figures) without computing the day twice.</summary>
     private sealed record LiveDay(
         ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed,
-        EffectiveShift Shift);
+        EffectiveShift Shift, LeaveType? Leave);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -206,7 +206,7 @@ public sealed class ReportQueryService : IReportQueryService
             // Judged against the same resolved shift the scan endpoint used.
             var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
-            rows.Add(new LiveDay(e, location, record, c, shift));
+            rows.Add(new LiveDay(e, location, record, c, shift, leaveType));
         }
 
         return rows;
@@ -636,7 +636,8 @@ public sealed class ReportQueryService : IReportQueryService
                 d.Record?.FaceMatchScore, d.Record?.FaceMatchStatus.ToString() ?? "NotChecked",
                 d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
                 d.Record?.WasOffline ?? false,
-                d.Record?.CheckInLatitude, d.Record?.CheckInLongitude))
+                d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
+                d.Leave?.ToString()))
             .OrderBy(r => r.EmployeeName)
             .ToList();
     }
@@ -886,7 +887,16 @@ public sealed class ReportQueryService : IReportQueryService
 
         var trend = summaries
             .GroupBy(s => s.Date)
-            .Select(g => new DailyTrendPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null)))
+            .Select(g =>
+            {
+                // Attended = showed up at all (in and/or out); expected excludes days off, leave and
+                // permission so a holiday-heavy day doesn't read as poor attendance. Same rule as the
+                // live "today" rate, one day at a time.
+                var attended = g.Count(x => x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete);
+                var expected = g.Count(x => x.Status is not (DailySummaryStatus.DayOff or DailySummaryStatus.OnLeave or DailySummaryStatus.Permission));
+                var rate = expected > 0 ? Math.Round(attended * 100.0 / expected, 1) : 0;
+                return new DailyTrendPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null), rate);
+            })
             .OrderBy(p => p.Date)
             .ToList();
 

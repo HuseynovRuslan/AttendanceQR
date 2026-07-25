@@ -20,7 +20,6 @@ import {
   IconMapPin,
   IconMenu,
   IconPhone,
-  IconRefresh,
   IconSun,
   IconUsers,
   IconX,
@@ -32,7 +31,6 @@ const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial me
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
   '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
-  '/admin/live': { title: 'Canlı lövhə', sub: 'İndi kim işdədir — hər 20 saniyədə avtomatik yenilənir' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
@@ -93,7 +91,6 @@ export function AdminLayout() {
 
   const links = [
     ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
-    { to: '/admin/live', label: 'Canlı lövhə', Icon: IconRefresh },
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },

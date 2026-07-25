@@ -13,7 +13,7 @@ import {
   type DeviceBinding,
   type InviteResult,
 } from '../../api/admin'
-import { getEmployeeAttendance, getPhotoUrl } from '../../api/attendance'
+import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecord, adminClearCheckout } from '../../api/attendance'
 import type { AttendanceRecord } from '../../api/attendance'
 import { RecordBadge } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
@@ -40,6 +40,17 @@ export function EmployeeProfilePage() {
   const [err, setErr] = useState<string | null>(null)
   const [pin, setPin] = useState<string | null>(null)
   const [invite, setInvite] = useState<InviteResult | null>(null)
+  // Attendance correction, in place — so a wrong day is fixed from the profile, not by hopping back
+  // to the employees list. Same admin endpoints the list used.
+  const [editRecId, setEditRecId] = useState<string | null>(null)
+  const [editIn, setEditIn] = useState('')
+  const [editOut, setEditOut] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [crDate, setCrDate] = useState('')
+  const [crIn, setCrIn] = useState('')
+  const [crOut, setCrOut] = useState('')
+  const [recBusy, setRecBusy] = useState(false)
+  const [recErr, setRecErr] = useState<string | null>(null)
 
   useEffect(() => {
     void load()
@@ -143,6 +154,57 @@ export function EmployeeProfilePage() {
     await revokeDeviceBinding(devId)
     setBusy(false)
     void load()
+  }
+
+  // --- attendance correction (record edit / create / clear checkout) ----------
+  const toInput = (iso: string | null) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+  const fromInput = (local: string) => (local ? new Date(local).toISOString() : undefined)
+
+  function startEditRecord(r: AttendanceRecord) {
+    setEditRecId(r.recordId)
+    setEditIn(toInput(r.checkInAtUtc))
+    setEditOut(toInput(r.checkOutAtUtc))
+    setRecErr(null)
+  }
+
+  async function saveEditRecord() {
+    if (!editRecId) return
+    setRecBusy(true); setRecErr(null)
+    const { status } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut))
+    setRecBusy(false)
+    if (status === 200) { setEditRecId(null); void load() }
+    else setRecErr('Qeyd dəyişmədi')
+  }
+
+  async function clearCheckout(recordId: string) {
+    if (!window.confirm('Çıxış qeydi silinsin? İşçi yenidən çıxış edə biləcək.')) return
+    setRecBusy(true); setRecErr(null)
+    const { status } = await adminClearCheckout(recordId)
+    setRecBusy(false)
+    if (status === 200) void load()
+    else setRecErr('Çıxış silinmədi')
+  }
+
+  async function createRecord() {
+    if (!emp || !crDate || !crIn) { setRecErr('Tarix və giriş vaxtı seçin'); return }
+    const checkIn = fromInput(`${crDate}T${crIn}`)
+    const checkOut = crOut ? fromInput(`${crDate}T${crOut}`) : undefined
+    if (!checkIn) { setRecErr('Giriş vaxtı düzgün deyil'); return }
+    setRecBusy(true); setRecErr(null)
+    const { status, data } = await adminCreateRecord(emp.id, crDate, checkIn, checkOut)
+    setRecBusy(false)
+    if (status === 200) {
+      setShowCreate(false); setCrDate(''); setCrIn(''); setCrOut('')
+      void load()
+    } else {
+      const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
+      setRecErr(code === 'RecordAlreadyExists' ? 'Bu gün üçün artıq qeyd var' : 'Qeyd yaradılmadı')
+    }
   }
 
   if (loading) return <p className="muted" style={{ padding: 24 }}>Yüklənir…</p>
@@ -250,26 +312,76 @@ export function EmployeeProfilePage() {
         </div>
       )}
 
-      {/* Recent attendance */}
+      {/* Recent attendance — with in-place correction, so a wrong day is fixed here, not from the list. */}
       <div className="card card-pad">
-        <div className="card-title">Son davamiyyət</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div className="card-title" style={{ margin: 0 }}>Son davamiyyət</div>
+          <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setShowCreate((v) => !v); setRecErr(null) }}>
+            + Qeyd əlavə et
+          </button>
+        </div>
+
+        {recErr && <div className="fb fb-err" style={{ marginBottom: 10 }}><IconX /><span>{recErr}</span></div>}
+
+        {showCreate && (
+          <div className="card card-pad" style={{ marginBottom: 12, background: 'var(--c50)' }}>
+            <div className="form-row cols2">
+              <div><label className="form-label">Tarix</label><input className="inp" type="date" value={crDate} onChange={(e) => setCrDate(e.target.value)} /></div>
+              <div><label className="form-label">Giriş</label><input className="inp" type="time" value={crIn} onChange={(e) => setCrIn(e.target.value)} /></div>
+            </div>
+            <div style={{ maxWidth: 200, marginBottom: 12 }}>
+              <label className="form-label">Çıxış (istəyə bağlı)</label>
+              <input className="inp" type="time" value={crOut} onChange={(e) => setCrOut(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary btn-sm" disabled={recBusy} onClick={() => void createRecord()}>{recBusy ? 'Yaradılır…' : 'Yarat'}</button>
+              <button className="btn btn-sm" onClick={() => setShowCreate(false)}>Ləğv et</button>
+            </div>
+          </div>
+        )}
+
         {recent.length === 0 ? (
           <p className="muted" style={{ fontSize: 13 }}>Qeyd yoxdur.</p>
         ) : (
           <div className="tbl-wrap tbl-cards">
             <table>
               <thead>
-                <tr><th>Tarix</th><th>Status</th><th>Giriş</th><th>Çıxış</th><th>Müddət</th></tr>
+                <tr><th>Tarix</th><th>Status</th><th>Giriş</th><th>Çıxış</th><th>Müddət</th><th></th></tr>
               </thead>
               <tbody>
                 {recent.map((r) => (
-                  <tr key={r.recordId}>
-                    <td>{fmtDate(r.attendanceDate)}</td>
-                    <td><RecordBadge r={r} /></td>
-                    <td className="mono">{fmtTime(r.checkInAtUtc)}</td>
-                    <td className="mono">{fmtTime(r.checkOutAtUtc)}</td>
-                    <td className="mono">{r.checkInAtUtc && r.checkOutAtUtc ? fmtDuration(r.checkInAtUtc, r.checkOutAtUtc) : '—'}</td>
-                  </tr>
+                  editRecId === r.recordId ? (
+                    <tr key={r.recordId}>
+                      <td data-label="Tarix">{fmtDate(r.attendanceDate)}</td>
+                      <td colSpan={3} data-label="Düzəliş">
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <input className="inp" style={{ width: 200 }} type="datetime-local" value={editIn} onChange={(e) => setEditIn(e.target.value)} />
+                          <input className="inp" style={{ width: 200 }} type="datetime-local" value={editOut} onChange={(e) => setEditOut(e.target.value)} />
+                        </div>
+                      </td>
+                      <td></td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button className="btn btn-primary btn-sm" disabled={recBusy} onClick={() => void saveEditRecord()}>Yadda saxla</button>
+                          <button className="btn btn-sm" onClick={() => setEditRecId(null)}>Ləğv</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={r.recordId}>
+                      <td data-label="Tarix">{fmtDate(r.attendanceDate)}</td>
+                      <td data-label="Status"><RecordBadge r={r} /></td>
+                      <td className="mono" data-label="Giriş">{fmtTime(r.checkInAtUtc)}</td>
+                      <td className="mono" data-label="Çıxış">{fmtTime(r.checkOutAtUtc)}</td>
+                      <td className="mono" data-label="Müddət">{r.checkInAtUtc && r.checkOutAtUtc ? fmtDuration(r.checkInAtUtc, r.checkOutAtUtc) : '—'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
+                          {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  )
                 ))}
               </tbody>
             </table>

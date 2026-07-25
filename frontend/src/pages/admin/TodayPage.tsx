@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
 import { addLeave, type LeaveType } from '../../api/leaves'
@@ -54,7 +55,10 @@ export function TodayPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  // A caller can deep-link a pre-applied status filter, e.g. the dashboard's "Bu gün gəlməyib" →
+  // /admin/today?status=absent. Read once at mount.
+  const [searchParams] = useSearchParams()
+  const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get('status'))
   const [search, setSearch] = useState('')
   const [noPhotoOnly, setNoPhotoOnly] = useState(false)
   const [exporting, setExporting] = useState(false)

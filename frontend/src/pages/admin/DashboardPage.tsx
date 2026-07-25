@@ -23,20 +23,31 @@ import { fmtTime } from '../../lib/format'
  * restated the same numbers a third time and nobody read them.
  */
 
-type Bucket = 'in' | 'done' | 'absent' | 'total'
+type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest'
 
-/** Which today-row belongs to which tappable bucket. Mirrors the counts below exactly, so a pill and
- *  the list it opens can never disagree. */
-function inBucket(status: string, bucket: Bucket): boolean {
-  if (bucket === 'total') return true
-  if (bucket === 'done') return status === 'OnTime' || status === 'Late'
-  if (bucket === 'absent') return status === 'Absent'
-  // "in" = still at work (checked in, not out) — Incomplete, plus the not-yet-due Pending, which is
-  // "expected today" more than any other bucket.
-  return status === 'Incomplete' || status === 'Pending'
+const BUCKET_LABEL: Record<Bucket, string> = {
+  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir',
+  sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə', rest: 'İstirahət',
 }
 
-const BUCKET_LABEL: Record<Bucket, string> = { in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', total: 'Ümumi işçi' }
+/** Which today-row belongs to which tappable bucket. Vacation / Sick / Unpaid share the OnLeave
+ *  status, so they are told apart by the row's leaveType — which is exactly why Sick used to show as
+ *  "Məzuniyyət" until the board started carrying the leave type. Mirrors the counts below exactly. */
+function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
+  switch (bucket) {
+    case 'total': return true
+    case 'done': return r.status === 'OnTime' || r.status === 'Late'
+    case 'absent': return r.status === 'Absent'
+    case 'in': return r.status === 'Incomplete'
+    case 'pending': return r.status === 'Pending'
+    case 'permission': return r.status === 'Permission'
+    case 'rest': return r.status === 'DayOff'
+    case 'sick': return r.status === 'OnLeave' && r.leaveType === 'Sick'
+    case 'unpaid': return r.status === 'OnLeave' && r.leaveType === 'Unpaid'
+    case 'vacation': return r.status === 'OnLeave' && r.leaveType !== 'Sick' && r.leaveType !== 'Unpaid'
+    default: return false
+  }
+}
 
 /** Eases a number from its previous value to the target (easeOutCubic); counts up from 0 on mount,
  *  ticks smoothly on each poll, and jumps straight to the value under reduced-motion. */
@@ -147,18 +158,23 @@ export function DashboardPage() {
     return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 14)
   }, [rows])
 
-  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, dayOff: 0, onLeave: 0, permission: 0 }
+  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, dayOff: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0 }
   for (const r of rows) {
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'Pending') counts.pending++
     else if (r.status === 'DayOff') counts.dayOff++
-    else if (r.status === 'OnLeave') counts.onLeave++
     else if (r.status === 'Permission') counts.permission++
+    else if (r.status === 'OnLeave') {
+      if (r.leaveType === 'Sick') counts.sick++
+      else if (r.leaveType === 'Unpaid') counts.unpaid++
+      else counts.vacation++
+    }
     else counts.incomplete++
   }
   const total = rows.length
-  const notExpected = counts.dayOff + counts.onLeave + counts.permission
+  const onLeaveTotal = counts.sick + counts.vacation + counts.unpaid
+  const notExpected = counts.dayOff + onLeaveTotal + counts.permission
   const expected = total - notExpected
   const attended = counts.present + counts.incomplete
   const overallRate = expected ? Math.round((attended / expected) * 100) : 0
@@ -223,7 +239,7 @@ export function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, manual.from, manual.to])
 
-  const spark = useMemo(() => (report?.trend ?? []).map((t) => t.checkIns), [report])
+  const spark = useMemo(() => (report?.trend ?? []).map((t) => t.attendanceRate), [report])
   // Direction of travel: the second half of the window against the first. A rising second half is ▲.
   const delta = useMemo(() => {
     if (spark.length < 4) return 0
@@ -234,7 +250,8 @@ export function DashboardPage() {
     return Math.round(((b - a) / a) * 100)
   }, [spark])
 
-  const bucketRows = openBucket ? rows.filter((r) => inBucket(r.status, openBucket)).sort((a, b) => a.employeeName.localeCompare(b.employeeName)) : []
+  const bucketRows = openBucket ? rows.filter((r) => rowInBucket(r, openBucket)).sort((a, b) => a.employeeName.localeCompare(b.employeeName)) : []
+  const openPill = (b: Bucket) => setOpenBucket((cur) => (cur === b ? null : b))
 
   const clock = now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -259,34 +276,28 @@ export function DashboardPage() {
         <div className="lux-hero-main">
           <div className="lux-hero-label">İndi iş başında</div>
           <div className="lux-hero-num">{cOnDuty}<span className="lux-hero-unit">nəfər</span></div>
-          <div className="lux-hero-note">{cTotal} işçidən {cOnDuty}-i hazırda işdədir · gün ərzində {cRate}% iştirak</div>
+          <div className="lux-hero-note">{cTotal} işçidən {cOnDuty}-i hazırda işdədir</div>
         </div>
-        <div className="lux-hero-ring" aria-hidden="true">
-          <svg viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--c100)" strokeWidth="10" />
-            <circle
-              cx="60" cy="60" r="52" fill="none" stroke="var(--leaf)" strokeWidth="10" strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 52}
-              strokeDashoffset={2 * Math.PI * 52 * (1 - cRate / 100)}
-              transform="rotate(-90 60 60)"
-              style={{ transition: 'stroke-dashoffset .5s ease' }}
-            />
-          </svg>
-          <div className="lux-hero-ring-c">{cRate}%</div>
+        {/* One number leads; the day's attendance rate is a quiet chip, not a second big figure. */}
+        <div className="lux-hero-rate">
+          <span className="lux-hero-rate-n">{cRate}%</span>
+          <span className="lux-hero-rate-l">bugünkü iştirak</span>
         </div>
       </section>
 
       {/* Buckets as tappable pills. Order per request: Ümumi işçi first (leftmost), Tamamlayıb last
           (rightmost); the day's live states sit between. Leave/permission/rest appear only when > 0. */}
       <section className="lux-pills lux-rise lux-d3">
-        <Pill tone="slate" n={cTotal} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => setOpenBucket(openBucket === 'total' ? null : 'total')} />
-        <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => setOpenBucket(openBucket === 'in' ? null : 'in')} />
-        <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => setOpenBucket(openBucket === 'absent' ? null : 'absent')} />
-        {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Gözlənilir" />}
-        {counts.onLeave > 0 && <Pill tone="purple" n={counts.onLeave} label="Məzuniyyət" />}
-        {counts.permission > 0 && <Pill tone="purple" n={counts.permission} label="İcazə" />}
-        {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="İstirahət" />}
-        <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => setOpenBucket(openBucket === 'done' ? null : 'done')} />
+        <Pill tone="slate" n={cTotal} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
+        <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
+        <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
+        {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Gözlənilir" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
+        {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
+        {counts.vacation > 0 && <Pill tone="purple" n={counts.vacation} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}
+        {counts.unpaid > 0 && <Pill tone="purple" n={counts.unpaid} label="Ödənişsiz" active={openBucket === 'unpaid'} onClick={() => openPill('unpaid')} />}
+        {counts.permission > 0 && <Pill tone="purple" n={counts.permission} label="İcazə" active={openBucket === 'permission'} onClick={() => openPill('permission')} />}
+        {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="İstirahət" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
+        <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
       </section>
 
       {/* Tapping a pill opens the matching employee list right here. */}
@@ -352,7 +363,7 @@ export function DashboardPage() {
       {/* Attendance sparkline with a selectable window. */}
       <section className="card lux-panel lux-rise lux-d5" style={{ marginBottom: 16 }}>
         <div className="lux-panel-h">
-          <span>Davamiyyət tendensiyası</span>
+          <span>Davamiyyət faizi</span>
           <div className="lux-spanpick">
             <button className={`lux-chip${mode === '14' ? ' active' : ''}`} onClick={() => setMode('14')}>14 gün</button>
             <button className={`lux-chip${mode === 'month' ? ' active' : ''}`} onClick={() => setMode('month')}>1 ay</button>
@@ -386,7 +397,7 @@ export function DashboardPage() {
           {[
             // Goes to the today board rather than opening the pill list at the very top of the page —
             // pressing something at the bottom and having the screen jump upward reads as a glitch.
-            { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => navigate('/admin/today') },
+            { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => navigate('/admin/today?status=absent') },
             { color: 'var(--amber)', n: actions.open, label: 'Çıxışı unudulub', onClick: () => navigate('/admin/open-records') },
             { color: 'var(--blue)', n: actions.devices, label: 'Cihaz təsdiqi gözləyir', onClick: () => navigate('/admin/device-changes') },
             { color: 'var(--clay)', n: actions.problems, label: 'Problemli skan (bu gün)', onClick: () => navigate('/admin/problems') },

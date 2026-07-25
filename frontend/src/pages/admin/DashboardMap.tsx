@@ -1,6 +1,10 @@
-import { useEffect, useMemo } from 'react'
-import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { useEffect, useMemo, useState } from 'react'
+import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
+
+/** Below this zoom, individual people pile into an unreadable blob at a small site, so the map shows
+ *  one marker per site sized by its headcount. Zoom in past it and the people themselves appear. */
+const PEOPLE_ZOOM = 15
 
 /**
  * The company's people on a light map — each a dot where they actually scanned in, green if still on
@@ -70,16 +74,25 @@ function FitTo({ sites, people }: { sites: DashSite[]; people: DashPerson[] }) {
   return null
 }
 
+/** Tracks the current zoom so the map can switch between site markers and individual people. */
+function ZoomWatch({ onZoom }: { onZoom: (z: number) => void }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) })
+  return null
+}
+
 export function DashboardMap({ sites, people }: { sites: DashSite[]; people: DashPerson[] }) {
+  const [zoom, setZoom] = useState(13)
+
   const centre = useMemo<[number, number]>(() => {
     if (sites.length === 0) return [40.4093, 49.8671] // Baku
     const c = densestCluster(sites)
     return [c.reduce((s, x) => s + x.lat, 0) / c.length, c.reduce((s, x) => s + x.lng, 0) / c.length]
   }, [sites])
 
-  // Site markers only stand in when we have no individual people to plot — otherwise the people ARE
-  // the map and a second big marker at the centre just clutters it.
-  const showSiteMarkers = people.length === 0
+  // Site markers by default (clean at any density); individual people once zoomed in, when they no
+  // longer overlap. If there are no site coordinates at all, people are all we have — show them.
+  const showPeople = people.length > 0 && (zoom >= PEOPLE_ZOOM || sites.length === 0)
+  const showSiteMarkers = !showPeople
   const busiest = Math.max(1, ...sites.map((s) => s.onDuty))
   const siteRadius = (n: number) => 8 + Math.sqrt(n / busiest) * 16
 
@@ -97,6 +110,7 @@ export function DashboardMap({ sites, people }: { sites: DashSite[]; people: Das
       >
         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
         <FitTo sites={sites} people={people} />
+        <ZoomWatch onZoom={setZoom} />
 
         {/* Geofence circles — faint context for the dots. */}
         {sites.map((s) => (
@@ -108,8 +122,8 @@ export function DashboardMap({ sites, people }: { sites: DashSite[]; people: Das
           />
         ))}
 
-        {/* Individual people, where we know where they scanned. */}
-        {people.map((p) => {
+        {/* Individual people, once zoomed in enough that they don't overlap. */}
+        {showPeople && people.map((p) => {
           const colour = p.onDuty ? '#16a34a' : '#2563eb'
           return (
             <CircleMarker

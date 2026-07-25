@@ -33,7 +33,6 @@ const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ 
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ default: m.TodayPage })))
 const GroupBoardPage = lazy(() => import('./pages/hq/GroupBoardPage').then(m => ({ default: m.GroupBoardPage })))
-const LiveBoardPage = lazy(() => import('./pages/admin/LiveBoardPage').then(m => ({ default: m.LiveBoardPage })))
 const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
@@ -210,7 +209,6 @@ function AppRoutes() {
           }
         />
         {/* Live board — Admin + Manager (manager scoped to their locations server-side, like today). */}
-        <Route path="live" element={<LiveBoardPage />} />
         <Route path="today" element={<TodayPage />} />
         <Route path="reports" element={<ReportsPage />} />
         {/* Payroll — Admin only (salaries are sensitive; a manager must not see them). */}
