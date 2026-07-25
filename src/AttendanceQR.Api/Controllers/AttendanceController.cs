@@ -407,7 +407,14 @@ public class AttendanceController : ControllerBase
             request.Latitude, request.Longitude, location.Latitude, location.Longitude);
         if (distanceMeters > location.RadiusMeters)
         {
-            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "OutsideRadius", ip);
+            // Record WHERE the scan came from, not just that it was outside. A repeated OutsideRadius
+            // at one site is almost always the geofence, not the employee — the poster is beyond the
+            // radius, or the centre is on the wrong spot — and that is only diagnosable if the rejected
+            // points can be drawn on a map. Stashed in the reason as "OutsideRadius|lat,lng,dist"
+            // (invariant '.' decimals; the Problems screen already splits detail off the first '|').
+            var geo = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"OutsideRadius|{request.Latitude:F5},{request.Longitude:F5},{Math.Round(distanceMeters)}");
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, geo, ip);
             return StatusCode(StatusCodes.Status403Forbidden,
                 new { error = "OutsideRadius", distanceMeters = Math.Round(distanceMeters) });
         }

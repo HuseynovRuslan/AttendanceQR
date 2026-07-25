@@ -198,6 +198,13 @@ export interface ReasonCount {
   count: number
 }
 
+export interface MapGeofence {
+  locationName: string
+  latitude: number
+  longitude: number
+  radiusMeters: number
+}
+
 export interface ProblemsReport {
   from: string
   to: string
@@ -205,6 +212,8 @@ export interface ProblemsReport {
   successCount: number
   summary: ReasonCount[]
   rows: ProblemRow[]
+  /** Geofence circles for sites with an OutsideRadius rejection; the map draws these + the points. */
+  geofences: MapGeofence[]
 }
 
 /** GET /api/reports/problems?from=…&to=… — who couldn't scan across the range, and why. */

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { getProblems, type ProblemRow, type ProblemsReport } from '../../api/admin'
+import { ProblemsMap, parseRejectPoints } from './ProblemsMap'
 import { IconX } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 
@@ -169,6 +170,12 @@ export function ProblemsPage() {
           <div className="stat-val">{report?.successCount ?? '—'}</div>
         </div>
       </div>
+
+      {/* Where the OutsideRadius rejections actually happened. Only rows captured since this feature
+          shipped carry coordinates, so it fills in over a day or two. */}
+      {report && parseRejectPoints(report.rows).length > 0 && (
+        <ProblemsMap rows={report.rows} geofences={report.geofences} />
+      )}
 
       {/* Sites with a cluster — the "this whole location has a problem" signal. */}
       {topLocations.length > 0 && (

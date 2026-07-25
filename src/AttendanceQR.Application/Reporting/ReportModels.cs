@@ -114,6 +114,10 @@ public sealed record ProblemRow(
 
 public sealed record ReasonCount(string Reason, int Count);
 
+/// <summary>A location's geofence circle, so the Problems map can draw the boundary the rejected
+/// points fall outside of. Only emitted for sites that actually had an OutsideRadius rejection.</summary>
+public sealed record MapGeofence(string LocationName, double Latitude, double Longitude, int RadiusMeters);
+
 /// <summary>Every rejected scan across a date RANGE, plus a per-reason tally and the success count.
 /// A range, not a single day, because a problem two days old is invisible on a one-day view — which
 /// is how a whole location's geofence failures and days of forgotten check-outs went unnoticed.</summary>
@@ -123,7 +127,10 @@ public sealed record ProblemsReport(
     int RejectedCount,
     int SuccessCount,
     IReadOnlyList<ReasonCount> Summary,
-    IReadOnlyList<ProblemRow> Rows);
+    IReadOnlyList<ProblemRow> Rows,
+    // Geofence circles for the sites that had an OutsideRadius rejection — the map draws these, and
+    // plots each rejected scan (its lat/lng carried in the row's Detail) against them.
+    IReadOnlyList<MapGeofence> Geofences);
 
 /// <summary>One date's check-in/check-out counts, for the dashboard trend chart.</summary>
 public sealed record DailyTrendPoint(DateOnly Date, int CheckIns, int CheckOuts);

@@ -754,7 +754,9 @@ public sealed class ReportQueryService : IReportQueryService
             .Where(e => empIds.Contains(e.Id))
             .Select(e => new { e.Id, e.FullName, e.LocationId })
             .ToDictionaryAsync(e => e.Id, e => (e.FullName, e.LocationId), ct);
-        var locationNames = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        var allLocations = await _db.Locations.ToListAsync(ct);
+        var locationById = allLocations.ToDictionary(l => l.Id);
+        var locationNames = allLocations.ToDictionary(l => l.Id, l => l.Name);
 
         // Manager scope: only employees in the locations they manage. Admin: everything.
         List<Guid>? managed = role == EmployeeRole.Manager
@@ -816,7 +818,20 @@ public sealed class ReportQueryService : IReportQueryService
             .ThenBy(s => s.Reason)
             .ToList();
 
-        return (ReportAccess.Allowed, new ProblemsReport(from, to, problems.Count, successCount, summary, problems));
+        // Geofence circles for the sites that actually had an OutsideRadius rejection — the map only
+        // needs those. The employee's assigned location is the site they scanned (they scan their own
+        // poster), so its centre + radius is the boundary their rejected point fell outside.
+        var geofences = problems
+            .Where(p => p.Reason == "OutsideRadius" && p.EmployeeId is Guid)
+            .Select(p => empById.TryGetValue(p.EmployeeId!.Value, out var e) ? e.LocationId : (Guid?)null)
+            .Where(id => id.HasValue)
+            .Distinct()
+            .Select(id => locationById.GetValueOrDefault(id!.Value))
+            .Where(l => l is not null)
+            .Select(l => new MapGeofence(l!.Name, l.Latitude, l.Longitude, l.RadiusMeters))
+            .ToList();
+
+        return (ReportAccess.Allowed, new ProblemsReport(from, to, problems.Count, successCount, summary, problems, geofences));
     }
 
     public async Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(
