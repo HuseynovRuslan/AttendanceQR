@@ -94,7 +94,11 @@ public sealed record DayAttendanceRow(
     string? EarlyDepartureReason = null,
     // True when the record was captured offline and synced later — its time is the phone's clock, so
     // the admin can treat it with a touch more scepticism. See ProcessedScan / the Scan handler.
-    bool WasOffline = false);
+    bool WasOffline = false,
+    // Where the employee stood at check-in (the scan's own position). Null on older records and
+    // admin-created ones. Used by the dashboard map to plot people, not just their site's centre.
+    double? CheckInLatitude = null,
+    double? CheckInLongitude = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

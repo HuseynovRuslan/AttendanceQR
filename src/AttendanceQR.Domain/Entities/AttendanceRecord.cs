@@ -58,4 +58,11 @@ public class AttendanceRecord : ITenantScoped
     public int? FaceMatchScore { get; set; }
 
     public FaceMatchStatus FaceMatchStatus { get; set; } = FaceMatchStatus.NotChecked;
+
+    // Where the employee actually stood at check-in — the position their scan sent, which passed the
+    // geofence. Kept so the dashboard map can plot people where they really are, not just their site's
+    // centre. Null for records made before this was captured, and for an admin-created record (no scan).
+    public double? CheckInLatitude { get; set; }
+
+    public double? CheckInLongitude { get; set; }
 }

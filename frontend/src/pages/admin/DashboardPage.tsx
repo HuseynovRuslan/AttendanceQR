@@ -6,7 +6,8 @@ import {
 } from '../../api/admin'
 import { getOpenRecords } from '../../api/attendance'
 import { usePolling } from '../../lib/usePolling'
-import { DashboardMap, type DashSite } from './DashboardMap'
+import { DashboardMap, type DashSite, type DashPerson } from './DashboardMap'
+import { DateRangePicker } from '../../components/DateRangePicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
@@ -70,8 +71,6 @@ const isoDay = (d: Date) => {
 }
 const todayIso = () => isoDay(new Date())
 const daysAgoIso = (n: number) => isoDay(new Date(Date.now() - n * 86_400_000))
-
-const PERIODS = [14, 15, 16, 30] as const
 
 /** A minimal area sparkline over the daily attendance figures — the group board's trend, distilled
  *  to one white card. No axes or grid; the shape is the whole point. */
@@ -190,15 +189,39 @@ export function DashboardPage() {
       })
   }, [locations, rows])
 
+  // Individual people, plotted where they actually scanned in (green = on duty, blue = left). Only
+  // those whose check-in position is known; the rest fall back to the site marker inside the map.
+  const people = useMemo<DashPerson[]>(() => {
+    return rows
+      .filter((r) => r.checkInLatitude != null && r.checkInLongitude != null)
+      .map((r) => ({
+        id: r.employeeId,
+        name: r.employeeName,
+        lat: r.checkInLatitude as number,
+        lng: r.checkInLongitude as number,
+        onDuty: r.status === 'Incomplete',
+        siteName: r.locationName,
+      }))
+  }, [rows])
+
   // --- period sparkline -------------------------------------------------------
-  const [spanDays, setSpanDays] = useState<number>(14)
+  // Two presets people actually ask for — 14 gün / 1 ay — plus "Əl ilə" for any other window.
+  const [mode, setMode] = useState<'14' | 'month' | 'manual'>('14')
+  const [manual, setManual] = useState<{ from: string; to: string }>({ from: daysAgoIso(13), to: todayIso() })
   const [report, setReport] = useState<DashboardReport | null>(null)
 
+  const range = mode === '14'
+    ? { from: daysAgoIso(13), to: todayIso() }
+    : mode === 'month'
+      ? { from: daysAgoIso(29), to: todayIso() }
+      : manual
+
   useEffect(() => {
-    void getDashboard(daysAgoIso(spanDays - 1), todayIso()).then(({ status, data }) => {
+    void getDashboard(range.from, range.to).then(({ status, data }) => {
       if (status === 200 && data && 'trend' in data) setReport(data)
     })
-  }, [spanDays])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, manual.from, manual.to])
 
   const spark = useMemo(() => (report?.trend ?? []).map((t) => t.checkIns), [report])
   // Direction of travel: the second half of the window against the first. A rising second half is ▲.
@@ -253,16 +276,17 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* Buckets as tappable pills — İşdə / Tamamlayıb / Qayıb / Ümumi, plus leave states when present. */}
+      {/* Buckets as tappable pills. Order per request: Ümumi işçi first (leftmost), Tamamlayıb last
+          (rightmost); the day's live states sit between. Leave/permission/rest appear only when > 0. */}
       <section className="lux-pills lux-rise lux-d3">
-        <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => setOpenBucket(openBucket === 'in' ? null : 'in')} />
-        <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => setOpenBucket(openBucket === 'done' ? null : 'done')} />
-        <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => setOpenBucket(openBucket === 'absent' ? null : 'absent')} />
         <Pill tone="slate" n={cTotal} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => setOpenBucket(openBucket === 'total' ? null : 'total')} />
+        <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => setOpenBucket(openBucket === 'in' ? null : 'in')} />
+        <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => setOpenBucket(openBucket === 'absent' ? null : 'absent')} />
         {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Gözlənilir" />}
         {counts.onLeave > 0 && <Pill tone="purple" n={counts.onLeave} label="Məzuniyyət" />}
         {counts.permission > 0 && <Pill tone="purple" n={counts.permission} label="İcazə" />}
         {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="İstirahət" />}
+        <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => setOpenBucket(openBucket === 'done' ? null : 'done')} />
       </section>
 
       {/* Tapping a pill opens the matching employee list right here. */}
@@ -299,8 +323,8 @@ export function DashboardPage() {
             <span>Ərazilər</span>
             <span className="muted">nöqtənin böyüklüyü — hazırda işdə olanların sayı</span>
           </div>
-          {sites.length > 0 ? (
-            <DashboardMap sites={sites} />
+          {sites.length > 0 || people.length > 0 ? (
+            <DashboardMap sites={sites} people={people} />
           ) : (
             <div className="muted" style={{ padding: 24 }}>Koordinatı olan aktiv ərazi yoxdur.</div>
           )}
@@ -330,19 +354,26 @@ export function DashboardPage() {
         <div className="lux-panel-h">
           <span>Davamiyyət tendensiyası</span>
           <div className="lux-spanpick">
-            {PERIODS.map((d) => (
-              <button key={d} className={`lux-chip${spanDays === d ? ' active' : ''}`} onClick={() => setSpanDays(d)}>
-                {d === 30 ? '1 ay' : `${d} gün`}
-              </button>
-            ))}
+            <button className={`lux-chip${mode === '14' ? ' active' : ''}`} onClick={() => setMode('14')}>14 gün</button>
+            <button className={`lux-chip${mode === 'month' ? ' active' : ''}`} onClick={() => setMode('month')}>1 ay</button>
+            <button className={`lux-chip${mode === 'manual' ? ' active' : ''}`} onClick={() => setMode('manual')}>Əl ilə</button>
           </div>
         </div>
+        {mode === 'manual' && (
+          <div style={{ padding: '0 18px 6px' }}>
+            <DateRangePicker
+              from={manual.from}
+              to={manual.to}
+              onApply={(f, t) => setManual({ from: f, to: t })}
+            />
+          </div>
+        )}
         <div className="lux-spark-row">
           <div className="lux-spark-delta">
             <span className={delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat'}>
               {delta > 0 ? '▲' : delta < 0 ? '▼' : '■'} {Math.abs(delta)}%
             </span>
-            <span className="muted">son {spanDays === 30 ? 'ay' : `${spanDays} gün`}</span>
+            <span className="muted">{mode === 'month' ? 'son ay' : mode === '14' ? 'son 14 gün' : 'seçilmiş aralıq'}</span>
           </div>
           <Sparkline points={spark} />
         </div>
@@ -353,7 +384,9 @@ export function DashboardPage() {
         <div className="lux-panel-h"><span>Diqqət mərkəzi</span></div>
         <div className="lux-actions">
           {[
-            { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => setOpenBucket('absent') },
+            // Goes to the today board rather than opening the pill list at the very top of the page —
+            // pressing something at the bottom and having the screen jump upward reads as a glitch.
+            { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => navigate('/admin/today') },
             { color: 'var(--amber)', n: actions.open, label: 'Çıxışı unudulub', onClick: () => navigate('/admin/open-records') },
             { color: 'var(--blue)', n: actions.devices, label: 'Cihaz təsdiqi gözləyir', onClick: () => navigate('/admin/device-changes') },
             { color: 'var(--clay)', n: actions.problems, label: 'Problemli skan (bu gün)', onClick: () => navigate('/admin/problems') },

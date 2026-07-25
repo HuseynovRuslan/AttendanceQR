@@ -22,6 +22,9 @@ export interface DayAttendanceRow {
   earlyDepartureReason?: string | null
   // True when captured offline and synced later — the time is the phone's clock (older backends omit).
   wasOffline?: boolean
+  /** Where the employee stood at check-in (scan position); null on older/admin records. */
+  checkInLatitude?: number | null
+  checkInLongitude?: number | null
 }
 
 export interface EmployeeReportRow {

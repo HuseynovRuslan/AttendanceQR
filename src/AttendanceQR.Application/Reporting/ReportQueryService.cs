@@ -635,7 +635,8 @@ public sealed class ReportQueryService : IReportQueryService
                 d.Record?.Id, d.Record?.CheckInPhotoKey != null,
                 d.Record?.FaceMatchScore, d.Record?.FaceMatchStatus.ToString() ?? "NotChecked",
                 d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
-                d.Record?.WasOffline ?? false))
+                d.Record?.WasOffline ?? false,
+                d.Record?.CheckInLatitude, d.Record?.CheckInLongitude))
             .OrderBy(r => r.EmployeeName)
             .ToList();
     }

@@ -476,7 +476,7 @@ public class AttendanceController : ControllerBase
             }
 
             return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
-                request.ClientScanId, request.Offline, serverNow);
+                request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow);
         }
 
         if (record.CheckOutAtUtc is null)
@@ -501,7 +501,7 @@ public class AttendanceController : ControllerBase
 
     private async Task<IActionResult> CheckInAsync(
         Employee employee, Location location, EffectiveShift shift, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64,
-        Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
+        double latitude, double longitude, Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
     {
         var record = new AttendanceRecord
         {
@@ -512,6 +512,9 @@ public class AttendanceController : ControllerBase
             Status = DetermineStatus(shift.Start, shift.LateThresholdMinutes, nowUtc, _timeZone),
             WasOffline = wasOffline,
             SubmittedAtUtc = wasOffline ? submittedAtUtc : null,
+            // The position their scan passed the geofence with — for the dashboard map.
+            CheckInLatitude = latitude,
+            CheckInLongitude = longitude,
         };
         _db.AttendanceRecords.Add(record);
 
