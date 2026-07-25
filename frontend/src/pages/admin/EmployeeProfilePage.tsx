@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   getEmployees,
   getSummary,
+  getEmployeeDays,
   getDeviceBindings,
   revokeDeviceBinding,
   resetPin,
@@ -10,6 +11,7 @@ import {
   updateEmployee,
   type AdminEmployee,
   type EmployeeReportRow,
+  type EmployeeDay,
   type DeviceBinding,
   type InviteResult,
 } from '../../api/admin'
@@ -33,6 +35,9 @@ export function EmployeeProfilePage() {
   const [emp, setEmp] = useState<AdminEmployee | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [summary, setSummary] = useState<EmployeeReportRow | null>(null)
+  // Day-by-day rows behind the "Bu ay" tiles, and which tile is currently expanded.
+  const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
+  const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
   const [photos, setPhotos] = useState<{ reference: string | null; checkIn: string | null }>({ reference: null, checkIn: null })
   const [loading, setLoading] = useState(true)
@@ -70,12 +75,14 @@ export function EmployeeProfilePage() {
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
     const today = now.toISOString().slice(0, 10)
 
-    const [empRes, attRes, devRes, sumRes] = await Promise.all([
+    const [empRes, attRes, devRes, sumRes, daysRes] = await Promise.all([
       getEmployees(),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
+      getEmployeeDays(id, monthStart, today),
     ])
+    if (daysRes.status === 200 && Array.isArray(daysRes.data)) setMonthDays(daysRes.data)
 
     const found = empRes.status === 200 && Array.isArray(empRes.data) ? empRes.data.find((e) => e.id === id) ?? null : null
     setEmp(found)
@@ -252,7 +259,9 @@ export function EmployeeProfilePage() {
             {initials(emp.fullName)}
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--c900)' }}>{emp.fullName}</div>
+            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--c900)' }}>
+              {emp.fullName}{emp.fatherName ? ` ${emp.fatherName}` : ''}
+            </div>
             <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
               {[emp.position, emp.locationName].filter(Boolean).join(' · ') || '—'}
             </div>
@@ -295,14 +304,17 @@ export function EmployeeProfilePage() {
       <div className="card card-pad">
         <div className="card-title">Bu ay</div>
         {summary ? (
-          <div className="stat-grid" style={{ marginBottom: 0 }}>
-            <Stat label="İş günü" value={summary.workDays} />
-            <Stat label="Saat" value={summary.totalWorkedHours.toFixed(1)} />
-            <Stat label="Gecikmə" value={summary.lateCount} />
-            <Stat label="Qayıb" value={summary.absentDays} />
-            <Stat label="Natamam" value={summary.incompleteDays} />
-            <Stat label="Məzuniyyət/İcazə" value={summary.leaveDays + summary.permissionDays} />
-          </div>
+          <>
+            <div className="stat-grid" style={{ marginBottom: 0 }}>
+              <Stat label="İş günü" value={summary.workDays} metric="workDays" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Saat" value={summary.totalWorkedHours.toFixed(1)} metric="hours" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Gecikmə" value={summary.lateCount} metric="late" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Qayıb" value={summary.absentDays} metric="absent" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Natamam" value={summary.incompleteDays} metric="incomplete" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Məzuniyyət/İcazə" value={summary.leaveDays + summary.permissionDays} metric="leave" open={openMetric} onOpen={setOpenMetric} />
+            </div>
+            {openMetric && <MetricBreakdown metric={openMetric} days={monthDays} onClose={() => setOpenMetric(null)} />}
+          </>
         ) : (
           <p className="muted" style={{ fontSize: 13 }}>Bu ay üçün məlumat yoxdur.</p>
         )}
@@ -455,11 +467,68 @@ export function EmployeeProfilePage() {
   )
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function Stat({ label, value, metric, open, onOpen }: {
+  label: string; value: string | number; metric: string; open: string | null; onOpen: (m: string | null) => void
+}) {
+  const active = open === metric
   return (
-    <div className="stat-card">
+    <div
+      className="stat-card"
+      onClick={() => onOpen(active ? null : metric)}
+      style={{ cursor: 'pointer', boxShadow: active ? '0 0 0 2px var(--c400)' : undefined }}
+    >
       <div className="stat-lbl">{label}</div>
       <div className="stat-val">{value}</div>
+    </div>
+  )
+}
+
+const METRIC_LABEL: Record<string, string> = {
+  workDays: 'İş günləri', hours: 'İş saatları', late: 'Gecikmələr',
+  absent: 'Qayıb günləri', incomplete: 'Natamam günlər', leave: 'Məzuniyyət / İcazə',
+}
+function daysForMetric(days: EmployeeDay[], metric: string): EmployeeDay[] {
+  switch (metric) {
+    case 'workDays': return days.filter((d) => ['OnTime', 'Late', 'Incomplete'].includes(d.status))
+    case 'hours': return days.filter((d) => d.workedMinutes > 0)
+    case 'late': return days.filter((d) => d.status === 'Late')
+    case 'absent': return days.filter((d) => d.status === 'Absent')
+    case 'incomplete': return days.filter((d) => d.status === 'Incomplete')
+    case 'leave': return days.filter((d) => d.status === 'OnLeave' || d.status === 'Permission')
+    default: return []
+  }
+}
+function dayDetail(d: EmployeeDay, metric: string): string {
+  const ci = d.checkInAtUtc ? fmtTime(d.checkInAtUtc) : '—'
+  const co = d.checkOutAtUtc ? fmtTime(d.checkOutAtUtc) : '—'
+  if (metric === 'late') return `Giriş ${ci} · ${d.lateMinutes} dəq gecikmə`
+  if (metric === 'absent') return 'Giriş yoxdur'
+  if (metric === 'incomplete') return `Giriş ${ci} · çıxış yoxdur`
+  if (metric === 'hours') return `${ci}–${co} · ${(d.workedMinutes / 60).toFixed(1)} saat`
+  if (metric === 'leave') return d.status === 'Permission' ? 'İcazə' : 'Məzuniyyət'
+  return `${ci}–${co}`
+}
+/** The days behind one tile — click "Gecikmə" and see exactly which days, with times. */
+function MetricBreakdown({ metric, days, onClose }: { metric: string; days: EmployeeDay[]; onClose: () => void }) {
+  const list = daysForMetric(days, metric)
+  return (
+    <div style={{ marginTop: 12, borderTop: '1px solid var(--c100)', paddingTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, color: 'var(--c900)' }}>{METRIC_LABEL[metric]} — {list.length}</div>
+        <button className="btn btn-sm" onClick={onClose}>Bağla</button>
+      </div>
+      {list.length === 0 ? (
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>Bu ay üçün gün yoxdur.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {list.map((d) => (
+            <div key={d.date} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '7px 11px', background: 'var(--c50)', borderRadius: 8 }}>
+              <span style={{ fontWeight: 700, color: 'var(--c900)', minWidth: 96 }}>{fmtDate(d.date)}</span>
+              <span className="muted">{dayDetail(d, metric)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

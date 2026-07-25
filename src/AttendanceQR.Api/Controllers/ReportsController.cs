@@ -38,6 +38,18 @@ public class ReportsController : ControllerBase
         return Ok(report);
     }
 
+    // One employee's day-by-day breakdown — the profile summary tiles expand into these days.
+    [HttpGet("employee-days")]
+    public async Task<IActionResult> EmployeeDays(
+        [FromQuery] Guid employeeId, [FromQuery] DateOnly from, [FromQuery] DateOnly to)
+    {
+        var (access, days) = await _reports.GetEmployeeDaysAsync(
+            employeeId, from, to, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+        return Ok(days);
+    }
+
     [HttpGet("summary/export")]
     public async Task<IActionResult> Export(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)

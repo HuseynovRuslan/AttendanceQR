@@ -43,6 +43,16 @@ public sealed record AttendanceReport(
 /// <summary>A location the caller may see/filter by (invite + report filter dropdowns).</summary>
 public sealed record LocationDto(Guid Id, string Name);
 
+/// <summary>One day of an employee's month — the breakdown behind the profile's summary tiles, so a
+/// "Gecikmə 3" can be expanded to the three actual days. Status is the computed DailySummaryStatus name.</summary>
+public sealed record EmployeeDayRow(
+    DateOnly Date,
+    string Status,
+    DateTime? CheckInAtUtc,
+    DateTime? CheckOutAtUtc,
+    int WorkedMinutes,
+    int LateMinutes);
+
 /// <summary>One employee's payroll line for the period, on the fixed-monthly-salary model. Start from
 /// the monthly salary, deduct a per-day share for each unexcused absence. Leave/permission days are
 /// excused (not deducted) but still count as working days for the divisor. Overtime is carried as

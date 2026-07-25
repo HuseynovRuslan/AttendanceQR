@@ -1131,7 +1131,7 @@ export function EmployeesPage() {
                 <td data-label="İşçi">
                   <div style={{ fontWeight: 700 }}>
                     <Link to={`/admin/employees/${e.id}`} style={{ color: 'var(--c900)', textDecoration: 'none' }}>
-                      {e.fullName}
+                      {e.fullName}{e.fatherName ? ` ${e.fatherName}` : ''}
                     </Link>
                     {!e.isActive && (
                       <span className="tag" style={{ marginLeft: 8, background: 'rgba(154,52,18,0.12)', color: '#9a3412' }}>
@@ -1145,14 +1145,9 @@ export function EmployeesPage() {
                     ) : (
                       <span style={{ color: '#b45309', fontWeight: 600 }}>nömrə yoxdur</span>
                     )}
-                    {(e.fatherName || e.birthDate || e.birthYear) &&
-                      ` · ${[
-                        e.fatherName || null,
-                        // Prefer the full date (dd.MM.yyyy) when we have it, else fall back to the year.
-                        e.birthDate ? e.birthDate.split('-').reverse().join('.') : e.birthYear || null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}`}
+                    {(e.birthDate || e.birthYear) &&
+                      // Father name now rides with the full name above; the meta keeps only birth date.
+                      ` · ${e.birthDate ? e.birthDate.split('-').reverse().join('.') : e.birthYear}`}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c400)', fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>
                     ID: {e.id.slice(0, 8)}

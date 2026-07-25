@@ -35,7 +35,7 @@ public sealed class DailySummaryService : IDailySummaryService
         // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
         var employees = await _db.Employees
             .Where(e => e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())))
-            .Select(e => new { e.Id, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor })
+            .Select(e => new { e.Id, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.ActivatedAtUtc })
             .ToListAsync(ct);
 
         // A handful of rows per tenant, so they are loaded whole and looked up in memory rather
@@ -82,6 +82,13 @@ public sealed class DailySummaryService : IDailySummaryService
         {
             if (!locations.TryGetValue(emp.LocationId, out var location))
                 continue; // defensive: employee's location vanished
+
+            // Not yet onboarded on this date: nobody can scan before they activate, so a working day
+            // before activation is not an absence — it's a day the person didn't exist here. Skip it,
+            // so a mid-month hire isn't billed a string of phantom Qayıb days before they started.
+            if (emp.ActivatedAtUtc is DateTime act
+                && DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(act, _timeZone)) > date)
+                continue;
 
             var shift = EffectiveShift.Resolve(
                 emp.WorkStart, emp.WorkEnd, emp.WorkCycleDays, emp.WorkCycleOnDays, emp.WorkCycleAnchor,

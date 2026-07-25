@@ -246,6 +246,21 @@ export function getSummary(from: string, to: string, locationId?: string) {
   return apiRequest<AttendanceReport | { error: string }>(`/api/reports/summary?${q}`)
 }
 
+/** One day of an employee's month — the breakdown behind the profile summary tiles. */
+export interface EmployeeDay {
+  date: string
+  status: 'OnTime' | 'Late' | 'Absent' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission'
+  checkInAtUtc: string | null
+  checkOutAtUtc: string | null
+  workedMinutes: number
+  lateMinutes: number
+}
+
+export function getEmployeeDays(employeeId: string, from: string, to: string) {
+  const q = new URLSearchParams({ employeeId, from, to })
+  return apiRequest<EmployeeDay[]>(`/api/reports/employee-days?${q}`)
+}
+
 export function getMyLocations() {
   return apiRequest<LocationDto[]>('/api/reports/my-locations')
 }

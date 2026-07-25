@@ -20,6 +20,11 @@ public interface IReportQueryService
     Task<IReadOnlyList<LocationDto>> GetVisibleLocationsAsync(
         Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
+    /// <summary>One employee's day-by-day rows for [from..to] — the breakdown behind the profile
+    /// summary tiles. Same scope authority as the reports (a manager only their own staff).</summary>
+    Task<(ReportAccess Access, IReadOnlyList<EmployeeDayRow> Days)> GetEmployeeDaysAsync(
+        Guid employeeId, DateOnly from, DateOnly to, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
     /// <summary>
     /// Live "today" board computed from raw AttendanceRecords (NOT DailySummary, which only exists
     /// for past days after the nightly job). One row per in-scope active employee.
@@ -519,6 +524,24 @@ public sealed class ReportQueryService : IReportQueryService
             PermissionDays: grouped.Sum(r => r.PermissionDays));
 
         return (ReportAccess.Allowed, new AttendanceReport(from, to, label, grouped, totals));
+    }
+
+    public async Task<(ReportAccess Access, IReadOnlyList<EmployeeDayRow> Days)> GetEmployeeDaysAsync(
+        Guid employeeId, DateOnly from, DateOnly to, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        // Same rows the summary is built from, filtered to one person. LoadDayRowsAsync applies the
+        // caller's scope, so a manager asking for someone outside their branches simply gets nothing.
+        var (access, dayRows, _) = await LoadDayRowsAsync(from, to, null, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, Array.Empty<EmployeeDayRow>());
+
+        var days = dayRows
+            .Where(r => r.EmployeeId == employeeId)
+            .OrderBy(r => r.Date)
+            .Select(r => new EmployeeDayRow(
+                r.Date, r.Status.ToString(), r.CheckInAtUtc, r.CheckOutAtUtc, r.WorkedMinutes, r.LateMinutes))
+            .ToList();
+        return (ReportAccess.Allowed, days);
     }
 
     public async Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
