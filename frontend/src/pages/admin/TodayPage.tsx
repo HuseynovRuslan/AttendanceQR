@@ -9,7 +9,7 @@ import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
-import { IconCamera, IconClipboard, IconX } from '../../components/icons'
+import { IconCamera, IconX } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 
 function localDateISO(d: Date): string {
@@ -40,13 +40,14 @@ function statusMatches(status: string, filter: string): boolean {
   }
 }
 
-// The reasons an admin/manager can pin on a Qayıb row, in the order they read on screen.
-const LEAVE_OPTIONS: { type: LeaveType; label: string }[] = [
-  { type: 'Permission', label: 'İcazə' },
-  { type: 'Vacation', label: 'Məzuniyyət' },
-  { type: 'Sick', label: 'Xəstəlik' },
-  { type: 'Unpaid', label: 'Ödənişsiz' },
-  { type: 'Rest', label: 'İstirahət' },
+// The reasons an admin/manager can pin on a Qayıb row — each with the colour dot that matches the
+// badge it becomes (İcazə green, Məzuniyyət purple, Xəstəlik blue, Ödənişsiz amber, İstirahət grey).
+const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
+  { type: 'Permission', label: 'İcazə', dot: 'var(--leaf)' },
+  { type: 'Vacation', label: 'Məzuniyyət', dot: 'var(--purple)' },
+  { type: 'Sick', label: 'Xəstəlik', dot: 'var(--blue)' },
+  { type: 'Unpaid', label: 'Ödənişsiz', dot: 'var(--amber)' },
+  { type: 'Rest', label: 'İstirahət', dot: 'var(--c400)' },
 ]
 
 export function TodayPage() {
@@ -356,49 +357,48 @@ export function TodayPage() {
                 <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
                 <td data-label="Filial">{r.locationName}</td>
                 <td data-label="Status">
-                  <StatusBadge
-                    status={r.status}
-                    override={
-                      r.status === 'Incomplete'
-                        ? incompleteOverride
-                        : r.status === 'OnLeave'
-                          ? leaveVisual(r.leaveType)
-                          : undefined
-                    }
-                  />
-                  {/* Who pinned this reason — attribution so a status flip isn't anonymous. */}
-                  {r.status === 'OnLeave' && r.leaveAssignedBy && (
-                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                      Təyin edən: {r.leaveAssignedBy}
-                    </div>
-                  )}
-                  {/* Fix a Qayıb without leaving the board: a quiet "+ Səbəb" opens a small reason
-                      picker, and the choice becomes a one-day leave for this date, flipping the row to
-                      İcazə / Məzuniyyət / İstirahət etc. */}
-                  {r.status === 'Absent' && (
+                  {r.status === 'Absent' ? (
+                    // The Qayıb badge itself is the trigger — the thing you fix is the thing you click.
+                    // Clicking it reveals coloured reason options (each dot = the badge it becomes).
                     assigningId === r.employeeId ? (
-                      <span className="muted" style={{ marginTop: 6, display: 'inline-block', fontSize: 12 }}>Təyin edilir…</span>
+                      <span className="muted" style={{ fontSize: 12 }}>Təyin edilir…</span>
                     ) : reasonFor === r.employeeId ? (
-                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      <div className="reason-menu">
                         {LEAVE_OPTIONS.map((o) => (
-                          <button key={o.type} className="btn btn-sm" onClick={() => void assignLeave(r.employeeId, o.type)}>
+                          <button key={o.type} className="reason-opt" onClick={() => void assignLeave(r.employeeId, o.type)}>
+                            <span className="reason-dot" style={{ background: o.dot }} />
                             {o.label}
                           </button>
                         ))}
-                        <button className="btn btn-sm" title="Bağla" onClick={() => setReasonFor(null)} style={{ padding: '4px 8px' }}>
+                        <button className="reason-opt" title="Bağla" onClick={() => setReasonFor(null)} style={{ padding: '5px 8px' }}>
                           <IconX />
                         </button>
                       </div>
                     ) : (
-                      <button
-                        className="reason-chip"
-                        title="Bu qayıba səbəb təyin et"
-                        onClick={() => setReasonFor(r.employeeId)}
-                      >
-                        <IconClipboard />
-                        <span className="lbl">Səbəb yaz</span>
+                      <button className="status-edit" title="Səbəb təyin et" onClick={() => setReasonFor(r.employeeId)}>
+                        <StatusBadge status="Absent" />
+                        <span className="status-edit-caret">▾</span>
                       </button>
                     )
+                  ) : (
+                    <>
+                      <StatusBadge
+                        status={r.status}
+                        override={
+                          r.status === 'Incomplete'
+                            ? incompleteOverride
+                            : r.status === 'OnLeave'
+                              ? leaveVisual(r.leaveType)
+                              : undefined
+                        }
+                      />
+                      {/* Who pinned this reason — attribution so a status flip isn't anonymous. */}
+                      {r.status === 'OnLeave' && r.leaveAssignedBy && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                          Təyin edən: {r.leaveAssignedBy}
+                        </div>
+                      )}
+                    </>
                   )}
                 </td>
                 <td className="mono" data-label="Giriş">
