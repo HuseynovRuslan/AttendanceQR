@@ -28,7 +28,9 @@ public sealed class JwtService : IJwtService
         var claims = new List<Claim>
         {
             new("sub", employee.Id.ToString()),
-            new("email", employee.Email),
+            // Phone-only employees have no email (it became nullable). A Claim value must never be null
+            // or the whole login 500s, so fall back to empty — the email claim is informational only.
+            new("email", employee.Email ?? string.Empty),
             new("role", employee.Role.ToString()),
             // Checked against Employee.TokenVersion on every request (Program.cs
             // OnTokenValidated) — lets change-password invalidate every other outstanding token.
