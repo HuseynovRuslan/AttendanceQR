@@ -59,7 +59,8 @@ export function getMyDeviceStatus(fingerprint: string) {
 
 export interface MyProfile {
   fullName: string
-  email: string
+  /** Null for phone-only employees (email became optional). */
+  email: string | null
   role: string
   position: string | null
   locationName: string | null

@@ -88,7 +88,8 @@ export function ManagerEmployeesPage() {
     const nm = splitName(e.firstName, e.lastName, e.fullName)
     setForm({
       fullName: e.fullName, firstName: nm.first, lastName: nm.last,
-      email: e.email.endsWith('@baki.local') ? null : e.email,
+      // Phone-only employees have a null email now — and legacy placeholder addresses are hidden.
+      email: e.email && !e.email.endsWith('@baki.local') ? e.email : null,
       phoneNumber: e.phoneNumber, fatherName: e.fatherName, position: e.position,
       locationId: e.locationId, birthDate: e.birthDate, birthYear: e.birthYear,
       workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt, isActive: e.isActive,

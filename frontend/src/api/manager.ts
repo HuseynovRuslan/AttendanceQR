@@ -16,7 +16,8 @@ export interface ManagerEmployee {
   fatherName: string | null
   position: string | null
   phoneNumber: string | null
-  email: string
+  /** Null for phone-only employees (email became optional). */
+  email: string | null
   locationId: string
   locationName: string
   birthDate: string | null
