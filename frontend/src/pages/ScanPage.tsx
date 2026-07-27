@@ -5,9 +5,9 @@ import { apiRequest } from '../api/client'
 import {
   getMyAttendance,
   getMyDeviceStatus,
-  reportScanFailure,
   type AttendanceRecord,
 } from '../api/attendance'
+import { reportFailure, flushFailures } from '../lib/scanFailures'
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan } from '../lib/offlineQueue'
@@ -130,6 +130,8 @@ export function ScanPage() {
   // Track mount so an in-flight camera start can bail if the employee already left the screen.
   useEffect(() => {
     mountedRef.current = true
+    // Send any scan failure that was captured while the phone was offline last time.
+    void flushFailures()
     return () => {
       mountedRef.current = false
       void stopCamera()
@@ -233,14 +235,14 @@ export function ScanPage() {
     if (!position.ok) {
       setChecks((c) => ({ ...c, location: 'fail' }))
       setGeo({ kind: 'failed', fail: position.kind })
-      void reportScanFailure(FAILURE_REASON[position.kind]).catch(() => {})
+      reportFailure(FAILURE_REASON[position.kind])
       await delay(900)
       setVerifying(false)
       return
     }
     const accuracy = Math.round(position.coords.accuracy)
     setGeo({ kind: 'ready', accuracy })
-    if (accuracy > POOR_ACCURACY_METERS) void reportScanFailure('GpsInaccurate', accuracy).catch(() => {})
+    if (accuracy > POOR_ACCURACY_METERS) reportFailure('GpsInaccurate', accuracy)
 
     // Geofence pre-check: is the employee within their assigned workplace radius? Caught here so they
     // don't scan and get rejected. The scan still checks against the QR's own location server-side,
@@ -344,6 +346,9 @@ export function ScanPage() {
           // A real getUserMedia failure (denied / no camera / in use) — no point retrying.
           await stopCamera()
           setCameraError(cameraFailKind(err))
+          // Surface it to the admin's Problems screen — a phone whose camera won't open is a scan that
+          // silently never happened, otherwise visible only as a phone call.
+          reportFailure('CameraBlocked')
           return
         }
 
@@ -503,7 +508,7 @@ export function ScanPage() {
     // employee revoked the permission between the two, fall back to the same instructions.
     const position = await getPosition()
     if (!position.ok) {
-      void reportScanFailure(FAILURE_REASON[position.kind]).catch(() => {})
+      reportFailure(FAILURE_REASON[position.kind])
       setGeo({ kind: 'failed', fail: position.kind })
       setResult(null)
       return
@@ -585,6 +590,9 @@ export function ScanPage() {
           photo: photoBase64 ?? undefined,
         })
       } catch {
+        // Both the scan AND the offline save failed — the worst case, and the one that used to leave
+        // no trace at all. Queue a failure report so it reaches the Problems screen once back online.
+        reportFailure('NetworkError')
         setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.' })
       }
     }

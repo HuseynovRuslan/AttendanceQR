@@ -25,6 +25,10 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   GpsUnsupported: { label: 'Brauzer məkanı dəstəkləmir', cls: 'bg-red-100 text-red-700', blocking: true },
   // Measured, warned about, but never blocked — so it isn't a "could not scan" reason.
   GpsInaccurate: { label: 'GPS dəqiq deyil', cls: 'bg-amber-100 text-amber-700' },
+  // Reported by the phone for a non-GPS failure — the scan never became a record.
+  CameraBlocked: { label: 'Kamera açılmadı', cls: 'bg-red-100 text-red-700', blocking: true },
+  NetworkError: { label: 'İnternet çatmadı', cls: 'bg-red-100 text-red-700', blocking: true },
+  ScanError: { label: 'Skan xətası', cls: 'bg-amber-100 text-amber-700', blocking: true },
   AlreadyCompleted: { label: 'Gün artıq tamamlanıb', cls: 'bg-slate-100 text-slate-600' },
   DuplicateCheckIn: { label: 'Təkrar giriş', cls: 'bg-slate-100 text-slate-600' },
 }

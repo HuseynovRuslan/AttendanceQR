@@ -24,7 +24,11 @@ public class AttendanceController : ControllerBase
     // Reasons the client may self-report against its own account. An allow-list, not free text:
     // the body is employee-controlled and lands straight in the audit log the admin panel reads.
     private static readonly string[] ClientFailureReasons =
-        ["GpsPermissionDenied", "GpsUnavailable", "GpsTimeout", "GpsUnsupported", "GpsInaccurate"];
+        ["GpsPermissionDenied", "GpsUnavailable", "GpsTimeout", "GpsUnsupported", "GpsInaccurate",
+         // The scan failed on the phone for a non-GPS reason too — so a stuck employee is visible on
+         // the Problems screen instead of only phoning in. CameraBlocked = the camera would not open;
+         // NetworkError = the request never reached us (reported later, once the phone reconnects).
+         "CameraBlocked", "NetworkError", "ScanError"];
 
     // A blocked employee retries over and over. Collapse the same (employee, reason) into one
     // incident for this long, so one stuck phone doesn't bury the day's real problems.
