@@ -76,8 +76,15 @@ export function HomePage() {
           {initials(profile?.fullName)}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-lg font-bold">Salam, {firstName(profile?.fullName) || '…'} 👋</div>
+          <div className="truncate text-xl font-bold">Salam, {firstName(profile?.fullName) || '…'} 👋</div>
           <div className="truncate text-sm text-slate-500">{profile?.locationName ?? profile?.email ?? ''}</div>
+          {/* Their own hours, right where they open the app — so they know when to come and when to
+              leave without asking. Only shown when a shift actually resolves for them. */}
+          {profile?.shiftStart && profile?.shiftEnd && (
+            <div className="mt-1 text-base font-semibold text-blue-700">
+              🕐 Növbəniz: {profile.shiftStart}–{profile.shiftEnd}
+            </div>
+          )}
         </div>
       </div>
 
@@ -149,8 +156,8 @@ function TodayCard({ today, shiftEnd, onCheckOut }: { today: TodayState; shiftEn
     return (
       <div className={`${base} border-slate-100 bg-white`}>
         <div className="text-sm font-semibold text-slate-400">Bu gün</div>
-        <div className="mt-1 text-lg font-bold">Hələ giriş etməmisiniz</div>
-        <div className="mt-1 text-sm text-slate-500">Giriş üçün aşağıdakı mavi düyməni basıb QR skan edin.</div>
+        <div className="mt-1 text-xl font-bold">Hələ giriş etməmisiniz</div>
+        <div className="mt-1 text-base text-slate-500">Giriş üçün aşağıdakı yaşıl «Giriş et» düyməsini basıb QR kodu skan edin.</div>
       </div>
     )
   }
@@ -171,7 +178,7 @@ function TodayCard({ today, shiftEnd, onCheckOut }: { today: TodayState; shiftEn
         </div>
         <button
           onClick={onCheckOut}
-          className={`mt-3 w-full rounded-2xl py-3 text-base font-bold text-white active:scale-[.99] transition ${overdue ? 'bg-red-600' : 'bg-blue-600'}`}
+          className={`mt-3 w-full rounded-2xl py-4 text-lg font-bold text-white active:scale-[.99] transition ${overdue ? 'bg-red-600' : 'bg-blue-600'}`}
         >
           Çıxış et
         </button>
@@ -204,11 +211,11 @@ function ActionButton({
   return (
     <button
       onClick={onClick}
-      className={`flex h-24 flex-col items-center justify-center gap-1 rounded-3xl text-lg font-bold shadow-sm transition active:scale-[0.98] ${
+      className={`flex h-28 flex-col items-center justify-center gap-1 rounded-3xl text-xl font-bold shadow-sm transition active:scale-[0.98] ${
         active ? `${activeCls} shadow-lg` : 'border border-slate-200 bg-white text-slate-400'
       }`}
     >
-      <span className="text-3xl">{tone === 'green' ? '↙' : '↗'}</span>
+      <span className="text-4xl">{tone === 'green' ? '↙' : '↗'}</span>
       {label}
     </button>
   )
