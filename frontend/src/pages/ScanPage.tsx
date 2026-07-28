@@ -8,6 +8,7 @@ import {
   type AttendanceRecord,
 } from '../api/attendance'
 import { reportFailure, flushFailures } from '../lib/scanFailures'
+import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/feedback'
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan } from '../lib/offlineQueue'
@@ -98,6 +99,12 @@ export function ScanPage() {
   const [pushGate, setPushGate] = useState<'undecided' | 'show' | 'skip'>('undecided')
   const [phase, setPhase] = useState<Phase>('scanning')
   const [cameraError, setCameraError] = useState<CameraFailKind | null>(null)
+  // Torch (flashlight) — only some phones/browsers expose it on the back camera. `torchAvailable`
+  // gates the button so it never shows where it can't work (iOS Safari, most laptops); `torchOn`
+  // tracks its state. For a gardener scanning a poster at 08:00 in winter dark this is the difference
+  // between a scan and a phone call.
+  const [torchAvailable, setTorchAvailable] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
@@ -134,6 +141,8 @@ export function ScanPage() {
     mountedRef.current = true
     // Send any scan failure that was captured while the phone was offline last time.
     void flushFailures()
+    // Unlock the success chime on the first touch, so it can sound when the scan completes.
+    primeFeedbackOnGesture()
     return () => {
       mountedRef.current = false
       void stopCamera()
@@ -363,7 +372,10 @@ export function ScanPage() {
         }
 
         // start() resolved; confirm the stream is actually producing frames, not sitting black.
-        if (await waitForReaderFrame(3500)) return // success — scannerRef stays set
+        if (await waitForReaderFrame(3500)) {
+          detectTorch() // the track is live now — see whether it can light the flash
+          return // success — scannerRef stays set
+        }
 
         // Black. Tear down and loop; after the last attempt fall through to the CameraHelp below.
         await stopCamera()
@@ -374,9 +386,38 @@ export function ScanPage() {
     }
   }
 
+  // Whether the running back-camera track can toggle its torch. Best-effort: getRunningTrackCapabilities
+  // throws if the scanner isn't running, and many devices/browsers simply don't report `torch`.
+  function detectTorch() {
+    try {
+      const caps = scannerRef.current?.getRunningTrackCapabilities() as (MediaTrackCapabilities & { torch?: boolean }) | undefined
+      setTorchAvailable(caps?.torch === true)
+    } catch {
+      setTorchAvailable(false)
+    }
+  }
+
+  // Toggle the flash on the live scan track. Never touches the scan pipeline — a failure just hides
+  // the button (the torch isn't usable) and scanning continues exactly as before.
+  async function toggleTorch() {
+    const scanner = scannerRef.current
+    if (!scanner) return
+    const next = !torchOn
+    try {
+      await scanner.applyVideoConstraints({ advanced: [{ torch: next }] } as unknown as MediaTrackConstraints)
+      setTorchOn(next)
+    } catch {
+      setTorchAvailable(false)
+      setTorchOn(false)
+    }
+  }
+
   async function stopCamera() {
     const scanner = scannerRef.current
     scannerRef.current = null
+    // The torch dies with the track; forget it so a fresh start re-detects on the new stream.
+    setTorchAvailable(false)
+    setTorchOn(false)
     // Kill the injected <video>'s stream FIRST — it survives a stop() that throws because start()
     // was still mid-flight, and a leaked track keeps the (single) camera busy → next start() is black.
     releaseReaderTracks()
@@ -553,6 +594,7 @@ export function ScanPage() {
       })
 
       if (status === 200 && data?.action === 'CheckIn') {
+        successFeedback()
         setResult({
           tone: 'green',
           title: 'Giriş qeydə alındı',
@@ -570,6 +612,7 @@ export function ScanPage() {
         return
       }
       if (status === 200 && data?.action === 'CheckOut') {
+        successFeedback()
         const worked = data.recordId ? await workedDurationText(data.recordId) : undefined
         setResult({
           tone: 'green',
@@ -583,7 +626,11 @@ export function ScanPage() {
         })
         return
       }
-      setResult(errorResult(status, data))
+      const card = errorResult(status, data)
+      // A hard rejection (wrong device, inactive account) buzzes so it's felt; soft/yellow states
+      // (QR expired, "too soon") stay silent — they aren't failures worth a jolt.
+      if (card.tone === 'red') errorFeedback()
+      setResult(card)
     } catch {
       // No connection — instead of failing, save the scan on the device and sync it when the network
       // returns. GPS + selfie were already captured, so nothing is lost; only the round-trip is deferred.
@@ -598,6 +645,8 @@ export function ScanPage() {
           clientTimestampUtc,
           queuedAtMs: Date.now(),
         })
+        // Saved on the device IS a success for the employee — same confident buzz as a live scan.
+        successFeedback()
         setResult({
           tone: 'green',
           title: 'İnternet yoxdur — yadda saxlanıldı',
@@ -610,6 +659,7 @@ export function ScanPage() {
         // Both the scan AND the offline save failed — the worst case, and the one that used to leave
         // no trace at all. Queue a failure report so it reaches the Problems screen once back online.
         reportFailure('NetworkError')
+        errorFeedback()
         setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.' })
       }
     }
@@ -709,6 +759,18 @@ export function ScanPage() {
           <p className="text-center text-slate-300 mt-3">QR kodu kameraya tutun</p>
           {today.kind === 'none' && (
             <p className="text-center text-xs text-slate-500 mt-1">Girişdə şəkil çəkilir</p>
+          )}
+          {/* Flashlight — shown only where the phone actually supports it (see detectTorch). For an
+              early-morning scan in winter dark, this is what lets the camera see the poster at all. */}
+          {torchAvailable && (
+            <button
+              onClick={() => void toggleTorch()}
+              className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-bold transition active:scale-[0.98] ${
+                torchOn ? 'bg-amber-400 text-slate-900' : 'border border-amber-400/40 bg-slate-800 text-amber-300'
+              }`}
+            >
+              🔦 {torchOn ? 'Fənəri söndür' : 'Fənəri yandır'}
+            </button>
           )}
         </div>
 
