@@ -3,6 +3,9 @@ import { apiRequest } from './client'
 export interface TokenResponse {
   token: string
   employeeId?: string
+  /** set-initial-pin only: true only for a brand-new account that still needs to enrol a reference
+   *  selfie. False after an admin PIN reset (the employee already has one), so the client skips it. */
+  needsReferencePhoto?: boolean
 }
 
 export interface ApiErrorBody {

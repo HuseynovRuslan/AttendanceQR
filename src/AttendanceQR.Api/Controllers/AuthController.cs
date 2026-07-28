@@ -303,6 +303,12 @@ public partial class AuthController : ControllerBase
         employee.TokenVersion++;
         await _db.SaveChangesAsync();
 
-        return Ok(new { token = _jwtService.GenerateToken(employee) });
+        // Only a brand-new account (bulk-imported, never enrolled a face) needs the reference-selfie
+        // step after setting its PIN. An EXISTING employee who just had their PIN reset already has a
+        // reference photo — re-capturing it here would overwrite a good baseline for no reason, so the
+        // client skips that step when this is false.
+        var needsReferencePhoto = string.IsNullOrEmpty(employee.ReferencePhotoKey);
+
+        return Ok(new { token = _jwtService.GenerateToken(employee), needsReferencePhoto });
     }
 }

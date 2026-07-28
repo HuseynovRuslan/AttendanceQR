@@ -6,10 +6,12 @@ import { useAuth } from '../auth/AuthContext'
 import { roleHome } from '../lib/jwt'
 
 /**
- * Forced first-login screen for a temp-PIN account (bulk import or an admin reset). Two steps: set your
- * own PIN, then take a reference selfie (the face-audit baseline that a link-activated account would
- * have taken at activation). The selfie is required when the camera works; if the camera can't open,
- * it's skippable and the reference falls back to auto-seeding from the first check-in.
+ * Forced first-login screen for a temp-PIN account (bulk import or an admin reset). Sets the employee's
+ * own PIN, then — ONLY for a brand-new account with no reference photo yet — takes a reference selfie
+ * (the face-audit baseline a link-activated account would have taken at activation). An existing
+ * employee whose PIN was reset already has one, so `needsReferencePhoto` is false and the selfie step
+ * is skipped. When shown, the selfie is required if the camera works; if it can't open, it's skippable
+ * and the reference falls back to auto-seeding from the first check-in.
  */
 export function SetPinPage() {
   const { saveToken, mustChangePin, role } = useAuth()
@@ -59,7 +61,11 @@ export function SetPinPage() {
       const { status, data } = await setInitialPin(pin)
       if (status === 200 && data && 'token' in data) {
         saveToken(data.token)
-        setPhase('photo') // move on to the reference selfie
+        // Only a brand-new account (no reference photo yet) enrols a selfie here. An existing employee
+        // whose PIN was just reset already has one — sending them to re-shoot it would overwrite a good
+        // baseline, so go straight home instead.
+        if (data.needsReferencePhoto) setPhase('photo')
+        else navigate(roleHome(role), { replace: true })
         return
       }
       const code = data && 'error' in data ? data.error : ''
