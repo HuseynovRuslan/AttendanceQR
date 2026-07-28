@@ -53,7 +53,7 @@ const INTRO_MS = 6000
 // looked up. A ring and a seconds counter run alongside so nobody is surprised. There is still no
 // shutter button to press: the photo is taken automatically at zero. 5s felt too long in daily use;
 // 2s is the deliberate trade-off — long enough to look up, short enough not to hold the queue.
-const PHOTO_HOLD_MS = 2_000
+const PHOTO_HOLD_MS = 1_500
 // Keep the middle of the frame. The person holding the phone is centred; the queue behind them is
 // not, and full-frame captures kept picking up two and three faces.
 // A face-shaped (portrait) crop + output, matching the oval preview the employee sees.
@@ -124,6 +124,8 @@ export function ScanPage() {
 
   // Resolves the intro screen early when the employee taps "Hazıram"; the timeout resolves it anyway.
   const introSkipRef = useRef<(() => void) | null>(null)
+  // Captures the selfie the instant the employee taps "Çək", instead of waiting the full hold.
+  const captureNowRef = useRef<(() => void) | null>(null)
   const introProgress = useCaptureProgress(phase === 'intro', INTRO_MS)
   const introSecondsLeft = Math.max(1, Math.ceil(((1 - introProgress) * INTRO_MS) / 1000))
 
@@ -200,15 +202,19 @@ export function ScanPage() {
     scanDoneRef.current = false
     busyRef.current = false
     setGeo({ kind: 'checking' })
-    setChecks({ device: 'run', location: 'idle', camera: 'idle' })
+    setChecks({ device: 'run', location: 'run', camera: 'idle' })
 
-    // 1) Device — is this browser context bound to the caller's account? Advisory only, so a slow or
-    // failed check must never block the scan: race it against a short timeout and treat null as pass.
-    const dev = await Promise.race([
-      getMyDeviceStatus(getDeviceFingerprint()).catch(() => null),
-      delay(3000).then(() => null),
+    // Device and GPS don't depend on each other — run them together so the employee waits for the
+    // slower of the two, not the sum. Both are advisory-tolerant: a slow/failed device check passes.
+    const [dev, position] = await Promise.all([
+      Promise.race([
+        getMyDeviceStatus(getDeviceFingerprint()).catch(() => null),
+        delay(3000).then(() => null),
+      ]),
+      getPosition(),
     ])
-    await delay(650)
+
+    // 1) Device — advisory only; null (slow/failed) is treated as a pass.
     const deviceStep =
       dev && dev.status === 200 && dev.data && 'bound' in dev.data
         ? dev.data.revoked
@@ -219,9 +225,9 @@ export function ScanPage() {
         : 'ok'
     const assignedLocation =
       dev && dev.status === 200 && dev.data && 'location' in dev.data ? dev.data.location : null
-    setChecks((c) => ({ ...c, device: deviceStep, location: 'run' }))
+    setChecks((c) => ({ ...c, device: deviceStep }))
     if (deviceStep === 'fail') {
-      await delay(1000)
+      await delay(400)
       setVerifying(false)
       setResult({ tone: 'red', title: 'Cihaz ləğv edilib', detail: 'Administrator ilə əlaqə saxlayın.', final: true })
       setPhase('done')
@@ -230,8 +236,6 @@ export function ScanPage() {
     }
 
     // 2) Location — the real gate. A failure shows GpsHelp.
-    const position = await getPosition()
-    await delay(650)
     if (!position.ok) {
       setChecks((c) => ({ ...c, location: 'fail' }))
       setGeo({ kind: 'failed', fail: position.kind })
@@ -264,10 +268,10 @@ export function ScanPage() {
     // 3) Camera — the reader is now visible (phase 'scanning' + geo ready), so html5-qrcode attaches.
     await new Promise((r) => requestAnimationFrame(() => r(null)))
     await startCamera()
-    await delay(500)
+    await delay(150)
     if (scannerRef.current) {
       setChecks((c) => ({ ...c, camera: 'ok' }))
-      await delay(550)
+      await delay(200)
       setVerifying(false)
     } else {
       // startCamera set cameraError — reveal CameraHelp.
@@ -428,7 +432,20 @@ export function ScanPage() {
       if (video.videoWidth === 0) return null
 
       setPhotoLive(true)
-      await delay(PHOTO_HOLD_MS)
+      // Auto-capture after the hold, OR the moment the employee taps "Çək" — so a ready person doesn't
+      // wait out the full window, while a hesitant one is still captured automatically.
+      await new Promise<void>((resolve) => {
+        let done = false
+        const finish = () => {
+          if (done) return
+          done = true
+          clearTimeout(timer)
+          captureNowRef.current = null
+          resolve()
+        }
+        const timer = setTimeout(finish, PHOTO_HOLD_MS)
+        captureNowRef.current = finish
+      })
       return await frameToJpeg(video)
     } catch {
       // No front camera / permission denied — skip the photo, check-in proceeds without it.
@@ -723,6 +740,13 @@ export function ScanPage() {
               <p className="text-xl font-bold">Ekrana baxın</p>
               <p className="text-base text-slate-300">Üzünüzü ovalın içinə salın — tərpənməyin</p>
               <p className="text-4xl font-extrabold tabular-nums text-green-400">{secondsLeft}</p>
+              {/* Hazır olan dərhal çəksin — gözləməsin. Basmasa, sayğac özü çəkir. */}
+              <button
+                onClick={() => captureNowRef.current?.()}
+                className="mt-1 w-full rounded-2xl bg-green-500 py-4 text-base font-extrabold text-white active:scale-[0.98] transition"
+              >
+                Çək
+              </button>
             </>
           ) : (
             <p className="text-lg font-semibold">Kamera hazırlanır…</p>

@@ -33,6 +33,16 @@ export function HomePage() {
   const today = todayState(records)
   const recent = records.slice(0, 3)
 
+  // One tap fewer: on the first open of a session, if the employee hasn't checked in yet, jump
+  // straight to the scanner. Once per session (a sessionStorage flag) so returning to Home to read
+  // their hours doesn't bounce them back out — and never when they've already checked in.
+  useEffect(() => {
+    if (loading || today.kind !== 'none') return
+    if (sessionStorage.getItem('attendanceqr.autoScan')) return
+    sessionStorage.setItem('attendanceqr.autoScan', '1')
+    navigate('/scan')
+  }, [loading, today.kind, navigate])
+
   // Today is the employee's birthday? Compare day + month (any year) in the device's local date.
   const isBirthday = (() => {
     if (!profile?.birthDate) return false
