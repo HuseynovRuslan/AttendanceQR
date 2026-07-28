@@ -20,9 +20,12 @@ import { NotificationsPage } from './pages/NotificationsPage'
 import { MenuPage } from './pages/MenuPage'
 
 // The employee pages above are imported eagerly on purpose: they are the whole app for almost
-// everyone who opens it, and ScanPage especially must never wait on a network round-trip — there is
-// no service worker, and someone standing at the gate on a weak signal is exactly who would pay for
-// a lazy chunk.
+// everyone who opens it, and the ScanPage component especially must render instantly (its pre-scan
+// UI, GPS and device checks) rather than wait on a lazy route chunk at the gate. Its ONE heavy
+// dependency, the html5-qrcode library (~110 kB gzipped), is the exception: ScanPage imports it
+// dynamically and prefetches it at mount, so the QR decoder stays out of the cold-start bundle every
+// employee downloads to reach Login/Home, yet is in hand by the time the camera opens (and the
+// service worker caches it after the first scan).
 //
 // Everything below is loaded on demand. The admin panel is the only consumer of leaflet (~150 kB)
 // and jspdf, and the kiosk display is the only one that needs qrcode.react — none of which an
@@ -92,11 +95,34 @@ function OfflineSyncer() {
   return null
 }
 
+/** Warm the QR-scanner chunk in the background at idle, after the first paint. ScanPage imports
+ *  html5-qrcode dynamically (to keep it out of the cold-start bundle), so without this an employee who
+ *  went offline between opening the app and their first-ever scan would find the chunk uncached and be
+ *  unable to scan. requestIdleCallback keeps it off the critical path; the service worker caches it
+ *  once fetched, restoring the "available offline after first app load" guarantee. */
+function ScannerPrefetch() {
+  useEffect(() => {
+    const warm = () => void import('html5-qrcode').catch(() => {})
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(warm, { timeout: 4000 })
+      return () => w.cancelIdleCallback?.(id)
+    }
+    const t = setTimeout(warm, 2500)
+    return () => clearTimeout(t)
+  }, [])
+  return null
+}
+
 export default function App() {
   return (
     <>
       <AutoUpdater />
       <OfflineSyncer />
+      <ScannerPrefetch />
       {/* One boundary around every route: React needs a Suspense ancestor for any lazy element, and
           the eager employee routes never suspend, so they never see it. */}
       <Suspense fallback={<RouteFallback />}>

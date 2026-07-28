@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Html5Qrcode } from 'html5-qrcode'
+// Type only — the runtime library is imported dynamically (see loadScanner) so its ~150 kB (gzipped)
+// of QR-decoder code stays OUT of the eager bundle every employee downloads to reach Login/Home. It is
+// prefetched the moment ScanPage mounts, so by the time the camera opens (after the device + GPS
+// checks) it is already in hand, and the service worker caches it after the first scan.
+import type { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
 import {
   getMyAttendance,
@@ -75,6 +79,16 @@ type TodayInfo =
 
 const READER_ID = 'reader'
 
+// Load the QR library on demand, once. Kicked off at mount (in parallel with the device + GPS checks)
+// so it's ready before the camera opens, and awaited at the actual point of use as a safety net. The
+// promise is cached so repeated scans never re-fetch. Failure to load surfaces as a normal camera
+// error, exactly like a getUserMedia failure would.
+let scannerModule: Promise<typeof import('html5-qrcode')> | null = null
+function loadScanner(): Promise<typeof import('html5-qrcode')> {
+  if (!scannerModule) scannerModule = import('html5-qrcode')
+  return scannerModule
+}
+
 export function ScanPage() {
   const navigate = useNavigate()
   const scannerRef = useRef<Html5Qrcode | null>(null)
@@ -143,6 +157,9 @@ export function ScanPage() {
     void flushFailures()
     // Unlock the success chime on the first touch, so it can sound when the scan completes.
     primeFeedbackOnGesture()
+    // Start fetching the QR library now, while the device/GPS checks run — so it's ready by the time
+    // the camera opens instead of adding a wait there. Fire-and-forget; startCamera awaits it anyway.
+    void loadScanner()
     return () => {
       mountedRef.current = false
       void stopCamera()
@@ -347,6 +364,7 @@ export function ScanPage() {
         await new Promise((r) => requestAnimationFrame(() => r(null)))
 
         try {
+          const { Html5Qrcode } = await loadScanner()
           const scanner = new Html5Qrcode(READER_ID, { verbose: false })
           scannerRef.current = scanner
           await scanner.start(
