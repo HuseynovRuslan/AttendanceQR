@@ -242,6 +242,10 @@ public class AttendanceCalculatorTests
     [InlineData(true, LeaveType.Vacation, DailySummaryStatus.OnLeave)]
     [InlineData(true, LeaveType.Sick, DailySummaryStatus.OnLeave)]
     [InlineData(true, LeaveType.Permission, DailySummaryStatus.Permission)]
+    // Ezamiyyət (work trip): the employee is working away from the poster — must read as OnLeave, never
+    // Absent, on a working OR non-working day, so pay is never docked. This is the whole point of the type.
+    [InlineData(true, LeaveType.BusinessTrip, DailySummaryStatus.OnLeave)]
+    [InlineData(false, LeaveType.BusinessTrip, DailySummaryStatus.OnLeave)]
     // Leave beats a non-working day: being on holiday over a weekend still reads as leave.
     [InlineData(false, LeaveType.Vacation, DailySummaryStatus.OnLeave)]
     public void ResolveNoRecordStatus_priority(bool isWorkingDay, LeaveType? leave, DailySummaryStatus expected)

@@ -48,6 +48,7 @@ const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
   { type: 'Sick', label: 'Xəstəlik', dot: 'var(--blue)' },
   { type: 'Unpaid', label: 'Ödənişsiz', dot: 'var(--clay)' },
   { type: 'Rest', label: 'İstirahət', dot: 'var(--c400)' },
+  { type: 'BusinessTrip', label: 'Ezamiyyət', dot: 'var(--teal)' },
 ]
 
 export function TodayPage() {

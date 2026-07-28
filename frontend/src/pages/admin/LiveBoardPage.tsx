@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getToday, type DayAttendanceRow } from '../../api/admin'
 import { fmtTime } from '../../lib/format'
 import { IconX } from '../../components/icons'
+import { leaveVisual } from '../../components/StatusBadge'
 
 const REFRESH_MS = 20_000
 
@@ -18,6 +19,14 @@ function bucketOf(r: DayAttendanceRow): Bucket {
 
 const BUCKET_ORDER: Record<Bucket, number> = { in: 0, absent: 1, out: 2, off: 3 }
 const OFF_LABEL: Record<string, string> = { DayOff: 'İş günü deyil', OnLeave: 'Məzuniyyət', Permission: 'İcazəli' }
+
+// An OnLeave row is one of several leave kinds (Məzuniyyət / Xəstəlik / Ödənişsiz / Ezamiyyət) — the
+// status alone can't tell them apart, so read the row's leaveType. Without this every leave (a sick
+// day, a work trip) reads as "Məzuniyyət" on the kiosk board. DayOff/Permission keep their fixed text.
+function offLabel(r: DayAttendanceRow): string {
+  if (r.status === 'OnLeave') return leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
+  return OFF_LABEL[r.status] ?? 'Yoxdur'
+}
 
 function twoDigit(n: number) {
   return String(n).padStart(2, '0')
@@ -178,7 +187,7 @@ export function LiveBoardPage() {
                     {b === 'in' && <span className="tm">Giriş {fmtTime(r.checkInAtUtc)}</span>}
                     {b === 'out' && <span className="tm">{fmtTime(r.checkInAtUtc)} → {fmtTime(r.checkOutAtUtc)}</span>}
                     {b === 'absent' && <span className="tm">Gəlməyib</span>}
-                    {b === 'off' && <span className="tm">{OFF_LABEL[r.status] ?? 'Yoxdur'}</span>}
+                    {b === 'off' && <span className="tm">{offLabel(r)}</span>}
                     {late && (b === 'in' || b === 'out') && <span className="live-late">Gecikib</span>}
                   </div>
                 )

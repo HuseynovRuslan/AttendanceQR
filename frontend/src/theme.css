@@ -8,6 +8,7 @@
   --clay:#C85A3D;--clay-bg:#FBECE8;
   --blue:#3B82F6;--blue-bg:#EFF6FF;
   --purple:#8B5CF6;--purple-bg:#F5F3FF;
+  --teal:#0D9488;--teal-bg:#F0FDFA;
   --sand:#F5F4F0;--white:#fff;
   --r:12px;--r-lg:18px;
   --sh:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
@@ -112,6 +113,7 @@ select.inp{cursor:pointer}
 .b-device{background:var(--leaf-bg);color:var(--leaf-d)}
 .b-nodevice{background:var(--clay-bg);color:var(--clay)}
 .b-leave{background:var(--purple-bg);color:var(--purple)}
+.b-trip{background:var(--teal-bg);color:var(--teal)}
 .b-permission{background:var(--c100);color:var(--c600)}
 .b-pending{background:var(--c50);color:var(--c500);border:1px solid var(--c200)}
 
@@ -439,7 +441,7 @@ select.inp{cursor:pointer}
 .lux-pill::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px;background:var(--c200)}
 .lux-pill.blue::before{background:var(--blue)}.lux-pill.leaf::before{background:var(--leaf)}
 .lux-pill.clay::before{background:var(--clay)}.lux-pill.purple::before{background:var(--purple)}
-.lux-pill.slate::before{background:var(--c400)}
+.lux-pill.slate::before{background:var(--c400)}.lux-pill.teal::before{background:var(--teal)}
 .lux-pill:not(.static):hover{transform:translateY(-3px);box-shadow:var(--sh);border-color:var(--c200)}
 .lux-pill.active{border-color:var(--c900);box-shadow:var(--sh)}
 .lux-pill.static{cursor:default}

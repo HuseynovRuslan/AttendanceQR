@@ -294,6 +294,7 @@ public sealed class ReportQueryService : IReportQueryService
     private const string CodeSick = "X";        // xəstəlik
     private const string CodeUnpaid = "ÖM";     // ödənişsiz məzuniyyət
     private const string CodePermission = "İC"; // icazə — short excused absence
+    private const string CodeBusinessTrip = "Ez"; // ezamiyyət — work trip, no scan but working & paid
     private const string CodeHoliday = "B";     // bayram / admin-declared non-working day
     private const string CodeWeekend = "H";     // həftələrarası istirahət — off per the work-day mask
     private const string CodeFuture = "";       // a day that has not happened yet this month
@@ -306,6 +307,7 @@ public sealed class ReportQueryService : IReportQueryService
         new TabelLegendItem(CodeSick, "Xəstəlik"),
         new TabelLegendItem(CodeUnpaid, "Ödənişsiz məzuniyyət"),
         new TabelLegendItem(CodePermission, "İcazə"),
+        new TabelLegendItem(CodeBusinessTrip, "Ezamiyyət"),
         new TabelLegendItem(CodeHoliday, "Bayram / qeyri-iş günü"),
         new TabelLegendItem(CodeWeekend, "İstirahət günü"),
     };
@@ -361,6 +363,7 @@ public sealed class ReportQueryService : IReportQueryService
                 LeaveType.Sick => CodeSick,
                 LeaveType.Unpaid => CodeUnpaid,
                 LeaveType.Permission => CodePermission,
+                LeaveType.BusinessTrip => CodeBusinessTrip,
                 _ => CodeVacation, // OnLeave with no matching row (shouldn't happen) — treat as leave, not absence
             };
         }
@@ -418,7 +421,7 @@ public sealed class ReportQueryService : IReportQueryService
                 codes[day - 1] = code;
                 if (code == CodeWorked) worked++;
                 else if (code == CodeAbsent) absent++;
-                else if (code is CodeVacation or CodeSick or CodeUnpaid or CodePermission) leave++;
+                else if (code is CodeVacation or CodeSick or CodeUnpaid or CodePermission or CodeBusinessTrip) leave++;
             }
 
             // Admin-declared holidays turn a weekend/absent cell into B. Applied last so it wins over
@@ -535,11 +538,23 @@ public sealed class ReportQueryService : IReportQueryService
         if (access == ReportAccess.Forbidden)
             return (ReportAccess.Forbidden, Array.Empty<EmployeeDayRow>());
 
+        // The day rows collapse every leave into OnLeave; the profile breakdown wants to say WHICH
+        // (Xəstəlik vs Ezamiyyət vs Məzuniyyət). Resolve it from LeaveRecords here — the same source and
+        // approach the tabel's LeaveCodeFor uses — instead of threading a field through the shared DayRow
+        // (which the persisted path reads from DailySummaries, where the leave type isn't stored).
+        var leaves = await _db.LeaveRecords
+            .Where(l => l.EmployeeId == employeeId && l.FromDate <= to && l.ToDate >= from)
+            .Select(l => new { l.FromDate, l.ToDate, l.Type })
+            .ToListAsync(ct);
+        string? LeaveTypeFor(DateOnly date) =>
+            leaves.FirstOrDefault(l => l.FromDate <= date && l.ToDate >= date)?.Type.ToString();
+
         var days = dayRows
             .Where(r => r.EmployeeId == employeeId)
             .OrderBy(r => r.Date)
             .Select(r => new EmployeeDayRow(
-                r.Date, r.Status.ToString(), r.CheckInAtUtc, r.CheckOutAtUtc, r.WorkedMinutes, r.LateMinutes))
+                r.Date, r.Status.ToString(), r.CheckInAtUtc, r.CheckOutAtUtc, r.WorkedMinutes, r.LateMinutes,
+                r.Status == DailySummaryStatus.OnLeave ? LeaveTypeFor(r.Date) : null))
             .ToList();
         return (ReportAccess.Allowed, days);
     }

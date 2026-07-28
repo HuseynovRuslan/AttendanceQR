@@ -45,6 +45,8 @@ export function leaveVisual(leaveType?: string | null): StatusVisual | undefined
       return { cls: 'b-leave', label: 'Ödənişsiz məzuniyyət', icon: 'calendar' }
     case 'Rest':
       return { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' }
+    case 'BusinessTrip':
+      return { cls: 'b-trip', label: 'Ezamiyyət', icon: 'calendar' }
     case 'Permission':
       return { cls: 'b-permission', label: 'İcazə', icon: 'check' }
     default:

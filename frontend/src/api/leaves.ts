@@ -1,6 +1,6 @@
 import { apiRequest } from './client'
 
-export type LeaveType = 'Vacation' | 'Sick' | 'Unpaid' | 'Permission' | 'Rest'
+export type LeaveType = 'Vacation' | 'Sick' | 'Unpaid' | 'Permission' | 'Rest' | 'BusinessTrip'
 
 export interface LeaveRecord {
   id: string

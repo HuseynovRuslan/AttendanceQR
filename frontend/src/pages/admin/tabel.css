@@ -46,6 +46,7 @@ thead .tb-name-col { background: var(--c50); z-index: 3; }
 .tb-leave   { background: #EFF6FF; color: #2563EB; }   /* M/ÖM — leave */
 .tb-sick    { background: #F5F3FF; color: #7C3AED; }   /* X  — sick */
 .tb-perm    { background: #FEF3E2; color: #B4690E; }   /* İC — permission */
+.tb-trip    { background: #F0FDFA; color: #0D9488; }   /* Ez — ezamiyyət (work trip) */
 .tb-holiday { background: #FEF9C3; color: #A16207; }   /* B  — holiday */
 .tb-off     { background: var(--c50); color: var(--c400); }  /* H — rest day */
 .tb-future  { background: repeating-linear-gradient(45deg, #fff, #fff 3px, #fafafa 3px, #fafafa 6px); }

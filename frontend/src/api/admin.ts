@@ -25,8 +25,9 @@ export interface DayAttendanceRow {
   /** Where the employee stood at check-in (scan position); null on older/admin records. */
   checkInLatitude?: number | null
   checkInLongitude?: number | null
-  /** The leave type on a leave day — "Vacation"/"Sick"/"Unpaid"/"Permission"/"Rest" — since the
-   *  status collapses Vacation/Sick/Unpaid into OnLeave. Null on a non-leave day. */
+  /** The leave type on a leave day — "Vacation"/"Sick"/"Unpaid"/"Permission"/"Rest"/"BusinessTrip"
+   *  (Ezamiyyət) — since the status collapses Vacation/Sick/Unpaid/BusinessTrip into OnLeave. Null on
+   *  a non-leave day. */
   leaveType?: string | null
   /** Name of the admin/manager who assigned the leave, for attribution on the board. */
   leaveAssignedBy?: string | null
@@ -254,6 +255,9 @@ export interface EmployeeDay {
   checkOutAtUtc: string | null
   workedMinutes: number
   lateMinutes: number
+  /** Which leave kind, when status is OnLeave — so the day breakdown names it (Xəstəlik / Ezamiyyət /
+   *  Məzuniyyət) instead of collapsing all to "Məzuniyyət". Null on a non-leave day. */
+  leaveType?: string | null
 }
 
 export function getEmployeeDays(employeeId: string, from: string, to: string) {

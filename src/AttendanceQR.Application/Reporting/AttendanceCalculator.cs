@@ -79,6 +79,9 @@ public static class AttendanceCalculator
                 // Absent, never costs the employee pay.
                 LeaveType.Rest => DailySummaryStatus.DayOff,
                 LeaveType.Permission => DailySummaryStatus.Permission,
+                // Vacation / Sick / Unpaid / BusinessTrip: all "approved, not an unexcused absence" —
+                // OnLeave never deducts pay. BusinessTrip (Ezamiyyət) is the driver-on-a-trip case; it
+                // reads OnLeave here and is told apart only in the tabel by its own "Ez" code.
                 _ => DailySummaryStatus.OnLeave,
             };
         return isWorkingDay ? DailySummaryStatus.Absent : DailySummaryStatus.DayOff;

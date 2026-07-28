@@ -23,6 +23,7 @@ const CODE_CLASS: Record<string, string> = {
   'X': 'tb-sick',
   'ÖM': 'tb-leave',
   'İC': 'tb-perm',
+  'Ez': 'tb-trip',
   'B': 'tb-holiday',
   'H': 'tb-off',
 }

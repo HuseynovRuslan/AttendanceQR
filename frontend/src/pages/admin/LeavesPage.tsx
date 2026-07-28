@@ -17,6 +17,7 @@ const TYPE_LABELS: Record<LeaveType, string> = {
   Unpaid: 'Ödənişsiz',
   Permission: 'İcazə',
   Rest: 'İstirahət',
+  BusinessTrip: 'Ezamiyyət',
 }
 
 export function LeavesPage() {

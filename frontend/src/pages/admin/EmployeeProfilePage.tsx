@@ -18,7 +18,7 @@ import {
 import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecord, adminClearCheckout } from '../../api/attendance'
 import type { AttendanceRecord, PhotoUrlResponse } from '../../api/attendance'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
-import { RecordBadge } from '../../components/StatusBadge'
+import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime } from '../../lib/format'
 import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
@@ -505,7 +505,7 @@ function dayDetail(d: EmployeeDay, metric: string): string {
   if (metric === 'absent') return 'Giriş yoxdur'
   if (metric === 'incomplete') return `Giriş ${ci} · çıxış yoxdur`
   if (metric === 'hours') return `${ci}–${co} · ${(d.workedMinutes / 60).toFixed(1)} saat`
-  if (metric === 'leave') return d.status === 'Permission' ? 'İcazə' : 'Məzuniyyət'
+  if (metric === 'leave') return leaveVisual(d.leaveType)?.label ?? (d.status === 'Permission' ? 'İcazə' : 'Məzuniyyət')
   return `${ci}–${co}`
 }
 /** The days behind one tile — click "Gecikmə" and see exactly which days, with times. */

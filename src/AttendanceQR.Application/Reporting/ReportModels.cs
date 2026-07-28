@@ -51,7 +51,10 @@ public sealed record EmployeeDayRow(
     DateTime? CheckInAtUtc,
     DateTime? CheckOutAtUtc,
     int WorkedMinutes,
-    int LateMinutes);
+    int LateMinutes,
+    // The leave type behind an OnLeave day ("Vacation"/"Sick"/"Unpaid"/"BusinessTrip"), so the profile
+    // day-breakdown can name it instead of collapsing every leave to "Məzuniyyət". Null when not leave.
+    string? LeaveType = null);
 
 /// <summary>One employee's payroll line for the period, on the fixed-monthly-salary model. Start from
 /// the monthly salary, deduct a per-day share for each unexcused absence. Leave/permission days are
@@ -110,8 +113,9 @@ public sealed record DayAttendanceRow(
     double? CheckInLatitude = null,
     double? CheckInLongitude = null,
     // The approved leave type covering this day, when the status is a leave one — "Vacation" / "Sick"
-    // / "Unpaid" / "Permission" / "Rest". Null otherwise. The status collapses Vacation/Sick/Unpaid
-    // into OnLeave, so a screen that wants to tell Sick from Vacation reads this instead.
+    // / "Unpaid" / "Permission" / "Rest" / "BusinessTrip" (Ezamiyyət). Null otherwise. The status
+    // collapses Vacation/Sick/Unpaid/BusinessTrip into OnLeave, so a screen that wants to tell Sick
+    // (or a work trip) from Vacation reads this instead.
     string? LeaveType = null,
     // Name of the admin/manager who pinned this leave (LeaveRecord.CreatedByEmployeeId), so the board
     // can say who assigned the reason. Null when there is no leave for the day.
