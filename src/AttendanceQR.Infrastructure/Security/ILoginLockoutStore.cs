@@ -11,11 +11,15 @@ namespace AttendanceQR.Infrastructure.Security;
 /// </summary>
 public interface ILoginLockoutStore
 {
+    /// <summary>How long a lockout lasts, in minutes — surfaced to the user so "wait" has a number.</summary>
+    int LockoutMinutes { get; }
+
     /// <summary>True if this key is currently locked out from too many recent failures.</summary>
     bool IsLockedOut(string key);
 
-    /// <summary>Record a failed attempt; locks the key once the threshold is reached.</summary>
-    void RecordFailure(string key);
+    /// <summary>Record a failed attempt; locks the key once the threshold is reached. Returns how many
+    /// attempts remain before lockout (0 = this attempt just triggered the lock).</summary>
+    int RecordFailure(string key);
 
     /// <summary>Clear any recorded failures — call on a successful login.</summary>
     void RecordSuccess(string key);

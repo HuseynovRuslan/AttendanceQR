@@ -11,7 +11,7 @@ namespace AttendanceQR.Application.Tests;
 /// </summary>
 public class LoginLockoutStoreTests
 {
-    private const int MaxAttempts = 5;
+    private const int MaxAttempts = 8;
     private static readonly Guid Tenant = Guid.NewGuid();
 
     private static MemoryCacheLoginLockoutStore NewStore()
@@ -24,7 +24,7 @@ public class LoginLockoutStoreTests
         => Assert.False(NewStore().IsLockedOut(Key("0501234567")));
 
     [Fact]
-    public void Locks_out_on_the_fifth_failure()
+    public void Locks_out_on_the_final_allowed_failure()
     {
         var store = NewStore();
         var key = Key("0501234567");
@@ -50,8 +50,10 @@ public class LoginLockoutStoreTests
             "0501234567", "+994 50 123 45 67", "994501234567", "(050) 123-45-67", "050 123 45 67",
         ];
 
-        foreach (var spelling in spellings)
-            store.RecordFailure(Key(spelling));
+        // Spread the failures across the different spellings — they share ONE budget, so cycling
+        // through them still reaches the lock threshold rather than each buying its own attempts.
+        for (var i = 0; i < MaxAttempts; i++)
+            store.RecordFailure(Key(spellings[i % spellings.Length]));
 
         // Locked under every spelling, because they are all the same key.
         foreach (var spelling in spellings)

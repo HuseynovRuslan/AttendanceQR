@@ -12,8 +12,11 @@ public sealed class MemoryCacheLoginLockoutStore : ILoginLockoutStore
 {
     private const string FailurePrefix = "login-fail:";
     private const string LockPrefix = "login-lock:";
-    private const int MaxAttempts = 5;
-    private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+    // Deliberately forgiving: real employees fat-finger a 4-digit PIN. 8 tries then a short 5-minute
+    // cool-off still throttles scripted brute force to a crawl, without a 15-minute wall for someone
+    // who simply mistyped — the annoyance that turns into a support call.
+    private const int MaxAttempts = 8;
+    private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan FailureWindow = TimeSpan.FromMinutes(15);
 
     private readonly IMemoryCache _cache;
@@ -21,25 +24,25 @@ public sealed class MemoryCacheLoginLockoutStore : ILoginLockoutStore
 
     public MemoryCacheLoginLockoutStore(IMemoryCache cache) => _cache = cache;
 
+    public int LockoutMinutes => (int)LockoutDuration.TotalMinutes;
+
     public bool IsLockedOut(string key) => _cache.TryGetValue(LockKey(key), out _);
 
-    public void RecordFailure(string key)
+    public int RecordFailure(string key)
     {
         lock (_gate)
         {
             var failureKey = FailureKey(key);
-            var count = _cache.TryGetValue(failureKey, out int existing) ? existing : 0;
-            count++;
+            var count = (_cache.TryGetValue(failureKey, out int existing) ? existing : 0) + 1;
 
             if (count >= MaxAttempts)
             {
                 _cache.Set(LockKey(key), true, LockoutDuration);
                 _cache.Remove(failureKey);
+                return 0; // just locked
             }
-            else
-            {
-                _cache.Set(failureKey, count, FailureWindow);
-            }
+            _cache.Set(failureKey, count, FailureWindow);
+            return MaxAttempts - count; // attempts left before lockout
         }
     }
 

@@ -29,9 +29,16 @@ export function LoginPage() {
         const role = decodeJwt(data.token)?.role
         navigate(from ?? roleHome(role), { replace: true })
       } else if (status === 429) {
-        setError('Çox sayda cəhd — 15 dəqiqə sonra yenidən cəhd edin')
+        const m = data && 'minutes' in data && data.minutes ? data.minutes : 5
+        setError(`Çox sayda cəhd — ${m} dəqiqə sonra yenidən cəhd edin`)
       } else {
-        setError('Email/nömrə və ya PIN yanlışdır')
+        // Warn before the cool-off: show the count only when it's getting close.
+        const rem = data && 'remaining' in data ? data.remaining : undefined
+        setError(
+          rem !== undefined && rem <= 3
+            ? `Yanlış PIN — ${rem} cəhdiniz qaldı`
+            : 'Email/nömrə və ya PIN yanlışdır',
+        )
       }
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')

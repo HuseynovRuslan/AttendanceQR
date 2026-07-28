@@ -7,6 +7,10 @@ export interface TokenResponse {
 
 export interface ApiErrorBody {
   error: string
+  /** Login lockout: how many minutes the cool-off lasts (on TooManyAttempts). */
+  minutes?: number
+  /** Login: attempts left before lockout (on InvalidCredentials). */
+  remaining?: number
 }
 
 /** POST /api/auth/login — email + password → JWT. */

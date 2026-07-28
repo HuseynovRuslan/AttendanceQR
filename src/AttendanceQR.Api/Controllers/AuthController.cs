@@ -148,7 +148,8 @@ public partial class AuthController : ControllerBase
         // account lookup below does, so every spelling of one number spends ONE budget.
         var lockoutKey = LoginIdentity.LockoutKey(_db.CurrentTenantId, request.Email);
         if (_lockoutStore.IsLockedOut(lockoutKey))
-            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "TooManyAttempts" });
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
 
         // The identifier field carries an email OR a phone number — match either.
         var identifier = request.Email?.Trim() ?? string.Empty;
@@ -167,11 +168,17 @@ public partial class AuthController : ControllerBase
                        && employee.ActivatedAtUtc is not null
                        && passwordOk;
 
-        // Identical response for every failure mode (unknown email, wrong password, inactive…).
+        // Identical response for every failure mode (unknown email, wrong password, inactive…) — the
+        // remaining-attempts count leaks nothing about which, only how close THIS bucket is to a lock,
+        // which the attacker could count anyway. It lets a real employee see "2 tries left" before the
+        // cool-off, instead of being surprised by it.
         if (!canLogin)
         {
-            _lockoutStore.RecordFailure(lockoutKey);
-            return Unauthorized(new { error = "InvalidCredentials" });
+            var remaining = _lockoutStore.RecordFailure(lockoutKey);
+            if (remaining <= 0)
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining });
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
