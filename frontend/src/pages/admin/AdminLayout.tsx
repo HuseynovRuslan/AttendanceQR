@@ -49,6 +49,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
   '/admin/bulk-invite': { title: 'Toplu əlavə', sub: 'Çoxlu işçini birdən əlavə et' },
   '/admin/device-changes': { title: 'Cihazlar', sub: 'Gözləyən tələblər və bağlı cihazlar' },
+  '/admin/pin-resets': { title: 'PIN sıfırlama', sub: 'PIN-ini unudan işçilərin tələbləri' },
 }
 
 const MOBILE_BREAKPOINT = 680
@@ -112,6 +113,7 @@ export function AdminLayout() {
     ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconClipboard }] : []),
     ...(isAdmin ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
+    ...(isAdmin ? [{ to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconAlert }] : []),
     // Across every company, not inside one — only the operator sees it. "Şirkətlər" is hidden from
     // the sidebar on request; the /admin/tenants route still works by URL for the operator.
     ...(isSuperAdmin ? [{ to: '/hq', label: 'Qrup paneli', Icon: IconChart }] : []),

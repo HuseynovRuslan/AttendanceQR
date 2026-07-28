@@ -22,6 +22,17 @@ export function login(email: string, password: string) {
   })
 }
 
+/** POST /api/auth/forgot-pin — an employee who forgot their PIN (and so can't sign in) asks the admin
+ *  to reset it. Always resolves the same way whether or not the identifier matches an account (no
+ *  existence leak); the request shows up in the admin's queue. */
+export function forgotPin(identifier: string) {
+  return apiRequest<{ ok: boolean } | ApiErrorBody>('/api/auth/forgot-pin', {
+    method: 'POST',
+    auth: false,
+    body: { identifier },
+  })
+}
+
 /** POST /api/auth/activate — activation token + new PIN + device fingerprint (+ friendly device name) → JWT. */
 export function activate(
   activationToken: string,

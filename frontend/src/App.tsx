@@ -54,6 +54,7 @@ const PrintQrPage = lazy(() => import('./pages/admin/PrintQrPage').then(m => ({ 
 const EmployeesPage = lazy(() => import('./pages/admin/EmployeesPage').then(m => ({ default: m.EmployeesPage })))
 const EmployeeProfilePage = lazy(() => import('./pages/admin/EmployeeProfilePage').then(m => ({ default: m.EmployeeProfilePage })))
 const DeviceChangesPage = lazy(() => import('./pages/admin/DeviceChangesPage').then(m => ({ default: m.DeviceChangesPage })))
+const PinResetsPage = lazy(() => import('./pages/admin/PinResetsPage').then(m => ({ default: m.PinResetsPage })))
 const PhotoAuditPage = lazy(() => import('./pages/admin/PhotoAuditPage').then(m => ({ default: m.PhotoAuditPage })))
 const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => ({ default: m.ProblemsPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
@@ -372,6 +373,14 @@ function AppRoutes() {
           element={
             <AdminOnly>
               <DeviceChangesPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="pin-resets"
+          element={
+            <AdminOnly>
+              <PinResetsPage />
             </AdminOnly>
           }
         />

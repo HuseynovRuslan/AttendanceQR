@@ -751,6 +751,34 @@ export function rejectDeviceChange(id: string) {
   })
 }
 
+// --- PIN reset requests ("PIN-i unutdum") ----------------------------------
+
+export interface PendingPinReset {
+  requestId: string
+  employeeId: string
+  employeeName: string
+  phoneNumber: string | null
+  email: string | null
+  requestedAtUtc: string
+}
+
+export function getPendingPinResets() {
+  return apiRequest<PendingPinReset[]>('/api/admin/pin-resets')
+}
+
+/** Resets the employee's PIN and closes the request; returns the temporary PIN to pass on. */
+export function resolvePinReset(id: string) {
+  return apiRequest<{ tempPin: string } | { error: string }>(`/api/admin/pin-resets/${id}/resolve`, {
+    method: 'POST',
+  })
+}
+
+export function dismissPinReset(id: string) {
+  return apiRequest<{ status: string } | { error: string }>(`/api/admin/pin-resets/${id}/dismiss`, {
+    method: 'POST',
+  })
+}
+
 // --- bound devices ---------------------------------------------------------
 
 export interface DeviceBinding {

@@ -20,5 +20,11 @@ public enum AuditEventType
     DeviceAutoBound = 9,
 
     // An admin killed a bound device. It will not be re-adopted automatically.
-    DeviceBindingRevoked = 10
+    DeviceBindingRevoked = 10,
+
+    // An employee who forgot their PIN asked (anonymously, from the login screen) for a reset.
+    PinResetRequested = 11,
+
+    // An admin reset an employee's PIN off the back of a request (or dismissed a bogus one).
+    PinResetResolved = 12
 }

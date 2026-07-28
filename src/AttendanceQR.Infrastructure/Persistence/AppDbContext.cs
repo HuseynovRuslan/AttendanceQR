@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<DeviceBinding> DeviceBindings => Set<DeviceBinding>();
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
+    public DbSet<PinResetRequest> PinResetRequests => Set<PinResetRequest>();
     public DbSet<MissedCheckoutRequest> MissedCheckoutRequests => Set<MissedCheckoutRequest>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -65,7 +66,7 @@ public class AppDbContext : DbContext
         var tenantScoped = new[]
         {
             typeof(Employee), typeof(Location), typeof(AttendanceRecord), typeof(DeviceBinding),
-            typeof(DeviceChangeRequest), typeof(MissedCheckoutRequest), typeof(DailySummary),
+            typeof(DeviceChangeRequest), typeof(PinResetRequest), typeof(MissedCheckoutRequest), typeof(DailySummary),
             typeof(AuditLog), typeof(ManagedLocation), typeof(NonWorkingDay), typeof(LeaveRecord),
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
@@ -88,6 +89,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceBinding>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<PinResetRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<MissedCheckoutRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DailySummary>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AuditLog>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

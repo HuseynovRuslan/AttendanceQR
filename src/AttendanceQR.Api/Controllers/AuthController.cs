@@ -8,6 +8,7 @@ using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace AttendanceQR.Api.Controllers;
@@ -21,7 +22,13 @@ public partial class AuthController : ControllerBase
     private readonly IJwtService _jwtService;
     private readonly ILoginLockoutStore _lockoutStore;
     private readonly IPhotoStorageService _photoStorage;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
+
+    // Per-IP throttle for the anonymous forgot-pin endpoint: enough for a real person who taps it once
+    // or twice, tight enough that a scripted sweep can't harvest timing samples or flood the queue.
+    private const int MaxForgotPinPerWindow = 6;
+    private static readonly TimeSpan ForgotPinWindow = TimeSpan.FromMinutes(15);
 
     // Computed once: a real hash to verify against when an email is unknown / has no password,
     // so login timing does not reveal whether an account exists.
@@ -32,13 +39,14 @@ public partial class AuthController : ControllerBase
 
     public AuthController(
         AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore,
-        IPhotoStorageService photoStorage, ILogger<AuthController> logger)
+        IPhotoStorageService photoStorage, IMemoryCache cache, ILogger<AuthController> logger)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _lockoutStore = lockoutStore;
         _photoStorage = photoStorage;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -183,6 +191,61 @@ public partial class AuthController : ControllerBase
 
         _lockoutStore.RecordSuccess(lockoutKey);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
+    }
+
+    // POST /api/auth/forgot-pin — an employee who forgot their PIN, and so cannot sign in, asks for a
+    // reset from the login screen. Anonymous, like Login: the tenant is resolved from the subdomain by
+    // middleware, so _db is already scoped. It only FILES a request into the admin queue — it resets
+    // nothing and returns no PIN, so on its own it grants an attacker nothing.
+    //
+    // Always answers 200 with the same body whether or not the identifier matches an account, so the
+    // RESPONSE reveals nothing. The one asymmetry left is timing (a real match does an extra write), so
+    // the endpoint is throttled per IP: past the cap it returns the same 200 with no DB work at all,
+    // which bounds both timing-sample harvesting (enumeration) and admin-queue flooding.
+    [HttpPost("forgot-pin")]
+    public async Task<IActionResult> ForgotPin([FromBody] ForgotPinRequest request)
+    {
+        // Per-IP throttle. Over the limit we no-op with the identical 200 — no lookup, no write — so it
+        // neither reveals the throttle nor leaks anything about the identifier.
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var throttleKey = $"forgotpin:{_db.CurrentTenantId:N}:{ip}";
+        var seen = _cache.TryGetValue(throttleKey, out int n) ? n : 0;
+        if (seen >= MaxForgotPinPerWindow)
+            return Ok(new { ok = true });
+        _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+
+        var identifier = request.Identifier?.Trim() ?? string.Empty;
+        // Bound the work and give nothing away: an empty/oversized identifier just no-ops with the
+        // same 200 as a miss.
+        if (identifier.Length is > 0 and <= 200)
+        {
+            var phone = PhoneNumbers.Normalize(identifier);
+            var employee = await _db.Employees.FirstOrDefaultAsync(e =>
+                e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+
+            // Only a real, ALREADY-ACTIVATED account has a PIN to forget. A missing or un-activated one
+            // silently no-ops (un-activated accounts are (re)invited, not reset). Same 200 either way.
+            if (employee is { ActivatedAtUtc: not null })
+            {
+                // One open request per employee: a second tap — or a bored attacker cycling numbers —
+                // can't flood the admin queue with duplicates.
+                var hasPending = await _db.PinResetRequests
+                    .AnyAsync(r => r.EmployeeId == employee.Id && r.Status == PinResetStatus.Pending);
+                if (!hasPending)
+                {
+                    _db.PinResetRequests.Add(new PinResetRequest { EmployeeId = employee.Id });
+                    _db.AuditLogs.Add(new AuditLog
+                    {
+                        EmployeeId = employee.Id,
+                        EventType = AuditEventType.PinResetRequested,
+                        IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
+                    });
+                    await _db.SaveChangesAsync();
+                }
+            }
+        }
+
+        return Ok(new { ok = true });
     }
 
     [HttpPost("change-password")]

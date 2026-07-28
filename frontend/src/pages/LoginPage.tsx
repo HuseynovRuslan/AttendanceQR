@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { login } from '../api/auth'
+import { login, forgotPin } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
 import { useBranding } from '../branding/BrandingContext'
 import { decodeJwt, roleHome } from '../lib/jwt'
@@ -12,6 +12,9 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // "PIN-i unutdum": files a reset request for the admin. resetSent flips to a confirmation.
+  const [resetBusy, setResetBusy] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
   const { saveToken } = useAuth()
   const branding = useBranding()
   const navigate = useNavigate()
@@ -44,6 +47,24 @@ export function LoginPage() {
       setError('Serverə qoşulmaq mümkün olmadı')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function onForgotPin() {
+    const id = email.trim()
+    if (!id) {
+      setError('Əvvəlcə telefon nömrəsi və ya email daxil edin')
+      return
+    }
+    setError(null)
+    setResetBusy(true)
+    try {
+      await forgotPin(id)
+      setResetSent(true)
+    } catch {
+      setError('Serverə qoşulmaq mümkün olmadı')
+    } finally {
+      setResetBusy(false)
     }
   }
 
@@ -107,6 +128,39 @@ export function LoginPage() {
           <button type="submit" disabled={loading} className="btn btn-primary btn-bl btn-lg">
             {loading ? 'Yoxlanılır…' : 'Daxil ol'}
           </button>
+
+          {/* Forgot-PIN: no dead end — instead of calling the admin, file a reset request from here. */}
+          {resetSent ? (
+            <div
+              className="fb"
+              style={{ marginTop: 16, background: '#E7F6EC', color: '#1B7F3B', alignItems: 'flex-start' }}
+            >
+              <span>
+                Sorğunuz göndərildi. Administrator PIN-inizi sıfırlayıb sizə yeni müvəqqəti PIN
+                verəcək — onunla daxil olub öz PIN-inizi təyin edəcəksiniz.
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onForgotPin()}
+              disabled={resetBusy}
+              style={{
+                marginTop: 16,
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                color: 'var(--c500)',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                textUnderlineOffset: 2,
+              }}
+            >
+              {resetBusy ? 'Göndərilir…' : 'PIN-i unutdum?'}
+            </button>
+          )}
         </form>
       </div>
     </div>
