@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
@@ -22,6 +23,8 @@ public partial class AuthController : ControllerBase
     private readonly IJwtService _jwtService;
     private readonly ILoginLockoutStore _lockoutStore;
     private readonly IPhotoStorageService _photoStorage;
+    private readonly IFaceMatchService _faceMatch;
+    private readonly IPushNotifier _pushNotifier;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
 
@@ -29,6 +32,14 @@ public partial class AuthController : ControllerBase
     // or twice, tight enough that a scripted sweep can't harvest timing samples or flood the queue.
     private const int MaxForgotPinPerWindow = 6;
     private static readonly TimeSpan ForgotPinWindow = TimeSpan.FromMinutes(15);
+
+    // Self-service reset gates biometrically, so it needs a MUCH higher bar than the advisory check-in
+    // flag (85): this is an auth factor, not a "looks suspicious" hint. And it caps face attempts PER
+    // ACCOUNT (not just per IP, which rotates) so an attacker holding a bound device can't fish many
+    // photos of the victim for one that clears the bar — after the cap it falls back to the admin queue.
+    private const int ForgotPinFaceThreshold = 95;
+    private const int MaxFaceVerifyFailuresPerAccount = 5;
+    private static readonly TimeSpan FaceVerifyLockWindow = TimeSpan.FromMinutes(30);
 
     // Computed once: a real hash to verify against when an email is unknown / has no password,
     // so login timing does not reveal whether an account exists.
@@ -39,13 +50,16 @@ public partial class AuthController : ControllerBase
 
     public AuthController(
         AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore,
-        IPhotoStorageService photoStorage, IMemoryCache cache, ILogger<AuthController> logger)
+        IPhotoStorageService photoStorage, IFaceMatchService faceMatch, IPushNotifier pushNotifier,
+        IMemoryCache cache, ILogger<AuthController> logger)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _lockoutStore = lockoutStore;
         _photoStorage = photoStorage;
+        _faceMatch = faceMatch;
+        _pushNotifier = pushNotifier;
         _cache = cache;
         _logger = logger;
     }
@@ -246,6 +260,118 @@ public partial class AuthController : ControllerBase
         }
 
         return Ok(new { ok = true });
+    }
+
+    // POST /api/auth/forgot-pin/verify — SELF-SERVICE PIN reset with no admin in the loop. Identity is
+    // proven by TWO factors: (1) a live selfie that matches the account's reference photo, and (2) a
+    // device already bound to that account — so a stray photo of an employee is not enough on its own
+    // (you also need their bound phone). On success a fresh temp PIN is returned on the spot; on ANY
+    // failure the response is a uniform { verified: false } and the client offers the admin-queue path.
+    [HttpPost("forgot-pin/verify")]
+    public async Task<IActionResult> ForgotPinVerify([FromBody] ForgotPinVerifyRequest request)
+    {
+        // Same per-IP throttle as forgot-pin: bounds brute-forcing the face check and enumeration.
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var throttleKey = $"forgotpin:{_db.CurrentTenantId:N}:{ip}";
+        var seen = _cache.TryGetValue(throttleKey, out int n) ? n : 0;
+        if (seen >= MaxForgotPinPerWindow)
+            return Ok(new { verified = false });
+        _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+
+        var identifier = request.Identifier?.Trim() ?? string.Empty;
+        var fingerprint = request.DeviceFingerprint?.Trim() ?? string.Empty;
+        // Reject an oversized payload BEFORE decoding it or fetching the reference — base64 is ~1.33×
+        // the bytes, so ~8M chars caps the decoded image near 6 MB.
+        if (identifier.Length is 0 or > 200 || fingerprint.Length == 0
+            || string.IsNullOrWhiteSpace(request.PhotoBase64) || request.PhotoBase64.Length > 8_000_000)
+            return Ok(new { verified = false });
+
+        var phone = PhoneNumbers.Normalize(identifier);
+        var employee = await _db.Employees.FirstOrDefaultAsync(e =>
+            e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+
+        // Cheap gates first — only spend a Rekognition call once possession (bound device) is proven.
+        // Every failure below returns the identical false, so none of them is distinguishable.
+        if (employee is not { ActivatedAtUtc: not null }
+            || !_faceMatch.Enabled
+            || string.IsNullOrEmpty(employee.ReferencePhotoKey))
+            return Ok(new { verified = false });
+
+        var deviceBound = await _db.DeviceBindings
+            .AnyAsync(b => b.EmployeeId == employee.Id && b.IsActive && b.DeviceFingerprint == fingerprint);
+        if (!deviceBound)
+            return Ok(new { verified = false });
+
+        // Per-account face-attempt cap (independent of IP, which an attacker can rotate): someone
+        // holding the bound device must not get unlimited tries to fish for a photo/angle that clears
+        // the bar. Over the cap, the self-service path is closed for a while and they use the admin queue.
+        var faceLockKey = $"pinverify:{_db.CurrentTenantId:N}:{employee.Id:N}";
+        var fails = _cache.TryGetValue(faceLockKey, out int f) ? f : 0;
+        if (fails >= MaxFaceVerifyFailuresPerAccount)
+            return Ok(new { verified = false });
+
+        // Face match — the second factor. Any problem (no face, mismatch, crowd, storage/AWS error) is a
+        // uniform false; nothing here can throw its way to a 500 that would leak a difference.
+        FaceMatchOutcome outcome;
+        try
+        {
+            var refBytes = await _photoStorage.GetBytesAsync(employee.ReferencePhotoKey, HttpContext.RequestAborted);
+            var selfie = DecodeImage(request.PhotoBase64);
+            if (selfie.Length is 0 or > 4 * 1024 * 1024)
+                return Ok(new { verified = false });
+            outcome = await _faceMatch.CompareAsync(refBytes, selfie, HttpContext.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Forgot-pin verify: face compare failed for {EmployeeId}", employee.Id);
+            return Ok(new { verified = false });
+        }
+
+        // A single clear face whose similarity clears the HIGH self-service bar (NOT the advisory 85 the
+        // check-in flag uses — this is a real auth factor). A near-miss counts against the per-account cap.
+        if (outcome.Status != FaceMatchStatus.Ok || outcome.Score < ForgotPinFaceThreshold)
+        {
+            _cache.Set(faceLockKey, fails + 1, FaceVerifyLockWindow);
+            return Ok(new { verified = false });
+        }
+        _cache.Remove(faceLockKey); // a genuine match clears the failure counter
+
+        // Both factors passed — reset the PIN and hand it back, same reset an admin ResetPin does.
+        var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        employee.PasswordHash = _passwordHasher.Hash(pin);
+        employee.MustChangePin = true;
+        employee.TokenVersion++;
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = employee.Id,
+            EventType = AuditEventType.PinResetSelfService,
+            IpAddress = ip
+        });
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        var tenantId = _db.CurrentTenantId;
+        _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
+        if (employee.PhoneNumber is not null)
+            _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+
+        // Out-of-band alert so a fraudulent self-service reset is visible to the real employee straight
+        // away, even though this same call just logged them out. Best-effort — never fail the reset if
+        // push is unavailable (the account is already reset by here).
+        try
+        {
+            await _pushNotifier.NotifyEmployeesAsync(
+                new[] { employee.Id },
+                "PIN sıfırlandı",
+                "PIN-iniz özünə-xidmət (üz təsdiqi) ilə sıfırlandı. Siz deyildinizsə, dərhal administratora müraciət edin.",
+                "/login",
+                HttpContext.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Forgot-pin verify: reset notification failed for {EmployeeId}", employee.Id);
+        }
+
+        return Ok(new { verified = true, pin });
     }
 
     [HttpPost("change-password")]

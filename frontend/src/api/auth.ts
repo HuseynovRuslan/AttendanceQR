@@ -36,6 +36,17 @@ export function forgotPin(identifier: string) {
   })
 }
 
+/** POST /api/auth/forgot-pin/verify — self-service reset: prove it's you with a selfie (matched to your
+ *  reference photo) from a device already bound to your account. On success returns a fresh temp PIN;
+ *  otherwise `verified: false` (the caller then offers the admin-queue path). */
+export function forgotPinVerify(identifier: string, deviceFingerprint: string, photoBase64: string) {
+  return apiRequest<{ verified: boolean; pin?: string } | ApiErrorBody>('/api/auth/forgot-pin/verify', {
+    method: 'POST',
+    auth: false,
+    body: { identifier, deviceFingerprint, photoBase64 },
+  })
+}
+
 /** POST /api/auth/activate — activation token + new PIN + device fingerprint (+ friendly device name) → JWT. */
 export function activate(
   activationToken: string,

@@ -8,6 +8,7 @@ import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
 import { LoginPage } from './pages/LoginPage'
 import { ActivatePage } from './pages/ActivatePage'
+import { ForgotPinPage } from './pages/ForgotPinPage'
 import { ScanPage } from './pages/ScanPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -138,6 +139,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/activate" element={<ActivatePage />} />
+      <Route path="/forgot-pin" element={<ForgotPinPage />} />
       {/* Employee mobile shell: bottom-tab pages share the EmployeeLayout (light theme + tab bar). */}
       <Route
         element={

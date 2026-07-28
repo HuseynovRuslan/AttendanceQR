@@ -26,5 +26,8 @@ public enum AuditEventType
     PinResetRequested = 11,
 
     // An admin reset an employee's PIN off the back of a request (or dismissed a bogus one).
-    PinResetResolved = 12
+    PinResetResolved = 12,
+
+    // An employee reset their OWN PIN with no admin, proving identity by face match from a bound device.
+    PinResetSelfService = 13
 }
