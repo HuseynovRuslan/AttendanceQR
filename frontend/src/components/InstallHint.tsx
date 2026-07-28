@@ -3,6 +3,17 @@ import { isStandalone } from '../lib/device'
 import { canInstall, onInstallAvailability, promptInstall } from '../lib/installPrompt'
 
 const DISMISS_KEY = 'attendanceqr.installHintDismissed'
+// Snooze, not a permanent dismiss: someone who taps "hide" and then keeps re-logging in every week
+// (because their tab storage was evicted) is exactly who needs the nudge — so it comes back after a
+// week rather than never. Still off entirely once the app is actually installed.
+const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000
+
+function snoozed(): boolean {
+  const raw = localStorage.getItem(DISMISS_KEY)
+  if (!raw) return false
+  const at = Number(raw)
+  return Number.isFinite(at) && Date.now() - at < SNOOZE_MS
+}
 
 /**
  * Nudge employees to add the app to their home screen. This is not cosmetic: an installed PWA gets
@@ -11,9 +22,7 @@ const DISMISS_KEY = 'attendanceqr.installHintDismissed'
  * triggers the "Cihaz uyğun deyil" churn. Shown only when NOT already installed, and dismissible.
  */
 export function InstallHint() {
-  const [hidden, setHidden] = useState(
-    () => isStandalone() || localStorage.getItem(DISMISS_KEY) === '1',
-  )
+  const [hidden, setHidden] = useState(() => isStandalone() || snoozed())
   // Chromium can install in one tap; availability arrives asynchronously, so track it.
   const [installable, setInstallable] = useState(canInstall)
   const [busy, setBusy] = useState(false)
@@ -25,7 +34,7 @@ export function InstallHint() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
 
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, '1')
+    localStorage.setItem(DISMISS_KEY, String(Date.now()))
     setHidden(true)
   }
 
@@ -46,7 +55,10 @@ export function InstallHint() {
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-blue-900">Daha rahat istifadə üçün tətbiqi quraşdırın</div>
+          <div className="font-bold text-blue-900">Tətbiqi ana ekrana quraşdırın</div>
+          <p className="mt-0.5 text-[13px] text-blue-800">
+            Bir dəfə quraşdırsanız, <b>hər dəfə yenidən giriş etməyə ehtiyac qalmayacaq</b> və skan daha sürətli açılacaq.
+          </p>
           {/* One tap where the browser allows it (Chromium); iOS exposes no such API, so there the
               only honest option is showing exactly which two taps to make. */}
           {installable ? (
