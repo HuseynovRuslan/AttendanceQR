@@ -1,20 +1,32 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMyAttendance, getMyProfile, type AttendanceRecord, type MyProfile } from '../api/attendance'
+import { getMyAttendance, getMyProfile, getMySummary, type AttendanceRecord, type MyProfile } from '../api/attendance'
+import { useAuth } from '../auth/AuthContext'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
-import { InstallHint } from '../components/InstallHint'
+import { InstallHint, installNudgeActive } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
-import { firstName, initials, todayState, type TodayState } from '../lib/att'
+import { firstName, initials, todayState, todayStr, type TodayState } from '../lib/att'
 import { fmtDuration, fmtTime } from '../lib/format'
+
+/** First day of the current month as "yyyy-MM-dd", for the month-to-date summary query. */
+function firstOfMonthStr(): string {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-01`
+}
 
 export function HomePage() {
   const navigate = useNavigate()
+  const { employeeId } = useAuth()
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [month, setMonth] = useState<{ workDays: number; hours: number } | null>(null)
   const [loading, setLoading] = useState(true)
+  // Show at most ONE nudge (install OR notifications), so the home isn't a stack of asks. Seeded
+  // synchronously to avoid a first-render flash; InstallHint keeps it in sync if dismissed mid-session.
+  const [installShown, setInstallShown] = useState(() => installNudgeActive())
 
   useEffect(() => {
     void load()
@@ -22,10 +34,18 @@ export function HomePage() {
 
   async function load() {
     setLoading(true)
-    const [p, a] = await Promise.all([getMyProfile(), getMyAttendance()])
+    const from = firstOfMonthStr()
+    const to = todayStr()
+    const [p, a, s] = await Promise.all([getMyProfile(), getMyAttendance(), getMySummary(from, to)])
     if (p.status === 200 && p.data && 'fullName' in p.data) setProfile(p.data)
     if (a.status === 200 && Array.isArray(a.data)) {
       setRecords([...a.data].sort((x, y) => (x.attendanceDate < y.attendanceDate ? 1 : -1)))
+    }
+    // Personal month-to-date — /summary is role-scoped, so take the caller's OWN row (the only row for
+    // a plain employee), same as StatsPage does.
+    if (s.status === 200 && s.data && 'rows' in s.data) {
+      const mine = s.data.rows.find((r) => r.employeeId === employeeId)
+      if (mine) setMonth({ workDays: mine.workDays, hours: Math.round(mine.totalWorkedHours) })
     }
     setLoading(false)
   }
@@ -54,7 +74,7 @@ export function HomePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <InstallHint />
+      <InstallHint onShown={setInstallShown} />
       <AnnouncementBanner />
       {/* Ayın işçisi modulu deaktivdir — mükafat kartı da gizlidir. */}
       {false && <AwardCard />}
@@ -88,6 +108,26 @@ export function HomePage() {
         </div>
       </div>
 
+      {/* Month-to-date, at a glance — their own numbers, no tap required, and a way into the full
+          breakdown. Passive: it informs, it doesn't ask for anything. */}
+      {month && (
+        <button
+          onClick={() => navigate('/stats')}
+          className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99]"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📊</span>
+            <div>
+              <div className="text-sm font-semibold text-slate-400">Bu ay</div>
+              <div className="mt-0.5 text-lg font-bold">
+                {month.workDays} gün · {month.hours} saat
+              </div>
+            </div>
+          </div>
+          <span className="text-sm font-semibold text-blue-600">Ətraflı ›</span>
+        </button>
+      )}
+
       {isBirthday && (
         <div className="rounded-3xl border border-pink-200 bg-gradient-to-r from-pink-50 to-amber-50 p-5 text-center shadow-sm">
           <div className="text-5xl">🎂</div>
@@ -98,8 +138,9 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Second place the reminder can be switched on — self-hides once it is. */}
-      <PushEnablePrompt />
+      {/* Second place the reminder can be switched on — self-hides once it is. Suppressed while the
+          install nudge is up, so the home never stacks two asks at once. */}
+      {!installShown && <PushEnablePrompt />}
 
       <MissedCheckoutBanner />
 

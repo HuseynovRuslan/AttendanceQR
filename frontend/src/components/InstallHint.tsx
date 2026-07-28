@@ -15,19 +15,30 @@ function snoozed(): boolean {
   return Number.isFinite(at) && Date.now() - at < SNOOZE_MS
 }
 
+/** Whether the install nudge is currently active (not installed, not snoozed). Lets the home decide
+ *  synchronously — with no first-render flash — to show at most one nudge at a time. */
+export function installNudgeActive(): boolean {
+  return !isStandalone() && !snoozed()
+}
+
 /**
  * Nudge employees to add the app to their home screen. This is not cosmetic: an installed PWA gets
  * DURABLE storage, so the device fingerprint survives — whereas a Safari/Chrome tab loses it (iOS
  * evicts tab storage after ~7 days), which is what makes an employee read as a "new device" and
  * triggers the "Cihaz uyğun deyil" churn. Shown only when NOT already installed, and dismissible.
  */
-export function InstallHint() {
+export function InstallHint({ onShown }: { onShown?: (shown: boolean) => void } = {}) {
   const [hidden, setHidden] = useState(() => isStandalone() || snoozed())
   // Chromium can install in one tap; availability arrives asynchronously, so track it.
   const [installable, setInstallable] = useState(canInstall)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => onInstallAvailability(setInstallable), [])
+  // Report whether this nudge is on screen so the home can show only ONE nudge at a time (this or the
+  // notification ask, never both). Fires again if the employee dismisses it mid-session.
+  useEffect(() => {
+    onShown?.(!hidden)
+  }, [hidden, onShown])
 
   if (hidden) return null
 
