@@ -333,7 +333,11 @@ public class ManagerController : ControllerBase
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
-        if (await _db.Employees.AnyAsync(e => e.Email == email && e.Id != id, ct))
+        // Guard the uniqueness probe on a non-empty email exactly like the phone one below: with a null
+        // email (a phone-only employee), `e.Email == email` translates to `Email IS NULL`, which matches
+        // EVERY other phone-only employee and falsely reports "EmailAlreadyExists" — blocking any edit
+        // (a shift change, a birthday) for the ~94 accounts that have no email.
+        if (!string.IsNullOrWhiteSpace(email) && await _db.Employees.AnyAsync(e => e.Email == email && e.Id != id, ct))
             return Conflict(new { error = "EmailAlreadyExists" });
         if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone && e.Id != id, ct))
             return Conflict(new { error = "PhoneAlreadyExists" });

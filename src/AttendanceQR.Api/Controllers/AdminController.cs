@@ -663,7 +663,10 @@ public class AdminController : ControllerBase
         // Keep the current email if none supplied, so a phone-only edit doesn't wipe it.
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
 
-        if (await _db.Employees.AnyAsync(e => e.Email == email && e.Id != id))
+        // Only probe uniqueness for a real email — a null one (phone-only employee) makes
+        // `e.Email == email` become `Email IS NULL`, which matches every other phone-only account and
+        // falsely 409s "EmailAlreadyExists", blocking every edit for those employees.
+        if (!string.IsNullOrWhiteSpace(email) && await _db.Employees.AnyAsync(e => e.Email == email && e.Id != id))
             return Conflict(new { error = "EmailAlreadyExists" });
         if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone && e.Id != id))
             return Conflict(new { error = "PhoneAlreadyExists" });
