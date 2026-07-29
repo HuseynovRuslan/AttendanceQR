@@ -499,6 +499,24 @@ public class AttendanceController : ControllerBase
                 }
             }
 
+            // A scan within the check-out cool-off of a RECENT check-out is the mirror of the double-tap
+            // the check-out path already rejects — but here, finding no open record, it would instead
+            // open a brand-new shift. Offline sync makes this real: two morning scans arrive in one
+            // batch, the first checks the night shift out, and without this the second creates a stray,
+            // never-closed check-in (which then reads as "Çıxış yoxdur" and fouls that night's shift).
+            // Their real attendance — the check-out — is already recorded, so nothing is lost. Absolute
+            // difference because an offline batch can process the two out of client-time order.
+            var lastCheckOutUtc = await _db.AttendanceRecords
+                .Where(r => r.EmployeeId == employee.Id && r.CheckOutAtUtc != null)
+                .OrderByDescending(r => r.CheckOutAtUtc)
+                .Select(r => r.CheckOutAtUtc)
+                .FirstOrDefaultAsync();
+            if (lastCheckOutUtc is DateTime co && (nowUtc - co).Duration() < TimeSpan.FromMinutes(MinCheckoutMinutes))
+            {
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "TooSoonAfterCheckOut", ip);
+                return Conflict(new { error = "AlreadyCompleted" });
+            }
+
             return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
                 request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow);
         }
