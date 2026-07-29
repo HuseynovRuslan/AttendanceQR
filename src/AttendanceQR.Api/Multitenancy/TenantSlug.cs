@@ -8,7 +8,7 @@ namespace AttendanceQR.Api.Multitenancy;
 public static class TenantSlug
 {
     private static readonly HashSet<string> NonTenantLabels =
-        new(StringComparer.OrdinalIgnoreCase) { "api", "www", "localhost", "qrlog", "127" };
+        new(StringComparer.OrdinalIgnoreCase) { "api", "www", "localhost", "qrlog", "127", "app" };
 
     /// <summary>
     /// True when a label can never name a tenant. A tenant created on one of these would be

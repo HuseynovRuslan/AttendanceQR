@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { login } from '../api/auth'
+import { login, appLogin } from '../api/auth'
+import { isAppMode } from '../lib/host'
 import { useAuth } from '../auth/AuthContext'
 import { useBranding } from '../branding/BrandingContext'
 import { decodeJwt, roleHome } from '../lib/jwt'
@@ -22,7 +23,9 @@ export function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      const { status, data } = await login(email, password)
+      // The native app (no company subdomain) resolves the tenant from the credentials; the web uses
+      // its subdomain. Same request/response shape either way.
+      const { status, data } = await (isAppMode() ? appLogin : login)(email, password)
       if (status === 200 && data && 'token' in data) {
         saveToken(data.token)
         const from = (location.state as { from?: string } | null)?.from

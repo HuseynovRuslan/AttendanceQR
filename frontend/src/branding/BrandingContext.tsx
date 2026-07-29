@@ -49,7 +49,9 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void getTenantBranding().then((r) => {
-      if (r.status === 200 && r.data && 'displayName' in r.data) {
+      // Ignore an EMPTY branding response (a non-tenant host such as app.qrlog.az resolves no tenant):
+      // keep the guessed QRLog branding instead of blanking it to the default mark.
+      if (r.status === 200 && r.data && 'displayName' in r.data && (r.data.displayName || r.data.color)) {
         setBranding(r.data)
         applyBranding(r.data)
       }

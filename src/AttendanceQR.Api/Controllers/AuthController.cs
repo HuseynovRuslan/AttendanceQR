@@ -33,6 +33,12 @@ public partial class AuthController : ControllerBase
     private const int MaxForgotPinPerWindow = 6;
     private static readonly TimeSpan ForgotPinWindow = TimeSpan.FromMinutes(15);
 
+    // app-login is anonymous and spans every tenant, so identifier-rotation would otherwise give an
+    // attacker unlimited PIN-spray + PBKDF2 work from one IP. Cap FAILURES per IP (a real login rarely
+    // fails; a spray is all failures) — past the cap we 429 without doing the expensive verify.
+    private const int MaxAppLoginFailPerIp = 30;
+    private static readonly TimeSpan AppLoginIpWindow = TimeSpan.FromMinutes(15);
+
     // Self-service reset gates biometrically, so it needs a MUCH higher bar than the advisory check-in
     // flag (85): this is an auth factor, not a "looks suspicious" hint. And it caps face attempts PER
     // ACCOUNT (not just per IP, which rotates) so an attacker holding a bound device can't fish many
@@ -142,6 +148,82 @@ public partial class AuthController : ControllerBase
 
         // 9. Hand back a login JWT so the employee is immediately usable.
         return Ok(new { token = _jwtService.GenerateToken(employee), employeeId = employee.Id });
+    }
+
+    // POST /api/auth/app-login — login for the single-URL native app, which has no company subdomain to
+    // resolve the tenant from. Finds the employee across ALL companies by email/phone, verifies the PIN,
+    // and issues a token for whichever company they belong to (the token's tid scopes every later
+    // request). The subdomain web login above is untouched and stays strictly tenant-scoped.
+    //
+    // This is the ONE anonymous cross-tenant lookup: IgnoreQueryFilters is used deliberately, because
+    // resolving the tenant from the credentials IS the job. It returns ONLY a token for a fully verified
+    // account and never another company's data. Tenant-optional (see Program.cs) so it runs with no
+    // resolved tenant; it never reads CurrentTenantId (no filtered query, no SaveChanges).
+    [HttpPost("app-login")]
+    public async Task<IActionResult> AppLogin([FromBody] LoginRequest request)
+    {
+        // Per-IP failure cap, checked BEFORE any DB/PBKDF2 work: bounds identifier-rotation spray and
+        // the CPU cost of the cross-tenant verify from a single source. Over the cap → 429, no work.
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var ipKey = $"applogin-ip:{ip}";
+        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxAppLoginFailPerIp)
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = (int)AppLoginIpWindow.TotalMinutes });
+
+        var identifier = request.Email?.Trim() ?? string.Empty;
+        // Tenant-less lockout: this endpoint spans every company, so the brute-force budget is per
+        // identifier only (a distinct namespace from the per-tenant web login lockout).
+        var lockoutKey = $"applogin:{LoginIdentity.LockoutKey(Guid.Empty, identifier)}";
+        if (_lockoutStore.IsLockedOut(lockoutKey))
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+
+        var phone = PhoneNumbers.Normalize(identifier);
+        var decoy = _decoyHash ??= _passwordHasher.Hash("decoy-password-for-timing-parity");
+
+        // Candidates across every tenant. Matched on the same email/phone columns the web login uses, so
+        // it's a handful of rows at most (usually zero or one).
+        var candidates = identifier.Length == 0
+            ? new List<Employee>()
+            : await _db.Employees.IgnoreQueryFilters()
+                .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
+                .ToListAsync();
+
+        // Verify against each candidate (and a decoy when there are none) so timing doesn't leak whether
+        // the identifier exists. A login succeeds only if EXACTLY ONE active, activated account's PIN
+        // matches — an identifier+PIN that collides across two companies is ambiguous and rejected, not
+        // guessed. Identical failure response for every case (unknown, wrong PIN, inactive, ambiguous).
+        Employee? matched = null;
+        var matches = 0;
+        if (candidates.Count == 0)
+        {
+            _passwordHasher.Verify(decoy, request.Password);
+        }
+        else
+        {
+            foreach (var c in candidates)
+            {
+                var hash = string.IsNullOrEmpty(c.PasswordHash) ? decoy : c.PasswordHash;
+                var ok = _passwordHasher.Verify(hash, request.Password)
+                         && c.IsActive && c.ActivatedAtUtc is not null && !string.IsNullOrEmpty(c.PasswordHash);
+                if (ok) { matched = c; matches++; }
+            }
+        }
+
+        if (matched is null || matches != 1)
+        {
+            // Count this failure against the per-IP cap (successes don't count, so a legit user is
+            // never throttled — only a stream of failures from one source is).
+            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, AppLoginIpWindow);
+            var remaining = _lockoutStore.RecordFailure(lockoutKey);
+            if (remaining <= 0)
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining });
+        }
+
+        _lockoutStore.RecordSuccess(lockoutKey);
+        return Ok(new { token = _jwtService.GenerateToken(matched), employeeId = matched.Id });
     }
 
     // Accepts a data URL ("data:image/jpeg;base64,AAAA…") or a bare base64 string.

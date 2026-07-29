@@ -500,7 +500,9 @@ app.UseAuthentication();
 // tenant-less answer — allow-tls is called by Caddy itself with no Origin, and branding/manifest
 // return neutral defaults rather than guess an identity. Everything else is rejected below.
 static bool TenantOptional(PathString path) =>
-    path.StartsWithSegments("/api/tenant");
+    path.StartsWithSegments("/api/tenant")
+    // The native app has no company subdomain, so it resolves the tenant from the credentials itself.
+    || path.StartsWithSegments("/api/auth/app-login");
 
 app.Use(async (context, next) =>
 {

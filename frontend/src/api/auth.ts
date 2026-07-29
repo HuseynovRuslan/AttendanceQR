@@ -16,9 +16,19 @@ export interface ApiErrorBody {
   remaining?: number
 }
 
-/** POST /api/auth/login — email + password → JWT. */
+/** POST /api/auth/login — email + password → JWT. Tenant comes from the subdomain (web). */
 export function login(email: string, password: string) {
   return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/login', {
+    method: 'POST',
+    auth: false,
+    body: { email, password },
+  })
+}
+
+/** POST /api/auth/app-login — the single-URL native app has no company subdomain, so the tenant is
+ *  resolved from the credentials (searched across all companies). Same shape as login. */
+export function appLogin(email: string, password: string) {
+  return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/app-login', {
     method: 'POST',
     auth: false,
     body: { email, password },
