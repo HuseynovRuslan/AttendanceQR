@@ -31,6 +31,8 @@ const home = localizedPath(lang, '/')
         <!-- The blog is written in Azerbaijani only, so every language points at the AZ index. -->
         <a href="/bloq/">{t('foot.blog')}</a>
         <a href={localizedPath(lang, '/elaqe/')}>{t('nav.contact')}</a>
+        <!-- Privacy policy is Azerbaijani-only (Google Play requirement); every language links to it. -->
+        <a href="/mexfilik/">{lang === 'ru' ? 'Конфиденциальность' : lang === 'en' ? 'Privacy' : 'Məxfilik'}</a>
       </div>
       <div class="fcol">
         <h4>{t('foot.contact')}</h4>

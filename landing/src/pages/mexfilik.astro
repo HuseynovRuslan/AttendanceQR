@@ -1,0 +1,102 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import PageHero from '../components/PageHero.astro'
+const lang = 'az' as const
+---
+<BaseLayout
+  lang={lang}
+  path="/mexfilik/"
+  title="Məxfilik Siyasəti — QRLog"
+  description="QRLog davamiyyət tətbiqinin məxfilik siyasəti: hansı məlumatları toplayır və necə istifadə edir."
+>
+  <PageHero title="Məxfilik Siyasəti" subtitle="Qüvvəyə minmə tarixi: 29 iyul 2026" />
+
+  <section class="prose-section">
+    <div class="wrap prose">
+      <p class="lead">
+        Bu siyasət <strong>QRLog</strong> davamiyyət tətbiqinin (bundan sonra “Tətbiq”) hansı
+        məlumatları topladığını və necə istifadə etdiyini izah edir. Tətbiq QRLog sistemindən
+        istifadə edən şirkətlərin işçiləri üçündür.
+      </p>
+
+      <h2>Məlumatların idarəçisi</h2>
+      <p>
+        İşçinin məlumatlarının <strong>idarəçisi (data controller)</strong> onun işlədiyi
+        <strong>şirkətdir</strong>. QRLog həmin şirkət adından məlumatları emal edən
+        <strong>operatordur (processor)</strong>. Məlumatlarınızla bağlı sualları əvvəlcə iş
+        yerinizə (işəgötürənə) ünvanlaya bilərsiniz.
+      </p>
+
+      <h2>Topladığımız məlumatlar</h2>
+      <ul>
+        <li><strong>Şəxsi məlumat:</strong> ad, soyad, telefon nömrəsi və/və ya e-poçt, vəzifə.</li>
+        <li><strong>Giriş məlumatı:</strong> PIN (yalnız şifrələnmiş/heş formada saxlanılır — açıq
+          mətndə deyil).</li>
+        <li><strong>Mövqe (GPS):</strong> yalnız QR skan anında — işə düzgün yerdə gəldiyinizi
+          yoxlamaq üçün.</li>
+        <li><strong>Şəkil (selfie):</strong> giriş/çıxış anında çəkilən şəkil — davamiyyəti
+          təsdiqləmək və şəxsiyyəti tanımaq üçün.</li>
+        <li><strong>Cihaz məlumatı:</strong> cihaz “barmaq izi” — hesabın icazəsiz cihazdan
+          istifadəsinin qarşısını almaq üçün.</li>
+        <li><strong>İstifadə məlumatı:</strong> giriş/çıxış vaxtları, tətbiqi son açma vaxtı.</li>
+      </ul>
+      <p>Tətbiq <strong>reklam üçün heç bir məlumat toplamır</strong> və məlumatlarınızı
+        <strong>satmır</strong>.</p>
+
+      <h2>Məlumatlardan necə istifadə olunur</h2>
+      <ul>
+        <li>Davamiyyətin (işə giriş-çıxış) qeyd edilməsi və hesabatı.</li>
+        <li>Mövqeyə görə düzgün iş yerində olduğunuzun yoxlanması (geofence).</li>
+        <li>Selfie ilə şəxsiyyətin təsdiqi (üz müqayisəsi) və saxtakarlığın qarşısının alınması.</li>
+        <li>Növbə/çıxış bildirişlərinin göndərilməsi.</li>
+      </ul>
+
+      <h2>Üçüncü tərəf xidmətləri (operatorlar)</h2>
+      <p>Məlumatlar yalnız aşağıdakı texniki xidmətlər vasitəsilə emal olunur:</p>
+      <ul>
+        <li><strong>Cloudflare R2</strong> — şəkillərin saxlanması.</li>
+        <li><strong>Amazon Web Services (Rekognition)</strong> — üz müqayisəsi.</li>
+        <li><strong>Web Push</strong> — push bildirişləri.</li>
+        <li>Serverlərin yerləşdiyi hostinq provayderi.</li>
+      </ul>
+      <p>Bu xidmətlər məlumatları yalnız QRLog adından emal edir.</p>
+
+      <h2>Saxlanma müddəti</h2>
+      <p>
+        Davamiyyət qeydləri və şəkillər əmək münasibətləri davam etdiyi müddətdə və
+        qanunvericiliyin tələb etdiyi müddət ərzində saxlanılır. Şirkət hesabı bağlandıqda
+        məlumatlar müvafiq qaydada silinir və ya anonimləşdirilir.
+      </p>
+
+      <h2>Təhlükəsizlik</h2>
+      <p>
+        Bütün məlumat ötürülməsi şifrələnir (HTTPS/TLS). PIN açıq mətndə saxlanmır. Girişə çıxış
+        şirkət daxilində rollara görə məhdudlaşdırılır.
+      </p>
+
+      <h2>Hüquqlarınız</h2>
+      <p>
+        Öz məlumatlarınıza baxmaq, düzəltmək və ya silinməsini tələb etmək hüququnuz var. Bunun
+        üçün iş yerinizlə və ya bizimlə əlaqə saxlayın:
+        <a href="mailto:info@qrlog.az">info@qrlog.az</a>.
+      </p>
+
+      <h2>Uşaqlar</h2>
+      <p>
+        Tətbiq uşaqlar üçün nəzərdə tutulmayıb və 16 yaşından kiçiklərdən bilərəkdən məlumat
+        toplamırıq.
+      </p>
+
+      <h2>Dəyişikliklər</h2>
+      <p>
+        Bu siyasət yenilənə bilər. Yenilənmə bu səhifədə dərc olunacaq və tarix yenilənəcək.
+      </p>
+
+      <h2>Əlaqə</h2>
+      <p>
+        QRLog — <a href="mailto:info@qrlog.az">info@qrlog.az</a> —
+        <a href="https://qrlog.az">qrlog.az</a>
+      </p>
+    </div>
+  </section>
+</BaseLayout>
