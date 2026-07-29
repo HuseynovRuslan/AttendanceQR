@@ -31,11 +31,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # Match the web build (frontend/Dockerfile is node:20).
-      - name: Set up Node 20
+      # The Capacitor CLI (@capacitor/cli 8.x) requires Node >=22 — the web build itself is fine on 20
+      # (frontend/Dockerfile), but `cap sync` fatal-errors below 22, so build everything on 22 here.
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
