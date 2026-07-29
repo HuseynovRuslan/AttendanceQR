@@ -62,6 +62,14 @@ bax.qrlog.az {
 	reverse_proxy frontend:80
 }
 
+# The native app (TWA) is served from this company-neutral host — it names no tenant, so it needs its
+# own explicit block (the on-demand catch-all's allow-tls ask would reject it as a non-tenant). Same
+# frontend build; the app detects the "app" host and logs in via the cross-tenant app-login endpoint.
+app.qrlog.az {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
 # EastCaf (tenant "ecaf") and CleanFix — kept as explicit blocks even though the catch-all below
 # would now cover them. They have working certificates and there is no reason to move a live tenant
 # onto a new code path to prove a point; new tenants need no block at all.
