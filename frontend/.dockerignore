@@ -3,3 +3,7 @@ dist
 .env
 .env.*
 *.log
+
+# Capacitor native project — not part of the web build
+android
+capacitor.config.*
