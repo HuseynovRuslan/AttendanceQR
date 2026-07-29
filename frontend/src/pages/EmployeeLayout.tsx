@@ -29,13 +29,21 @@ export function EmployeeLayout() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       <header className="sticky top-0 z-20 bg-white border-b border-slate-100 h-14 flex items-center gap-2 px-4">
-        <BrandLogo size={26} />
         {isQrlog ? (
-          <span className="font-extrabold text-lg tracking-tight">{branding.displayName}</span>
+          <>
+            <BrandLogo size={26} />
+            {branding.displayName && (
+              <span className="font-extrabold text-lg tracking-tight">{branding.displayName}</span>
+            )}
+          </>
         ) : (
-          <span className="font-extrabold text-lg tracking-tight">
-            Attendance<span className="text-blue-600">QR</span>
-          </span>
+          // No tenant branding (bax / unbranded host): show the QRLog product logo, not the old
+          // "AttendanceQR" placeholder wordmark.
+          <img
+            src="/brand/qrlog-logo.png"
+            alt="QRLog"
+            style={{ height: 26, width: 'auto', borderRadius: 5, border: '1px solid rgba(15,27,45,0.08)' }}
+          />
         )}
       </header>
 
