@@ -49,7 +49,7 @@ export function StatsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-extrabold">Statistika</h1>
+        <h1 className="text-xl font-extrabold">Saatlarım</h1>
         <p className="text-sm text-slate-500">Bu ayın iş saatları və fəaliyyətiniz.</p>
       </div>
 

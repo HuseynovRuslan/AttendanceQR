@@ -1,26 +1,26 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 import type { ComponentType, SVGProps } from 'react'
 import { BrandLogo } from '../components/BrandLogo'
 import { useBranding } from '../branding/BrandingContext'
-import { IconBell, IconChart, IconHome, IconQr, IconUser } from '../components/icons'
+import { IconBell, IconChart, IconHome, IconUser } from '../components/icons'
 
 type Tab = { to: string; label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> }
 
-const LEFT: Tab[] = [
-  { to: '/home', label: 'Ana səhifə', Icon: IconHome },
-  { to: '/stats', label: 'Statistika', Icon: IconChart },
-]
-const RIGHT: Tab[] = [
-  { to: '/notifications', label: 'Bildirişlər', Icon: IconBell },
-  { to: '/menu', label: 'Menyu', Icon: IconUser },
+// Four flat tabs, purposeful names (not the generic Home/Stats/Notifications/Menu). Scan is NOT a tab:
+// it lives as the hero on "Bu gün", so the bar has no raised centre circle — the exact thing that made
+// this read like every other attendance app.
+const TABS: Tab[] = [
+  { to: '/home', label: 'Bu gün', Icon: IconHome },
+  { to: '/stats', label: 'Saatlarım', Icon: IconChart },
+  { to: '/notifications', label: 'Xəbərlər', Icon: IconBell },
+  { to: '/menu', label: 'Profil', Icon: IconUser },
 ]
 
 /**
  * Employee mobile shell: light theme, a sticky brand header, a scrollable content area, and a fixed
- * bottom tab bar whose center is an elevated circular Scan FAB (the primary action → /scan).
+ * flat bottom tab bar. Scanning is reached from the "Bu gün" hero, not a bottom-bar button.
  */
 export function EmployeeLayout() {
-  const navigate = useNavigate()
   const branding = useBranding()
   // QRLog-branded tenants: the logo pill already says "QRLog", so show the company name beside it.
   // bax (leaf) keeps the original "AttendanceQR" wordmark untouched.
@@ -44,22 +44,10 @@ export function EmployeeLayout() {
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 bg-white border-t border-slate-200">
-        <div className="relative mx-auto grid h-16 max-w-md grid-cols-5">
-          {LEFT.map((t) => (
+        <div className="mx-auto grid h-16 max-w-md grid-cols-4">
+          {TABS.map((t) => (
             <TabLink key={t.to} {...t} />
           ))}
-          <span aria-hidden />
-          {RIGHT.map((t) => (
-            <TabLink key={t.to} {...t} />
-          ))}
-
-          <button
-            onClick={() => navigate('/scan')}
-            aria-label="Skan et"
-            className="absolute left-1/2 -top-6 h-16 w-16 -translate-x-1/2 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 ring-4 ring-slate-50 flex items-center justify-center transition active:scale-95"
-          >
-            <IconQr className="h-7 w-7" />
-          </button>
         </div>
       </nav>
     </div>
@@ -71,7 +59,7 @@ function TabLink({ to, label, Icon }: Tab) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex flex-col items-center justify-center gap-1 text-[10px] font-semibold leading-none transition ${
+        `flex flex-col items-center justify-center gap-1 text-[11px] font-semibold leading-none transition ${
           isActive ? 'text-blue-600' : 'text-slate-400'
         }`
       }

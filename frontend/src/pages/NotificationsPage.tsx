@@ -103,7 +103,7 @@ export function NotificationsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-extrabold">Bildirişlər</h1>
+        <h1 className="text-xl font-extrabold">Xəbərlər</h1>
         {unreadCount > 0 && (
           <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white">{unreadCount} yeni</span>
         )}

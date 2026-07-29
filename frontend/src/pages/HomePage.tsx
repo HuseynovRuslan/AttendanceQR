@@ -10,6 +10,7 @@ import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { firstName, initials, todayState, todayStr, type TodayState } from '../lib/att'
 import { fmtDuration, fmtTime } from '../lib/format'
+import { IconQr } from '../components/icons'
 
 /** First day of the current month as "yyyy-MM-dd", for the month-to-date summary query. */
 function firstOfMonthStr(): string {
@@ -144,12 +145,7 @@ export function HomePage() {
 
       <MissedCheckoutBanner />
 
-      <TodayCard today={today} shiftEnd={profile?.shiftEnd} onCheckOut={() => navigate('/scan')} />
-
-      <div className="grid grid-cols-2 gap-3">
-        <ActionButton tone="green" label="Giriş et" active={today.kind === 'none'} onClick={() => navigate('/scan')} />
-        <ActionButton tone="blue" label="Çıxış et" active={today.kind === 'in'} onClick={() => navigate('/scan')} />
-      </div>
+      <ScanHero today={today} shiftEnd={profile?.shiftEnd} onScan={() => navigate('/scan')} />
 
       <div>
         <div className="mb-2 flex items-center justify-between px-1">
@@ -191,73 +187,55 @@ function isOverdue(checkInIso: string, shiftEnd?: string | null): boolean {
   return Date.now() > end.getTime() + 30 * 60_000
 }
 
-function TodayCard({ today, shiftEnd, onCheckOut }: { today: TodayState; shiftEnd?: string | null; onCheckOut: () => void }) {
-  const base = 'rounded-3xl p-5 shadow-sm border'
+/** The day's primary action AND its status, in one hero — the scan lives here now that it's out of the
+ *  bottom bar. Context-aware: green "Giriş et" before check-in, blue "Çıxış et" while at work (red and
+ *  insistent once the shift is over — a forgotten check-out reads as zero hours), a calm summary once
+ *  the day is done. The whole card is the tap target. */
+function ScanHero({ today, shiftEnd, onScan }: { today: TodayState; shiftEnd?: string | null; onScan: () => void }) {
+  const heroBtn = 'relative w-full overflow-hidden rounded-3xl p-6 text-left text-white shadow-lg transition active:scale-[.99]'
+
   if (today.kind === 'none') {
     return (
-      <div className={`${base} border-slate-100 bg-white`}>
-        <div className="text-sm font-semibold text-slate-400">Bu gün</div>
-        <div className="mt-1 text-xl font-bold">Hələ giriş etməmisiniz</div>
-        <div className="mt-1 text-base text-slate-500">Giriş üçün aşağıdakı yaşıl «Giriş et» düyməsini basıb QR kodu skan edin.</div>
-      </div>
+      <button onClick={onScan} className={`${heroBtn} bg-gradient-to-br from-green-500 to-emerald-600 shadow-green-600/25`}>
+        <IconQr className="pointer-events-none absolute -right-3 -top-3 h-24 w-24 opacity-15" />
+        <div className="text-xs font-bold uppercase tracking-wider opacity-85">Bu gün</div>
+        <div className="mt-1 text-3xl font-extrabold">Giriş et</div>
+        <div className="mt-1 text-sm opacity-90">Hələ giriş etməmisiniz</div>
+        <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
+          <IconQr className="h-5 w-5" /> Skan üçün toxunun
+        </span>
+      </button>
     )
   }
+
   if (today.kind === 'in') {
     const overdue = isOverdue(today.checkIn, shiftEnd)
-    // Overdue → red and insistent; otherwise green but always with a direct "Çıxış et", because a
-    // forgotten check-out reads as zero hours and costs the employee that day's pay.
     return (
-      <div className={`${base} ${overdue ? 'border-red-300 bg-red-50' : 'border-green-200 bg-green-50'}`}>
-        <div className={`text-sm font-semibold ${overdue ? 'text-red-500' : 'text-slate-500'}`}>
-          {overdue ? 'Bu gün · çıxış gözlənilir' : 'Bu gün · işdəsiniz'}
+      <button
+        onClick={onScan}
+        className={`${heroBtn} ${overdue ? 'bg-gradient-to-br from-red-500 to-red-700 shadow-red-600/25' : 'bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-600/25'}`}
+      >
+        <IconQr className="pointer-events-none absolute -right-3 -top-3 h-24 w-24 opacity-15" />
+        <div className="text-xs font-bold uppercase tracking-wider opacity-85">{overdue ? 'Növbəniz bitib' : 'İşdəsiniz'}</div>
+        <div className="mt-1 text-3xl font-extrabold">Çıxış et</div>
+        <div className="mt-1 text-sm opacity-90">
+          Giriş {fmtTime(today.checkIn)}
+          {overdue ? ' · çıxışı unutmayın!' : shiftEnd ? ` · Növbə bitir ${shiftEnd}` : ''}
         </div>
-        <div className="mt-1 text-2xl font-extrabold">Giriş {fmtTime(today.checkIn)}</div>
-        <div className={`mt-1 text-sm ${overdue ? 'font-semibold text-red-700' : 'text-slate-600'}`}>
-          {overdue
-            ? '⚠️ Növbəniz bitib, hələ çıxış etməmisiniz — çıxışı unutmayın!'
-            : `Hələ çıxış etməmisiniz.${shiftEnd ? ` Növbə bitir: ${shiftEnd}.` : ''}`}
-        </div>
-        <button
-          onClick={onCheckOut}
-          className={`mt-3 w-full rounded-2xl py-4 text-lg font-bold text-white active:scale-[.99] transition ${overdue ? 'bg-red-600' : 'bg-blue-600'}`}
-        >
-          Çıxış et
-        </button>
-      </div>
+        <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
+          <IconQr className="h-5 w-5" /> Çıxış üçün skan et
+        </span>
+      </button>
     )
   }
+
   return (
-    <div className={`${base} border-blue-200 bg-blue-50`}>
-      <div className="text-sm font-semibold text-slate-500">Bu gün · tamamlandı ✓</div>
+    <div className="rounded-3xl border border-blue-200 bg-blue-50 p-6">
+      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Bu gün · tamamlandı ✓</div>
       <div className="mt-1 text-2xl font-extrabold">
         {fmtTime(today.checkIn)} – {fmtTime(today.checkOut)}
       </div>
       <div className="mt-1 text-sm text-slate-600">{fmtDuration(today.checkIn, today.checkOut)} işlədiniz.</div>
     </div>
-  )
-}
-
-function ActionButton({
-  tone,
-  label,
-  active,
-  onClick,
-}: {
-  tone: 'green' | 'blue'
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
-  const activeCls = tone === 'green' ? 'bg-green-500 text-white shadow-green-500/30' : 'bg-blue-600 text-white shadow-blue-600/30'
-  return (
-    <button
-      onClick={onClick}
-      className={`flex h-28 flex-col items-center justify-center gap-1 rounded-3xl text-xl font-bold shadow-sm transition active:scale-[0.98] ${
-        active ? `${activeCls} shadow-lg` : 'border border-slate-200 bg-white text-slate-400'
-      }`}
-    >
-      <span className="text-4xl">{tone === 'green' ? '↙' : '↗'}</span>
-      {label}
-    </button>
   )
 }
