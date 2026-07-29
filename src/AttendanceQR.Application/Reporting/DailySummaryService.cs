@@ -31,6 +31,15 @@ public sealed class DailySummaryService : IDailySummaryService
 
     public async Task<int> GenerateForDateAsync(DateOnly date, CancellationToken ct = default)
     {
+        // A DailySummary is a FINISHED-day record. Never generate today or a future date: today is always
+        // computed live (the board and reports never read today from here), and a future day has no
+        // records yet — so it would mark every employee Absent. This used to happen wholesale: a leave
+        // ending weeks out made RecomputeRange call this for every future day, pre-creating Absent rows
+        // for all staff up to the leave's end. Guard it here, at the one place, so no caller can.
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        if (date >= today)
+            return 0;
+
         // Only the system/root accounts in HiddenEmails are excluded; admins/managers who also clock in
         // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
         var employees = await _db.Employees
