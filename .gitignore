@@ -496,3 +496,6 @@ ap.sh
 landing/dist/
 landing/.astro/
 landing-dist/
+
+# Downloaded APK artifacts (built in CI)
+apk-out/
