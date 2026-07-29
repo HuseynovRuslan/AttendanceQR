@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "az.qrlog.app.twa",
+    "sha256_cert_fingerprints": ["29:E5:F6:DC:01:49:81:F6:FA:FC:5C:43:7C:3F:10:82:FB:3B:60:F3:25:24:4C:4E:B8:5C:54:0F:FA:DE:ED:02"]
+  }
+}]
