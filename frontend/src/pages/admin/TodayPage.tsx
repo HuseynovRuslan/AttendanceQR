@@ -430,6 +430,12 @@ export function TodayPage() {
                       Təyin edən: {r.leaveAssignedBy}
                     </div>
                   )}
+                  {/* This giriş-çıxış was entered/changed by hand, not scanned — attribute it. */}
+                  {r.manualBy && (
+                    <div style={{ fontSize: 11, marginTop: 4, color: 'var(--amber)' }}>
+                      ✍️ Əl ilə — {r.manualBy}
+                    </div>
+                  )}
                 </td>
                 <td className="mono" data-label="Giriş">
                   {fmtTime(r.checkInAtUtc)}

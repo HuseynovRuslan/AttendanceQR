@@ -101,7 +101,8 @@ public sealed class ReportQueryService : IReportQueryService
     /// fields; the reports want only the figures) without computing the day twice.</summary>
     private sealed record LiveDay(
         ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed,
-        EffectiveShift Shift, LeaveType? Leave, string? LeaveAssignedBy = null, Guid? LeaveId = null);
+        EffectiveShift Shift, LeaveType? Leave, string? LeaveAssignedBy = null, Guid? LeaveId = null,
+        string? ManualBy = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -201,6 +202,15 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(e => new { e.Id, e.FullName })
             .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
 
+        // Who set an attendance record by hand (open-record close, time fix, undo-checkout) — resolved
+        // once so the board can flag a manually-entered day the same way it names a leave's assigner.
+        var manualByIds = records.Values
+            .Where(r => r.ManualByEmployeeId != null).Select(r => r.ManualByEmployeeId!.Value).Distinct().ToList();
+        var manualByNames = manualByIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Employees.Where(e => manualByIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+
         foreach (var e in employees)
         {
             if (!locations.TryGetValue(e.LocationId, out var location))
@@ -230,7 +240,8 @@ public sealed class ReportQueryService : IReportQueryService
             // Judged against the same resolved shift the scan endpoint used.
             var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
-            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId));
+            var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;
+            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy));
         }
 
         return rows;
@@ -694,7 +705,7 @@ public sealed class ReportQueryService : IReportQueryService
                 d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
                 d.Record?.WasOffline ?? false,
                 d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
-                d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId))
+                d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy))
             .OrderBy(r => r.EmployeeName)
             .ToList();
     }

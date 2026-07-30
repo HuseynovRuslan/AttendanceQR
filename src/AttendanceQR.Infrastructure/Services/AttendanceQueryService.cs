@@ -26,11 +26,30 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
     }
 
     private async Task<IReadOnlyList<AttendanceRecordDto>> QueryRecordsAsync(Guid employeeId, CancellationToken ct)
-        => await _db.AttendanceRecords
+    {
+        var rows = await _db.AttendanceRecords
             .Where(r => r.EmployeeId == employeeId)
             .OrderByDescending(r => r.AttendanceDate)
-            .Select(r => new AttendanceRecordDto(
-                r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc, r.Status.ToString(),
-                r.FaceMatchScore, r.FaceMatchStatus.ToString()))
+            .Select(r => new
+            {
+                r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc,
+                Status = r.Status.ToString(), r.FaceMatchScore, FaceMatchStatus = r.FaceMatchStatus.ToString(),
+                r.ManualByEmployeeId
+            })
             .ToListAsync(ct);
+
+        // Resolve the "edited by hand by" ids to names in one query (same tenant, so the query filter
+        // finds them). A handful of distinct admins at most.
+        var manualIds = rows.Where(r => r.ManualByEmployeeId != null)
+            .Select(r => r.ManualByEmployeeId!.Value).Distinct().ToList();
+        var manualNames = manualIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Employees.Where(e => manualIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+
+        return rows.Select(r => new AttendanceRecordDto(
+            r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc, r.Status,
+            r.FaceMatchScore, r.FaceMatchStatus,
+            r.ManualByEmployeeId is Guid mid ? manualNames.GetValueOrDefault(mid) : null)).ToList();
+    }
 }

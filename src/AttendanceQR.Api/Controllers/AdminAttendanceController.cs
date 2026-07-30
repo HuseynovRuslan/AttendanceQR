@@ -102,9 +102,10 @@ public class AdminAttendanceController : ControllerBase
         if (request.CheckOutAtUtc is not null)
             record.CheckOutAtUtc = request.CheckOutAtUtc;
 
+        var requesterId = User.EmployeeId();
+        record.ManualByEmployeeId = requesterId; // this record was touched by hand — attribute it
         await _db.SaveChangesAsync();
 
-        var requesterId = User.EmployeeId();
         await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
 
         await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
@@ -132,6 +133,7 @@ public class AdminAttendanceController : ControllerBase
         if (await _db.AttendanceRecords.AnyAsync(r => r.EmployeeId == request.EmployeeId && r.AttendanceDate == request.Date))
             return Conflict(new { error = "RecordAlreadyExists" });
 
+        var requesterId = User.EmployeeId();
         var record = new AttendanceRecord
         {
             EmployeeId = request.EmployeeId,
@@ -139,6 +141,7 @@ public class AdminAttendanceController : ControllerBase
             AttendanceDate = request.Date,
             CheckInAtUtc = request.CheckInAtUtc,
             CheckOutAtUtc = request.CheckOutAtUtc,
+            ManualByEmployeeId = requesterId, // created by hand, not a scan
             Status = AttendanceController.DetermineStatus(
                 EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location).Start,
                 location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
@@ -146,7 +149,6 @@ public class AdminAttendanceController : ControllerBase
         _db.AttendanceRecords.Add(record);
         await _db.SaveChangesAsync();
 
-        var requesterId = User.EmployeeId();
         await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
 
         await _dailySummaryService.GenerateForDateAsync(request.Date, HttpContext.RequestAborted);
@@ -167,9 +169,10 @@ public class AdminAttendanceController : ControllerBase
         if (record.CheckOutAtUtc is not null)
         {
             record.CheckOutAtUtc = null;
+            var requesterId = User.EmployeeId();
+            record.ManualByEmployeeId = requesterId; // undoing a check-out is a manual touch
             await _db.SaveChangesAsync();
 
-            var requesterId = User.EmployeeId();
             await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
             await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
         }

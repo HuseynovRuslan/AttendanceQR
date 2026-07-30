@@ -10,7 +10,10 @@ public sealed record AttendanceRecordDto(
     DateTime? CheckOutAtUtc,
     string Status,
     int? FaceMatchScore,
-    string FaceMatchStatus);
+    string FaceMatchStatus,
+    // Name of the admin/manager who created or changed this record by hand (null for a real scan), so
+    // both the employee's own history and an admin can see a manually-entered day is attributable.
+    string? ManualByName = null);
 
 /// <summary>Outcome of a resource-level access check for another employee's records.</summary>
 public enum AttendanceAccess

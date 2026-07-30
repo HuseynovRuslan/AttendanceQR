@@ -20,6 +20,8 @@ export interface AttendanceRecord {
   // Face audit (optional — older backends omit).
   faceMatchScore?: number | null
   faceMatchStatus?: string
+  // Name of the admin/manager who set this record by hand (null/absent for a real scan).
+  manualByName?: string | null
 }
 
 /** GET /api/attendance/me — this employee's full check-in/out history, newest first. Self-scoped

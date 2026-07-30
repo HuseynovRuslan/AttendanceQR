@@ -404,7 +404,12 @@ export function EmployeeProfilePage() {
                     </tr>
                   ) : (
                     <tr key={r.recordId}>
-                      <td data-label="Tarix">{fmtDate(r.attendanceDate)}</td>
+                      <td data-label="Tarix">
+                        {fmtDate(r.attendanceDate)}
+                        {r.manualByName && (
+                          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>✍️ Əl ilə — {r.manualByName}</div>
+                        )}
+                      </td>
                       <td data-label="Status"><RecordBadge r={r} /></td>
                       <td className="mono" data-label="Giriş">{fmtTime(r.checkInAtUtc)}</td>
                       <td className="mono" data-label="Çıxış">{fmtTime(r.checkOutAtUtc)}</td>

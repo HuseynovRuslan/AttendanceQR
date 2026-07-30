@@ -12,6 +12,11 @@ export function HistoryRow({ r }: { r: AttendanceRecord }) {
           {fmtTime(r.checkInAtUtc)} – {fmtTime(r.checkOutAtUtc)}
           {r.checkInAtUtc && r.checkOutAtUtc && ` · ${fmtDuration(r.checkInAtUtc, r.checkOutAtUtc)}`}
         </div>
+        {r.manualByName && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+            ✍️ Əl ilə — {r.manualByName}
+          </div>
+        )}
       </div>
       <RecordBadge r={r} />
     </div>

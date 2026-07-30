@@ -65,4 +65,10 @@ public class AttendanceRecord : ITenantScoped
     public double? CheckInLatitude { get; set; }
 
     public double? CheckInLongitude { get; set; }
+
+    // Set when an admin/manager created or changed this record BY HAND — an open-record close, a time
+    // correction, an undo-checkout — to the employee id of whoever did it. Null for a normal scan.
+    // Surfaced so a manually-entered giriş-çıxış is attributable ("Əl ilə — filankəs") instead of
+    // being indistinguishable from a real scan the employee's own pay depends on.
+    public Guid? ManualByEmployeeId { get; set; }
 }

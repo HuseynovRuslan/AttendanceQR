@@ -122,7 +122,10 @@ public sealed record DayAttendanceRow(
     string? LeaveAssignedBy = null,
     // The single-day leave's id, so the board can undo/change it in place (revert to Qayıb). Null for
     // a multi-day leave — those are managed in /admin/leaves, not wiped from one day's board.
-    Guid? LeaveId = null);
+    Guid? LeaveId = null,
+    // Name of the admin/manager who set THIS attendance record by hand (open-record close, time fix,
+    // undo-checkout). Null for a real scan — lets the board flag a manually-entered day.
+    string? ManualBy = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(
