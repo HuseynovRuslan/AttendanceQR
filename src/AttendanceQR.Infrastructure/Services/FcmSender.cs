@@ -34,17 +34,17 @@ public sealed class FirebaseFcmSender : IFcmSender
         try
         {
             // A NAMED app ("qrlog") so we never clash with a default FirebaseApp; created once because
-            // this sender is a singleton. GetInstance throws when absent, hence the try/catch.
-            FirebaseApp app;
+            // this sender is a singleton. GetInstance for a missing app returns null (not throws) in
+            // this SDK version, so null-coalesce into Create — and still catch, in case a version does
+            // throw instead.
+            FirebaseApp? app;
             try { app = FirebaseApp.GetInstance("qrlog"); }
-            catch (ArgumentException)
+            catch { app = null; }
+            app ??= FirebaseApp.Create(new AppOptions
             {
-                app = FirebaseApp.Create(new AppOptions
-                {
-                    Credential = GoogleCredential.FromJson(options.ServiceAccountJson),
-                    ProjectId = options.ProjectId,
-                }, "qrlog");
-            }
+                Credential = GoogleCredential.FromJson(options.ServiceAccountJson),
+                ProjectId = options.ProjectId,
+            }, "qrlog");
             _messaging = FirebaseMessaging.GetMessaging(app);
             _logger.LogInformation("FCM ready (project {ProjectId}).", options.ProjectId);
         }
