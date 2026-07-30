@@ -502,3 +502,6 @@ apk-out/
 
 # Android upload signing key — NEVER commit; user backs this up
 android-signing/
+
+# Firebase client config — injected in CI from GOOGLE_SERVICES_JSON_B64 secret, not committed
+frontend/android/app/google-services.json

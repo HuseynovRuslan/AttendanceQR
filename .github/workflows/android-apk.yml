@@ -24,6 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Firebase client config is injected from a secret, not committed (public repo).
+      - name: Restore google-services.json
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 -d > frontend/android/app/google-services.json
+
       # Capacitor 8's capacitor-android library compiles with source/target release 21, so the JDK must
       # be 21+ (JDK 17 fails with "invalid source release: 21"). AGP 8.13 runs fine on JDK 21.
       - name: Set up JDK 21
