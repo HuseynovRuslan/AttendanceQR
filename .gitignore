@@ -499,3 +499,6 @@ landing-dist/
 
 # Downloaded APK artifacts (built in CI)
 apk-out/
+
+# Android upload signing key — NEVER commit; user backs this up
+android-signing/
