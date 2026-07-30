@@ -17,12 +17,14 @@ public sealed class PushNotifier : IPushNotifier
 {
     private readonly AppDbContext _db;
     private readonly IPushSender _sender;
+    private readonly IFcmSender _fcm;
     private readonly ILogger<PushNotifier> _logger;
 
-    public PushNotifier(AppDbContext db, IPushSender sender, ILogger<PushNotifier> logger)
+    public PushNotifier(AppDbContext db, IPushSender sender, IFcmSender fcm, ILogger<PushNotifier> logger)
     {
         _db = db;
         _sender = sender;
+        _fcm = fcm;
         _logger = logger;
     }
 
@@ -43,7 +45,11 @@ public sealed class PushNotifier : IPushNotifier
 
         foreach (var s in subs)
         {
-            var alive = await _sender.SendAsync(s.Endpoint, s.P256dh, s.Auth, title, body, url, ct);
+            // A native app registration carries an FcmToken and goes out over FCM; a browser/PWA row
+            // has the Web Push keys and goes over Web Push. Same "false = prune" contract either way.
+            var alive = !string.IsNullOrEmpty(s.FcmToken)
+                ? await _fcm.SendAsync(s.FcmToken, title, body, url, ct)
+                : await _sender.SendAsync(s.Endpoint, s.P256dh, s.Auth, title, body, url, ct);
             if (alive) reached.Add(s.EmployeeId);
             else dead.Add(s);
         }

@@ -12,6 +12,7 @@
   "dependencies": {
     "@capacitor/android": "^8.4.2",
     "@capacitor/core": "^8.4.2",
+    "@capacitor/push-notifications": "^8.1.2",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",

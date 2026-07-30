@@ -5,14 +5,69 @@
 // added to the home screen (in Safari's normal browser tab there is no PushManager at all). Android
 // and desktop Chrome work either way. `pushSupported()` reflects exactly that.
 import { apiRequest } from '../api/client'
+import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
 
 export interface PushKeyInfo {
   enabled: boolean
   publicKey: string
 }
 
-/** Does this browser expose the APIs at all? False in an iOS Safari tab, true in the installed PWA. */
+// ── Native app (Capacitor) push ──────────────────────────────────────────────
+// The native Android/iOS app runs the site in a WebView, which has NO Web Push (no PushManager). So on
+// native we use FCM via @capacitor/push-notifications instead: request the OS permission, register, and
+// hand the resulting device token to the server (/api/push/register-native). Everything below only runs
+// inside the app; in a browser `isNative()` is false and the ordinary Web Push path takes over.
+const isNative = (): boolean => Capacitor.isNativePlatform()
+const FCM_TOKEN_KEY = 'attendanceqr.fcmToken'
+// checkPermissions is async but pushPermission() is a sync getter the UI reads during render, so we
+// cache the last-known native permission and refresh it on every init/enable.
+let nativePerm: NotificationPermission = 'default'
+let nativeInited = false
+
+/** Wire the native push listeners ONCE: forward the token to the server, and open a notification's
+ *  deep-link when tapped. Also refreshes the token when permission is already granted (rotation). */
+export function initNativePush(): void {
+  if (!isNative() || nativeInited) return
+  nativeInited = true
+  void PushNotifications.addListener('registration', (t) => {
+    void apiRequest('/api/push/register-native', { method: 'POST', body: { token: t.value } })
+    try {
+      localStorage.setItem(FCM_TOKEN_KEY, t.value)
+    } catch {
+      /* private mode */
+    }
+  })
+  void PushNotifications.addListener('registrationError', () => {})
+  void PushNotifications.addListener('pushNotificationActionPerformed', (a) => {
+    const url = (a.notification.data as { url?: string } | undefined)?.url
+    if (url) window.location.href = url
+  })
+  void PushNotifications.checkPermissions().then((p) => {
+    nativePerm = p.receive === 'granted' ? 'granted' : p.receive === 'denied' ? 'denied' : 'default'
+    if (p.receive === 'granted') void PushNotifications.register()
+  })
+}
+
+async function enablePushNative(): Promise<'ok' | 'denied' | 'failed'> {
+  try {
+    initNativePush()
+    let perm = await PushNotifications.checkPermissions()
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale')
+      perm = await PushNotifications.requestPermissions()
+    nativePerm = perm.receive === 'granted' ? 'granted' : perm.receive === 'denied' ? 'denied' : 'default'
+    if (perm.receive !== 'granted') return 'denied'
+    await PushNotifications.register() // the 'registration' listener posts the token to the server
+    return 'ok'
+  } catch {
+    return 'failed'
+  }
+}
+
+/** Does this browser expose the APIs at all? False in an iOS Safari tab, true in the installed PWA.
+ *  Always true in the native app, where we use FCM instead of the Web Push APIs. */
 export function pushSupported(): boolean {
+  if (isNative()) return true
   return (
     typeof window !== 'undefined' &&
     'serviceWorker' in navigator &&
@@ -23,6 +78,7 @@ export function pushSupported(): boolean {
 
 /** Current permission, or 'unsupported' when the browser has no push at all. */
 export function pushPermission(): NotificationPermission | 'unsupported' {
+  if (isNative()) return nativePerm
   return pushSupported() ? Notification.permission : 'unsupported'
 }
 
@@ -59,6 +115,15 @@ async function activeRegistration(timeoutMs = 3000): Promise<ServiceWorkerRegist
 /** True when this browser already has a live subscription registered. Never hangs: when the worker
  *  isn't up we answer "not subscribed", so the prompt is shown rather than silently swallowed. */
 export async function isSubscribed(): Promise<boolean> {
+  if (isNative()) {
+    try {
+      const granted = (await PushNotifications.checkPermissions()).receive === 'granted'
+      nativePerm = granted ? 'granted' : nativePerm
+      return granted
+    } catch {
+      return false
+    }
+  }
   const reg = await activeRegistration()
   if (!reg) return false
   try {
@@ -73,6 +138,7 @@ export async function isSubscribed(): Promise<boolean> {
  * Returns why it failed so the UI can say something specific rather than "error".
  */
 export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'disabled' | 'failed'> {
+  if (isNative()) return enablePushNative()
   if (!pushSupported()) return 'unsupported'
 
   const key = await apiRequest<PushKeyInfo>('/api/push/public-key')
@@ -162,6 +228,18 @@ export async function sendTestPush(): Promise<number | null> {
 
 /** Unsubscribes this browser and tells the server to forget it. */
 export async function disablePush(): Promise<boolean> {
+  if (isNative()) {
+    // Can't revoke the OS permission from here; forgetting the token server-side stops the sends.
+    try {
+      const token = localStorage.getItem(FCM_TOKEN_KEY)
+      if (token) await apiRequest('/api/push/unregister-native', { method: 'POST', body: { token } })
+      localStorage.removeItem(FCM_TOKEN_KEY)
+      nativePerm = 'default'
+      return true
+    } catch {
+      return false
+    }
+  }
   if (!pushSupported()) return false
   try {
     const reg = await activeRegistration()

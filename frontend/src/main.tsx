@@ -6,6 +6,7 @@ import { AuthProvider } from './auth/AuthContext'
 import { BrandingProvider } from './branding/BrandingContext'
 import { initDevice } from './lib/device'
 import { registerServiceWorker } from './lib/registerSW'
+import { initNativePush } from './lib/push'
 // Side-effect import: registers the beforeinstallprompt listener BEFORE React renders. The event
 // fires early and is never replayed, so a listener added later would miss it entirely.
 import './lib/installPrompt'
@@ -19,6 +20,9 @@ void initDevice()
 // Register the app-shell service worker so the PWA opens with no connection (prerequisite for offline
 // check-in). Production only; never blocks render.
 registerServiceWorker()
+
+// Native app only: wire FCM push listeners and refresh the device token on open. No-op in a browser.
+initNativePush()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -29,5 +29,10 @@ public class PushSubscription : ITenantScoped
     /// <summary>Client auth secret (base64url) from the PushSubscription keys.</summary>
     public string Auth { get; set; } = string.Empty;
 
+    /// <summary>FCM device token when this row is a NATIVE app registration (Capacitor Android/iOS)
+    /// rather than a Web Push subscription. When set, the Web Push keys are empty and Endpoint holds
+    /// "fcm:{token}" (to keep the unique Endpoint index happy); the notifier sends via FCM instead.</summary>
+    public string? FcmToken { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }

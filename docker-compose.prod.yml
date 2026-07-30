@@ -54,6 +54,10 @@ services:
       Push__PublicKey: ${Push__PublicKey:-}
       Push__PrivateKey: ${Push__PrivateKey:-}
       Push__Subject: ${Push__Subject:-mailto:admin@qrlog.az}
+      # FCM (native app push — the Capacitor app's WebView can't do Web Push). The service-account JSON
+      # is passed base64-encoded. Empty = native push off; Web Push still serves browsers/PWAs.
+      Fcm__ProjectId: ${Fcm__ProjectId:-}
+      Fcm__ServiceAccountBase64: ${Fcm__ServiceAccountBase64:-}
       # "Ayın işçisi" ballot window (days before month end) — widened temporarily for a trial.
       Vote__OpenDaysBeforeEnd: ${Vote__OpenDaysBeforeEnd:-3}
       Vote__MinCandidates: ${Vote__MinCandidates:-3}

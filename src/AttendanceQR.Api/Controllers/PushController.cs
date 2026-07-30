@@ -121,4 +121,58 @@ public class PushController : ControllerBase
         await _db.SaveChangesAsync(ct);
         return Ok(new { removed = rows.Count });
     }
+
+    /// <summary>Registers a NATIVE app device (Capacitor Android/iOS) for FCM push. The app's WebView
+    /// cannot do Web Push, so the native layer hands us an FCM token instead. Stored as a subscription
+    /// with FcmToken set; Endpoint carries "fcm:{token}" to satisfy the unique Endpoint index.</summary>
+    [HttpPost("register-native")]
+    public async Task<IActionResult> RegisterNative([FromBody] PushRegisterNativeRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (string.IsNullOrWhiteSpace(request.Token))
+            return BadRequest(new { error = "InvalidToken" });
+
+        var employeeId = User.EmployeeId();
+        var endpoint = "fcm:" + request.Token;
+
+        // The token is globally unique. Re-registering (or a phone changing hands) re-points the row
+        // rather than duplicating. IgnoreQueryFilters so a row from another tenant is adopted, not a
+        // unique-index collision.
+        var existing = await _db.PushSubscriptions
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.Endpoint == endpoint, ct);
+
+        if (existing is not null)
+        {
+            existing.EmployeeId = employeeId;
+            existing.FcmToken = request.Token;
+            existing.TenantId = _db.CurrentTenantId;
+        }
+        else
+        {
+            _db.PushSubscriptions.Add(new Domain.Entities.PushSubscription
+            {
+                EmployeeId = employeeId,
+                FcmToken = request.Token,
+                Endpoint = endpoint,
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>Forgets a native device's FCM token (the app was signed out / notifications disabled).</summary>
+    [HttpPost("unregister-native")]
+    public async Task<IActionResult> UnregisterNative([FromBody] PushRegisterNativeRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var employeeId = User.EmployeeId();
+        var rows = await _db.PushSubscriptions
+            .Where(p => p.FcmToken == request.Token && p.EmployeeId == employeeId)
+            .ToListAsync(ct);
+        _db.PushSubscriptions.RemoveRange(rows);
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { removed = rows.Count });
+    }
 }

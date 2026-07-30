@@ -133,6 +133,19 @@ builder.Services.AddSingleton(voteOptions);
 var pushOptions = builder.Configuration.GetSection(PushOptions.SectionName).Get<PushOptions>() ?? new PushOptions();
 builder.Services.AddSingleton(pushOptions);
 builder.Services.AddSingleton<IPushSender, WebPushSender>();
+
+// FCM (native app push). The service-account JSON is multi-line, so it arrives base64-encoded in the
+// environment (Fcm:ServiceAccountBase64) and is decoded here; unset = FCM off, Web Push carries on.
+var fcmOptions = builder.Configuration.GetSection(FcmOptions.SectionName).Get<FcmOptions>() ?? new FcmOptions();
+var fcmSaB64 = builder.Configuration["Fcm:ServiceAccountBase64"];
+if (!string.IsNullOrWhiteSpace(fcmSaB64) && string.IsNullOrWhiteSpace(fcmOptions.ServiceAccountJson))
+{
+    try { fcmOptions.ServiceAccountJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(fcmSaB64.Trim())); }
+    catch (FormatException) { /* leave empty → FCM stays off rather than crashing the app */ }
+}
+builder.Services.AddSingleton(fcmOptions);
+builder.Services.AddSingleton<IFcmSender, FirebaseFcmSender>();
+
 // Scoped: fans a notification out over an employee's subscriptions (needs the DbContext).
 builder.Services.AddScoped<IPushNotifier, PushNotifier>();
 builder.Services.AddScoped<IVoteAnnouncer, VoteAnnouncer>();
