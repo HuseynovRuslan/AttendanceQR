@@ -45,4 +45,16 @@ public sealed class AppOptions
         .Where(x => x.HasValue)
         .Select(x => x!.Value)
         .ToArray();
+
+    /// <summary>Employee ids that may see the shared "Tapşırıqlar" board — a config allowlist, not a
+    /// role. Include a person's id in EVERY tenant they log into (login is per-tenant, so the operator
+    /// who is admin in one company and manager in another has a different id in each).</summary>
+    public string TaskBoardEmployeeIds { get; set; } = string.Empty;
+
+    public Guid[] TaskBoardIdList() => TaskBoardEmployeeIds
+        .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
+        .Select(x => Guid.TryParse(x, out var id) ? id : (Guid?)null)
+        .Where(x => x.HasValue)
+        .Select(x => x!.Value)
+        .ToArray();
 }

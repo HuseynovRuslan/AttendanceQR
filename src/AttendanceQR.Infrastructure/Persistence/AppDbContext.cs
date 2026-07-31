@@ -46,6 +46,8 @@ public class AppDbContext : DbContext
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    // Global (NOT tenant-scoped) — a single shared operator task board. No query filter on purpose.
+    public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
     public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
     public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();

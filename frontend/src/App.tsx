@@ -36,6 +36,7 @@ const KioskPage = lazy(() => import('./pages/KioskPage').then(m => ({ default: m
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })))
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage').then(m => ({ default: m.DashboardPage })))
 const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ default: m.TodayPage })))
+const TasksPage = lazy(() => import('./pages/admin/TasksPage').then(m => ({ default: m.TasksPage })))
 const GroupBoardPage = lazy(() => import('./pages/hq/GroupBoardPage').then(m => ({ default: m.GroupBoardPage })))
 const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
@@ -239,6 +240,9 @@ function AppRoutes() {
         />
         {/* Live board — Admin + Manager (manager scoped to their locations server-side, like today). */}
         <Route path="today" element={<TodayPage />} />
+        {/* Shared task board — access is a server-side id allowlist, so the route stays open (admin +
+            manager) and the page/API 403s anyone not on the list. */}
+        <Route path="tasks" element={<TasksPage />} />
         <Route path="reports" element={<ReportsPage />} />
         {/* Payroll — Admin only (salaries are sensitive; a manager must not see them). */}
         <Route

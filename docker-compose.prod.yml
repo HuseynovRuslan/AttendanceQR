@@ -37,6 +37,8 @@ services:
       # because Compose only interpolates what this list mentions. (Same trap as TenantSeed__*.)
       # Employee ids allowed to manage tenants; empty = the super-admin screen does not exist.
       App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
+      # Employee ids allowed to see the shared "Tapşırıqlar" board (allowlist, not a role).
+      App__TaskBoardEmployeeIds: ${App__TaskBoardEmployeeIds:-}
       # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
       # the proxy's address instead of the phone's.
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"

@@ -5,12 +5,14 @@ import { useBranding } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import { getIsSuperAdmin } from '../../api/admin'
+import { getTaskAccess } from '../../api/tasks'
 import {
   IconAlert,
   IconBell,
   IconCalendar,
   IconCamera,
   IconChart,
+  IconCheck,
   IconClipboard,
   IconClock,
   IconDownload,
@@ -30,6 +32,7 @@ const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial me
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
   '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
+  '/admin/tasks': { title: 'Tapşırıqlar', sub: 'Komandanın ortaq görüləcək işlər siyahısı' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
@@ -70,6 +73,16 @@ export function AdminLayout() {
       if (r.status === 200 && r.data) setIsSuperAdmin(r.data.isSuperAdmin)
     })
   }, [isAdmin])
+
+  // The shared "Tapşırıqlar" board — also an id allowlist, and available to managers too (a person
+  // who is a manager in one company still needs their task list), so it is not gated on isAdmin.
+  const [canTasks, setCanTasks] = useState(false)
+  useEffect(() => {
+    if (!isAdmin && !isManager) return
+    void getTaskAccess().then((r) => {
+      if (r.status === 200 && r.data) setCanTasks(r.data.canAccess)
+    })
+  }, [isAdmin, isManager])
   const meta = PAGE_META[location.pathname]
     ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' }
       : location.pathname.startsWith('/admin/employees/') ? { title: 'İşçi profili', sub: 'İşçinin tam məlumatı və əməliyyatlar' }
@@ -90,6 +103,7 @@ export function AdminLayout() {
 
   const links = [
     ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
+    ...(canTasks ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
     { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
     { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
     { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },
