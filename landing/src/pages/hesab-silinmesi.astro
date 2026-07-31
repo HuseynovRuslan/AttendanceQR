@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+import PageHero from '../components/PageHero.astro'
+const lang = 'az' as const
+---
+<BaseLayout
+  lang={lang}
+  path="/hesab-silinmesi/"
+  title="Hesabın silinməsi — QRLog"
+  description="QRLog davamiyyət tətbiqində hesabınızın və əlaqəli məlumatların silinməsini necə tələb edə bilərsiniz."
+>
+  <PageHero title="Hesabın silinməsi" subtitle="QRLog davamiyyət tətbiqi" />
+
+  <section class="prose-section">
+    <div class="wrap prose">
+      <p class="lead">
+        <strong>QRLog</strong> istifadəçiləri hesablarının və onunla əlaqəli məlumatların silinməsini
+        tələb edə bilər. Bu səhifə tələbin necə edildiyini, hansı məlumatların silindiyini və hansının
+        saxlanıla biləcəyini izah edir.
+      </p>
+
+      <h2>Hesabınızı necə sildirə bilərsiniz</h2>
+      <p>
+        QRLog hesabları istifadə edən <strong>şirkət (işəgötürən)</strong> tərəfindən idarə olunur.
+        Silinmə tələbi üçün iki yol var:
+      </p>
+      <ul>
+        <li><strong>E-poçt ilə:</strong> <a href="mailto:info@qrlog.az">info@qrlog.az</a> ünvanına,
+          mövzu «Hesab silinməsi tələbi» olmaqla, qeydiyyatdakı <strong>ad-soyadınızı</strong> və
+          <strong>telefon nömrənizi</strong> (və ya e-poçtunuzu) bildirən mesaj göndərin.</li>
+        <li><strong>İş yeriniz vasitəsilə:</strong> şirkətinizin QRLog administratoruna müraciət edin —
+          o, hesabınızı sistemdən deaktiv edə və ya silə bilər.</li>
+      </ul>
+      <p>Tələbi təsdiqlədikdən sonra onu <strong>30 gün</strong> ərzində emal edirik.</p>
+
+      <h2>Silinən məlumatlar</h2>
+      <p>Tələb üzərinə aşağıdakı şəxsi məlumatlar silinir:</p>
+      <ul>
+        <li>Ad, soyad, telefon nömrəsi, e-poçt, vəzifə</li>
+        <li>Referans (profil) şəkli və giriş/çıxış anındakı selfilər</li>
+        <li>Cihaz məlumatı (cihaz “barmaq izi”)</li>
+        <li>Hesabın giriş məlumatı (PIN — şifrələnmiş formada)</li>
+      </ul>
+
+      <h2>Saxlanıla bilən məlumatlar</h2>
+      <p>
+        <strong>Davamiyyət və maaş qeydləri</strong> (giriş-çıxış tarixçəsi) işəgötürən şirkət
+        tərəfindən qüvvədə olan qanunvericiliyin (əmək və mühasibat uçotu) tələb etdiyi müddət ərzində
+        saxlanıla bilər. Bu müddət bitdikdə həmin qeydlər <strong>silinir və ya anonimləşdirilir</strong>
+        (artıq konkret şəxslə əlaqələndirilə bilməyəcək hala salınır).
+      </p>
+
+      <h2>Əlaqə</h2>
+      <p>
+        QRLog — <a href="mailto:info@qrlog.az">info@qrlog.az</a> —
+        <a href="https://qrlog.az">qrlog.az</a>. Məxfilik haqqında ətraflı:
+        <a href="/mexfilik/">Məxfilik Siyasəti</a>.
+      </p>
+    </div>
+  </section>
+</BaseLayout>
