@@ -10,8 +10,15 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
 
     public AttendanceQueryService(AppDbContext db) => _db = db;
 
+    // The employee's own history (Home + Scan) and an admin's per-employee view are BOUNDED. The hot
+    // path used to pull the WHOLE history unbounded, which grew linearly with every scan ever made and
+    // was fetched on every Home load AND every Scan-page open. Recent-first; the full history lives in
+    // the monthly Tabel / reports, not this list.
+    private const int OwnRecordsCap = 90;     // ~a quarter, plenty for the mobile history view
+    private const int AdminRecordsCap = 200;  // admin per-employee list; full history via Tabel/reports
+
     public Task<IReadOnlyList<AttendanceRecordDto>> GetOwnRecordsAsync(Guid employeeId, CancellationToken ct = default)
-        => QueryRecordsAsync(employeeId, ct);
+        => QueryRecordsAsync(employeeId, OwnRecordsCap, ct);
 
     public async Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
         Guid targetEmployeeId, Guid requesterId, EmployeeRole requesterRole, CancellationToken ct = default)
@@ -22,14 +29,15 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
         if (!allowed)
             return (AttendanceAccess.Forbidden, Array.Empty<AttendanceRecordDto>());
 
-        return (AttendanceAccess.Allowed, await QueryRecordsAsync(targetEmployeeId, ct));
+        return (AttendanceAccess.Allowed, await QueryRecordsAsync(targetEmployeeId, AdminRecordsCap, ct));
     }
 
-    private async Task<IReadOnlyList<AttendanceRecordDto>> QueryRecordsAsync(Guid employeeId, CancellationToken ct)
+    private async Task<IReadOnlyList<AttendanceRecordDto>> QueryRecordsAsync(Guid employeeId, int take, CancellationToken ct)
     {
         var rows = await _db.AttendanceRecords
             .Where(r => r.EmployeeId == employeeId)
             .OrderByDescending(r => r.AttendanceDate)
+            .Take(take)
             .Select(r => new
             {
                 r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc,
