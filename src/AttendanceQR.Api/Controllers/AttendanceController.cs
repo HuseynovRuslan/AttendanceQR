@@ -77,6 +77,17 @@ public class AttendanceController : ControllerBase
         return Ok(records);
     }
 
+    // GET /api/attendance/me/today — just the caller's record for today (or null). The Scan page waits
+    // on THIS before opening the camera, so it must not pull the whole history — one indexed row only.
+    [HttpGet("me/today")]
+    public async Task<IActionResult> MyToday()
+    {
+        var employeeId = User.EmployeeId();
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var record = await _attendanceQuery.GetTodayAsync(employeeId, today, HttpContext.RequestAborted);
+        return Ok(record); // null when there's no scan yet today
+    }
+
     // GET /api/attendance/me/profile — the caller's own profile (name/location) for the mobile
     // home greeting + menu card. The JWT only carries id/email/role, so name comes from here.
     [HttpGet("me/profile")]

@@ -20,6 +20,29 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
     public Task<IReadOnlyList<AttendanceRecordDto>> GetOwnRecordsAsync(Guid employeeId, CancellationToken ct = default)
         => QueryRecordsAsync(employeeId, OwnRecordsCap, ct);
 
+    public async Task<AttendanceRecordDto?> GetTodayAsync(Guid employeeId, DateOnly date, CancellationToken ct = default)
+    {
+        // Single row via the (EmployeeId, AttendanceDate) unique index — an exact-match lookup, not a
+        // history scan. This is what the Scan page waits on before opening the camera.
+        var r = await _db.AttendanceRecords
+            .Where(x => x.EmployeeId == employeeId && x.AttendanceDate == date)
+            .Select(x => new
+            {
+                x.Id, x.AttendanceDate, x.LocationId, x.CheckInAtUtc, x.CheckOutAtUtc,
+                Status = x.Status.ToString(), x.FaceMatchScore, FaceMatchStatus = x.FaceMatchStatus.ToString(),
+                x.ManualByEmployeeId
+            })
+            .FirstOrDefaultAsync(ct);
+        if (r is null) return null;
+
+        string? manualBy = null;
+        if (r.ManualByEmployeeId is Guid mid)
+            manualBy = await _db.Employees.Where(e => e.Id == mid).Select(e => e.FullName).FirstOrDefaultAsync(ct);
+
+        return new AttendanceRecordDto(r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc,
+            r.Status, r.FaceMatchScore, r.FaceMatchStatus, manualBy);
+    }
+
     public async Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
         Guid targetEmployeeId, Guid requesterId, EmployeeRole requesterRole, CancellationToken ct = default)
     {

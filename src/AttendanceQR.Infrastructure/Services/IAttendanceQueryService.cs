@@ -31,6 +31,10 @@ public interface IAttendanceQueryService
     /// <summary>The caller's own records — no cross-employee access is possible.</summary>
     Task<IReadOnlyList<AttendanceRecordDto>> GetOwnRecordsAsync(Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>The caller's record for a single day (today), or null. The Scan page only needs today's
+    /// status to start, so it queries this one row instead of pulling the whole history.</summary>
+    Task<AttendanceRecordDto?> GetTodayAsync(Guid employeeId, DateOnly date, CancellationToken ct = default);
+
     /// <summary>
     /// Records for <paramref name="targetEmployeeId"/>, gated by who the requester is:
     /// Admin → anyone; Manager → only Employees in their own location; Employee → only themselves.

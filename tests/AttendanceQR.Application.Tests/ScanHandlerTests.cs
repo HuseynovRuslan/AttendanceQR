@@ -295,6 +295,8 @@ public class ScanHandlerTests
     {
         public Task<IReadOnlyList<AttendanceRecordDto>> GetOwnRecordsAsync(Guid e, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<AttendanceRecordDto>>(new List<AttendanceRecordDto>());
+        public Task<AttendanceRecordDto?> GetTodayAsync(Guid e, DateOnly date, CancellationToken ct = default)
+            => Task.FromResult<AttendanceRecordDto?>(null);
         public Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
             Guid t, Guid r, EmployeeRole role, CancellationToken ct = default)
             => Task.FromResult((AttendanceAccess.Forbidden, (IReadOnlyList<AttendanceRecordDto>)new List<AttendanceRecordDto>()));

@@ -7,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { Html5Qrcode } from 'html5-qrcode'
 import { apiRequest } from '../api/client'
 import {
-  getMyAttendance,
+  getMyToday,
   getMyDeviceStatus,
   type AttendanceRecord,
 } from '../api/attendance'
@@ -320,8 +320,9 @@ export function ScanPage() {
       // Bounded: a request that never settles used to leave `today` on 'loading' forever, and the
       // whole scan flow waits on that — the screen simply never moved. Falling back to 'none' lets the
       // checks (and the camera) start; the server is the authority on check-in vs check-out anyway.
+      // Only today's row — a single indexed lookup, so history size no longer delays camera-start.
       const res = await Promise.race([
-        getMyAttendance(),
+        getMyToday(),
         delay(8000).then(() => null),
       ])
       if (!res) {
@@ -329,13 +330,11 @@ export function ScanPage() {
         return
       }
       const { status, data } = res
-      if (status !== 200 || !Array.isArray(data)) {
+      if (status !== 200) {
         setToday({ kind: 'none' })
         return
       }
-      const todayStr = new Date().toISOString().slice(0, 10)
-      const record = data.find((r) => r.attendanceDate === todayStr)
-      setToday(recordToTodayInfo(record))
+      setToday(recordToTodayInfo(data ?? undefined))
     } catch {
       setToday({ kind: 'none' })
     }

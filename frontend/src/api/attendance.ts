@@ -30,6 +30,12 @@ export function getMyAttendance() {
   return apiRequest<AttendanceRecord[]>('/api/attendance/me')
 }
 
+/** GET /api/attendance/me/today — just today's record (null if none yet). Cheap, single indexed row;
+ *  the Scan page waits on this before opening the camera, so it must not pull the whole history. */
+export function getMyToday() {
+  return apiRequest<AttendanceRecord | null>('/api/attendance/me/today')
+}
+
 /** POST /api/attendance/scan-failure — report a scan that never left the phone (no GPS, permission
  * denied, position too coarse). Fire-and-forget: the employee's flow never waits on it, and the
  * server de-duplicates retries — but the attempt now shows up in the admin "Problemlər" screen
