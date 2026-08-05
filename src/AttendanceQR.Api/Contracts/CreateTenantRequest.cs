@@ -25,3 +25,12 @@ public record TenantBrandingRequest(
     string? DisplayName = null,
     string? Color = null,
     string? LogoUrl = null);
+
+/// <summary>Commercial plan, soft limits and per-tenant feature flags. Null/zero limits = unlimited.
+/// <c>DisabledFeatures</c> is the list of feature keys turned OFF (see TenantFeatures); omit/empty =
+/// every feature on.</summary>
+public record TenantPlanRequest(
+    string? Plan = null,
+    int? MaxEmployees = null,
+    int? MaxLocations = null,
+    string[]? DisabledFeatures = null);

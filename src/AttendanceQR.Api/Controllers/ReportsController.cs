@@ -1,5 +1,7 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
@@ -179,6 +181,7 @@ public class ReportsController : ControllerBase
     // fixed monthly salary minus a per-day share for unexcused absences. Same scope as the summary.
     [HttpGet("payroll")]
     [Authorize(Roles = "Admin")]
+    [RequireFeature(TenantFeatures.Payroll)]
     public async Task<IActionResult> Payroll(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {
@@ -194,6 +197,7 @@ public class ReportsController : ControllerBase
     // GET /api/reports/payroll/export — the same payroll table as a formatted .xlsx for the accountant.
     [HttpGet("payroll/export")]
     [Authorize(Roles = "Admin")]
+    [RequireFeature(TenantFeatures.Payroll)]
     public async Task<IActionResult> PayrollExport(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {

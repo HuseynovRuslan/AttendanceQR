@@ -10,12 +10,15 @@ import {
   reactivateSuperUser,
   revokeSuperUserSessions,
   impersonateTenant,
+  getSuperFeatures,
+  setTenantPlan,
   type CreateTenantResult,
   type SuperTenant,
   type SuperDashboard,
   type SuperAuditEntry,
   type SuperUser,
   type ImpersonateResult,
+  type SuperFeature,
 } from '../../api/admin'
 import { startImpersonation } from '../../api/client'
 import { fmtDate } from '../../lib/format'
@@ -314,6 +317,10 @@ function TenantsTab() {
   const [created, setCreated] = useState<CreateTenantResult | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [features, setFeatures] = useState<SuperFeature[]>([])
+  const [planEdit, setPlanEdit] = useState<SuperTenant | null>(null)
+  const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', disabled: [] as string[] })
+  const [savingPlan, setSavingPlan] = useState(false)
 
   async function refresh() {
     const { status, data } = await getSuperTenants()
@@ -324,7 +331,47 @@ function TenantsTab() {
 
   useEffect(() => {
     void refresh()
+    void (async () => {
+      const { status, data } = await getSuperFeatures()
+      if (status === 200 && Array.isArray(data)) setFeatures(data)
+    })()
   }, [])
+
+  function openPlan(t: SuperTenant) {
+    setError(null)
+    setPlanEdit(t)
+    setPlanForm({
+      plan: t.plan ?? '',
+      maxEmployees: t.maxEmployees != null ? String(t.maxEmployees) : '',
+      maxLocations: t.maxLocations != null ? String(t.maxLocations) : '',
+      disabled: [...t.disabledFeatures],
+    })
+  }
+
+  function toggleDisabled(key: string) {
+    setPlanForm((f) => ({
+      ...f,
+      disabled: f.disabled.includes(key) ? f.disabled.filter((k) => k !== key) : [...f.disabled, key],
+    }))
+  }
+
+  async function savePlan() {
+    if (!planEdit) return
+    setSavingPlan(true)
+    const { status } = await setTenantPlan(planEdit.id, {
+      plan: planForm.plan || null,
+      maxEmployees: planForm.maxEmployees ? Number(planForm.maxEmployees) : null,
+      maxLocations: planForm.maxLocations ? Number(planForm.maxLocations) : null,
+      disabledFeatures: planForm.disabled,
+    })
+    setSavingPlan(false)
+    if (status === 200) {
+      setPlanEdit(null)
+      await refresh()
+    } else {
+      setError('Plan yadda saxlanmadı')
+    }
+  }
 
   function set<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -502,6 +549,51 @@ function TenantsTab() {
         </form>
       )}
 
+      {planEdit && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
+          <div className="card-title">«{planEdit.displayName}» — plan və funksiyalar</div>
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Plan</label>
+              <select className="inp" value={planForm.plan} onChange={(e) => setPlanForm((f) => ({ ...f, plan: e.target.value }))}>
+                <option value="">— (təyin olunmayıb)</option>
+                <option value="Start">Start</option>
+                <option value="Biznes">Biznes</option>
+                <option value="Korporativ">Korporativ</option>
+                <option value="Enterprise">Enterprise</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label className="form-label">Maks. işçi</label>
+                <input className="inp" value={planForm.maxEmployees} onChange={(e) => setPlanForm((f) => ({ ...f, maxEmployees: e.target.value.replace(/\D/g, '') }))} placeholder="limitsiz" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="form-label">Maks. filial</label>
+                <input className="inp" value={planForm.maxLocations} onChange={(e) => setPlanForm((f) => ({ ...f, maxLocations: e.target.value.replace(/\D/g, '') }))} placeholder="limitsiz" />
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label className="form-label">Funksiyalar (işarəli = aktiv)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 6 }}>
+              {features.map((f) => (
+                <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={!planForm.disabled.includes(f.key)} onChange={() => toggleDisabled(f.key)} />
+                  {f.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button className="btn btn-primary" disabled={savingPlan} onClick={() => void savePlan()}>
+              {savingPlan ? 'Yadda saxlanır…' : 'Yadda saxla'}
+            </button>
+            <button className="btn" onClick={() => setPlanEdit(null)}>Bağla</button>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <table className="tbl">
           <thead>
@@ -526,12 +618,20 @@ function TenantsTab() {
               <tr key={t.id} style={{ opacity: t.isActive ? 1 : 0.55 }}>
                 <td>
                   <div style={{ fontWeight: 700 }}>{t.displayName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--c400)' }}>{fmtDate(t.createdAtUtc.slice(0, 10))} tarixindən</div>
+                  <div style={{ fontSize: 11, color: 'var(--c400)' }}>
+                    {fmtDate(t.createdAtUtc.slice(0, 10))} tarixindən
+                    {t.plan ? <> · <span style={{ fontWeight: 600, color: 'var(--leaf-d)' }}>{t.plan}</span></> : null}
+                  </div>
                 </td>
                 <td>
                   <a href={`https://${t.host}`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>{t.host}</a>
                 </td>
-                <td className="num">{t.employeeCount}</td>
+                <td className="num">
+                  {t.employeeCount}
+                  {t.maxEmployees != null && (
+                    <span style={{ fontSize: 11, color: t.employeeCount > t.maxEmployees ? 'var(--clay)' : 'var(--c400)' }}> /{t.maxEmployees}</span>
+                  )}
+                </td>
                 <td className="num">{t.locationCount}</td>
                 <td style={{ fontSize: 13 }}>
                   {t.lastScanDate ? fmtDate(t.lastScanDate) : <span style={{ color: 'var(--clay)' }}>heç vaxt</span>}
@@ -544,6 +644,9 @@ function TenantsTab() {
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => openPlan(t)} title="Plan, limit və funksiyalar">
+                    Plan
+                  </button>{' '}
                   {t.isActive && (
                     <>
                       <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void impersonate(t)} title="Admin kimi daxil ol (dəstək)">

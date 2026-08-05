@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -21,7 +22,8 @@ public class TenantController : ControllerBase
         _tenant = tenant;
     }
 
-    // GET /api/tenant/branding — the current tenant's display name + accent colour.
+    // GET /api/tenant/branding — the current tenant's display name + accent colour, plus the features
+    // its plan has switched off so the app can hide what the server would 403 anyway.
     [HttpGet("branding")]
     [AllowAnonymous]
     public async Task<IActionResult> Branding()
@@ -29,16 +31,25 @@ public class TenantController : ControllerBase
         // Asked by someone whose subdomain names no tenant (the apex, a direct api.qrlog.az hit):
         // there is nothing to brand as, and guessing means showing one company's identity to another.
         if (!_tenant.IsResolved)
-            return Ok(new { displayName = string.Empty, color = (string?)null, logoUrl = (string?)null });
+            return Ok(new { displayName = string.Empty, color = (string?)null, logoUrl = (string?)null, disabledFeatures = Array.Empty<string>() });
 
         // Tenants is not query-filtered (it's the tenant registry itself), so this reads the resolved
         // tenant directly.
         var b = await _db.Tenants
             .Where(t => t.Id == _tenant.TenantId)
-            .Select(t => new { displayName = t.DisplayName, color = t.Color, logoUrl = t.LogoKey })
+            .Select(t => new { t.DisplayName, t.Color, t.LogoKey, t.DisabledFeatures })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
-        return Ok(b ?? new { displayName = string.Empty, color = (string?)null, logoUrl = (string?)null });
+        if (b is null)
+            return Ok(new { displayName = string.Empty, color = (string?)null, logoUrl = (string?)null, disabledFeatures = Array.Empty<string>() });
+
+        return Ok(new
+        {
+            displayName = b.DisplayName,
+            color = b.Color,
+            logoUrl = b.LogoKey,
+            disabledFeatures = TenantFeatures.ParseDisabled(b.DisabledFeatures).ToArray(),
+        });
     }
 
     // GET /api/tenant/manifest — the PWA manifest, per tenant. The frontend nginx proxies

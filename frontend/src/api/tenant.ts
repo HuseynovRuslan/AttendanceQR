@@ -5,6 +5,8 @@ export interface TenantBranding {
   color: string | null
   /** Public path/URL to the tenant's own logo (null → fall back to the default mark). */
   logoUrl: string | null
+  /** Feature keys the tenant's plan has switched OFF (see backend TenantFeatures). Empty = all on. */
+  disabledFeatures: string[]
 }
 
 /** GET /api/tenant/branding — the current tenant's name/colour (resolved from the subdomain). Public,

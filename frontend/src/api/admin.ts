@@ -826,6 +826,11 @@ export interface SuperTenant {
   locationCount: number
   /** "yyyy-MM-dd" of the last scan, or null if nobody has ever scanned. */
   lastScanDate: string | null
+  plan: string | null
+  maxEmployees: number | null
+  maxLocations: number | null
+  /** Feature keys turned OFF for this tenant (see /super/features for the catalogue). */
+  disabledFeatures: string[]
 }
 
 export interface CreateTenantInput {
@@ -934,6 +939,29 @@ export interface ImpersonateResult {
 /** POST /api/super/tenants/{id}/impersonate — mint a short-lived session as this company's admin. */
 export function impersonateTenant(id: string) {
   return apiRequest<ImpersonateResult | { error: string }>(`/api/super/tenants/${id}/impersonate`, { method: 'POST' })
+}
+
+export interface SuperFeature {
+  key: string
+  label: string
+}
+
+/** GET /api/super/features — the togglable feature catalogue (key + Azerbaijani label). */
+export function getSuperFeatures() {
+  return apiRequest<SuperFeature[] | { error: string }>('/api/super/features')
+}
+
+export interface TenantPlanInput {
+  plan: string | null
+  maxEmployees: number | null
+  maxLocations: number | null
+  /** Feature keys to turn OFF. */
+  disabledFeatures: string[]
+}
+
+/** PUT /api/super/tenants/{id}/plan — set plan, soft limits and disabled features in one call. */
+export function setTenantPlan(id: string, input: TenantPlanInput) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/super/tenants/${id}/plan`, { method: 'PUT', body: input })
 }
 
 export function createTenant(input: CreateTenantInput) {

@@ -2,7 +2,13 @@ import { createContext, useContext, useEffect, useLayoutEffect, useState, type R
 import { getTenantBranding, type TenantBranding } from '../api/tenant'
 import { applyAccent } from './accent'
 
-const BrandingContext = createContext<TenantBranding>({ displayName: '', color: null, logoUrl: null })
+const BrandingContext = createContext<TenantBranding>({ displayName: '', color: null, logoUrl: null, disabledFeatures: [] })
+
+/** Feature keys, kept in sync with the backend TenantFeatures catalogue. Opt-out: on unless listed. */
+export const FEATURE = {
+  Payroll: 'payroll',
+  Announcements: 'announcements',
+} as const
 
 // Hosts that aren't a tenant subdomain (kept in sync with the backend's TenantSlug rules).
 const NON_TENANT = new Set(['bax', 'api', 'www', 'localhost', 'qrlog', '127'])
@@ -16,8 +22,10 @@ const QRLOG_LOGO = '/brand/qrlog.svg'
  */
 function guessBranding(): TenantBranding {
   const label = (typeof location !== 'undefined' ? location.hostname.split('.')[0] : '').toLowerCase()
-  if (!label || label === 'bax' || NON_TENANT.has(label)) return { displayName: '', color: null, logoUrl: null }
-  return { displayName: '', color: '#1E70C8', logoUrl: QRLOG_LOGO }
+  // The guess can't know a tenant's plan yet, so it assumes every feature on — the API call below
+  // fills in the real disabled list. Worst case a hidden menu item flickers in for a moment.
+  if (!label || label === 'bax' || NON_TENANT.has(label)) return { displayName: '', color: null, logoUrl: null, disabledFeatures: [] }
+  return { displayName: '', color: '#1E70C8', logoUrl: QRLOG_LOGO, disabledFeatures: [] }
 }
 
 /** Push branding into the design system + browser tab (accent recolour, favicon, title). */
@@ -64,4 +72,11 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useBranding(): TenantBranding {
   return useContext(BrandingContext)
+}
+
+/** Is a feature on for the current tenant? Unlisted (or a backend that predates the field) → on. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useFeatureEnabled(key: string): boolean {
+  const { disabledFeatures } = useContext(BrandingContext)
+  return !(disabledFeatures ?? []).includes(key)
 }

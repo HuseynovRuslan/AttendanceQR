@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
-import { useBranding } from '../../branding/BrandingContext'
+import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import { getIsSuperAdmin } from '../../api/admin'
@@ -64,6 +64,11 @@ export function AdminLayout() {
   const isAdmin = role === 'Admin'
   const isManager = role === 'Manager'
 
+  // Per-tenant plan switches. A hidden menu item is only cosmetic — the backend 403s these anyway
+  // (see [RequireFeature]); this just stops offering a screen that would refuse.
+  const payrollOn = useFeatureEnabled(FEATURE.Payroll)
+  const announcementsOn = useFeatureEnabled(FEATURE.Announcements)
+
   // Managing tenants is not a role — it is a config allowlist of employee ids, so only the server can
   // answer this. Asked once here rather than guessed, so the menu never offers a screen that 403s.
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
@@ -110,8 +115,8 @@ export function AdminLayout() {
     ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
     ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
     ...(isManager ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
-    ...(isAdmin ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
-    ...(isAdmin ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
+    ...(isAdmin && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
+    ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
     ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),
     // Admin + Manager (no isAdmin gate) — managers audit their own locations' employees.
     { to: '/admin/photo-audit', label: 'Foto Audit', Icon: IconCamera },

@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -28,6 +29,16 @@ public class AnnouncementsController : ControllerBase
     public async Task<IActionResult> Active()
     {
         var ct = HttpContext.RequestAborted;
+
+        // If the tenant's plan turns announcements off, the home banner shows nothing — return empty
+        // rather than 403, so the fetch a working employee makes on every open stays quiet, not an error.
+        var disabled = await _db.Tenants
+            .Where(t => t.Id == _db.CurrentTenantId)
+            .Select(t => t.DisabledFeatures)
+            .FirstOrDefaultAsync(ct);
+        if (!TenantFeatures.IsEnabled(disabled, TenantFeatures.Announcements))
+            return Ok(Array.Empty<object>());
+
         var employeeId = User.EmployeeId();
         var nowUtc = DateTime.UtcNow;
         // AttendanceRecords are keyed by the server UTC day (see the scan handler), so match that.
@@ -72,6 +83,7 @@ public class AnnouncementsController : ControllerBase
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/announcements")]
+[RequireFeature(TenantFeatures.Announcements)]
 public class AdminAnnouncementsController : ControllerBase
 {
     private readonly AppDbContext _db;

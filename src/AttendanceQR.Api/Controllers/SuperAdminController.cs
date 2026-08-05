@@ -102,6 +102,10 @@ public partial class SuperAdminController : ControllerBase
             employeeCount = employeeCounts.GetValueOrDefault(t.Id, 0),
             locationCount = locationCounts.GetValueOrDefault(t.Id, 0),
             lastScanDate = lastScan.TryGetValue(t.Id, out var d) ? d.ToString("yyyy-MM-dd") : null,
+            plan = t.Plan,
+            maxEmployees = t.MaxEmployees,
+            maxLocations = t.MaxLocations,
+            disabledFeatures = TenantFeatures.ParseDisabled(t.DisabledFeatures),
         }));
     }
 
