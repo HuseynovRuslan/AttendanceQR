@@ -22,9 +22,20 @@ public sealed class JwtService : IJwtService
     }
 
     public string GenerateToken(Employee employee)
-    {
-        var now = DateTime.UtcNow;
+        => Write(BaseClaims(employee), DateTime.UtcNow.AddMinutes(_options.ExpiryMinutes));
 
+    public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes)
+    {
+        var claims = BaseClaims(employee);
+        // Marks this session as a support impersonation and by whom. Advisory — for the log and a client
+        // banner. The security boundary is still tid + tv: the token is confined to exactly this
+        // employee in this tenant, so it can never reach another company or escalate.
+        claims.Add(new Claim("imp", impersonatedBy.ToString()));
+        return Write(claims, DateTime.UtcNow.AddMinutes(expiryMinutes));
+    }
+
+    private static List<Claim> BaseClaims(Employee employee)
+    {
         var claims = new List<Claim>
         {
             new("sub", employee.Id.ToString()),
@@ -37,15 +48,18 @@ public sealed class JwtService : IJwtService
             new("tv", employee.TokenVersion.ToString()),
             // Multi-tenancy: which company this session belongs to. OnTokenValidated resolves the
             // request's tenant from here, so every query is scoped without touching the subdomain.
-            new("tid", employee.TenantId.ToString())
+            new("tid", employee.TenantId.ToString()),
         };
-
         // Signals the client to force the "set your own PIN" screen before anything else — the account
         // is still on a temporary PIN. The server also enforces this (set-initial-pin), so the claim is
         // only a UX hint, not the security boundary.
         if (employee.MustChangePin)
             claims.Add(new Claim("mcp", "1"));
+        return claims;
+    }
 
+    private string Write(List<Claim> claims, DateTime expires)
+    {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
@@ -53,8 +67,8 @@ public sealed class JwtService : IJwtService
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
-            notBefore: now,
-            expires: now.AddMinutes(_options.ExpiryMinutes),
+            notBefore: DateTime.UtcNow,
+            expires: expires,
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

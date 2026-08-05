@@ -4,6 +4,7 @@ import { useAppUpdate } from './lib/useAppUpdate'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, AdminOnly } from './components/AdminRoute'
+import { ImpersonationBanner } from './components/ImpersonationBanner'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
 import { LoginPage } from './pages/LoginPage'
@@ -123,6 +124,7 @@ function ScannerPrefetch() {
 export default function App() {
   return (
     <>
+      <ImpersonationBanner />
       <AutoUpdater />
       <OfflineSyncer />
       <ScannerPrefetch />

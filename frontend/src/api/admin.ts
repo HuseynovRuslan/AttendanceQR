@@ -859,6 +859,83 @@ export function getSuperTenants() {
   return apiRequest<SuperTenant[] | { error: string }>('/api/super/tenants')
 }
 
+export interface SuperDashboard {
+  totalTenants: number
+  activeTenants: number
+  totalEmployees: number
+  checkInsToday: number
+  checkInsThisMonth: number
+  attention: { id: string; slug: string; displayName: string; reason: string }[]
+}
+
+/** GET /api/super/dashboard — platform-wide KPIs + a short "needs attention" list. */
+export function getSuperDashboard() {
+  return apiRequest<SuperDashboard | { error: string }>('/api/super/dashboard')
+}
+
+export interface SuperAuditEntry {
+  id: string
+  actorName: string
+  action: string
+  targetTenantId: string | null
+  targetTenantSlug: string | null
+  details: string | null
+  ipAddress: string | null
+  createdAtUtc: string
+}
+
+/** GET /api/super/audit — the platform action trail, most recent first. */
+export function getSuperAudit(take = 100) {
+  return apiRequest<SuperAuditEntry[] | { error: string }>(`/api/super/audit?take=${take}`)
+}
+
+export interface SuperUser {
+  id: string
+  tenantId: string
+  tenantSlug: string | null
+  tenantName: string | null
+  fullName: string
+  phone: string | null
+  email: string | null
+  role: string
+  isActive: boolean
+  mustChangePin: boolean
+  lastActiveAtUtc: string | null
+}
+
+/** GET /api/super/users?q= — find any employee across all tenants (name/phone/email, min 2 chars). */
+export function searchSuperUsers(q: string) {
+  return apiRequest<SuperUser[] | { error: string }>(`/api/super/users?q=${encodeURIComponent(q)}`)
+}
+
+/** Reset a person's PIN (returns a one-time temp PIN) and revoke their sessions. */
+export function resetSuperUserPin(id: string) {
+  return apiRequest<{ id: string; tempPin: string } | { error: string }>(`/api/super/users/${id}/reset-pin`, { method: 'POST' })
+}
+
+/** Turn an account back on (undo a kill-switch that left a tenant headless). */
+export function reactivateSuperUser(id: string) {
+  return apiRequest<{ id: string; isActive: boolean } | { error: string }>(`/api/super/users/${id}/reactivate`, { method: 'POST' })
+}
+
+/** Invalidate every token the person holds, without touching their PIN. */
+export function revokeSuperUserSessions(id: string) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/super/users/${id}/revoke-sessions`, { method: 'POST' })
+}
+
+export interface ImpersonateResult {
+  token: string
+  tenantSlug: string
+  tenantName: string
+  adminName: string
+  expiresInMinutes: number
+}
+
+/** POST /api/super/tenants/{id}/impersonate — mint a short-lived session as this company's admin. */
+export function impersonateTenant(id: string) {
+  return apiRequest<ImpersonateResult | { error: string }>(`/api/super/tenants/${id}/impersonate`, { method: 'POST' })
+}
+
 export function createTenant(input: CreateTenantInput) {
   return apiRequest<CreateTenantResult | { error: string }>('/api/super/tenants', { method: 'POST', body: input })
 }

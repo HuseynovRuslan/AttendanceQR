@@ -48,6 +48,9 @@ public class AppDbContext : DbContext
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     // Global (NOT tenant-scoped) — a single shared operator task board. No query filter on purpose.
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
+    // Global (NOT tenant-scoped) — the platform super-admin's audit trail. It spans every company, so
+    // (like Tasks) it carries no TenantId and gets no query filter. Append-only.
+    public DbSet<SuperAdminAuditLog> SuperAdminAuditLogs => Set<SuperAdminAuditLog>();
     public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
     public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
     public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();

@@ -3,9 +3,21 @@ import {
   createTenant,
   getSuperTenants,
   setTenantActive,
+  getSuperDashboard,
+  getSuperAudit,
+  searchSuperUsers,
+  resetSuperUserPin,
+  reactivateSuperUser,
+  revokeSuperUserSessions,
+  impersonateTenant,
   type CreateTenantResult,
   type SuperTenant,
+  type SuperDashboard,
+  type SuperAuditEntry,
+  type SuperUser,
+  type ImpersonateResult,
 } from '../../api/admin'
+import { startImpersonation } from '../../api/client'
 import { fmtDate } from '../../lib/format'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
 
@@ -18,11 +30,281 @@ const ERRORS: Record<string, string> = {
   AdminPinInvalid: 'PIN 4 rəqəm olmalıdır',
   TenantNotFound: 'Şirkət tapılmadı',
   CannotDisableOwnTenant: 'Öz şirkətinizi söndürə bilməzsiniz — panelə girişiniz bağlanardı',
+  TenantInactive: 'Şirkət söndürülüb — əvvəl aktiv edin',
+  NoAdmin: 'Bu şirkətdə aktiv admin yoxdur',
+  CannotImpersonateSelf: 'Öz hesabınıza daxil ola bilməzsiniz',
 }
 
 const EMPTY = { slug: '', displayName: '', adminName: '', adminPhone: '', adminPin: '', locationName: '' }
 
+// Stable action codes → readable Azerbaijani labels for the audit trail.
+const AUDIT_LABELS: Record<string, string> = {
+  TenantCreated: 'Şirkət yaradıldı',
+  TenantEnabled: 'Şirkət açıldı',
+  TenantDisabled: 'Şirkət söndürüldü',
+  TenantBrandingChanged: 'Brendinq dəyişdi',
+}
+
+type Tab = 'overview' | 'tenants' | 'users' | 'audit'
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'overview', label: 'İcmal' },
+  { key: 'tenants', label: 'Şirkətlər' },
+  { key: 'users', label: 'İstifadəçilər' },
+  { key: 'audit', label: 'Audit' },
+]
+
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleString('az-AZ', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
 export function TenantsPage() {
+  const [tab, setTab] = useState<Tab>('overview')
+
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Platform idarəetməsi</h1>
+        <div className="muted" style={{ fontSize: 13 }}>Bütün şirkətlər üzrə nəzarət, idarəetmə və audit.</div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 2, marginBottom: 16, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              border: 'none', background: 'none', cursor: 'pointer', padding: '8px 14px', fontSize: 14,
+              fontWeight: tab === t.key ? 800 : 600,
+              color: tab === t.key ? 'var(--c900)' : 'var(--c400)',
+              borderBottom: tab === t.key ? '2px solid var(--leaf)' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'overview' && <SuperOverview />}
+      {tab === 'tenants' && <TenantsTab />}
+      {tab === 'users' && <SuperUsers />}
+      {tab === 'audit' && <SuperAudit />}
+    </div>
+  )
+}
+
+// ── İstifadəçilər: find anyone on the platform and help them back in ─────────
+function SuperUsers() {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<SuperUser[]>([])
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [pin, setPin] = useState<{ id: string; tempPin: string } | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function search(e?: FormEvent) {
+    e?.preventDefault()
+    if (q.trim().length < 2) return
+    setLoading(true); setSearched(true); setPin(null); setMsg(null)
+    const { status, data } = await searchSuperUsers(q.trim())
+    setLoading(false)
+    setRows(status === 200 && Array.isArray(data) ? data : [])
+  }
+
+  async function act(u: SuperUser, kind: 'pin' | 'reactivate' | 'revoke') {
+    const ask = { pin: 'PIN sıfırlansın?', reactivate: 'Hesab aktiv edilsin?', revoke: 'Bütün sessiyalar bağlansın?' }
+    if (!window.confirm(`"${u.fullName}" — ${ask[kind]}`)) return
+    setBusyId(u.id); setPin(null); setMsg(null)
+    const res =
+      kind === 'pin' ? await resetSuperUserPin(u.id) :
+      kind === 'reactivate' ? await reactivateSuperUser(u.id) :
+      await revokeSuperUserSessions(u.id)
+    setBusyId(null)
+    if (res.status === 200 && res.data && !('error' in res.data)) {
+      if (kind === 'pin' && 'tempPin' in res.data) setPin({ id: u.id, tempPin: (res.data as { tempPin: string }).tempPin })
+      else setMsg(kind === 'reactivate' ? 'Hesab aktiv edildi ✓' : 'Sessiyalar bağlandı ✓')
+      await search()
+    } else {
+      setMsg('Alınmadı')
+    }
+  }
+
+  return (
+    <div>
+      <form onSubmit={search} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <input className="inp" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ad, telefon və ya email…" style={{ maxWidth: 360 }} />
+        <button className="btn btn-primary" disabled={q.trim().length < 2}>Axtar</button>
+      </form>
+
+      {msg && (
+        <div className="card card-pad" style={{ marginBottom: 12, borderColor: 'var(--leaf)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <IconCheck /><span style={{ fontSize: 13 }}>{msg}</span>
+        </div>
+      )}
+      {pin && (
+        <div className="card card-pad" style={{ marginBottom: 12, borderColor: 'var(--leaf)' }}>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><IconCheck /> Yeni müvəqqəti PIN</div>
+          <div style={{ fontSize: 13 }}>PIN: <b style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 18 }}>{pin.tempPin}</b></div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+            Yalnız indi görünür. İşçiyə çatdırın — ilk girişdə öz PIN-ini təyin edəcək. Köhnə sessiyalar bağlandı.
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <table className="tbl">
+          <thead>
+            <tr><th>İşçi</th><th>Şirkət</th><th>Telefon</th><th>Rol</th><th>Status</th><th /></tr>
+          </thead>
+          <tbody>
+            {loading && <tr><td colSpan={6} className="muted" style={{ padding: 18 }}>Axtarılır…</td></tr>}
+            {!loading && !searched && (
+              <tr><td colSpan={6} className="muted" style={{ padding: 18 }}>Ad, telefon və ya email yazın (ən azı 2 simvol) və axtarın.</td></tr>
+            )}
+            {!loading && searched && rows.length === 0 && (
+              <tr><td colSpan={6} className="muted" style={{ padding: 18 }}>Tapılmadı</td></tr>
+            )}
+            {rows.map((u) => (
+              <tr key={u.id} style={{ opacity: u.isActive ? 1 : 0.55 }}>
+                <td>
+                  <div style={{ fontWeight: 700 }}>{u.fullName}</div>
+                  {u.email && <div style={{ fontSize: 11, color: 'var(--c400)' }}>{u.email}</div>}
+                </td>
+                <td style={{ fontSize: 13 }}>{u.tenantName ?? u.tenantSlug ?? '—'}</td>
+                <td style={{ fontSize: 13 }}>{u.phone ? `0${u.phone}` : '—'}</td>
+                <td style={{ fontSize: 13 }}>{u.role}</td>
+                <td>
+                  {u.isActive
+                    ? <span className="tag" style={{ background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }}>Aktiv</span>
+                    : <span className="tag" style={{ background: 'rgba(154,52,18,0.12)', color: '#9a3412' }}>Söndürülüb</span>}
+                </td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'pin')}>PIN sıfırla</button>{' '}
+                  {!u.isActive && (
+                    <>
+                      <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'reactivate')}>Aktiv et</button>{' '}
+                    </>
+                  )}
+                  <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'revoke')}>Sessiyaları bağla</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── İcmal: platform-wide numbers + the operator's to-do list ──────────────────
+function SuperOverview() {
+  const [d, setD] = useState<SuperDashboard | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      const { status, data } = await getSuperDashboard()
+      setLoading(false)
+      if (status === 200 && data && !('error' in data)) setD(data as SuperDashboard)
+      else if (status === 403) setErr('İcazəniz yoxdur')
+      else setErr('Yüklənmədi')
+    })()
+  }, [])
+
+  if (loading) return <div className="muted" style={{ padding: 18 }}>Yüklənir…</div>
+  if (err || !d) return <div className="fb fb-err"><IconX /><span>{err ?? 'Xəta'}</span></div>
+
+  const tiles = [
+    { v: d.totalTenants, l: 'Şirkət' },
+    { v: d.activeTenants, l: 'Aktiv şirkət' },
+    { v: d.totalEmployees, l: 'İşçi (aktiv)' },
+    { v: d.checkInsToday, l: 'Bu gün giriş' },
+    { v: d.checkInsThisMonth, l: 'Bu ay giriş' },
+  ]
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {tiles.map((t) => (
+          <div key={t.l} className="card card-pad">
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--c900)', fontVariantNumeric: 'tabular-nums' }}>{t.v}</div>
+            <div className="muted" style={{ fontSize: 12 }}>{t.l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card card-pad">
+        <div className="card-title">Diqqət tələb edir</div>
+        {d.attention.length === 0 ? (
+          <div className="muted" style={{ fontSize: 13 }}>Hər şey qaydasındadır ✓</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {d.attention.map((a) => (
+              <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{a.displayName}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c400)' }}>{a.slug}.qrlog.az</div>
+                </div>
+                <span className="tag" style={{ background: 'rgba(154,52,18,0.12)', color: '#9a3412', whiteSpace: 'nowrap' }}>{a.reason}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Audit: the platform action trail ────────────────────────────────────────
+function SuperAudit() {
+  const [rows, setRows] = useState<SuperAuditEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    void (async () => {
+      const { status, data } = await getSuperAudit(200)
+      setLoading(false)
+      if (status === 200 && Array.isArray(data)) setRows(data)
+    })()
+  }, [])
+
+  return (
+    <div className="card">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Vaxt</th>
+            <th>Kim</th>
+            <th>Əməliyyat</th>
+            <th>Şirkət</th>
+            <th>Detal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading && <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>Yüklənir…</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>Hələ qeyd yoxdur</td></tr>}
+          {rows.map((a) => (
+            <tr key={a.id}>
+              <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDateTime(a.createdAtUtc)}</td>
+              <td style={{ fontSize: 13, fontWeight: 600 }}>{a.actorName || '—'}</td>
+              <td><span className="tag">{AUDIT_LABELS[a.action] ?? a.action}</span></td>
+              <td style={{ fontSize: 13 }}>{a.targetTenantSlug ?? '—'}</td>
+              <td style={{ fontSize: 12, color: 'var(--c400)' }}>{a.details ?? ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Şirkətlər: create + list + enable/disable (the original panel) ──────────
+function TenantsTab() {
   const [rows, setRows] = useState<SuperTenant[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -85,9 +367,25 @@ export function TenantsPage() {
     }
   }
 
+  async function impersonate(t: SuperTenant) {
+    if (!t.isActive) { setError(ERRORS.TenantInactive); return }
+    if (!window.confirm(`"${t.displayName}" adminı kimi daxil olub dəstək göstərəsiniz?\n60 dəqiqəlik sessiya — hər addım audit olunur.`)) return
+    setError(null)
+    setBusyId(t.id)
+    const { status, data } = await impersonateTenant(t.id)
+    setBusyId(null)
+    if (status === 200 && data && !('error' in data)) {
+      const r = data as ImpersonateResult
+      startImpersonation(r.token, { tenantName: r.tenantName, adminName: r.adminName })
+      window.location.href = '/admin'
+    } else {
+      const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
+      setError(ERRORS[code] ?? 'Alınmadı')
+    }
+  }
+
   async function copyHandover() {
     if (!created) return
-    // The one thing the operator has to pass on, in a form they can paste into a message.
     const text =
       `Ünvan: https://${created.host}\n` +
       `Telefon: 0${created.adminPhone}\n` +
@@ -104,13 +402,7 @@ export function TenantsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-        <div>
-          <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Şirkətlər</h1>
-          <div className="muted" style={{ fontSize: 13 }}>
-            Bütün müştərilər. Yeni şirkət yaradan kimi ünvanı öz-özünə açılır.
-          </div>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         {!showForm && (
           <button className="btn btn-primary" onClick={() => { setShowForm(true); setCreated(null) }}>
             ＋ Yeni şirkət
@@ -125,7 +417,6 @@ export function TenantsPage() {
         </div>
       )}
 
-      {/* Shown once, right after creation: the temp PIN is hashed on save and cannot be read back. */}
       {created && (
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
           <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -243,7 +534,6 @@ export function TenantsPage() {
                 <td className="num">{t.employeeCount}</td>
                 <td className="num">{t.locationCount}</td>
                 <td style={{ fontSize: 13 }}>
-                  {/* The honest "is anyone using this" column — created-at cannot tell you that. */}
                   {t.lastScanDate ? fmtDate(t.lastScanDate) : <span style={{ color: 'var(--clay)' }}>heç vaxt</span>}
                 </td>
                 <td>
@@ -253,7 +543,14 @@ export function TenantsPage() {
                     <span className="tag" style={{ background: 'rgba(154,52,18,0.12)', color: '#9a3412' }}>Söndürülüb</span>
                   )}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {t.isActive && (
+                    <>
+                      <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void impersonate(t)} title="Admin kimi daxil ol (dəstək)">
+                        Daxil ol
+                      </button>{' '}
+                    </>
+                  )}
                   <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void toggle(t)}>
                     {busyId === t.id ? '…' : t.isActive ? 'Söndür' : 'Aç'}
                   </button>

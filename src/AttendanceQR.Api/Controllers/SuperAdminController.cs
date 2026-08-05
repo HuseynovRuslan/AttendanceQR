@@ -31,14 +31,16 @@ public partial class SuperAdminController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ITenantContext _tenant;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IJwtService _jwt;
     private readonly Guid[] _superAdminIds;
     private readonly AppOptions _appOptions;
 
-    public SuperAdminController(AppDbContext db, ITenantContext tenant, IPasswordHasher passwordHasher, AppOptions options)
+    public SuperAdminController(AppDbContext db, ITenantContext tenant, IPasswordHasher passwordHasher, IJwtService jwt, AppOptions options)
     {
         _db = db;
         _tenant = tenant;
         _passwordHasher = passwordHasher;
+        _jwt = jwt;
         _superAdminIds = options.SuperAdminIdList();
         _appOptions = options;
     }
@@ -180,6 +182,9 @@ public partial class SuperAdminController : ControllerBase
         _db.Employees.Add(admin);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
+        await AuditAsync("TenantCreated", tenant.Id, slug,
+            $"'{displayName}' — {slug}.qrlog.az, admin {phone}", HttpContext.RequestAborted);
+
         return Ok(new
         {
             id = tenant.Id,
@@ -210,6 +215,8 @@ public partial class SuperAdminController : ControllerBase
 
         tenant.IsActive = request.IsActive;
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await AuditAsync(request.IsActive ? "TenantEnabled" : "TenantDisabled", tenant.Id, tenant.Slug,
+            null, HttpContext.RequestAborted);
         return Ok(new { id = tenant.Id, isActive = tenant.IsActive });
     }
 
@@ -236,6 +243,8 @@ public partial class SuperAdminController : ControllerBase
             tenant.LogoKey = string.IsNullOrWhiteSpace(request.LogoUrl) ? null : request.LogoUrl.Trim();
 
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await AuditAsync("TenantBrandingChanged", tenant.Id, tenant.Slug,
+            $"ad='{tenant.DisplayName}', rəng='{tenant.Color}'", HttpContext.RequestAborted);
         return Ok(new { id = tenant.Id, displayName = tenant.DisplayName, color = tenant.Color, logoUrl = tenant.LogoKey });
     }
 }
