@@ -463,7 +463,9 @@ export function TodayPage() {
                   )}
                 </td>
                 <td data-label="Foto">
-                  {r.hasPhoto && r.recordId ? (
+                  {/* Şəkil düyməsi yalnız üz-uyğunluğu flaqlı olanda görünür (uyğunsuz / çoxlu üz / üz yox).
+                      "Uyğun" olanda foto lazım deyil — düymə çıxmır, foto R2-dən də yüklənmir (gecikmə gedir). */}
+                  {r.hasPhoto && r.recordId && faceIsFlagged(r.faceMatchStatus) ? (
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.recordId}
