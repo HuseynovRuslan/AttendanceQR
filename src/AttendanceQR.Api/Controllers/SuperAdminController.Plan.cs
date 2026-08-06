@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -28,8 +29,8 @@ public partial class SuperAdminController
     [HttpPut("tenants/{id:guid}/plan")]
     public async Task<IActionResult> SetPlan(Guid id, [FromBody] TenantPlanRequest request)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.ManageTenants, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var ct = HttpContext.RequestAborted;
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);

@@ -856,10 +856,46 @@ export interface CreateTenantResult {
   tempPin: string
 }
 
-/** Whether this account may manage tenants. Asked before showing the menu item, so the panel never
- *  offers a screen that would only 403. */
-export function getIsSuperAdmin() {
-  return apiRequest<{ isSuperAdmin: boolean }>('/api/super/me')
+export interface SuperMe {
+  isSuperAdmin: boolean
+  /** "Full" | "Support" | "Billing" | null (not an operator). */
+  role: string | null
+  /** The mutating powers this operator's role holds — used to hide actions they can't perform. */
+  permissions: string[]
+}
+
+/** Who the current operator is + what their role lets them do. Asked once by the operator shell. */
+export function getSuperMe() {
+  return apiRequest<SuperMe>('/api/super/me')
+}
+
+// ── Operator team + roles (operator console) ─────────────────────────────────
+export interface TeamMember {
+  employeeId: string
+  fullName: string
+  phone: string | null
+  tenantName: string | null
+  role: string
+  isYou: boolean
+  resolved: boolean
+}
+
+export interface TeamResponse {
+  roles: string[]
+  rows: TeamMember[]
+}
+
+/** GET /api/super/team — every allowlisted operator + their role. */
+export function getTeam() {
+  return apiRequest<TeamResponse | { error: string }>('/api/super/team')
+}
+
+/** PUT /api/super/team/{employeeId}/role — set an operator's role. */
+export function setOperatorRole(employeeId: string, role: string) {
+  return apiRequest<{ employeeId: string; role: string } | { error: string }>(
+    `/api/super/team/${employeeId}/role`,
+    { method: 'PUT', body: { role } },
+  )
 }
 
 export function getSuperTenants() {

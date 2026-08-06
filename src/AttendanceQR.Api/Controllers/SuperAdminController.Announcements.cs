@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -36,8 +37,8 @@ public partial class SuperAdminController
     [HttpPost("announcements")]
     public async Task<IActionResult> CreateGlobalAnnouncement([FromBody] GlobalAnnouncementRequest request)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.Announce, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var ct = HttpContext.RequestAborted;
         var title = request.Title?.Trim() ?? string.Empty;
@@ -70,8 +71,8 @@ public partial class SuperAdminController
     [HttpPost("announcements/{id:guid}/retire")]
     public async Task<IActionResult> RetireGlobalAnnouncement(Guid id)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.Announce, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var ct = HttpContext.RequestAborted;
         var a = await _db.GlobalAnnouncements.FirstOrDefaultAsync(x => x.Id == id, ct);

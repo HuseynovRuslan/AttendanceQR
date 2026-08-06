@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using AttendanceQR.Domain;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -65,6 +66,8 @@ public partial class SuperAdminController
     [HttpPost("users/{id:guid}/reset-pin")]
     public async Task<IActionResult> ResetUserPin(Guid id)
     {
+        if (!await CanAsync(OperatorPermission.ManageUsers, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
         var emp = await FindEmployeeAsync(id);
         if (emp is null)
             return IsSuperAdmin ? NotFound(new { error = "EmployeeNotFound" })
@@ -86,6 +89,8 @@ public partial class SuperAdminController
     [HttpPost("users/{id:guid}/reactivate")]
     public async Task<IActionResult> ReactivateUser(Guid id)
     {
+        if (!await CanAsync(OperatorPermission.ManageUsers, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
         var emp = await FindEmployeeAsync(id);
         if (emp is null)
             return IsSuperAdmin ? NotFound(new { error = "EmployeeNotFound" })
@@ -104,6 +109,8 @@ public partial class SuperAdminController
     [HttpPost("users/{id:guid}/revoke-sessions")]
     public async Task<IActionResult> RevokeUserSessions(Guid id)
     {
+        if (!await CanAsync(OperatorPermission.ManageUsers, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
         var emp = await FindEmployeeAsync(id);
         if (emp is null)
             return IsSuperAdmin ? NotFound(new { error = "EmployeeNotFound" })

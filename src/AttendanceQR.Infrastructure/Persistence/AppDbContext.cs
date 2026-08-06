@@ -56,6 +56,9 @@ public class AppDbContext : DbContext
     public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
     // Global (NOT tenant-scoped) — operator broadcasts to every company's employees at once. No filter.
     public DbSet<GlobalAnnouncement> GlobalAnnouncements => Set<GlobalAnnouncement>();
+    // Global (NOT tenant-scoped) — per-operator role. Who is an operator is the .env allowlist; this only
+    // narrows their powers. One row per operator employee id.
+    public DbSet<OperatorProfile> OperatorProfiles => Set<OperatorProfile>();
     public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
     public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
     public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();
@@ -126,6 +129,9 @@ public class AppDbContext : DbContext
             .HasIndex(i => new { i.TenantId, i.PeriodYear, i.PeriodMonth }).IsUnique();
         modelBuilder.Entity<TenantInvoice>().Property(i => i.Amount).HasPrecision(10, 2);
         modelBuilder.Entity<Tenant>().Property(t => t.MonthlyPriceOverride).HasPrecision(10, 2);
+
+        // One operator-role row per employee (GLOBAL — no tenant filter). Unique index IS the upsert key.
+        modelBuilder.Entity<OperatorProfile>().HasIndex(p => p.EmployeeId).IsUnique();
 
         // Employee of the month. One ballot per voter per period — this index IS the "one vote" rule.
         modelBuilder.Entity<MonthlyVoteBallot>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

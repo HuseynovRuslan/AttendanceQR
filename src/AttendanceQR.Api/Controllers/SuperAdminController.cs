@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -47,6 +48,23 @@ public partial class SuperAdminController : ControllerBase
 
     private bool IsSuperAdmin => _superAdminIds.Contains(User.EmployeeId());
 
+    // The current operator's role. An allowlisted operator with NO profile row is Full — so introducing
+    // roles takes no power away from anyone who has access today.
+    private async Task<OperatorRoleType> CurrentRoleAsync(CancellationToken ct)
+    {
+        var id = User.EmployeeId();
+        var role = await _db.OperatorProfiles
+            .Where(p => p.EmployeeId == id)
+            .Select(p => (OperatorRoleType?)p.Role)
+            .FirstOrDefaultAsync(ct);
+        return role ?? OperatorRoleType.Full;
+    }
+
+    // True only when the caller is an operator AND their role grants this power. Reads stay open to any
+    // operator; every MUTATION gates on one of these.
+    private async Task<bool> CanAsync(OperatorPermission perm, CancellationToken ct)
+        => IsSuperAdmin && OperatorAccess.Allows(await CurrentRoleAsync(ct), perm);
+
     /// <summary>Lowercase letters, digits and dashes; 2–20 chars. It becomes a hostname.</summary>
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,19}$")]
     private static partial Regex SlugFormat();
@@ -57,7 +75,18 @@ public partial class SuperAdminController : ControllerBase
     // GET /api/super/me — does this account manage tenants? The panel asks before showing the menu
     // item, so it never offers a screen that would only 403.
     [HttpGet("me")]
-    public IActionResult Me() => Ok(new { isSuperAdmin = IsSuperAdmin });
+    public async Task<IActionResult> Me()
+    {
+        if (!IsSuperAdmin)
+            return Ok(new { isSuperAdmin = false, role = (string?)null, permissions = Array.Empty<string>() });
+        var role = await CurrentRoleAsync(HttpContext.RequestAborted);
+        return Ok(new
+        {
+            isSuperAdmin = true,
+            role = role.ToString(),
+            permissions = OperatorAccess.PermissionsFor(role).Select(p => p.ToString()).ToArray(),
+        });
+    }
 
     // GET /api/super/tenants — every company, with the numbers that say whether it is really in use.
     [HttpGet("tenants")]
@@ -116,8 +145,8 @@ public partial class SuperAdminController : ControllerBase
     [HttpPost("tenants")]
     public async Task<IActionResult> CreateTenant([FromBody] CreateTenantRequest request)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.ManageTenants, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var slug = request.Slug?.Trim().ToLowerInvariant() ?? string.Empty;
         if (!SlugFormat().IsMatch(slug))
@@ -207,8 +236,8 @@ public partial class SuperAdminController : ControllerBase
     [HttpPut("tenants/{id:guid}/active")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.ManageTenants, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, HttpContext.RequestAborted);
         if (tenant is null)
@@ -229,8 +258,8 @@ public partial class SuperAdminController : ControllerBase
     [HttpPut("tenants/{id:guid}/branding")]
     public async Task<IActionResult> SetBranding(Guid id, [FromBody] TenantBrandingRequest request)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.ManageTenants, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, HttpContext.RequestAborted);
         if (tenant is null)

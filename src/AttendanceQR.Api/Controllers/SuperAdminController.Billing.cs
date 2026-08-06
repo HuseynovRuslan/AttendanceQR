@@ -95,8 +95,8 @@ public partial class SuperAdminController
     [HttpPost("tenants/{id:guid}/billing")]
     public async Task<IActionResult> MarkBilling(Guid id, [FromBody] BillingMarkRequest request)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.Billing, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var ct = HttpContext.RequestAborted;
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);

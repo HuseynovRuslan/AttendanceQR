@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Multitenancy;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -19,8 +20,8 @@ public partial class SuperAdminController
     [HttpPost("tenants/{id:guid}/impersonate")]
     public async Task<IActionResult> Impersonate(Guid id)
     {
-        if (!IsSuperAdmin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (!await CanAsync(OperatorPermission.Impersonate, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var ct = HttpContext.RequestAborted;
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);

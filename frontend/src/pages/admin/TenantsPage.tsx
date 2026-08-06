@@ -23,6 +23,7 @@ import {
 import { startImpersonation } from '../../api/client'
 import { fmtDate } from '../../lib/format'
 import { parseMoney, moneyInputFilter, formatMoney } from '../../lib/money'
+import { useCan } from '../operator/OperatorContext'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
 
 const ERRORS: Record<string, string> = {
@@ -102,6 +103,7 @@ export function TenantsPage() {
 
 // ── İstifadəçilər: find anyone on the platform and help them back in ─────────
 export function SuperUsers() {
+  const canUsers = useCan('ManageUsers')
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<SuperUser[]>([])
   const [loading, setLoading] = useState(false)
@@ -187,13 +189,17 @@ export function SuperUsers() {
                     : <span className="tag" style={{ background: 'rgba(154,52,18,0.12)', color: '#9a3412' }}>Söndürülüb</span>}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'pin')}>PIN sıfırla</button>{' '}
-                  {!u.isActive && (
+                  {canUsers ? (
                     <>
-                      <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'reactivate')}>Aktiv et</button>{' '}
+                      <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'pin')}>PIN sıfırla</button>{' '}
+                      {!u.isActive && (
+                        <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'reactivate')}>Aktiv et</button>
+                      )}{' '}
+                      <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'revoke')}>Sessiyaları bağla</button>
                     </>
+                  ) : (
+                    <span className="muted" style={{ fontSize: 12 }}>—</span>
                   )}
-                  <button className="btn btn-sm" disabled={busyId === u.id} onClick={() => void act(u, 'revoke')}>Sessiyaları bağla</button>
                 </td>
               </tr>
             ))}
@@ -309,6 +315,8 @@ export function SuperAudit() {
 
 // ── Şirkətlər: create + list + enable/disable (the original panel) ──────────
 export function TenantsTab() {
+  const canManage = useCan('ManageTenants')
+  const canImpersonate = useCan('Impersonate')
   const [rows, setRows] = useState<SuperTenant[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -462,7 +470,7 @@ export function TenantsTab() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        {!showForm && (
+        {canManage && !showForm && (
           <button className="btn btn-primary" onClick={() => { setShowForm(true); setCreated(null) }}>
             ＋ Yeni şirkət
           </button>
@@ -672,19 +680,22 @@ export function TenantsTab() {
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => openPlan(t)} title="Plan, limit və funksiyalar">
-                    Plan
-                  </button>{' '}
-                  {t.isActive && (
-                    <>
-                      <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void impersonate(t)} title="Admin kimi daxil ol (dəstək)">
-                        Daxil ol
-                      </button>{' '}
-                    </>
+                  {canManage && (
+                    <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => openPlan(t)} title="Plan, limit və funksiyalar">
+                      Plan
+                    </button>
+                  )}{' '}
+                  {t.isActive && canImpersonate && (
+                    <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void impersonate(t)} title="Admin kimi daxil ol (dəstək)">
+                      Daxil ol
+                    </button>
+                  )}{' '}
+                  {canManage && (
+                    <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void toggle(t)}>
+                      {busyId === t.id ? '…' : t.isActive ? 'Söndür' : 'Aç'}
+                    </button>
                   )}
-                  <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void toggle(t)}>
-                    {busyId === t.id ? '…' : t.isActive ? 'Söndür' : 'Aç'}
-                  </button>
+                  {!canManage && !canImpersonate && <span className="muted" style={{ fontSize: 12 }}>—</span>}
                 </td>
               </tr>
             ))}

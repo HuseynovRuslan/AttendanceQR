@@ -52,3 +52,6 @@ public record GlobalAnnouncementRequest(
     string? Title,
     string? Message,
     DateTime? ScheduledForUtc = null);
+
+/// <summary>Set an operator's role — "Full" / "Support" / "Billing" (see OperatorRoleType).</summary>
+public record OperatorRoleRequest(string? Role);

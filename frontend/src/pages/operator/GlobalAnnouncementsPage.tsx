@@ -6,6 +6,7 @@ import {
   type GlobalAnnouncement,
 } from '../../api/admin'
 import { fmtDateTime } from '../../lib/format'
+import { useCan } from './OperatorContext'
 
 export function GlobalAnnouncementsPage() {
   const [rows, setRows] = useState<GlobalAnnouncement[]>([])
@@ -15,6 +16,7 @@ export function GlobalAnnouncementsPage() {
   const [sending, setSending] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canAnnounce = useCan('Announce')
 
   async function load() {
     try {
@@ -56,6 +58,7 @@ export function GlobalAnnouncementsPage() {
     <div>
       {error && <div className="fb fb-err" style={{ marginBottom: 14 }}>{error}</div>}
 
+      {canAnnounce && (
       <form onSubmit={send} className="card card-pad" style={{ marginBottom: 18 }}>
         <div className="card-title">Yeni qlobal elan</div>
         <div
@@ -85,6 +88,7 @@ export function GlobalAnnouncementsPage() {
           {sending ? 'Göndərilir…' : 'Bütün şirkətlərə göndər'}
         </button>
       </form>
+      )}
 
       <div className="card">
         <table className="tbl">
@@ -112,7 +116,7 @@ export function GlobalAnnouncementsPage() {
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {a.isActive && (
+                  {a.isActive && canAnnounce && (
                     <button className="btn btn-sm" disabled={busyId === a.id} onClick={() => void retire(a)}>
                       {busyId === a.id ? '…' : 'Dayandır'}
                     </button>

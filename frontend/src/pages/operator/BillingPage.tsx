@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getBilling, markBilling, type BillingResponse, type BillingRow } from '../../api/admin'
 import { parseMoney, formatMoney as money } from '../../lib/money'
+import { useCan } from './OperatorContext'
 
 const MONTHS_AZ = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun',
@@ -25,6 +26,7 @@ export function BillingPage() {
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const canBill = useCan('Billing')
 
   async function load() {
     setLoading(true)
@@ -150,13 +152,15 @@ export function BillingPage() {
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button
-                    className={`btn btn-sm${r.isPaid ? '' : ' btn-primary'}`}
-                    disabled={busyId === r.tenantId}
-                    onClick={() => void toggle(r)}
-                  >
-                    {busyId === r.tenantId ? '…' : r.isPaid ? 'Geri al' : 'Ödənildi'}
-                  </button>
+                  {canBill && (
+                    <button
+                      className={`btn btn-sm${r.isPaid ? '' : ' btn-primary'}`}
+                      disabled={busyId === r.tenantId}
+                      onClick={() => void toggle(r)}
+                    >
+                      {busyId === r.tenantId ? '…' : r.isPaid ? 'Geri al' : 'Ödənildi'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
