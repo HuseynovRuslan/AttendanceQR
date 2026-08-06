@@ -6,15 +6,20 @@
  *
  *   - Navigation (HTML): NETWORK-FIRST — online always serves the freshest index.html (so a deploy is
  *     picked up immediately); only with no connection does it fall back to the cached shell.
- *   - Hashed build assets + static files: cache-first — their names change every build, so a cached
- *     copy is never stale.
+ *   - Hashed build assets (/assets/*): cache-first — their names change every build, so a cached copy
+ *     is never stale.
+ *   - Stable-named assets (PWA icons, the manifest, favicon, fonts): NETWORK-FIRST. These keep the SAME
+ *     filename across builds, so cache-first would pin the very first version forever — that is exactly
+ *     how a rebranded / new company kept installing with the old (Bakı Abadlıq) icon. Online serves the
+ *     current file; the cached copy is only the offline fallback.
  *   - /version.json and everything cross-origin (the API on api.qrlog.az, photos on R2): never touched.
  *     They go straight to the network, so the update check (useAppUpdate) and every auth/tenant-scoped
  *     request always see the truth and nothing sensitive is ever cached.
  *
- * Bump CACHE to force-invalidate on a breaking service-worker change.
+ * Bump CACHE to force-invalidate on a breaking service-worker change (activate deletes every other
+ * cache — v1→v2 is what evicts the stale Bakı Abadlıq icons from existing installs).
  */
-const CACHE = 'qrlog-shell-v1'
+const CACHE = 'qrlog-shell-v2'
 const SHELL = '/index.html'
 
 self.addEventListener('install', (event) => {
@@ -59,11 +64,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Hashed build assets + static files: cache-first (safe — filenames change per build).
-  if (
-    url.pathname.startsWith('/assets/') ||
-    /\.(?:js|css|woff2?|ttf|png|jpe?g|svg|ico|webmanifest)$/.test(url.pathname)
-  ) {
+  // Hashed build assets (/assets/*): cache-first — filenames change every build, so never stale.
+  if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(req).then(
         (cached) =>
@@ -76,6 +78,24 @@ self.addEventListener('fetch', (event) => {
             return res
           }),
       ),
+    )
+    return
+  }
+
+  // Stable-named assets (PWA icons, manifest, favicon, fonts): NETWORK-FIRST. They keep the same name
+  // across builds, so cache-first would serve the first version forever — the install-icon bug. Online
+  // updates the cache; the cached copy is only the offline fallback.
+  if (/\.(?:png|jpe?g|gif|svg|ico|webmanifest|woff2?|ttf)$/.test(url.pathname)) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {})
+          }
+          return res
+        })
+        .catch(() => caches.match(req).then((r) => r || Response.error())),
     )
     return
   }
