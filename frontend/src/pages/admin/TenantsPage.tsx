@@ -100,7 +100,7 @@ export function TenantsPage() {
 }
 
 // ── İstifadəçilər: find anyone on the platform and help them back in ─────────
-function SuperUsers() {
+export function SuperUsers() {
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<SuperUser[]>([])
   const [loading, setLoading] = useState(false)
@@ -204,7 +204,7 @@ function SuperUsers() {
 }
 
 // ── İcmal: platform-wide numbers + the operator's to-do list ──────────────────
-function SuperOverview() {
+export function SuperOverview() {
   const [d, setD] = useState<SuperDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -264,7 +264,7 @@ function SuperOverview() {
 }
 
 // ── Audit: the platform action trail ────────────────────────────────────────
-function SuperAudit() {
+export function SuperAudit() {
   const [rows, setRows] = useState<SuperAuditEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -307,7 +307,7 @@ function SuperAudit() {
 }
 
 // ── Şirkətlər: create + list + enable/disable (the original panel) ──────────
-function TenantsTab() {
+export function TenantsTab() {
   const [rows, setRows] = useState<SuperTenant[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)

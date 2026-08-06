@@ -515,7 +515,11 @@ app.UseAuthentication();
 static bool TenantOptional(PathString path) =>
     path.StartsWithSegments("/api/tenant")
     // The native app has no company subdomain, so it resolves the tenant from the credentials itself.
-    || path.StartsWithSegments("/api/auth/app-login");
+    || path.StartsWithSegments("/api/auth/app-login")
+    // The operator console (admin.qrlog.az) names no tenant either — operator-login resolves the account
+    // across every company and additionally requires the super-admin allowlist. Without this the
+    // fail-closed check below would 400 it before it ran.
+    || path.StartsWithSegments("/api/auth/operator-login");
 
 app.Use(async (context, next) =>
 {

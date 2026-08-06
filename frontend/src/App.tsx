@@ -7,6 +7,9 @@ import { AdminRoute, AdminOnly } from './components/AdminRoute'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
+import { useAuth } from './auth/AuthContext'
+import { getImpersonation } from './api/client'
+import { isOperatorHost } from './lib/host'
 import { LoginPage } from './pages/LoginPage'
 import { ActivatePage } from './pages/ActivatePage'
 import { ForgotPinPage } from './pages/ForgotPinPage'
@@ -62,7 +65,9 @@ const PhotoAuditPage = lazy(() => import('./pages/admin/PhotoAuditPage').then(m 
 const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => ({ default: m.ProblemsPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
-const TenantsPage = lazy(() => import('./pages/admin/TenantsPage').then(m => ({ default: m.TenantsPage })))
+// The operator console (admin.qrlog.az) is its own chunk — only that host ever loads it.
+const OperatorRoutes = lazy(() => import('./pages/operator/OperatorRoutes').then(m => ({ default: m.OperatorRoutes })))
+const OperatorLoginPage = lazy(() => import('./pages/operator/OperatorLoginPage').then(m => ({ default: m.OperatorLoginPage })))
 
 /** Reloads the app once a newer build exists. Silent by design: employees will not tap an "update"
  *  banner, and an installed PWA is otherwise stuck on whatever bundle it launched with. Never fires
@@ -138,6 +143,16 @@ export default function App() {
 }
 
 function AppRoutes() {
+  const { isAuthenticated } = useAuth()
+
+  // The operator console is a wholly separate surface on admin.qrlog.az — not a screen inside any
+  // company. While the operator is impersonating a tenant admin they hold a TENANT token, so fall
+  // through to the normal tenant routes (that tenant's admin) instead of the operator shell.
+  if (isOperatorHost()) {
+    if (!isAuthenticated) return <OperatorLoginPage />
+    if (!getImpersonation()) return <OperatorRoutes />
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -365,17 +380,8 @@ function AppRoutes() {
             </AdminOnly>
           }
         />
-        {/* Managing the companies themselves. AdminOnly is the coarse gate; the real one is the
-            server's allowlist of employee ids — every endpoint here 403s without it, so reaching
-            this route by typing the URL shows an empty screen, not someone else's data. */}
-        <Route
-          path="tenants"
-          element={
-            <AdminOnly>
-              <TenantsPage />
-            </AdminOnly>
-          }
-        />
+        {/* Company management ("Şirkətlər") moved OUT of the tenant admin to the operator console on
+            admin.qrlog.az — a customer's admin panel no longer carries platform-operator screens. */}
         <Route
           path="device-changes"
           element={

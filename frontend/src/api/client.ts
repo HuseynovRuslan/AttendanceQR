@@ -13,6 +13,14 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
+  // Ending a session must never strand the impersonation backup — that stash (IMPERSONATION_BACKUP_KEY)
+  // holds the operator's OWN long-lived, cross-tenant super-admin token. Every caller of clearToken()
+  // (logout, the 401 handler) means "this session is over"; if they cleared only the active token, an
+  // operator who logged out mid-impersonation — or whose 60-min impersonation token simply expired —
+  // would leave their super-admin JWT sitting in plaintext localStorage for the next person on a shared
+  // support machine. exitImpersonation() reads the backup BEFORE this runs, so its restore is unaffected.
+  localStorage.removeItem(IMPERSONATION_BACKUP_KEY)
+  localStorage.removeItem(IMPERSONATION_INFO_KEY)
 }
 
 // --- Super-admin impersonation --------------------------------------------

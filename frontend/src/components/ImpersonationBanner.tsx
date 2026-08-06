@@ -9,8 +9,9 @@ export function ImpersonationBanner() {
 
   function exit() {
     exitImpersonation()
-    // Full reload back to the platform panel with the operator's own token restored.
-    window.location.href = '/admin/tenants'
+    // Full reload back to the operator console's companies list with the operator's own token restored.
+    // Impersonation is only ever started from that console (admin.qrlog.az), so this is its home.
+    window.location.href = '/tenants'
   }
 
   return (

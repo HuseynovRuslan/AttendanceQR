@@ -4,7 +4,6 @@ import { useAuth } from '../../auth/AuthContext'
 import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
-import { getIsSuperAdmin } from '../../api/admin'
 import { getTaskAccess } from '../../api/tasks'
 import {
   IconAlert,
@@ -69,16 +68,6 @@ export function AdminLayout() {
   const payrollOn = useFeatureEnabled(FEATURE.Payroll)
   const announcementsOn = useFeatureEnabled(FEATURE.Announcements)
 
-  // Managing tenants is not a role — it is a config allowlist of employee ids, so only the server can
-  // answer this. Asked once here rather than guessed, so the menu never offers a screen that 403s.
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
-  useEffect(() => {
-    if (!isAdmin) return
-    void getIsSuperAdmin().then((r) => {
-      if (r.status === 200 && r.data) setIsSuperAdmin(r.data.isSuperAdmin)
-    })
-  }, [isAdmin])
-
   // The shared "Tapşırıqlar" board — also an id allowlist, and available to managers too (a person
   // who is a manager in one company still needs their task list), so it is not gated on isAdmin.
   const [canTasks, setCanTasks] = useState(false)
@@ -133,9 +122,8 @@ export function AdminLayout() {
     ...(isAdmin ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
     ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
     ...(isAdmin ? [{ to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconAlert }] : []),
-    // Across every company, not inside one — only the operator sees it. "Şirkətlər" is hidden from
-    // the sidebar on request; the /admin/tenants route still works by URL for the operator.
-    ...(isSuperAdmin ? [{ to: '/hq', label: 'Qrup paneli', Icon: IconChart }] : []),
+    // Platform-operator screens (Şirkətlər, Qrup paneli) no longer live in a company's admin — they
+    // moved to the separate operator console on admin.qrlog.az.
   ]
 
   return (

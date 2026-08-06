@@ -112,6 +112,12 @@ public class TenantController : ControllerBase
     // GET /api/tenant/allow-tls?domain=<host> — Caddy's on-demand-TLS gate. Only issue a certificate
     // for a subdomain that maps to a real, active tenant, so nobody can trigger cert issuance for
     // random *.qrlog.az names. 200 = allow, 404 = deny.
+    // Hosts we serve that are NOT tenants — the operator console (admin.qrlog.az) and the native-app
+    // host (app.qrlog.az). They get an on-demand certificate through the catch-all just like a tenant
+    // subdomain, so neither needs an explicit Caddy block (and adding admin needs no Caddy touch at all).
+    private static readonly HashSet<string> ServedNonTenantHosts =
+        new(StringComparer.OrdinalIgnoreCase) { "admin", "app" };
+
     [HttpGet("allow-tls")]
     [AllowAnonymous]
     public async Task<IActionResult> AllowTls([FromQuery] string? domain)
@@ -119,6 +125,8 @@ public class TenantController : ControllerBase
         if (string.IsNullOrWhiteSpace(domain))
             return NotFound();
         var slug = domain.Split('.')[0].ToLowerInvariant();
+        if (ServedNonTenantHosts.Contains(slug))
+            return Ok();
         var exists = await _db.Tenants.AnyAsync(t => t.Slug == slug && t.IsActive, HttpContext.RequestAborted);
         return exists ? Ok() : NotFound();
     }

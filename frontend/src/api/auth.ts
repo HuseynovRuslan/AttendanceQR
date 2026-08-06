@@ -35,6 +35,17 @@ export function appLogin(email: string, password: string) {
   })
 }
 
+/** POST /api/auth/operator-login — the platform operator console (admin.qrlog.az). Like app-login it
+ *  resolves the account across every company, but additionally requires the super-admin allowlist; a
+ *  non-operator fails exactly like a wrong PIN, so it never reveals who is an operator. */
+export function operatorLogin(email: string, password: string) {
+  return apiRequest<TokenResponse | ApiErrorBody>('/api/auth/operator-login', {
+    method: 'POST',
+    auth: false,
+    body: { email, password },
+  })
+}
+
 /** POST /api/auth/forgot-pin — an employee who forgot their PIN (and so can't sign in) asks the admin
  *  to reset it. Always resolves the same way whether or not the identifier matches an account (no
  *  existence leak); the request shows up in the admin's queue. */
