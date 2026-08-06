@@ -42,6 +42,12 @@ public partial class SuperAdminController
         if (admin.Id == actorId)
             return BadRequest(new { error = "CannotImpersonateSelf" });
 
+        // Never impersonate a fellow operator: it would mint a token whose sub is an allowlisted id.
+        // IsSuperAdmin already refuses impersonation tokens on /api/super, but keeping operators off the
+        // impersonation surface entirely is the belt to that suspenders — and a cleaner audit trail.
+        if (_superAdminIds.Contains(admin.Id))
+            return BadRequest(new { error = "CannotImpersonateOperator" });
+
         var token = _jwt.GenerateImpersonationToken(admin, actorId, ImpersonationMinutes);
         await AuditAsync("ImpersonationStarted", tenant.Id, tenant.Slug,
             $"{admin.FullName} ({admin.PhoneNumber})", ct);

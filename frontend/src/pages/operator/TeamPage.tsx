@@ -16,6 +16,7 @@ const ROLE_HELP: Record<string, string> = {
 const ERRORS: Record<string, string> = {
   NotAnOperator: 'Bu şəxs operator siyahısında (.env) deyil',
   CannotChangeOwnRole: 'Öz rolunuzu dəyişə bilməzsiniz',
+  CannotRemoveLastFullOperator: 'Ən azı bir Tam səlahiyyətli operator qalmalıdır',
   RoleInvalid: 'Rol yanlışdır',
   Forbidden: 'Bunun üçün icazəniz yoxdur',
 }

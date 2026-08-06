@@ -46,7 +46,13 @@ public partial class SuperAdminController : ControllerBase
         _appOptions = options;
     }
 
-    private bool IsSuperAdmin => _superAdminIds.Contains(User.EmployeeId());
+    // An impersonation token carries sub = the impersonated TENANT admin, not the operator. If that admin
+    // is itself an operator, its sub would pass the allowlist and hand the impersonating session full
+    // console powers — a Support operator could impersonate a Full operator's tenant and inherit Full.
+    // An impersonation session is therefore never an operator session: it may act inside the target
+    // tenant (the tenant routes), never against /api/super. This one check breaks the whole escalation
+    // chain, since every read gate and CanAsync build on it.
+    private bool IsSuperAdmin => !User.IsImpersonating() && _superAdminIds.Contains(User.EmployeeId());
 
     // The current operator's role. An allowlisted operator with NO profile row is Full — so introducing
     // roles takes no power away from anyone who has access today.

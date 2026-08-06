@@ -76,13 +76,31 @@ public partial class SuperAdminController
         if (!_superAdminIds.Contains(employeeId))
             return BadRequest(new { error = "NotAnOperator" });
 
-        // You cannot change your OWN role — this is what guarantees at least one Full operator always
-        // remains (whoever is making the change), so nobody can lock the team out of team management.
+        // You cannot change your OWN role. On its own that only stops the obvious case — the real
+        // "at least one Full always remains" guarantee is enforced under the lock below, because two
+        // operators demoting each other at the same instant each slip past this check.
         if (employeeId == User.EmployeeId())
             return BadRequest(new { error = "CannotChangeOwnRole" });
 
         if (!Enum.TryParse<OperatorRoleType>(request.Role, ignoreCase: true, out var role) || !Enum.IsDefined(role))
             return BadRequest(new { error = "RoleInvalid" });
+
+        // Serialize every role change on one advisory lock. Without it, two Full operators demoting each
+        // other concurrently would BOTH read the other as still-Full and commit, leaving ZERO Full — and
+        // only Full holds ManageTeam, so team management would be unrecoverable short of a redeploy. Role
+        // changes are rare, so one global lock costs nothing. It (and the guard) live inside the tx; an
+        // early return disposes the tx and rolls back.
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        await _db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(990515)", ct);
+
+        // Last-Full guard, read AFTER the lock so it sees any concurrent demotion that already committed.
+        // Allowlisted ids with no profile row count as Full (the default), so this must fold the allowlist
+        // over the profiled rows — counting OperatorProfiles alone would miss the default-Full operators.
+        var profiledRoles = await _db.OperatorProfiles
+            .Where(p => _superAdminIds.Contains(p.EmployeeId))
+            .ToDictionaryAsync(p => p.EmployeeId, p => p.Role, ct);
+        if (OperatorAccess.WouldLeaveNoFull(_superAdminIds, profiledRoles, employeeId, role))
+            return BadRequest(new { error = "CannotRemoveLastFullOperator" });
 
         var profile = await _db.OperatorProfiles.FirstOrDefaultAsync(p => p.EmployeeId == employeeId, ct);
         if (profile is null)
@@ -92,19 +110,10 @@ public partial class SuperAdminController
         }
         profile.Role = role;
         profile.UpdatedAtUtc = DateTime.UtcNow;
-        try
-        {
-            await _db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException)
-        {
-            // Lost the race to create the row — re-read and re-apply idempotently (unique index on EmployeeId).
-            _db.ChangeTracker.Clear();
-            profile = await _db.OperatorProfiles.FirstAsync(p => p.EmployeeId == employeeId, ct);
-            profile.Role = role;
-            profile.UpdatedAtUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
-        }
+        // The lock serializes writers, so the unique-index insert race the old try/catch caught can no
+        // longer happen — one writer holds the lock while the other waits.
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         var name = await _db.Employees.IgnoreQueryFilters()
             .Where(e => e.Id == employeeId).Select(e => e.FullName).FirstOrDefaultAsync(ct) ?? employeeId.ToString();

@@ -63,4 +63,14 @@ public class ClaimsPrincipalExtensionsTests
         Assert.Equal(id, user.EmployeeId());
         Assert.Equal(EmployeeRole.Admin, user.Role());
     }
+
+    [Fact]
+    public void IsImpersonating_is_true_only_when_the_imp_claim_is_present()
+    {
+        // The operator console keys "are you an operator?" on this: an impersonation token's sub is the
+        // impersonated tenant admin, so it must never be mistaken for the operator's own session.
+        Assert.True(User(("sub", Guid.NewGuid().ToString()), ("imp", Guid.NewGuid().ToString())).IsImpersonating());
+        Assert.False(User(("sub", Guid.NewGuid().ToString()), ("role", "Admin")).IsImpersonating());
+        Assert.False(User().IsImpersonating());
+    }
 }

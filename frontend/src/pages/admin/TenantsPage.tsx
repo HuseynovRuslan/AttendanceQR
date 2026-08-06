@@ -38,6 +38,7 @@ const ERRORS: Record<string, string> = {
   TenantInactive: 'Şirkət söndürülüb — əvvəl aktiv edin',
   NoAdmin: 'Bu şirkətdə aktiv admin yoxdur',
   CannotImpersonateSelf: 'Öz hesabınıza daxil ola bilməzsiniz',
+  CannotImpersonateOperator: 'Bu şirkətin adminı özü operatordur — operator kimi daxil olmaq olmaz',
 }
 
 const EMPTY = { slug: '', displayName: '', adminName: '', adminPhone: '', adminPin: '', locationName: '' }

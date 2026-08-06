@@ -40,4 +40,14 @@ public static class ClaimsPrincipalExtensions
             ? role
             : throw new InvalidOperationException(
                 "No usable 'role' claim. Role() is only valid inside an authenticated action.");
+
+    /// <summary>
+    /// True when this session is a support impersonation (JwtService.GenerateImpersonationToken adds the
+    /// "imp" claim). Such a token's "sub" is the impersonated TENANT admin, not the operator — so it must
+    /// never be treated as an operator session. If the impersonated admin happened to be an operator too,
+    /// its "sub" would pass the allowlist and hand the impersonating session that operator's console
+    /// powers. The operator console (SuperAdminController.IsSuperAdmin) refuses these tokens outright.
+    /// </summary>
+    public static bool IsImpersonating(this ClaimsPrincipal user)
+        => user.HasClaim(c => c.Type == "imp");
 }

@@ -44,4 +44,29 @@ public static class OperatorAccess
 
     private static readonly OperatorPermission[] AllPermissions =
         (OperatorPermission[])Enum.GetValues(typeof(OperatorPermission));
+
+    /// <summary>
+    /// Would setting <paramref name="changingId"/> to <paramref name="newRole"/> leave NO operator with
+    /// the Full role? Only Full holds ManageTeam, so an empty Full set means nobody can ever change a role
+    /// again — a lockout only a redeploy or DB edit could undo. An allowlisted operator with no profile
+    /// row counts as Full (that is the default), so this folds the allowlist over the profiled roles
+    /// rather than counting <c>OperatorProfiles</c> rows. The team endpoint calls this under a serialized
+    /// section so two concurrent demotions can't each see the other as still-Full and both proceed.
+    /// </summary>
+    public static bool WouldLeaveNoFull(
+        IEnumerable<Guid> operatorIds,
+        IReadOnlyDictionary<Guid, OperatorRoleType> profiledRoles,
+        Guid changingId,
+        OperatorRoleType newRole)
+    {
+        foreach (var id in operatorIds)
+        {
+            var role = id == changingId
+                ? newRole
+                : profiledRoles.TryGetValue(id, out var r) ? r : OperatorRoleType.Full;
+            if (role == OperatorRoleType.Full)
+                return false; // at least one Full remains
+        }
+        return true;
+    }
 }
