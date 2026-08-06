@@ -46,6 +46,11 @@ public class Tenant
 
     public int? MaxLocations { get; set; }
 
+    /// <summary>Negotiated flat monthly price in AZN. When set it OVERRIDES the graduated per-employee
+    /// formula (<see cref="Pricing"/>) for billing — big/Enterprise accounts are hand-priced. Null = use
+    /// the formula on the live employee count.</summary>
+    public decimal? MonthlyPriceOverride { get; set; }
+
     /// <summary>Comma-separated feature keys that are turned OFF for this company (e.g.
     /// "facematch,payroll"). Empty/null = every feature on. Stored as an opt-OUT list so adding a new
     /// feature to the platform needs no migration and defaults to enabled everywhere.

@@ -22,6 +22,7 @@ import {
 } from '../../api/admin'
 import { startImpersonation } from '../../api/client'
 import { fmtDate } from '../../lib/format'
+import { parseMoney, moneyInputFilter, formatMoney } from '../../lib/money'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
 
 const ERRORS: Record<string, string> = {
@@ -319,7 +320,7 @@ export function TenantsTab() {
   const [copied, setCopied] = useState(false)
   const [features, setFeatures] = useState<SuperFeature[]>([])
   const [planEdit, setPlanEdit] = useState<SuperTenant | null>(null)
-  const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', disabled: [] as string[] })
+  const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', priceOverride: '', disabled: [] as string[] })
   const [savingPlan, setSavingPlan] = useState(false)
 
   async function refresh() {
@@ -344,6 +345,7 @@ export function TenantsTab() {
       plan: t.plan ?? '',
       maxEmployees: t.maxEmployees != null ? String(t.maxEmployees) : '',
       maxLocations: t.maxLocations != null ? String(t.maxLocations) : '',
+      priceOverride: t.monthlyPriceOverride != null ? String(t.monthlyPriceOverride) : '',
       disabled: [...t.disabledFeatures],
     })
   }
@@ -357,11 +359,21 @@ export function TenantsTab() {
 
   async function savePlan() {
     if (!planEdit) return
+    // Validate the override BEFORE sending: an empty field clears it (intentional), but a non-empty
+    // malformed value must surface as an error — never silently become NaN → null and wipe the price.
+    const raw = planForm.priceOverride.trim()
+    let override: number | null = null
+    if (raw) {
+      const n = parseMoney(raw)
+      if (n === null) { setError('Fərdi qiymət yanlışdır (məs. 1250 və ya 1250.50)'); return }
+      override = n
+    }
     setSavingPlan(true)
     const { status } = await setTenantPlan(planEdit.id, {
       plan: planForm.plan || null,
       maxEmployees: planForm.maxEmployees ? Number(planForm.maxEmployees) : null,
       maxLocations: planForm.maxLocations ? Number(planForm.maxLocations) : null,
+      monthlyPriceOverride: override,
       disabledFeatures: planForm.disabled,
     })
     setSavingPlan(false)
@@ -571,6 +583,22 @@ export function TenantsTab() {
               <div style={{ flex: 1 }}>
                 <label className="form-label">Maks. filial</label>
                 <input className="inp" value={planForm.maxLocations} onChange={(e) => setPlanForm((f) => ({ ...f, maxLocations: e.target.value.replace(/\D/g, '') }))} placeholder="limitsiz" />
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <label className="form-label">Fərdi aylıq qiymət (₼)</label>
+              <input
+                className="inp"
+                value={planForm.priceOverride}
+                onChange={(e) => setPlanForm((f) => ({ ...f, priceOverride: moneyInputFilter(e.target.value) }))}
+                placeholder="boş = pilləli tarif (işçi sayına görə)"
+              />
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                {planForm.priceOverride.trim()
+                  ? (parseMoney(planForm.priceOverride) !== null
+                      ? <>= <b>{formatMoney(parseMoney(planForm.priceOverride)!)}</b> / ay</>
+                      : <span style={{ color: 'var(--clay)' }}>Qiymət yanlışdır — məs. 1250 və ya 1250.50</span>)
+                  : 'Böyük/razılaşdırılmış hesablar üçün. Boş buraxsanız qiymət işçi sayından hesablanır.'}
               </div>
             </div>
           </div>

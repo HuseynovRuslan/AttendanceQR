@@ -829,6 +829,8 @@ export interface SuperTenant {
   plan: string | null
   maxEmployees: number | null
   maxLocations: number | null
+  /** Negotiated flat monthly price (AZN); null = billed on the graduated per-employee formula. */
+  monthlyPriceOverride: number | null
   /** Feature keys turned OFF for this tenant (see /super/features for the catalogue). */
   disabledFeatures: string[]
 }
@@ -955,13 +957,61 @@ export interface TenantPlanInput {
   plan: string | null
   maxEmployees: number | null
   maxLocations: number | null
+  /** Negotiated flat monthly price (AZN); null clears it → billing uses the formula. */
+  monthlyPriceOverride: number | null
   /** Feature keys to turn OFF. */
   disabledFeatures: string[]
 }
 
-/** PUT /api/super/tenants/{id}/plan — set plan, soft limits and disabled features in one call. */
+/** PUT /api/super/tenants/{id}/plan — set plan, soft limits, price override and disabled features. */
 export function setTenantPlan(id: string, input: TenantPlanInput) {
   return apiRequest<{ id: string } | { error: string }>(`/api/super/tenants/${id}/plan`, { method: 'PUT', body: input })
+}
+
+// ── Billing (operator console) ───────────────────────────────────────────────
+export interface BillingRow {
+  tenantId: string
+  slug: string
+  displayName: string
+  plan: string | null
+  /** false = a churned tenant still shown because it has a settled invoice for this period. */
+  isActive: boolean
+  employeeCount: number
+  amount: number
+  priceOverride: number | null
+  isPaid: boolean
+  paidAtUtc: string | null
+  note: string | null
+  /** true once the period has an invoice row (amount snapshotted); false = priced live. */
+  settled: boolean
+}
+
+export interface BillingResponse {
+  year: number
+  month: number
+  totals: { billed: number; collected: number; outstanding: number; paidCount: number; totalCount: number }
+  rows: BillingRow[]
+}
+
+/** GET /api/super/billing — every active company's bill for a month + totals. */
+export function getBilling(year: number, month: number) {
+  return apiRequest<BillingResponse | { error: string }>(`/api/super/billing?year=${year}&month=${month}`)
+}
+
+export interface BillingMarkInput {
+  year: number
+  month: number
+  isPaid: boolean
+  amount?: number | null
+  note?: string | null
+}
+
+/** POST /api/super/tenants/{id}/billing — mark a company's bill for a period paid/unpaid. */
+export function markBilling(id: string, input: BillingMarkInput) {
+  return apiRequest<{ tenantId: string; isPaid: boolean } | { error: string }>(
+    `/api/super/tenants/${id}/billing`,
+    { method: 'POST', body: input },
+  )
 }
 
 export function createTenant(input: CreateTenantInput) {

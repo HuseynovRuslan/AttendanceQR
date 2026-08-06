@@ -33,4 +33,15 @@ public record TenantPlanRequest(
     string? Plan = null,
     int? MaxEmployees = null,
     int? MaxLocations = null,
-    string[]? DisabledFeatures = null);
+    string[]? DisabledFeatures = null,
+    // Negotiated flat monthly price (AZN). Null clears the override → billing falls back to the formula.
+    decimal? MonthlyPriceOverride = null);
+
+/// <summary>Mark a company's bill for a period paid/unpaid. Year/Month default to the current month;
+/// Amount defaults to the tenant's negotiated/ formula price.</summary>
+public record BillingMarkRequest(
+    int? Year = null,
+    int? Month = null,
+    bool IsPaid = false,
+    decimal? Amount = null,
+    string? Note = null);

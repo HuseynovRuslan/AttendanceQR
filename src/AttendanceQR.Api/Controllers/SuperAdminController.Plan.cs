@@ -43,12 +43,16 @@ public partial class SuperAdminController
         tenant.Plan = plan;
         tenant.MaxEmployees = request.MaxEmployees is int me and > 0 ? me : null;
         tenant.MaxLocations = request.MaxLocations is int ml and > 0 ? ml : null;
+        // >= 0 sets it (0 = a comped/free tenant); null or negative clears → billing uses the formula.
+        tenant.MonthlyPriceOverride = request.MonthlyPriceOverride is decimal p and >= 0m ? p : null;
         tenant.DisabledFeatures = TenantFeatures.ToCsv(request.DisabledFeatures ?? Array.Empty<string>());
         await _db.SaveChangesAsync(ct);
 
         await AuditAsync("TenantPlanChanged", tenant.Id, tenant.Slug,
             $"plan={plan ?? "—"}, maxİşçi={tenant.MaxEmployees?.ToString() ?? "∞"}, " +
-            $"maxFilial={tenant.MaxLocations?.ToString() ?? "∞"}, bağlı=[{tenant.DisabledFeatures ?? ""}]", ct);
+            $"maxFilial={tenant.MaxLocations?.ToString() ?? "∞"}, " +
+            $"qiymət={(tenant.MonthlyPriceOverride is decimal pr ? $"{pr:0.##}₼" : "formul")}, " +
+            $"bağlı=[{tenant.DisabledFeatures ?? ""}]", ct);
 
         return Ok(new
         {
@@ -56,6 +60,7 @@ public partial class SuperAdminController
             plan = tenant.Plan,
             maxEmployees = tenant.MaxEmployees,
             maxLocations = tenant.MaxLocations,
+            monthlyPriceOverride = tenant.MonthlyPriceOverride,
             disabledFeatures = TenantFeatures.ParseDisabled(tenant.DisabledFeatures),
         });
     }

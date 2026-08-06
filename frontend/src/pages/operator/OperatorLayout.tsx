@@ -18,16 +18,17 @@ import {
 const LINKS = [
   { to: '/', label: 'İcmal', Icon: IconHome, end: true },
   { to: '/tenants', label: 'Şirkətlər', Icon: IconClipboard, end: false },
+  { to: '/billing', label: 'Ödənişlər', Icon: IconDownload, end: false },
   { to: '/users', label: 'İstifadəçilər', Icon: IconUsers, end: false },
   { to: '/audit', label: 'Audit', Icon: IconChart, end: false },
   // Placeholders wired up in later phases — kept here so the shell shows the full shape.
-  { to: '/billing', label: 'Ödənişlər', Icon: IconDownload, end: false, soon: true },
   { to: '/announcements', label: 'Qlobal elan', Icon: IconBell, end: false, soon: true },
 ]
 
 const TITLES: Record<string, string> = {
   '/': 'İcmal',
   '/tenants': 'Şirkətlər',
+  '/billing': 'Ödənişlər',
   '/users': 'İstifadəçilər',
   '/audit': 'Audit',
 }

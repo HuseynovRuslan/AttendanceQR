@@ -51,6 +51,9 @@ public class AppDbContext : DbContext
     // Global (NOT tenant-scoped) — the platform super-admin's audit trail. It spans every company, so
     // (like Tasks) it carries no TenantId and gets no query filter. Append-only.
     public DbSet<SuperAdminAuditLog> SuperAdminAuditLogs => Set<SuperAdminAuditLog>();
+    // Global (NOT tenant-scoped) — the operator's per-tenant billing. Spans every company, so no query
+    // filter (like the audit log). One row per (tenant, year, month).
+    public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
     public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
     public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
     public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();
@@ -114,6 +117,13 @@ public class AppDbContext : DbContext
         // sweeps every few minutes can't send the same nudge twice.
         modelBuilder.Entity<EmployeeNotification>()
             .HasIndex(n => new { n.TenantId, n.EmployeeId, n.Type, n.RelatedDate }).IsUnique();
+
+        // Operator billing (GLOBAL — no tenant query filter). One invoice per company per month is the
+        // rule, so this unique index IS the upsert key. Money columns pinned to numeric(10,2).
+        modelBuilder.Entity<TenantInvoice>()
+            .HasIndex(i => new { i.TenantId, i.PeriodYear, i.PeriodMonth }).IsUnique();
+        modelBuilder.Entity<TenantInvoice>().Property(i => i.Amount).HasPrecision(10, 2);
+        modelBuilder.Entity<Tenant>().Property(t => t.MonthlyPriceOverride).HasPrecision(10, 2);
 
         // Employee of the month. One ballot per voter per period — this index IS the "one vote" rule.
         modelBuilder.Entity<MonthlyVoteBallot>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

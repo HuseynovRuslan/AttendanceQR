@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { OperatorLayout } from './OperatorLayout'
+import { BillingPage } from './BillingPage'
 // The four operator sections live in TenantsPage (they were its tabs); the operator shell routes them
 // as pages. TenantsPage's own tabbed wrapper is no longer mounted anywhere — the sidebar replaces it.
 import { SuperAudit, SuperOverview, SuperUsers, TenantsTab } from '../admin/TenantsPage'
@@ -15,6 +16,7 @@ export function OperatorRoutes() {
       <Route element={<OperatorLayout />}>
         <Route index element={<SuperOverview />} />
         <Route path="tenants" element={<TenantsTab />} />
+        <Route path="billing" element={<BillingPage />} />
         <Route path="users" element={<SuperUsers />} />
         <Route path="audit" element={<SuperAudit />} />
       </Route>
