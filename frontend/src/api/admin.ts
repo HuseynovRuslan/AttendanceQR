@@ -1014,6 +1014,36 @@ export function markBilling(id: string, input: BillingMarkInput) {
   )
 }
 
+// ── Health / usage (operator console) ────────────────────────────────────────
+export type HealthStatus = 'healthy' | 'quiet' | 'dormant' | 'new'
+
+export interface HealthRow {
+  tenantId: string
+  slug: string
+  displayName: string
+  plan: string | null
+  employeeCount: number
+  maxEmployees: number | null
+  overEmployeeLimit: boolean
+  locationCount: number
+  maxLocations: number | null
+  lastScanDate: string | null
+  daysSinceLastScan: number | null
+  checkInsToday: number
+  checkInsThisMonth: number
+  status: HealthStatus
+}
+
+export interface HealthResponse {
+  summary: { healthy: number; quiet: number; dormant: number; totalActiveUsers: number; checkInsToday: number }
+  rows: HealthRow[]
+}
+
+/** GET /api/super/health — every active company's live usage + activity signals, worst first. */
+export function getHealth() {
+  return apiRequest<HealthResponse | { error: string }>('/api/super/health')
+}
+
 export function createTenant(input: CreateTenantInput) {
   return apiRequest<CreateTenantResult | { error: string }>('/api/super/tenants', { method: 'POST', body: input })
 }

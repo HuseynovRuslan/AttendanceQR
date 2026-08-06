@@ -5,6 +5,7 @@ import {
   IconBell,
   IconChart,
   IconClipboard,
+  IconClock,
   IconDownload,
   IconHome,
   IconLogout,
@@ -18,6 +19,7 @@ import {
 const LINKS = [
   { to: '/', label: 'İcmal', Icon: IconHome, end: true },
   { to: '/tenants', label: 'Şirkətlər', Icon: IconClipboard, end: false },
+  { to: '/health', label: 'Sağlamlıq', Icon: IconClock, end: false },
   { to: '/billing', label: 'Ödənişlər', Icon: IconDownload, end: false },
   { to: '/users', label: 'İstifadəçilər', Icon: IconUsers, end: false },
   { to: '/audit', label: 'Audit', Icon: IconChart, end: false },
@@ -28,6 +30,7 @@ const LINKS = [
 const TITLES: Record<string, string> = {
   '/': 'İcmal',
   '/tenants': 'Şirkətlər',
+  '/health': 'Sağlamlıq',
   '/billing': 'Ödənişlər',
   '/users': 'İstifadəçilər',
   '/audit': 'Audit',
