@@ -1,6 +1,6 @@
 {
-  "name": "Davamiyyət",
-  "short_name": "Davamiyyət",
+  "name": "QRLog",
+  "short_name": "QRLog",
   "description": "QR ilə giriş-çıxış qeydiyyatı",
   "lang": "az",
   "start_url": "/",

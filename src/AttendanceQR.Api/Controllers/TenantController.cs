@@ -66,8 +66,11 @@ public class TenantController : ControllerBase
             .Select(t => new { t.DisplayName, t.LogoKey })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
-        var display = string.IsNullOrWhiteSpace(t?.DisplayName) ? "Davamiyyət" : t!.DisplayName;
-        var name = string.IsNullOrWhiteSpace(t?.DisplayName) ? "Davamiyyət" : $"{t!.DisplayName} — Davamiyyət";
+        // No tenant (the shared app./admin. hosts) → the product brand "QRLog". A tenant → its own name
+        // with the brand as the qualifier ("EastCaf — QRLog"); short_name (under the icon) stays the bare
+        // company name. Either way the generic word "Davamiyyət" is never the installed app's name.
+        var display = string.IsNullOrWhiteSpace(t?.DisplayName) ? "QRLog" : t!.DisplayName;
+        var name = string.IsNullOrWhiteSpace(t?.DisplayName) ? "QRLog" : $"{t!.DisplayName} — QRLog";
 
         // A custom RASTER logo (a tenant uploaded their own PNG/JPG/WebP) becomes the install icon directly.
         // Otherwise — no logo, or the default QRLog .svg — fall back to the per-host PNG icon set at
