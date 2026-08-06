@@ -69,18 +69,27 @@ public class TenantController : ControllerBase
         var display = string.IsNullOrWhiteSpace(t?.DisplayName) ? "Davamiyyət" : t!.DisplayName;
         var name = string.IsNullOrWhiteSpace(t?.DisplayName) ? "Davamiyyət" : $"{t!.DisplayName} — Davamiyyət";
 
+        // A custom RASTER logo (a tenant uploaded their own PNG/JPG/WebP) becomes the install icon directly.
+        // Otherwise — no logo, or the default QRLog .svg — fall back to the per-host PNG icon set at
+        // /icon-*.png, which the frontend nginx serves per host (QRLog for a normal tenant, Bakı Abadlıq for
+        // bax). SVG is deliberately NOT used as an install icon: iOS ignores manifest icons entirely (it reads
+        // the apple-touch-icon link), and Chrome's launcher won't reliably rasterise an SVG — so a maskable
+        // PNG is the only icon that installs correctly on both. This is why a new company was getting Bakı
+        // Abadlıq's leaf: its default .svg logo produced no usable install icon, so the static shared PNGs won.
+        var key = t?.LogoKey;
+        var isRaster = !string.IsNullOrWhiteSpace(key) && (
+            key!.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            key.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase));
+
         List<Dictionary<string, object?>> icons;
-        if (!string.IsNullOrWhiteSpace(t?.LogoKey))
+        if (isRaster)
         {
-            var key = t!.LogoKey!;
-            var isSvg = key.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
-            var mime = isSvg ? "image/svg+xml"
-                     : key.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png"
+            var mime = key!.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png"
                      : key.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ? "image/webp"
                      : "image/jpeg";
-            // SVG is scalable → "any"; a raster logo is declared at the sizes browsers look for on install.
-            var sizes = isSvg ? "any" : "192x192 512x512";
-            icons = new() { new() { ["src"] = key, ["sizes"] = sizes, ["type"] = mime, ["purpose"] = "any" } };
+            icons = new() { new() { ["src"] = key, ["sizes"] = "192x192 512x512", ["type"] = mime, ["purpose"] = "any" } };
         }
         else
         {
