@@ -45,3 +45,10 @@ public record BillingMarkRequest(
     bool IsPaid = false,
     decimal? Amount = null,
     string? Note = null);
+
+/// <summary>Broadcast a platform-wide announcement to every company's employees.
+/// <c>ScheduledForUtc</c> null = live immediately.</summary>
+public record GlobalAnnouncementRequest(
+    string? Title,
+    string? Message,
+    DateTime? ScheduledForUtc = null);

@@ -28,15 +28,20 @@ export function BillingPage() {
 
   async function load() {
     setLoading(true)
-    const res = await getBilling(year, month)
-    setLoading(false)
-    if (res.status === 200 && res.data && 'rows' in res.data) {
-      setData(res.data)
-      setError(null)
-    } else if (res.status === 403) {
-      setError('İcazəniz yoxdur')
-    } else {
+    try {
+      const res = await getBilling(year, month)
+      if (res.status === 200 && res.data && 'rows' in res.data) {
+        setData(res.data)
+        setError(null)
+      } else if (res.status === 403) {
+        setError('İcazəniz yoxdur')
+      } else {
+        setError('Yüklənmədi')
+      }
+    } catch {
       setError('Yüklənmədi')
+    } finally {
+      setLoading(false)
     }
   }
 

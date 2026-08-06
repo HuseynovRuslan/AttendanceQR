@@ -33,11 +33,16 @@ export function HealthPage() {
 
   useEffect(() => {
     void (async () => {
-      const res = await getHealth()
-      setLoading(false)
-      if (res.status === 200 && res.data && 'rows' in res.data) setData(res.data)
-      else if (res.status === 403) setError('İcazəniz yoxdur')
-      else setError('Yüklənmədi')
+      try {
+        const res = await getHealth()
+        if (res.status === 200 && res.data && 'rows' in res.data) setData(res.data)
+        else if (res.status === 403) setError('İcazəniz yoxdur')
+        else setError('Yüklənmədi')
+      } catch {
+        setError('Yüklənmədi')
+      } finally {
+        setLoading(false)
+      }
     })()
   }, [])
 

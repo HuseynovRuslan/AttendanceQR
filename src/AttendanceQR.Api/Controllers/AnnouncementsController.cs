@@ -29,52 +29,62 @@ public class AnnouncementsController : ControllerBase
     public async Task<IActionResult> Active()
     {
         var ct = HttpContext.RequestAborted;
+        var nowUtc = DateTime.UtcNow;
+        var employeeId = User.EmployeeId();
 
-        // If the tenant's plan turns announcements off, the home banner shows nothing — return empty
-        // rather than 403, so the fetch a working employee makes on every open stays quiet, not an error.
+        // Platform-wide operator broadcasts reach EVERY tenant's employees, regardless of the tenant's own
+        // announcements feature flag (they are operator-level messages — e.g. planned maintenance).
+        var merged = (await _db.GlobalAnnouncements
+                .Where(a => a.IsActive && (a.ScheduledForUtc == null || a.ScheduledForUtc <= nowUtc))
+                .Select(a => new { a.Id, a.Title, a.Message, a.CreatedAtUtc })
+                .ToListAsync(ct))
+            .Select(a => new { id = a.Id, title = a.Title, message = a.Message, createdAtUtc = a.CreatedAtUtc, global = true })
+            .ToList();
+
+        // The tenant's OWN announcements — skipped entirely when the plan turns the feature off (the
+        // employee still gets any global broadcast above, just none of this company's own).
         var disabled = await _db.Tenants
             .Where(t => t.Id == _db.CurrentTenantId)
             .Select(t => t.DisabledFeatures)
             .FirstOrDefaultAsync(ct);
-        if (!TenantFeatures.IsEnabled(disabled, TenantFeatures.Announcements))
-            return Ok(Array.Empty<object>());
 
-        var employeeId = User.EmployeeId();
-        var nowUtc = DateTime.UtcNow;
-        // AttendanceRecords are keyed by the server UTC day (see the scan handler), so match that.
-        var todayUtc = DateOnly.FromDateTime(nowUtc);
+        if (TenantFeatures.IsEnabled(disabled, TenantFeatures.Announcements))
+        {
+            // AttendanceRecords are keyed by the server UTC day (see the scan handler), so match that.
+            var todayUtc = DateOnly.FromDateTime(nowUtc);
+            var atWorkToday = await _db.AttendanceRecords
+                .AnyAsync(r => r.EmployeeId == employeeId && r.AttendanceDate == todayUtc && r.CheckInAtUtc != null, ct);
 
-        var atWorkToday = await _db.AttendanceRecords
-            .AnyAsync(r => r.EmployeeId == employeeId && r.AttendanceDate == todayUtc && r.CheckInAtUtc != null, ct);
+            var due = await _db.Announcements
+                .Where(a => a.IsActive && (a.ScheduledForUtc == null || a.ScheduledForUtc <= nowUtc))
+                .OrderByDescending(a => a.CreatedAtUtc)
+                .Select(a => new { a.Id, a.Title, a.Message, a.CreatedAtUtc, a.Audience })
+                .ToListAsync(ct);
 
-        var due = await _db.Announcements
-            .Where(a => a.IsActive && (a.ScheduledForUtc == null || a.ScheduledForUtc <= nowUtc))
-            .OrderByDescending(a => a.CreatedAtUtc)
-            .Select(a => new { a.Id, a.Title, a.Message, a.CreatedAtUtc, a.Audience })
-            .ToListAsync(ct);
+            // For any "Selected" ones, which of them list THIS employee?
+            var selectedIds = due.Where(a => a.Audience == AnnouncementAudience.Selected).Select(a => a.Id).ToList();
+            var mineSelected = selectedIds.Count == 0
+                ? new HashSet<Guid>()
+                : (await _db.AnnouncementRecipients
+                        .Where(r => selectedIds.Contains(r.AnnouncementId) && r.EmployeeId == employeeId)
+                        .Select(r => r.AnnouncementId)
+                        .ToListAsync(ct))
+                    .ToHashSet();
 
-        // For any "Selected" ones, which of them list THIS employee?
-        var selectedIds = due.Where(a => a.Audience == AnnouncementAudience.Selected).Select(a => a.Id).ToList();
-        var mineSelected = selectedIds.Count == 0
-            ? new HashSet<Guid>()
-            : (await _db.AnnouncementRecipients
-                    .Where(r => selectedIds.Contains(r.AnnouncementId) && r.EmployeeId == employeeId)
-                    .Select(r => r.AnnouncementId)
-                    .ToListAsync(ct))
-                .ToHashSet();
+            merged.AddRange(due
+                .Where(a => a.Audience switch
+                {
+                    AnnouncementAudience.All => true,
+                    AnnouncementAudience.AtWork => atWorkToday,
+                    AnnouncementAudience.NotAtWork => !atWorkToday,
+                    AnnouncementAudience.Selected => mineSelected.Contains(a.Id),
+                    _ => true,
+                })
+                .Select(a => new { id = a.Id, title = a.Title, message = a.Message, createdAtUtc = a.CreatedAtUtc, global = false }));
+        }
 
-        var visible = due
-            .Where(a => a.Audience switch
-            {
-                AnnouncementAudience.All => true,
-                AnnouncementAudience.AtWork => atWorkToday,
-                AnnouncementAudience.NotAtWork => !atWorkToday,
-                AnnouncementAudience.Selected => mineSelected.Contains(a.Id),
-                _ => true,
-            })
-            .Select(a => new { id = a.Id, title = a.Title, message = a.Message, createdAtUtc = a.CreatedAtUtc });
-
-        return Ok(visible);
+        var result = merged.OrderByDescending(x => x.createdAtUtc).ToList();
+        return Ok(result);
     }
 }
 

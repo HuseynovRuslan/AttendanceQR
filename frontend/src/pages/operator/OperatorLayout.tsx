@@ -21,10 +21,9 @@ const LINKS = [
   { to: '/tenants', label: 'Şirkətlər', Icon: IconClipboard, end: false },
   { to: '/health', label: 'Sağlamlıq', Icon: IconClock, end: false },
   { to: '/billing', label: 'Ödənişlər', Icon: IconDownload, end: false },
+  { to: '/announcements', label: 'Qlobal elan', Icon: IconBell, end: false },
   { to: '/users', label: 'İstifadəçilər', Icon: IconUsers, end: false },
   { to: '/audit', label: 'Audit', Icon: IconChart, end: false },
-  // Placeholders wired up in later phases — kept here so the shell shows the full shape.
-  { to: '/announcements', label: 'Qlobal elan', Icon: IconBell, end: false, soon: true },
 ]
 
 const TITLES: Record<string, string> = {
@@ -32,6 +31,7 @@ const TITLES: Record<string, string> = {
   '/tenants': 'Şirkətlər',
   '/health': 'Sağlamlıq',
   '/billing': 'Ödənişlər',
+  '/announcements': 'Qlobal elan',
   '/users': 'İstifadəçilər',
   '/audit': 'Audit',
 }
@@ -80,20 +80,12 @@ export function OperatorLayout() {
         </div>
 
         <nav className="sidebar-nav">
-          {LINKS.map(({ to, label, Icon, end, soon }) =>
-            soon ? (
-              <span key={to} className="nav-item" style={{ opacity: 0.4, cursor: 'default' }} title="Tezliklə">
-                <Icon />
-                {label}
-                <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700 }}>tezliklə</span>
-              </span>
-            ) : (
-              <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-                <Icon />
-                {label}
-              </NavLink>
-            ),
-          )}
+          {LINKS.map(({ to, label, Icon, end }) => (
+            <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+              <Icon />
+              {label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="sidebar-footer">

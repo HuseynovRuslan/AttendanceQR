@@ -1044,6 +1044,35 @@ export function getHealth() {
   return apiRequest<HealthResponse | { error: string }>('/api/super/health')
 }
 
+// ── Global announcements (operator console) ──────────────────────────────────
+export interface GlobalAnnouncement {
+  id: string
+  title: string
+  message: string
+  isActive: boolean
+  scheduledForUtc: string | null
+  createdByName: string
+  createdAtUtc: string
+}
+
+/** GET /api/super/announcements — the operator's platform-wide broadcasts, newest first. */
+export function getGlobalAnnouncements() {
+  return apiRequest<GlobalAnnouncement[] | { error: string }>('/api/super/announcements')
+}
+
+/** POST /api/super/announcements — broadcast a message to every company's employees. */
+export function createGlobalAnnouncement(input: { title: string; message: string; scheduledForUtc?: string | null }) {
+  return apiRequest<{ id: string } | { error: string }>('/api/super/announcements', { method: 'POST', body: input })
+}
+
+/** POST /api/super/announcements/{id}/retire — stop showing a broadcast (kept, not deleted). */
+export function retireGlobalAnnouncement(id: string) {
+  return apiRequest<{ id: string; isActive: boolean } | { error: string }>(
+    `/api/super/announcements/${id}/retire`,
+    { method: 'POST' },
+  )
+}
+
 export function createTenant(input: CreateTenantInput) {
   return apiRequest<CreateTenantResult | { error: string }>('/api/super/tenants', { method: 'POST', body: input })
 }

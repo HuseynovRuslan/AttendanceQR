@@ -54,6 +54,8 @@ public class AppDbContext : DbContext
     // Global (NOT tenant-scoped) — the operator's per-tenant billing. Spans every company, so no query
     // filter (like the audit log). One row per (tenant, year, month).
     public DbSet<TenantInvoice> TenantInvoices => Set<TenantInvoice>();
+    // Global (NOT tenant-scoped) — operator broadcasts to every company's employees at once. No filter.
+    public DbSet<GlobalAnnouncement> GlobalAnnouncements => Set<GlobalAnnouncement>();
     public DbSet<EmployeeNotification> EmployeeNotifications => Set<EmployeeNotification>();
     public DbSet<MonthlyVoteBallot> MonthlyVoteBallots => Set<MonthlyVoteBallot>();
     public DbSet<MonthlyVoteTally> MonthlyVoteTallies => Set<MonthlyVoteTally>();
