@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { getNotifications, type NotificationsSummary } from '../api/notifications'
 import { usePolling } from '../lib/usePolling'
 import { IconBell } from './icons'
+
+const SEC: CSSProperties = { padding: '8px 14px 3px', fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--c400)' }
+const ITEM: CSSProperties = { display: 'block', padding: '9px 14px', fontSize: 13, color: 'var(--c700)', textDecoration: 'none', borderBottom: '1px solid var(--c50)' }
 
 /** Admin-only bell icon — live count + dropdown, no read/unread state (see api/notifications.ts). */
 export function NotificationBell() {
@@ -75,28 +78,36 @@ export function NotificationBell() {
           <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--c100)', fontWeight: 700, fontSize: 13, color: 'var(--c900)' }}>
             Bildirişlər
           </div>
-          {(!summary || summary.items.length === 0) && (
-            <div className="muted" style={{ padding: 16, fontSize: 13, textAlign: 'center' }}>
-              Diqqət tələb edən heç nə yoxdur
+
+          {summary && summary.items.length > 0 && (
+            <div>
+              <div style={SEC}>Diqqət tələb edir</div>
+              {summary.items.map((item, i) => (
+                <Link key={i} to={item.linkTo} onClick={() => setOpen(false)} style={ITEM}>
+                  {item.message}
+                </Link>
+              ))}
             </div>
           )}
-          {summary?.items.map((item, i) => (
-            <Link
-              key={i}
-              to={item.linkTo}
-              onClick={() => setOpen(false)}
-              style={{
-                display: 'block',
-                padding: '10px 14px',
-                fontSize: 13,
-                color: 'var(--c700)',
-                textDecoration: 'none',
-                borderBottom: i < summary.items.length - 1 ? '1px solid var(--c50)' : 'none',
-              }}
-            >
-              {item.message}
-            </Link>
-          ))}
+
+          {summary && summary.activity.length > 0 && (
+            <div>
+              <div style={SEC}>Son hərəkət</div>
+              {summary.activity.map((a, i) => (
+                <Link key={i} to={a.linkTo} onClick={() => setOpen(false)} style={{ ...ITEM, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 'none', width: 7, height: 7, borderRadius: 999, background: a.isIn ? 'var(--leaf, #2e9e44)' : '#c0762a' }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>{a.message}</span>
+                  <span style={{ flex: 'none', color: 'var(--c400)', fontVariantNumeric: 'tabular-nums' }}>{a.at}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {summary && summary.items.length === 0 && summary.activity.length === 0 && (
+            <div className="muted" style={{ padding: 16, fontSize: 13, textAlign: 'center' }}>
+              Hələ hərəkət yoxdur
+            </div>
+          )}
         </div>
       )}
     </div>

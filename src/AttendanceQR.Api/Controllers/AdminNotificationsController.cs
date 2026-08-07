@@ -42,30 +42,63 @@ public class AdminNotificationsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        var requesterId = User.EmployeeId();
+        var ct = HttpContext.RequestAborted;
 
-        var pending = await _deviceChangeService.GetPendingAsync(HttpContext.RequestAborted);
-
-        // No "N employees were late today": every employee keeps their own hours, so a location-wide
-        // shift cannot decide who was late — the alert was simply wrong, every morning.
+        // ---- Needs-attention items (drive the badge) ----
+        var pending = await _deviceChangeService.GetPendingAsync(ct);
         var items = pending
             .Take(MaxPendingItems)
             .Select(p => new
             {
                 type = "PendingDeviceChange",
                 message = $"{p.EmployeeName} — yeni cihaz təsdiqi gözləyir",
-                linkTo = "/admin/device-changes"
+                linkTo = "/admin/device-changes",
             })
             .ToList<object>();
+
+        // Pending PIN-reset requests (a headless employee waiting to get back in).
+        var pinPending = await _db.PinResetRequests.CountAsync(p => p.Status == PinResetStatus.Pending, ct);
+        if (pinPending > 0)
+            items.Add(new { type = "PendingPinReset", message = $"{pinPending} PIN sıfırlama tələbi gözləyir", linkTo = "/admin/pin-resets" });
 
         var birthdays = await BirthdayItemsAsync();
         items.AddRange(birthdays);
 
+        // ---- Recent activity (informational — today's latest check-ins / check-outs). Does NOT inflate
+        // the badge (that would run to hundreds); the admin opens the bell to glance at who came / left. ----
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var records = await _db.AttendanceRecords
+            .Where(r => r.AttendanceDate == todayLocal && (r.CheckInAtUtc != null || r.CheckOutAtUtc != null))
+            .Select(r => new { r.EmployeeId, r.CheckInAtUtc, r.CheckOutAtUtc })
+            .ToListAsync(ct);
+        var empIds = records.Select(r => r.EmployeeId).Distinct().ToList();
+        var names = await _db.Employees.Where(e => empIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+
+        var events = new List<(DateTime At, string Name, bool In)>();
+        foreach (var r in records)
+        {
+            var name = names.GetValueOrDefault(r.EmployeeId, "İşçi");
+            if (r.CheckInAtUtc is DateTime ci) events.Add((ci, name, true));
+            if (r.CheckOutAtUtc is DateTime co) events.Add((co, name, false));
+        }
+        var activity = events
+            .OrderByDescending(e => e.At)
+            .Take(12)
+            .Select(e => new
+            {
+                message = $"{e.Name} — {(e.In ? "giriş etdi" : "çıxış etdi")}",
+                at = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.At, _timeZone)).ToString("HH:mm"),
+                isIn = e.In,
+                linkTo = "/admin/today",
+            })
+            .ToList();
+
         return Ok(new
         {
-            // Birthdays count toward the badge so the reminder is actually noticed.
-            totalCount = pending.Count + birthdays.Count,
-            items
+            totalCount = pending.Count + pinPending + birthdays.Count,
+            items,
+            activity,
         });
     }
 
