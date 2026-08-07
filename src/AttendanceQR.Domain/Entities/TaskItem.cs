@@ -20,6 +20,9 @@ public class TaskItem
 
     public bool IsDone { get; set; }
 
+    /// <summary>Starred as important (Microsoft To Do's star) — pins the item to the top of the open list.</summary>
+    public bool IsImportant { get; set; }
+
     /// <summary>Who added it — id + a denormalised name so the board can show "əlavə etdi" without a
     /// tenant-scoped join back to Employees (the author may be in a different tenant than the viewer).</summary>
     public Guid CreatedByEmployeeId { get; set; }

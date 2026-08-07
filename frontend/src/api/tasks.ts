@@ -5,6 +5,7 @@ export interface TaskRow {
   id: string
   title: string
   isDone: boolean
+  isImportant: boolean
   by: string
   at: string
 }
@@ -24,6 +25,10 @@ export function createTask(title: string) {
 
 export function toggleTask(id: string) {
   return apiRequest<{ isDone: boolean }>(`/api/tasks/${id}/toggle`, { method: 'POST' })
+}
+
+export function toggleTaskImportant(id: string) {
+  return apiRequest<{ isImportant: boolean }>(`/api/tasks/${id}/important`, { method: 'POST' })
 }
 
 export function deleteTask(id: string) {

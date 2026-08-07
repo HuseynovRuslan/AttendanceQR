@@ -39,10 +39,10 @@ public class TasksController : ControllerBase
     {
         if (!CanAccess) return Forbidden();
         var ct = HttpContext.RequestAborted;
-        // Open items first (newest first), done items after.
+        // Open first, important pinned to the top of the open list, newest first; done items after.
         var items = await _db.Tasks
-            .OrderBy(t => t.IsDone).ThenByDescending(t => t.CreatedAtUtc)
-            .Select(t => new { id = t.Id, title = t.Title, isDone = t.IsDone, by = t.CreatedByName, at = t.CreatedAtUtc })
+            .OrderBy(t => t.IsDone).ThenByDescending(t => t.IsImportant).ThenByDescending(t => t.CreatedAtUtc)
+            .Select(t => new { id = t.Id, title = t.Title, isDone = t.IsDone, isImportant = t.IsImportant, by = t.CreatedByName, at = t.CreatedAtUtc })
             .ToListAsync(ct);
         return Ok(items);
     }
@@ -78,6 +78,18 @@ public class TasksController : ControllerBase
         task.DoneAtUtc = task.IsDone ? DateTime.UtcNow : null;
         await _db.SaveChangesAsync(ct);
         return Ok(new { isDone = task.IsDone });
+    }
+
+    [HttpPost("{id:guid}/important")]
+    public async Task<IActionResult> ToggleImportant(Guid id)
+    {
+        if (!CanAccess) return Forbidden();
+        var ct = HttpContext.RequestAborted;
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (task is null) return NotFound(new { error = "NotFound" });
+        task.IsImportant = !task.IsImportant;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { isImportant = task.IsImportant });
     }
 
     [HttpDelete("{id:guid}")]
