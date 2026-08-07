@@ -31,16 +31,18 @@ function guessBranding(): TenantBranding {
 /** Push branding into the design system + browser tab (accent recolour, favicon, title). */
 function applyBranding(b: TenantBranding) {
   if (b.color) applyAccent(b.color)
-  if (b.logoUrl) {
-    let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
-    if (!link) {
-      link = document.createElement('link')
-      link.rel = 'icon'
-      document.head.appendChild(link)
-    }
-    link.href = b.logoUrl
+  // Favicon: a tenant's own uploaded logo if it has one; otherwise the per-host install icon at
+  // /icon-512.png — nginx serves the "QRLog" wordmark there for QRLog tenants and the Bakı Abadlıq leaf
+  // for bax. Never the square "QR" mark (b.logoUrl is qrlog.svg for QRLog tenants, which we skip here).
+  const favicon = b.logoUrl && !b.logoUrl.endsWith('.svg') ? b.logoUrl : '/icon-512.png'
+  let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']")
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    document.head.appendChild(link)
   }
-  if (b.displayName) document.title = `${b.displayName} — Davamiyyət`
+  link.href = favicon
+  if (b.displayName) document.title = `${b.displayName} — QRLog`
 }
 
 /**

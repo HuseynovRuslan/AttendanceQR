@@ -14,21 +14,29 @@ export function BrandLogo({ size = 34 }: { size?: number }) {
   const { logoUrl, displayName, color } = useBranding()
   const [broken, setBroken] = useState(false)
 
-  // QRLog official lockup (the real brand PNG). It's on an opaque white ground, so it reads on both the
-  // dark chrome (login/sidebar) and the light employee bar; a faint border defines its edge on white.
+  // QRLog official wordmark, set on a clean white chip. The wordmark is a wide navy/blue lockup on a
+  // light ground, so bare it looked like a floating white box on the dark login/sidebar chrome and it
+  // overran the square logo slot. The chip gives it a balanced, intentional shape that reads on both the
+  // dark chrome and the light employee bar.
   if (logoUrl === QRLOG_LOGO) {
     return (
-      <img
-        src="/brand/qrlog-logo.png"
-        alt="QRLog"
+      <span
         style={{
-          height: Math.round(size * 0.92),
-          width: 'auto',
-          display: 'block',
-          borderRadius: Math.round(size * 0.18),
+          display: 'inline-flex',
+          alignItems: 'center',
+          background: '#fff',
+          borderRadius: Math.round(size * 0.26),
+          padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.28)}px`,
           border: '1px solid rgba(15,27,45,0.08)',
+          boxShadow: '0 1px 3px rgba(15,27,45,0.12)',
         }}
-      />
+      >
+        <img
+          src="/brand/qrlog-logo.png"
+          alt="QRLog"
+          style={{ height: Math.round(size * 0.56), width: 'auto', display: 'block' }}
+        />
+      </span>
     )
   }
 

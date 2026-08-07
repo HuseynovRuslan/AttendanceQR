@@ -24,8 +24,9 @@ h1,h2,h3,h4{font-family:'Manrope',sans-serif;color:var(--c900)}
 .sidebar{width:240px;background:var(--c900);display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;bottom:0;z-index:30}
 .sidebar-logo{display:flex;align-items:center;gap:10px;padding:22px 18px 16px}
 .logo-mark svg{width:34px;height:34px}
-.logo-text .t1{font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;color:#fff;line-height:1.2}
-.logo-text .t2{font-size:11px;color:var(--c400);margin-top:1px}
+.logo-text{min-width:0}
+.logo-text .t1{font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;color:#fff;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.logo-text .t2{font-size:11px;color:var(--c400);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sidebar-role{margin:0 12px 12px;background:rgba(255,255,255,.07);border-radius:8px;padding:8px 10px}
 .role-badge{display:flex;align-items:center;gap:8px}
 .role-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
