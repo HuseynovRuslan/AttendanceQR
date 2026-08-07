@@ -34,6 +34,7 @@ export function TasksPage() {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const dragId = useRef<string | null>(null)
+  const dateRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     const { status, data } = await getTasks()
@@ -197,9 +198,32 @@ export function TasksPage() {
             <div className="tdx-sep" />
             <button className="tdx-mi" onClick={() => void due(t.id, today)}><span>📅</span> Bu gün</button>
             <button className="tdx-mi" onClick={() => void due(t.id, iso(new Date(Date.now() + 864e5)))}><span>➡️</span> Sabah</button>
-            <label className="tdx-mi"><span>🗓️</span> Tarix seç
-              <input type="date" className="tdx-date-in" onChange={(e) => e.target.value && void due(t.id, e.target.value)} />
-            </label>
+            {/* A bare date <input> won't open its picker on a label click, so trigger it programmatically.
+                showPicker() needs a user gesture (this click) and a not-display:none input (it's kept
+                on-screen but transparent). */}
+            <button
+              className="tdx-mi"
+              onClick={(e) => {
+                e.stopPropagation()
+                const el = dateRef.current
+                if (!el) return
+                el.value = t.dueDate ?? ''
+                const anyEl = el as HTMLInputElement & { showPicker?: () => void }
+                if (typeof anyEl.showPicker === 'function') {
+                  try { anyEl.showPicker() } catch { el.focus() }
+                } else {
+                  el.focus()
+                }
+              }}
+            >
+              <span>🗓️</span> Tarix seç
+            </button>
+            <input
+              ref={dateRef}
+              type="date"
+              onChange={(e) => { if (e.target.value) void due(t.id, e.target.value) }}
+              style={{ position: 'absolute', left: 12, bottom: 8, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+            />
             {t.dueDate && <button className="tdx-mi" onClick={() => void due(t.id, null)}><span>✖️</span> Vaxtı sil</button>}
             <div className="tdx-sep" />
             <button className="tdx-mi danger" onClick={() => void remove(t.id)}><span>🗑️</span> Sil</button>
