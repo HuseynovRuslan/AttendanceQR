@@ -6,6 +6,7 @@ export interface TaskRow {
   title: string
   isDone: boolean
   isImportant: boolean
+  dueDate: string | null
   by: string
   at: string
 }
@@ -33,4 +34,17 @@ export function toggleTaskImportant(id: string) {
 
 export function deleteTask(id: string) {
   return apiRequest<{ removed: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' })
+}
+
+export function renameTask(id: string, title: string) {
+  return apiRequest<{ title: string }>(`/api/tasks/${id}/title`, { method: 'PUT', body: { title } })
+}
+
+/** dueDate = "yyyy-MM-dd" to set, null to clear. */
+export function setTaskDue(id: string, dueDate: string | null) {
+  return apiRequest<{ dueDate: string | null }>(`/api/tasks/${id}/due`, { method: 'PUT', body: { dueDate } })
+}
+
+export function reorderTasks(ids: string[]) {
+  return apiRequest<{ ok: boolean }>('/api/tasks/reorder', { method: 'PUT', body: { ids } })
 }

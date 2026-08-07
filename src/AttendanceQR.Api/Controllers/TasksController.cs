@@ -39,10 +39,19 @@ public class TasksController : ControllerBase
     {
         if (!CanAccess) return Forbidden();
         var ct = HttpContext.RequestAborted;
-        // Open first, important pinned to the top of the open list, newest first; done items after.
+        // Open first, in the manual drag order (SortOrder), newest as tiebreak; done items after.
         var items = await _db.Tasks
-            .OrderBy(t => t.IsDone).ThenByDescending(t => t.IsImportant).ThenByDescending(t => t.CreatedAtUtc)
-            .Select(t => new { id = t.Id, title = t.Title, isDone = t.IsDone, isImportant = t.IsImportant, by = t.CreatedByName, at = t.CreatedAtUtc })
+            .OrderBy(t => t.IsDone).ThenBy(t => t.SortOrder).ThenByDescending(t => t.CreatedAtUtc)
+            .Select(t => new
+            {
+                id = t.Id,
+                title = t.Title,
+                isDone = t.IsDone,
+                isImportant = t.IsImportant,
+                dueDate = t.DueDate,
+                by = t.CreatedByName,
+                at = t.CreatedAtUtc,
+            })
             .ToListAsync(ct);
         return Ok(items);
     }
@@ -61,7 +70,9 @@ public class TasksController : ControllerBase
         var name = await _db.Employees.IgnoreQueryFilters()
             .Where(e => e.Id == me).Select(e => e.FullName).FirstOrDefaultAsync(ct) ?? "";
 
-        var task = new TaskItem { Title = title, CreatedByEmployeeId = me, CreatedByName = name };
+        // New tasks land at the TOP of the open list (Microsoft To Do adds newest first).
+        var minOrder = await _db.Tasks.Where(t => !t.IsDone).Select(t => (double?)t.SortOrder).MinAsync(ct) ?? 0;
+        var task = new TaskItem { Title = title, CreatedByEmployeeId = me, CreatedByName = name, SortOrder = minOrder - 1 };
         _db.Tasks.Add(task);
         await _db.SaveChangesAsync(ct);
         return Ok(new { id = task.Id, by = name });
@@ -90,6 +101,48 @@ public class TasksController : ControllerBase
         task.IsImportant = !task.IsImportant;
         await _db.SaveChangesAsync(ct);
         return Ok(new { isImportant = task.IsImportant });
+    }
+
+    [HttpPut("{id:guid}/title")]
+    public async Task<IActionResult> Rename(Guid id, [FromBody] TaskTitleRequest request)
+    {
+        if (!CanAccess) return Forbidden();
+        var title = request.Title?.Trim() ?? string.Empty;
+        if (title.Length == 0) return BadRequest(new { error = "EmptyTitle" });
+        if (title.Length > 500) title = title[..500];
+        var ct = HttpContext.RequestAborted;
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (task is null) return NotFound(new { error = "NotFound" });
+        task.Title = title;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { title = task.Title });
+    }
+
+    [HttpPut("{id:guid}/due")]
+    public async Task<IActionResult> SetDue(Guid id, [FromBody] TaskDueRequest request)
+    {
+        if (!CanAccess) return Forbidden();
+        var ct = HttpContext.RequestAborted;
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (task is null) return NotFound(new { error = "NotFound" });
+        task.DueDate = request.DueDate;   // null clears it
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { dueDate = task.DueDate });
+    }
+
+    [HttpPut("reorder")]
+    public async Task<IActionResult> Reorder([FromBody] TaskReorderRequest request)
+    {
+        if (!CanAccess) return Forbidden();
+        var ct = HttpContext.RequestAborted;
+        var ids = request.Ids ?? new List<Guid>();
+        var tasks = await _db.Tasks.Where(t => ids.Contains(t.Id)).ToListAsync(ct);
+        var pos = ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => (double)x.i);
+        foreach (var t in tasks)
+            if (pos.TryGetValue(t.Id, out var order))
+                t.SortOrder = order;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
     }
 
     [HttpDelete("{id:guid}")]
