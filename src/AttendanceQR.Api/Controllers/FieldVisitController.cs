@@ -25,12 +25,14 @@ public class FieldVisitController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IPhotoStorageService _photoStorage;
+    private readonly IPushNotifier _notifier;
     private readonly TimeZoneInfo _timeZone;
 
-    public FieldVisitController(AppDbContext db, IPhotoStorageService photoStorage, AppOptions options)
+    public FieldVisitController(AppDbContext db, IPhotoStorageService photoStorage, IPushNotifier notifier, AppOptions options)
     {
         _db = db;
         _photoStorage = photoStorage;
+        _notifier = notifier;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
     }
 
@@ -189,6 +191,15 @@ public class FieldVisitController : ControllerBase
         };
         _db.FieldVisits.Add(visit);
         await _db.SaveChangesAsync(ct);
+
+        // Best-effort push so the worker sees the task without opening the app — the home banner (from
+        // GET /mine) is the reliable surface; this is a nudge on top. Never blocks the assign.
+        try
+        {
+            var where = visit.TargetLabel ?? "Yeni sahə ziyarəti";
+            await _notifier.NotifyEmployeesAsync(new[] { visit.EmployeeId }, "Yeni sahə tapşırığı", where, "/field", ct);
+        }
+        catch { /* push is best-effort */ }
 
         return Ok(new { id = visit.Id });
     }

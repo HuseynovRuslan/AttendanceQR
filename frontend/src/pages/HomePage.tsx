@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint, installNudgeActive } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
+import { FieldVisitBanner } from '../components/FieldVisitBanner'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
@@ -77,6 +78,7 @@ export function HomePage() {
     <div className="flex flex-col gap-4">
       <InstallHint onShown={setInstallShown} />
       <AnnouncementBanner />
+      <FieldVisitBanner />
       {/* Ayın işçisi modulu deaktivdir — mükafat kartı da gizlidir. */}
       {false && <AwardCard />}
 

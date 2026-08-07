@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EmployeeNav } from '../components/EmployeeNav'
 import {
   getMyFieldVisits,
@@ -7,7 +7,6 @@ import {
   checkOutFieldVisit,
   type MyFieldVisit,
 } from '../api/fieldVisits'
-import { fileToWebp } from '../lib/fieldSelfie'
 import { getPosition } from '../lib/geo'
 import { fmtTime } from '../lib/format'
 
@@ -40,8 +39,6 @@ export function FieldVisitsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-  const pending = useRef<Action | null>(null)
 
   async function load() {
     setLoading(true)
@@ -54,32 +51,10 @@ export function FieldVisitsPage() {
     void load()
   }, [])
 
-  // A tap opens the camera; the photo (optional) comes back through the file input's change event.
-  function startCapture(action: Action) {
+  // Photo-less by design: a single tap records GPS + time. No selfie, no camera step.
+  async function submit(action: Action) {
     setError(null)
     setInfo(null)
-    pending.current = action
-    fileRef.current?.click()
-  }
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // let the same photo be retaken
-    const action = pending.current
-    pending.current = null
-    if (!action) return
-    const photo = file ? await fileToWebp(file) : null
-    await submit(action, photo)
-  }
-
-  // "Şəkilsiz" — a field worker whose camera fails must still be able to prove they arrived (GPS+time).
-  async function submitPhotoless(action: Action) {
-    setError(null)
-    setInfo(null)
-    await submit(action, null)
-  }
-
-  async function submit(action: Action, photoBase64: string | null) {
     setBusy(true)
     const geo = await getPosition()
     if (!geo.ok) {
@@ -87,7 +62,7 @@ export function FieldVisitsPage() {
       setError(GEO_MSG[geo.kind] ?? 'GPS alınmadı')
       return
     }
-    const body = { latitude: geo.coords.latitude, longitude: geo.coords.longitude, photoBase64 }
+    const body = { latitude: geo.coords.latitude, longitude: geo.coords.longitude, photoBase64: null }
     const res =
       action.kind === 'checkin'
         ? await checkInFieldVisit(action.visitId, body)
@@ -96,9 +71,7 @@ export function FieldVisitsPage() {
           : await startFieldVisit({ ...body, targetLabel: action.label })
     setBusy(false)
     if (res.status === 200) {
-      setInfo(
-        action.kind === 'checkout' ? 'Çıxış qeyd olundu ✓' : 'Ərazidə qeyd olundunuz ✓',
-      )
+      setInfo(action.kind === 'checkout' ? 'Çıxış qeyd olundu ✓' : 'Ərazidə qeyd olundunuz ✓')
       await load()
     } else {
       setError('Alınmadı — yenidən cəhd edin')
@@ -108,14 +81,12 @@ export function FieldVisitsPage() {
   function newSelfVisit() {
     const label = window.prompt('Harada olduğunuzu yazın (istəyə bağlı — məs. ünvan/obyekt):', '')
     if (label === null) return // cancelled
-    startCapture({ kind: 'start', label: label.trim() || null })
+    void submit({ kind: 'start', label: label.trim() || null })
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-900 text-white">
       <EmployeeNav title="Səyyar" />
-
-      <input ref={fileRef} type="file" accept="image/*" capture="user" hidden onChange={(e) => void onFile(e)} />
 
       <main className="flex-1 p-4 flex flex-col items-center gap-4">
         <div className="w-full max-w-md flex flex-col gap-3">
@@ -155,33 +126,23 @@ export function FieldVisitsPage() {
               )}
 
               {v.status === 'Assigned' && (
-                <div className="flex flex-col gap-1 mt-1">
-                  <button
-                    disabled={busy}
-                    onClick={() => startCapture({ kind: 'checkin', visitId: v.id })}
-                    className="w-full rounded-xl bg-blue-600 py-3 font-bold disabled:opacity-60"
-                  >
-                    📷 Ərazidəyəm (giriş)
-                  </button>
-                  <button disabled={busy} onClick={() => void submitPhotoless({ kind: 'checkin', visitId: v.id })} className="text-xs text-slate-400 underline disabled:opacity-60">
-                    Şəkilsiz giriş
-                  </button>
-                </div>
+                <button
+                  disabled={busy}
+                  onClick={() => void submit({ kind: 'checkin', visitId: v.id })}
+                  className="w-full rounded-xl bg-blue-600 py-3 font-bold disabled:opacity-60 mt-1"
+                >
+                  Ərazidəyəm
+                </button>
               )}
 
               {v.status === 'CheckedIn' && (
-                <div className="flex flex-col gap-1 mt-1">
-                  <button
-                    disabled={busy}
-                    onClick={() => startCapture({ kind: 'checkout', visitId: v.id })}
-                    className="w-full rounded-xl bg-emerald-600 py-3 font-bold disabled:opacity-60"
-                  >
-                    📷 Çıxış et
-                  </button>
-                  <button disabled={busy} onClick={() => void submitPhotoless({ kind: 'checkout', visitId: v.id })} className="text-xs text-slate-400 underline disabled:opacity-60">
-                    Şəkilsiz çıxış
-                  </button>
-                </div>
+                <button
+                  disabled={busy}
+                  onClick={() => void submit({ kind: 'checkout', visitId: v.id })}
+                  className="w-full rounded-xl bg-emerald-600 py-3 font-bold disabled:opacity-60 mt-1"
+                >
+                  Çıxış et
+                </button>
               )}
             </div>
           ))}
@@ -194,7 +155,7 @@ export function FieldVisitsPage() {
             + Yeni sahə ziyarəti
           </button>
           <p className="text-xs text-slate-500 text-center px-2">
-            Əraziyə çatanda «giriş», ayrılanda «çıxış» edin. Yeriniz və şəkiliniz qeyd olunur — QR-a ehtiyac yoxdur.
+            Əraziyə çatanda «Ərazidəyəm», ayrılanda «Çıxış et» edin. Yeriniz və vaxt qeyd olunur — QR-a ehtiyac yoxdur.
           </p>
         </div>
       </main>

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -47,8 +47,7 @@ export function LocationMapPicker({ latitude, longitude, radiusMeters, onPick }:
   const [searching, setSearching] = useState(false)
   const [noHit, setNoHit] = useState(false)
 
-  async function search(e?: FormEvent) {
-    e?.preventDefault()
+  async function search() {
     const term = q.trim()
     if (term.length < 3) return
     setSearching(true)
@@ -81,7 +80,10 @@ export function LocationMapPicker({ latitude, longitude, radiusMeters, onPick }:
 
   return (
     <div style={{ position: 'relative' }}>
-      <form onSubmit={search} style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+      {/* NOT a <form>: this picker is embedded inside other forms (the assign form), and a nested form
+          is invalid HTML — the browser drops it, so a submit button here would fire the OUTER form. Plain
+          div + type="button" + an Enter handler keeps search self-contained. */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <input
           className="inp"
           value={q}
@@ -89,13 +91,19 @@ export function LocationMapPicker({ latitude, longitude, radiusMeters, onPick }:
             setQ(e.target.value)
             setNoHit(false)
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void search()
+            }
+          }}
           placeholder="Ünvan / yer axtar (məs. Nərimanov parkı, Bakı)"
           style={{ flex: 1 }}
         />
-        <button type="submit" className="btn btn-sm" disabled={searching || q.trim().length < 3}>
+        <button type="button" className="btn btn-sm" onClick={() => void search()} disabled={searching || q.trim().length < 3}>
           {searching ? '…' : '🔍 Axtar'}
         </button>
-      </form>
+      </div>
 
       {(hits.length > 0 || noHit) && (
         <div
