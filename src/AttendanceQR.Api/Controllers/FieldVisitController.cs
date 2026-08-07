@@ -238,6 +238,20 @@ public class FieldVisitController : ControllerBase
         return Ok(rows);
     }
 
+    // GET /api/field-visits/assignable — active workers to assign a visit to (for the assign dropdown).
+    [HttpGet("assignable")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> Assignable()
+    {
+        var ct = HttpContext.RequestAborted;
+        var people = await _db.Employees
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.FullName)
+            .Select(e => new { id = e.Id, fullName = e.FullName })
+            .ToListAsync(ct);
+        return Ok(people);
+    }
+
     // POST /api/field-visits/{id}/cancel — call off an assignment the worker hasn't started.
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = "Admin,Manager")]

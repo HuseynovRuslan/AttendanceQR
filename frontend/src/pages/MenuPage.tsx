@@ -7,7 +7,7 @@ import { useAuth } from '../auth/AuthContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
-import { IconChart, IconCheck, IconClock, IconLogout, IconPhone, IconUser } from '../components/icons'
+import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconUser } from '../components/icons'
 
 const APP_VERSION = '2.0.0'
 
@@ -59,6 +59,7 @@ export function MenuPage() {
           <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
+        <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
         {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}

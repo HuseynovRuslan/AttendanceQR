@@ -65,6 +65,8 @@ const PhotoAuditPage = lazy(() => import('./pages/admin/PhotoAuditPage').then(m 
 const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => ({ default: m.ProblemsPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
+const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
+const FieldVisitsPage = lazy(() => import('./pages/FieldVisitsPage').then(m => ({ default: m.FieldVisitsPage })))
 // The operator console (admin.qrlog.az) is its own chunk — only that host ever loads it.
 const OperatorRoutes = lazy(() => import('./pages/operator/OperatorRoutes').then(m => ({ default: m.OperatorRoutes })))
 const OperatorLoginPage = lazy(() => import('./pages/operator/OperatorLoginPage').then(m => ({ default: m.OperatorLoginPage })))
@@ -186,6 +188,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <HistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      {/* Field / mobile attendance for the worker (GPS + selfie, no QR). */}
+      <Route
+        path="/field"
+        element={
+          <ProtectedRoute>
+            <FieldVisitsPage />
           </ProtectedRoute>
         }
       />
@@ -315,6 +326,8 @@ function AppRoutes() {
         <Route path="photo-audit" element={<PhotoAuditPage />} />
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<ProblemsPage />} />
+        {/* Field visits board + assign — Admin + Manager (the endpoints gate on Admin,Manager). */}
+        <Route path="field-visits" element={<FieldVisitsAdminPage />} />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
         <Route
           path="open-records"
