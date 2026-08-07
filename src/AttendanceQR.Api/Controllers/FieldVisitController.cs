@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -35,6 +36,14 @@ public class FieldVisitController : ControllerBase
 
     private Guid Me => User.EmployeeId();
     private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+
+    // Null for an Admin (the whole tenant); a Manager's ManagedLocations otherwise. Every other
+    // Admin+Manager surface enforces this — a manager only ever reaches their own branches' staff
+    // (their phone, live GPS and selfies), never another branch's.
+    private async Task<List<Guid>?> ManagedScopeAsync(CancellationToken ct)
+        => User.Role() == EmployeeRole.Manager
+            ? await LocationScopeRules.ManagedLocationIdsAsync(_db, Me, ct)
+            : null;
 
     // ---------------------------------------------------------------- worker (any authenticated) ----
 
@@ -155,6 +164,10 @@ public class FieldVisitController : ControllerBase
         if (worker is null)
             return BadRequest(new { error = "EmployeeNotFound" });
 
+        // A manager may only assign to a worker in their own branches.
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, Me, User.Role(), req.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
         // A target is all-or-nothing on the coordinates — a lone latitude can't be measured against.
         var hasLat = req.TargetLatitude is not null;
         var hasLng = req.TargetLongitude is not null;
@@ -188,8 +201,13 @@ public class FieldVisitController : ControllerBase
         var ct = HttpContext.RequestAborted;
         var day = date ?? TodayLocal();
 
-        var visits = await _db.FieldVisits
-            .Where(v => v.VisitDate == day)
+        // A manager sees only their branches' workers' visits (PII: phone, GPS, selfies); an Admin, all.
+        var managed = await ManagedScopeAsync(ct);
+        var query = _db.FieldVisits.Where(v => v.VisitDate == day);
+        if (managed != null)
+            query = query.Where(v => _db.Employees.Any(e => e.Id == v.EmployeeId && managed.Contains(e.LocationId)));
+
+        var visits = await query
             .OrderBy(v => v.Status).ThenBy(v => v.CheckInAtUtc)
             .ToListAsync(ct);
 
@@ -244,8 +262,11 @@ public class FieldVisitController : ControllerBase
     public async Task<IActionResult> Assignable()
     {
         var ct = HttpContext.RequestAborted;
-        var people = await _db.Employees
-            .Where(e => e.IsActive)
+        var managed = await ManagedScopeAsync(ct);
+        var query = _db.Employees.Where(e => e.IsActive);
+        if (managed != null)
+            query = query.Where(e => managed.Contains(e.LocationId));
+        var people = await query
             .OrderBy(e => e.FullName)
             .Select(e => new { id = e.Id, fullName = e.FullName })
             .ToListAsync(ct);
@@ -261,6 +282,8 @@ public class FieldVisitController : ControllerBase
         var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id, ct);
         if (visit is null)
             return NotFound(new { error = "VisitNotFound" });
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
         if (visit.Status != FieldVisitStatus.Assigned)
             return BadRequest(new { error = "AlreadyStarted" });
         visit.Status = FieldVisitStatus.Cancelled;
@@ -276,10 +299,13 @@ public class FieldVisitController : ControllerBase
         var ct = HttpContext.RequestAborted;
         var visit = await _db.FieldVisits
             .Where(v => v.Id == id)
-            .Select(v => new { v.CheckInPhotoKey, v.CheckOutPhotoKey })
+            .Select(v => new { v.EmployeeId, v.CheckInPhotoKey, v.CheckOutPhotoKey })
             .FirstOrDefaultAsync(ct);
         if (visit is null)
             return NotFound(new { error = "VisitNotFound" });
+        // A manager must not pull the selfie of a worker outside their branches.
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var checkInUrl = visit.CheckInPhotoKey is null ? null : await _photoStorage.GetPresignedUrlAsync(visit.CheckInPhotoKey, ct);
         var checkOutUrl = visit.CheckOutPhotoKey is null ? null : await _photoStorage.GetPresignedUrlAsync(visit.CheckOutPhotoKey, ct);
