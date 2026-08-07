@@ -141,7 +141,7 @@ export function FieldVisitsAdminPage() {
       {showForm && (
         <form onSubmit={submit} className="card card-pad" style={{ marginBottom: 18 }}>
           <div className="card-title">Sahə tapşırığı ver</div>
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
             <div>
               <label className="form-label">İşçi</label>
               <select className="inp" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
@@ -185,67 +185,75 @@ export function FieldVisitsAdminPage() {
         </form>
       )}
 
-      <div className="card">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>İşçi</th><th>Status</th><th>Hədəf</th><th>Giriş</th><th>Çıxış</th><th className="num">Müddət</th><th>Foto</th><th>Tapşıran</th><th />
-            </tr>
-          </thead>
-          <tbody>
-            {loading && <tr><td colSpan={9} className="muted" style={{ padding: 18 }}>Yüklənir…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={9} className="muted" style={{ padding: 18 }}>Bu gün üçün sahə ziyarəti yoxdur</td></tr>}
-            {rows.map((v) => {
-              const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
-              const inRadius = v.checkInDistanceMeters != null && v.checkInDistanceMeters <= (v.targetRadiusMeters ?? 200)
-              return (
-                <tr key={v.id}>
-                  <td>
-                    <div style={{ fontWeight: 700 }}>{v.employeeName}</div>
-                    {v.selfReported && <span className="muted" style={{ fontSize: 11 }}>özü qeyd etdi</span>}
-                  </td>
-                  <td><span className="tag" style={{ background: st.bg, color: st.fg }}>{st.label}</span></td>
-                  <td style={{ fontSize: 13, maxWidth: 160 }}>
-                    {v.targetLabel || <span className="muted">—</span>}
-                    {v.targetLatitude != null && (
-                      <> · <a href={mapLink(v.targetLatitude, v.targetLongitude!)} target="_blank" rel="noreferrer">hədəf</a></>
-                    )}
-                  </td>
-                  <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                    {v.checkInAtUtc ? (
-                      <>
-                        <b>{fmtTime(v.checkInAtUtc)}</b>{' '}
-                        {v.checkInLatitude != null && <a href={mapLink(v.checkInLatitude, v.checkInLongitude!)} target="_blank" rel="noreferrer">xəritə</a>}
-                        {v.checkInDistanceMeters != null && (
-                          <div style={{ fontSize: 11, color: inRadius ? 'var(--leaf-d)' : 'var(--clay)' }}>
-                            {inRadius ? '✅ ərazidə' : `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq`}
-                          </div>
-                        )}
-                      </>
-                    ) : <span className="muted">—</span>}
-                  </td>
-                  <td style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
-                    {v.checkOutAtUtc ? (
-                      <><b>{fmtTime(v.checkOutAtUtc)}</b>{' '}
-                        {v.checkOutLatitude != null && <a href={mapLink(v.checkOutLatitude, v.checkOutLongitude!)} target="_blank" rel="noreferrer">xəritə</a>}</>
-                    ) : <span className="muted">—</span>}
-                  </td>
-                  <td className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes != null ? `${v.durationMinutes} dəq` : '—'}</td>
-                  <td>
-                    {v.hasCheckInPhoto || v.hasCheckOutPhoto
-                      ? <button className="btn btn-sm" onClick={() => void openPhotos(v)}>📷</button>
-                      : <span className="muted">—</span>}
-                  </td>
-                  <td style={{ fontSize: 13 }}>{v.assignedByName ?? <span className="muted">—</span>}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      {loading ? (
+        <div className="card card-pad muted" style={{ textAlign: 'center', padding: 28 }}>Yüklənir…</div>
+      ) : rows.length === 0 ? (
+        <div className="card card-pad" style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <div style={{ fontSize: 34, marginBottom: 6 }}>📍</div>
+          <div style={{ fontWeight: 700, color: 'var(--c900)' }}>Bu gün üçün sahə ziyarəti yoxdur</div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>«+ Yeni tapşırıq» ilə bir işçini əraziyə tapşırın.</div>
+        </div>
+      ) : (
+        <div className="tbl-wrap tbl-cards">
+          <table>
+            <thead>
+              <tr>
+                <th>İşçi</th><th>Status</th><th>Hədəf</th><th>Giriş</th><th>Çıxış</th><th className="num">Müddət</th><th>Foto</th><th>Tapşıran</th><th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((v) => {
+                const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
+                const inRadius = v.checkInDistanceMeters != null && v.checkInDistanceMeters <= (v.targetRadiusMeters ?? 200)
+                return (
+                  <tr key={v.id}>
+                    <td data-label="İşçi">
+                      <div style={{ fontWeight: 700, color: 'var(--c900)' }}>{v.employeeName}</div>
+                      {v.selfReported && <span className="muted" style={{ fontSize: 11 }}>özü qeyd etdi</span>}
+                    </td>
+                    <td data-label="Status"><span className="tag" style={{ background: st.bg, color: st.fg }}>{st.label}</span></td>
+                    <td data-label="Hədəf" style={{ maxWidth: 180 }}>
+                      {v.targetLabel || <span className="muted">—</span>}
+                      {v.targetLatitude != null && (
+                        <> · <a href={mapLink(v.targetLatitude, v.targetLongitude!)} target="_blank" rel="noreferrer">hədəf</a></>
+                      )}
+                    </td>
+                    <td data-label="Giriş" style={{ whiteSpace: 'nowrap' }}>
+                      {v.checkInAtUtc ? (
+                        <>
+                          <b>{fmtTime(v.checkInAtUtc)}</b>{' '}
+                          {v.checkInLatitude != null && <a href={mapLink(v.checkInLatitude, v.checkInLongitude!)} target="_blank" rel="noreferrer">xəritə</a>}
+                          {v.checkInDistanceMeters != null && (
+                            <div style={{ fontSize: 11, color: inRadius ? 'var(--leaf-d)' : 'var(--clay)' }}>
+                              {inRadius ? '✅ ərazidə' : `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq`}
+                            </div>
+                          )}
+                        </>
+                      ) : <span className="muted">—</span>}
+                    </td>
+                    <td data-label="Çıxış" style={{ whiteSpace: 'nowrap' }}>
+                      {v.checkOutAtUtc ? (
+                        <><b>{fmtTime(v.checkOutAtUtc)}</b>{' '}
+                          {v.checkOutLatitude != null && <a href={mapLink(v.checkOutLatitude, v.checkOutLongitude!)} target="_blank" rel="noreferrer">xəritə</a>}</>
+                      ) : <span className="muted">—</span>}
+                    </td>
+                    <td data-label="Müddət" className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes != null ? `${v.durationMinutes} dəq` : '—'}</td>
+                    <td data-label="Foto">
+                      {v.hasCheckInPhoto || v.hasCheckOutPhoto
+                        ? <button className="btn btn-sm" onClick={() => void openPhotos(v)}>📷 Bax</button>
+                        : <span className="muted">—</span>}
+                    </td>
+                    <td data-label="Tapşıran">{v.assignedByName ?? <span className="muted">—</span>}</td>
+                    <td data-label="">
+                      {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {photo && (
         <div
