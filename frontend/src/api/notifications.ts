@@ -1,7 +1,7 @@
 import { apiRequest } from './client'
 
 export interface NotificationItem {
-  type: 'PendingDeviceChange' | 'PendingPinReset' | 'LateToday' | 'Birthday'
+  type: 'PendingDeviceChange' | 'PendingPinReset' | 'Problems' | 'OpenRecords' | 'LateToday' | 'Birthday'
   message: string
   linkTo: string
 }

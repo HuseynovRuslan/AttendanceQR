@@ -61,42 +61,74 @@ public class AdminNotificationsController : ControllerBase
         if (pinPending > 0)
             items.Add(new { type = "PendingPinReset", message = $"{pinPending} PIN sıfırlama tələbi gözləyir", linkTo = "/admin/pin-resets" });
 
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+
+        // Today's rejected / blocked scans (the Problems screen). Start-of-day in Baku, as a UTC instant.
+        var todayStartUtc = TimeZoneInfo.ConvertTimeToUtc(
+            DateTime.SpecifyKind(todayLocal.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified), _timeZone);
+        var rejectedTypes = new[] { AuditEventType.CheckInRejected, AuditEventType.CheckOutRejected, AuditEventType.ScanBlockedOnDevice };
+        var problemsToday = await _db.AuditLogs.CountAsync(a => a.CreatedAtUtc >= todayStartUtc && rejectedTypes.Contains(a.EventType), ct);
+        if (problemsToday > 0)
+            items.Add(new { type = "Problems", message = $"{problemsToday} rədd edilmiş skan (bu gün)", linkTo = "/admin/problems" });
+
+        // Past days someone checked in but never out (today is excluded — that's just "still at work").
+        var openRecords = await _db.AttendanceRecords
+            .CountAsync(r => r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayLocal, ct);
+        if (openRecords > 0)
+            items.Add(new { type = "OpenRecords", message = $"{openRecords} gün çıxış edilməyib", linkTo = "/admin/open-records" });
+
         var birthdays = await BirthdayItemsAsync();
         items.AddRange(birthdays);
 
-        // ---- Recent activity (informational — today's latest check-ins / check-outs). Does NOT inflate
-        // the badge (that would run to hundreds); the admin opens the bell to glance at who came / left. ----
-        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        // ---- Recent activity (informational — today's latest check-ins / check-outs, office AND field).
+        // Does NOT inflate the badge (that would run to hundreds); the admin opens the bell to glance. ----
         var records = await _db.AttendanceRecords
             .Where(r => r.AttendanceDate == todayLocal && (r.CheckInAtUtc != null || r.CheckOutAtUtc != null))
             .Select(r => new { r.EmployeeId, r.CheckInAtUtc, r.CheckOutAtUtc })
             .ToListAsync(ct);
-        var empIds = records.Select(r => r.EmployeeId).Distinct().ToList();
+        var field = await _db.FieldVisits
+            .Where(v => v.VisitDate == todayLocal && (v.CheckInAtUtc != null || v.CheckOutAtUtc != null))
+            .Select(v => new { v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc })
+            .ToListAsync(ct);
+
+        var empIds = records.Select(r => r.EmployeeId)
+            .Concat(field.Select(v => v.EmployeeId)).Distinct().ToList();
         var names = await _db.Employees.Where(e => empIds.Contains(e.Id))
             .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
 
-        var events = new List<(DateTime At, string Name, bool In)>();
+        // (time, name, isIn, isField)
+        var events = new List<(DateTime At, string Name, bool In, bool Field)>();
         foreach (var r in records)
         {
             var name = names.GetValueOrDefault(r.EmployeeId, "İşçi");
-            if (r.CheckInAtUtc is DateTime ci) events.Add((ci, name, true));
-            if (r.CheckOutAtUtc is DateTime co) events.Add((co, name, false));
+            if (r.CheckInAtUtc is DateTime ci) events.Add((ci, name, true, false));
+            if (r.CheckOutAtUtc is DateTime co) events.Add((co, name, false, false));
+        }
+        foreach (var v in field)
+        {
+            var name = names.GetValueOrDefault(v.EmployeeId, "İşçi");
+            if (v.CheckInAtUtc is DateTime ci) events.Add((ci, name, true, true));
+            if (v.CheckOutAtUtc is DateTime co) events.Add((co, name, false, true));
         }
         var activity = events
             .OrderByDescending(e => e.At)
-            .Take(12)
+            .Take(14)
             .Select(e => new
             {
-                message = $"{e.Name} — {(e.In ? "giriş etdi" : "çıxış etdi")}",
+                message = e.Field
+                    ? $"{e.Name} — sahəyə {(e.In ? "giriş" : "çıxış")} etdi"
+                    : $"{e.Name} — {(e.In ? "giriş etdi" : "çıxış etdi")}",
                 at = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.At, _timeZone)).ToString("HH:mm"),
                 isIn = e.In,
-                linkTo = "/admin/today",
+                linkTo = e.Field ? "/admin/field-visits" : "/admin/today",
             })
             .ToList();
 
         return Ok(new
         {
-            totalCount = pending.Count + pinPending + birthdays.Count,
+            // Badge = number of notification rows needing attention (device changes are per-item; the
+            // rest are one summary row each) + birthdays.
+            totalCount = items.Count,
             items,
             activity,
         });
