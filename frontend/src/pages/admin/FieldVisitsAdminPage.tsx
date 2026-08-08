@@ -1,12 +1,14 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
+import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   getFieldVisitBoard,
   getAssignablePeople,
   assignFieldVisit,
   cancelFieldVisit,
+  forceCheckOutFieldVisit,
   getFieldVisitPhotos,
   type BoardFieldVisit,
   type AssignablePerson,
@@ -15,17 +17,32 @@ import { getPosition } from '../../lib/geo'
 import { fmtTime } from '../../lib/format'
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
-  Assigned: { label: 'Tapşırılıb', bg: 'rgba(30,112,200,0.12)', fg: 'var(--blue, #1E70C8)' },
-  CheckedIn: { label: 'Ərazidə', bg: 'rgba(200,140,0,0.14)', fg: '#B8860B' },
+  Assigned: { label: 'Tapşırılıb', bg: 'var(--purple-bg)', fg: 'var(--purple)' },
+  CheckedIn: { label: 'Ərazidə', bg: 'var(--amber-bg)', fg: 'var(--amber)' },
   Completed: { label: 'Tamamlandı', bg: 'var(--leaf-bg)', fg: 'var(--leaf-d)' },
   Cancelled: { label: 'Ləğv', bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' },
 }
 
 const BAKU: [number, number] = [40.4093, 49.8671]
+// Local calendar date "YYYY-MM-DD". Deliberately NOT toISOString() — that returns the UTC date, which
+// in Baku (UTC+4) is the previous day before 04:00 and breaks the day navigation round-trip.
+const todayStr = () => {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
 
 function fmtDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
 }
+/** A CheckedIn visit whose day has already passed = the worker forgot to check out. */
+function isStuck(v: BoardFieldVisit, date: string): boolean {
+  return v.status === 'CheckedIn' && date < todayStr()
+}
+/** Advisory "far from target" flag — never blocked the worker, only surfaced to the admin. */
+function isFlagged(v: BoardFieldVisit): boolean {
+  return v.checkInDistanceMeters != null && v.targetRadiusMeters != null && v.checkInDistanceMeters > v.targetRadiusMeters
+}
+
 // Read-only map fitting all of a visit's points (target + check-in + check-out).
 function FitPts({ pts }: { pts: [number, number][] }) {
   const map = useMap()
@@ -43,9 +60,9 @@ function VisitMap({ v }: { v: BoardFieldVisit }) {
   if (v.targetLatitude != null) marks.push({ at: [v.targetLatitude, v.targetLongitude!], label: 'Hədəf', color: '#1E70C8' })
   if (v.checkInLatitude != null) marks.push({ at: [v.checkInLatitude, v.checkInLongitude!], label: 'Giriş', color: '#16a34a' })
   if (v.checkOutLatitude != null) marks.push({ at: [v.checkOutLatitude, v.checkOutLongitude!], label: 'Çıxış', color: '#d97706' })
-  const centre: [number, number] = marks.length ? marks[0].at : [40.4093, 49.8671]
+  const centre: [number, number] = marks.length ? marks[0].at : BAKU
   return (
-    <div style={{ height: 340, width: '100%', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c100)' }}>
+    <div style={{ height: 300, width: '100%', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c100)' }}>
       <MapContainer center={centre} zoom={15} scrollWheelZoom style={{ height: '100%', width: '100%' }} attributionControl={false}>
         <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
         <FitPts pts={marks.map((m) => m.at)} />
@@ -63,12 +80,20 @@ function VisitMap({ v }: { v: BoardFieldVisit }) {
   )
 }
 
+type StatusFilter = 'all' | 'Assigned' | 'CheckedIn' | 'Completed' | 'Cancelled'
+
 export function FieldVisitsAdminPage() {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayStr)
   const [rows, setRows] = useState<BoardFieldVisit[]>([])
   const [people, setPeople] = useState<AssignablePerson[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // filters
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [search, setSearch] = useState('')
+  const [onlyFlagged, setOnlyFlagged] = useState(false)
+  const [onlySelf, setOnlySelf] = useState(false)
 
   // assign form
   const [showForm, setShowForm] = useState(false)
@@ -81,13 +106,16 @@ export function FieldVisitsAdminPage() {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const [photo, setPhoto] = useState<{ checkInUrl: string | null; checkOutUrl: string | null } | null>(null)
-  const [mapVisit, setMapVisit] = useState<BoardFieldVisit | null>(null)
+  const [detail, setDetail] = useState<BoardFieldVisit | null>(null)
+  const [detailPhotos, setDetailPhotos] = useState<{ checkInUrl: string | null; checkOutUrl: string | null } | null>(null)
+  const detailReq = useRef(0)
 
-  async function load() {
-    setLoading(true)
+  const isToday = date === todayStr()
+
+  async function load(spinner = true) {
+    if (spinner) setLoading(true)
     const res = await getFieldVisitBoard(date)
-    setLoading(false)
+    if (spinner) setLoading(false)
     if (res.status === 200 && Array.isArray(res.data)) {
       setRows(res.data)
       setError(null)
@@ -103,22 +131,45 @@ export function FieldVisitsAdminPage() {
       if (r.status === 200 && Array.isArray(r.data)) setPeople(r.data)
     })
   }, [])
+  // Live board: while viewing today, refresh silently every 30s so check-ins appear as they happen.
+  useEffect(() => {
+    if (!isToday) return
+    const t = window.setInterval(() => void load(false), 30_000)
+    return () => window.clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date])
+
+  const stats = useMemo(() => {
+    let assigned = 0, onsite = 0, completed = 0, minutes = 0, flagged = 0
+    for (const v of rows) {
+      if (v.status === 'Assigned') assigned++
+      else if (v.status === 'CheckedIn') onsite++
+      else if (v.status === 'Completed') { completed++; minutes += v.durationMinutes ?? 0 }
+      if (isFlagged(v)) flagged++
+    }
+    return { assigned, onsite, completed, minutes, flagged }
+  }, [rows])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return rows.filter((v) => {
+      if (statusFilter !== 'all' && v.status !== statusFilter) return false
+      if (onlyFlagged && !isFlagged(v)) return false
+      if (onlySelf && !v.selfReported) return false
+      if (q && !(v.employeeName.toLowerCase().includes(q) || (v.phone ?? '').toLowerCase().includes(q))) return false
+      return true
+    })
+  }, [rows, statusFilter, search, onlyFlagged, onlySelf])
 
   async function useMyLocation() {
     const geo = await getPosition()
-    if (geo.ok) {
-      setLat(geo.coords.latitude)
-      setLng(geo.coords.longitude)
-      setUseTarget(true)
-    } else setError('GPS alınmadı')
+    if (geo.ok) { setLat(geo.coords.latitude); setLng(geo.coords.longitude); setUseTarget(true) }
+    else setError('GPS alınmadı')
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!employeeId) {
-      setError('İşçi seçin')
-      return
-    }
+    if (!employeeId) { setError('İşçi seçin'); return }
     setSaving(true)
     setError(null)
     const { status } = await assignFieldVisit({
@@ -132,11 +183,7 @@ export function FieldVisitsAdminPage() {
     })
     setSaving(false)
     if (status === 200) {
-      setLabel('')
-      setNote('')
-      setEmployeeId('')
-      setUseTarget(false)
-      setShowForm(false)
+      setLabel(''); setNote(''); setEmployeeId(''); setUseTarget(false); setShowForm(false)
       await load()
     } else setError('Tapşırıq yaradıla bilmədi')
   }
@@ -144,29 +191,58 @@ export function FieldVisitsAdminPage() {
   async function cancel(v: BoardFieldVisit) {
     if (!window.confirm(`«${v.employeeName}» tapşırığı ləğv edilsin?`)) return
     const { status } = await cancelFieldVisit(v.id)
-    if (status === 200) await load()
+    if (status === 200) { setDetail(null); await load() }
     else setError('Ləğv edilmədi')
   }
 
-  async function openPhotos(v: BoardFieldVisit) {
-    const { status, data } = await getFieldVisitPhotos(v.id)
-    if (status === 200 && data) setPhoto(data)
+  async function forceCheckout(v: BoardFieldVisit) {
+    if (!window.confirm(`«${v.employeeName}» çıxış etməyib. Ziyarəti indi bağlamaq istəyirsiniz?`)) return
+    const { status } = await forceCheckOutFieldVisit(v.id)
+    if (status === 200) { setDetail(null); await load() }
+    else setError('Bağlanmadı')
+  }
+
+  async function openDetail(v: BoardFieldVisit) {
+    setDetail(v)
+    setDetailPhotos(null)
+    if (v.hasCheckInPhoto || v.hasCheckOutPhoto) {
+      const reqId = ++detailReq.current
+      const { status, data } = await getFieldVisitPhotos(v.id)
+      if (reqId !== detailReq.current) return // superseded — don't show another visit's selfie
+      setDetailPhotos(status === 200 && data ? data : { checkInUrl: null, checkOutUrl: null })
+    }
   }
 
   function shiftDay(delta: number) {
-    const d = new Date(date + 'T00:00:00')
-    d.setDate(d.getDate() + delta)
-    setDate(d.toISOString().slice(0, 10))
+    // Local-component math — see todayStr; toISOString() would skew the date by the Baku offset.
+    const [y, m, d] = date.split('-').map(Number)
+    const dt = new Date(y, m - 1, d + delta)
+    setDate(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`)
   }
+
+  const chips: { key: StatusFilter; label: string }[] = [
+    { key: 'all', label: 'Hamısı' },
+    { key: 'Assigned', label: 'Tapşırılıb' },
+    { key: 'CheckedIn', label: 'Ərazidə' },
+    { key: 'Completed', label: 'Tamamlandı' },
+    { key: 'Cancelled', label: 'Ləğv' },
+  ]
 
   return (
     <div>
-      {/* Date bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button className="btn btn-sm" onClick={() => shiftDay(-1)}>←</button>
-        <input className="inp" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 170 }} />
-        <button className="btn btn-sm" onClick={() => shiftDay(1)}>→</button>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)', margin: 0 }}>Sahə ziyarətləri</h1>
+          <div className="muted" style={{ fontSize: 13 }}>QR-suz GPS davamiyyət — kim harada, nə vaxt oldu.</div>
+        </div>
         <div style={{ flex: 1 }} />
+        {isToday && <span className="lux-live"><i />CANLI</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn btn-sm" onClick={() => shiftDay(-1)}>←</button>
+          <input className="inp" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 160 }} />
+          <button className="btn btn-sm" onClick={() => shiftDay(1)}>→</button>
+        </div>
         <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
           {showForm ? 'Bağla' : '+ Yeni tapşırıq'}
         </button>
@@ -174,6 +250,19 @@ export function FieldVisitsAdminPage() {
 
       {error && <div className="fb fb-err" style={{ marginBottom: 14 }}>{error}</div>}
 
+      {/* Summary — each card is a one-tap filter */}
+      <div className="stat-grid">
+        <StatCard variant="purple" label="Tapşırılıb" value={stats.assigned} sub="girişi gözlənilir"
+          active={statusFilter === 'Assigned'} onClick={() => { setOnlyFlagged(false); setStatusFilter(statusFilter === 'Assigned' ? 'all' : 'Assigned') }} />
+        <StatCard variant="amber" label="Hazırda sahədə" value={stats.onsite} sub="girib, çıxmayıb"
+          active={statusFilter === 'CheckedIn'} onClick={() => { setOnlyFlagged(false); setStatusFilter(statusFilter === 'CheckedIn' ? 'all' : 'CheckedIn') }} />
+        <StatCard variant="leaf" label="Tamamlandı" value={stats.completed} sub={`${Math.round(stats.minutes / 60)} saat sahədə`}
+          active={statusFilter === 'Completed'} onClick={() => { setOnlyFlagged(false); setStatusFilter(statusFilter === 'Completed' ? 'all' : 'Completed') }} />
+        <StatCard variant="clay" label="Diqqət tələb edir" value={stats.flagged} sub="hədəfdən uzaq giriş"
+          active={onlyFlagged} onClick={() => { setStatusFilter('all'); setOnlyFlagged((f) => !f) }} />
+      </div>
+
+      {/* Assign form */}
       {showForm && (
         <form onSubmit={submit} className="card card-pad" style={{ marginBottom: 18 }}>
           <div className="card-title">Sahə tapşırığı ver</div>
@@ -184,6 +273,7 @@ export function FieldVisitsAdminPage() {
                 <option value="">— seçin —</option>
                 {people.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
               </select>
+              {people.length === 0 && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Sahə girişi icazəsi olan işçi yoxdur (işçi profilində açın).</div>}
             </div>
             <div>
               <label className="form-label">Yer / obyekt (ad)</label>
@@ -221,6 +311,23 @@ export function FieldVisitsAdminPage() {
         </form>
       )}
 
+      {/* Filter bar */}
+      {!loading && rows.length > 0 && (
+        <>
+          <div className="chip-row">
+            {chips.map((c) => (
+              <button key={c.key} className={`chip ${statusFilter === c.key ? 'active' : ''}`}
+                onClick={() => setStatusFilter(c.key)}>{c.label}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input className="inp" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="İşçi adı ilə axtar…" style={{ maxWidth: 220 }} />
+            <button className={`chip ${onlyFlagged ? 'active' : ''}`} onClick={() => setOnlyFlagged((f) => !f)}>⚠️ Yalnız diqqət</button>
+            <button className={`chip ${onlySelf ? 'active' : ''}`} onClick={() => setOnlySelf((f) => !f)}>🙋 Özü qeyd etdi</button>
+          </div>
+        </>
+      )}
+
       {loading ? (
         <div className="card card-pad muted" style={{ textAlign: 'center', padding: 28 }}>Yüklənir…</div>
       ) : rows.length === 0 ? (
@@ -229,62 +336,64 @@ export function FieldVisitsAdminPage() {
           <div style={{ fontWeight: 700, color: 'var(--c900)' }}>Bu gün üçün sahə ziyarəti yoxdur</div>
           <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>«+ Yeni tapşırıq» ilə bir işçini əraziyə tapşırın.</div>
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="card card-pad muted" style={{ textAlign: 'center', padding: 28 }}>Bu filtrə uyğun ziyarət yoxdur.</div>
       ) : (
         <div className="tbl-wrap tbl-cards">
           <table>
             <thead>
               <tr>
-                <th>İşçi</th><th>Status</th><th>Hədəf</th><th>Giriş</th><th>Çıxış</th><th className="num">Müddət</th><th>Foto</th><th>Tapşıran</th><th />
+                <th>İşçi</th><th>Status</th><th>Hədəf</th><th>Giriş → Çıxış</th><th>Tapşıran</th><th />
               </tr>
             </thead>
             <tbody>
-              {rows.map((v) => {
+              {filtered.map((v) => {
                 const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
-                const inRadius = v.checkInDistanceMeters != null && v.checkInDistanceMeters <= (v.targetRadiusMeters ?? 200)
+                const flagged = isFlagged(v)
+                const stuck = isStuck(v, date)
                 return (
                   <tr key={v.id}>
                     <td data-label="İşçi">
-                      <div style={{ fontWeight: 700, color: 'var(--c900)' }}>{v.employeeName}</div>
-                      {v.selfReported && <span className="muted" style={{ fontSize: 11 }}>özü qeyd etdi</span>}
+                      <EmployeeLink id={v.employeeId} name={v.employeeName} />
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+                        {v.phone && <a href={`tel:${v.phone}`} className="muted" style={{ fontSize: 11 }}>📞 {v.phone}</a>}
+                        {v.selfReported && <span className="tag">🙋 özü qeyd etdi</span>}
+                      </div>
                     </td>
-                    <td data-label="Status"><span className="tag" style={{ background: st.bg, color: st.fg }}>{st.label}</span></td>
+                    <td data-label="Status">
+                      <span className="badge" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
+                      {stuck && <div className="tag" style={{ marginTop: 4, background: 'var(--clay-bg)', color: 'var(--clay)' }}>çıxış edilməyib</div>}
+                    </td>
                     <td data-label="Hədəf" style={{ maxWidth: 180 }}>
                       {v.targetLabel || <span className="muted">—</span>}
-                      {(v.targetLatitude != null || v.checkInLatitude != null || v.checkOutLatitude != null) && (
-                        <div>
-                          <button
-                            onClick={() => setMapVisit(v)}
-                            style={{ border: 'none', background: 'none', color: 'var(--blue, #1E70C8)', cursor: 'pointer', padding: 0, font: 'inherit', textDecoration: 'underline' }}
-                          >
-                            🗺️ Xəritədə bax
-                          </button>
-                        </div>
+                      {(v.targetLatitude != null || v.checkInLatitude != null) && (
+                        <button className="btn-link" onClick={() => void openDetail(v)}>🗺️ Xəritə</button>
                       )}
                     </td>
-                    <td data-label="Giriş" style={{ whiteSpace: 'nowrap' }}>
+                    <td data-label="Giriş → Çıxış" style={{ whiteSpace: 'nowrap' }}>
                       {v.checkInAtUtc ? (
                         <>
                           <b>{fmtTime(v.checkInAtUtc)}</b>
-                          {v.checkInDistanceMeters != null && (
-                            <div style={{ fontSize: 11, color: inRadius ? 'var(--leaf-d)' : 'var(--clay)' }}>
-                              {inRadius ? '✅ ərazidə' : `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq`}
-                            </div>
-                          )}
+                          <span className="muted"> → </span>
+                          {v.checkOutAtUtc ? <b>{fmtTime(v.checkOutAtUtc)}</b> : <span className="muted">{v.status === 'CheckedIn' ? 'davam edir' : '—'}</span>}
+                          <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 8, alignItems: 'center' }}>
+                            {v.checkInDistanceMeters != null && (
+                              <span style={{ color: flagged ? 'var(--clay)' : 'var(--leaf-d)' }}>
+                                {flagged ? `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq` : '✅ ərazidə'}
+                              </span>
+                            )}
+                            {v.durationMinutes != null && <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes} dəq</span>}
+                          </div>
                         </>
                       ) : <span className="muted">—</span>}
                     </td>
-                    <td data-label="Çıxış" style={{ whiteSpace: 'nowrap' }}>
-                      {v.checkOutAtUtc ? <b>{fmtTime(v.checkOutAtUtc)}</b> : <span className="muted">—</span>}
-                    </td>
-                    <td data-label="Müddət" className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes != null ? `${v.durationMinutes} dəq` : '—'}</td>
-                    <td data-label="Foto">
-                      {v.hasCheckInPhoto || v.hasCheckOutPhoto
-                        ? <button className="btn btn-sm" onClick={() => void openPhotos(v)}>📷 Bax</button>
-                        : <span className="muted">—</span>}
-                    </td>
                     <td data-label="Tapşıran">{v.assignedByName ?? <span className="muted">—</span>}</td>
                     <td data-label="">
-                      {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button className="btn btn-sm" onClick={() => void openDetail(v)}>Təfərrüat</button>
+                        {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
+                        {stuck && <button className="btn btn-sm btn-danger" onClick={() => void forceCheckout(v)}>Çıxışı bağla</button>}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -294,47 +403,120 @@ export function FieldVisitsAdminPage() {
         </div>
       )}
 
-      {mapVisit && (
-        <div
-          onClick={() => setMapVisit(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}
-        >
-          <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px,94vw)' }}>
-            <div className="card-title" style={{ marginBottom: 10 }}>{mapVisit.employeeName} — {mapVisit.targetLabel || 'Sahə ziyarəti'}</div>
-            <VisitMap v={mapVisit} />
-            <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              {mapVisit.targetLatitude != null && <span><span style={{ color: '#1E70C8' }}>●</span> Hədəf</span>}
-              {mapVisit.checkInLatitude != null && <span><span style={{ color: '#16a34a' }}>●</span> Giriş</span>}
-              {mapVisit.checkOutLatitude != null && <span><span style={{ color: '#d97706' }}>●</span> Çıxış</span>}
-              {mapVisit.checkInDistanceMeters != null && <span className="muted">Hədəfə: {fmtDist(mapVisit.checkInDistanceMeters)}</span>}
-            </div>
-            <button className="btn btn-sm" style={{ marginTop: 12 }} onClick={() => setMapVisit(null)}>Bağla</button>
-          </div>
-        </div>
+      {detail && (
+        <DetailOverlay
+          v={detail}
+          photos={detailPhotos}
+          onClose={() => setDetail(null)}
+          onCancel={() => void cancel(detail)}
+          onForceCheckout={() => void forceCheckout(detail)}
+          stuck={isStuck(detail, date)}
+        />
       )}
+    </div>
+  )
+}
 
-      {photo && (
-        <div
-          onClick={() => setPhoto(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}
-        >
-          <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640, display: 'flex', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {photo.checkInUrl && (
-              <figure style={{ margin: 0, textAlign: 'center' }}>
-                <img src={photo.checkInUrl} alt="Giriş" style={{ maxWidth: 260, borderRadius: 10 }} />
-                <figcaption className="muted" style={{ fontSize: 12, marginTop: 4 }}>Giriş</figcaption>
-              </figure>
-            )}
-            {photo.checkOutUrl && (
-              <figure style={{ margin: 0, textAlign: 'center' }}>
-                <img src={photo.checkOutUrl} alt="Çıxış" style={{ maxWidth: 260, borderRadius: 10 }} />
-                <figcaption className="muted" style={{ fontSize: 12, marginTop: 4 }}>Çıxış</figcaption>
-              </figure>
-            )}
-            <button className="btn btn-sm" style={{ flexBasis: '100%' }} onClick={() => setPhoto(null)}>Bağla</button>
+function StatCard({ variant, label, value, sub, active, onClick }: {
+  variant: string; label: string; value: number; sub: string; active: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      className={`stat-card ${variant}`}
+      onClick={onClick}
+      style={{ textAlign: 'left', cursor: 'pointer', outline: active ? '2px solid var(--c900)' : 'none', outlineOffset: -1 }}
+    >
+      <div className="stat-lbl">{label}</div>
+      <div className="stat-val">{value}</div>
+      <div className="stat-sub">{sub}</div>
+    </button>
+  )
+}
+
+function DetailOverlay({ v, photos, onClose, onCancel, onForceCheckout, stuck }: {
+  v: BoardFieldVisit
+  photos: { checkInUrl: string | null; checkOutUrl: string | null } | null
+  onClose: () => void
+  onCancel: () => void
+  onForceCheckout: () => void
+  stuck: boolean
+}) {
+  const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
+  const flagged = isFlagged(v)
+  const hasPhoto = v.hasCheckInPhoto || v.hasCheckOutPhoto
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
+      <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px,94vw)', maxHeight: '92vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--c900)' }}>{v.employeeName}</div>
+            <div className="muted" style={{ fontSize: 13 }}>{v.targetLabel || 'Sahə ziyarəti'}</div>
+            {v.phone && <a href={`tel:${v.phone}`} className="muted" style={{ fontSize: 12 }}>📞 {v.phone}</a>}
           </div>
+          <span className="badge" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
         </div>
-      )}
+
+        {(v.targetLatitude != null || v.checkInLatitude != null) && (
+          <>
+            <VisitMap v={v} />
+            <div style={{ display: 'flex', gap: 14, margin: '8px 0 12px', fontSize: 12, flexWrap: 'wrap' }}>
+              {v.targetLatitude != null && <span><span style={{ color: '#1E70C8' }}>●</span> Hədəf</span>}
+              {v.checkInLatitude != null && <span><span style={{ color: '#16a34a' }}>●</span> Giriş</span>}
+              {v.checkOutLatitude != null && <span><span style={{ color: '#d97706' }}>●</span> Çıxış</span>}
+            </div>
+          </>
+        )}
+
+        {v.checkInDistanceMeters != null ? (
+          <div className={`fb ${flagged ? 'fb-warn' : 'fb-ok'}`} style={{ marginBottom: 12 }}>
+            {flagged
+              ? `⚠️ Giriş hədəfdən ${fmtDist(v.checkInDistanceMeters)} uzaqda`
+              : `✅ Giriş hədəf ərazisində (${fmtDist(v.checkInDistanceMeters)})`}
+          </div>
+        ) : v.checkInAtUtc ? (
+          <div className="fb fb-info" style={{ marginBottom: 12 }}>Hədəf təyin edilməyib — məsafə yoxlanmayıb.</div>
+        ) : null}
+
+        {/* Timeline */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, marginBottom: 12 }}>
+          <TimelineRow label="Tapşırılıb" value={v.selfReported ? 'özü qeyd etdi' : (v.assignedByName ?? '—')} />
+          <TimelineRow label="Giriş" value={v.checkInAtUtc ? fmtTime(v.checkInAtUtc) : '—'} />
+          <TimelineRow label="Çıxış" value={v.checkOutAtUtc ? fmtTime(v.checkOutAtUtc) : (v.status === 'CheckedIn' ? 'davam edir' : '—')} />
+          <TimelineRow label="Müddət" value={v.durationMinutes != null ? `${v.durationMinutes} dəq` : '—'} />
+        </div>
+
+        {v.note && <div className="muted" style={{ fontSize: 13, marginBottom: 12, fontStyle: 'italic' }}>Qeyd: {v.note}</div>}
+
+        {hasPhoto ? (
+          photos === null ? (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Şəkil yüklənir…</div>
+          ) : photos.checkInUrl || photos.checkOutUrl ? (
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              {photos.checkInUrl && <img src={photos.checkInUrl} alt="Giriş" style={{ maxWidth: 200, borderRadius: 10 }} />}
+              {photos.checkOutUrl && <img src={photos.checkOutUrl} alt="Çıxış" style={{ maxWidth: 200, borderRadius: 10 }} />}
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Şəkil yüklənmədi.</div>
+          )
+        ) : (
+          <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Bu ziyarətdə foto yoxdur (GPS ilə təsdiq).</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {v.status === 'Assigned' && <button className="btn btn-sm" onClick={onCancel}>Ləğv et</button>}
+          {stuck && <button className="btn btn-sm btn-danger" onClick={onForceCheckout}>Çıxışı bağla</button>}
+          <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Bağla</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TimelineRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span className="muted">{label}</span>
+      <span style={{ fontWeight: 600, color: 'var(--c900)' }}>{value}</span>
     </div>
   )
 }

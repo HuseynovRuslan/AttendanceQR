@@ -17,6 +17,9 @@ public record ManagerEmployeeRequest(
     string? WorkStart = null,
     string? WorkEnd = null,
     bool PhotoExempt = false,
+    // Whether this employee may use field/mobile check-in ("Sahə ziyarəti"). Defaults to false; every
+    // updateManagerEmployee caller must send it, or a partial update turns it off.
+    bool CanFieldCheckIn = false,
     // Shift assignment and rotation — see EmployeeUpdateRequest. A manager is usually the person who
     // actually knows who is on which shift, so they may set it for their own staff.
     Guid? ScheduleId = null,

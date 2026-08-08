@@ -243,6 +243,7 @@ public class ManagerController : ControllerBase
                 workCycleOnDays = e.WorkCycleOnDays,
                 workCycleAnchor = e.WorkCycleAnchor,
                 photoExempt = e.PhotoExempt,
+                canFieldCheckIn = e.CanFieldCheckIn,
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
             })
@@ -252,7 +253,7 @@ public class ManagerController : ControllerBase
         {
             r.id, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
-            r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.isActive, r.activated,
+            r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn, r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
     }
@@ -300,6 +301,7 @@ public class ManagerController : ControllerBase
             WorkStart = ParseTimeOrNull(request.WorkStart),
             WorkEnd = ParseTimeOrNull(request.WorkEnd),
             PhotoExempt = request.PhotoExempt,
+            CanFieldCheckIn = request.CanFieldCheckIn,
             IsActive = true,
             ActivatedAtUtc = DateTime.UtcNow,      // temp-PIN account — no activation link
             MustChangePin = true,
@@ -359,6 +361,7 @@ public class ManagerController : ControllerBase
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         employee.PhotoExempt = request.PhotoExempt;
+        employee.CanFieldCheckIn = request.CanFieldCheckIn;
         employee.IsActive = request.IsActive;
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });

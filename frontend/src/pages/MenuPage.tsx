@@ -59,7 +59,8 @@ export function MenuPage() {
           <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
-        <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />
+        {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
+        {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
         {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}

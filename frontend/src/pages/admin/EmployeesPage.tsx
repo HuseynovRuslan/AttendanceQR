@@ -100,6 +100,8 @@ type FormState = {
   /** Fixed monthly salary in AZN for the payroll report; blank = not set. Kept as a string while typing. */
   monthlySalary: string
   photoExempt: boolean
+  /** Whether the employee may use field/mobile check-in ("Səyyar / Sahə ziyarəti"). */
+  canFieldCheckIn: boolean
   /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
    *  they clock in. Empty on a manager means an empty panel. */
   managedLocationIds: string[]
@@ -126,6 +128,7 @@ const EMPTY: FormState = {
   workEnd: '',
   monthlySalary: '',
   photoExempt: false,
+  canFieldCheckIn: false,
   managedLocationIds: [],
   cycle: NO_CYCLE,
   scheduleId: '',
@@ -243,6 +246,7 @@ export function EmployeesPage() {
       workEnd: e.workEnd ?? '',
       monthlySalary: e.monthlySalary != null ? String(e.monthlySalary) : '',
       photoExempt: e.photoExempt === true,
+      canFieldCheckIn: e.canFieldCheckIn === true,
       managedLocationIds: e.managedLocationIds ?? [],
       cycle: e.workCycleDays
         ? { days: e.workCycleDays, onDays: e.workCycleOnDays ?? 1, anchor: e.workCycleAnchor ?? '' }
@@ -287,6 +291,7 @@ export function EmployeesPage() {
       birthDate: form.birthDate || null,
       monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
       photoExempt: form.photoExempt,
+      canFieldCheckIn: form.canFieldCheckIn,
       // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
       workStart: form.workStart || null,
       workEnd: form.workEnd || null,
@@ -908,6 +913,23 @@ export function EmployeesPage() {
               <span style={{ fontWeight: 700, fontSize: 13 }}>Giriş şəkli tələb olunmasın</span>
               <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
                 Bu işçidə skan zamanı kamera açılmır. Lokasiya və cihaz yoxlaması qüvvədə qalır.
+              </span>
+            </span>
+          </label>
+
+          {/* Field/mobile check-in is opt-in: only workers actually sent to poster-less sites get the
+              «Səyyar / Sahə ziyarəti» screen + self-report, and only they can be assigned a visit. */}
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '10px 0 4px' }}>
+            <input
+              type="checkbox"
+              checked={form.canFieldCheckIn}
+              onChange={(e) => set('canFieldCheckIn', e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>Sahə girişi icazəsi</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
+                İşçi QR-suz, GPS ilə sahə ziyarəti qeyd edə bilər (poster olmayan obyektlər üçün). Bağlı olsa, bu işçidə funksiya görünmür.
               </span>
             </span>
           </label>

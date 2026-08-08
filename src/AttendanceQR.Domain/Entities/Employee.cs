@@ -145,6 +145,14 @@ public class Employee : ITenantScoped, IHasWorkCycle
     public bool PhotoExempt { get; set; }
 
     /// <summary>
+    /// Whether this employee may use field/mobile check-in ("Səyyar / Sahə ziyarəti") — GPS attendance
+    /// for ad-hoc sites with no QR poster. Off by default: only workers an admin actually sends into the
+    /// field see the menu row + home self-report and can be assigned a visit; a plain office employee
+    /// never sees any of it. Enforced server-side on self-report + assign, not merely hidden in the UI.
+    /// </summary>
+    public bool CanFieldCheckIn { get; set; }
+
+    /// <summary>
     /// When the employee accepted the data-processing notice (GPS, check-in selfie, work data).
     ///
     /// The digital stand-in for a signature: the app stores face + location + salary, which is

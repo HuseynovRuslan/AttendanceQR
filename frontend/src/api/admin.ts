@@ -453,6 +453,9 @@ export interface InvitePayload {
   // Waives the check-in selfie. Defaults to FALSE server-side, so every caller must send it or the
   // exemption is silently switched off by an unrelated edit.
   photoExempt?: boolean
+  // Grants field/mobile check-in ("Sahə ziyarəti"). Same null-default trap as photoExempt: every
+  // updateEmployee caller must send it, or an unrelated edit silently revokes it.
+  canFieldCheckIn?: boolean
   // The named shift this employee is on. Set → it decides hours, days AND rotation, and the three
   // workCycle fields below are ignored server-side. Same null-default rule as photoExempt: omit it on
   // an edit and the assignment is dropped.
@@ -479,6 +482,8 @@ export interface AdminEmployee {
   monthlySalary?: number | null
   /** True when an admin has waived the check-in selfie for this employee. */
   photoExempt?: boolean
+  /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). */
+  canFieldCheckIn?: boolean
   /** The named shift they are on, if any, plus its name for display. */
   scheduleId?: string | null
   scheduleName?: string | null

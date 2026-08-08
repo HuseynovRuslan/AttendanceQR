@@ -90,6 +90,10 @@ export function getFieldVisitBoard(date?: string) {
 export function cancelFieldVisit(id: string) {
   return apiRequest<{ id: string; status: string }>(`/api/field-visits/${id}/cancel`, { method: 'POST' })
 }
+/** Admin closes a visit the worker never checked out of (stuck CheckedIn). Checkout is stamped now. */
+export function forceCheckOutFieldVisit(id: string) {
+  return apiRequest<{ id: string; status: string }>(`/api/field-visits/${id}/force-checkout`, { method: 'POST' })
+}
 export function getFieldVisitPhotos(id: string) {
   return apiRequest<{ checkInUrl: string | null; checkOutUrl: string | null }>(`/api/field-visits/${id}/photos`)
 }

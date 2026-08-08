@@ -165,7 +165,7 @@ export function HomePage() {
       <MissedCheckoutBanner />
 
       {/* Only for a worker who actually has field work today — renders nothing for everyone else. */}
-      <FieldVisitCards visits={fieldVisits} onChanged={reloadFieldVisits} />
+      <FieldVisitCards visits={fieldVisits} onChanged={reloadFieldVisits} canFieldCheckIn={profile?.canFieldCheckIn} />
 
       <ScanHero today={today} shiftEnd={profile?.shiftEnd} onScan={() => navigate('/scan')} />
 

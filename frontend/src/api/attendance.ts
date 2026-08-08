@@ -76,6 +76,9 @@ export interface MyProfile {
   birthDate?: string | null
   /** False when an admin has waived the check-in selfie for this employee. */
   photoRequired?: boolean
+  /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). Gates the
+   *  menu row + the home self-report; off by default so a plain office worker never sees any of it. */
+  canFieldCheckIn?: boolean
   /** True until the employee has accepted the data-processing notice — the app blocks until then. */
   consentRequired?: boolean
   /** Check-ins this month whose photo showed no face — shown to the employee themselves. */

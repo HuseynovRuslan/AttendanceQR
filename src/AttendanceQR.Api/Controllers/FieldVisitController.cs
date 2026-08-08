@@ -77,6 +77,11 @@ public class FieldVisitController : ControllerBase
         var me = Me;
         var now = DateTime.UtcNow;
 
+        // Self-report is gated: only an employee an admin has marked as a field worker may create one.
+        // Enforced here, not just hidden in the app — the flag is the permission, the UI is a courtesy.
+        if (!await _db.Employees.AnyAsync(e => e.Id == me && e.CanFieldCheckIn, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "FieldCheckInNotAllowed" });
+
         var visit = new FieldVisit
         {
             EmployeeId = me,
@@ -165,6 +170,9 @@ public class FieldVisitController : ControllerBase
         var worker = await _db.Employees.FirstOrDefaultAsync(e => e.Id == req.EmployeeId && e.IsActive, ct);
         if (worker is null)
             return BadRequest(new { error = "EmployeeNotFound" });
+        // Defence in depth: the assignable list already filters to field workers, but never trust it.
+        if (!worker.CanFieldCheckIn)
+            return BadRequest(new { error = "NotFieldWorker" });
 
         // A manager may only assign to a worker in their own branches.
         if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, Me, User.Role(), req.EmployeeId, ct))
@@ -274,7 +282,7 @@ public class FieldVisitController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
         var managed = await ManagedScopeAsync(ct);
-        var query = _db.Employees.Where(e => e.IsActive);
+        var query = _db.Employees.Where(e => e.IsActive && e.CanFieldCheckIn);
         if (managed != null)
             query = query.Where(e => managed.Contains(e.LocationId));
         var people = await query
@@ -298,6 +306,30 @@ public class FieldVisitController : ControllerBase
         if (visit.Status != FieldVisitStatus.Assigned)
             return BadRequest(new { error = "AlreadyStarted" });
         visit.Status = FieldVisitStatus.Cancelled;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { id = visit.Id, status = visit.Status.ToString() });
+    }
+
+    // POST /api/field-visits/{id}/force-checkout — admin closes a visit the worker never checked out of.
+    // A CheckedIn visit whose day has passed reads as zero field time (no duration), which pays wrong;
+    // this is the field-side counterpart of /admin/open-records. The admin doesn't know the real
+    // departure time, so the checkout is stamped "now" (no GPS) and flagged — a cleanup, not a record.
+    [HttpPost("{id:guid}/force-checkout")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> ForceCheckOut(Guid id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id, ct);
+        if (visit is null)
+            return NotFound(new { error = "VisitNotFound" });
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+        if (visit.Status != FieldVisitStatus.CheckedIn)
+            return BadRequest(new { error = "NotCheckedIn" });
+
+        visit.Status = FieldVisitStatus.Completed;
+        visit.CheckOutAtUtc = DateTime.UtcNow;
+        // No CheckOutLatitude/Longitude — the admin isn't on site; distance stays unmeasured.
         await _db.SaveChangesAsync(ct);
         return Ok(new { id = visit.Id, status = visit.Status.ToString() });
     }

@@ -117,6 +117,8 @@ public class AttendanceController : ControllerBase
                 // The scan screen skips the selfie entirely for an exempted employee — showing a
                 // camera it will then discard would just teach them the step is optional.
                 photoRequired = !e.PhotoExempt,
+                // Gates the field/mobile check-in surfaces in the app (menu row, home self-report).
+                canFieldCheckIn = e.CanFieldCheckIn,
                 // The app blocks on the consent screen until this is accepted.
                 consentRequired = e.ConsentAcceptedAtUtc == null,
                 e.LocationId, e.ScheduleId,
@@ -168,6 +170,7 @@ public class AttendanceController : ControllerBase
         {
             profile.fullName, profile.email, profile.role, profile.position, profile.birthDate,
             profile.photoRequired, profile.consentRequired, profile.locationName,
+            profile.canFieldCheckIn,
             shiftStart, shiftEnd,
             unverifiedCheckIns = unverified,
             lastCheckInUnverified = lastWasUnverified,

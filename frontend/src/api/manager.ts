@@ -31,6 +31,7 @@ export interface ManagerEmployee {
   workCycleOnDays: number | null
   workCycleAnchor: string | null
   photoExempt: boolean
+  canFieldCheckIn: boolean
   isActive: boolean
   activated: boolean
 }
@@ -56,6 +57,9 @@ export interface ManagerEmployeeInput {
   workCycleOnDays: number | null
   workCycleAnchor: string | null
   photoExempt: boolean
+  /** Field/mobile check-in permission — see EmployeeUpdateRequest. Round-tripped so a manager edit
+   *  preserves it (managers don't toggle it in their form, mirroring photoExempt). */
+  canFieldCheckIn: boolean
   isActive: boolean
 }
 

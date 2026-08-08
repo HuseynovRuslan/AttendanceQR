@@ -19,7 +19,7 @@ const EMPTY: ManagerEmployeeInput = {
   fullName: '', firstName: '', lastName: '', email: null, phoneNumber: null, fatherName: null, position: null,
   locationId: '', birthDate: null, birthYear: null, workStart: null, workEnd: null,
   scheduleId: null, workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
-  photoExempt: false, isActive: true,
+  photoExempt: false, canFieldCheckIn: false, isActive: true,
 }
 
 /** Prefer stored parts; fall back to splitting FullName (last token = surname) for un-backfilled rows. */
@@ -92,7 +92,8 @@ export function ManagerEmployeesPage() {
       email: e.email && !e.email.endsWith('@baki.local') ? e.email : null,
       phoneNumber: e.phoneNumber, fatherName: e.fatherName, position: e.position,
       locationId: e.locationId, birthDate: e.birthDate, birthYear: e.birthYear,
-      workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt, isActive: e.isActive,
+      workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt,
+      canFieldCheckIn: e.canFieldCheckIn, isActive: e.isActive,
       scheduleId: e.scheduleId,
       workCycleDays: e.workCycleDays, workCycleOnDays: e.workCycleOnDays, workCycleAnchor: e.workCycleAnchor,
     })

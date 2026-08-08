@@ -92,6 +92,7 @@ public class AdminController : ControllerBase
                 workCycleAnchor = e.WorkCycleAnchor,
                 monthlySalary = e.MonthlySalary,
                 photoExempt = e.PhotoExempt,
+                canFieldCheckIn = e.CanFieldCheckIn,
                 // Who has accepted the data-processing notice — the answer to "did this employee
                 // agree, and when", which is the whole point of recording it.
                 consentAcceptedAtUtc = e.ConsentAcceptedAtUtc,
@@ -176,6 +177,7 @@ public class AdminController : ControllerBase
         (employee!.FullName, employee.FirstName, employee.LastName) =
             EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
         employee.MonthlySalary = request.MonthlySalary;
+        employee.CanFieldCheckIn = request.CanFieldCheckIn;
         employee.BirthDate = request.BirthDate;
         if (request.BirthDate is { } dob)
             employee.BirthYear = dob.Year;   // keep the year in sync so the fallback display agrees
@@ -686,6 +688,7 @@ public class AdminController : ControllerBase
         employee.FatherName = request.FatherName;
         employee.Position = request.Position;
         employee.PhotoExempt = request.PhotoExempt;
+        employee.CanFieldCheckIn = request.CanFieldCheckIn;
         await RegisterPositionsAsync();
         employee.BirthDate = request.BirthDate;
         // Full date wins; keep the year in sync from it so the fallback display agrees.
