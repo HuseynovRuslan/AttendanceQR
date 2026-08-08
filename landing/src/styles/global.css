@@ -224,7 +224,9 @@ section{padding:88px 0}
 
 /* ---------- Pricing ---------- */
 .price{background:var(--paper);border-top:1px solid var(--line)}
-.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;align-items:stretch}
+@media(max-width:1100px){.plans{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.plans{grid-template-columns:1fr}}
 .plan{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:30px 26px;display:flex;flex-direction:column;transition:transform .25s,box-shadow .25s}
 .plan:hover{transform:translateY(-4px);box-shadow:var(--shadow-sm)}
 .plan.feat-plan{border-color:var(--blue);box-shadow:0 24px 50px -26px rgba(30,99,233,.4);position:relative}
@@ -276,7 +278,7 @@ footer{background:#08111E;color:#8FA1B8;padding:56px 0 34px}
 @media(max-width:900px){
   .hero-grid{grid-template-columns:1fr;gap:44px}
   .scan-card{margin:0 auto}
-  .steps,.feat-grid,.aud-grid,.plans,.test-grid{grid-template-columns:1fr}
+  .steps,.feat-grid,.aud-grid,.test-grid{grid-template-columns:1fr}
   .stat-grid,.sec-grid{grid-template-columns:1fr 1fr}
   .board-body{grid-template-columns:1fr}
   .foot-grid{grid-template-columns:1fr 1fr}

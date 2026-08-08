@@ -23,24 +23,30 @@ export const SITE = {
 // ---------------------------------------------------------------------------------------------
 // PRICING
 //
-// `showPlans: false` — the current, deliberate state. The /qiymet/ page still exists and still
-// ranks (people search "davamiyyət sistemi qiymət"), but it shows no numbers and no plan limits:
-// just a short line saying the price is worked out per organisation, and a way to get in touch.
+// The REAL published prices, set by the owner on 2026-08-08 (the earlier invented template table
+// stayed hidden until these existed). Per-employee, monthly, headcount decides the package; every
+// package also pays 5 ₼/month per location — that fee lives in the price.p*f2 bullets and the
+// price.note line in i18n/ui.ts, so change it THERE if it moves.
 //
-// The plan table below is the Astro template's invented pricing. Publishing it would have promised
-// "Pulsuz, 50 işçiyə qədər" — and two of the three companies already paying for QRLog are under
-// that line. A published price is very hard to walk back, so it stays off until the real plans
-// exist. Set showPlans: true once they do, and correct `amount` + the price.p* keys in i18n/ui.ts.
+//   Start       1–10 işçi     4 ₼ / işçi / ay
+//   Biznes      11–50 işçi    3.5 ₼ / işçi / ay   (featured)
+//   Korporativ  51–100 işçi   3 ₼ / işçi / ay
+//   Enterprise  101+ işçi     fərdi (amount: null → the translated price.p4a string)
 //
-// `amount: null` renders the translated `price.pNa` string instead.
+// `enabled` shows the homepage section + the footer link; `showPlans` shows the plan table itself
+// (false = the "we quote per organisation" card). Both on = pricing is public.
+// NOTE: the in-app billing engine (Domain/Pricing.cs) still uses the older graduated brackets and
+// no location fee — align it before invoicing anyone on these published numbers.
 // ---------------------------------------------------------------------------------------------
 export const PRICING = {
-  showPlans: false,
+  enabled: true,
+  showPlans: true,
   // `featureCount` is how many price.p<id>f<n> bullet keys exist for that plan in src/i18n/ui.ts.
   plans: [
-    { id: 1, amount: null, featured: false, featureCount: 3 },
-    { id: 2, amount: '₼19', featured: true, featureCount: 4 },
-    { id: 3, amount: null, featured: false, featureCount: 3 },
+    { id: 1, amount: '4 ₼', featured: false, featureCount: 3 },
+    { id: 2, amount: '3.5 ₼', featured: true, featureCount: 3 },
+    { id: 3, amount: '3 ₼', featured: false, featureCount: 3 },
+    { id: 4, amount: null, featured: false, featureCount: 3 },
   ],
 } as const
 
