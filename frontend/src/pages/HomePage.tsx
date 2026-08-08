@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMyAttendance, getMyProfile, getMySummary, type AttendanceRecord, type MyProfile } from '../api/attendance'
+import { getMyFieldVisits, type MyFieldVisit } from '../api/fieldVisits'
 import { useAuth } from '../auth/AuthContext'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint, installNudgeActive } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
-import { FieldVisitBanner } from '../components/FieldVisitBanner'
+import { FieldVisitCards } from '../components/FieldVisitCards'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
@@ -25,6 +26,7 @@ export function HomePage() {
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [month, setMonth] = useState<{ workDays: number; hours: number } | null>(null)
+  const [fieldVisits, setFieldVisits] = useState<MyFieldVisit[]>([])
   const [loading, setLoading] = useState(true)
   // Show at most ONE nudge (install OR notifications), so the home isn't a stack of asks. Seeded
   // synchronously to avoid a first-render flash; InstallHint keeps it in sync if dismissed mid-session.
@@ -38,7 +40,15 @@ export function HomePage() {
     setLoading(true)
     const from = firstOfMonthStr()
     const to = todayStr()
-    const [p, a, s] = await Promise.all([getMyProfile(), getMyAttendance(), getMySummary(from, to)])
+    // Field visits ride along in the same load so the auto-scan gate below knows about them before it
+    // fires — but a field-endpoint failure must never break the whole home, hence the .catch fallback.
+    const [p, a, s, f] = await Promise.all([
+      getMyProfile(),
+      getMyAttendance(),
+      getMySummary(from, to),
+      getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] })),
+    ])
+    setFieldVisits(f.status === 200 && Array.isArray(f.data) ? f.data : [])
     if (p.status === 200 && p.data && 'fullName' in p.data) setProfile(p.data)
     if (a.status === 200 && Array.isArray(a.data)) {
       setRecords([...a.data].sort((x, y) => (x.attendanceDate < y.attendanceDate ? 1 : -1)))
@@ -52,18 +62,26 @@ export function HomePage() {
     setLoading(false)
   }
 
+  // Re-fetch just the field visits after a check-in/out on the home card — no page-wide loading flip.
+  async function reloadFieldVisits() {
+    const r = await getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] }))
+    if (r.status === 200 && Array.isArray(r.data)) setFieldVisits(r.data)
+  }
+
   const today = todayState(records)
   const recent = records.slice(0, 3)
+  // A worker with an open/assigned field visit has no QR poster to scan — don't bounce them to /scan.
+  const hasActionableField = fieldVisits.some((v) => v.status === 'Assigned' || v.status === 'CheckedIn')
 
   // One tap fewer: on the first open of a session, if the employee hasn't checked in yet, jump
   // straight to the scanner. Once per session (a sessionStorage flag) so returning to Home to read
   // their hours doesn't bounce them back out — and never when they've already checked in.
   useEffect(() => {
-    if (loading || today.kind !== 'none') return
+    if (loading || today.kind !== 'none' || hasActionableField) return
     if (sessionStorage.getItem('attendanceqr.autoScan')) return
     sessionStorage.setItem('attendanceqr.autoScan', '1')
     navigate('/scan')
-  }, [loading, today.kind, navigate])
+  }, [loading, today.kind, hasActionableField, navigate])
 
   // Today is the employee's birthday? Compare day + month (any year) in the device's local date.
   const isBirthday = (() => {
@@ -78,7 +96,6 @@ export function HomePage() {
     <div className="flex flex-col gap-4">
       <InstallHint onShown={setInstallShown} />
       <AnnouncementBanner />
-      <FieldVisitBanner />
       {/* Ayın işçisi modulu deaktivdir — mükafat kartı da gizlidir. */}
       {false && <AwardCard />}
 
@@ -146,6 +163,9 @@ export function HomePage() {
       {!installShown && <PushEnablePrompt />}
 
       <MissedCheckoutBanner />
+
+      {/* Only for a worker who actually has field work today — renders nothing for everyone else. */}
+      <FieldVisitCards visits={fieldVisits} onChanged={reloadFieldVisits} />
 
       <ScanHero today={today} shiftEnd={profile?.shiftEnd} onScan={() => navigate('/scan')} />
 
