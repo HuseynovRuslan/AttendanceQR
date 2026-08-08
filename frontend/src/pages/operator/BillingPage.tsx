@@ -169,8 +169,8 @@ export function BillingPage() {
       </div>
 
       <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-        Məbləğ: fərdi qiymət təyin olunubsa o, əks halda pilləli tarif (işçi sayına görə: 1–30 → 4₼, 31–100 → 3.5₼,
-        101–500 → 3₼). «Ödənildi» qeyd edərkən məbləği dəyişə bilərsiniz.
+        Məbləğ: fərdi qiymət təyin olunubsa o, əks halda dərc olunmuş paket tarifi (işçi sayına görə: 1–10 → 4₼,
+        11–50 → 3.5₼, 51+ → 3₼ hər işçi) + hər aktiv lokasiya 5₼/ay. «Ödənildi» qeyd edərkən məbləği dəyişə bilərsiniz.
       </div>
     </div>
   )

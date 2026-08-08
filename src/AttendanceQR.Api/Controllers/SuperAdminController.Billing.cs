@@ -7,9 +7,10 @@ using Microsoft.EntityFrameworkCore;
 namespace AttendanceQR.Api.Controllers;
 
 // Billing lives in the operator console, across tenants. Each company's monthly bill = its negotiated
-// flat price if set, else the graduated per-employee formula (Pricing) on its live active head-count.
-// Payment is tracked per (tenant, month) in TenantInvoice: a period with no row is unpaid and priced
-// live; marking it writes a snapshot so a later head-count change never rewrites a settled bill.
+// flat price if set, else the published package formula (Pricing): flat per-employee rate by
+// head-count package + 5 AZN per active location. Payment is tracked per (tenant, month) in
+// TenantInvoice: a period with no row is unpaid and priced live; marking it writes a snapshot so a
+// later head-count change never rewrites a settled bill.
 public partial class SuperAdminController
 {
     // GET /api/super/billing?year=&month= — every active company's bill for a month + the totals.
@@ -29,6 +30,13 @@ public partial class SuperAdminController
         var empCounts = await _db.Employees.IgnoreQueryFilters()
             .Where(e => e.IsActive)
             .GroupBy(e => e.TenantId)
+            .Select(g => new { TenantId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.TenantId, x => x.Count, ct);
+
+        // The published model adds 5 AZN per active location, so the live price needs the count.
+        var locCounts = await _db.Locations.IgnoreQueryFilters()
+            .Where(l => l.IsActive)
+            .GroupBy(l => l.TenantId)
             .Select(g => new { TenantId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.TenantId, x => x.Count, ct);
 
@@ -52,7 +60,8 @@ public partial class SuperAdminController
                 invoices.TryGetValue(t.Id, out var inv);
                 // A settled period reads back its snapshot; an untouched period is priced live.
                 var employeeCount = inv?.EmployeeCount ?? liveEmp;
-                var amount = inv?.Amount ?? t.MonthlyPriceOverride ?? Pricing.MonthlyAmount(liveEmp);
+                var amount = inv?.Amount ?? t.MonthlyPriceOverride
+                    ?? Pricing.MonthlyAmount(liveEmp, locCounts.GetValueOrDefault(t.Id, 0));
                 return new
                 {
                     tenantId = t.Id,
@@ -112,7 +121,8 @@ public partial class SuperAdminController
 
         var now = DateTime.UtcNow;
         var emp = await _db.Employees.IgnoreQueryFilters().CountAsync(e => e.TenantId == id && e.IsActive, ct);
-        var amount = request.Amount is decimal a and >= 0m ? a : tenant.MonthlyPriceOverride ?? Pricing.MonthlyAmount(emp);
+        var loc = await _db.Locations.IgnoreQueryFilters().CountAsync(l => l.TenantId == id && l.IsActive, ct);
+        var amount = request.Amount is decimal a and >= 0m ? a : tenant.MonthlyPriceOverride ?? Pricing.MonthlyAmount(emp, loc);
         var actor = User.EmployeeId();
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
 
