@@ -8,7 +8,7 @@ export interface DayAttendanceRow {
   employeeName: string
   locationId: string
   locationName: string
-  status: 'OnTime' | 'Late' | 'Absent' | 'Pending' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission'
+  status: 'OnTime' | 'Late' | 'Absent' | 'Pending' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission' | 'Field'
   checkInAtUtc: string | null
   checkOutAtUtc: string | null
   // Photo audit: today's record id + whether it has a check-in selfie (optional — older backends omit).
@@ -36,6 +36,12 @@ export interface DayAttendanceRow {
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null
+  /** Field/mobile attendance ([[field-visit-mobile-attendance]]): today's field check-in/out + where.
+   *  When status is "Field", the worker checked in from an ad-hoc site (no office scan). */
+  fieldCheckInAtUtc?: string | null
+  fieldCheckOutAtUtc?: string | null
+  fieldCheckInLatitude?: number | null
+  fieldCheckInLongitude?: number | null
 }
 
 export interface EmployeeReportRow {

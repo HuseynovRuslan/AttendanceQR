@@ -22,7 +22,7 @@ function localDateISO(d: Date): string {
 function statusMatches(status: string, filter: string): boolean {
   switch (filter) {
     case 'present':
-      return status === 'OnTime' || status === 'Late'
+      return status === 'OnTime' || status === 'Late' || status === 'Field'
     case 'absent':
       return status === 'Absent'
     case 'pending':
@@ -34,7 +34,7 @@ function statusMatches(status: string, filter: string): boolean {
     case 'permission':
       return status === 'Permission'
     case 'incomplete':
-      return !['OnTime', 'Late', 'Absent', 'Pending', 'DayOff', 'OnLeave', 'Permission'].includes(status)
+      return !['OnTime', 'Late', 'Field', 'Absent', 'Pending', 'DayOff', 'OnLeave', 'Permission'].includes(status)
     default:
       return true
   }
@@ -167,7 +167,7 @@ export function TodayPage() {
   // "İşdə" (still at work) on today's board, or "Çıxış yoxdur" (forgot to check out) on a past date.
   const counts = { present: 0, absent: 0, pending: 0, incomplete: 0, dayOff: 0, onLeave: 0, sick: 0, permission: 0 }
   for (const r of locFiltered) {
-    if (r.status === 'OnTime' || r.status === 'Late') counts.present++
+    if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'Pending') counts.pending++
     else if (r.status === 'DayOff') counts.dayOff++
@@ -438,7 +438,10 @@ export function TodayPage() {
                   )}
                 </td>
                 <td className="mono" data-label="Giriş">
-                  {fmtTime(r.checkInAtUtc)}
+                  {fmtTime(r.checkInAtUtc ?? r.fieldCheckInAtUtc)}
+                  {r.status === 'Field' && (
+                    <span className="tag" title="Sahə ziyarəti — GPS ilə" style={{ marginLeft: 6, background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }}>📍 sahə</span>
+                  )}
                   {r.wasOffline && (
                     <span
                       className="tag"
@@ -455,7 +458,7 @@ export function TodayPage() {
                   )}
                 </td>
                 <td className="mono" data-label="Çıxış">
-                  {fmtTime(r.checkOutAtUtc)}
+                  {fmtTime(r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)}
                   {r.earlyDepartureReason && (
                     <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
                       Tez: {r.earlyDepartureReason}

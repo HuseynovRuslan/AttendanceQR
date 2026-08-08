@@ -23,6 +23,8 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   DayOff: { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' },
   OnLeave: { cls: 'b-leave', label: 'Məzuniyyət', icon: 'calendar' },
   Permission: { cls: 'b-permission', label: 'İcazə', icon: 'check' },
+  // Board-only: checked in from an ad-hoc field site (no office scan) — present, out in the field.
+  Field: { cls: 'b-trip', label: 'Sahədə', icon: 'check' },
 }
 
 export function statusLabel(status: string): string {

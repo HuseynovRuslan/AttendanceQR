@@ -695,17 +695,48 @@ public sealed class ReportQueryService : IReportQueryService
 
         var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
+        // Field/mobile attendance for the same day, so a worker sent to an ad-hoc site (no office scan)
+        // shows as "Sahədə" instead of absent. Earliest field check-in; a check-out only once EVERY
+        // field visit that day is closed (otherwise they're still on site).
+        var empIds = computed.Select(d => d.Employee.Id).ToList();
+        var fieldRaw = await _db.FieldVisits
+            .Where(v => v.VisitDate == day && empIds.Contains(v.EmployeeId) && v.CheckInAtUtc != null)
+            .Select(v => new { v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc, v.CheckInLatitude, v.CheckInLongitude })
+            .ToListAsync(ct);
+        var fieldByEmp = fieldRaw
+            .GroupBy(v => v.EmployeeId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var first = g.OrderBy(x => x.CheckInAtUtc).First();
+                    return (
+                        In: first.CheckInAtUtc,
+                        Out: g.All(x => x.CheckOutAtUtc != null) ? g.Max(x => x.CheckOutAtUtc) : (DateTime?)null,
+                        Lat: first.CheckInLatitude,
+                        Lng: first.CheckInLongitude);
+                });
+
         return computed
-            .Select(d => new DayAttendanceRow(
-                d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
-                BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal),
-                d.Record?.CheckInAtUtc, d.Record?.CheckOutAtUtc,
-                d.Record?.Id, d.Record?.CheckInPhotoKey != null,
-                d.Record?.FaceMatchScore, d.Record?.FaceMatchStatus.ToString() ?? "NotChecked",
-                d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
-                d.Record?.WasOffline ?? false,
-                d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
-                d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy))
+            .Select(d =>
+            {
+                fieldByEmp.TryGetValue(d.Employee.Id, out var fv);
+                var status = BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal);
+                // A field check-in with no office record → "Sahədə", not Qayıb / Gözlənilir.
+                if (fv.In != null && d.Record?.CheckInAtUtc == null && (status == "Absent" || status == "Pending"))
+                    status = "Field";
+                return new DayAttendanceRow(
+                    d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
+                    status,
+                    d.Record?.CheckInAtUtc, d.Record?.CheckOutAtUtc,
+                    d.Record?.Id, d.Record?.CheckInPhotoKey != null,
+                    d.Record?.FaceMatchScore, d.Record?.FaceMatchStatus.ToString() ?? "NotChecked",
+                    d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
+                    d.Record?.WasOffline ?? false,
+                    d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
+                    d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy,
+                    fv.In, fv.Out, fv.Lat, fv.Lng);
+            })
             .OrderBy(r => r.EmployeeName)
             .ToList();
     }

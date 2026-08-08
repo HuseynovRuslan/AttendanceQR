@@ -213,7 +213,7 @@ export function DashboardPage() {
   // Individual people, plotted where they actually scanned in (green = on duty, blue = left). Only
   // those whose check-in position is known; the rest fall back to the site marker inside the map.
   const people = useMemo<DashPerson[]>(() => {
-    return rows
+    const office = rows
       .filter((r) => r.checkInLatitude != null && r.checkInLongitude != null)
       .map((r) => ({
         id: r.employeeId,
@@ -223,6 +223,19 @@ export function DashboardPage() {
         onDuty: r.status === 'Incomplete',
         siteName: r.locationName,
       }))
+    // Field/mobile workers ([[field-visit-mobile-attendance]]) — plotted where they field-checked-in
+    // (no office scan). Green while still on site (no field check-out yet), blue once they've left.
+    const field = rows
+      .filter((r) => r.checkInLatitude == null && r.fieldCheckInLatitude != null && r.fieldCheckInLongitude != null)
+      .map((r) => ({
+        id: r.employeeId,
+        name: r.employeeName,
+        lat: r.fieldCheckInLatitude as number,
+        lng: r.fieldCheckInLongitude as number,
+        onDuty: !r.fieldCheckOutAtUtc,
+        siteName: 'Sahə ziyarəti',
+      }))
+    return [...office, ...field]
   }, [rows])
 
   // --- period sparkline -------------------------------------------------------

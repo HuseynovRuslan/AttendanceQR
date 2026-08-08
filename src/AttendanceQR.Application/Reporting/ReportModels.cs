@@ -125,7 +125,16 @@ public sealed record DayAttendanceRow(
     Guid? LeaveId = null,
     // Name of the admin/manager who set THIS attendance record by hand (open-record close, time fix,
     // undo-checkout). Null for a real scan — lets the board flag a manually-entered day.
-    string? ManualBy = null);
+    string? ManualBy = null,
+    // Field/mobile attendance ([[field-visit-mobile-attendance]]): today's field check-in/out for this
+    // employee, if any. When they have a field check-in but no office record, Status is set to "Field"
+    // ("Sahədə") so a worker sent to an ad-hoc site isn't shown as absent on the board.
+    DateTime? FieldCheckInAtUtc = null,
+    DateTime? FieldCheckOutAtUtc = null,
+    // Where the field check-in happened — so the dashboard map can plot on-site field workers too, not
+    // just office scans.
+    double? FieldCheckInLatitude = null,
+    double? FieldCheckInLongitude = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

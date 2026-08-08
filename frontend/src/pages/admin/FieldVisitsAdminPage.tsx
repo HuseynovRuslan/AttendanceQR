@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import {
   getFieldVisitBoard,
@@ -24,8 +26,41 @@ const BAKU: [number, number] = [40.4093, 49.8671]
 function fmtDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
 }
-function mapLink(lat: number, lng: number) {
-  return `https://www.google.com/maps?q=${lat},${lng}`
+// Read-only map fitting all of a visit's points (target + check-in + check-out).
+function FitPts({ pts }: { pts: [number, number][] }) {
+  const map = useMap()
+  useEffect(() => {
+    if (pts.length === 0) return
+    if (pts.length === 1) { map.setView(pts[0], 16); return }
+    map.fitBounds(pts, { padding: [40, 40], maxZoom: 17 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pts.length])
+  return null
+}
+
+function VisitMap({ v }: { v: BoardFieldVisit }) {
+  const marks: { at: [number, number]; label: string; color: string }[] = []
+  if (v.targetLatitude != null) marks.push({ at: [v.targetLatitude, v.targetLongitude!], label: 'Hədəf', color: '#1E70C8' })
+  if (v.checkInLatitude != null) marks.push({ at: [v.checkInLatitude, v.checkInLongitude!], label: 'Giriş', color: '#16a34a' })
+  if (v.checkOutLatitude != null) marks.push({ at: [v.checkOutLatitude, v.checkOutLongitude!], label: 'Çıxış', color: '#d97706' })
+  const centre: [number, number] = marks.length ? marks[0].at : [40.4093, 49.8671]
+  return (
+    <div style={{ height: 340, width: '100%', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c100)' }}>
+      <MapContainer center={centre} zoom={15} scrollWheelZoom style={{ height: '100%', width: '100%' }} attributionControl={false}>
+        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+        <FitPts pts={marks.map((m) => m.at)} />
+        {v.targetLatitude != null && v.targetRadiusMeters != null && (
+          <Circle center={[v.targetLatitude, v.targetLongitude!]} radius={v.targetRadiusMeters}
+            pathOptions={{ color: '#1E70C8', fillColor: '#1E70C8', fillOpacity: 0.08, weight: 1.5 }} />
+        )}
+        {marks.map((m, i) => (
+          <CircleMarker key={i} center={m.at} radius={8} pathOptions={{ color: '#fff', weight: 2, fillColor: m.color, fillOpacity: 0.95 }}>
+            <Tooltip direction="top">{m.label}</Tooltip>
+          </CircleMarker>
+        ))}
+      </MapContainer>
+    </div>
+  )
 }
 
 export function FieldVisitsAdminPage() {
@@ -47,6 +82,7 @@ export function FieldVisitsAdminPage() {
   const [saving, setSaving] = useState(false)
 
   const [photo, setPhoto] = useState<{ checkInUrl: string | null; checkOutUrl: string | null } | null>(null)
+  const [mapVisit, setMapVisit] = useState<BoardFieldVisit | null>(null)
 
   async function load() {
     setLoading(true)
@@ -214,15 +250,21 @@ export function FieldVisitsAdminPage() {
                     <td data-label="Status"><span className="tag" style={{ background: st.bg, color: st.fg }}>{st.label}</span></td>
                     <td data-label="Hədəf" style={{ maxWidth: 180 }}>
                       {v.targetLabel || <span className="muted">—</span>}
-                      {v.targetLatitude != null && (
-                        <> · <a href={mapLink(v.targetLatitude, v.targetLongitude!)} target="_blank" rel="noreferrer">hədəf</a></>
+                      {(v.targetLatitude != null || v.checkInLatitude != null || v.checkOutLatitude != null) && (
+                        <div>
+                          <button
+                            onClick={() => setMapVisit(v)}
+                            style={{ border: 'none', background: 'none', color: 'var(--blue, #1E70C8)', cursor: 'pointer', padding: 0, font: 'inherit', textDecoration: 'underline' }}
+                          >
+                            🗺️ Xəritədə bax
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td data-label="Giriş" style={{ whiteSpace: 'nowrap' }}>
                       {v.checkInAtUtc ? (
                         <>
-                          <b>{fmtTime(v.checkInAtUtc)}</b>{' '}
-                          {v.checkInLatitude != null && <a href={mapLink(v.checkInLatitude, v.checkInLongitude!)} target="_blank" rel="noreferrer">xəritə</a>}
+                          <b>{fmtTime(v.checkInAtUtc)}</b>
                           {v.checkInDistanceMeters != null && (
                             <div style={{ fontSize: 11, color: inRadius ? 'var(--leaf-d)' : 'var(--clay)' }}>
                               {inRadius ? '✅ ərazidə' : `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq`}
@@ -232,10 +274,7 @@ export function FieldVisitsAdminPage() {
                       ) : <span className="muted">—</span>}
                     </td>
                     <td data-label="Çıxış" style={{ whiteSpace: 'nowrap' }}>
-                      {v.checkOutAtUtc ? (
-                        <><b>{fmtTime(v.checkOutAtUtc)}</b>{' '}
-                          {v.checkOutLatitude != null && <a href={mapLink(v.checkOutLatitude, v.checkOutLongitude!)} target="_blank" rel="noreferrer">xəritə</a>}</>
-                      ) : <span className="muted">—</span>}
+                      {v.checkOutAtUtc ? <b>{fmtTime(v.checkOutAtUtc)}</b> : <span className="muted">—</span>}
                     </td>
                     <td data-label="Müddət" className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes != null ? `${v.durationMinutes} dəq` : '—'}</td>
                     <td data-label="Foto">
@@ -252,6 +291,25 @@ export function FieldVisitsAdminPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {mapVisit && (
+        <div
+          onClick={() => setMapVisit(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}
+        >
+          <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px,94vw)' }}>
+            <div className="card-title" style={{ marginBottom: 10 }}>{mapVisit.employeeName} — {mapVisit.targetLabel || 'Sahə ziyarəti'}</div>
+            <VisitMap v={mapVisit} />
+            <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              {mapVisit.targetLatitude != null && <span><span style={{ color: '#1E70C8' }}>●</span> Hədəf</span>}
+              {mapVisit.checkInLatitude != null && <span><span style={{ color: '#16a34a' }}>●</span> Giriş</span>}
+              {mapVisit.checkOutLatitude != null && <span><span style={{ color: '#d97706' }}>●</span> Çıxış</span>}
+              {mapVisit.checkInDistanceMeters != null && <span className="muted">Hədəfə: {fmtDist(mapVisit.checkInDistanceMeters)}</span>}
+            </div>
+            <button className="btn btn-sm" style={{ marginTop: 12 }} onClick={() => setMapVisit(null)}>Bağla</button>
+          </div>
         </div>
       )}
 
