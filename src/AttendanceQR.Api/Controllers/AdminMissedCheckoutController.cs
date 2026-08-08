@@ -46,7 +46,9 @@ public class AdminMissedCheckoutController : ControllerBase
             where r.Status == MissedCheckoutStatus.Pending
             join e in _db.Employees on r.EmployeeId equals e.Id
             join l in _db.Locations on e.LocationId equals l.Id
-            where managed == null || managed.Contains(e.LocationId)
+            // A manager reviews only their branches' Role==Employee requests — not a same-branch
+            // admin's/manager's, and not their own (self-approval is no review; an admin closes theirs).
+            where managed == null || (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee && e.Id != callerId)
             orderby r.RequestedAtUtc
             select new
             {
@@ -100,7 +102,10 @@ public class AdminMissedCheckoutController : ControllerBase
         if (mc.Status != MissedCheckoutStatus.Pending)
             return Conflict(new { error = "AlreadyReviewed" });
 
-        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, callerId, role, mc.EmployeeId, ct))
+        // Approving WRITES the target's checkout, so this is the manage rule, not mere visibility:
+        // a manager may close only their own branches' Role==Employee days — never an admin's, a
+        // fellow manager's, or (unlike CanAccess) their OWN request, which would be self-approval.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, callerId, role, mc.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == mc.AttendanceRecordId, ct);
@@ -134,7 +139,8 @@ public class AdminMissedCheckoutController : ControllerBase
         if (mc.Status != MissedCheckoutStatus.Pending)
             return Conflict(new { error = "AlreadyReviewed" });
 
-        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, callerId, role, mc.EmployeeId, ct))
+        // Same manage rule as Approve — rejecting is also a review decision over the target's day.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, callerId, role, mc.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         mc.Status = MissedCheckoutStatus.Rejected;

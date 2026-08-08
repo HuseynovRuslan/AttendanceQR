@@ -56,13 +56,35 @@ public class ManagerController : ControllerBase
     private async Task<bool> ManagesLocationAsync(Guid locationId) =>
         (await ManagedLocationIdsAsync()).Contains(locationId);
 
-    /// <summary>The employee, only if they sit in a location this manager oversees — otherwise null,
-    /// which every caller turns into a 404 so a manager cannot even probe for who exists elsewhere.</summary>
-    private async Task<Employee?> ScopedEmployeeAsync(Guid id)
+    /// <summary>
+    /// THE authorization decision for a manager acting ON another account — every mutating
+    /// per-employee endpoint below (profile edit, PIN reset, leaves) goes through here and nowhere
+    /// else, so the rule cannot drift between endpoints.
+    ///
+    /// A manager may manage someone only if ALL of these hold, decided from the DB row, never from
+    /// anything the client sent:
+    ///   • same tenant — enforced by the global query filter on Employees (fail-closed);
+    ///   • the target sits in a branch this manager oversees (their ManagedLocations set);
+    ///   • the target's Role is Employee — NEVER an Admin, another Manager, or the manager themself.
+    ///     Admins and managers also have a LocationId (where they clock in), so branch membership
+    ///     alone once made them valid targets: a manager could change an admin's email/phone or
+    ///     reset their PIN and read the temp PIN — a takeover, and with it role escalation.
+    ///
+    /// Outside the manager's reach (other branch, other tenant, nonexistent) → <paramref name="outOfScope"/>
+    /// (default 404), so a manager cannot even probe for who exists elsewhere. Inside their branch but
+    /// wrong role (admin/manager/self) → 403, with no state touched and nothing sensitive returned.
+    /// </summary>
+    private async Task<(Employee? Employee, IActionResult? Error)> ManageableEmployeeAsync(
+        Guid id, IActionResult? outOfScope = null)
     {
         var managed = await ManagedLocationIdsAsync();
-        return await _db.Employees.FirstOrDefaultAsync(
+        var target = await _db.Employees.FirstOrDefaultAsync(
             e => e.Id == id && managed.Contains(e.LocationId), HttpContext.RequestAborted);
+        if (target is null)
+            return (null, outOfScope ?? NotFound(new { error = "EmployeeNotFound" }));
+        if (target.Role != EmployeeRole.Employee || target.Id == M15())
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagerCannotManageRole" }));
+        return (target, null);
     }
 
     // --- reference data (for the manager's own forms) ---------------------------
@@ -189,12 +211,17 @@ public class ManagerController : ControllerBase
         return Ok(new { deleted = id });
     }
 
-    /// <summary>True when anyone outside this manager's branches is on the shift.</summary>
+    /// <summary>True when anyone beyond this manager's reach is on the shift — another branch, OR a
+    /// same-branch admin/manager. Editing a shift re-judges past days for everyone on it (hours decide
+    /// pay), so the same Role==Employee boundary that guards account edits guards this indirect write:
+    /// without it a manager could move an admin's pay by editing the shift the admin sits on.</summary>
     private async Task<bool> HasOutsideUseAsync(Guid scheduleId)
     {
         var managed = await ManagedLocationIdsAsync();
         return await _db.Employees.AnyAsync(
-            e => e.ScheduleId == scheduleId && !managed.Contains(e.LocationId), HttpContext.RequestAborted);
+            e => e.ScheduleId == scheduleId
+                 && !(managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee),
+            HttpContext.RequestAborted);
     }
 
     /// <summary>Shift-field validation, identical to the admin path's.</summary>
@@ -211,7 +238,10 @@ public class ManagerController : ControllerBase
     // --- employees --------------------------------------------------------------
 
     // GET /api/manager/employees — the manager's own branches' staff. No salary field is projected —
-    // it is not merely hidden in the UI, it never leaves the server for a manager.
+    // it is not merely hidden in the UI, it never leaves the server for a manager. Only Role==Employee
+    // rows: this list feeds the manager's edit/reset-PIN surface, and admins/managers who merely clock
+    // in at the branch are not the manager's to manage (ManageableEmployeeAsync refuses them anyway),
+    // so listing them would only leak their contact details behind buttons that 403.
     [HttpGet("employees")]
     public async Task<IActionResult> Employees()
     {
@@ -221,7 +251,7 @@ public class ManagerController : ControllerBase
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
 
         var rows = await _db.Employees
-            .Where(e => managed.Contains(e.LocationId))
+            .Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)
             .OrderBy(e => e.FullName)
             .Select(e => new
             {
@@ -324,9 +354,9 @@ public class ManagerController : ControllerBase
     public async Task<IActionResult> UpdateEmployee(Guid id, [FromBody] ManagerEmployeeRequest request)
     {
         var ct = HttpContext.RequestAborted;
-        var employee = await ScopedEmployeeAsync(id);
+        var (employee, denied) = await ManageableEmployeeAsync(id);
         if (employee is null)
-            return NotFound(new { error = "EmployeeNotFound" });
+            return denied!;
         if (string.IsNullOrWhiteSpace(request.FullName))
             return BadRequest(new { error = "NameRequired" });
         // Moving is allowed, but only between branches this same manager oversees.
@@ -380,9 +410,9 @@ public class ManagerController : ControllerBase
     public async Task<IActionResult> ResetPin(Guid id)
     {
         var ct = HttpContext.RequestAborted;
-        var employee = await ScopedEmployeeAsync(id);
+        var (employee, denied) = await ManageableEmployeeAsync(id);
         if (employee is null)
-            return NotFound(new { error = "EmployeeNotFound" });
+            return denied!;
 
         var tempPin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
         employee.PasswordHash = _passwordHasher.Hash(tempPin);
@@ -395,23 +425,25 @@ public class ManagerController : ControllerBase
 
     // --- leaves -----------------------------------------------------------------
 
-    // GET /api/manager/leaves — leave records for the manager's own staff only.
+    // GET /api/manager/leaves — leave records for the manager's own staff only. Same boundary as the
+    // writes: only Role==Employee. A same-branch admin's or fellow manager's leaves are not the
+    // manager's business, and showing rows the manager can no longer delete would only confuse.
     [HttpGet("leaves")]
     public async Task<IActionResult> Leaves([FromQuery] DateOnly? from, [FromQuery] DateOnly? to)
     {
         var ct = HttpContext.RequestAborted;
         var managed = await ManagedLocationIdsAsync();
-        var staffIds = await _db.Employees
-            .Where(e => managed.Contains(e.LocationId)).Select(e => e.Id).ToListAsync(ct);
+        var staff = await _db.Employees
+            .Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
 
+        var staffIds = staff.Keys.ToList();
         var query = _db.LeaveRecords.Where(l => staffIds.Contains(l.EmployeeId));
         if (from is not null) query = query.Where(l => l.ToDate >= from);
         if (to is not null) query = query.Where(l => l.FromDate <= to);
 
         var leaves = await query.OrderByDescending(l => l.FromDate).ToListAsync(ct);
-        var names = await _db.Employees
-            .Where(e => managed.Contains(e.LocationId))
-            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var names = staff;
 
         return Ok(leaves.Select(l => new
         {
@@ -435,9 +467,14 @@ public class ManagerController : ControllerBase
         if (request.ToDate.DayNumber - request.FromDate.DayNumber + 1 > MaxLeaveRangeDays)
             return BadRequest(new { error = "DateRangeTooLong" });
 
-        // The employee must be one this manager oversees — the whole point of the scope check.
-        if (await ScopedEmployeeAsync(request.EmployeeId) is null)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "EmployeeNotManaged" });
+        // The employee must be one this manager MANAGES — same central rule as the profile edit, so a
+        // manager cannot file (and thus alter the paid attendance of) an admin's or a peer's days.
+        // Out-of-scope keeps its historical 403 EmployeeNotManaged, which the manager UI translates.
+        var (target, denied) = await ManageableEmployeeAsync(
+            request.EmployeeId,
+            StatusCode(StatusCodes.Status403Forbidden, new { error = "EmployeeNotManaged" }));
+        if (target is null)
+            return denied!;
 
         var leave = new LeaveRecord
         {
@@ -463,10 +500,13 @@ public class ManagerController : ControllerBase
         var leave = await _db.LeaveRecords.FirstOrDefaultAsync(l => l.Id == id, ct);
         if (leave is null)
             return NotFound(new { error = "NotFound" });
-        // The record exists, but is it one of THIS manager's people? If not, answer as if it doesn't
-        // exist rather than confirm a leave belonging to another branch.
-        if (await ScopedEmployeeAsync(leave.EmployeeId) is null)
-            return NotFound(new { error = "NotFound" });
+        // The record exists, but does it belong to someone THIS manager may manage? Out of scope
+        // answers as if it doesn't exist rather than confirm a leave belonging to another branch;
+        // an admin's/manager's leave in the manager's own branch is refused like every other edit.
+        var (target, denied) = await ManageableEmployeeAsync(
+            leave.EmployeeId, NotFound(new { error = "NotFound" }));
+        if (target is null)
+            return denied!;
 
         var (fromDate, toDate) = (leave.FromDate, leave.ToDate);
         _db.LeaveRecords.Remove(leave);

@@ -115,8 +115,10 @@ public sealed class ReportQueryService : IReportQueryService
     private async Task<(ReportAccess Access, List<ScopedEmployee> Employees)> ScopedEmployeesAsync(
         Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct)
     {
-        // Admins/managers who also clock in ARE included (e.g. a director who scans); only the
-        // system/root accounts in HiddenEmails are left out. Same rule as the nightly job.
+        // For an ADMIN, admins/managers who also clock in ARE included (e.g. a director who scans);
+        // only the system/root accounts in HiddenEmails are left out. Same rule as the nightly job.
+        // A MANAGER's boards stop at Role==Employee (plus their own row) — the people above them are
+        // not theirs to watch, mirroring LocationScopeRules.CanManageEmployeeAsync.
         var query = _db.Employees.Where(e =>
             e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())));
 
@@ -133,11 +135,12 @@ public sealed class ReportQueryService : IReportQueryService
                 {
                     if (!managed.Contains(reqLoc))
                         return (ReportAccess.Forbidden, []);
-                    query = query.Where(e => e.LocationId == reqLoc);
+                    query = query.Where(e => e.LocationId == reqLoc && (e.Role == EmployeeRole.Employee || e.Id == requesterId));
                 }
                 else
                 {
-                    query = query.Where(e => managed.Contains(e.LocationId));
+                    query = query.Where(e =>
+                        (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee) || e.Id == requesterId);
                 }
                 break;
 
@@ -853,20 +856,22 @@ public sealed class ReportQueryService : IReportQueryService
         var empIds = dayLogs.Where(a => a.EmployeeId.HasValue).Select(a => a.EmployeeId!.Value).Distinct().ToList();
         var empById = await _db.Employees
             .Where(e => empIds.Contains(e.Id))
-            .Select(e => new { e.Id, e.FullName, e.LocationId })
-            .ToDictionaryAsync(e => e.Id, e => (e.FullName, e.LocationId), ct);
+            .Select(e => new { e.Id, e.FullName, e.LocationId, e.Role })
+            .ToDictionaryAsync(e => e.Id, e => (e.FullName, e.LocationId, e.Role), ct);
         var allLocations = await _db.Locations.ToListAsync(ct);
         var locationById = allLocations.ToDictionary(l => l.Id);
         var locationNames = allLocations.ToDictionary(l => l.Id, l => l.Name);
 
-        // Manager scope: only employees in the locations they manage. Admin: everything.
+        // Manager scope: only Role==Employee workers in the locations they manage (plus their own
+        // rejected scans) — same boundary as the boards. Admin: everything.
         List<Guid>? managed = role == EmployeeRole.Manager
             ? await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct)
             : null;
 
         bool InScope(Guid? employeeId) =>
             managed is null
-            || (employeeId is Guid id && empById.TryGetValue(id, out var e) && managed.Contains(e.LocationId));
+            || (employeeId is Guid id && empById.TryGetValue(id, out var e)
+                && (id == requesterId || (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)));
 
         string NameOf(Guid? employeeId) =>
             employeeId is Guid id && empById.TryGetValue(id, out var e) ? e.FullName : "(naməlum)";
