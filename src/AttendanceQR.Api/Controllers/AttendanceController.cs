@@ -29,7 +29,13 @@ public class AttendanceController : ControllerBase
          // The scan failed on the phone for a non-GPS reason too — so a stuck employee is visible on
          // the Problems screen instead of only phoning in. CameraBlocked = the camera would not open;
          // NetworkError = the request never reached us (reported later, once the phone reconnects).
-         "CameraBlocked", "NetworkError", "ScanError"];
+         "CameraBlocked", "NetworkError", "ScanError",
+         // An offline scan that never became a record. OfflineRejected = the replay was refused by a
+         // definitive 4xx; OfflineExpired = it sat past the window in which the phone's clock is still
+         // trusted, so replaying it would have written the wrong DAY. Both used to be a silent delete
+         // on the device: the employee saw "saved", the tabel said Qayıb, and nobody could connect
+         // the two. These put the event where an admin can act on it.
+         "OfflineRejected", "OfflineExpired"];
 
     // A blocked employee retries over and over. Collapse the same (employee, reason) into one
     // incident for this long, so one stuck phone doesn't bury the day's real problems.

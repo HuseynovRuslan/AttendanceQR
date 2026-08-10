@@ -18,6 +18,11 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   TokenMalformed: { label: 'Yanlış QR', cls: 'bg-amber-100 text-amber-700' },
   SignatureInvalid: { label: 'Yanlış QR (imza)', cls: 'bg-amber-100 text-amber-700' },
   TooSoonToCheckOut: { label: 'Çox tez çıxış cəhdi', cls: 'bg-blue-100 text-blue-700' },
+  // An offline scan that never became a record. BLOCKING on purpose: the employee tapped, was shown
+  // a green "saved" card, and has nothing for that day — so unless someone fixes it by hand
+  // (/admin/open-records or a manual entry) they are marked Qayıb for a day they worked.
+  OfflineRejected: { label: 'Oflayn skan qəbul edilmədi', cls: 'bg-red-100 text-red-700', blocking: true },
+  OfflineExpired: { label: 'Oflayn skan gec göndərildi', cls: 'bg-red-100 text-red-700', blocking: true },
   // Reported by the phone itself — the scan never reached the server.
   GpsPermissionDenied: { label: 'Məkan icazəsi verilməyib', cls: 'bg-red-100 text-red-700', blocking: true },
   GpsUnavailable: { label: 'Telefonda məkan bağlıdır', cls: 'bg-red-100 text-red-700', blocking: true },

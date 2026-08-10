@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint, installNudgeActive } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
+import { OfflineRejectBanner } from '../components/OfflineRejectBanner'
 import { FieldVisitCards } from '../components/FieldVisitCards'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
@@ -95,6 +96,8 @@ export function HomePage() {
   return (
     <div className="flex flex-col gap-4">
       <InstallHint onShown={setInstallShown} />
+      {/* First, because it is the only thing here that costs the employee a day's pay if unread. */}
+      <OfflineRejectBanner />
       <AnnouncementBanner />
       {/* Ayın işçisi modulu deaktivdir — mükafat kartı da gizlidir. */}
       {false && <AwardCard />}

@@ -16,6 +16,8 @@ import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/f
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan } from '../lib/offlineQueue'
+import { decodeJwt } from '../lib/jwt'
+import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
@@ -661,6 +663,9 @@ export function ScanPage() {
           photoBase64: photoBase64 ?? undefined,
           clientTimestampUtc,
           queuedAtMs: Date.now(),
+          // Stamp WHOSE scan this is. The queue is device storage, not session storage, so on a
+          // shared site phone the next person to sign in would otherwise replay this as their own.
+          employeeId: decodeJwt(getToken() ?? '')?.sub,
         })
         // Saved on the device IS a success for the employee — same confident buzz as a live scan.
         successFeedback()
