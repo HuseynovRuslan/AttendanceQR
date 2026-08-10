@@ -126,6 +126,22 @@ api.qrlog.az {
 test.qrlog.az {
 	encode zstd gzip
 	import security_headers
+
+	# Content-Security-Policy, ENFORCING, and only here. Every source below is one this app really
+	# uses — read out of the code and the running container, not guessed:
+	#   fonts.googleapis / gstatic  the Manrope + IBM Plex Mono stylesheet in index.html
+	#   tile.openstreetmap          LocationMapPicker
+	#   basemaps.cartocdn           the dashboard, problems, field-visit and HQ maps
+	#   *.r2.cloudflarestorage.com  presigned selfie URLs, loaded straight from the browser
+	#   'unsafe-inline' for STYLE   the admin panel styles inline throughout, and leaflet injects its own
+	#   blob: for worker            the QR decoder spins one up; blob: img covers canvas captures
+	# script-src stays 'self' with no 'unsafe-inline' and no 'unsafe-eval' — that is the half that
+	# actually stops an injected script, and the half most easily lost by adding sources on a hunch.
+	#
+	# It is here and not on production because getting this wrong breaks the selfie, the map or the
+	# typeface SILENTLY, on an employee's phone, at 08:00. Prove it on staging, then promote.
+	header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.r2.cloudflarestorage.com; connect-src 'self' https://api-test.qrlog.az; worker-src 'self' blob:; manifest-src 'self'"
+
 	reverse_proxy stg-frontend:80
 }
 
