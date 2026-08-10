@@ -114,7 +114,9 @@ export function ActivatePage() {
             ? 'Aktivasiya linki köhnəlib. Yeni dəvət tələb edin.'
             : code === 'PinInvalid'
               ? 'PIN düz 4 rəqəm olmalıdır'
-              : 'Aktivasiya alınmadı — token yanlışdır.',
+              : code === 'PinTooWeak'
+                ? 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir'
+                : 'Aktivasiya alınmadı — token yanlışdır.',
       )
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')

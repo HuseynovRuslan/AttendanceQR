@@ -79,7 +79,7 @@ public class AdminPinResetController : ControllerBase
         if (employee is null || employee.ActivatedAtUtc is null)
             return Conflict(new { error = "NotActivated" });
 
-        var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var pin = PinRules.Generate();
         employee.PasswordHash = _passwordHasher.Hash(pin);
         employee.MustChangePin = true;   // the employee picks their own PIN on next login
         employee.TokenVersion++;         // kill any session still holding the old PIN's token

@@ -1,5 +1,5 @@
-using System.Security.Cryptography;
 using AttendanceQR.Domain;
+using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -73,7 +73,7 @@ public partial class SuperAdminController
             return denied!;
 
         var ct = HttpContext.RequestAborted;
-        var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var pin = PinRules.Generate();
         emp.PasswordHash = _passwordHasher.Hash(pin);
         emp.MustChangePin = true;
         emp.TokenVersion++; // "log out everywhere" — the old token stops validating immediately.

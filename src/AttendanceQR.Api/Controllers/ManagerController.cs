@@ -321,7 +321,7 @@ public class ManagerController : ControllerBase
         if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone, ct))
             return Conflict(new { error = "PhoneAlreadyExists" });
 
-        var tempPin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var tempPin = PinRules.Generate();
         var (composedName, firstName, lastName) =
             EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
         var employee = new Employee
@@ -424,7 +424,7 @@ public class ManagerController : ControllerBase
         if (employee is null)
             return denied!;
 
-        var tempPin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var tempPin = PinRules.Generate();
         employee.PasswordHash = _passwordHasher.Hash(tempPin);
         employee.MustChangePin = true;
         employee.TokenVersion++; // any existing session stops working — a reset should end old logins

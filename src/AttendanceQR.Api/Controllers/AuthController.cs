@@ -51,9 +51,6 @@ public partial class AuthController : ControllerBase
     // so login timing does not reveal whether an account exists.
     private static string? _decoyHash;
 
-    [GeneratedRegex(@"^\d{4}$")]
-    private static partial Regex PinFormat();
-
     public AuthController(
         AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore,
         IPhotoStorageService photoStorage, IFaceMatchService faceMatch, IPushNotifier pushNotifier,
@@ -96,10 +93,13 @@ public partial class AuthController : ControllerBase
         if (!ActivationToken.VerifyRandomPart(randomPart, employee.InvitationTokenHash))
             return BadRequest(new { error = "InvalidToken" });
 
-        // 5b. The PIN is the account's only credential — enforce the 4-digit format here so it
-        // can never be set to something weaker/different than what login expects.
-        if (!PinFormat().IsMatch(request.Password))
+        // 5b. The PIN is the account's only credential — enforce the shape here so it can never be
+        // set to something weaker/different than what login expects, and refuse the handful of
+        // guesses an attacker starts with (0000, 1234, 1212).
+        if (!PinRules.IsWellFormed(request.Password))
             return BadRequest(new { error = "PinInvalid" });
+        if (PinRules.IsTooWeak(request.Password))
+            return BadRequest(new { error = "PinTooWeak" });
 
         var now = DateTime.UtcNow;
 
@@ -246,6 +246,17 @@ public partial class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
+        // Per-IP failure cap, checked BEFORE any DB/PBKDF2 work. The per-identifier lockout below
+        // bounds guessing at ONE account — it does nothing against the attack that actually works
+        // here: spraying a single obvious PIN across every phone number in the company. Each
+        // identifier gets its own fresh budget, so 114 employees is 114 free attempts and no lockout
+        // ever trips. This is the cap that costs. Same window and namespace shape as app-login.
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var ipKey = $"login-ip:{ip}";
+        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxAppLoginFailPerIp)
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = (int)AppLoginIpWindow.TotalMinutes });
+
         // A 4-digit PIN is only 10,000 combinations — without this, an unthrottled attacker could
         // exhaust the whole space in seconds. Checked before touching the DB/hasher, so the key has
         // to be derived from the input alone — LoginIdentity canonicalizes it the same way the
@@ -278,6 +289,9 @@ public partial class AuthController : ControllerBase
         // cool-off, instead of being surprised by it.
         if (!canLogin)
         {
+            // Only failures count, so a real employee signing in normally is never throttled — the
+            // cap only bites a stream of failures from one source.
+            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, AppLoginIpWindow);
             var remaining = _lockoutStore.RecordFailure(lockoutKey);
             if (remaining <= 0)
                 return StatusCode(StatusCodes.Status429TooManyRequests,
@@ -419,7 +433,7 @@ public partial class AuthController : ControllerBase
         _cache.Remove(faceLockKey); // a genuine match clears the failure counter
 
         // Both factors passed — reset the PIN and hand it back, same reset an admin ResetPin does.
-        var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var pin = PinRules.Generate();
         employee.PasswordHash = _passwordHasher.Hash(pin);
         employee.MustChangePin = true;
         employee.TokenVersion++;
@@ -469,9 +483,11 @@ public partial class AuthController : ControllerBase
         if (!_passwordHasher.Verify(employee.PasswordHash, request.CurrentPassword))
             return Unauthorized(new { error = "InvalidCurrentPassword" });
 
-        // Same 4-digit PIN format enforced at activation — a changed password must stay a PIN.
-        if (!PinFormat().IsMatch(request.NewPassword))
+        // Same rules as activation — a changed password must stay a PIN, and must not be a guess.
+        if (!PinRules.IsWellFormed(request.NewPassword))
             return BadRequest(new { error = "PinInvalid" });
+        if (PinRules.IsTooWeak(request.NewPassword))
+            return BadRequest(new { error = "PinTooWeak" });
 
         employee.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         employee.MustChangePin = false;
@@ -502,8 +518,10 @@ public partial class AuthController : ControllerBase
         if (!employee.MustChangePin)
             return Conflict(new { error = "AlreadySet" });
 
-        if (!PinFormat().IsMatch(request.NewPin))
+        if (!PinRules.IsWellFormed(request.NewPin))
             return BadRequest(new { error = "PinInvalid" });
+        if (PinRules.IsTooWeak(request.NewPin))
+            return BadRequest(new { error = "PinTooWeak" });
 
         employee.PasswordHash = _passwordHasher.Hash(request.NewPin);
         employee.MustChangePin = false;

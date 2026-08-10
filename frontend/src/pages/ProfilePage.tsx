@@ -42,7 +42,9 @@ export function ProfilePage() {
           ? 'Cari PIN yanlışdır'
           : code === 'PinInvalid'
             ? 'Yeni PIN düz 4 rəqəm olmalıdır'
-            : 'PIN dəyişdirilmədi',
+            : code === 'PinTooWeak'
+              ? 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir'
+              : 'PIN dəyişdirilmədi',
       )
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')

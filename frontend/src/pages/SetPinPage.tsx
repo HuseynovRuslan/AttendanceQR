@@ -69,7 +69,13 @@ export function SetPinPage() {
         return
       }
       const code = data && 'error' in data ? data.error : ''
-      setError(code === 'PinInvalid' ? 'PIN düz 4 rəqəm olmalıdır' : 'PIN təyin edilmədi')
+      setError(
+        code === 'PinInvalid'
+          ? 'PIN düz 4 rəqəm olmalıdır'
+          : code === 'PinTooWeak'
+            ? 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir'
+            : 'PIN təyin edilmədi',
+      )
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')
     } finally {

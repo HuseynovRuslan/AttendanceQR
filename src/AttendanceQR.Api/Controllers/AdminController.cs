@@ -616,7 +616,7 @@ public class AdminController : ControllerBase
         if (phone is not null && takenPhones.Contains(phone))
             return (null, null, "PhoneAlreadyExists");
 
-        var tempPin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var tempPin = PinRules.Generate();
         var now = DateTime.UtcNow;
         var employee = new Employee
         {
@@ -881,7 +881,7 @@ public class AdminController : ControllerBase
             return Conflict(new { error = "NotActivated" });
 
         // Cryptographically random 4-digit PIN, zero-padded (0000–9999).
-        var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        var pin = PinRules.Generate();
         employee.PasswordHash = _passwordHasher.Hash(pin);
         employee.MustChangePin = true;   // the employee picks their own PIN on next login
         employee.TokenVersion++;         // kill any session still holding the old PIN's token

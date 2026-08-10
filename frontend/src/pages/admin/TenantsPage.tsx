@@ -33,6 +33,7 @@ const ERRORS: Record<string, string> = {
   SlugTaken: 'Bu ünvan artıq istifadə olunur',
   AdminPhoneInvalid: 'Admin nömrəsi yanlışdır',
   AdminPinInvalid: 'PIN 4 rəqəm olmalıdır',
+  AdminPinTooWeak: 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir',
   TenantNotFound: 'Şirkət tapılmadı',
   CannotDisableOwnTenant: 'Öz şirkətinizi söndürə bilməzsiniz — panelə girişiniz bağlanardı',
   TenantInactive: 'Şirkət söndürülüb — əvvəl aktiv edin',

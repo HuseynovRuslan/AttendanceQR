@@ -75,9 +75,6 @@ public partial class SuperAdminController : ControllerBase
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,19}$")]
     private static partial Regex SlugFormat();
 
-    [GeneratedRegex(@"^\d{4}$")]
-    private static partial Regex PinFormat();
-
     // GET /api/super/me — does this account manage tenants? The panel asks before showing the menu
     // item, so it never offers a screen that would only 403.
     [HttpGet("me")]
@@ -171,10 +168,12 @@ public partial class SuperAdminController : ControllerBase
             return BadRequest(new { error = "AdminPhoneInvalid" });
 
         var pin = string.IsNullOrWhiteSpace(request.AdminPin)
-            ? RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4")
+            ? PinRules.Generate()
             : request.AdminPin.Trim();
-        if (!PinFormat().IsMatch(pin))
+        if (!PinRules.IsWellFormed(pin))
             return BadRequest(new { error = "AdminPinInvalid" });
+        if (PinRules.IsTooWeak(pin))
+            return BadRequest(new { error = "AdminPinTooWeak" });
 
         var tenant = new Tenant
         {
