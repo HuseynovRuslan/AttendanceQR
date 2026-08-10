@@ -70,6 +70,18 @@ public class OperatorTakeoverTests
             IsActive = true, ActivatedAtUtc = DateTime.UtcNow, PasswordHash = "original-hash",
         };
 
+        /// <summary>Nothing in this file deletes an employee, so the purge is never reached.</summary>
+        private sealed class StubPhotoStorage : AttendanceQR.Infrastructure.Services.IPhotoStorageService
+        {
+            public Task<string> UploadCheckInPhotoAsync(Guid e, Guid r, byte[] b, CancellationToken ct = default) => Task.FromResult("");
+            public Task<string> UploadReferencePhotoAsync(Guid e, byte[] b, CancellationToken ct = default) => Task.FromResult("");
+            public Task<string> UploadFieldWorkPhotoAsync(Guid t, Guid v, byte[] b, CancellationToken ct = default) => Task.FromResult("");
+            public Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default) => Task.FromResult("");
+            public Task<byte[]> GetBytesAsync(string key, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
+            public Task DeleteByPrefixOlderThanAsync(string p, DateTime o, CancellationToken ct = default) => Task.CompletedTask;
+            public Task<int> DeleteObjectsAsync(IReadOnlyCollection<string> keys, CancellationToken ct = default) => Task.FromResult(0);
+        }
+
         private static ClaimsPrincipal Principal(Guid id, EmployeeRole role) =>
             new(new ClaimsIdentity(new[]
             {
@@ -79,7 +91,8 @@ public class OperatorTakeoverTests
 
         public AdminController Admin(Guid callerId) =>
             new(Db, Microsoft.Extensions.Options.Options.Create(new InvitationOptions()),
-                new StubHasher(), new StubLockout(), Options)
+                new StubHasher(), new StubLockout(), Options, new StubPhotoStorage(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<AdminController>.Instance)
             {
                 ControllerContext = new ControllerContext
                 {

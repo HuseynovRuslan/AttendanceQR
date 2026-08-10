@@ -7,7 +7,7 @@ import { useAuth } from '../auth/AuthContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
-import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconUser } from '../components/icons'
+import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconShield, IconUser } from '../components/icons'
 
 const APP_VERSION = '2.0.0'
 
@@ -65,6 +65,9 @@ export function MenuPage() {
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
         {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />
+        {/* The app photographs their face and reads their position; where that goes has to be
+            reachable from inside the app, not only from the website they never visit. */}
+        <MenuRow to="/privacy" Icon={IconShield} label="Məlumatlarınız / məxfilik" />
       </div>
 
       <button

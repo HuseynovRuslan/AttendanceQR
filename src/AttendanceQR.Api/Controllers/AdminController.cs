@@ -7,6 +7,7 @@ using AttendanceQR.Domain.Enums;
 using ClosedXML.Excel;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,13 +28,17 @@ public class AdminController : ControllerBase
     // Platform operators, by employee id. They usually live inside a tenant as ordinary-looking rows,
     // so a tenant admin can see them — but must never be able to take their credentials.
     private readonly Guid[] _operatorIds;
+    private readonly IPhotoStorageService _photoStorage;
+    private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         AppDbContext db,
         IOptions<InvitationOptions> invitationOptions,
         IPasswordHasher passwordHasher,
         ILoginLockoutStore lockout,
-        AppOptions appOptions)
+        AppOptions appOptions,
+        IPhotoStorageService photoStorage,
+        ILogger<AdminController> logger)
     {
         _db = db;
         _invitationOptions = invitationOptions.Value;
@@ -41,6 +46,8 @@ public class AdminController : ControllerBase
         _lockout = lockout;
         _hiddenEmails = appOptions.HiddenEmailList();
         _operatorIds = appOptions.SuperAdminIdList();
+        _photoStorage = photoStorage;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -803,6 +810,39 @@ public class AdminController : ControllerBase
         if (hasHistory && !force)
             return Conflict(new { error = "EmployeeHasHistory" });
 
+        // Every photo of this person, collected BEFORE the rows that name them are deleted — after
+        // that the keys are unrecoverable and the objects are orphans nobody can find, let alone
+        // remove. The bucket is not self-cleaning here: the retention job prunes checkins/ by age and
+        // deliberately never touches reference/, so a deleted employee's enrollment selfie stayed for
+        // ever. qrlog.az/hesab-silinmesi/ tells people otherwise.
+        var photoKeys = new List<string>();
+        if (!string.IsNullOrWhiteSpace(employee.ReferencePhotoKey))
+            photoKeys.Add(employee.ReferencePhotoKey);
+        photoKeys.AddRange(await _db.AttendanceRecords
+            .Where(a => a.EmployeeId == id && a.CheckInPhotoKey != null)
+            .Select(a => a.CheckInPhotoKey!)
+            .ToListAsync());
+        // Field visits: two selfies and, on the check-out, a photo of the WORK. The work photo is
+        // evidence for a customer invoice rather than a picture of a person — but it is filed under
+        // this employee's visit and nothing else will ever come looking for it.
+        //
+        // Three columns pulled back and flattened HERE, not with a SelectMany over an array literal:
+        // that does not translate to SQL and threw at runtime on every delete.
+        var visits = await _db.FieldVisits.Where(v => v.EmployeeId == id).ToListAsync();
+        photoKeys.AddRange(visits
+            .SelectMany(v => new[] { v.CheckInPhotoKey, v.CheckOutPhotoKey, v.WorkPhotoKey })
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Select(k => k!));
+        // FieldVisit has no FK to Employee, so these rows outlive the person. Clear the keys: they
+        // would otherwise point at objects this request is about to delete, and the field-visit
+        // screens would spend a presign call each on a 404.
+        foreach (var visit in visits)
+        {
+            visit.CheckInPhotoKey = null;
+            visit.CheckOutPhotoKey = null;
+            visit.WorkPhotoKey = null;
+        }
+
         if (hasHistory)
         {
             await _db.AttendanceRecords.Where(a => a.EmployeeId == id).ExecuteDeleteAsync();
@@ -818,7 +858,27 @@ public class AdminController : ControllerBase
         // DeviceBinding and ManagedLocations cascade; AuditLogs are set null.
         _db.Employees.Remove(employee);
         await _db.SaveChangesAsync();
-        return Ok(new { deleted = id, forced = hasHistory && force });
+
+        // After the database, never before: object storage has no transaction to join, so a purge
+        // that ran first would delete a living employee's face if the delete below then failed.
+        // Best-effort by design — the row is already gone and re-adding it to keep the two in step
+        // would be worse. A failure is logged loudly enough to be swept by hand.
+        var photosDeleted = 0;
+        if (photoKeys.Count > 0)
+        {
+            try
+            {
+                photosDeleted = await _photoStorage.DeleteObjectsAsync(photoKeys);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Employee {EmployeeId} deleted, but {Count} of their photos could not be removed from storage",
+                    id, photoKeys.Count);
+            }
+        }
+
+        return Ok(new { deleted = id, forced = hasHistory && force, photosDeleted });
     }
 
     // Testing/reset helper: clears an employee's check-in/check-out history so the same account +

@@ -34,4 +34,16 @@ public interface IPhotoStorageService
     /// <paramref name="olderThanUtc"/>. Used by the retention job — never point it at <c>reference/</c>.
     /// </summary>
     Task DeleteByPrefixOlderThanAsync(string prefix, DateTime olderThanUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes the named objects. Used when an employee is deleted: their rows go, but their face
+    /// stayed in the bucket — <c>reference/</c> is excluded from the retention job on purpose, so a
+    /// deleted employee's enrollment selfie was kept for ever. qrlog.az/hesab-silinmesi/ publishes
+    /// that a deletion request removes "referans (profil) şəkli və giriş/çıxış anındakı selfilər",
+    /// which made this the difference between a promise and a fact.
+    ///
+    /// Returns how many were removed. Missing keys are not an error — S3 delete is idempotent, and
+    /// half of these objects may already have aged out of the retention window.
+    /// </summary>
+    Task<int> DeleteObjectsAsync(IReadOnlyCollection<string> keys, CancellationToken ct = default);
 }

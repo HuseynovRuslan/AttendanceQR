@@ -21,6 +21,7 @@ import { EmployeeLayout } from './pages/EmployeeLayout'
 import { SetPinPage } from './pages/SetPinPage'
 import { HomePage } from './pages/HomePage'
 import { StatsPage } from './pages/StatsPage'
+import { PrivacyPage } from './pages/PrivacyPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { MenuPage } from './pages/MenuPage'
 
@@ -177,6 +178,18 @@ function AppRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/menu" element={<MenuPage />} />
       </Route>
+
+      {/* What this app takes off your phone. Its own header, so it renders outside the tab shell —
+          and it was written, then never routed, so the consent screen's "Ətraflı məlumat" link had
+          nowhere to go. */}
+      <Route
+        path="/privacy"
+        element={
+          <ProtectedRoute>
+            <PrivacyPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Full-screen scanner (no bottom bar) — reached from the center Scan button. */}
       <Route

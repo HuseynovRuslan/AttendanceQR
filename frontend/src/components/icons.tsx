@@ -144,6 +144,12 @@ export const IconBell = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const IconShield = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M12 3l7 3v6c0 4.5-3 8.2-7 9-4-.8-7-4.5-7-9V6l7-3z" />
+  </svg>
+)
+
 export const IconMapPin = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />

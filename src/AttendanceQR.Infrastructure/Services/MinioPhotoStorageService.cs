@@ -125,6 +125,36 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
                 "PhotoStorage: deleted {Count} objects under '{Prefix}' older than {Cutoff:o}", deleted, prefix, olderThanUtc);
     }
 
+    public async Task<int> DeleteObjectsAsync(IReadOnlyCollection<string> keys, CancellationToken ct = default)
+    {
+        // No endpoint configured (local dev without MinIO) — the uploads never happened either, so
+        // there is nothing to remove and calling S3 would only throw.
+        if (keys.Count == 0 || string.IsNullOrWhiteSpace(_options.Endpoint))
+            return 0;
+
+        var deleted = 0;
+        // DeleteObjects takes at most 1000 keys per call. An employee with two years of daily
+        // check-in selfies is past that on their own.
+        foreach (var batch in keys.Distinct(StringComparer.Ordinal).Chunk(1000))
+        {
+            var response = await _s3.DeleteObjectsAsync(new DeleteObjectsRequest
+            {
+                BucketName = _options.BucketName,
+                Objects = batch.Select(k => new KeyVersion { Key = k }).ToList(),
+                // Errors are what we want back; a list of every key that succeeded is noise.
+                Quiet = true
+            }, ct);
+            deleted += batch.Length - (response.DeleteErrors?.Count ?? 0);
+
+            foreach (var error in response.DeleteErrors ?? new List<DeleteError>())
+                _logger.LogWarning("PhotoStorage: could not delete '{Key}' — {Code} {Message}",
+                    error.Key, error.Code, error.Message);
+        }
+
+        _logger.LogInformation("PhotoStorage: deleted {Deleted}/{Total} requested objects", deleted, keys.Count);
+        return deleted;
+    }
+
     private async Task PutAsync(string key, byte[] bytes, CancellationToken ct)
     {
         using var stream = new MemoryStream(bytes, writable: false);
