@@ -12,7 +12,8 @@ import { apiRequest, getToken } from '../api/client'
 import { decodeJwt } from './jwt'
 import { reportFailure } from './scanFailures'
 import { addReject } from './offlineRejects'
-import { removeScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
+import { allScans, removeScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
+import { flushFailures } from './scanFailures'
 
 let syncing = false
 
@@ -28,6 +29,15 @@ function toBody(item: QueuedScan) {
     offline: true,
   }
 }
+
+/**
+ * A definitive 4xx that means the attendance is ALREADY RECORDED, not lost. An offline batch produces
+ * these routinely — two morning scans arrive together and the second is refused because the first
+ * already closed the shift. Reporting them would raise a red "your day was lost" banner and a
+ * BLOCKING row on the Problems screen for an ordinary, harmless outcome, and admins who see that a
+ * few times stop trusting the colour that actually matters.
+ */
+const ALREADY_RECORDED = new Set(['AlreadyCompleted', 'DuplicateCheckIn', 'TooSoonToCheckOut'])
 
 /** The server's error code, when the body carries one. */
 function errorCode(data: unknown): string | undefined {
@@ -47,6 +57,16 @@ export async function syncOfflineScans(): Promise<void> {
 
   syncing = true
   try {
+    // Age out EVERY stale item first, including one belonging to somebody else: a foreign item is
+    // skipped by the owner filter below and would otherwise sit on this phone for ever, carrying a
+    // few hundred kB of selfie. It is dropped locally and NOT reported — the audit row would be
+    // attributed to whoever is signed in now, which is the very misattribution this change fixed.
+    const now = Date.now()
+    for (const item of await allScans()) {
+      if (isTooOldToReplay(item, now) && item.employeeId !== undefined && item.employeeId !== me)
+        await removeScan(item.clientScanId)
+    }
+
     const items = await scansFor(me)
     for (const item of items) {
       // Too old to replay honestly: past the server's 18-hour trust window it stops using the phone's
@@ -55,9 +75,11 @@ export async function syncOfflineScans(): Promise<void> {
       // and close a live shift. Drop it, but loudly: the employee sees a banner and the admin gets a
       // Problems row, which is what makes a manual correction possible.
       if (isTooOldToReplay(item, Date.now())) {
-        reportFailure('OfflineExpired')
-        addReject({ kind: 'OfflineExpired', scanAtIso: item.clientTimestampUtc, atMs: Date.now() })
+        // Dropped FIRST: if the report threw, "reported but still queued" would report it again on
+        // every drain, and the throw would escape and abandon the remaining items.
         await removeScan(item.clientScanId)
+        reportFailure('OfflineExpired', undefined, item.clientTimestampUtc)
+        addReject({ kind: 'OfflineExpired', scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
         continue
       }
 
@@ -70,12 +92,12 @@ export async function syncOfflineScans(): Promise<void> {
         // A definitive 4xx (OutsideRadius, AlreadyCompleted, …) can never succeed on a retry, so the
         // item goes — but it is NOT a silent drop. The employee was shown a green "saved" card when
         // they tapped; without this they are simply absent that day and nobody knows why.
-        if (status >= 400) {
-          const code = errorCode(data)
-          reportFailure('OfflineRejected')
-          addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now() })
-        }
+        const code = errorCode(data)
         await removeScan(item.clientScanId)
+        if (status >= 400 && !ALREADY_RECORDED.has(code ?? '')) {
+          reportFailure('OfflineRejected', undefined, item.clientTimestampUtc)
+          addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
+        }
       } catch {
         // Network dropped mid-drain — stop; the rest stays queued for the next attempt.
         break
@@ -88,8 +110,23 @@ export async function syncOfflineScans(): Promise<void> {
 
 /** Wire the app so the queue drains on load and whenever the connection returns. Idempotent. */
 export function startOfflineSync(): () => void {
-  const run = () => void syncOfflineScans()
+  const run = () => {
+    void syncOfflineScans()
+    // The drain is now a PRODUCER of failure reports, so flush any that could not be sent.
+    void flushFailures()
+  }
   run()
   window.addEventListener('online', run)
-  return () => window.removeEventListener('online', run)
+  // 'online' never fires on a one-bar link where navigator.onLine stayed true the whole time, and
+  // it never fires when the app is simply reopened. Coming back to the foreground is the moment a
+  // phone that has been in a pocket all morning actually has signal again.
+  document.addEventListener('visibilitychange', onVisible)
+  return () => {
+    window.removeEventListener('online', run)
+    document.removeEventListener('visibilitychange', onVisible)
+  }
+
+  function onVisible() {
+    if (document.visibilityState === 'visible') run()
+  }
 }

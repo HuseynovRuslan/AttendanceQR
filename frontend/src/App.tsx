@@ -101,7 +101,12 @@ function RouteFallback() {
 /** Drains any scans made offline back to the server — on load and whenever the connection returns.
  *  No-op when signed out or the queue is empty. */
 function OfflineSyncer() {
-  useEffect(() => startOfflineSync(), [])
+  // Re-run when the SIGNED-IN employee changes. The queue only replays its owner's scans, and login
+  // is an SPA state change with no remount — so with an empty dep list the one moment a waiting scan
+  // becomes replayable (its owner signing in on a shared phone) was the one moment nothing drained,
+  // and by the next cold open it was past the 18-hour window and discarded.
+  const { employeeId } = useAuth()
+  useEffect(() => startOfflineSync(), [employeeId])
   return null
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { clearRejects, readRejects, REJECTS_CHANGED, type OfflineReject } from '../lib/offlineRejects'
+import { clearRejectsFor, readRejectsFor, REJECTS_CHANGED, type OfflineReject } from '../lib/offlineRejects'
 import { fmtDateTime } from '../lib/format'
+import { useAuth } from '../auth/AuthContext'
 
 /**
  * Tells the employee that a scan they believe was saved did NOT become a record.
@@ -22,19 +23,26 @@ const WHY: Record<OfflineReject['kind'], string> = {
 /** The server codes an employee can actually act on; anything else stays generic on purpose. */
 const CODE_TEXT: Record<string, string> = {
   OutsideRadius: 'skan iş yerindən kənarda olub',
-  AlreadyCompleted: 'həmin gün artıq bağlanıb',
   TokenExpired: 'QR kod yenilənib',
   EmployeeNotFoundOrInactive: 'hesab aktiv deyil',
+  DeviceMismatch: 'cihaz tanınmadı',
+  NoDeviceBound: 'cihaz bağlanmayıb',
+  LocationInactive: 'lokasiya deaktivdir',
+  OfflineTooOld: 'çox gec göndərilib',
 }
 
 export function OfflineRejectBanner() {
-  const [items, setItems] = useState<OfflineReject[]>(() => readRejects())
+  // Only this employee's — a site phone is shared, and someone else's unread warning must neither be
+  // shown here nor cleared by this person's "Anladım".
+  const { employeeId } = useAuth()
+  const [items, setItems] = useState<OfflineReject[]>(() => readRejectsFor(employeeId))
 
   useEffect(() => {
-    const refresh = () => setItems(readRejects())
+    const refresh = () => setItems(readRejectsFor(employeeId))
+    refresh()
     window.addEventListener(REJECTS_CHANGED, refresh)
     return () => window.removeEventListener(REJECTS_CHANGED, refresh)
-  }, [])
+  }, [employeeId])
 
   if (items.length === 0) return null
 
@@ -49,14 +57,14 @@ export function OfflineRejectBanner() {
       </p>
       <ul className="mt-2 flex flex-col gap-1">
         {items.map((r) => (
-          <li key={r.atMs} className="text-sm text-red-800">
+          <li key={`${r.atMs}-${r.scanAtIso}`} className="text-sm text-red-800">
             <span className="font-semibold">{fmtDateTime(r.scanAtIso)}</span> — {WHY[r.kind]}
             {r.code && CODE_TEXT[r.code] ? ` (${CODE_TEXT[r.code]})` : ''}
           </li>
         ))}
       </ul>
       <button
-        onClick={() => clearRejects()}
+        onClick={() => clearRejectsFor(employeeId)}
         className="mt-3 rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-700"
       >
         Anladım

@@ -19,8 +19,9 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   SignatureInvalid: { label: 'Yanlış QR (imza)', cls: 'bg-amber-100 text-amber-700' },
   TooSoonToCheckOut: { label: 'Çox tez çıxış cəhdi', cls: 'bg-blue-100 text-blue-700' },
   // An offline scan that never became a record. BLOCKING on purpose: the employee tapped, was shown
-  // a green "saved" card, and has nothing for that day — so unless someone fixes it by hand
-  // (/admin/open-records or a manual entry) they are marked Qayıb for a day they worked.
+  // a green "saved" card, and has nothing for that day — so unless someone enters that day by hand
+  // they are marked Qayıb for a day they worked. The reason carries the lost DAY after the '|', which
+  // this screen already splits off as the detail — without it the row is unactionable.
   OfflineRejected: { label: 'Oflayn skan qəbul edilmədi', cls: 'bg-red-100 text-red-700', blocking: true },
   OfflineExpired: { label: 'Oflayn skan gec göndərildi', cls: 'bg-red-100 text-red-700', blocking: true },
   // Reported by the phone itself — the scan never reached the server.

@@ -40,10 +40,12 @@ export function getMyToday() {
  * denied, position too coarse). Fire-and-forget: the employee's flow never waits on it, and the
  * server de-duplicates retries — but the attempt now shows up in the admin "Problemlər" screen
  * instead of vanishing. */
-export function reportScanFailure(reason: string, accuracyMeters?: number) {
+/** `scanAtUtc` is WHEN the scan was taken, for an offline report sent later — the audit row's own
+ *  timestamp is the moment of reporting, so without it an admin cannot tell which day was lost. */
+export function reportScanFailure(reason: string, accuracyMeters?: number, scanAtUtc?: string) {
   return apiRequest<void>('/api/attendance/scan-failure', {
     method: 'POST',
-    body: { reason, accuracyMeters: accuracyMeters ?? null },
+    body: { reason, accuracyMeters: accuracyMeters ?? null, scanAtUtc: scanAtUtc ?? null },
   })
 }
 

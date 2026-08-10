@@ -45,6 +45,13 @@ public class AttendanceController : ControllerBase
     // ceiling — any signed-in employee could loop it and run up the bill (or exhaust the quota for
     // everyone else). A generous per-employee hourly budget bounds both: a real person scans twice a
     // day and might retake a photo once or twice, so 20 is far above normal use and far below abuse.
+    /// <summary>
+    /// How far back an OFFLINE scan's own timestamp is still trusted. The client mirrors this in
+    /// <c>MAX_QUEUED_AGE_MS</c> as a pre-filter, but this is the authority: past it the scan is
+    /// refused, never silently re-dated.
+    /// </summary>
+    public const int OfflineTrustWindowHours = 18;
+
     private const int MaxFaceChecksPerHour = 20;
     private static readonly TimeSpan FaceCheckWindow = TimeSpan.FromHours(1);
 
@@ -382,23 +389,33 @@ public class AttendanceController : ControllerBase
         if (string.IsNullOrEmpty(request.Reason) || !ClientFailureReasons.Contains(request.Reason, StringComparer.Ordinal))
             return BadRequest(new { error = "UnknownReason" });
 
+        // Detail rides along as "Code|detail"; the reports layer splits it back off so the per-reason
+        // tally still groups on the bare code. Built HERE, never accepted pre-joined, because the
+        // allow-list above matches the whole Reason string.
+        //   • a coarse position → the metres
+        //   • an offline scan reported later → the DAY it was taken, which is the only thing that
+        //     makes the row actionable (the admin has to enter that day by hand)
+        var scanDay = request.ScanAtUtc is DateTime taken
+            ? DateOnly.FromDateTime(DateTime.SpecifyKind(taken, DateTimeKind.Utc)).ToString("yyyy-MM-dd")
+            : null;
+        var detail = scanDay ?? (request.AccuracyMeters is > 0
+            ? Math.Round(request.AccuracyMeters.Value).ToString()
+            : null);
+        var reason = detail is null ? request.Reason : $"{request.Reason}|{detail}";
+
+        // Collapse a retrying phone into one incident — but on the FULL reason, so two different lost
+        // DAYS stay two rows. A drain loop emits its reports in the same second, so deduping on the
+        // bare code alone turned four lost days into one line and hid three of them.
         var since = DateTime.UtcNow - FailureDedupeWindow;
         var alreadyLogged = await _db.AuditLogs.AnyAsync(a =>
             a.EmployeeId == employeeId
             && a.EventType == AuditEventType.ScanBlockedOnDevice
             && a.CreatedAtUtc >= since
             && a.Reason != null
-            && a.Reason.StartsWith(request.Reason), HttpContext.RequestAborted);
+            && a.Reason == reason, HttpContext.RequestAborted);
 
         if (!alreadyLogged)
         {
-            // Accuracy rides along as "Code|metres"; the reports layer splits it back off so the
-            // per-reason tally still groups on the bare code. Keeps AuditLog's shape unchanged.
-            var accuracy = request.AccuracyMeters;
-            var reason = accuracy is > 0
-                ? $"{request.Reason}|{Math.Round(accuracy.Value)}"
-                : request.Reason;
-
             await WriteAuditAsync(employeeId, AuditEventType.ScanBlockedOnDevice, reason,
                 HttpContext.Connection.RemoteIpAddress?.ToString());
         }
@@ -501,8 +518,20 @@ public class AttendanceController : ControllerBase
         if (request.Offline && request.ClientTimestampUtc is DateTime clientTs)
         {
             var clientUtc = DateTime.SpecifyKind(clientTs, DateTimeKind.Utc);
-            if (clientUtc <= serverNow.AddMinutes(10) && clientUtc >= serverNow.AddHours(-18))
-                nowUtc = clientUtc;
+            // Outside the window this used to fall back to SERVER time in silence — which does not
+            // record the scan late, it records it on the WRONG DAY, and if the employee has already
+            // checked in today it is then read as their check-out and closes a live shift. Refuse it
+            // instead: the phone drops it down its definitive-4xx path, which reports the lost day to
+            // the Problems screen and warns the employee. The client keeps its own age pre-filter, but
+            // only ONE side decides — the client cannot know this server's clock, and a phone running
+            // slow would otherwise sit in a band where it believes an item is fresh and we disagree.
+            if (clientUtc > serverNow.AddMinutes(10) || clientUtc < serverNow.AddHours(-OfflineTrustWindowHours))
+            {
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
+                    $"OfflineTooOld|{clientUtc:yyyy-MM-dd}", ip);
+                return BadRequest(new { error = "OfflineTooOld" });
+            }
+            nowUtc = clientUtc;
         }
         var today = DateOnly.FromDateTime(nowUtc);
 

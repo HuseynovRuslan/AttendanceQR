@@ -665,7 +665,10 @@ export function ScanPage() {
           queuedAtMs: Date.now(),
           // Stamp WHOSE scan this is. The queue is device storage, not session storage, so on a
           // shared site phone the next person to sign in would otherwise replay this as their own.
-          employeeId: decodeJwt(getToken() ?? '')?.sub,
+          // '?? unknown' rather than undefined: undefined means "queued before this field existed"
+          // and is replayable by anyone, so a momentary decode failure must not mint a fresh unowned
+          // item and reopen the misattribution this stamp closes.
+          employeeId: decodeJwt(getToken() ?? '')?.sub ?? 'unknown',
         })
         // Saved on the device IS a success for the employee — same confident buzz as a live scan.
         successFeedback()

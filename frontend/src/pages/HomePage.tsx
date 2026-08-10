@@ -7,6 +7,7 @@ import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint, installNudgeActive } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { OfflineRejectBanner } from '../components/OfflineRejectBanner'
+import { readRejectsFor, REJECTS_CHANGED } from '../lib/offlineRejects'
 import { FieldVisitCards } from '../components/FieldVisitCards'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
@@ -77,12 +78,26 @@ export function HomePage() {
   // One tap fewer: on the first open of a session, if the employee hasn't checked in yet, jump
   // straight to the scanner. Once per session (a sessionStorage flag) so returning to Home to read
   // their hours doesn't bounce them back out — and never when they've already checked in.
+  // Kept in state, not read inline in the effect below: the drain that writes a reject runs in
+  // parallel with load(), so whichever finishes first would otherwise decide whether the employee
+  // ever sees the warning.
+  const [hasRejects, setHasRejects] = useState(() => readRejectsFor(employeeId).length > 0)
+  useEffect(() => {
+    const refresh = () => setHasRejects(readRejectsFor(employeeId).length > 0)
+    refresh()
+    window.addEventListener(REJECTS_CHANGED, refresh)
+    return () => window.removeEventListener(REJECTS_CHANGED, refresh)
+  }, [employeeId])
+
   useEffect(() => {
     if (loading || today.kind !== 'none' || hasActionableField) return
+    // A dropped offline scan produces exactly this state — no check-in today — and jumping straight
+    // to the scanner would bury the banner that explains why. Let them read it first.
+    if (hasRejects) return
     if (sessionStorage.getItem('attendanceqr.autoScan')) return
     sessionStorage.setItem('attendanceqr.autoScan', '1')
     navigate('/scan')
-  }, [loading, today.kind, hasActionableField, navigate])
+  }, [loading, today.kind, hasActionableField, hasRejects, navigate])
 
   // Today is the employee's birthday? Compare day + month (any year) in the device's local date.
   const isBirthday = (() => {

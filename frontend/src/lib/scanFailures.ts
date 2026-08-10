@@ -8,6 +8,8 @@ const KEY = 'attendanceqr.pendingFailures'
 interface Pending {
   reason: string
   accuracy?: number
+  /** When the scan was taken, for an offline report sent days later — the lost DAY. */
+  scanAtUtc?: string
 }
 
 function readQueue(): Pending[] {
@@ -30,8 +32,15 @@ function writeQueue(q: Pending[]): void {
 
 /** Report a client-side scan failure. Fire-and-forget; queued for retry only on a network error
  *  (a 4xx like an unknown reason will never succeed, so it isn't kept). */
-export function reportFailure(reason: string, accuracy?: number): void {
-  reportScanFailure(reason, accuracy).catch(() => writeQueue([...readQueue(), { reason, accuracy }]))
+export function reportFailure(reason: string, accuracy?: number, scanAtUtc?: string): void {
+  // apiRequest RESOLVES for every HTTP status — it only rejects on a transport failure or a
+  // non-JSON body. So a 401 mid-drain, a 403 or a 500 used to lose the report entirely while this
+  // .catch never ran. Queue on any non-2xx as well.
+  reportScanFailure(reason, accuracy, scanAtUtc)
+    .then((r) => {
+      if (r.status < 200 || r.status >= 300) writeQueue([...readQueue(), { reason, accuracy, scanAtUtc }])
+    })
+    .catch(() => writeQueue([...readQueue(), { reason, accuracy, scanAtUtc }]))
 }
 
 /** Send anything queued while offline. Call on app/scan-screen load; keeps whatever still won't send. */
@@ -41,8 +50,11 @@ export async function flushFailures(): Promise<void> {
   const remaining: Pending[] = []
   for (const p of q) {
     try {
-      const res = await reportScanFailure(p.reason, p.accuracy)
-      if (res.status !== 200) remaining.push(p) // transient server issue — try again next time
+      const res = await reportScanFailure(p.reason, p.accuracy, p.scanAtUtc)
+      // The endpoint answers 202 Accepted, not 200. Testing for 200 kept every report in this queue
+      // FOREVER, re-sent on every scan-screen open — and once past the 5-minute dedupe each one minted
+      // a fresh blocking Problems row for an incident that had already been recorded.
+      if (res.status < 200 || res.status >= 300) remaining.push(p) // transient — try again next time
     } catch {
       remaining.push(p) // still offline
     }

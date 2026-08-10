@@ -237,18 +237,37 @@ public class ScanHandlerTests
     // --- offline clock trust window -----------------------------------------
 
     [Fact]
-    public async Task An_offline_timestamp_far_in_the_past_falls_back_to_server_time()
+    public async Task An_offline_timestamp_far_in_the_past_is_refused_not_silently_moved_to_today()
     {
         using var h = new Harness();
-        // A phone whose clock is rolled back a week is beyond the trust window (−18h), so the server
-        // time is used instead — a rolled-back clock can't forge an on-time arrival.
+        // A phone whose clock is rolled back a week is beyond the trust window (−18h). Falling back
+        // to server time is what this USED to do, and it was the wrong call: it silently wrote last
+        // Tuesday's scan onto today, so a real day stayed missing while a day nobody worked showed a
+        // check-in. Refusing is honest — the queue drops it and tells the employee, and the admin
+        // gets it on the Problems screen, which is the only path that ends in the right day being
+        // fixed by hand.
         var lastWeek = DateTime.UtcNow.AddDays(-7);
         var result = await h.Controller.Scan(h.Scan(offline: true, clientTs: lastWeek));
 
+        Assert.Equal("OfflineTooOld", Error(result));
+        Assert.False(await h.Db.AttendanceRecords.AnyAsync(),
+            "an out-of-window offline scan must not create a record on the wrong day");
+    }
+
+    [Fact]
+    public async Task An_offline_timestamp_inside_the_trust_window_keeps_the_phones_time()
+    {
+        using var h = new Harness();
+        // The other side of the same boundary — the case the window exists FOR. A night-shift worker
+        // scans with no signal and syncs when they reach coverage hours later; that scan has to land
+        // on the hour they actually arrived, not the hour their phone found a tower.
+        var earlier = DateTime.UtcNow.AddHours(-6);
+        var result = await h.Controller.Scan(h.Scan(offline: true, clientTs: earlier));
+
         Assert.Equal("CheckIn", Action(result));
         var record = await h.Db.AttendanceRecords.FirstAsync();
-        Assert.True(record.CheckInAtUtc > DateTime.UtcNow.AddMinutes(-5),
-            "an out-of-window offline timestamp must be replaced by server time");
+        Assert.True(Math.Abs((record.CheckInAtUtc!.Value - earlier).TotalMinutes) < 1,
+            "an in-window offline timestamp must be kept as the arrival time");
     }
 
     // --- helpers to read the anonymous action results -----------------------
