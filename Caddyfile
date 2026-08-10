@@ -16,6 +16,32 @@
 	}
 }
 
+# Headers every QRLog host serves. Until now only the marketing site sent any: the app itself — the
+# one that holds attendance, salaries and photographs of people's faces — answered with none, so a
+# tenant subdomain could be framed by any page on the internet, and a browser that had once reached
+# it over http had nothing telling it never to do that again.
+#
+# Deliberately NOT here: Content-Security-Policy. This app loads its font from Google, its map tiles
+# from OpenStreetMap/CARTO and its photos from presigned R2 URLs, so a policy assembled from guesses
+# breaks the selfie, the map, or the typeface — silently, and on somebody's phone at 08:00. It is
+# being proven on staging first (see test.qrlog.az below).
+(security_headers) {
+	header {
+		# A year, and every subdomain: each tenant lives at one, and they are all this app.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# DENY, not SAMEORIGIN: nothing here is ever framed, and the app has one-tap buttons that
+		# end a shift — exactly what clickjacking is for.
+		X-Frame-Options "DENY"
+		# The scan NEEDS camera and geolocation, so those stay allowed for our own origin; the rest
+		# of the powerful APIs are switched off because nothing in this app asks for them.
+		Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), interest-cohort=()"
+		# Don't advertise the server and its version to anyone scanning for a known CVE.
+		-Server
+	}
+}
+
 # www → apex. The site declares https://qrlog.az/… as canonical in every <link rel="canonical">, so
 # serving the same pages under both names would have search engines picking between two copies.
 www.qrlog.az {
@@ -36,13 +62,7 @@ qrlog.az {
 	@revalidate path */ *.html *.xml /robots.txt
 	header @revalidate Cache-Control "no-cache"
 
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		X-Frame-Options "SAMEORIGIN"
-		-Server
-	}
+	import security_headers
 
 	file_server
 
@@ -59,6 +79,7 @@ qrlog.az {
 
 bax.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy frontend:80
 }
 
@@ -67,6 +88,7 @@ bax.qrlog.az {
 # frontend build; the app detects the "app" host and logs in via the cross-tenant app-login endpoint.
 app.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy frontend:80
 }
 
@@ -75,16 +97,19 @@ app.qrlog.az {
 # onto a new code path to prove a point; new tenants need no block at all.
 ecaf.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy frontend:80
 }
 
 cleanfix.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy frontend:80
 }
 
 api.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy backend:8080
 }
 
@@ -100,11 +125,13 @@ api.qrlog.az {
 # on-demand `https://` site at the bottom and proxied to PRODUCTION, which is worse than a 404.
 test.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy stg-frontend:80
 }
 
 api-test.qrlog.az {
 	encode zstd gzip
+	import security_headers
 	reverse_proxy stg-backend:8080
 }
 
@@ -120,6 +147,7 @@ api-test.qrlog.az {
 # Order does not decide this — Caddy routes by specificity, so bax/api/qrlog.az still win over it.
 https:// {
 	encode zstd gzip
+	import security_headers
 	tls {
 		on_demand
 	}
