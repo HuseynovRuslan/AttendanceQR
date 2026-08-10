@@ -61,7 +61,6 @@ const EmployeesPage = lazy(() => import('./pages/admin/EmployeesPage').then(m =>
 const EmployeeProfilePage = lazy(() => import('./pages/admin/EmployeeProfilePage').then(m => ({ default: m.EmployeeProfilePage })))
 const DeviceChangesPage = lazy(() => import('./pages/admin/DeviceChangesPage').then(m => ({ default: m.DeviceChangesPage })))
 const PinResetsPage = lazy(() => import('./pages/admin/PinResetsPage').then(m => ({ default: m.PinResetsPage })))
-const PhotoAuditPage = lazy(() => import('./pages/admin/PhotoAuditPage').then(m => ({ default: m.PhotoAuditPage })))
 const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => ({ default: m.ProblemsPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
@@ -321,9 +320,11 @@ function AppRoutes() {
             </AdminOnly>
           }
         />
-        {/* Photo audit — open to Admin + Manager (like today/reports); managers are scoped to their
-            own locations server-side via LocationScopeRules, so no AdminOnly wrapper. */}
-        <Route path="photo-audit" element={<PhotoAuditPage />} />
+        {/* Foto audit is HIDDEN on purpose (owner, 2026-08-09): it listed every check-in selfie, which
+            is browsing staff photos rather than auditing a specific doubt. A selfie is now opened only
+            from a face-flagged row ("Şəklə bax" on the today board / employee profile). The page file
+            is still in the repo — restoring it is this route + the lazy import + the nav entry. The
+            route is REMOVED, not just the nav link: a hidden link on a live route is not hidden. */}
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<ProblemsPage />} />
         {/* Field visits board + assign — Admin + Manager (the endpoints gate on Admin,Manager). */}

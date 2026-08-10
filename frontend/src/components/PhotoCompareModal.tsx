@@ -21,7 +21,7 @@ interface PhotoCompareModalProps {
 /**
  * Side-by-side photo comparison for the photo-audit feature: reference selfie (left) vs. the
  * check-in selfie (right). A manager compares them by eye — no automatic face matching. Shared by
- * PhotoAuditPage and the Today board so both open the exact same view.
+ * the Today board and the employee profile — the two places a face-flagged row can be opened from.
  */
 export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTakenAtUtc, faceMatchStatus, faceMatchScore, onClose }: PhotoCompareModalProps) {
   // Close on Escape.

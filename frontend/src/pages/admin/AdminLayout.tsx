@@ -9,7 +9,6 @@ import {
   IconAlert,
   IconBell,
   IconCalendar,
-  IconCamera,
   IconChart,
   IconCheck,
   IconClipboard,
@@ -42,7 +41,6 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/schedules': { title: 'Növbələr', sub: 'Saatlar, iş günləri və rotasiya — bir dəfə qurulur, işçilərə təyin edilir' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
-  '/admin/photo-audit': { title: 'Foto Audit', sub: 'Giriş şəklini referans ilə müqayisə et' },
   '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
   '/admin/field-visits': { title: 'Sahə ziyarətləri', sub: 'Səyyar işçilər — tapşır, kim getdi/getmədi izlə' },
   '/admin/open-records': { title: 'Çıxışı unudulan günlər', sub: 'Giriş edib çıxış etməyən günlər' },
@@ -108,8 +106,7 @@ export function AdminLayout() {
     ...(isAdmin && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
     ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
     ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),
-    // Admin + Manager (no isAdmin gate) — managers audit their own locations' employees.
-    { to: '/admin/photo-audit', label: 'Foto Audit', Icon: IconCamera },
+    // Foto Audit is hidden on purpose — see the note on the removed route in App.tsx.
     { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
     // Field visits — Admin + Manager (no gate), the endpoints enforce the role.
     { to: '/admin/field-visits', label: 'Sahə ziyarətləri', Icon: IconMapPin },
