@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Amazon.Rekognition;
 using Amazon.Runtime;
 using Amazon.S3;
+using AttendanceQR.Api;
 using AttendanceQR.Api.Jobs;
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Common;
@@ -234,6 +235,7 @@ builder.Services
                     {
                         e.TokenVersion,
                         e.IsActive,
+                        e.MustChangePin,
                         TenantActive = db.Tenants.Any(t => t.Id == e.TenantId && t.IsActive),
                     })
                     .FirstOrDefaultAsync();
@@ -259,6 +261,13 @@ builder.Services
                 // tokens never expire. Cheap: the row is already being read for the version.
                 if (!account.IsActive)
                     context.Fail("AccountDeactivated");
+
+                // Still on the temporary PIN an admin generated for them. Flagged here — from the DB,
+                // not the "mcp" claim — and enforced by UseTemporaryPinGate below, which allows only
+                // the endpoints that get them off it. See TemporaryPinGate for why this cannot stay a
+                // client-side redirect.
+                if (account.MustChangePin)
+                    context.HttpContext.Items[TemporaryPinGate.ItemKey] = true;
             }
         };
     });
@@ -576,6 +585,11 @@ app.Use(async (context, next) =>
 
     await next();
 });
+
+// An account still on an admin-generated temporary PIN can reach only the endpoints that let it
+// choose a real one. Sits after the tenant middleware so a rejected request has still been attributed
+// to a company, and before authorization so no controller ever runs for such a caller.
+app.UseTemporaryPinGate();
 
 app.UseAuthorization();
 

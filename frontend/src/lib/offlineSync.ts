@@ -87,7 +87,12 @@ export async function syncOfflineScans(): Promise<void> {
         const { status, data } = await apiRequest('/api/attendance/scan', { method: 'POST', body: toBody(item) })
         // 401 → the session needs attention (apiRequest already bounced to login); keep the queue and
         // stop, so nothing is lost. 5xx → transient server issue; keep it and stop too.
-        if (status === 401 || status >= 500) break
+        //
+        // 403 as well, and it is the interesting one: an account still on a temporary PIN is refused
+        // everything but the "set your PIN" endpoint, so a scan queued before the reset would be
+        // thrown away for a condition that clears the moment they pick a PIN. Every 403 the scan can
+        // draw is a state of the ACCOUNT, not of the scan, so none of them is a reason to drop it.
+        if (status === 401 || status === 403 || status >= 500) break
 
         // A definitive 4xx (OutsideRadius, AlreadyCompleted, …) can never succeed on a retry, so the
         // item goes — but it is NOT a silent drop. The employee was shown a green "saved" card when
