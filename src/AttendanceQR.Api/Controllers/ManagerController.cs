@@ -38,12 +38,17 @@ public class ManagerController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IDailySummaryService _dailySummaryService;
+    // Platform operators, by employee id — never a manager's to manage, whatever role or branch the
+    // row happens to carry.
+    private readonly Guid[] _operatorIds;
 
-    public ManagerController(AppDbContext db, IPasswordHasher passwordHasher, IDailySummaryService dailySummaryService)
+    public ManagerController(AppDbContext db, IPasswordHasher passwordHasher, IDailySummaryService dailySummaryService,
+        AppOptions appOptions)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _dailySummaryService = dailySummaryService;
+        _operatorIds = appOptions.SuperAdminIdList();
     }
 
     private Guid M15() => User.EmployeeId();
@@ -84,6 +89,11 @@ public class ManagerController : ControllerBase
             return (null, outOfScope ?? NotFound(new { error = "EmployeeNotFound" }));
         if (target.Role != EmployeeRole.Employee || target.Id == M15())
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagerCannotManageRole" }));
+        // A platform operator can sit inside a tenant as an ordinary Employee row. Role and branch
+        // would both pass above, and reset-pin hands back the plaintext — so without this a manager
+        // could take an operator's credentials. Belt to the same suspenders AdminController wears.
+        if (_operatorIds.Contains(target.Id))
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" }));
         return (target, null);
     }
 

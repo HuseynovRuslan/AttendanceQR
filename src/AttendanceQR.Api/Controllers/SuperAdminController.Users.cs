@@ -68,10 +68,9 @@ public partial class SuperAdminController
     {
         if (!await CanAsync(OperatorPermission.ManageUsers, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
-        var emp = await FindEmployeeAsync(id);
+        var (emp, denied) = await SupportTargetAsync(id);
         if (emp is null)
-            return IsSuperAdmin ? NotFound(new { error = "EmployeeNotFound" })
-                                : StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+            return denied!;
 
         var ct = HttpContext.RequestAborted;
         var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
@@ -91,10 +90,9 @@ public partial class SuperAdminController
     {
         if (!await CanAsync(OperatorPermission.ManageUsers, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
-        var emp = await FindEmployeeAsync(id);
+        var (emp, denied) = await SupportTargetAsync(id);
         if (emp is null)
-            return IsSuperAdmin ? NotFound(new { error = "EmployeeNotFound" })
-                                : StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+            return denied!;
 
         var ct = HttpContext.RequestAborted;
         emp.IsActive = true;
@@ -111,10 +109,9 @@ public partial class SuperAdminController
     {
         if (!await CanAsync(OperatorPermission.ManageUsers, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
-        var emp = await FindEmployeeAsync(id);
+        var (emp, denied) = await SupportTargetAsync(id);
         if (emp is null)
-            return IsSuperAdmin ? NotFound(new { error = "EmployeeNotFound" })
-                                : StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+            return denied!;
 
         var ct = HttpContext.RequestAborted;
         emp.TokenVersion++;
@@ -124,14 +121,34 @@ public partial class SuperAdminController
         return Ok(new { id = emp.Id });
     }
 
-    // Loads a cross-tenant employee, or null when there is no such row OR the caller is not a
-    // super-admin (the callers turn null into 404/403 so neither reveals the other).
-    private async Task<Domain.Entities.Employee?> FindEmployeeAsync(Guid id)
+    /// <summary>
+    /// The one gate for every support action on another person's account.
+    ///
+    /// It refuses a target that is itself an OPERATOR. Without that, the support surface was a
+    /// privilege-escalation ladder: `reset-pin` hands back the plaintext PIN, so a Support-scoped
+    /// operator could reset a FULL operator's PIN, read it out of the response and sign in as them —
+    /// and the same three endpoints could also reactivate or log out a colleague. Nothing about the
+    /// caller's own role changes that, so this refuses for everyone, including a Full operator:
+    /// operator accounts are managed on the Team surface (which enforces WouldLeaveNoFull), not by
+    /// minting each other's credentials. Impersonation already refused a fellow operator for exactly
+    /// this reason (SuperAdminController.Impersonate.cs) — this is the same rule on the other door.
+    ///
+    /// Returns the error result to hand back so no caller can forget one: a non-operator caller gets
+    /// 403 even for a missing id, so the endpoint cannot be used to probe who exists.
+    /// </summary>
+    private async Task<(Domain.Entities.Employee? Employee, IActionResult? Error)> SupportTargetAsync(Guid id)
     {
         if (!IsSuperAdmin)
-            return null;
-        return await _db.Employees.IgnoreQueryFilters()
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" }));
+
+        var emp = await _db.Employees.IgnoreQueryFilters()
             .FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
+        if (emp is null)
+            return (null, NotFound(new { error = "EmployeeNotFound" }));
+        if (_superAdminIds.Contains(emp.Id))
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" }));
+
+        return (emp, null);
     }
 
     // Small wrapper that resolves the target tenant's slug for a readable audit line.

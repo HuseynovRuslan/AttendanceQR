@@ -1,3 +1,4 @@
+using AttendanceQR.Application.Common;
 using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
@@ -74,7 +75,9 @@ public class ManagerAccountScopeTests
                 new Claim("sub", ManagerId.ToString()),
                 new Claim("role", nameof(EmployeeRole.Manager)),
             }, "test");
-            Controller = new ManagerController(Db, new StubHasher(), new StubSummary())
+            // No operator ids configured — this fixture is about the ROLE/branch boundary; the
+            // operator-allowlist boundary has its own suite (OperatorTakeoverTests).
+            Controller = new ManagerController(Db, new StubHasher(), new StubSummary(), new AppOptions())
             {
                 ControllerContext = new ControllerContext
                 {

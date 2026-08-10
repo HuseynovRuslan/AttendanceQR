@@ -24,6 +24,9 @@ public class AdminController : ControllerBase
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILoginLockoutStore _lockout;
     private readonly string[] _hiddenEmails;
+    // Platform operators, by employee id. They usually live inside a tenant as ordinary-looking rows,
+    // so a tenant admin can see them — but must never be able to take their credentials.
+    private readonly Guid[] _operatorIds;
 
     public AdminController(
         AppDbContext db,
@@ -37,6 +40,7 @@ public class AdminController : ControllerBase
         _passwordHasher = passwordHasher;
         _lockout = lockout;
         _hiddenEmails = appOptions.HiddenEmailList();
+        _operatorIds = appOptions.SuperAdminIdList();
     }
 
     [HttpGet]
@@ -865,6 +869,14 @@ public class AdminController : ControllerBase
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
+        // A platform operator is not a tenant's to reset. They are allowlisted by employee id and
+        // typically sit inside some tenant as a normal-looking row, so without this a tenant admin —
+        // or a support session impersonating one — could reset that operator's PIN, read the
+        // plaintext out of the response below, and sign in to the operator console with it. That
+        // turns "help a customer back in" into a route to the whole platform. Refused before the
+        // activation check, so the response cannot be used to probe which employees are operators.
+        if (_operatorIds.Contains(employee.Id))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
         if (employee.ActivatedAtUtc is null)
             return Conflict(new { error = "NotActivated" });
 
