@@ -11,7 +11,7 @@ import {
   type MyFieldVisit,
 } from '../api/fieldVisits'
 import { FieldCheckoutSheet } from '../components/FieldCheckoutSheet'
-import { readPendingTicks, writePendingTick, clearPendingTicks } from '../lib/pendingTicks'
+import { applyPendingTicks, writePendingTick } from '../lib/pendingTicks'
 import { getMyProfile } from '../api/attendance'
 import { getPosition } from '../lib/geo'
 import { fmtDayMonth, fmtDuration, fmtTime } from '../lib/format'
@@ -30,13 +30,6 @@ const fmtMeters = (d: number) => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000
 
 const titleOf = (v: MyFieldVisit) => v.targetLabel || (v.selfReported ? 'Sərbəst ziyarət' : 'Sahə ziyarəti')
 
-/** Lays this device's unacknowledged ticks back over what the server returned. */
-function withPendingTicks(v: MyFieldVisit): MyFieldVisit {
-  const pending = readPendingTicks(v.id)
-  if (Object.keys(pending).length === 0) return v
-  const checklist = v.checklist.map((i) => (i.id in pending ? { ...i, isDone: pending[i.id] } : i))
-  return { ...v, checklist, checklistDone: checklist.filter((i) => i.isDone).length }
-}
 
 /**
  * The worker's field-visit screen (/field) — light, professional, self-contained (owns its shell, no
@@ -60,7 +53,7 @@ export function FieldVisitsPage() {
     const res = await getMyFieldVisits().catch(() => null)
     // Ticks the server has not acknowledged are layered back on top, so a tick that failed ten
     // minutes ago still shows as ticked instead of silently undoing itself.
-    if (res && res.status === 200 && Array.isArray(res.data)) setVisits(res.data.map(withPendingTicks))
+    if (res && res.status === 200 && Array.isArray(res.data)) setVisits(res.data.map(applyPendingTicks))
     // A thrown/offline load (res === null) must NOT read as "no field work" — a worker with a real
     // assigned visit would then never check in. Surface it as an error instead.
     else setTopMsg({ kind: 'err', text: 'Yüklənmədi — internet bağlantısını yoxlayın' })
@@ -232,7 +225,6 @@ export function FieldVisitsPage() {
           visit={checkoutVisit}
           onClose={() => setCheckoutVisit(null)}
           onDone={async ({ photoPending }) => {
-            clearPendingTicks(checkoutVisit.id)
             setCheckoutVisit(null)
             setTopMsg({
               kind: 'ok',

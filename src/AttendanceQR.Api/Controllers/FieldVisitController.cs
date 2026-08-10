@@ -151,6 +151,18 @@ public class FieldVisitController : ControllerBase
         var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id && v.EmployeeId == me, ct);
         if (visit is null)
             return NotFound(new { error = "VisitNotFound" });
+
+        // Already left? Answer OK and keep the original departure time. The response to the first
+        // call is easily lost — a 502 mid-deploy, an LTE/wifi handover — and the app then retries.
+        // Rejecting the retry would tell a worker who HAS clocked out that they failed to, forever,
+        // and would strand the work photo that is sent right after this returns. Same idempotency the
+        // scan path gets from ProcessedScan, and the same rule the work-photo upload already follows.
+        if (visit.Status == FieldVisitStatus.Completed && visit.CheckOutAtUtc is not null)
+        {
+            var already = await _db.FieldVisitChecklistItems
+                .Where(i => i.FieldVisitId == visit.Id).OrderBy(i => i.SortOrder).ToListAsync(ct);
+            return Ok(Project(visit, null, already));
+        }
         if (visit.Status != FieldVisitStatus.CheckedIn)
             return BadRequest(new { error = "NotCheckedIn" });
 

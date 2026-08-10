@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { checkInFieldVisit, type MyFieldVisit } from '../api/fieldVisits'
 import { FieldCheckoutSheet } from './FieldCheckoutSheet'
+import { applyPendingTicks } from '../lib/pendingTicks'
 import { getPosition } from '../lib/geo'
 import { fmtTime } from '../lib/format'
 import { IconCheck, IconLogout, IconMapPin } from './icons'
@@ -51,7 +52,10 @@ export function FieldVisitCards({
   // use) would have kept recording departures with no work photo while every log said success.
   const [checkoutVisit, setCheckoutVisit] = useState<MyFieldVisit | null>(null)
 
+  // Through the pending layer, exactly as /field does — the home card feeds the same check-out sheet,
+  // whose payload is an ABSOLUTE set, so an unpatched visit here would undo ticks made on /field.
   const shown = visits
+    .map(applyPendingTicks)
     .filter((v) => v.status === 'Assigned' || v.status === 'CheckedIn' || v.status === 'Completed')
     .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
   if (shown.length === 0) return null

@@ -251,6 +251,27 @@ public class FieldProofOfWorkTests
     }
 
     [Fact]
+    public async Task A_retried_check_out_is_accepted_and_keeps_the_original_departure_time()
+    {
+        // The first response is easily lost — a 502 mid-deploy, an LTE/wifi handover — and the app
+        // retries. Rejecting the retry would tell a worker who HAS clocked out that they failed to,
+        // forever, and would strand the work photo that is sent right after this returns.
+        using var h = new Harness();
+        var id = await h.AssignAsync();
+        await h.CheckInAsync(id);
+
+        await h.AsWorker.CheckOut(id, new FieldCheckOutRequest(40.4, 49.8));
+        var firstDeparture = h.Visit(id).CheckOutAtUtc;
+
+        Assert.IsType<OkObjectResult>(await h.AsWorker.CheckOut(id, new FieldCheckOutRequest(40.4, 49.8)));
+        Assert.Equal(firstDeparture, h.Visit(id).CheckOutAtUtc);   // not moved by the retry
+
+        // Never arrived is still a genuine error — the two cases must not be conflated.
+        var fresh = await h.AssignAsync();
+        Assert.IsType<BadRequestObjectResult>(await h.AsWorker.CheckOut(fresh, new FieldCheckOutRequest()));
+    }
+
+    [Fact]
     public async Task Check_out_reconciles_the_final_tick_state()
     {
         using var h = new Harness();

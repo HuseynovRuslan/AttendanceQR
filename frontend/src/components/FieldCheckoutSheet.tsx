@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { checkOutFieldVisit, uploadWorkPhoto, type ChecklistItem, type MyFieldVisit } from '../api/fieldVisits'
 import { getPosition } from '../lib/geo'
 import { fileToWorkPhoto, frameToWorkPhoto, waitForVideoFrame } from '../lib/workPhoto'
+import { applyPendingTicks, clearPendingTicks } from '../lib/pendingTicks'
 import { IconCamera, IconCheck } from './icons'
 
 /**
@@ -46,8 +47,10 @@ export function FieldCheckoutSheet({
   const [cameraFailed, setCameraFailed] = useState<null | 'denied' | 'other'>(null)
   const [warming, setWarming] = useState(true)
   const [confirmNoPhoto, setConfirmNoPhoto] = useState(false)
+  // Seeded through the pending layer, NOT from the raw visit: a tick made on /field whose POST never
+  // landed must still count as done here, or this sheet's absolute set would silently undo it.
   const [done, setDone] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(visit.checklist.map((i) => [i.id, i.isDone])),
+    Object.fromEntries(applyPendingTicks(visit).checklist.map((i) => [i.id, i.isDone])),
   )
   const [err, setErr] = useState<string | null>(null)
   const noPhotoTimer = useRef<number | undefined>(undefined)
@@ -141,7 +144,10 @@ export function FieldCheckoutSheet({
         setPhase(photo ? 'preview' : 'framing') // the photo survives, so they retry without re-shooting
         return
       }
-      // The record is safe. The upload runs on its own — the worker is free to pocket the phone.
+      // The record is safe — and its payload settled the ticks, so the pending layer has done its
+      // job. Cleared HERE rather than in a caller's onDone, so both entry points get it.
+      clearPendingTicks(visit.id)
+      // The upload runs on its own — the worker is free to pocket the phone.
       if (photo) void uploadWorkPhoto(visit.id, photo).catch(() => {})
       if (!geo.ok) setErr(GEO_FAILED)
       await onDone({ photoPending: photo !== null })
@@ -189,28 +195,32 @@ export function FieldCheckoutSheet({
           </div>
         )}
 
-        {/* Viewfinder / preview / camera-failed panel — one box, no layout jump between them. */}
-        <div className="mt-3 aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black">
-          {cameraFailed ? (
-            <div className="flex h-full flex-col items-center justify-center gap-1 bg-slate-100 p-4 text-center">
+        {/* One box; the layers stack rather than replace each other. The <video> is NEVER unmounted:
+            srcObject is attached once, so swapping it out for the preview and back would hand the
+            retake a fresh, unattached element — the stream stays live but the next shutter reads a
+            0-width frame and fails forever. The captured still simply covers it, which also means a
+            photo taken through the file fallback is actually visible (the camera-failed panel used
+            to win the ternary and hide it). */}
+        <div className="relative mt-3 aspect-[4/3] w-full overflow-hidden rounded-2xl bg-black">
+          <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+
+          {!photo && cameraFailed && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-100 p-4 text-center">
               <div className="text-sm font-semibold text-slate-700">Kamera açılmadı — şəkilsiz də çıxış edə bilərsiniz</div>
               {cameraFailed === 'denied' && (
                 <div className="text-xs text-slate-500">Kamera icazəsi bağlıdır — telefon ayarlarından açın</div>
               )}
             </div>
-          ) : photo ? (
-            <img src={photo} alt="İş şəkli" className="h-full w-full object-cover" />
-          ) : (
-            <div className="relative h-full w-full">
-              <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
-              {warming && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
-                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                  <span className="text-sm">Kamera hazırlanır…</span>
-                </div>
-              )}
+          )}
+
+          {!photo && !cameraFailed && warming && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              <span className="text-sm">Kamera hazırlanır…</span>
             </div>
           )}
+
+          {photo && <img src={photo} alt="İş şəkli" className="absolute inset-0 h-full w-full object-cover" />}
         </div>
         {!photo && (
           <div className="mt-2 text-center text-xs text-slate-500">

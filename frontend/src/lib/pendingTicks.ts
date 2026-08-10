@@ -45,6 +45,23 @@ export function writePendingTick(visitId: string, itemId: string, isDone: boolea
   writeAll(all)
 }
 
+/**
+ * Lays this device's unacknowledged ticks back over what the server returned.
+ *
+ * Lives here, not in a screen, because BOTH check-out entry points need it: the sheet sends the
+ * ABSOLUTE set of ticked ids, so a visit handed over unpatched would send a set that omits the
+ * pending ticks — and the server would dutifully confirm them as undone. The home card is the path
+ * most workers use, so getting this wrong there erases exactly the work it exists to prove.
+ */
+export function applyPendingTicks<T extends { id: string; checklist: { id: string; isDone: boolean }[]; checklistDone: number }>(
+  visit: T,
+): T {
+  const pending = readPendingTicks(visit.id)
+  if (Object.keys(pending).length === 0) return visit
+  const checklist = visit.checklist.map((i) => (i.id in pending ? { ...i, isDone: pending[i.id] } : i))
+  return { ...visit, checklist, checklistDone: checklist.filter((i) => i.isDone).length }
+}
+
 /** Drops a finished visit's entries — its ticks are settled by the check-out payload. */
 export function clearPendingTicks(visitId: string): void {
   const all = readAll()

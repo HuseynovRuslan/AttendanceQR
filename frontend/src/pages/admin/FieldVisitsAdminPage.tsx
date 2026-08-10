@@ -47,17 +47,29 @@ function isStuck(v: BoardFieldVisit, date: string): boolean {
   return v.status === 'CheckedIn' && date < todayStr()
 }
 /**
- * "The visit closed but something doesn't add up" — one attention number rather than three the
- * manager has to reconcile. All three are advisory: none of them blocked the worker, and the per-row
- * chip still shows WHICH cause it was.
+ * Arrived outside the pinned radius. This is the ONLY thing that may colour or word the distance
+ * verdict — it is a statement about where a named person stood, and it must never be driven by the
+ * broader "needs attention" flag below. (It was, briefly: a worker who arrived 12 m from a 200 m
+ * target but left one line unticked was printed as "⚠️ 12 m uzaq" on the board.)
+ */
+function isFarFromTarget(v: BoardFieldVisit): boolean {
+  return v.checkInDistanceMeters != null && v.targetRadiusMeters != null && v.checkInDistanceMeters > v.targetRadiusMeters
+}
+
+/**
+ * "The visit closed but something doesn't add up" — one attention number rather than several the
+ * manager has to reconcile. Advisory only: nothing here blocked the worker, and the per-row chips
+ * still show WHICH cause it was. Used for the stat card and the «Yalnız diqqət» filter, never for
+ * the distance wording.
+ *
+ * Deliberately NOT included: "completed with no departure GPS". An admin force-close leaves exactly
+ * that shape (FieldVisitController.ForceCheckOut stamps a time and no position), and the board row
+ * carries no flag to tell the two apart — so it would count the admin's own cleanup as a worker's
+ * omission, forever, with no way to clear it. Restore it only behind a real ForceClosedAtUtc column.
  */
 function isFlagged(v: BoardFieldVisit): boolean {
-  const farFromTarget =
-    v.checkInDistanceMeters != null && v.targetRadiusMeters != null && v.checkInDistanceMeters > v.targetRadiusMeters
   const workLeftUnticked = v.status === 'Completed' && v.checklistTotal > 0 && v.checklistDone < v.checklistTotal
-  // A force-closed visit has no departure GPS by design, so it must not read as a worker's omission.
-  const leftWithoutPosition = v.status === 'Completed' && v.checkOutAtUtc != null && v.checkOutLatitude == null
-  return farFromTarget || workLeftUnticked || leftWithoutPosition
+  return isFarFromTarget(v) || workLeftUnticked
 }
 
 // Read-only map fitting all of a visit's points (target + check-in + check-out).
@@ -395,7 +407,7 @@ export function FieldVisitsAdminPage() {
             <tbody>
               {filtered.map((v) => {
                 const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
-                const flagged = isFlagged(v)
+                const far = isFarFromTarget(v)
                 const stuck = isStuck(v, date)
                 return (
                   <tr key={v.id}>
@@ -440,8 +452,8 @@ export function FieldVisitsAdminPage() {
                           {v.checkOutAtUtc ? <b>{fmtTime(v.checkOutAtUtc)}</b> : <span className="muted">{v.status === 'CheckedIn' ? 'davam edir' : '—'}</span>}
                           <div style={{ fontSize: 11, marginTop: 2, display: 'flex', gap: 8, alignItems: 'center' }}>
                             {v.checkInDistanceMeters != null && (
-                              <span style={{ color: flagged ? 'var(--clay)' : 'var(--leaf-d)' }}>
-                                {flagged ? `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq` : '✅ ərazidə'}
+                              <span style={{ color: far ? 'var(--clay)' : 'var(--leaf-d)' }}>
+                                {far ? `⚠️ ${fmtDist(v.checkInDistanceMeters)} uzaq` : '✅ ərazidə'}
                               </span>
                             )}
                             {v.durationMinutes != null && <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes} dəq</span>}
@@ -600,7 +612,7 @@ function DetailOverlay({ v, checklist, workPhoto, onOpenPhoto, onClose, onCancel
   stuck: boolean
 }) {
   const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
-  const flagged = isFlagged(v)
+  const far = isFarFromTarget(v)
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
       <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px,94vw)', maxHeight: '92vh', overflowY: 'auto' }}>
@@ -629,8 +641,8 @@ function DetailOverlay({ v, checklist, workPhoto, onOpenPhoto, onClose, onCancel
         )}
 
         {v.checkInDistanceMeters != null ? (
-          <div className={`fb ${flagged ? 'fb-warn' : 'fb-ok'}`} style={{ marginBottom: 12 }}>
-            {flagged
+          <div className={`fb ${far ? 'fb-warn' : 'fb-ok'}`} style={{ marginBottom: 12 }}>
+            {far
               ? `⚠️ Giriş hədəfdən ${fmtDist(v.checkInDistanceMeters)} uzaqda`
               : `✅ Giriş hədəf ərazisində (${fmtDist(v.checkInDistanceMeters)})`}
           </div>
