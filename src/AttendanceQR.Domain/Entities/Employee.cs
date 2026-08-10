@@ -166,9 +166,15 @@ public class Employee : ITenantScoped, IHasWorkCycle
     // until the employee activates. Capped and least-recently-used-evicted — see DeviceBindingRules.
     public ICollection<DeviceBinding> DeviceBindings { get; set; } = new List<DeviceBinding>();
 
-    // Photo audit: the employee's reference selfie (object key in MinIO), captured the first time a
-    // check-in photo is available and kept indefinitely. A manager compares a day's check-in photo
-    // against this by eye — there is no biometric/face-recognition processing anywhere.
+    // Photo audit: the employee's reference selfie (object key in R2), captured the first time a
+    // check-in photo is available and kept indefinitely.
+    //
+    // ⚠️ This IS biometric processing. A manager can compare a day's photo against this by eye, but
+    // the FaceMatchWorker also sends both images to AWS Rekognition CompareFaces and stores a
+    // similarity score (Employee → AttendanceRecord.FaceMatchScore/FaceMatchStatus). This comment
+    // used to claim "there is no biometric/face-recognition processing anywhere", which was false
+    // and is exactly the sort of statement a customer's reviewer checks. Anything written about how
+    // this data is handled — privacy notice, DPA, consent basis — has to start from that fact.
     public string? ReferencePhotoKey { get; set; }
 
     public DateTime? ReferencePhotoTakenAtUtc { get; set; }

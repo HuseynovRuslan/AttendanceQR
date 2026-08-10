@@ -40,7 +40,10 @@ builder.Services.Configure<RekognitionOptions>(
 // Security services.
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IQrTokenService, QrTokenService>();
-builder.Services.AddSingleton<INonceStore, MemoryCacheNonceStore>();
+// No INonceStore: a single-use QR nonce was removed on purpose and must never come back. The QR
+// lives on a PRINTED POSTER, so "one scan per token" would mean one person per TTL window could
+// check in. The registration outlived its consumers and made the (false) README claim of replay
+// protection look implemented — see CLAUDE.md.
 builder.Services.AddSingleton<ILoginLockoutStore, MemoryCacheLoginLockoutStore>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 builder.Services.AddSingleton<IJwtService, JwtService>();

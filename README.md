@@ -3,9 +3,14 @@
 QR-based attendance system with geofencing, per-device binding, role-based reporting, and a
 nightly summary job. ASP.NET Core (.NET 10) backend + React (Vite) frontend.
 
-Employees scan a rotating, signed QR shown on a kiosk screen; the backend verifies the QR
-signature, a single-use nonce (replay protection), the employee's bound device, and the GPS
-geofence before recording a check-in/out.
+Employees scan an HMAC-signed QR — in practice a **printed poster** at the site (a rotating kiosk
+screen also exists). The backend verifies the signature, the token's version and short TTL, the
+employee's bound device and the GPS geofence, then records the check-in/out.
+
+The QR is deliberately **not** single-use: it is printed, so refusing a repeated token would mean
+only one person per TTL window could check in. Replay is bounded by the TTL plus the geofence,
+device binding and check-in photo — not by a nonce. See "Security notes" below for what these
+controls do and do not prevent.
 
 ## Stack
 
@@ -89,7 +94,13 @@ npm run dev               # http://localhost:5173
 ## Security notes
 
 - Passwords: PBKDF2 (ASP.NET Core Identity hasher). Activation tokens: random + SHA256, single-use.
-- QR tokens are HMAC-signed with a per-token nonce (replay-protected) and short TTL.
+- QR tokens are HMAC-signed (constant-time compare) with a short TTL and a location QR version, so a
+  regenerated poster invalidates the old one. They are **not** single-use — see above.
+- **What these controls do not do.** GPS and the device fingerprint come from the client, and there
+  is no device attestation on the web. An employee who is determined to can submit their site's
+  coordinates from elsewhere. The geofence, device binding, photo and face-match raise the cost and
+  leave a trail; they do not make a fake check-in impossible. Say this plainly to customers — the
+  detection work (scoring and surfacing suspicious records) is tracked separately.
 - Reporting/attendance scope is enforced server-side (Admin = all, Manager = managed locations,
   Employee = self).
 - Real secrets are **never** committed — supply them via env/user-secrets (see above).

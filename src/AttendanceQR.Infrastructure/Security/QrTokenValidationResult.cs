@@ -13,8 +13,10 @@ public sealed class QrTokenValidationResult
     public string? FailureReason { get; init; }
 
     /// <summary>
-    /// The token nonce, populated only on success. The caller uses it for replay
-    /// protection (see <see cref="INonceStore"/>).
+    /// The random component carried in the token, populated only on success. It makes each generated
+    /// token unique — it is NOT replay protection: nothing consumes it, deliberately. The QR lives on
+    /// a printed poster, so refusing a repeated token would let one person per TTL window check in.
+    /// Replay is bounded by the token's short TTL and by the geofence, device binding and photo.
     /// </summary>
     public string? Nonce { get; init; }
 

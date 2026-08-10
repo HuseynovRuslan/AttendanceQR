@@ -32,7 +32,7 @@ export const ui = {
   az: {
     'meta.title': 'QRLog — QR ilə işçi davamiyyəti sistemi | Azərbaycan',
     'meta.description':
-      'QRLog — işçilərin telefonu ilə QR kodu skan edərək giriş-çıxışını qeydə alan davamiyyət sistemi. GPS məkan yoxlaması, cihaz bağlaması və foto təsdiqi ilə saxta girişin qarşısını alır.',
+      'QRLog — işçilərin telefonu ilə QR kodu skan edərək giriş-çıxışını qeydə alan davamiyyət sistemi. Hər giriş GPS məkanı, cihaz bağlaması və foto ilə yoxlanılır.',
     'meta.keywords':
       'işçi davamiyyəti, QR davamiyyət, giriş çıxış sistemi, davamiyyət proqramı, GPS davamiyyət, iş vaxtı uçotu, QRLog, Azərbaycan',
 
@@ -115,7 +115,7 @@ export const ui = {
     'feat.f2t': 'Excel hesabatları',
     'feat.f2d': 'Tarix və filial üzrə hesabatı bir kliklə Excel faylı kimi yükləyin.',
     'feat.f3t': 'GPS məkan yoxlaması',
-    'feat.f3d': 'Skan yalnız filialın təyin olunmuş radiusunda qəbul edilir — evdən “gəldim” olmur.',
+    'feat.f3d': 'Hər skanın yeri filialın təyin olunmuş radiusu ilə yoxlanılır; kənardan gələn giriş dərhal işarələnir.',
     'feat.f4t': 'Cihaz bağlaması',
     'feat.f4d': 'Hər işçi öz telefonuna bağlanır; tanınmayan cihazdan giriş nəzarət altındadır.',
     'feat.f5t': 'Rollar və filial əhatəsi',
@@ -405,7 +405,7 @@ export const ui = {
     'feat.f2t': 'Отчёты в Excel',
     'feat.f2d': 'Отчёт по датам и филиалам выгружается в Excel одним кликом.',
     'feat.f3t': 'Проверка геолокации',
-    'feat.f3d': 'Скан принимается только в заданном радиусе филиала — «пришёл» из дома не пройдёт.',
+    'feat.f3d': 'Место каждого скана сверяется с заданным радиусом филиала; отметка извне сразу помечается.',
     'feat.f4t': 'Привязка устройства',
     'feat.f4d':
       'Каждый сотрудник привязан к своему телефону; вход с чужого устройства контролируется.',
@@ -695,7 +695,7 @@ export const ui = {
     'feat.f2t': 'Excel reports',
     'feat.f2d': 'Download a report by date range and site as an Excel file in one click.',
     'feat.f3t': 'GPS location check',
-    'feat.f3d': 'A scan is only accepted inside the site radius — nobody checks in from home.',
+    'feat.f3d': 'Every scan is checked against the site radius, and one from outside it is flagged immediately.',
     'feat.f4t': 'Device binding',
     'feat.f4d':
       'Each employee is bound to their own phone; a scan from an unknown device is controlled.',
