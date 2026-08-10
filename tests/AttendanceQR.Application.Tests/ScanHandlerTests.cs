@@ -42,6 +42,7 @@ public class ScanHandlerTests
     {
         public AppDbContext Db { get; }
         public AttendanceController Controller { get; }
+        public StubFace Face { get; }
         public Guid EmployeeId { get; } = Guid.NewGuid();
         public Guid LocationId { get; } = Guid.NewGuid();
         public Location Location { get; }
@@ -90,8 +91,9 @@ public class ScanHandlerTests
 
             _qr = new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-key-for-scan-tests", TtlSeconds = 300 }));
 
+            Face = new StubFace();
             Controller = new AttendanceController(
-                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new StubFace(),
+                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), Face,
                 new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),
@@ -270,6 +272,51 @@ public class ScanHandlerTests
             "an in-window offline timestamp must be kept as the arrival time");
     }
 
+    // --- the pre-scan face hint ---------------------------------------------
+
+    [Fact]
+    public async Task The_photo_check_answers_instead_of_throwing()
+    {
+        // Thin, but it is the test that was missing: the IMemoryCache the hourly budget uses was added
+        // to the constructor and never assigned to its field, so this endpoint threw a
+        // NullReferenceException on the first line of every call. It compiled (a warning, not an
+        // error), it deployed, and nothing here called this method — so the only symptom was that the
+        // "your face isn't in this photo, retake it" hint quietly stopped appearing on real phones.
+        using var h = new Harness();
+        var result = await h.Controller.PhotoCheck(new ReferencePhotoRequest(SmallPhoto));
+
+        Assert.Equal(-1, Convert.ToInt32(Prop(result, "faces")));
+    }
+
+    [Fact]
+    public async Task The_photo_check_stops_paying_after_the_hourly_budget()
+    {
+        // The endpoint takes a photo from an authenticated caller and forwards it to a service that
+        // charges per image, so without a cap one script is an open tap on someone else's bill.
+        using var h = new Harness();
+        for (var i = 0; i < 25; i++)
+            await h.Controller.PhotoCheck(new ReferencePhotoRequest(SmallPhoto));
+
+        Assert.Equal(20, h.Face.Detections);
+    }
+
+    [Fact]
+    public async Task Being_out_of_budget_looks_exactly_like_not_knowing()
+    {
+        // -1, the same answer as "the service is off" or "the photo was unreadable". It matters that
+        // the cap has no answer of its own: the client treats anything but a real count as "cannot
+        // tell" and says nothing, so a capped employee loses the hint and keeps the check-in.
+        using var h = new Harness();
+        for (var i = 0; i < 20; i++)
+            await h.Controller.PhotoCheck(new ReferencePhotoRequest(SmallPhoto));
+
+        var capped = await h.Controller.PhotoCheck(new ReferencePhotoRequest(SmallPhoto));
+        Assert.Equal(-1, Convert.ToInt32(Prop(capped, "faces")));
+    }
+
+    /// <summary>A few real bytes as base64 — enough to pass the size guard; nothing decodes it.</summary>
+    private static readonly string SmallPhoto = Convert.ToBase64String(new byte[64]);
+
     // --- helpers to read the anonymous action results -----------------------
 
     private static object? Prop(IActionResult result, string name)
@@ -307,10 +354,17 @@ public class ScanHandlerTests
 
     private sealed class StubFace : IFaceMatchService
     {
+        /// <summary>How many times the paid detection was actually reached — what the hourly budget caps.</summary>
+        public int Detections { get; private set; }
+
         public bool Enabled => false;
         public Task<FaceMatchOutcome> CompareAsync(byte[] r, byte[] c, CancellationToken ct = default)
             => Task.FromResult(new FaceMatchOutcome(0, 0, FaceMatchStatus.NotChecked));
-        public Task<int> DetectFaceCountAsync(byte[] p, CancellationToken ct = default) => Task.FromResult(-1);
+        public Task<int> DetectFaceCountAsync(byte[] p, CancellationToken ct = default)
+        {
+            Detections++;
+            return Task.FromResult(-1);
+        }
     }
 
     private sealed class StubQuery : IAttendanceQueryService

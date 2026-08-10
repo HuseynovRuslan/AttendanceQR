@@ -86,6 +86,7 @@ public class AttendanceController : ControllerBase
         _faceMatch = faceMatch;
         _deviceOptions = deviceOptions;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
+        _cache = cache;
         _logger = logger;
     }
 
