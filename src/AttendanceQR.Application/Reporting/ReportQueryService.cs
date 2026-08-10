@@ -102,7 +102,13 @@ public sealed class ReportQueryService : IReportQueryService
     private sealed record LiveDay(
         ScopedEmployee Employee, Location Location, AttendanceRecord? Record, DayComputation Computed,
         EffectiveShift Shift, LeaveType? Leave, string? LeaveAssignedBy = null, Guid? LeaveId = null,
-        string? ManualBy = null);
+        string? ManualBy = null,
+        // Field/mobile attendance for the same day, when there is any: earliest arrival, and a
+        // departure only once EVERY visit that day is closed (otherwise they are still on site).
+        // Deliberately kept OUT of Record: the board tells a field day apart precisely by the absence
+        // of an office record, and Record also carries scan-only things (photo, face match, id).
+        DateTime? FieldIn = null, DateTime? FieldOut = null,
+        double? FieldLat = null, double? FieldLng = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -179,6 +185,28 @@ public sealed class ReportQueryService : IReportQueryService
             .Where(r => r.AttendanceDate == date && employeeIds.Contains(r.EmployeeId))
             .ToDictionaryAsync(r => r.EmployeeId, ct);
 
+        // Field visits for the same day. Loaded HERE, once, because every consumer of this method
+        // needs them: the board labels such a day "Sahədə", and the reports/tabel must count it as
+        // worked (a day in the field is work, and the payroll deducts for anything that reads Qayıb).
+        // The nightly job applies the identical rule in DailySummaryService, so a day computed live
+        // and the row written for it tonight agree.
+        var fieldRaw = await _db.FieldVisits
+            .Where(v => v.VisitDate == date && employeeIds.Contains(v.EmployeeId)
+                        && v.Status != FieldVisitStatus.Cancelled && v.CheckInAtUtc != null)
+            .Select(v => new { v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc, v.CheckInLatitude, v.CheckInLongitude })
+            .ToListAsync(ct);
+        var fieldByEmployee = fieldRaw
+            .GroupBy(v => v.EmployeeId)
+            .ToDictionary(g => g.Key, g =>
+            {
+                var first = g.OrderBy(x => x.CheckInAtUtc).First();
+                return (
+                    In: first.CheckInAtUtc,
+                    Out: g.All(x => x.CheckOutAtUtc != null) ? g.Max(x => x.CheckOutAtUtc) : (DateTime?)null,
+                    Lat: first.CheckInLatitude,
+                    Lng: first.CheckInLongitude);
+            });
+
         // A handful of rows per tenant; loaded whole and looked up in memory.
         var schedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
 
@@ -243,15 +271,34 @@ public sealed class ReportQueryService : IReportQueryService
             // Judged against the same resolved shift the scan endpoint used.
             var c = AttendanceCalculator.Compute(record, shift, _timeZone, isWorkingDay, noRecordStatus);
 
+            // No office scan but they were in the field → the day is worked, not Qayıb. An office scan
+            // always wins (folding field minutes into it would double-count overlapping time), and this
+            // overrides DayOff/OnLeave for the same reason a scan on a leave day does: turning up is
+            // worked time. Lateness is never invented — a field arrival has no fixed hour to miss.
+            fieldByEmployee.TryGetValue(e.Id, out var fv);
+            if (fv.In is not null && record?.CheckInAtUtc is null)
+            {
+                c = fv.Out is null
+                    ? new DayComputation(DailySummaryStatus.Incomplete, 0, 0, 0)
+                    : new DayComputation(
+                        DailySummaryStatus.OnTime,
+                        (int)Math.Round((fv.Out.Value - fv.In.Value).TotalMinutes),
+                        0, 0);
+            }
+
             var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;
-            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy));
+            rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy,
+                fv.In, fv.Out, fv.Lat, fv.Lng));
         }
 
         return rows;
     }
 
+    // Times fall back to the field visit's, so a day worked in the field shows real hours in the
+    // reports instead of an empty "—" beside a worked status.
     private static DayRow ToDayRow(LiveDay d, DateOnly date) => new(
-        d.Employee.Id, d.Employee.LocationId, date, d.Record?.CheckInAtUtc, d.Record?.CheckOutAtUtc,
+        d.Employee.Id, d.Employee.LocationId, date,
+        d.Record?.CheckInAtUtc ?? d.FieldIn, d.Record?.CheckOutAtUtc ?? d.FieldOut,
         d.Computed.Status, d.Computed.WorkedMinutes, d.Computed.OvertimeMinutes, d.Computed.LateMinutes);
 
     /// <summary>
@@ -698,35 +745,16 @@ public sealed class ReportQueryService : IReportQueryService
 
         var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
-        // Field/mobile attendance for the same day, so a worker sent to an ad-hoc site (no office scan)
-        // shows as "Sahədə" instead of absent. Earliest field check-in; a check-out only once EVERY
-        // field visit that day is closed (otherwise they're still on site).
-        var empIds = computed.Select(d => d.Employee.Id).ToList();
-        var fieldRaw = await _db.FieldVisits
-            .Where(v => v.VisitDate == day && empIds.Contains(v.EmployeeId) && v.CheckInAtUtc != null)
-            .Select(v => new { v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc, v.CheckInLatitude, v.CheckInLongitude })
-            .ToListAsync(ct);
-        var fieldByEmp = fieldRaw
-            .GroupBy(v => v.EmployeeId)
-            .ToDictionary(
-                g => g.Key,
-                g =>
-                {
-                    var first = g.OrderBy(x => x.CheckInAtUtc).First();
-                    return (
-                        In: first.CheckInAtUtc,
-                        Out: g.All(x => x.CheckOutAtUtc != null) ? g.Max(x => x.CheckOutAtUtc) : (DateTime?)null,
-                        Lat: first.CheckInLatitude,
-                        Lng: first.CheckInLongitude);
-                });
-
+        // Field/mobile attendance rides along on LiveDay — ComputeDayLiveAsync loaded it once, and has
+        // already counted such a day as worked so the reports and the payroll agree with this board.
         return computed
             .Select(d =>
             {
-                fieldByEmp.TryGetValue(d.Employee.Id, out var fv);
                 var status = BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal);
-                // A field check-in with no office record → "Sahədə", not Qayıb / Gözlənilir.
-                if (fv.In != null && d.Record?.CheckInAtUtc == null && (status == "Absent" || status == "Pending"))
+                // A field check-in with no office record → "Sahədə". Checked before the status is read
+                // for anything else, because ComputeDayLiveAsync now scores such a day as worked, so
+                // it arrives here as OnTime/Incomplete rather than Absent/Pending.
+                if (d.FieldIn != null && d.Record?.CheckInAtUtc == null)
                     status = "Field";
                 return new DayAttendanceRow(
                     d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
@@ -738,7 +766,7 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Record?.WasOffline ?? false,
                     d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
                     d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy,
-                    fv.In, fv.Out, fv.Lat, fv.Lng);
+                    d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

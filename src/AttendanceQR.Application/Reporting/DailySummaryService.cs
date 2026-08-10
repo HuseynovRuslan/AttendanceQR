@@ -60,6 +60,24 @@ public sealed class DailySummaryService : IDailySummaryService
             .Where(r => r.AttendanceDate == date)
             .ToDictionaryAsync(r => r.EmployeeId, ct);
 
+        // Field visits are attendance too. A worker sent to a site with no QR poster proves presence
+        // with GPS + time instead of a scan, so a day spent in the field must count as WORKED here —
+        // this table is what the tabel and the payroll deduction read. Without it a driver who spent
+        // the whole month on field visits reads as Qayıb every day and loses a month's pay.
+        // Aggregated per employee: earliest arrival, latest departure, and whether any visit is still
+        // open (that day is Incomplete, exactly like a forgotten office check-out).
+        var fieldByEmployee = await _db.FieldVisits
+            .Where(v => v.VisitDate == date && v.Status != FieldVisitStatus.Cancelled && v.CheckInAtUtc != null)
+            .GroupBy(v => v.EmployeeId)
+            .Select(g => new
+            {
+                EmployeeId = g.Key,
+                FirstIn = g.Min(v => v.CheckInAtUtc),
+                LastOut = g.Max(v => v.CheckOutAtUtc),
+                AnyOpen = g.Any(v => v.CheckOutAtUtc == null),
+            })
+            .ToDictionaryAsync(x => x.EmployeeId, ct);
+
         // Admin-declared non-working days for this date: either global (LocationId == null) or
         // specific to one of the locations in play. A location is "off" if a matching row exists.
         var nonWorkingLocationIds = await _db.NonWorkingDays
@@ -110,7 +128,36 @@ public sealed class DailySummaryService : IDailySummaryService
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(emp.Id, out var record);
-            var computed = Compute(emp.Id, emp.LocationId, date, record, shift, isWorkingDay, noRecordStatus);
+
+            // An office record always wins: someone who scanned at their branch is judged by that scan,
+            // and folding field minutes into it would double-count overlapping time. Field visits only
+            // fill a day that has NO scan — the same rule the live "today" board uses. Note this
+            // overrides DayOff/OnLeave too: turning up to a site on a rest day or mid-vacation is worked
+            // time, exactly as the LeaveRecord rule already says for a scan on a leave day.
+            var fieldRecord = record?.CheckInAtUtc is null && fieldByEmployee.TryGetValue(emp.Id, out var fv)
+                ? new AttendanceRecord
+                {
+                    EmployeeId = emp.Id,
+                    LocationId = emp.LocationId,
+                    AttendanceDate = date,
+                    CheckInAtUtc = fv.FirstIn,
+                    // Any still-open visit leaves the day open, whatever the other visits did.
+                    CheckOutAtUtc = fv.AnyOpen ? null : fv.LastOut,
+                }
+                : null;
+
+            var computed = Compute(emp.Id, emp.LocationId, date, record ?? fieldRecord, shift, isWorkingDay, noRecordStatus);
+
+            // A field visit has no fixed arrival to be late for — the manager decides when they are
+            // sent and the travel is not theirs to control. So a field-derived day never carries
+            // lateness; "Late" would invent a fault out of a dispatch decision. (It changes nothing
+            // the tabel shows — Late and OnTime are both "İ" — but it keeps the stored record honest.)
+            if (fieldRecord is not null)
+            {
+                if (computed.Status == DailySummaryStatus.Late)
+                    computed.Status = DailySummaryStatus.OnTime;
+                computed.LateMinutes = 0;
+            }
 
             if (existing.TryGetValue(emp.Id, out var summary))
             {
