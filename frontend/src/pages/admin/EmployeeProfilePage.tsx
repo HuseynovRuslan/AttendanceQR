@@ -40,7 +40,6 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
-  const [photos, setPhotos] = useState<{ reference: string | null; checkIn: string | null }>({ reference: null, checkIn: null })
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -98,12 +97,8 @@ export function EmployeeProfilePage() {
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
       setSummary(sumRes.data.rows.find((r) => r.employeeId === id) ?? null)
 
-    // Reference + latest check-in selfie: getPhotoUrl on the newest record returns both (or nothing).
-    if (recs[0]) {
-      const p = await getPhotoUrl(recs[0].recordId)
-      if (p.status === 200 && p.data && 'referencePhotoUrl' in p.data)
-        setPhotos({ reference: p.data.referencePhotoUrl, checkIn: p.data.checkInPhotoUrl })
-    }
+    // No photo prefetch: nothing on this page shows a selfie until someone asks for a specific
+    // flagged day, so the presigned URL is fetched then (viewRecordPhoto), not on every open.
     setLoading(false)
   }
 
@@ -335,19 +330,10 @@ export function EmployeeProfilePage() {
         </div>
       </div>
 
-      {/* Photos */}
-      {(photos.reference || photos.checkIn) && (
-        <div className="card card-pad">
-          <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Fotolar</span>
-            <Link to="/admin/photo-audit" className="btn btn-sm"><IconCamera /> Foto audit</Link>
-          </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {photos.reference && <Photo label="Referans" url={photos.reference} />}
-            {photos.checkIn && <Photo label="Son giriş" url={photos.checkIn} />}
-          </div>
-        </div>
-      )}
+      {/* No standing photo card here on purpose: a selfie is opened only where there is a REASON to
+          look — a face-flagged check-in (the "Şəklə bax" button below) or the Foto audit screen.
+          A profile that greets whoever opens it with the person's face turns an anti-fraud record
+          into casual browsing of staff photos. */}
 
       {/* Recent attendance — with in-place correction, so a wrong day is fixed here, not from the list. */}
       <div className="card card-pad">
@@ -546,15 +532,6 @@ function Field({ label, value }: { label: string; value: string | null }) {
     <div>
       <div className="form-label">{label}</div>
       <div style={{ fontSize: 14, color: value ? 'var(--c900)' : 'var(--c400)' }}>{value || '—'}</div>
-    </div>
-  )
-}
-
-function Photo({ label, url }: { label: string; url: string }) {
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <img src={url} alt={label} style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 'var(--r)', border: '1px solid var(--c200)' }} />
-      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{label}</div>
     </div>
   )
 }
