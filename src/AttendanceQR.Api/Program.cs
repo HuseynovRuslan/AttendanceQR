@@ -226,12 +226,31 @@ builder.Services
                 var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
                 var account = await db.Employees
                     .Where(e => e.Id == employeeId)
-                    .Select(e => new { e.TokenVersion, e.IsActive })
+                    // Whether the COMPANY is still active, read in the same round-trip. Suspending a
+                    // tenant used to change nothing for anyone already signed in: these tokens do not
+                    // expire, so every existing session kept working indefinitely and the only lever
+                    // behind the billing engine was decorative.
+                    .Select(e => new
+                    {
+                        e.TokenVersion,
+                        e.IsActive,
+                        TenantActive = db.Tenants.Any(t => t.Id == e.TenantId && t.IsActive),
+                    })
                     .FirstOrDefaultAsync();
 
                 if (account is null || account.TokenVersion != tokenVersion)
                 {
                     context.Fail("TokenVersionMismatch");
+                    return;
+                }
+
+                // ⚠️ This now has teeth: suspending a tenant locks every one of that company's staff
+                // out mid-session, including the scan. Never suspend during the scan peaks
+                // (07:30–09:30 / 17:00–19:00) — nobody could clock in, and the clock-in is what they
+                // are paid on.
+                if (!account.TenantActive)
+                {
+                    context.Fail("TenantSuspended");
                     return;
                 }
 

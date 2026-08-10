@@ -12,6 +12,7 @@ using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -93,6 +94,7 @@ public class ScanHandlerTests
                 Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new StubFace(),
                 new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
+                new MemoryCache(new MemoryCacheOptions()),
                 NullLogger<AttendanceController>.Instance)
             {
                 ControllerContext = new ControllerContext { HttpContext = HttpContextFor(EmployeeId) },

@@ -9,6 +9,7 @@ using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AttendanceQR.Api.Controllers;
 
@@ -34,6 +35,13 @@ public class AttendanceController : ControllerBase
     // incident for this long, so one stuck phone doesn't bury the day's real problems.
     private static readonly TimeSpan FailureDedupeWindow = TimeSpan.FromMinutes(5);
 
+    // Every photo-check is a paid AWS Rekognition call, and the endpoint is [Authorize]-only with no
+    // ceiling — any signed-in employee could loop it and run up the bill (or exhaust the quota for
+    // everyone else). A generous per-employee hourly budget bounds both: a real person scans twice a
+    // day and might retake a photo once or twice, so 20 is far above normal use and far below abuse.
+    private const int MaxFaceChecksPerHour = 20;
+    private static readonly TimeSpan FaceCheckWindow = TimeSpan.FromHours(1);
+
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
     private readonly IAttendanceQueryService _attendanceQuery;
@@ -42,6 +50,7 @@ public class AttendanceController : ControllerBase
     private readonly IFaceMatchService _faceMatch;
     private readonly DeviceBindingOptions _deviceOptions;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<AttendanceController> _logger;
 
     public AttendanceController(
@@ -53,6 +62,7 @@ public class AttendanceController : ControllerBase
         IFaceMatchService faceMatch,
         DeviceBindingOptions deviceOptions,
         AppOptions appOptions,
+        IMemoryCache cache,
         ILogger<AttendanceController> logger)
     {
         _db = db;
@@ -228,10 +238,21 @@ public class AttendanceController : ControllerBase
     [HttpPost("me/photo-check")]
     public async Task<IActionResult> PhotoCheck([FromBody] ReferencePhotoRequest request)
     {
+        // Out of budget answers the SAME -1 this endpoint already returns whenever it cannot tell, so
+        // the cap can never become a new failure mode: the employee just loses the retake hint, and
+        // the check-in that follows was never gated on this.
+        var budgetKey = $"facecheck:{User.EmployeeId()}";
+        var used = _cache.TryGetValue(budgetKey, out int n) ? n : 0;
+        if (used >= MaxFaceChecksPerHour)
+            return Ok(new { faces = -1 });
+
         var bytes = DecodeImage(request.PhotoBase64);
         if (bytes.Length is <= 0 or > 2 * 1024 * 1024)
             return Ok(new { faces = -1 });
 
+        // Counted immediately before the paid call, so a call that then fails still spends budget —
+        // otherwise forcing failures would be a free loop.
+        _cache.Set(budgetKey, used + 1, FaceCheckWindow);
         var faces = await _faceMatch.DetectFaceCountAsync(bytes, HttpContext.RequestAborted);
         return Ok(new { faces });
     }

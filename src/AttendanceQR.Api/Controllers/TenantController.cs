@@ -130,13 +130,31 @@ public class TenantController : ControllerBase
     private static readonly HashSet<string> ServedNonTenantHosts =
         new(StringComparer.OrdinalIgnoreCase) { "admin", "app" };
 
+    /// <summary>The only domain we will ever let Caddy obtain a certificate for.</summary>
+    private const string BaseDomain = "qrlog.az";
+
     [HttpGet("allow-tls")]
     [AllowAnonymous]
     public async Task<IActionResult> AllowTls([FromQuery] string? domain)
     {
         if (string.IsNullOrWhiteSpace(domain))
             return NotFound();
-        var slug = domain.Split('.')[0].ToLowerInvariant();
+
+        // The host must be EXACTLY one label in front of our own domain. This used to read
+        // `domain.Split('.')[0]`, which looked only at the first label and never checked what came
+        // after it — so "bax.attacker.example" resolved to the slug "bax", matched a real tenant, and
+        // Caddy would obtain a genuine Let's Encrypt certificate for an attacker's hostname on OUR
+        // ACME account (and then serve our frontend under it). Anything that is not
+        // "<one-label>.qrlog.az" is refused: no deeper subdomains, no other registrable domain.
+        var host = domain.Trim().TrimEnd('.').ToLowerInvariant();
+        const string suffix = "." + BaseDomain;
+        if (!host.EndsWith(suffix, StringComparison.Ordinal))
+            return NotFound();
+
+        var slug = host[..^suffix.Length];
+        if (slug.Length == 0 || slug.Contains('.'))
+            return NotFound();
+
         if (ServedNonTenantHosts.Contains(slug))
             return Ok();
         var exists = await _db.Tenants.AnyAsync(t => t.Slug == slug && t.IsActive, HttpContext.RequestAborted);
