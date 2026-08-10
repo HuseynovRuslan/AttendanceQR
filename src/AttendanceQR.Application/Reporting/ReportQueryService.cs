@@ -766,7 +766,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Record?.WasOffline ?? false,
                     d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
                     d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy,
-                    d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng);
+                    d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng,
+                    d.Record?.ClosedByFieldVisitId != null);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

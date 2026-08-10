@@ -71,4 +71,16 @@ public class AttendanceRecord : ITenantScoped
     // Surfaced so a manually-entered giriş-çıxış is attributable ("Əl ilə — filankəs") instead of
     // being indistinguishable from a real scan the employee's own pay depends on.
     public Guid? ManualByEmployeeId { get; set; }
+
+    // Set when this day was closed automatically by the employee's own FIELD VISIT check-out, to that
+    // visit's id. A worker who spends the day at a site and goes straight home never passes the poster
+    // again, so their poster check-in stayed open and the day scored zero hours until an admin noticed
+    // it on /admin/open-records and closed it by hand.
+    //
+    // Deliberately NOT ManualByEmployeeId: nobody touched this by hand. The departure time came from
+    // the worker's own check-out, with its GPS and its selfie — better evidence than a typed-in time,
+    // and it must not be labelled "Əl ilə — filankəs" as though an admin had invented it. But it is
+    // not a poster scan either, and a pay-critical time whose origin cannot be told apart from a real
+    // scan is exactly what ManualByEmployeeId exists to prevent. Hence its own column.
+    public Guid? ClosedByFieldVisitId { get; set; }
 }

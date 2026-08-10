@@ -436,6 +436,13 @@ export function TodayPage() {
                       ✍️ Əl ilə — {r.manualBy}
                     </div>
                   )}
+                  {/* Not a manual entry and not a poster scan: the worker closed their own field visit
+                      and went home, which closed this day at the moment they left the site. */}
+                  {r.closedByFieldVisit && (
+                    <div style={{ fontSize: 11, marginTop: 4, color: 'var(--c600)' }}>
+                      📍 Ərazi çıxışı ilə bağlandı
+                    </div>
+                  )}
                 </td>
                 <td className="mono" data-label="Giriş">
                   {fmtTime(r.checkInAtUtc ?? r.fieldCheckInAtUtc)}

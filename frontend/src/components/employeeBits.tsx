@@ -17,6 +17,11 @@ export function HistoryRow({ r }: { r: AttendanceRecord }) {
             ✍️ Əl ilə — {r.manualByName}
           </div>
         )}
+        {r.closedByFieldVisit && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
+            📍 Ɗrazi çıxışı ilə bağlandı
+          </div>
+        )}
       </div>
       <RecordBadge r={r} />
     </div>

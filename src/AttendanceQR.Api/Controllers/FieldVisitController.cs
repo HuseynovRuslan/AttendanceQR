@@ -178,6 +178,11 @@ public class FieldVisitController : ControllerBase
         if (visit.CheckOutPhotoKey is not null)
             await _db.SaveChangesAsync(ct);
 
+        // Close the poster day they can no longer come back to. Wrapped, because step 1 has already
+        // been committed and nothing below it is allowed to take the departure away again.
+        try { await TryCloseOpenAttendanceAsync(visit, ct); }
+        catch { /* the field check-out stands; an admin can still close the day by hand */ }
+
         // 2. Ticks — advisory, and wrapped so they can never undo step 1. The body carries the ABSOLUTE
         //    set of done ids, so this also reconciles ticks whose own POST never reached the server,
         //    and replaying the same check-out changes nothing.
@@ -477,7 +482,55 @@ public class FieldVisitController : ControllerBase
         visit.CheckOutAtUtc = DateTime.UtcNow;
         // No CheckOutLatitude/Longitude — the admin isn't on site; distance stays unmeasured.
         await _db.SaveChangesAsync(ct);
-        return Ok(new { id = visit.Id, status = visit.Status.ToString() });
+
+        // Same follow-through as the worker's own check-out: this visit is being closed precisely
+        // because nobody is going to pass the poster, so the open day would otherwise stay open.
+        var closedDay = false;
+        try { closedDay = await TryCloseOpenAttendanceAsync(visit, ct); }
+        catch { /* the visit is closed; the day can still be closed by hand */ }
+
+        return Ok(new { id = visit.Id, status = visit.Status.ToString(), closedAttendanceDay = closedDay });
+    }
+
+
+    /// <summary>
+    /// Closes the employee's own poster check-in for the same day, at the moment they left the site.
+    ///
+    /// A worker sent to a site checks in at the poster in the morning, spends the day out, and goes
+    /// straight home. The poster is never passed again, so their attendance record kept a check-in and
+    /// no check-out — and an open record scores ZERO hours, not partial ones. Until now the only fix
+    /// was an admin spotting it on /admin/open-records and typing the time in by hand, which means the
+    /// worker's pay depended on somebody noticing.
+    ///
+    /// Rules this deliberately keeps narrow, because it writes to a pay-critical record:
+    ///   • only a record that is genuinely OPEN — never touches a completed day;
+    ///   • only when the check-in precedes the departure, so it can never produce negative hours;
+    ///   • the field visit's own date, so a stale visit cannot close an unrelated day;
+    ///   • marked with the visit id, so the origin of the time stays visible to the admin.
+    ///
+    /// Advisory in the sense that matters: it runs AFTER the field check-out is committed and can
+    /// never undo it. It is not advisory in what it produces — this is the worker's day.
+    /// </summary>
+    private async Task<bool> TryCloseOpenAttendanceAsync(FieldVisit visit, CancellationToken ct)
+    {
+        if (visit.CheckOutAtUtc is not DateTime leftAt)
+            return false;
+
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(
+            r => r.EmployeeId == visit.EmployeeId
+                 && r.AttendanceDate == visit.VisitDate
+                 && r.CheckInAtUtc != null
+                 && r.CheckOutAtUtc == null, ct);
+
+        // No open record is the normal case for a QR-less field day: there was no poster scan at all,
+        // and the reporting layer already synthesises the day from the visit itself.
+        if (record is null || record.CheckInAtUtc >= leftAt)
+            return false;
+
+        record.CheckOutAtUtc = leftAt;
+        record.ClosedByFieldVisitId = visit.Id;
+        await _db.SaveChangesAsync(ct);
+        return true;
     }
 
     // The old GET /{id}/photos is DELETED, not hidden. It minted presigned SELFIE urls (CheckInPhotoKey

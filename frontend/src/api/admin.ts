@@ -36,6 +36,9 @@ export interface DayAttendanceRow {
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null
+  /** True when this day's check-out was written by the worker's own field check-out (they went home
+   *  from the site). Distinct from manualBy — nobody typed the time in. */
+  closedByFieldVisit?: boolean
   /** Field/mobile attendance ([[field-visit-mobile-attendance]]): today's field check-in/out + where.
    *  When status is "Field", the worker checked in from an ad-hoc site (no office scan). */
   fieldCheckInAtUtc?: string | null

@@ -134,7 +134,12 @@ public sealed record DayAttendanceRow(
     // Where the field check-in happened — so the dashboard map can plot on-site field workers too, not
     // just office scans.
     double? FieldCheckInLatitude = null,
-    double? FieldCheckInLongitude = null);
+    double? FieldCheckInLongitude = null,
+    // True when this day's check-OUT was written by the employee's own field check-out rather than a
+    // poster scan — the worker went home from the site. Distinct from ManualBy on purpose: nobody
+    // typed this time in, it came from their departure with its GPS and selfie. See
+    // AttendanceRecord.ClosedByFieldVisitId.
+    bool ClosedByFieldVisit = false);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

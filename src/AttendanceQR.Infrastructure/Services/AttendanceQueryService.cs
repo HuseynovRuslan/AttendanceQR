@@ -30,7 +30,7 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
             {
                 x.Id, x.AttendanceDate, x.LocationId, x.CheckInAtUtc, x.CheckOutAtUtc,
                 Status = x.Status.ToString(), x.FaceMatchScore, FaceMatchStatus = x.FaceMatchStatus.ToString(),
-                x.ManualByEmployeeId
+                x.ManualByEmployeeId, x.ClosedByFieldVisitId
             })
             .FirstOrDefaultAsync(ct);
         if (r is null) return null;
@@ -40,7 +40,7 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
             manualBy = await _db.Employees.Where(e => e.Id == mid).Select(e => e.FullName).FirstOrDefaultAsync(ct);
 
         return new AttendanceRecordDto(r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc,
-            r.Status, r.FaceMatchScore, r.FaceMatchStatus, manualBy);
+            r.Status, r.FaceMatchScore, r.FaceMatchStatus, manualBy, r.ClosedByFieldVisitId != null);
     }
 
     public async Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
@@ -65,7 +65,7 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
             {
                 r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc,
                 Status = r.Status.ToString(), r.FaceMatchScore, FaceMatchStatus = r.FaceMatchStatus.ToString(),
-                r.ManualByEmployeeId
+                r.ManualByEmployeeId, r.ClosedByFieldVisitId
             })
             .ToListAsync(ct);
 
@@ -81,6 +81,7 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
         return rows.Select(r => new AttendanceRecordDto(
             r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc, r.Status,
             r.FaceMatchScore, r.FaceMatchStatus,
-            r.ManualByEmployeeId is Guid mid ? manualNames.GetValueOrDefault(mid) : null)).ToList();
+            r.ManualByEmployeeId is Guid mid ? manualNames.GetValueOrDefault(mid) : null,
+            r.ClosedByFieldVisitId != null)).ToList();
     }
 }

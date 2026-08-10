@@ -22,6 +22,9 @@ export interface AttendanceRecord {
   faceMatchStatus?: string
   // Name of the admin/manager who set this record by hand (null/absent for a real scan).
   manualByName?: string | null
+  /** The check-out came from this employee's own field check-out — they went home from the site
+   *  rather than back past the poster. NOT a manual entry: it carries their GPS and selfie. */
+  closedByFieldVisit?: boolean
 }
 
 /** GET /api/attendance/me — this employee's full check-in/out history, newest first. Self-scoped
