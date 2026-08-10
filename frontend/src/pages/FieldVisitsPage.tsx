@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SubPageHeader } from '../components/SubPageHeader'
 import { SkeletonList } from '../components/employeeBits'
 import { IconCheck, IconClock, IconLogout, IconMapPin, IconRefresh } from '../components/icons'
@@ -6,9 +6,12 @@ import {
   getMyFieldVisits,
   startFieldVisit,
   checkInFieldVisit,
-  checkOutFieldVisit,
+  setChecklistItem,
+  type ChecklistItem,
   type MyFieldVisit,
 } from '../api/fieldVisits'
+import { FieldCheckoutSheet } from '../components/FieldCheckoutSheet'
+import { readPendingTicks, writePendingTick, clearPendingTicks } from '../lib/pendingTicks'
 import { getMyProfile } from '../api/attendance'
 import { getPosition } from '../lib/geo'
 import { fmtDayMonth, fmtDuration, fmtTime } from '../lib/format'
@@ -27,6 +30,14 @@ const fmtMeters = (d: number) => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000
 
 const titleOf = (v: MyFieldVisit) => v.targetLabel || (v.selfReported ? 'Sərbəst ziyarət' : 'Sahə ziyarəti')
 
+/** Lays this device's unacknowledged ticks back over what the server returned. */
+function withPendingTicks(v: MyFieldVisit): MyFieldVisit {
+  const pending = readPendingTicks(v.id)
+  if (Object.keys(pending).length === 0) return v
+  const checklist = v.checklist.map((i) => (i.id in pending ? { ...i, isDone: pending[i.id] } : i))
+  return { ...v, checklist, checklistDone: checklist.filter((i) => i.isDone).length }
+}
+
 /**
  * The worker's field-visit screen (/field) — light, professional, self-contained (owns its shell, no
  * bottom tab bar). Violet is the field signature, matching the home FieldVisitCards. Photo-less GPS
@@ -39,15 +50,17 @@ export function FieldVisitsPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [msg, setMsg] = useState<Record<string, Msg | undefined>>({})
   const [topMsg, setTopMsg] = useState<Msg | null>(null)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  // The visit whose check-out sheet is open (tick → photograph the work → leave).
+  const [checkoutVisit, setCheckoutVisit] = useState<MyFieldVisit | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [canSelfReport, setCanSelfReport] = useState(false)
   const [sheet, setSheet] = useState(false)
-  const confirmTimer = useRef<number | undefined>(undefined)
 
   async function load() {
     const res = await getMyFieldVisits().catch(() => null)
-    if (res && res.status === 200 && Array.isArray(res.data)) setVisits(res.data)
+    // Ticks the server has not acknowledged are layered back on top, so a tick that failed ten
+    // minutes ago still shows as ticked instead of silently undoing itself.
+    if (res && res.status === 200 && Array.isArray(res.data)) setVisits(res.data.map(withPendingTicks))
     // A thrown/offline load (res === null) must NOT read as "no field work" — a worker with a real
     // assigned visit would then never check in. Surface it as an error instead.
     else setTopMsg({ kind: 'err', text: 'Yüklənmədi — internet bağlantısını yoxlayın' })
@@ -66,15 +79,17 @@ export function FieldVisitsPage() {
     return () => window.clearInterval(t)
   }, [])
   // Don't let the two-tap checkout timer fire after the screen is gone.
-  useEffect(() => () => window.clearTimeout(confirmTimer.current), [])
 
-  // One tap → GPS → check-in/out, photo-less, never blocks. Wrapped: apiRequest rejects on a network
-  // drop / non-JSON body, so a failure flags in-card and finally always clears busy.
+  // ARRIVAL only — the departure now goes through FieldCheckoutSheet (tick, photograph the work,
+  // leave). One tap → GPS → recorded, photo-less. Wrapped: apiRequest rejects on a network drop or a
+  // non-JSON gateway body, so a failure flags in-card and finally always clears busy.
+  //
+  // Arrival still requires GPS: for a field visit the position IS the proof of presence, and a
+  // check-in with no location would be nothing but a claim. The DEPARTURE deliberately does not —
+  // there the record is what stops the clock, and losing it costs the worker hours.
   async function act(v: MyFieldVisit) {
-    setConfirmId(null)
     setBusyId(v.id)
     setMsg((m) => ({ ...m, [v.id]: undefined }))
-    const checkingOut = v.status === 'CheckedIn'
     try {
       const geo = await getPosition()
       if (!geo.ok) {
@@ -82,12 +97,9 @@ export function FieldVisitsPage() {
         return
       }
       const body = { latitude: geo.coords.latitude, longitude: geo.coords.longitude, photoBase64: null }
-      const res = checkingOut ? await checkOutFieldVisit(v.id, body) : await checkInFieldVisit(v.id, body)
+      const res = await checkInFieldVisit(v.id, body)
       if (res.status === 200) {
-        setMsg((m) => ({
-          ...m,
-          [v.id]: { kind: 'ok', text: checkingOut ? 'Çıxış qeyd olundu ✓' : 'Ərazidə qeyd olundunuz ✓' },
-        }))
+        setMsg((m) => ({ ...m, [v.id]: { kind: 'ok', text: 'Ərazidə qeyd olundunuz ✓' } }))
         await load()
       } else {
         setMsg((m) => ({ ...m, [v.id]: { kind: 'err', text: 'Alınmadı — yenidən cəhd edin' } }))
@@ -99,12 +111,27 @@ export function FieldVisitsPage() {
     }
   }
 
-  // Check-out is terminal with no worker undo — a two-tap confirm (button morphs in place, ~4s) guards
-  // an accidental tap without a modal. Check-in stays one tap.
-  function requestCheckout(v: MyFieldVisit) {
-    setConfirmId(v.id)
-    window.clearTimeout(confirmTimer.current)
-    confirmTimer.current = window.setTimeout(() => setConfirmId(null), 4000)
+  // Ticking is never a network operation from the worker's point of view: the row flips instantly,
+  // the POST is fire-and-forget, and a failure leaves the tick standing (the check-out reconciles it).
+  function tick(v: MyFieldVisit, item: ChecklistItem, isDone: boolean) {
+    setVisits((vs) =>
+      vs.map((x) =>
+        x.id !== v.id
+          ? x
+          : {
+              ...x,
+              checklist: x.checklist.map((i) => (i.id === item.id ? { ...i, isDone } : i)),
+              checklistDone: x.checklist.filter((i) => (i.id === item.id ? isDone : i.isDone)).length,
+            },
+      ),
+    )
+    navigator.vibrate?.(10)
+    writePendingTick(v.id, item.id, isDone)
+    void setChecklistItem(v.id, item.id, isDone)
+      .then((r) => {
+        if (r.status === 200) writePendingTick(v.id, item.id, isDone, true)
+      })
+      .catch(() => { /* stays pending; the departure payload settles it */ })
   }
 
   const active = visits
@@ -151,12 +178,10 @@ export function FieldVisitsPage() {
                     now={now}
                     busy={busyId === v.id}
                     locked={busyId !== null}
-                    confirming={confirmId === v.id}
                     msg={msg[v.id]}
                     onCheckIn={() => void act(v)}
-                    onRequestCheckout={() => requestCheckout(v)}
-                    onConfirmCheckout={() => void act(v)}
-                    onCancelConfirm={() => setConfirmId(null)}
+                    onCheckout={() => setCheckoutVisit(v)}
+                    onTick={(item, isDone) => tick(v, item, isDone)}
                   />
                 ))}
               </div>
@@ -166,7 +191,7 @@ export function FieldVisitsPage() {
               <div className="flex flex-col gap-3">
                 <div className="px-1 text-sm font-bold text-slate-500">Bu gün tamamlandı</div>
                 {done.map((v) => (
-                  <VisitCard key={v.id} v={v} now={now} busy={false} locked={false} confirming={false} msg={msg[v.id]} />
+                  <VisitCard key={v.id} v={v} now={now} busy={false} locked={false} msg={msg[v.id]} />
                 ))}
               </div>
             )}
@@ -195,11 +220,29 @@ export function FieldVisitsPage() {
             )}
 
             <p className="px-2 text-center text-xs text-slate-400">
-              Əraziyə çatanda «Ərazidəyəm», ayrılanda «Çıxış et» edin. Yeriniz və vaxt qeyd olunur — QR-a ehtiyac yoxdur.
+              Əraziyə çatanda «Ərazidəyəm», iş bitəndə işin şəklini çəkib «Çıxış et» edin. Şəkil olmasa da
+              çıxışınız qeyd olunur.
             </p>
           </>
         )}
       </main>
+
+      {checkoutVisit && (
+        <FieldCheckoutSheet
+          visit={checkoutVisit}
+          onClose={() => setCheckoutVisit(null)}
+          onDone={async ({ photoPending }) => {
+            clearPendingTicks(checkoutVisit.id)
+            setCheckoutVisit(null)
+            setTopMsg({
+              kind: 'ok',
+              text: photoPending ? 'Çıxış qeyd olundu ✓ · Şəkil göndərilir…' : 'Çıxış qeyd olundu ✓',
+            })
+            window.setTimeout(() => setTopMsg(null), 4000)
+            await load()
+          }}
+        />
+      )}
 
       {sheet && (
         <SelfReportSheet
@@ -221,26 +264,13 @@ type VisitCardProps = {
   now: number
   busy: boolean
   locked: boolean
-  confirming: boolean
   msg?: Msg
   onCheckIn?: () => void
-  onRequestCheckout?: () => void
-  onConfirmCheckout?: () => void
-  onCancelConfirm?: () => void
+  onCheckout?: () => void
+  onTick?: (item: ChecklistItem, isDone: boolean) => void
 }
 
-function VisitCard({
-  v,
-  now,
-  busy,
-  locked,
-  confirming,
-  msg,
-  onCheckIn,
-  onRequestCheckout,
-  onConfirmCheckout,
-  onCancelConfirm,
-}: VisitCardProps) {
+function VisitCard({ v, now, busy, locked, msg, onCheckIn, onCheckout, onTick }: VisitCardProps) {
   const emblem =
     v.status === 'Assigned'
       ? 'bg-violet-100 text-violet-700'
@@ -276,6 +306,8 @@ function VisitCard({
 
       <DistanceChip v={v} />
 
+      <VisitChecklist v={v} onTick={onTick} />
+
       {v.status === 'Assigned' && (
         <button
           disabled={locked}
@@ -286,31 +318,74 @@ function VisitCard({
         </button>
       )}
 
-      {v.status === 'CheckedIn' &&
-        (confirming ? (
-          <div className="mt-3 flex gap-2">
-            <button
-              disabled={locked}
-              onClick={onConfirmCheckout}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3 font-bold text-white transition active:scale-[.99] disabled:opacity-60"
-            >
-              {busy ? <Spinner label="Yer təyin olunur…" /> : 'Çıxışı təsdiqlə'}
-            </button>
-            <button onClick={onCancelConfirm} className="rounded-2xl px-4 font-semibold text-slate-500 active:bg-slate-100">
-              Ləğv
-            </button>
-          </div>
-        ) : (
+      {/* The old two-tap morph-confirm is gone from here: the check-out sheet IS the deliberate
+          second step, and two confirms in a row reads as nagging. The guard survives inside the
+          sheet, on the one tap that still ends a visit without a multi-step gesture in front of it
+          («Şəkilsiz çıx»). */}
+      {v.status === 'CheckedIn' && (
           <button
             disabled={locked}
-            onClick={onRequestCheckout}
+            onClick={onCheckout}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3 font-bold text-white transition active:scale-[.99] disabled:opacity-60"
           >
             <IconLogout className="h-5 w-5" /> Çıxış et
           </button>
-        ))}
+      )}
 
       {msg && <div className={`mt-2 text-sm ${msg.kind === 'err' ? 'text-red-600' : 'text-emerald-600'}`}>{msg.text}</div>}
+    </div>
+  )
+}
+
+/**
+ * The work the manager asked for. Renders nothing when there is no list (self-reports, plain visits).
+ * The whole ROW is the tap target — a 20px checkbox is unusable with gloves on, in sun glare, one
+ * thumb. Ticked labels go grey but are never struck through: thin struck text is unreadable outdoors.
+ */
+function VisitChecklist({ v, onTick }: { v: MyFieldVisit; onTick?: (i: ChecklistItem, d: boolean) => void }) {
+  if (v.checklistTotal === 0) return null
+  const doneCount = v.checklist.filter((i) => i.isDone).length
+  const frozen = v.status === 'Completed' || !onTick
+  const title = v.status === 'Assigned' ? 'Görüləcək işlər' : 'Yoxlama siyahısı'
+
+  return (
+    <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-1">
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</span>
+        <span className="text-xs font-bold text-slate-500 tabular-nums">
+          {doneCount}/{v.checklistTotal}
+        </span>
+      </div>
+      {v.status === 'CheckedIn' && (
+        <div className="mx-2 mb-1 h-[3px] overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full rounded-full bg-violet-600 transition-[width]"
+            style={{ width: `${Math.round((doneCount / v.checklistTotal) * 100)}%` }}
+          />
+        </div>
+      )}
+      <div className="divide-y divide-slate-100">
+        {v.checklist.map((i) => (
+          <button
+            key={i.id}
+            disabled={frozen}
+            onClick={() => onTick?.(i, !i.isDone)}
+            className="flex min-h-[52px] w-full items-center gap-3 px-2 text-left disabled:cursor-default"
+          >
+            <span
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border-2 transition ${
+                i.isDone ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300'
+              }`}
+            >
+              {i.isDone && <IconCheck className="h-4 w-4" />}
+            </span>
+            <span className={`text-[15px] font-semibold ${i.isDone ? 'text-slate-400' : 'text-slate-700'}`}>
+              {i.label}
+            </span>
+            {frozen && !i.isDone && <span className="ml-auto shrink-0 text-xs text-slate-400">işarələnmədi</span>}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

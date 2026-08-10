@@ -36,6 +36,10 @@ public class FieldVisitController : ControllerBase
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
     }
 
+    /// <summary>Caps on a manager-typed checklist. Applied by trimming, never by rejecting.</summary>
+    private const int MaxChecklistItems = 10;
+    private const int MaxChecklistLabel = 120;
+
     private Guid Me => User.EmployeeId();
     private DateOnly TodayLocal() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -65,8 +69,9 @@ public class FieldVisitController : ControllerBase
         var assignerIds = visits.Where(v => v.AssignedByEmployeeId != null).Select(v => v.AssignedByEmployeeId!.Value).Distinct().ToList();
         var assigners = await _db.Employees.Where(e => assignerIds.Contains(e.Id))
             .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var checklists = await ChecklistByVisitAsync(visits.Select(v => v.Id).ToList(), ct);
 
-        return Ok(visits.Select(v => Project(v, assigners)));
+        return Ok(visits.Select(v => Project(v, assigners, checklists.GetValueOrDefault(v.Id))));
     }
 
     // POST /api/field-visits/start — worker self-reports an ad-hoc visit: created + checked in at once.
@@ -129,7 +134,11 @@ public class FieldVisitController : ControllerBase
         if (visit.CheckInPhotoKey is not null)
             await _db.SaveChangesAsync(ct);
 
-        return Ok(Project(visit, null));
+        // Return the checklist with the arrival, so the list appears the instant the worker is on site
+        // rather than after the next /mine refresh.
+        var items = await _db.FieldVisitChecklistItems
+            .Where(i => i.FieldVisitId == visit.Id).OrderBy(i => i.SortOrder).ToListAsync(ct);
+        return Ok(Project(visit, null, items));
     }
 
     // POST /api/field-visits/{id}/check-out — worker leaves the site.
@@ -145,6 +154,8 @@ public class FieldVisitController : ControllerBase
         if (visit.Status != FieldVisitStatus.CheckedIn)
             return BadRequest(new { error = "NotCheckedIn" });
 
+        // 1. THE PAY-CRITICAL WRITE, committed alone before anything optional runs. Coordinates may be
+        //    null (no GPS in a basement) — that flags the visit, it never refuses the departure.
         visit.Status = FieldVisitStatus.Completed;
         visit.CheckOutAtUtc = DateTime.UtcNow;
         visit.CheckOutLatitude = req.Latitude;
@@ -155,7 +166,97 @@ public class FieldVisitController : ControllerBase
         if (visit.CheckOutPhotoKey is not null)
             await _db.SaveChangesAsync(ct);
 
-        return Ok(Project(visit, null));
+        // 2. Ticks — advisory, and wrapped so they can never undo step 1. The body carries the ABSOLUTE
+        //    set of done ids, so this also reconciles ticks whose own POST never reached the server,
+        //    and replaying the same check-out changes nothing.
+        var items = await _db.FieldVisitChecklistItems
+            .Where(i => i.FieldVisitId == visit.Id).OrderBy(i => i.SortOrder).ToListAsync(ct);
+        if (req.DoneItemIds is not null && items.Count > 0)
+        {
+            try
+            {
+                var done = req.DoneItemIds.ToHashSet();
+                foreach (var it in items)
+                {
+                    var want = done.Contains(it.Id);
+                    if (it.IsDone == want)
+                        continue; // an identical replay leaves DoneAtUtc alone
+                    it.IsDone = want;
+                    it.DoneAtUtc = want ? DateTime.UtcNow : null;
+                }
+                await _db.SaveChangesAsync(ct);
+            }
+            catch { /* the check-out already stands — a tick is never worth losing it */ }
+        }
+
+        return Ok(Project(visit, null, items));
+    }
+
+    // POST /api/field-visits/{id}/checklist/{itemId} — the worker ticks or unticks one line.
+    // Only the visit's OWN worker: a manager tick would be worthless as evidence. Failing here is never
+    // fatal — the app keeps the tick locally and the check-out's DoneItemIds reconciles it.
+    [HttpPost("{id:guid}/checklist/{itemId:guid}")]
+    public async Task<IActionResult> SetChecklistItem(Guid id, Guid itemId, [FromBody] SetChecklistItemRequest req)
+    {
+        var ct = HttpContext.RequestAborted;
+        var me = Me;
+
+        var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id && v.EmployeeId == me, ct);
+        if (visit is null)
+            return NotFound(new { error = "VisitNotFound" });
+        // Tickable before arrival as well as during the work — a "check in first" rule would be a block.
+        // Frozen once Completed: the check-out payload is the last word, nobody edits evidence after.
+        if (visit.Status is not (FieldVisitStatus.Assigned or FieldVisitStatus.CheckedIn))
+            return BadRequest(new { error = "VisitClosed" });
+
+        // itemId is re-checked against the visit so an item from another visit cannot be written here.
+        var item = await _db.FieldVisitChecklistItems
+            .FirstOrDefaultAsync(i => i.Id == itemId && i.FieldVisitId == id, ct);
+        if (item is null)
+            return NotFound(new { error = "ItemNotFound" });
+
+        item.IsDone = req.IsDone;                                   // absolute set, never a toggle
+        item.DoneAtUtc = req.IsDone ? item.DoneAtUtc ?? DateTime.UtcNow : null;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { id = item.Id, isDone = item.IsDone, doneAtUtc = item.DoneAtUtc });
+    }
+
+    // POST /api/field-visits/{id}/work-photo — İŞ ŞƏKLİ, sent AFTER the check-out is recorded so a
+    // failed upload can never cost the worker their departure record. ALWAYS 200, and `stored` tells
+    // the truth so the app can offer a retry instead of claiming a success that never happened.
+    [HttpPost("{id:guid}/work-photo")]
+    public async Task<IActionResult> UploadWorkPhoto(Guid id, [FromBody] WorkPhotoRequest req)
+    {
+        var ct = HttpContext.RequestAborted;
+        var me = Me;
+
+        var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id && v.EmployeeId == me, ct);
+        if (visit is null)
+            return NotFound(new { error = "VisitNotFound" });
+        if (visit.Status is not (FieldVisitStatus.CheckedIn or FieldVisitStatus.Completed))
+            return BadRequest(new { error = "NotOnSite" });
+        // Idempotent: retrying an upload whose 200 the app never saw is a no-op, not a second object.
+        if (visit.WorkPhotoKey is not null)
+            return Ok(new { stored = true });
+
+        byte[] bytes;
+        try { bytes = DecodeImage(req.PhotoBase64); }
+        catch { return Ok(new { stored = false, error = "Decode" }); }
+        // A rear-camera frame is not a 900px selfie, so the cap is higher than TryStorePhotoAsync's.
+        if (bytes.Length == 0 || bytes.Length > 4 * 1024 * 1024)
+            return Ok(new { stored = false, error = "TooLarge" });
+
+        try
+        {
+            visit.WorkPhotoKey = await _photoStorage.UploadFieldWorkPhotoAsync(_db.CurrentTenantId, visit.Id, bytes, ct);
+            visit.WorkPhotoAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return Ok(new { stored = true });
+        }
+        catch
+        {
+            return Ok(new { stored = false, error = "Storage" });
+        }
     }
 
     // ------------------------------------------------------------------ manager / admin (assign, board) ----
@@ -199,6 +300,18 @@ public class FieldVisitController : ControllerBase
             Note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim(),
         };
         _db.FieldVisits.Add(visit);
+
+        // The checklist rides in the same save as the visit — a visit whose instructions half-arrived
+        // would be worse than one with none. TenantId is stamped for us.
+        var lines = CleanChecklist(req.Checklist);
+        for (var i = 0; i < lines.Count; i++)
+            _db.FieldVisitChecklistItems.Add(new FieldVisitChecklistItem
+            {
+                FieldVisitId = visit.Id,
+                Label = lines[i],
+                SortOrder = i,
+            });
+
         await _db.SaveChangesAsync(ct);
 
         // Best-effort push so the worker sees the task without opening the app — the home banner (from
@@ -243,9 +356,22 @@ public class FieldVisitController : ControllerBase
             .Select(e => new { e.Id, e.FullName, e.PhoneNumber })
             .ToDictionaryAsync(e => e.Id, e => e, ct);
 
+        // One grouped query over the already-scoped visits — never a lookup per row: this board
+        // re-polls every 30 seconds, so an N+1 here is 40 extra queries every half minute, all day.
+        var visitIds = visits.Select(v => v.Id).ToList();
+        var checklistCounts = visitIds.Count == 0
+            ? new Dictionary<Guid, (int Total, int Done)>()
+            : (await _db.FieldVisitChecklistItems
+                .Where(i => visitIds.Contains(i.FieldVisitId))
+                .GroupBy(i => i.FieldVisitId)
+                .Select(g => new { VisitId = g.Key, Total = g.Count(), Done = g.Count(i => i.IsDone) })
+                .ToListAsync(ct))
+              .ToDictionary(x => x.VisitId, x => (x.Total, x.Done));
+
         var rows = visits.Select(v =>
         {
             names.TryGetValue(v.EmployeeId, out var emp);
+            checklistCounts.TryGetValue(v.Id, out var checks);
             var assigner = v.AssignedByEmployeeId != null && names.TryGetValue(v.AssignedByEmployeeId.Value, out var a) ? a.FullName : null;
             int? durationMinutes = v.CheckInAtUtc is DateTime ci && v.CheckOutAtUtc is DateTime co
                 ? (int)Math.Round((co - ci).TotalMinutes) : null;
@@ -270,8 +396,13 @@ public class FieldVisitController : ControllerBase
                 checkOutLatitude = v.CheckOutLatitude,
                 checkOutLongitude = v.CheckOutLongitude,
                 durationMinutes,
+                // These two keep their original meaning — a SELFIE is present — and stay untouched;
+                // no work-photo state is smuggled into them.
                 hasCheckInPhoto = v.CheckInPhotoKey != null,
                 hasCheckOutPhoto = v.CheckOutPhotoKey != null,
+                hasWorkPhoto = v.WorkPhotoKey != null,
+                checklistTotal = checks.Total,
+                checklistDone = checks.Done,
                 note = v.Note,
             };
         });
@@ -337,33 +468,62 @@ public class FieldVisitController : ControllerBase
         return Ok(new { id = visit.Id, status = visit.Status.ToString() });
     }
 
-    // GET /api/field-visits/{id}/photos — short-lived presigned selfie URLs for the board.
-    [HttpGet("{id:guid}/photos")]
+    // The old GET /{id}/photos is DELETED, not hidden. It minted presigned SELFIE urls (CheckInPhotoKey
+    // / CheckOutPhotoKey) for the field board, and its only consumer — the admin overlay — no longer
+    // asks for them. Every worker path sends photoBase64: null, so it returned {null,null} in
+    // production: dead code whose only future was to become a face-browsing surface the moment anyone
+    // wired a camera to it. Same discipline as the Foto Audit removal — delete the route, don't hide
+    // the link. The two selfie columns stay on the entity, unwritten, so a future REASON-GATED field
+    // selfie has its slot and has to be argued for on its own merits.
+
+    // GET /api/field-visits/{id}/checklist — the lines + per-item tick times, for the visit detail.
+    [HttpGet("{id:guid}/checklist")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<IActionResult> Photos(Guid id)
+    public async Task<IActionResult> Checklist(Guid id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var visit = await _db.FieldVisits.Where(v => v.Id == id)
+            .Select(v => new { v.EmployeeId }).FirstOrDefaultAsync(ct);
+        if (visit is null)
+            return NotFound(new { error = "VisitNotFound" });
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
+        var items = await _db.FieldVisitChecklistItems
+            .Where(i => i.FieldVisitId == id)
+            .OrderBy(i => i.SortOrder)
+            .Select(i => new { id = i.Id, label = i.Label, sortOrder = i.SortOrder, isDone = i.IsDone, doneAtUtc = i.DoneAtUtc })
+            .ToListAsync(ct);
+        return Ok(new { items });
+    }
+
+    // GET /api/field-visits/{id}/work-photo — a short-lived url for the İŞ ŞƏKLİ. This endpoint can
+    // only ever resolve WorkPhotoKey; there is no code path here that returns a selfie. The scope is
+    // the same as the deleted selfie one — a work photo still places a named worker somewhere.
+    [HttpGet("{id:guid}/work-photo")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> WorkPhoto(Guid id)
     {
         var ct = HttpContext.RequestAborted;
         var visit = await _db.FieldVisits
             .Where(v => v.Id == id)
-            .Select(v => new { v.EmployeeId, v.CheckInPhotoKey, v.CheckOutPhotoKey })
+            .Select(v => new { v.EmployeeId, v.WorkPhotoKey, v.WorkPhotoAtUtc })
             .FirstOrDefaultAsync(ct);
         if (visit is null)
             return NotFound(new { error = "VisitNotFound" });
-        // A manager must not pull selfies beyond their reach: only their own branches' Role==Employee
-        // workers — never another branch, never a same-branch admin or fellow manager.
         if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
-        var checkInUrl = visit.CheckInPhotoKey is null ? null : await _photoStorage.GetPresignedUrlAsync(visit.CheckInPhotoKey, ct);
-        var checkOutUrl = visit.CheckOutPhotoKey is null ? null : await _photoStorage.GetPresignedUrlAsync(visit.CheckOutPhotoKey, ct);
-        return Ok(new { checkInUrl, checkOutUrl });
+        var url = visit.WorkPhotoKey is null ? null : await _photoStorage.GetPresignedUrlAsync(visit.WorkPhotoKey, ct);
+        return Ok(new { url, takenAtUtc = visit.WorkPhotoAtUtc });
     }
 
     // ---- helpers ----
 
-    private object Project(FieldVisit v, Dictionary<Guid, string>? assigners)
+    private object Project(FieldVisit v, Dictionary<Guid, string>? assigners, IReadOnlyList<FieldVisitChecklistItem>? items = null)
     {
         string? assignedBy = v.AssignedByEmployeeId != null && assigners != null && assigners.TryGetValue(v.AssignedByEmployeeId.Value, out var n) ? n : null;
+        var list = items ?? Array.Empty<FieldVisitChecklistItem>();
         return new
         {
             id = v.Id,
@@ -378,8 +538,43 @@ public class FieldVisitController : ControllerBase
             checkInDistanceMeters = v.CheckInDistanceMeters,
             checkOutAtUtc = v.CheckOutAtUtc,
             note = v.Note,
+            // Always an array, never null — the app renders nothing when it is empty.
+            checklist = list.OrderBy(i => i.SortOrder).Select(i => new
+            {
+                id = i.Id, label = i.Label, sortOrder = i.SortOrder, isDone = i.IsDone, doneAtUtc = i.DoneAtUtc,
+            }),
+            checklistTotal = list.Count,
+            checklistDone = list.Count(i => i.IsDone),
+            hasWorkPhoto = v.WorkPhotoKey != null,
         };
     }
+
+    /// <summary>The checklist lines of the given visits, grouped by visit. One query, never per-row.</summary>
+    private async Task<Dictionary<Guid, List<FieldVisitChecklistItem>>> ChecklistByVisitAsync(
+        List<Guid> visitIds, CancellationToken ct)
+    {
+        if (visitIds.Count == 0)
+            return new Dictionary<Guid, List<FieldVisitChecklistItem>>();
+        var items = await _db.FieldVisitChecklistItems
+            .Where(i => visitIds.Contains(i.FieldVisitId))
+            .OrderBy(i => i.SortOrder)
+            .ToListAsync(ct);
+        return items.GroupBy(i => i.FieldVisitId).ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    /// <summary>
+    /// Cleans a manager's typed checklist: trims, drops blanks, de-dupes case-insensitively (a repeated
+    /// line is a typo, not a second task), truncates each line and caps the count. Never rejects —
+    /// a validation error here would block an assign over a cosmetic problem.
+    /// </summary>
+    private static List<string> CleanChecklist(IReadOnlyList<string>? raw) =>
+        (raw ?? Array.Empty<string>())
+            .Select(s => (s ?? string.Empty).Trim())
+            .Where(s => s.Length > 0)
+            .Select(s => s.Length > MaxChecklistLabel ? s[..MaxChecklistLabel] : s)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxChecklistItems)
+            .ToList();
 
     // Stores a field selfie, never throwing (a failed/absent photo must not block the visit). A fresh id
     // per photo keeps check-in and check-out from colliding on the same storage key.

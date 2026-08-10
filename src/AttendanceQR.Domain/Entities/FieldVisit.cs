@@ -66,6 +66,18 @@ public class FieldVisit : ITenantScoped
     public double? CheckOutLongitude { get; set; }
     public string? CheckOutPhotoKey { get; set; }
 
+    /// <summary>
+    /// İŞ ŞƏKLİ — object key of a photo of the WORK (a swept yard, an emptied bin), taken with the
+    /// REAR camera at check-out. Deliberately NOT <see cref="CheckOutPhotoKey"/>: that slot is a FACE,
+    /// this is a PLACE. Different prefix (<c>fieldwork/</c> vs <c>checkins/</c>), different endpoint,
+    /// different audience, and never fed to the face-match worker — a NoFace flag on a bin would be
+    /// nonsense that pollutes the real queue. Null when the worker sent none: a missing work photo
+    /// never blocks a check-out, it just leaves the visit without evidence.
+    /// </summary>
+    public string? WorkPhotoKey { get; set; }
+
+    public DateTime? WorkPhotoAtUtc { get; set; }
+
     public string? Note { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;

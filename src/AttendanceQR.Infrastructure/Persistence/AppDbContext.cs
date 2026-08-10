@@ -67,6 +67,7 @@ public class AppDbContext : DbContext
 
     public DbSet<JobPosition> JobPositions => Set<JobPosition>();
     public DbSet<FieldVisit> FieldVisits => Set<FieldVisit>();
+    public DbSet<FieldVisitChecklistItem> FieldVisitChecklistItems => Set<FieldVisitChecklistItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -85,7 +86,7 @@ public class AppDbContext : DbContext
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
-            typeof(FieldVisit),
+            typeof(FieldVisit), typeof(FieldVisitChecklistItem),
         };
         foreach (var t in tenantScoped)
         {
@@ -161,6 +162,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<FieldVisit>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<FieldVisit>().HasIndex(v => new { v.TenantId, v.VisitDate });
         modelBuilder.Entity<FieldVisit>().HasIndex(v => new { v.TenantId, v.EmployeeId, v.VisitDate });
+        // Checklist lines hang off a visit; every read is "the items of these visit ids".
+        modelBuilder.Entity<FieldVisitChecklistItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<FieldVisitChecklistItem>().HasIndex(i => new { i.TenantId, i.FieldVisitId });
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

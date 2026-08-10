@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { checkInFieldVisit, checkOutFieldVisit, type MyFieldVisit } from '../api/fieldVisits'
+import { checkInFieldVisit, type MyFieldVisit } from '../api/fieldVisits'
+import { FieldCheckoutSheet } from './FieldCheckoutSheet'
 import { getPosition } from '../lib/geo'
 import { fmtTime } from '../lib/format'
 import { IconCheck, IconLogout, IconMapPin } from './icons'
@@ -45,19 +46,26 @@ export function FieldVisitCards({
   const navigate = useNavigate()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [msg, setMsg] = useState<Record<string, Msg | undefined>>({})
+  // The departure goes through the SAME sheet the /field screen uses. This card used to carry its own
+  // copy of the check-out call — which is exactly how the home path (the one most workers actually
+  // use) would have kept recording departures with no work photo while every log said success.
+  const [checkoutVisit, setCheckoutVisit] = useState<MyFieldVisit | null>(null)
 
   const shown = visits
     .filter((v) => v.status === 'Assigned' || v.status === 'CheckedIn' || v.status === 'Completed')
     .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
   if (shown.length === 0) return null
 
-  // One tap → GPS → check-in/out. Sibling buttons lock while one is in flight. apiRequest REJECTS on a
-  // network drop or non-JSON gateway body, so the whole thing is wrapped: a failure flags in-card and
-  // lets them retry, and finally always clears busy — never leave a field worker stuck (project rule).
+  // ARRIVAL from the home card — one tap → GPS → recorded. The departure opens the sheet instead.
+  // apiRequest REJECTS on a network drop or non-JSON gateway body, so this is wrapped: a failure
+  // flags in-card and finally always clears busy — never leave a field worker stuck (project rule).
   async function act(v: MyFieldVisit) {
+    if (v.status === 'CheckedIn') {
+      setCheckoutVisit(v)
+      return
+    }
     setBusyId(v.id)
     setMsg((m) => ({ ...m, [v.id]: undefined }))
-    const checkingOut = v.status === 'CheckedIn'
     try {
       const geo = await getPosition()
       if (!geo.ok) {
@@ -65,12 +73,9 @@ export function FieldVisitCards({
         return
       }
       const body = { latitude: geo.coords.latitude, longitude: geo.coords.longitude, photoBase64: null }
-      const res = checkingOut ? await checkOutFieldVisit(v.id, body) : await checkInFieldVisit(v.id, body)
+      const res = await checkInFieldVisit(v.id, body)
       if (res.status === 200) {
-        setMsg((m) => ({
-          ...m,
-          [v.id]: { kind: 'ok', text: checkingOut ? 'Çıxış qeyd olundu ✓' : 'Ərazidə qeyd olundunuz ✓' },
-        }))
+        setMsg((m) => ({ ...m, [v.id]: { kind: 'ok', text: 'Ərazidə qeyd olundunuz ✓' } }))
         await onChanged()
       } else {
         setMsg((m) => ({ ...m, [v.id]: { kind: 'err', text: 'Alınmadı — yenidən cəhd edin' } }))
@@ -105,7 +110,38 @@ export function FieldVisitCards({
           + Yeni sahə ziyarəti
         </button>
       )}
+
+      {checkoutVisit && (
+        <FieldCheckoutSheet
+          visit={checkoutVisit}
+          onClose={() => setCheckoutVisit(null)}
+          onDone={async ({ photoPending }) => {
+            const id = checkoutVisit.id
+            setCheckoutVisit(null)
+            setMsg((m) => ({
+              ...m,
+              [id]: { kind: 'ok', text: photoPending ? 'Çıxış qeyd olundu ✓ · Şəkil göndərilir…' : 'Çıxış qeyd olundu ✓' },
+            }))
+            await onChanged()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+/** A read-only «Yoxlama siyahısı · 2/4» line. Ticking happens on /field or in the check-out sheet —
+ *  the home card stays a to-do list, not a work surface. */
+function ChecklistProgress({ v, tone }: { v: MyFieldVisit; tone: 'hero' | 'row' }) {
+  if (v.checklistTotal === 0) return null
+  const label = `Yoxlama siyahısı · ${v.checklistDone}/${v.checklistTotal}`
+  if (tone === 'hero') {
+    return <div className="mt-2 inline-flex rounded-full bg-white/15 px-2 py-0.5 text-xs font-semibold">📋 {label}</div>
+  }
+  return (
+    <span className="ml-2 shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+      📋 {v.checklistDone}/{v.checklistTotal}
+    </span>
   )
 }
 
@@ -160,6 +196,7 @@ function FeaturedCard({ v, busy, locked, msg, onAct }: CardProps) {
               sublineOf(v)
             )}
           </div>
+          <ChecklistProgress v={v} tone="hero" />
         </div>
       </div>
 
@@ -213,7 +250,10 @@ function CompactRow({ v, busy, locked, msg, onAct }: CardProps) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate font-bold leading-tight">{titleOf(v)}</div>
-          <div className="truncate text-sm text-slate-500">{sublineOf(v)}</div>
+          <div className="flex items-center">
+            <span className="truncate text-sm text-slate-500">{sublineOf(v)}</span>
+            <ChecklistProgress v={v} tone="row" />
+          </div>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${badge.c}`}>{badge.t}</span>
       </div>

@@ -9,9 +9,11 @@ import {
   assignFieldVisit,
   cancelFieldVisit,
   forceCheckOutFieldVisit,
-  getFieldVisitPhotos,
+  getFieldVisitChecklist,
+  getFieldVisitWorkPhoto,
   type BoardFieldVisit,
   type AssignablePerson,
+  type ChecklistItem,
 } from '../../api/fieldVisits'
 import { getPosition } from '../../lib/geo'
 import { fmtTime } from '../../lib/format'
@@ -24,6 +26,12 @@ const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
 }
 
 const BAKU: [number, number] = [40.4093, 49.8671]
+
+/** Mirrors the server cap. The server is the real rule (it trims silently); this is a courtesy. */
+const MAX_CHECKLIST = 10
+/** The words these crews actually use. A hardcoded starter set, NOT a catalogue — no table, no page:
+ *  a manager assigning ~20 near-identical visits will not type Azerbaijani ə/ş/ç/ı sixty times. */
+const QUICK_TASKS = ['süpür', 'zibili boşalt', 'sula', 'ot biç', 'döşəməni yu']
 // Local calendar date "YYYY-MM-DD". Deliberately NOT toISOString() — that returns the UTC date, which
 // in Baku (UTC+4) is the previous day before 04:00 and breaks the day navigation round-trip.
 const todayStr = () => {
@@ -38,9 +46,18 @@ function fmtDist(m: number): string {
 function isStuck(v: BoardFieldVisit, date: string): boolean {
   return v.status === 'CheckedIn' && date < todayStr()
 }
-/** Advisory "far from target" flag — never blocked the worker, only surfaced to the admin. */
+/**
+ * "The visit closed but something doesn't add up" — one attention number rather than three the
+ * manager has to reconcile. All three are advisory: none of them blocked the worker, and the per-row
+ * chip still shows WHICH cause it was.
+ */
 function isFlagged(v: BoardFieldVisit): boolean {
-  return v.checkInDistanceMeters != null && v.targetRadiusMeters != null && v.checkInDistanceMeters > v.targetRadiusMeters
+  const farFromTarget =
+    v.checkInDistanceMeters != null && v.targetRadiusMeters != null && v.checkInDistanceMeters > v.targetRadiusMeters
+  const workLeftUnticked = v.status === 'Completed' && v.checklistTotal > 0 && v.checklistDone < v.checklistTotal
+  // A force-closed visit has no departure GPS by design, so it must not read as a worker's omission.
+  const leftWithoutPosition = v.status === 'Completed' && v.checkOutAtUtc != null && v.checkOutLatitude == null
+  return farFromTarget || workLeftUnticked || leftWithoutPosition
 }
 
 // Read-only map fitting all of a visit's points (target + check-in + check-out).
@@ -94,6 +111,7 @@ export function FieldVisitsAdminPage() {
   const [search, setSearch] = useState('')
   const [onlyFlagged, setOnlyFlagged] = useState(false)
   const [onlySelf, setOnlySelf] = useState(false)
+  const [onlyPhoto, setOnlyPhoto] = useState(false)
 
   // assign form
   const [showForm, setShowForm] = useState(false)
@@ -104,10 +122,13 @@ export function FieldVisitsAdminPage() {
   const [lng, setLng] = useState(BAKU[1])
   const [radius, setRadius] = useState(200)
   const [note, setNote] = useState('')
+  const [checklist, setChecklist] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
   const [detail, setDetail] = useState<BoardFieldVisit | null>(null)
-  const [detailPhotos, setDetailPhotos] = useState<{ checkInUrl: string | null; checkOutUrl: string | null } | null>(null)
+  const [detailChecklist, setDetailChecklist] = useState<ChecklistItem[] | null>(null)
+  const [detailWorkPhoto, setDetailWorkPhoto] = useState<{ url: string | null } | null>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const detailReq = useRef(0)
 
   const isToday = date === todayStr()
@@ -156,10 +177,11 @@ export function FieldVisitsAdminPage() {
       if (statusFilter !== 'all' && v.status !== statusFilter) return false
       if (onlyFlagged && !isFlagged(v)) return false
       if (onlySelf && !v.selfReported) return false
+      if (onlyPhoto && !v.hasWorkPhoto) return false
       if (q && !(v.employeeName.toLowerCase().includes(q) || (v.phone ?? '').toLowerCase().includes(q))) return false
       return true
     })
-  }, [rows, statusFilter, search, onlyFlagged, onlySelf])
+  }, [rows, statusFilter, search, onlyFlagged, onlySelf, onlyPhoto])
 
   async function useMyLocation() {
     const geo = await getPosition()
@@ -180,10 +202,11 @@ export function FieldVisitsAdminPage() {
       targetRadiusMeters: useTarget ? radius : null,
       visitDate: date,
       note: note.trim() || null,
+      checklist: checklist.length > 0 ? checklist : null,
     })
     setSaving(false)
     if (status === 200) {
-      setLabel(''); setNote(''); setEmployeeId(''); setUseTarget(false); setShowForm(false)
+      setLabel(''); setNote(''); setEmployeeId(''); setUseTarget(false); setChecklist([]); setShowForm(false)
       await load()
     } else setError('Tapşırıq yaradıla bilmədi')
   }
@@ -204,12 +227,20 @@ export function FieldVisitsAdminPage() {
 
   async function openDetail(v: BoardFieldVisit) {
     setDetail(v)
-    setDetailPhotos(null)
-    if (v.hasCheckInPhoto || v.hasCheckOutPhoto) {
-      const reqId = ++detailReq.current
-      const { status, data } = await getFieldVisitPhotos(v.id)
-      if (reqId !== detailReq.current) return // superseded — don't show another visit's selfie
-      setDetailPhotos(status === 200 && data ? data : { checkInUrl: null, checkOutUrl: null })
+    setDetailChecklist(null)
+    setDetailWorkPhoto(null)
+    // One request counter guards BOTH fetches: opening A, closing it and opening B must never let A's
+    // slower response paint into B's panel.
+    const reqId = ++detailReq.current
+    if (v.checklistTotal > 0) {
+      const { status, data } = await getFieldVisitChecklist(v.id)
+      if (reqId !== detailReq.current) return
+      setDetailChecklist(status === 200 && data ? data.items : [])
+    }
+    if (v.hasWorkPhoto) {
+      const { status, data } = await getFieldVisitWorkPhoto(v.id)
+      if (reqId !== detailReq.current) return
+      setDetailWorkPhoto(status === 200 && data ? { url: data.url } : { url: null })
     }
   }
 
@@ -258,7 +289,7 @@ export function FieldVisitsAdminPage() {
           active={statusFilter === 'CheckedIn'} onClick={() => { setOnlyFlagged(false); setStatusFilter(statusFilter === 'CheckedIn' ? 'all' : 'CheckedIn') }} />
         <StatCard variant="leaf" label="Tamamlandı" value={stats.completed} sub={`${Math.round(stats.minutes / 60)} saat sahədə`}
           active={statusFilter === 'Completed'} onClick={() => { setOnlyFlagged(false); setStatusFilter(statusFilter === 'Completed' ? 'all' : 'Completed') }} />
-        <StatCard variant="clay" label="Diqqət tələb edir" value={stats.flagged} sub="hədəfdən uzaq giriş"
+        <StatCard variant="clay" label="Diqqət tələb edir" value={stats.flagged} sub="uzaq giriş / yarımçıq iş"
           active={onlyFlagged} onClick={() => { setStatusFilter('all'); setOnlyFlagged((f) => !f) }} />
       </div>
 
@@ -300,9 +331,22 @@ export function FieldVisitsAdminPage() {
             </div>
           )}
 
+          <ChecklistEditor
+            value={checklist}
+            onChange={setChecklist}
+            lastUsed={rows.find((r) => r.checklistTotal > 0)?.id}
+            onCopyLast={async (visitId) => {
+              const { status, data } = await getFieldVisitChecklist(visitId)
+              if (status === 200 && data) setChecklist(data.items.map((i) => i.label).slice(0, MAX_CHECKLIST))
+            }}
+          />
+
           <div style={{ marginTop: 12 }}>
             <label className="form-label">Qeyd (istəyə bağlı)</label>
-            <input className="inp" value={note} onChange={(e) => setNote(e.target.value)} placeholder="məs. materialları çatdır" maxLength={300} />
+            <input className="inp" value={note} onChange={(e) => setNote(e.target.value)} placeholder="məs. açar qonşudadır" maxLength={300} />
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Siyahıya girməyən əlavə izah. Tapşırıqdan sonra siyahı dəyişdirilmir — səhv olsa ləğv edib yenidən tapşırın.
+            </div>
           </div>
 
           <button className="btn btn-primary" style={{ marginTop: 14 }} disabled={saving}>
@@ -324,6 +368,8 @@ export function FieldVisitsAdminPage() {
             <input className="inp" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="İşçi adı ilə axtar…" style={{ maxWidth: 220 }} />
             <button className={`chip ${onlyFlagged ? 'active' : ''}`} onClick={() => setOnlyFlagged((f) => !f)}>⚠️ Yalnız diqqət</button>
             <button className={`chip ${onlySelf ? 'active' : ''}`} onClick={() => setOnlySelf((f) => !f)}>🙋 Özü qeyd etdi</button>
+            {/* "Show me what I can send the client" — the sales story of the whole feature. */}
+            <button className={`chip ${onlyPhoto ? 'active' : ''}`} onClick={() => setOnlyPhoto((f) => !f)}>📷 İş şəkli</button>
           </div>
         </>
       )}
@@ -369,6 +415,22 @@ export function FieldVisitsAdminPage() {
                       {(v.targetLatitude != null || v.checkInLatitude != null) && (
                         <button className="btn-link" onClick={() => void openDetail(v)}>🗺️ Xəritə</button>
                       )}
+                      {v.checklistTotal > 0 && (
+                        <div>
+                          <span
+                            className="tag"
+                            style={
+                              v.checklistDone === v.checklistTotal
+                                ? { background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }
+                                : v.status === 'Completed'
+                                  ? { background: 'var(--amber-bg)', color: 'var(--amber)' }
+                                  : undefined
+                            }
+                          >
+                            ☑ {v.checklistDone}/{v.checklistTotal}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td data-label="Giriş → Çıxış" style={{ whiteSpace: 'nowrap' }}>
                       {v.checkInAtUtc ? (
@@ -383,6 +445,11 @@ export function FieldVisitsAdminPage() {
                               </span>
                             )}
                             {v.durationMinutes != null && <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.durationMinutes} dəq</span>}
+                            {/* Present = a work photo exists. The negative is deliberately silent —
+                                printing "foto yoxdur" on every row makes the absence the loudest
+                                thing on the board, and a column of thumbnails would be the browsing
+                                surface this product just removed. */}
+                            {v.hasWorkPhoto && <span title="İş şəkli var">📷</span>}
                           </div>
                         </>
                       ) : <span className="muted">—</span>}
@@ -406,12 +473,101 @@ export function FieldVisitsAdminPage() {
       {detail && (
         <DetailOverlay
           v={detail}
-          photos={detailPhotos}
+          checklist={detailChecklist}
+          workPhoto={detailWorkPhoto}
+          onOpenPhoto={setLightbox}
           onClose={() => setDetail(null)}
           onCancel={() => void cancel(detail)}
           onForceCheckout={() => void forceCheckout(detail)}
           stuck={isStuck(detail, date)}
         />
+      )}
+
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}
+        >
+          <img src={lightbox} alt="İş şəkli" style={{ maxWidth: '100%', maxHeight: '90vh', borderRadius: 10 }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The lines the worker will tick. Never required — zero items is the default and «Tapşır» stays
+ * enabled: the moment an empty list blocks an assign, managers stop using the form.
+ */
+function ChecklistEditor({ value, onChange, lastUsed, onCopyLast }: {
+  value: string[]
+  onChange: (v: string[]) => void
+  lastUsed?: string
+  onCopyLast: (visitId: string) => void | Promise<void>
+}) {
+  const [draft, setDraft] = useState('')
+  const full = value.length >= MAX_CHECKLIST
+
+  function add(text: string) {
+    const t = text.trim()
+    if (!t || full) return
+    if (value.some((x) => x.toLowerCase() === t.toLowerCase())) { setDraft(''); return }
+    onChange([...value, t.slice(0, 120)])
+    setDraft('')
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label className="form-label" style={{ margin: 0 }}>Görüləcək işlər (istəyə bağlı)</label>
+        <span className="muted" style={{ fontSize: 11, marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+          {value.length} / {MAX_CHECKLIST}
+        </span>
+      </div>
+
+      <div className="chip-row" style={{ marginTop: 6, marginBottom: 8 }}>
+        {QUICK_TASKS.map((q) => (
+          <button key={q} type="button" className="chip" disabled={full} onClick={() => add(q)}>+ {q}</button>
+        ))}
+        {lastUsed && (
+          <button type="button" className="chip" onClick={() => void onCopyLast(lastUsed)}>Son siyahını köçür</button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          className="inp"
+          value={draft}
+          disabled={full}
+          maxLength={120}
+          placeholder={full ? 'Ən çoxu 10 iş' : 'məs. zibili boşalt'}
+          onChange={(e) => setDraft(e.target.value)}
+          // Enter adds without submitting the outer assign form — the same habit the self-report
+          // sheet uses, so five items are five keystrokes-plus-Enter.
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(draft) } }}
+        />
+        <button type="button" className="btn btn-sm" disabled={full || !draft.trim()} onClick={() => add(draft)}>
+          Əlavə et
+        </button>
+      </div>
+
+      {value.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+          {value.map((item, i) => (
+            <div key={`${item}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <span className="tag">{i + 1}</span>
+              <span style={{ flex: 1 }}>{item}</span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                aria-label="Sil"
+                onClick={() => onChange(value.filter((_, n) => n !== i))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -433,9 +589,11 @@ function StatCard({ variant, label, value, sub, active, onClick }: {
   )
 }
 
-function DetailOverlay({ v, photos, onClose, onCancel, onForceCheckout, stuck }: {
+function DetailOverlay({ v, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onForceCheckout, stuck }: {
   v: BoardFieldVisit
-  photos: { checkInUrl: string | null; checkOutUrl: string | null } | null
+  checklist: ChecklistItem[] | null
+  workPhoto: { url: string | null } | null
+  onOpenPhoto: (url: string) => void
   onClose: () => void
   onCancel: () => void
   onForceCheckout: () => void
@@ -443,7 +601,6 @@ function DetailOverlay({ v, photos, onClose, onCancel, onForceCheckout, stuck }:
 }) {
   const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
   const flagged = isFlagged(v)
-  const hasPhoto = v.hasCheckInPhoto || v.hasCheckOutPhoto
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
       <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px,94vw)', maxHeight: '92vh', overflowY: 'auto' }}>
@@ -455,6 +612,10 @@ function DetailOverlay({ v, photos, onClose, onCancel, onForceCheckout, stuck }:
           </div>
           <span className="badge" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
         </div>
+
+        {/* «İş sübutu» sits ABOVE the map on purpose: the customer's question is "was the job done?",
+            and presence (map, distance, timeline) is one screen further down. */}
+        <WorkEvidence v={v} checklist={checklist} workPhoto={workPhoto} onOpenPhoto={onOpenPhoto} />
 
         {(v.targetLatitude != null || v.checkInLatitude != null) && (
           <>
@@ -487,20 +648,8 @@ function DetailOverlay({ v, photos, onClose, onCancel, onForceCheckout, stuck }:
 
         {v.note && <div className="muted" style={{ fontSize: 13, marginBottom: 12, fontStyle: 'italic' }}>Qeyd: {v.note}</div>}
 
-        {hasPhoto ? (
-          photos === null ? (
-            <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Şəkil yüklənir…</div>
-          ) : photos.checkInUrl || photos.checkOutUrl ? (
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              {photos.checkInUrl && <img src={photos.checkInUrl} alt="Giriş" style={{ maxWidth: 200, borderRadius: 10 }} />}
-              {photos.checkOutUrl && <img src={photos.checkOutUrl} alt="Çıxış" style={{ maxWidth: 200, borderRadius: 10 }} />}
-            </div>
-          ) : (
-            <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Şəkil yüklənmədi.</div>
-          )
-        ) : (
-          <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>Bu ziyarətdə foto yoxdur (GPS ilə təsdiq).</div>
-        )}
+        {/* The selfie render path is GONE with its endpoint — after this there is no code on the
+            admin field surface that can display a field selfie, only the work photo above. */}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {v.status === 'Assigned' && <button className="btn btn-sm" onClick={onCancel}>Ləğv et</button>}
@@ -508,6 +657,83 @@ function DetailOverlay({ v, photos, onClose, onCancel, onForceCheckout, stuck }:
           <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Bağla</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * «İş sübutu» — what was ticked, and the photo of the result. The per-item tick TIMES are the point:
+ * "09:40 / 10:15 / 11:02" and "all four ticked at 17:59 on the way out" are different stories, and
+ * that difference is why a manager opens this panel at all.
+ */
+function WorkEvidence({ v, checklist, workPhoto, onOpenPhoto }: {
+  v: BoardFieldVisit
+  checklist: ChecklistItem[] | null
+  workPhoto: { url: string | null } | null
+  onOpenPhoto: (url: string) => void
+}) {
+  if (v.checklistTotal === 0 && !v.hasWorkPhoto && v.status !== 'Completed') return null
+  const allDone = v.checklistTotal > 0 && v.checklistDone === v.checklistTotal
+  const missed = v.checklistTotal - v.checklistDone
+
+  return (
+    <div className="card card-pad" style={{ marginBottom: 12, background: 'var(--c50)' }}>
+      <div className="card-title" style={{ marginBottom: 10 }}>İş sübutu</div>
+
+      {v.checklistTotal > 0 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Yoxlama siyahısı</span>
+            <span className="muted" style={{ fontSize: 12, marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+              {v.checklistDone}/{v.checklistTotal} tamamlandı
+            </span>
+          </div>
+          {checklist === null ? (
+            <div className="muted" style={{ fontSize: 12 }}>Yüklənir…</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {checklist.map((i) => (
+                <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <span style={{ color: i.isDone ? 'var(--leaf-d)' : 'var(--c400)' }}>{i.isDone ? '☑' : '☐'}</span>
+                  {/* No strikethrough: struck text reads as "done" and would invert the meaning. */}
+                  <span style={{ color: i.isDone ? 'var(--c900)' : 'var(--c500)' }}>{i.label}</span>
+                  {i.doneAtUtc && (
+                    <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>{fmtTime(i.doneAtUtc)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Advisory grammar, never fb-err: on an open visit an incomplete list is simply normal. */}
+          {v.status === 'Completed' && (
+            <div className={`fb ${allDone ? 'fb-ok' : 'fb-warn'}`} style={{ marginBottom: 10 }}>
+              {allDone ? '✅ Bütün işlər işarələnib' : `⚠️ ${v.checklistTotal} işdən ${missed}-si işarələnməyib`}
+            </div>
+          )}
+        </>
+      )}
+
+      <div style={{ fontSize: 13, fontWeight: 700 }}>İş şəkli</div>
+      <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>İşin nəticəsi — üz şəkli deyil</div>
+      {v.hasWorkPhoto ? (
+        workPhoto === null ? (
+          <div className="muted" style={{ fontSize: 12 }}>Şəkil yüklənir…</div>
+        ) : workPhoto.url ? (
+          <img
+            src={workPhoto.url}
+            alt="İş şəkli"
+            onClick={() => onOpenPhoto(workPhoto.url!)}
+            style={{ maxWidth: 200, borderRadius: 10, cursor: 'zoom-in', display: 'block' }}
+          />
+        ) : (
+          <div className="muted" style={{ fontSize: 12 }}>Şəkil yüklənmədi.</div>
+        )
+      ) : (
+        // A failed camera must not read as an accusation, so this is muted, never a warning.
+        <div className="muted" style={{ fontSize: 12 }}>
+          İş şəkli yoxdur — işçi şəkil çəkə bilməyib (giriş qeydi keçərlidir)
+        </div>
+      )}
     </div>
   )
 }

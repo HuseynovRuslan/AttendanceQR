@@ -2,8 +2,22 @@ import { apiRequest } from './client'
 
 export type FieldVisitStatus = 'Assigned' | 'CheckedIn' | 'Completed' | 'Cancelled'
 
+/** One line of the work checklist the manager set when assigning. */
+export interface ChecklistItem {
+  id: string
+  label: string
+  sortOrder: number
+  isDone: boolean
+  doneAtUtc: string | null
+}
+
 /** The worker's view of one of their own visits. */
 export interface MyFieldVisit {
+  /** Always an array (never null) — the app renders nothing when it is empty. */
+  checklist: ChecklistItem[]
+  checklistDone: number
+  checklistTotal: number
+  hasWorkPhoto: boolean
   id: string
   status: FieldVisitStatus
   selfReported: boolean
@@ -39,14 +53,20 @@ export interface BoardFieldVisit {
   checkOutLatitude: number | null
   checkOutLongitude: number | null
   durationMinutes: number | null
+  /** SELFIE present — unchanged meaning, and deliberately NOT where work-photo state lives. */
   hasCheckInPhoto: boolean
   hasCheckOutPhoto: boolean
+  /** İŞ ŞƏKLİ present — a photo of the work, never of a face. */
+  hasWorkPhoto: boolean
+  checklistTotal: number
+  checklistDone: number
   note: string | null
 }
 
 export interface GeoPhotoBody {
-  latitude: number
-  longitude: number
+  /** Null when GPS could not be resolved — a check-out is recorded anyway and flagged, never refused. */
+  latitude: number | null
+  longitude: number | null
   photoBase64?: string | null
 }
 
@@ -60,8 +80,20 @@ export function startFieldVisit(body: GeoPhotoBody & { targetLabel?: string | nu
 export function checkInFieldVisit(id: string, body: GeoPhotoBody) {
   return apiRequest<MyFieldVisit>(`/api/field-visits/${id}/check-in`, { method: 'POST', body })
 }
-export function checkOutFieldVisit(id: string, body: GeoPhotoBody) {
+/** `doneItemIds` is the ABSOLUTE set of ticked lines — it reconciles ticks whose own POST never
+ *  reached the server, so a whole afternoon of failed ticks still lands with the departure. */
+export function checkOutFieldVisit(id: string, body: GeoPhotoBody & { doneItemIds?: string[] }) {
   return apiRequest<MyFieldVisit>(`/api/field-visits/${id}/check-out`, { method: 'POST', body })
+}
+/** Ticks one line. Fire-and-forget from the app's point of view — failure is never shown as an error. */
+export function setChecklistItem(id: string, itemId: string, isDone: boolean) {
+  return apiRequest<{ id: string; isDone: boolean; doneAtUtc: string | null }>(
+    `/api/field-visits/${id}/checklist/${itemId}`, { method: 'POST', body: { isDone } })
+}
+/** İŞ ŞƏKLİ. Always answers 200; `stored` tells the truth so the app can offer a retry. */
+export function uploadWorkPhoto(id: string, photoBase64: string) {
+  return apiRequest<{ stored: boolean; error?: string }>(
+    `/api/field-visits/${id}/work-photo`, { method: 'POST', body: { photoBase64 } })
 }
 
 // ---- manager / admin ----
@@ -73,6 +105,8 @@ export interface AssignBody {
   targetRadiusMeters?: number | null
   visitDate?: string | null
   note?: string | null
+  /** The lines the worker will tick. The server trims/de-dupes/caps — it never rejects the assign. */
+  checklist?: string[] | null
 }
 export interface AssignablePerson {
   id: string
@@ -94,6 +128,15 @@ export function cancelFieldVisit(id: string) {
 export function forceCheckOutFieldVisit(id: string) {
   return apiRequest<{ id: string; status: string }>(`/api/field-visits/${id}/force-checkout`, { method: 'POST' })
 }
-export function getFieldVisitPhotos(id: string) {
-  return apiRequest<{ checkInUrl: string | null; checkOutUrl: string | null }>(`/api/field-visits/${id}/photos`)
+// getFieldVisitPhotos is GONE with its endpoint: it minted presigned SELFIE urls for the field board.
+// The only field photo an admin can now open is the work photo below, which resolves WorkPhotoKey and
+// nothing else — there is no code path left here that can display a field selfie.
+
+/** The checklist with per-item tick times — what the manager opens the visit detail for. */
+export function getFieldVisitChecklist(id: string) {
+  return apiRequest<{ items: ChecklistItem[] }>(`/api/field-visits/${id}/checklist`)
+}
+/** İŞ ŞƏKLİ — a short-lived url for the photo of the WORK. Never a face. */
+export function getFieldVisitWorkPhoto(id: string) {
+  return apiRequest<{ url: string | null; takenAtUtc: string | null }>(`/api/field-visits/${id}/work-photo`)
 }

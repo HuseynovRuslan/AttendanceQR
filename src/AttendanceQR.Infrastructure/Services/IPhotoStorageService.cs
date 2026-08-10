@@ -16,6 +16,13 @@ public interface IPhotoStorageService
     /// <summary>Uploads (or overwrites) the employee's reference selfie; returns the object key.</summary>
     Task<string> UploadReferencePhotoAsync(Guid employeeId, byte[] webpBytes, CancellationToken ct = default);
 
+    /// <summary>
+    /// Uploads a field visit's İŞ ŞƏKLİ — a photo of the WORK, not of a face. Filed under its own
+    /// <c>fieldwork/</c> prefix so the retention job (which prunes selfies) and the face-match worker
+    /// (which reads them) never touch it. Returns the object key.
+    /// </summary>
+    Task<string> UploadFieldWorkPhotoAsync(Guid tenantId, Guid visitId, byte[] jpegBytes, CancellationToken ct = default);
+
     /// <summary>A short-lived presigned GET URL the admin panel can load the image from directly.</summary>
     Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default);
 
