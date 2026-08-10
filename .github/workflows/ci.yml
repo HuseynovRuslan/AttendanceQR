@@ -1,0 +1,59 @@
+# Runs the test suites on every push and every pull request.
+#
+# Why this exists: the repo had 283 backend tests and 37 frontend tests that only ever ran when
+# somebody remembered to type the command — and production is deployed BY HAND from `main`, straight
+# into EF migrations that apply themselves at startup. So "did we run the tests?" was a question of
+# memory, on the system 114 people clock in on.
+#
+# Deliberately small. It does exactly what a person would do before deploying:
+#   dotnet test              — the 283 backend tests
+#   npm run build            — typecheck (tsc --noEmit) AND the real bundle
+#   npm test                 — the 37 vitest tests
+# Nothing here deploys anything. It only answers: would this break if we shipped it?
+#
+# The Android workflows next door stay manual (workflow_dispatch) on purpose — an APK is not built on
+# every push.
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+# A second push to the same branch cancels the first run — the last commit is the one that matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # Restore is cached by the SDK setup above; a cold run is ~2 min.
+      - name: dotnet test
+        run: dotnet test --nologo --verbosity quiet
+
+  frontend:
+    name: Frontend typecheck, build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Matches frontend/Dockerfile (node:20-alpine), so CI cannot pass on a version the
+          # production image never sees.
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # `build` is typecheck + bundle in one script — see package.json.
+      - run: npm run build
+      - run: npm test
