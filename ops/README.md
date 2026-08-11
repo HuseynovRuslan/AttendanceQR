@@ -32,6 +32,36 @@ Until then it keeps working with the app's credentials and warns every night, in
 `alert.sh`. It deliberately does not refuse: an unseparated backup is a weaker backup, no backup at
 all is a lost company.
 
+## Where things actually live — TWO Cloudflare accounts
+
+Written down because it cost an afternoon to rediscover: the domain and the storage are in
+**different Cloudflare accounts**, and nothing in the dashboard tells you that. Someone looking for
+the photos logs in, sees `qrlog.az`, opens R2, is offered "Get started with R2", and reasonably
+concludes the bucket was never created.
+
+| What | Where |
+|---|---|
+| `qrlog.az` DNS (nameservers `sage`/`courtney.ns.cloudflare.com`) | account **A** — the one you log into normally |
+| R2 bucket `attendance-photos` — every selfie, every face baseline, and (today) the DB backups | account **B**, id `e2c22f9a7a16e3485fa8e3156dd053ba` |
+
+The account id is not hidden — it is the first label of the S3 endpoint in `.env`
+(`<account-id>.r2.cloudflarestorage.com`), and `dash.cloudflare.com/<account-id>` jumps straight to
+it. That is the fastest way to answer "which account is this?" for any Cloudflare resource.
+
+What is in the bucket, as of 2026-08-11:
+
+    checkins/     2 215 objects   60 MB   daily check-in selfies (pruned by PhotoCleanupJob)
+    reference/      142 objects  5.9 MB   face-match baselines — NEVER pruned
+    db-backups/     112 objects   64 MB   nightly dumps
+
+**The separation is accidental, not designed** — but for the backups it is an advantage, which is why
+`qrlog-backups` goes in account A rather than beside the photos: an attacker who takes the whole
+photo account still cannot reach the restore points.
+
+**The open question is custody.** Employee face photographs are biometric data, and
+qrlog.az/mexfilik/ names the employer as the data controller. If account B belongs to a contractor
+rather than the company, that is a problem to fix by migrating the objects — not a tidiness issue.
+
 ## restore-test.sh — weekly, Sunday 04:00
 
 Restores the newest dump into a throwaway database beside the live one and checks that Employees,
