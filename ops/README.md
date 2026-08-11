@@ -58,9 +58,16 @@ What is in the bucket, as of 2026-08-11:
 `qrlog-backups` goes in account A rather than beside the photos: an attacker who takes the whole
 photo account still cannot reach the restore points.
 
-**The open question is custody.** Employee face photographs are biometric data, and
-qrlog.az/mexfilik/ names the employer as the data controller. If account B belongs to a contractor
-rather than the company, that is a problem to fix by migrating the objects — not a tidiness issue.
+**Custody was the question that mattered, and it is settled: both accounts belong to the company**
+(confirmed 2026-08-11). Employee face photographs are biometric data and qrlog.az/mexfilik/ names the
+employer as the data controller, so a contractor-owned bucket would have meant migrating 2 357
+objects off someone else's account. It does not. The photos stay where they are — moving them would
+touch the face-match baselines on a live system to buy nothing but tidiness.
+
+What the split does still cost is memory. Keep **both** account ids somewhere findable, put a
+recovery address the company controls (info@qrlog.az, which now has MX) on both, and enable 2FA on
+both — the failure this section exists to prevent is not an attacker, it is nobody being able to find
+the account that holds 114 people's faces.
 
 ## restore-test.sh — weekly, Sunday 04:00
 
