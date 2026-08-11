@@ -9,6 +9,22 @@ set -euo pipefail
 APP_DIR=/opt/attendanceqr
 cd "$APP_DIR"
 
+# Tell the watchdog to keep its hands off while this runs.
+#
+# It cost us a real one: the watchdog fires every 5 minutes, and its first act when /health does not
+# answer is `docker restart backend`. During a deploy /health is legitimately down for a few seconds
+# — longer when a migration is applying, because migrations run at startup — so on 2026-08-11 at
+# 09:40, one minute after a deploy, the watchdog restarted a backend that was in the middle of adding
+# a column. It got away with it (and did the same on 2026-07-22), but restarting a process mid-
+# migration is how a half-applied schema happens.
+#
+# The trap covers every exit, including the rollback paths and a Ctrl-C, so a crashed deploy cannot
+# leave the watchdog muted.
+DEPLOY_LOCK="$APP_DIR/backups/.deploying"
+mkdir -p "$APP_DIR/backups"
+touch "$DEPLOY_LOCK"
+trap 'rm -f "$DEPLOY_LOCK"' EXIT
+
 # Local wall-clock hour (server is UTC+2, same as the staff).
 HOUR=$(date +%-H)
 MIN=$(date +%-M)

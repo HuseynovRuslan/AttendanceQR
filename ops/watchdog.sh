@@ -26,6 +26,19 @@ REPEAT_HOURS=${ALERT_REPEAT_HOURS:-6}
 exec >>"$LOG" 2>&1
 mkdir -p "$STATE_DIR"
 
+# A deploy is in progress — stand down. /health is legitimately down for a few seconds while
+# containers swap, and longer if a migration is applying, so "not answering" here means nothing.
+# Acting on it restarts a backend that is mid-migration, which is how a half-applied schema happens.
+#
+# Stale-safe: the lock is ignored after 20 minutes, so a deploy killed before its trap ran cannot
+# switch the watchdog off for good. That is the failure this guard must not introduce — a monitor
+# that can be silenced permanently by an unrelated crash is worse than one that restarts too eagerly.
+DEPLOY_LOCK="$APP_DIR/backups/.deploying"
+if [ -f "$DEPLOY_LOCK" ] && [ -n "$(find "$DEPLOY_LOCK" -mmin -20 2>/dev/null)" ]; then
+  echo "$(date -Is) deploy in progress — skipping this run"
+  exit 0
+fi
+
 # shellcheck source=/dev/null
 . "$(dirname "$0")/alert.sh"
 
