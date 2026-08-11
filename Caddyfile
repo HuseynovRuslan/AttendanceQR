@@ -132,6 +132,7 @@ test.qrlog.az {
 	#   fonts.googleapis / gstatic  the Manrope + IBM Plex Mono stylesheet in index.html
 	#   tile.openstreetmap          LocationMapPicker
 	#   basemaps.cartocdn           the dashboard, problems, field-visit and HQ maps
+	#   nominatim.openstreetmap.org the address search in LocationMapPicker (connect, not img)
 	#   *.r2.cloudflarestorage.com  presigned selfie URLs, loaded straight from the browser
 	#   'unsafe-inline' for STYLE   the admin panel styles inline throughout, and leaflet injects its own
 	#   blob: for worker            the QR decoder spins one up; blob: img covers canvas captures
@@ -140,7 +141,15 @@ test.qrlog.az {
 	#
 	# It is here and not on production because getting this wrong breaks the selfie, the map or the
 	# typeface SILENTLY, on an employee's phone, at 08:00. Prove it on staging, then promote.
-	header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.r2.cloudflarestorage.com; connect-src 'self' https://api-test.qrlog.az; worker-src 'self' blob:; manifest-src 'self'"
+	#
+	# Every host above was checked against what the built bundle actually references — all 45 chunks
+	# pulled and swept for external URLs. That sweep is what caught nominatim, which the first draft
+	# of this policy would have blocked: the address search on the location form would simply have
+	# returned nothing, with no error anyone would connect to a header. It also cleared the ones that
+	# look alarming and are not — cdnjs (a code path in jsPDF we never take, since PrintQrPage calls
+	# .save() rather than dataurlnewwindow), and openstreetmap.org / leafletjs.com / reactjs.org,
+	# which are <a href> attribution and documentation links. CSP does not govern navigation.
+	header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.r2.cloudflarestorage.com; connect-src 'self' https://api-test.qrlog.az https://nominatim.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'"
 
 	reverse_proxy stg-frontend:80
 }
