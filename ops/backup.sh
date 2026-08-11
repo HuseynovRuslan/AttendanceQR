@@ -28,6 +28,37 @@ echo "--- $(date -Is) backup start"
 # shellcheck disable=SC1090
 set -a; . "$ENV_FILE"; set +a
 
+# WHERE the backups go, and WITH WHOSE KEYS.
+#
+# These used to be the app's own R2 credentials, writing into the same bucket as the check-in
+# selfies. That put every database backup behind a key the running application holds — and a backup
+# exists precisely for the case where the application is compromised. This box has already had one
+# intrusion (2026-07-10), and in that scenario the attacker would have found, in the container's
+# environment, keys that delete every restore point the company has.
+#
+# So: a SEPARATE bucket and a SEPARATE R2 API token scoped to it alone. Set in .env:
+#
+#   Backup__R2__AccessKey=...
+#   Backup__R2__SecretKey=...
+#   Backup__R2__BucketName=qrlog-backups
+#   Backup__R2__Endpoint=<account>.r2.cloudflarestorage.com   # optional, defaults to the app's
+#
+# Until they are set this falls back to the app's credentials and says so, loudly, every night. It
+# does NOT refuse: an unseparated backup is a weaker backup, no backup at all is a lost company.
+R2_KEY=${Backup__R2__AccessKey:-$Storage__Minio__AccessKey}
+R2_SECRET=${Backup__R2__SecretKey:-$Storage__Minio__SecretKey}
+R2_BUCKET=${Backup__R2__BucketName:-$Storage__Minio__BucketName}
+R2_ENDPOINT=${Backup__R2__Endpoint:-$Storage__Minio__Endpoint}
+
+if [ -z "${Backup__R2__AccessKey:-}" ]; then
+  echo "WARNING: backups are using the APP's R2 credentials and bucket. Anyone who compromises the"
+  echo "         app can delete every restore point. Create a separate bucket + scoped token and set"
+  echo "         Backup__R2__* in .env — see ops/README.md."
+  if [ -x "$APP_DIR/ops/alert.sh" ]; then
+    "$APP_DIR/ops/alert.sh" "backups still share the app's R2 credentials — a compromised app can delete them" || true
+  fi
+fi
+
 STAMP=$(date -u +%Y%m%d_%H%M%S)
 FILE="$WORK_DIR/attendanceqr_${STAMP}.sql.gz"
 
@@ -51,16 +82,16 @@ fi
 
 echo "dump ok: $(basename "$FILE") (${SIZE} bytes)"
 
-# Off the machine. Same R2 account the check-in photos already use, under its own prefix.
+# Off the machine, into the backup bucket (see the credential note above).
 docker run --rm \
-  -e AWS_ACCESS_KEY_ID="$Storage__Minio__AccessKey" \
-  -e AWS_SECRET_ACCESS_KEY="$Storage__Minio__SecretKey" \
+  -e AWS_ACCESS_KEY_ID="$R2_KEY" \
+  -e AWS_SECRET_ACCESS_KEY="$R2_SECRET" \
   -e AWS_DEFAULT_REGION=auto \
   -v "$WORK_DIR":/backups \
   amazon/aws-cli:latest \
   s3 cp "/backups/$(basename "$FILE")" \
-    "s3://${Storage__Minio__BucketName}/db-backups/$(basename "$FILE")" \
-    --endpoint-url "https://${Storage__Minio__Endpoint}" \
+    "s3://${R2_BUCKET}/db-backups/$(basename "$FILE")" \
+    --endpoint-url "https://${R2_ENDPOINT}" \
     --only-show-errors
 
 echo "uploaded to r2: db-backups/$(basename "$FILE")"
@@ -71,22 +102,22 @@ find "$WORK_DIR" -name 'attendanceqr_*.sql.gz' -mtime +$KEEP_LOCAL -delete
 # which are configured in a console nobody will remember to check.
 CUTOFF=$(date -u -d "-${KEEP_REMOTE_DAYS} days" +%Y-%m-%d)
 docker run --rm \
-  -e AWS_ACCESS_KEY_ID="$Storage__Minio__AccessKey" \
-  -e AWS_SECRET_ACCESS_KEY="$Storage__Minio__SecretKey" \
+  -e AWS_ACCESS_KEY_ID="$R2_KEY" \
+  -e AWS_SECRET_ACCESS_KEY="$R2_SECRET" \
   -e AWS_DEFAULT_REGION=auto \
   amazon/aws-cli:latest \
-  s3 ls "s3://${Storage__Minio__BucketName}/db-backups/" \
-    --endpoint-url "https://${Storage__Minio__Endpoint}" \
+  s3 ls "s3://${R2_BUCKET}/db-backups/" \
+    --endpoint-url "https://${R2_ENDPOINT}" \
   | awk -v cutoff="$CUTOFF" '$1 < cutoff { print $4 }' \
   | while read -r old; do
       [ -z "$old" ] && continue
       docker run --rm \
-        -e AWS_ACCESS_KEY_ID="$Storage__Minio__AccessKey" \
-        -e AWS_SECRET_ACCESS_KEY="$Storage__Minio__SecretKey" \
+        -e AWS_ACCESS_KEY_ID="$R2_KEY" \
+        -e AWS_SECRET_ACCESS_KEY="$R2_SECRET" \
         -e AWS_DEFAULT_REGION=auto \
         amazon/aws-cli:latest \
-        s3 rm "s3://${Storage__Minio__BucketName}/db-backups/${old}" \
-          --endpoint-url "https://${Storage__Minio__Endpoint}" --only-show-errors
+        s3 rm "s3://${R2_BUCKET}/db-backups/${old}" \
+          --endpoint-url "https://${R2_ENDPOINT}" --only-show-errors
       echo "pruned r2: $old"
     done
 

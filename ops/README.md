@@ -12,6 +12,26 @@ Before this existed the only copies were two hand-made dumps on the same disk as
 second copy of the same single point of failure. The database is ~11 MB, so nothing here is clever:
 dump, verify, ship, prune.
 
+**Give it its own bucket and its own token — 5 minutes, do this once.** The backups went into the
+same bucket as the check-in selfies, using the credentials the running app holds. A backup exists for
+the case where the app is compromised, so keeping it behind the app's own key defeats the point —
+and this box has already had one intrusion (2026-07-10), where those keys sat in the container's
+environment.
+
+1. Cloudflare → R2 → **Create bucket** → `qrlog-backups`
+2. R2 → **Manage API tokens** → Create token → Object Read & Write, **scoped to that bucket only**
+3. Add to `/opt/attendanceqr/.env` (no compose entry — this is a shell script):
+
+       Backup__R2__AccessKey=...
+       Backup__R2__SecretKey=...
+       Backup__R2__BucketName=qrlog-backups
+
+4. `ops/backup.sh` → the nightly log should no longer print the WARNING
+
+Until then it keeps working with the app's credentials and warns every night, in the log and through
+`alert.sh`. It deliberately does not refuse: an unseparated backup is a weaker backup, no backup at
+all is a lost company.
+
 ## restore-test.sh — weekly, Sunday 04:00
 
 Restores the newest dump into a throwaway database beside the live one and checks that Employees,
