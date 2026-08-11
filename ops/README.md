@@ -1,7 +1,7 @@
 # Ops
 
-Three cron scripts, installed on the server at `/opt/attendanceqr/ops/`, plus `build-landing.sh`,
-which runs on deploy rather than on a schedule.
+Three cron scripts, installed on the server at `/opt/attendanceqr/ops/`, plus `alert.sh` (used by
+the watchdog, not scheduled) and `build-landing.sh`, which runs on deploy rather than on a schedule.
 
 ## backup.sh — nightly, 03:15
 
@@ -25,7 +25,34 @@ Checks `/health` (which touches the database, so a running process with unreacha
 as down), restarts a container that has stopped, warns at 85% disk, and warns if no backup has
 appeared in 48 hours — the nightly job failing silently is the likeliest way to lose the safety net.
 
+Everything it finds is **sent to a human** via `alert.sh`. It used to write to
+`backups/watchdog.log` and stop there, which made it a detector with nobody on the other end — the
+same silent-failure mode it was written to catch in the backup job.
+
 **It cannot tell you the machine is down.** Nothing running on the machine can. See below.
+
+## alert.sh — where the watchdog's findings go
+
+Sends one line to Telegram or to a generic webhook. Configure **one** of these in
+`/opt/attendanceqr/.env` (no compose entry needed — this is a shell script, not a container, so it
+reads the file directly):
+
+    ALERT_TELEGRAM_TOKEN=123456:AA...      # from @BotFather
+    ALERT_TELEGRAM_CHAT=-1001234567890     # the group id the bot was added to
+
+    # ...or anything that speaks {"text": "..."} — Slack, Discord (+/slack), Mattermost, n8n:
+    ALERT_WEBHOOK_URL=https://...
+
+Test the wiring in one command, rather than by breaking something:
+
+    ops/alert.sh "test"
+
+With neither set it is a **no-op that says so in the log** — an unconfigured alert channel must
+never be able to make the watchdog itself fail.
+
+**Repetition is throttled.** A fault alerts on first sighting, then at most every 6 hours while it
+persists (`ALERT_REPEAT_HOURS`), and sends a ✅ line when it clears. Alerting every run would be 288
+messages a day for one broken container, and a channel people mute is worse than no channel.
 
 ## External uptime alerting — 3 minutes, do this once
 
