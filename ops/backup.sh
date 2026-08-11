@@ -100,7 +100,16 @@ find "$WORK_DIR" -name 'attendanceqr_*.sql.gz' -mtime +$KEEP_LOCAL -delete
 
 # Prune R2 by age. Listing is cheap at this volume and avoids depending on bucket lifecycle rules,
 # which are configured in a console nobody will remember to check.
-CUTOFF=$(date -u -d "-${KEEP_REMOTE_DAYS} days" +%Y-%m-%d)
+#
+# The age comes from the FILENAME, not from the object's LastModified. They are the same number right
+# up until the backups are ever moved — and on 2026-08-11 they were, into their own bucket, which
+# stamped all 112 of them with that day's upload time. Under LastModified the retention window silently
+# restarts on every migration: the bucket would keep everything for another 90 days, and a future
+# re-sync would extend it again, indefinitely. The name carries the date the dump was actually taken,
+# which is the thing the policy is about.
+#
+# A name that does not match the exact pattern is SKIPPED, never deleted. This loop can only ever
+# remove things, so an unparseable name has to fail towards keeping it.
 docker run --rm \
   -e AWS_ACCESS_KEY_ID="$R2_KEY" \
   -e AWS_SECRET_ACCESS_KEY="$R2_SECRET" \
@@ -108,7 +117,10 @@ docker run --rm \
   amazon/aws-cli:latest \
   s3 ls "s3://${R2_BUCKET}/db-backups/" \
     --endpoint-url "https://${R2_ENDPOINT}" \
-  | awk -v cutoff="$CUTOFF" '$1 < cutoff { print $4 }' \
+  | awk -v cutoff="$CUTOFF" '
+      $4 ~ /^attendanceqr_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]\.sql\.gz$/ {
+        if (substr($4, 14, 8) < cutoff) print $4
+      }' \
   | while read -r old; do
       [ -z "$old" ] && continue
       docker run --rm \

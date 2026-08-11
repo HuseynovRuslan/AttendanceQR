@@ -12,6 +12,22 @@ Before this existed the only copies were two hand-made dumps on the same disk as
 second copy of the same single point of failure. The database is ~11 MB, so nothing here is clever:
 dump, verify, ship, prune.
 
+**Done 2026-08-11.** Backups now go to bucket `qrlog-backups` in the *domain* account
+(`bb45c8206dd50205e11924f4b66953d0`), with a token scoped to that bucket alone — a different
+Cloudflare account from the one holding the photos, which is stronger than the same-account split
+originally planned: even losing the whole photo account leaves the restore points intact.
+
+The 112 historical dumps were copied across (verified by name, size and `gzip -t` on all 112) and then
+**deleted from the photo bucket**. That last step closed the part that mattered most and was not in
+the original framing: the app's own R2 key could *read* those dumps. A dump is the entire database —
+every employee, phone number, salary and PIN hash — so anyone who compromised the application could
+have taken the lot by downloading one file, without touching Postgres at all.
+
+Proven end to end on the same day: a backup was pulled from the new bucket, restored into a scratch
+database, and checked (132 employees, 2 070 attendance records, 4 tenants), then dropped.
+
+The original instructions, kept because they are what to repeat if this ever has to be redone:
+
 **Give it its own bucket and its own token — 5 minutes, do this once.** The backups went into the
 same bucket as the check-in selfies, using the credentials the running app holds. A backup exists for
 the case where the app is compromised, so keeping it behind the app's own key defeats the point —
