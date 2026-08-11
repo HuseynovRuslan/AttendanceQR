@@ -110,6 +110,9 @@ find "$WORK_DIR" -name 'attendanceqr_*.sql.gz' -mtime +$KEEP_LOCAL -delete
 #
 # A name that does not match the exact pattern is SKIPPED, never deleted. This loop can only ever
 # remove things, so an unparseable name has to fail towards keeping it.
+#
+# Compact YYYYMMDD, to compare against the digits taken out of the filename.
+CUTOFF=$(date -u -d "-${KEEP_REMOTE_DAYS} days" +%Y%m%d)
 docker run --rm \
   -e AWS_ACCESS_KEY_ID="$R2_KEY" \
   -e AWS_SECRET_ACCESS_KEY="$R2_SECRET" \
