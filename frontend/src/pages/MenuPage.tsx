@@ -9,7 +9,10 @@ import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
 import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconShield, IconUser } from '../components/icons'
 
-const APP_VERSION = '2.0.0'
+// Keep in step with versionName in frontend/android/app/build.gradle — a tester who sees one number
+// in the Play listing and another at the bottom of the menu has no way to tell which build they are
+// actually running, which is the one thing this line exists to answer.
+const APP_VERSION = '1.0'
 
 export function MenuPage() {
   const { logout, email, role } = useAuth()
@@ -80,7 +83,10 @@ export function MenuPage() {
         Hesabdan çıxış
       </button>
 
-      <div className="pt-2 text-center text-xs text-slate-400">AttendanceQR · Versiya {APP_VERSION}</div>
+      {/* "AttendanceQR" was the repository's name, never the product's. It is QRLog on the poster, the
+          landing page, the invoice and now the Play listing; the one place it still said otherwise was
+          the line an employee reads when they scroll to the bottom of the menu. */}
+      <div className="pt-2 text-center text-xs text-slate-400">QRLog · Versiya {APP_VERSION}</div>
     </div>
   )
 }
