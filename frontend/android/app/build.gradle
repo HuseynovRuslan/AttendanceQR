@@ -7,7 +7,10 @@ android {
         applicationId "az.qrlog.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        // versionCode is Play's internal counter and every uploaded value is burned for ever, even if
+        // that release never went live — 1 was spent by the late-July upload attempt. Bump it on every
+        // upload; versionName ("1.0") is the only number a person sees and moves on its own schedule.
+        versionCode 2
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
