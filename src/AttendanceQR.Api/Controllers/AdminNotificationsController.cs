@@ -39,6 +39,25 @@ public class AdminNotificationsController : ControllerBase
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
     }
 
+    // GET /api/admin/notifications/badges — the sidebar's shelf counts: how many requests WAIT on
+    // the admin (device changes, PIN resets) and how many past days sit open. Separate from the bell
+    // payload on purpose: the bell speaks sentences ("3 PIN sıfırlama tələbi gözləyir") and a badge
+    // that parsed numbers back out of Azerbaijani prose would break on the first rewording.
+    [HttpGet("badges")]
+    public async Task<IActionResult> Badges()
+    {
+        var ct = HttpContext.RequestAborted;
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+
+        var deviceChanges = (await _deviceChangeService.GetPendingAsync(ct)).Count;
+        var pinResets = await _db.PinResetRequests.CountAsync(p => p.Status == PinResetStatus.Pending, ct);
+        // Today excluded — an open record today is just someone still at work.
+        var openRecords = await _db.AttendanceRecords
+            .CountAsync(r => r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayLocal, ct);
+
+        return Ok(new { deviceChanges, pinResets, openRecords });
+    }
+
     [HttpGet]
     public async Task<IActionResult> Get()
     {

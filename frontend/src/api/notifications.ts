@@ -25,3 +25,15 @@ export interface NotificationsSummary {
 export function getNotifications() {
   return apiRequest<NotificationsSummary>('/api/admin/notifications')
 }
+
+/** The sidebar's shelf counts: requests waiting on the admin + open past days. Admin-only. */
+export interface SidebarBadges {
+  deviceChanges: number
+  pinResets: number
+  openRecords: number
+}
+
+/** GET /api/admin/notifications/badges */
+export function getSidebarBadges() {
+  return apiRequest<SidebarBadges>('/api/admin/notifications/badges')
+}

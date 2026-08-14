@@ -5,6 +5,7 @@ import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/Branding
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import { getTaskAccess } from '../../api/tasks'
+import { getSidebarBadges, type SidebarBadges } from '../../api/notifications'
 import {
   IconAlert,
   IconBell,
@@ -88,6 +89,23 @@ export function AdminLayout() {
       : { title: 'Panel', sub: '' })
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Shelf counts for the rows that WAIT on the admin. Refetched on every navigation rather than on a
+  // timer: approving a device request is itself a navigation, so the badge drops the moment the work
+  // is done, and an idle tab doesn't poll. A failed fetch just means no badges — never an error.
+  const [badges, setBadges] = useState<SidebarBadges | null>(null)
+  useEffect(() => {
+    if (!isAdmin) return
+    void getSidebarBadges().then((r) => {
+      if (r.status === 200 && r.data && 'deviceChanges' in r.data) setBadges(r.data)
+    }).catch(() => {})
+  }, [isAdmin, location.pathname])
+
+  const badgeFor: Record<string, number | undefined> = {
+    '/admin/device-changes': badges?.deviceChanges,
+    '/admin/pin-resets': badges?.pinResets,
+    '/admin/open-records': badges?.openRecords,
+  }
 
   // Close the drawer on every navigation, and if the window is resized past the mobile
   // breakpoint while it happens to be open (e.g. rotating a tablet, or a resizable dev window).
@@ -196,7 +214,10 @@ export function AdminLayout() {
               {section.links.map(({ to, label, Icon }) => (
                 <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                   <Icon />
-                  {label}
+                  <span className="nav-label">{label}</span>
+                  {(badgeFor[to] ?? 0) > 0 && (
+                    <span className="nav-badge">{badgeFor[to]! > 99 ? '99+' : badgeFor[to]}</span>
+                  )}
                 </NavLink>
               ))}
             </div>
