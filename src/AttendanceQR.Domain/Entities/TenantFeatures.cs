@@ -23,7 +23,7 @@ public static class TenantFeatures
     {
         (Payroll, "Maaş hesabatı"),
         (Announcements, "Elanlar"),
-        (Assistant, "AI Köməkçi"),
+        (Assistant, "Süni intellekt köməkçisi"),
     };
 
     /// <summary>Parses the opt-out CSV into a set of disabled keys (lowercased).</summary>

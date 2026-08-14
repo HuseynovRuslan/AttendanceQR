@@ -153,7 +153,7 @@ export function HelpChatPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <SubPageHeader title="AI Köməkçi" />
+      <SubPageHeader title="Süni intellekt köməkçisi" />
 
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 p-4 pb-32">
         {/* First open: say what this is and offer the four real questions. */}

@@ -43,7 +43,7 @@ export function PrivacyPage() {
           <p className="mt-2">
             Bundan əlavə, tətbiqin işləməsi üçün bir neçə texniki xidmət məlumatı emal edir — şəkillər{' '}
             <b>Cloudflare R2</b>-də saxlanılır, üz müqayisəsi <b>AWS Rekognition</b> ilə aparılır,
-            bildirişlər <b>Web Push</b> ilə göndərilir, «AI Köməkçi» çatının cavabları <b>OpenAI</b>{' '}
+            bildirişlər <b>Web Push</b> ilə göndərilir, «Süni intellekt köməkçisi» çatının cavabları <b>OpenAI</b>{' '}
             vasitəsilə hazırlanır (çata yalnız yazdığınız mesaj və davamiyyət göstəriciləriniz gedir —
             şəkilləriniz getmir). Onlar məlumatı yalnız QRLog adından emal edir.
           </p>

@@ -20,12 +20,14 @@ export function AssistantFab() {
   return (
     <button
       onClick={() => navigate('/help')}
-      aria-label="AI Köməkçi ilə söhbət"
+      aria-label="Süni intellekt köməkçisi ilə söhbət"
       className="fixed bottom-20 right-4 z-20 flex items-center gap-2.5 rounded-full bg-blue-600 py-2.5 pl-4 pr-2.5 text-white shadow-lg shadow-blue-600/30 transition active:scale-95"
     >
       <span className="text-left leading-tight">
         <span className="block text-[11px] font-medium text-blue-100">Sualınız var?</span>
-        <span className="block text-sm font-bold">AI Köməkçi</span>
+        {/* "Süni intellekt", not "AI": the words the workforce actually knows. A size down from
+            text-sm so the longer phrase still fits one line on a narrow phone. */}
+        <span className="block text-[13px] font-bold">Süni intellekt köməkçisi</span>
       </span>
       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20">
         {/* Sparkles — drawn inline; the icon set has no "AI" glyph and one emoji would render

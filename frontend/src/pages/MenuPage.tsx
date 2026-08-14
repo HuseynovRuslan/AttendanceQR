@@ -68,7 +68,7 @@ export function MenuPage() {
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
         {/* Per-tenant flag: a company that switches the assistant off must not even see the row. */}
-        {assistantOn && <MenuRow to="/help" Icon={IconSend} label="AI Köməkçi" />}
+        {assistantOn && <MenuRow to="/help" Icon={IconSend} label="Süni intellekt köməkçisi" />}
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
         {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />

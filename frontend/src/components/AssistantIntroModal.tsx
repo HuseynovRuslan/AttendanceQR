@@ -50,12 +50,12 @@ export function AssistantIntroModal() {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Yenilik: AI Köməkçi"
+        aria-label="Yenilik: Süni intellekt köməkçisi"
         className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-3xl">🤖</div>
-        <h2 className="mt-4 text-xl font-bold text-slate-900">Yenilik: AI Köməkçi</h2>
+        <h2 className="mt-4 text-xl font-bold text-slate-900">Yenilik: Süni intellekt köməkçisi</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           Sualınızı yazın və ya 🎤 ilə <b>səsli deyin</b> — azərbaycanca və ya rusca. Köməkçi:
         </p>
