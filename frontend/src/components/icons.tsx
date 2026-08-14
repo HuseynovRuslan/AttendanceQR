@@ -150,6 +150,52 @@ export const IconShield = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+// --- admin sidebar set: one distinct glyph per row, because three rows sharing IconClipboard read
+// --- as copy-paste, not as a menu ------------------------------------------------------------
+
+export const IconTable = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 10h18M9 10v10M15 10v10" />
+  </svg>
+)
+
+export const IconMoney = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="7" width="20" height="10" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M5.5 10v.01M18.5 14v.01" />
+  </svg>
+)
+
+export const IconBriefcase = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="8" width="18" height="12" rx="2" />
+    <path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18" />
+  </svg>
+)
+
+export const IconGift = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="4" y="10" width="16" height="10" rx="1.5" />
+    <path d="M12 10v10M4 14h16M12 10c-1.5-1.5-4-2-5.2-3.2a2 2 0 0 1 2.8-2.8C10.8 5.2 11.5 8 12 10zm0 0c1.5-1.5 4-2 5.2-3.2a2 2 0 0 0-2.8-2.8C13.2 5.2 12.5 8 12 10z" />
+  </svg>
+)
+
+export const IconKey = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <circle cx="8" cy="15" r="4" />
+    <path d="M10.8 12.2 20 3M15 8l3 3" />
+  </svg>
+)
+
+export const IconBuilding = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="5" y="3" width="14" height="18" rx="1.5" />
+    <path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3" />
+  </svg>
+)
+
 export const IconMapPin = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
