@@ -118,6 +118,18 @@ builder.Services.AddScoped<IDailySummaryService, DailySummaryService>();
 builder.Services.AddScoped<IReportQueryService, ReportQueryService>();
 builder.Services.AddSingleton<IExcelReportExporter, ExcelReportExporter>();
 
+// AI Köməkçi — the employee support chat. Options as a plain singleton (same reason as AppOptions);
+// the LLM client gets its own HttpClient with a generous timeout, because a chat completion is slow
+// by web-request standards and the default 100s is fine but explicit is better. With no API key the
+// controller answers 503 and nothing else in the app notices.
+var assistantOptions = builder.Configuration.GetSection(AssistantOptions.SectionName).Get<AssistantOptions>() ?? new AssistantOptions();
+builder.Services.AddSingleton(assistantOptions);
+builder.Services.AddHttpClient("assistant-llm", c => c.Timeout = TimeSpan.FromSeconds(90));
+builder.Services.AddSingleton<IAssistantLlm>(sp => new OpenAiAssistantLlm(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("assistant-llm"), assistantOptions));
+builder.Services.AddScoped(sp => new AssistantDataService(
+    sp.GetRequiredService<AppDbContext>(), TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone)));
+
 // Nightly summary job (~00:30 local) + startup gap-fill.
 builder.Services.AddHostedService<DailySummaryJob>();
 

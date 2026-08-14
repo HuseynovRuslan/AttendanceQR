@@ -22,6 +22,7 @@ import { SetPinPage } from './pages/SetPinPage'
 import { HomePage } from './pages/HomePage'
 import { StatsPage } from './pages/StatsPage'
 import { PrivacyPage } from './pages/PrivacyPage'
+import { HelpChatPage } from './pages/HelpChatPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { MenuPage } from './pages/MenuPage'
 
@@ -187,6 +188,17 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <PrivacyPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* AI Köməkçi — the support chat. Own header (no tab bar): a conversation wants the whole
+          screen, and the fixed composer would fight the bottom tabs for the same edge. */}
+      <Route
+        path="/help"
+        element={
+          <ProtectedRoute>
+            <HelpChatPage />
           </ProtectedRoute>
         }
       />

@@ -45,6 +45,8 @@ services:
       # a graceful no-op (check-in still works, panel shows "Foto yoxdur"). Endpoint is host[:port]
       # WITHOUT scheme; UseSsl decides http/https. Use the PUBLICLY reachable MinIO URL — the browser
       # loads presigned image URLs directly, so an internal-only service name would not resolve.
+      Assistant__ApiKey: ${Assistant__ApiKey:-}
+      Assistant__Model: ${Assistant__Model:-gpt-5.4-mini}
       Storage__Minio__Endpoint: ${Storage__Minio__Endpoint:-}
       Storage__Minio__AccessKey: ${Storage__Minio__AccessKey:-}
       Storage__Minio__SecretKey: ${Storage__Minio__SecretKey:-}

@@ -1058,6 +1058,15 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
           Bu mənim yeni telefonumdur
         </Link>
       )}
+
+      {/* A rejected scan is the moment support is needed — hand them the assistant right here, with
+          the rejection already in the audit log for it to read. Red results only: a success needs no
+          help, and one more button on it would just invite a second scan. */}
+      {card.tone === 'red' && (
+        <Link to="/help" className="mt-3 block w-full py-2 text-sm font-semibold underline opacity-80">
+          💬 Kömək al
+        </Link>
+      )}
     </div>
   )
 }

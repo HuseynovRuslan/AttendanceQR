@@ -4,10 +4,11 @@ import type { ComponentType, SVGProps } from 'react'
 import { getMyDeviceStatus, getMyProfile, type MyDeviceStatus, type MyProfile } from '../api/attendance'
 import { getVoteStatus } from '../api/vote'
 import { useAuth } from '../auth/AuthContext'
+import { useFeatureEnabled } from '../branding/BrandingContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
-import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconShield, IconUser } from '../components/icons'
+import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconSend, IconShield, IconUser } from '../components/icons'
 
 // Keep in step with versionName in frontend/android/app/build.gradle — a tester who sees one number
 // in the Play listing and another at the bottom of the menu has no way to tell which build they are
@@ -16,6 +17,7 @@ const APP_VERSION = '1.0'
 
 export function MenuPage() {
   const { logout, email, role } = useAuth()
+  const assistantOn = useFeatureEnabled('assistant')
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
   // Months without a ballot have no vote screen worth opening, so the row isn't offered at all.
@@ -65,6 +67,8 @@ export function MenuPage() {
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
+        {/* Per-tenant flag: a company that switches the assistant off must not even see the row. */}
+        {assistantOn && <MenuRow to="/help" Icon={IconSend} label="AI Köməkçi" />}
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
         {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
         <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />

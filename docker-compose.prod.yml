@@ -53,6 +53,9 @@ services:
       Rekognition__SecretKey: ${Rekognition__SecretKey:-}
       Rekognition__Region: ${Rekognition__Region:-us-east-1}
       # Web Push (VAPID). Empty = push off: the sender no-ops and the reminder job stays idle.
+      # AI Köməkçi (support chat). Empty key = the assistant answers 503 and the menu hides it.
+      Assistant__ApiKey: ${Assistant__ApiKey:-}
+      Assistant__Model: ${Assistant__Model:-gpt-5.4-mini}
       Push__PublicKey: ${Push__PublicKey:-}
       Push__PrivateKey: ${Push__PrivateKey:-}
       Push__Subject: ${Push__Subject:-mailto:admin@qrlog.az}
