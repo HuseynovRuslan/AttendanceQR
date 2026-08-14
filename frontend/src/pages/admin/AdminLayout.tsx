@@ -94,37 +94,69 @@ export function AdminLayout() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  const links = [
-    ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
-    ...(canTasks ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
-    { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
-    { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
-    { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },
-    ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
-    ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
-    ...(isManager ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
-    ...(isAdmin && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
-    ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
-    ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),
-    // Foto Audit is hidden on purpose — see the note on the removed route in App.tsx.
-    { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
-    // Field visits — Admin + Manager (no gate), the endpoints enforce the role.
-    { to: '/admin/field-visits', label: 'Sahə ziyarətləri', Icon: IconMapPin },
-    // Admin + Manager — managers approve their own locations' forgot-checkout requests.
-    ...(isAdmin ? [{ to: '/admin/open-records', label: 'Çıxışı unudulan günlər', Icon: IconClock }] : []),
-    ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
-    ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
-    ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
-    ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
-    // "Toplu əlavə" is no longer its own sidebar row — it lives inside the "İşçi əlavə et" flow on
-    // the employees page (single-add first, then a bulk tab), so onboarding is one place. Route kept.
-    ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconClipboard }] : []),
-    ...(isAdmin ? [{ to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar }] : []),
-    ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
-    ...(isAdmin ? [{ to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconAlert }] : []),
-    // Platform-operator screens (Şirkətlər, Qrup paneli) no longer live in a company's admin — they
-    // moved to the separate operator console on admin.qrlog.az.
-  ]
+  // Grouped by CADENCE, not by feature: what an admin opens every morning sits at the top, what
+  // they open once a month sits at the bottom, and the section label answers "where would that be?"
+  // without reading nineteen rows. A section whose every row is filtered out (role, tenant flag)
+  // disappears with them — an empty heading would just be new clutter.
+  //
+  // Foto Audit stays hidden on purpose (see the removed route's note in App.tsx); "Toplu əlavə"
+  // lives inside the employees page's add flow; the platform-operator screens moved to the separate
+  // console on admin.qrlog.az.
+  const sections: { title: string | null; links: { to: string; label: string; Icon: typeof IconHome }[] }[] = [
+    {
+      title: null, // the everyday landing screens need no caption over them
+      links: [
+        ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
+        ...(canTasks ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
+        ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
+      ],
+    },
+    {
+      title: 'Davamiyyət',
+      links: [
+        { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
+        // Admin + Manager (no gate) — the endpoints enforce the role.
+        { to: '/admin/field-visits', label: 'Sahə ziyarətləri', Icon: IconMapPin },
+        { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
+        ...(isAdmin ? [{ to: '/admin/open-records', label: 'Çıxışı unudulan günlər', Icon: IconClock }] : []),
+      ],
+    },
+    {
+      title: 'Hesabat',
+      links: [
+        { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
+        { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconClipboard },
+        ...(isAdmin && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconDownload }] : []),
+      ],
+    },
+    {
+      title: 'İşçilər',
+      links: [
+        ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
+        ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
+        ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
+        ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
+        { to: '/admin/schedules', label: 'Növbələr', Icon: IconCalendar },
+        ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconClipboard }] : []),
+        ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconSun }] : []),
+      ],
+    },
+    {
+      // The inbox screens: rows that WAIT for the admin, as opposed to screens they go look at.
+      title: 'Müraciətlər',
+      links: [
+        ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
+        ...(isAdmin ? [{ to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconAlert }] : []),
+      ],
+    },
+    {
+      title: 'Tənzimləmələr',
+      links: [
+        ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconMapPin }] : []),
+        ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
+      ],
+    },
+  ].filter((s) => s.links.length > 0)
 
   return (
     <div className="app">
@@ -152,11 +184,16 @@ export function AdminLayout() {
         </div>
 
         <nav className="sidebar-nav">
-          {links.map(({ to, label, Icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
-              <Icon />
-              {label}
-            </NavLink>
+          {sections.map((section, i) => (
+            <div key={section.title ?? `s${i}`} className="nav-section">
+              {section.title && <div className="nav-section-title">{section.title}</div>}
+              {section.links.map(({ to, label, Icon }) => (
+                <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+                  <Icon />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 
