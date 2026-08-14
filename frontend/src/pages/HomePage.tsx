@@ -13,6 +13,7 @@ import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { AssistantFab } from '../components/AssistantFab'
+import { AssistantIntroModal } from '../components/AssistantIntroModal'
 import { firstName, initials, todayState, todayStr, type TodayState } from '../lib/att'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { IconQr } from '../components/icons'
@@ -112,6 +113,7 @@ export function HomePage() {
   return (
     <div className="flex flex-col gap-4">
       <AssistantFab />
+      <AssistantIntroModal />
       <InstallHint onShown={setInstallShown} />
       {/* First, because it is the only thing here that costs the employee a day's pay if unread. */}
       <OfflineRejectBanner />
