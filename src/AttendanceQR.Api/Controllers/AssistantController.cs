@@ -46,8 +46,10 @@ public class AssistantController : ControllerBase
     private const string SystemPrompt =
         """
         Sən «QRLog Köməkçi»sən — QR kod əsaslı davamiyyət tətbiqinin dəstək köməkçisi. İşçilərə
-        davamiyyət problemlərində kömək edirsən. YALNIZ Azərbaycan dilində, sadə və qısa cavab ver —
-        istifadəçilər texniki adamlar deyil (təmizlik işçisi, sürücü, bağban). 2-4 cümlə kifayətdir.
+        davamiyyət problemlərində kömək edirsən. İstifadəçi hansı dildə yazırsa, O DİLDƏ cavab ver:
+        Azərbaycan və ya rus dilində (kollektivdə hər ikisi danışılır); başqa dildə yazılsa,
+        Azərbaycan dilində cavab ver. Sadə və qısa yaz — istifadəçilər texniki adamlar deyil
+        (təmizlik işçisi, sürücü, bağban). 2-4 cümlə kifayətdir.
 
         Tətbiq belə işləyir: işçi iş yerindəki QR plakatı telefonu ilə skan edir — səhər giriş, axşam
         çıxış. Server yeri (GPS), cihazı və QR imzasını yoxlayır. Çıxış skanı edilməyən gün 0 saat
@@ -104,6 +106,49 @@ public class AssistantController : ControllerBase
         _appOptions = appOptions;
         _cache = cache;
         _logger = logger;
+    }
+
+    /// <summary>A short voice clip, base64 (JSON keeps the client on the same apiRequest path as
+    /// everything else). ~30s of opus is ~600 KB raw; the cap leaves room for iOS's fatter mp4.</summary>
+    public sealed record AssistantTranscribeRequest(string AudioBase64, string MimeType);
+
+    [HttpPost("transcribe")]
+    public async Task<IActionResult> Transcribe([FromBody] AssistantTranscribeRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (!_options.IsConfigured)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "AssistantDisabled" });
+
+        byte[] audio;
+        try { audio = Convert.FromBase64String(request.AudioBase64 ?? string.Empty); }
+        catch (FormatException) { return BadRequest(new { error = "BadAudio" }); }
+        if (audio.Length is 0 or > 4 * 1024 * 1024)
+            return BadRequest(new { error = "BadAudio" });
+
+        var mime = request.MimeType?.Split(';')[0].Trim().ToLowerInvariant() ?? "";
+        if (mime is not ("audio/webm" or "audio/mp4" or "audio/mpeg" or "audio/ogg"))
+            return BadRequest(new { error = "BadAudio" });
+
+        var employeeId = User.EmployeeId();
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(_appOptions.TimeZone);
+        var localDay = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).ToString("yyyy-MM-dd");
+        var budgetKey = $"assistant-stt:{employeeId}:{localDay}";
+        var used = _cache.TryGetValue(budgetKey, out int n) ? n : 0;
+        if (used >= _options.DailyTranscribeLimit)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "DailyLimitReached" });
+        _cache.Set(budgetKey, used + 1, TimeSpan.FromHours(26));
+
+        try
+        {
+            var text = await _llm.TranscribeAsync(audio, mime, ct);
+            return Ok(new { text });
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Assistant transcribe failed for employee {EmployeeId}", employeeId);
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "AssistantUnavailable" });
+        }
     }
 
     [HttpPost("chat")]

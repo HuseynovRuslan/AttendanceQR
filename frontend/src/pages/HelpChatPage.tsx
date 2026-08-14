@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SubPageHeader } from '../components/SubPageHeader'
-import { sendAssistantChat, type AssistantMessage } from '../api/assistant'
+import { sendAssistantChat, transcribeVoice, type AssistantMessage } from '../api/assistant'
 
 /**
  * «AI Köməkçi» — the support chat. The audience is a cleaner or a driver on a phone, so the design
@@ -32,13 +32,93 @@ interface Bubble extends AssistantMessage {
   actions?: string[]
 }
 
+/** Can this browser record audio at all? (Old WebViews without RECORD_AUDIO say no — the mic button
+ *  then simply isn't offered, which beats a button that always errors.) */
+const voiceSupported =
+  typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
+
+/** ~30s cap: support questions are one sentence, and the server caps the payload anyway. */
+const MAX_VOICE_MS = 30_000
+
 export function HelpChatPage() {
   const navigate = useNavigate()
   const [messages, setMessages] = useState<Bubble[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const stopTimerRef = useRef<number | undefined>(undefined)
   const endRef = useRef<HTMLDivElement>(null)
+
+  // Leaving the screen mid-recording must release the microphone — a page that keeps the mic light
+  // on after it's closed is how an app loses trust for good.
+  useEffect(() => () => stopRecorder(false), [])
+
+  function stopRecorder(wantResult: boolean) {
+    window.clearTimeout(stopTimerRef.current)
+    const rec = recorderRef.current
+    if (!rec) return
+    recorderRef.current = null
+    if (!wantResult) rec.ondataavailable = null
+    if (rec.state !== 'inactive') rec.stop()
+    rec.stream.getTracks().forEach((t) => t.stop())
+    setRecording(false)
+  }
+
+  async function toggleVoice() {
+    if (busy || transcribing) return
+    if (recording) {
+      stopRecorder(true)
+      return
+    }
+    setNotice(null)
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      setNotice('Mikrofon icazəsi verilmədi — telefonun parametrlərindən QRLog üçün mikrofonu açın.')
+      return
+    }
+    // Chrome/Android records webm+opus; iOS Safari has neither and falls back to its native mp4.
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : ''
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+    const chunks: Blob[] = []
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data)
+    }
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop())
+      if (chunks.length === 0) return
+      void sendVoice(new Blob(chunks, { type: rec.mimeType || 'audio/webm' }))
+    }
+    recorderRef.current = rec
+    rec.start()
+    setRecording(true)
+    stopTimerRef.current = window.setTimeout(() => stopRecorder(true), MAX_VOICE_MS)
+  }
+
+  async function sendVoice(blob: Blob) {
+    setTranscribing(true)
+    try {
+      const { status, data } = await transcribeVoice(blob)
+      if (status === 200 && data && 'text' in data && data.text.trim()) {
+        // Straight into send: the audience can't comfortably edit text, and a wrong transcription
+        // is fixed by speaking again, not by cursor work.
+        await send(data.text.trim())
+      } else if (status === 429) {
+        setNotice('Bu günlük səsli sual limitiniz doldu — yazaraq soruşun.')
+      } else {
+        setNotice('Səs aydın alınmadı — bir daha cəhd edin və ya yazın.')
+      }
+    } catch {
+      setNotice('İnternet bağlantısı yoxdur — qoşulanda yenidən cəhd edin.')
+    } finally {
+      setTranscribing(false)
+    }
+  }
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -128,14 +208,18 @@ export function HelpChatPage() {
           </div>
         ))}
 
-        {busy && (
+        {(busy || transcribing) && (
           <div className="flex justify-start">
             <div className="rounded-3xl rounded-bl-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
-              <span className="inline-flex gap-1 text-slate-400">
-                <span className="animate-bounce">●</span>
-                <span className="animate-bounce [animation-delay:120ms]">●</span>
-                <span className="animate-bounce [animation-delay:240ms]">●</span>
-              </span>
+              {transcribing ? (
+                <span className="text-sm text-slate-500">🎙 Səsiniz yazıya çevrilir…</span>
+              ) : (
+                <span className="inline-flex gap-1 text-slate-400">
+                  <span className="animate-bounce">●</span>
+                  <span className="animate-bounce [animation-delay:120ms]">●</span>
+                  <span className="animate-bounce [animation-delay:240ms]">●</span>
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -158,9 +242,24 @@ export function HelpChatPage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Sualınızı yazın…"
+            placeholder={recording ? 'Danışın…' : 'Sualınızı yazın…'}
             className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-400"
           />
+          {voiceSupported && (
+            <button
+              type="button"
+              onClick={() => void toggleVoice()}
+              disabled={busy || transcribing}
+              aria-label={recording ? 'Yazmanı dayandır' : 'Səslə soruş'}
+              className={
+                recording
+                  ? 'shrink-0 animate-pulse rounded-2xl bg-red-500 px-4 py-3 text-white'
+                  : 'shrink-0 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 disabled:opacity-40'
+              }
+            >
+              {recording ? '⏹' : '🎤'}
+            </button>
+          )}
           <button
             type="submit"
             disabled={busy || !input.trim()}
@@ -170,7 +269,9 @@ export function HelpChatPage() {
           </button>
         </form>
         <p className="mx-auto mt-1.5 max-w-md text-center text-[11px] text-slate-400">
-          Köməkçi səhv edə bilər — maaş və rəsmi məsələlərdə son söz rəhbərinizindir.
+          {recording
+            ? 'Sualınızı azərbaycanca və ya rusca deyin, sonra ⏹ basın.'
+            : 'Köməkçi səhv edə bilər — maaş və rəsmi məsələlərdə son söz rəhbərinizindir.'}
         </p>
       </div>
     </div>

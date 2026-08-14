@@ -30,4 +30,7 @@ public sealed record LlmTurn(string? Content, IReadOnlyList<LlmToolCall> ToolCal
 public interface IAssistantLlm
 {
     Task<LlmTurn> CompleteAsync(IReadOnlyList<LlmMessage> messages, IReadOnlyList<LlmTool> tools, CancellationToken ct = default);
+
+    /// <summary>Speech → text for the chat's mic button. Language is auto-detected (az/ru here).</summary>
+    Task<string> TranscribeAsync(byte[] audio, string contentType, CancellationToken ct = default);
 }

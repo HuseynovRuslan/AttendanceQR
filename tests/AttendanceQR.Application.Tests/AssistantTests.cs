@@ -43,6 +43,12 @@ public class AssistantTests
             Requests.Add(messages);
             return Task.FromResult(_turns.Count > 0 ? _turns.Dequeue() : new LlmTurn("cavab", Array.Empty<LlmToolCall>(), null));
         }
+
+        public Task<string> TranscribeAsync(byte[] audio, string contentType, CancellationToken ct = default)
+        {
+            if (Throw) throw new HttpRequestException("provider down");
+            return Task.FromResult("salam bu səsli sualdır");
+        }
     }
 
     private sealed class Harness : IDisposable
@@ -148,6 +154,38 @@ public class AssistantTests
         var second = h.Llm.Requests[1];
         var toolMsg = second.First(m => m.Role == "tool");
         Assert.Contains("DeviceMismatch", toolMsg.Content);
+    }
+
+    // --- voice ----------------------------------------------------------------
+
+    [Fact]
+    public async Task Voice_comes_back_as_text_and_burns_its_own_budget_not_the_chat_one()
+    {
+        using var h = new Harness();
+        var controller = h.Controller();
+        var audio = Convert.ToBase64String(new byte[128]);
+
+        var ok = Assert.IsType<OkObjectResult>(
+            await controller.Transcribe(new AssistantController.AssistantTranscribeRequest(audio, "audio/webm;codecs=opus")));
+        Assert.Contains("səsli", ok.Value!.ToString());
+
+        // The chat budget (limit 3 here) must be untouched by transcriptions.
+        for (var i = 0; i < 3; i++)
+            Assert.IsType<OkObjectResult>(await controller.Chat(Ask($"sual {i}")));
+    }
+
+    [Fact]
+    public async Task Garbage_audio_is_a_400_not_a_paid_api_call()
+    {
+        using var h = new Harness();
+        var controller = h.Controller();
+
+        var notB64 = await controller.Transcribe(new AssistantController.AssistantTranscribeRequest("%%%", "audio/webm"));
+        Assert.Equal(StatusCodes.Status400BadRequest, ((ObjectResult)notB64).StatusCode);
+
+        var wrongMime = await controller.Transcribe(
+            new AssistantController.AssistantTranscribeRequest(Convert.ToBase64String(new byte[16]), "text/html"));
+        Assert.Equal(StatusCodes.Status400BadRequest, ((ObjectResult)wrongMime).StatusCode);
     }
 
     // --- guards ---------------------------------------------------------------

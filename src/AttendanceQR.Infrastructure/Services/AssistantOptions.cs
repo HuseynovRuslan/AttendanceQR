@@ -31,5 +31,13 @@ public sealed class AssistantOptions
     /// what it has. A loop guard, not a feature.</summary>
     public int MaxToolRounds { get; set; } = 4;
 
+    /// <summary>Speech-to-text model for the mic button. Auto-detects the language — the workforce
+    /// speaks Azerbaijani and Russian, and a language picker would be one more thing to explain.</summary>
+    public string TranscribeModel { get; set; } = "gpt-4o-mini-transcribe";
+
+    /// <summary>Voice clips one employee may transcribe per day — its own budget, so a voice question
+    /// (transcribe + chat) doesn't double-charge the message budget.</summary>
+    public int DailyTranscribeLimit { get; set; } = 40;
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);
 }

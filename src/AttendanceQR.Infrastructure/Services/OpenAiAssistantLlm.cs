@@ -77,6 +77,31 @@ public sealed class OpenAiAssistantLlm : IAssistantLlm
         return new LlmTurn(content, calls, rawCalls);
     }
 
+    public async Task<string> TranscribeAsync(byte[] audio, string contentType, CancellationToken ct = default)
+    {
+        // The transcription endpoint is multipart, not JSON — the one place the protocol differs.
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(_options.TranscribeModel), "model");
+        var file = new ByteArrayContent(audio);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        // The extension matters: the service sniffs the container from the NAME, and MediaRecorder
+        // produces webm on Android/Chrome but mp4 on iOS Safari.
+        var ext = contentType.Contains("mp4") ? "mp4" : contentType.Contains("mpeg") ? "mp3" : "webm";
+        form.Add(file, "file", $"voice.{ext}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.BaseUrl.TrimEnd('/')}/audio/transcriptions");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+        request.Content = form;
+
+        using var response = await _http.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"assistant transcribe: {(int)response.StatusCode} {Truncate(body)}");
+
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.TryGetProperty("text", out var t) ? t.GetString() ?? string.Empty : string.Empty;
+    }
+
     private static object ToWire(LlmMessage m)
     {
         // The protocol's shape differs per role: an assistant turn echoes its tool_calls, a tool turn
