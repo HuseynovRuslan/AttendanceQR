@@ -34,9 +34,15 @@
 		# DENY, not SAMEORIGIN: nothing here is ever framed, and the app has one-tap buttons that
 		# end a shift — exactly what clickjacking is for.
 		X-Frame-Options "DENY"
-		# The scan NEEDS camera and geolocation, so those stay allowed for our own origin; the rest
-		# of the powerful APIs are switched off because nothing in this app asks for them.
-		Permissions-Policy "camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), interest-cohort=()"
+		# The scan NEEDS camera and geolocation, and the assistant's voice input NEEDS the
+		# microphone; the rest of the powerful APIs are switched off because nothing asks for them.
+		#
+		# microphone was () until 2026-08-13 — correct on the day it shipped, and exactly why this
+		# header hides bugs: when the voice feature arrived, getUserMedia(audio) failed with an
+		# instant NotAllowedError and NO permission prompt, on every browser, looking precisely like
+		# the user had denied it. A policy of "off because unused" has to be revisited the day
+		# something starts using it.
+		Permissions-Policy "camera=(self), geolocation=(self), microphone=(self), payment=(), usb=(), interest-cohort=()"
 		# Don't advertise the server and its version to anyone scanning for a known CVE.
 		-Server
 	}
