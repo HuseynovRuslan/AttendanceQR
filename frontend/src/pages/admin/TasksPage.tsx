@@ -27,6 +27,9 @@ function dueInfo(due: string | null): { label: string; tone: 'today' | 'over' | 
   return { label: new Date(due + 'T00:00:00').toLocaleDateString('az-AZ', { day: 'numeric', month: 'short' }), tone: 'future' }
 }
 
+const initialsOf = (name: string) =>
+  name.split(' ').filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+
 export function TasksPage() {
   const { employeeId } = useAuth()
   // Who a task can be handed to. Loaded once — a company's admins and managers are a short list that
@@ -38,10 +41,15 @@ export function TasksPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [showDone, setShowDone] = useState(false)
-  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  // The selected task drives the detail panel — the visible, tappable home of every per-task action.
+  // The right-click menu still exists as a shortcut, but nothing lives ONLY there any more: a menu
+  // behind right-click is invisible on touch and undiscovered on desktop.
+  const [sel, setSel] = useState<string | null>(null)
+  const [draftTitle, setDraftTitle] = useState('')
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const dragId = useRef<string | null>(null)
   const dateRef = useRef<HTMLInputElement>(null)
+  const detDateRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     const { status, data } = await getTasks()
@@ -55,6 +63,11 @@ export function TasksPage() {
       if (r.status === 200 && Array.isArray(r.data)) setPeople(r.data)
     })
   }, [])
+
+  const selTask = sel ? tasks.find((t) => t.id === sel) ?? null : null
+  // The panel's title field follows whichever task is open, without clobbering keystrokes: only a
+  // CHANGE of selection re-seeds the draft.
+  useEffect(() => { if (selTask) setDraftTitle(selTask.title) }, [sel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function add() {
     const t = title.trim()
@@ -74,6 +87,7 @@ export function TasksPage() {
   }
   async function remove(id: string) {
     setTasks((ts) => ts.filter((x) => x.id !== id)); setMenu(null)
+    if (sel === id) setSel(null)
     await deleteTask(id)
   }
   async function assign(id: string, who: string | null) {
@@ -89,14 +103,24 @@ export function TasksPage() {
     setTasks((ts) => ts.map((x) => (x.id === id ? { ...x, dueDate: d } : x))); setMenu(null)
     await setTaskDue(id, d); void load()
   }
-  async function commitEdit() {
-    if (!editing) return
-    const text = editing.text.trim()
-    const cur = tasks.find((t) => t.id === editing.id)
-    setEditing(null)
-    if (text && cur && text !== cur.title) {
-      setTasks((ts) => ts.map((x) => (x.id === cur.id ? { ...x, title: text } : x)))
-      await renameTask(cur.id, text)
+  async function commitTitle() {
+    if (!selTask) return
+    const text = draftTitle.trim()
+    if (!text || text === selTask.title) { setDraftTitle(selTask.title); return }
+    setTasks((ts) => ts.map((x) => (x.id === selTask.id ? { ...x, title: text } : x)))
+    await renameTask(selTask.id, text)
+  }
+
+  function openDatePicker(ref: React.RefObject<HTMLInputElement | null>, current: string | null) {
+    const el = ref.current
+    if (!el) return
+    el.value = current ?? ''
+    // showPicker() needs a user gesture and a not-display:none input (kept on-screen but transparent).
+    const anyEl = el as HTMLInputElement & { showPicker?: () => void }
+    if (typeof anyEl.showPicker === 'function') {
+      try { anyEl.showPicker() } catch { el.focus() }
+    } else {
+      el.focus()
     }
   }
 
@@ -134,6 +158,7 @@ export function TasksPage() {
     planned: openAll.filter((t) => t.dueDate).length,
     all: openAll.length,
   }
+  const selDue = selTask ? dueInfo(selTask.dueDate) : null
 
   return (
     <div className="tdx" onClick={() => menu && setMenu(null)}>
@@ -173,11 +198,8 @@ export function TasksPage() {
           <>
             <div className="tdx-list">
               {open.map((t) => (
-                <Row key={t.id} t={t}
-                  editing={editing?.id === t.id ? editing.text : null}
-                  onEditStart={() => setEditing({ id: t.id, text: t.title })}
-                  onEditChange={(v) => setEditing({ id: t.id, text: v })}
-                  onEditCommit={commitEdit}
+                <Row key={t.id} t={t} selected={sel === t.id}
+                  onOpen={() => setSel(t.id)}
                   onToggle={toggle} onStar={star}
                   onMenu={(x, y) => setMenu({ id: t.id, x, y })}
                   draggable={filter === 'all'}
@@ -195,8 +217,8 @@ export function TasksPage() {
                 {showDone && (
                   <div className="tdx-list">
                     {done.map((t) => (
-                      <Row key={t.id} t={t} editing={null}
-                        onEditStart={() => {}} onEditChange={() => {}} onEditCommit={() => {}}
+                      <Row key={t.id} t={t} selected={sel === t.id}
+                        onOpen={() => setSel(t.id)}
                         onToggle={toggle} onStar={star} onMenu={(x, y) => setMenu({ id: t.id, x, y })}
                         draggable={false} onDragStart={() => {}} onDropRow={() => {}} />
                     ))}
@@ -207,6 +229,67 @@ export function TasksPage() {
           </>
         )}
       </main>
+
+      {/* ---- Detail panel: desktop = third column, phone = bottom sheet. Everything a task has,
+           visible and tappable — this is the primary UI; the context menu is only a shortcut. ---- */}
+      {selTask && (
+        <>
+          <div className="tdx-ovl" onClick={() => setSel(null)} />
+          <aside className="tdx-det" onClick={(e) => e.stopPropagation()}>
+            <div className="tdx-det-head">
+              <button className={`tdx-check ${selTask.isDone ? 'on' : ''}`} onClick={() => void toggle(selTask.id)} aria-label="Tamamla">
+                <svg viewBox="0 0 24 24" width="14" height="14"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+              <input className="tdx-det-title" value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onBlur={() => void commitTitle()}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+              <button className={`tdx-star ${selTask.isImportant ? 'on' : ''}`} onClick={() => void star(selTask.id)} aria-label="Önəmli">
+                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9L12 3.5z" fill={selTask.isImportant ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+              </button>
+              <button className="tdx-det-x" onClick={() => setSel(null)} aria-label="Bağla">✕</button>
+            </div>
+
+            <div className="tdx-det-sec">
+              <div className="tdx-det-lab">Kimə təyin et</div>
+              {people.map((p) => {
+                const on = selTask.assignedToEmployeeId === p.id
+                return (
+                  /* Tapping the current assignee un-assigns — one control, both directions. */
+                  <button key={p.id} className={`tdx-p ${on ? 'on' : ''}`} onClick={() => void assign(selTask.id, on ? null : p.id)}>
+                    <span className="tdx-av">{initialsOf(p.name)}</span>
+                    <span className="tdx-p-n">{p.name}{p.id === employeeId ? ' (mən)' : ''}</span>
+                    {on && <span className="tdx-p-on">✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="tdx-det-sec">
+              <div className="tdx-det-lab">Son tarix</div>
+              {selDue && (
+                <div className={`tdx-det-due ${selDue.tone}`}>
+                  📅 {selDue.label}
+                  <button className="tdx-det-due-x" onClick={() => void due(selTask.id, null)} aria-label="Vaxtı sil">✕</button>
+                </div>
+              )}
+              <div className="tdx-chips">
+                <button className="tdx-chip" onClick={() => void due(selTask.id, today)}>Bu gün</button>
+                <button className="tdx-chip" onClick={() => void due(selTask.id, iso(new Date(Date.now() + 864e5)))}>Sabah</button>
+                <button className="tdx-chip" onClick={() => openDatePicker(detDateRef, selTask.dueDate)}>🗓️ Tarix seç</button>
+              </div>
+              <input ref={detDateRef} type="date"
+                onChange={(e) => { if (e.target.value) void due(selTask.id, e.target.value) }}
+                style={{ position: 'absolute', left: 16, bottom: 8, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} />
+            </div>
+
+            <div className="tdx-det-foot">
+              <span className="tdx-mut">{selTask.by} əlavə edib</span>
+              <button className="tdx-det-del" onClick={() => void remove(selTask.id)}>🗑️ Sil</button>
+            </div>
+          </aside>
+        </>
+      )}
 
       {menu && (() => {
         const t = tasks.find((x) => x.id === menu.id)
@@ -232,24 +315,7 @@ export function TasksPage() {
             <div className="tdx-sep" />
             <button className="tdx-mi" onClick={() => void due(t.id, today)}><span>📅</span> Bu gün</button>
             <button className="tdx-mi" onClick={() => void due(t.id, iso(new Date(Date.now() + 864e5)))}><span>➡️</span> Sabah</button>
-            {/* A bare date <input> won't open its picker on a label click, so trigger it programmatically.
-                showPicker() needs a user gesture (this click) and a not-display:none input (it's kept
-                on-screen but transparent). */}
-            <button
-              className="tdx-mi"
-              onClick={(e) => {
-                e.stopPropagation()
-                const el = dateRef.current
-                if (!el) return
-                el.value = t.dueDate ?? ''
-                const anyEl = el as HTMLInputElement & { showPicker?: () => void }
-                if (typeof anyEl.showPicker === 'function') {
-                  try { anyEl.showPicker() } catch { el.focus() }
-                } else {
-                  el.focus()
-                }
-              }}
-            >
+            <button className="tdx-mi" onClick={(e) => { e.stopPropagation(); openDatePicker(dateRef, t.dueDate) }}>
               <span>🗓️</span> Tarix seç
             </button>
             <input
@@ -269,13 +335,11 @@ export function TasksPage() {
 }
 
 function Row({
-  t, editing, onEditStart, onEditChange, onEditCommit, onToggle, onStar, onMenu, draggable, onDragStart, onDropRow,
+  t, selected, onOpen, onToggle, onStar, onMenu, draggable, onDragStart, onDropRow,
 }: {
   t: TaskRow
-  editing: string | null
-  onEditStart: () => void
-  onEditChange: (v: string) => void
-  onEditCommit: () => void
+  selected: boolean
+  onOpen: () => void
   onToggle: (id: string) => void
   onStar: (id: string) => void
   onMenu: (x: number, y: number) => void
@@ -286,8 +350,8 @@ function Row({
   const d = dueInfo(t.dueDate)
   return (
     <div
-      className={`tdx-row ${t.isDone ? 'done' : ''}`}
-      draggable={draggable && editing === null}
+      className={`tdx-row ${t.isDone ? 'done' : ''} ${selected ? 'sel' : ''}`}
+      draggable={draggable}
       onDragStart={onDragStart}
       onDragOver={(e) => draggable && e.preventDefault()}
       onDrop={onDropRow}
@@ -297,14 +361,8 @@ function Row({
       <button className={`tdx-check ${t.isDone ? 'on' : ''}`} onClick={() => onToggle(t.id)} aria-label="Tamamla">
         <svg viewBox="0 0 24 24" width="14" height="14"><path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
-      <div className="tdx-body">
-        {editing !== null ? (
-          <input className="tdx-edit" autoFocus value={editing}
-            onChange={(e) => onEditChange(e.target.value)} onBlur={onEditCommit}
-            onKeyDown={(e) => { if (e.key === 'Enter') onEditCommit(); if (e.key === 'Escape') onEditCommit() }} />
-        ) : (
-          <div className="tdx-text" onClick={onEditStart} title="Redaktə et">{t.title}</div>
-        )}
+      <div className="tdx-body" onClick={onOpen}>
+        <div className="tdx-text">{t.title}</div>
         <div className="tdx-meta">
           {d && <span className={`tdx-due ${d.tone}`}>📅 {d.label}</span>}
           {/* Who it is FOR reads before who added it — on a shared board that is the question. */}
@@ -349,14 +407,14 @@ const CSS = `
 .tdx-row{ display:flex; align-items:center; gap:11px; padding:11px 12px 11px 8px; border-bottom:1px solid var(--c50); transition:background .12s; }
 .tdx-row:last-child{ border-bottom:none; }
 .tdx-row:hover{ background:var(--sand); }
+.tdx-row.sel{ background:color-mix(in srgb, var(--leaf) 8%, transparent); }
 .tdx-row:hover .tdx-grip{ opacity:.5; }
 .tdx-grip{ flex:none; width:14px; text-align:center; color:var(--c400); cursor:grab; opacity:0; transition:opacity .12s; user-select:none; font-size:15px; }
 .tdx-check{ flex:none; width:22px; height:22px; border-radius:50%; border:1.6px solid var(--c400); background:transparent; display:grid; place-items:center; cursor:pointer; color:transparent; transition:all .15s; padding:0; }
 .tdx-check:hover{ border-color:var(--leaf); color:var(--leaf); }
 .tdx-check.on{ background:var(--leaf); border-color:var(--leaf); color:#fff; }
-.tdx-body{ flex:1; min-width:0; }
-.tdx-text{ font-size:15px; color:var(--c900); word-break:break-word; line-height:1.3; cursor:text; }
-.tdx-edit{ width:100%; border:1px solid var(--leaf); border-radius:6px; padding:4px 8px; font-size:15px; font-family:inherit; outline:none; color:var(--c900); background:var(--white); }
+.tdx-body{ flex:1; min-width:0; cursor:pointer; }
+.tdx-text{ font-size:15px; color:var(--c900); word-break:break-word; line-height:1.3; }
 .tdx-meta{ display:flex; align-items:center; gap:8px; margin-top:3px; font-size:11.5px; }
 .tdx-row.done .tdx-text{ text-decoration:line-through; color:var(--c400); }
 .tdx-due{ font-weight:600; padding:1px 6px; border-radius:5px; background:var(--sand); color:var(--c500); }
@@ -373,6 +431,35 @@ const CSS = `
 .tdx-chev{ display:inline-block; transition:transform .15s; color:var(--c400); }
 .tdx-chev.open{ transform:rotate(90deg); }
 
+/* ---- detail panel ---- */
+.tdx-det{ flex:none; width:272px; background:var(--white); border:1px solid var(--c100); border-radius:var(--r-lg); padding:14px; box-shadow:var(--sh-sm); position:sticky; top:12px; }
+.tdx-det-head{ display:flex; align-items:center; gap:9px; }
+.tdx-det-title{ flex:1; min-width:0; border:none; outline:none; background:transparent; font-size:15px; font-weight:700; color:var(--c900); font-family:inherit; padding:2px 0; border-bottom:1.5px solid transparent; }
+.tdx-det-title:focus{ border-bottom-color:var(--leaf); }
+.tdx-det-x{ flex:none; border:none; background:transparent; color:var(--c400); font-size:14px; cursor:pointer; padding:4px 6px; border-radius:6px; }
+.tdx-det-x:hover{ background:var(--sand); color:var(--c700); }
+.tdx-det-sec{ margin-top:16px; position:relative; }
+.tdx-det-lab{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--c400); margin-bottom:6px; }
+.tdx-p{ display:flex; align-items:center; gap:9px; width:100%; border:none; background:transparent; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:13.5px; color:var(--c800,var(--c900)); text-align:left; }
+.tdx-p:hover{ background:var(--sand); }
+.tdx-p.on{ background:var(--blue-bg,#EAF2FB); font-weight:700; }
+.tdx-p-n{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tdx-p-on{ color:var(--blue,#2E74B5); font-weight:800; }
+.tdx-av{ flex:none; width:26px; height:26px; border-radius:50%; background:var(--blue-bg,#EAF2FB); color:var(--blue,#2E74B5); display:grid; place-items:center; font-size:10.5px; font-weight:800; }
+.tdx-p.on .tdx-av{ background:var(--blue,#2E74B5); color:#fff; }
+.tdx-det-due{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; padding:4px 9px; border-radius:7px; background:var(--sand); color:var(--c700); margin-bottom:8px; }
+.tdx-det-due.over{ background:rgba(200,60,40,.12); color:var(--clay,#c83c28); }
+.tdx-det-due.today{ background:color-mix(in srgb, var(--leaf) 16%, transparent); color:var(--leaf-d, var(--leaf)); }
+.tdx-det-due-x{ border:none; background:transparent; color:inherit; cursor:pointer; font-size:11px; padding:0 2px; opacity:.7; }
+.tdx-det-due-x:hover{ opacity:1; }
+.tdx-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.tdx-chip{ border:1px solid var(--c100); background:var(--white); border-radius:8px; padding:6px 10px; font-size:12.5px; font-weight:600; color:var(--c700); cursor:pointer; }
+.tdx-chip:hover{ background:var(--sand); }
+.tdx-det-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding-top:10px; border-top:1px solid var(--c100); font-size:12px; }
+.tdx-det-del{ border:none; background:transparent; color:var(--clay,#c83c28); font-weight:700; font-size:12.5px; cursor:pointer; padding:4px 8px; border-radius:7px; }
+.tdx-det-del:hover{ background:rgba(200,60,40,.1); }
+.tdx-ovl{ display:none; }
+
 .tdx-menu{ position:fixed; z-index:1200; min-width:210px; background:var(--white); border:1px solid var(--c100); border-radius:10px; box-shadow:0 12px 34px rgba(0,0,0,.18); padding:6px; }
 .tdx-mi{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:none; background:transparent; border-radius:7px; padding:8px 10px; font-size:13.5px; color:var(--c800,var(--c900)); cursor:pointer; position:relative; }
 .tdx-mi:hover{ background:var(--sand); }
@@ -386,5 +473,8 @@ const CSS = `
   .tdx-side{ width:100%; display:flex; gap:6px; overflow-x:auto; padding:6px; }
   .tdx-nav{ width:auto; white-space:nowrap; }
   .tdx-nav-l{ flex:none; }
+  /* The panel becomes a bottom sheet — a third column has nowhere to live on a phone. */
+  .tdx-ovl{ display:block; position:fixed; inset:0; background:rgba(15,20,10,.4); z-index:1290; }
+  .tdx-det{ position:fixed; left:0; right:0; bottom:0; top:auto; width:auto; z-index:1300; border-radius:18px 18px 0 0; max-height:78vh; overflow:auto; padding-bottom:max(14px, env(safe-area-inset-bottom)); }
 }
 `
