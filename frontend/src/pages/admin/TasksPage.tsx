@@ -46,6 +46,9 @@ export function TasksPage() {
   // behind right-click is invisible on touch and undiscovered on desktop.
   const [sel, setSel] = useState<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
+  // Person search in the panel. The assignable list is admins+managers, small today — but a big
+  // tenant could have dozens, and a picker must not grow with the company.
+  const [personQ, setPersonQ] = useState('')
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const dragId = useRef<string | null>(null)
   const dateRef = useRef<HTMLInputElement>(null)
@@ -67,7 +70,7 @@ export function TasksPage() {
   const selTask = sel ? tasks.find((t) => t.id === sel) ?? null : null
   // The panel's title field follows whichever task is open, without clobbering keystrokes: only a
   // CHANGE of selection re-seeds the draft.
-  useEffect(() => { if (selTask) setDraftTitle(selTask.title) }, [sel]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selTask) { setDraftTitle(selTask.title); setPersonQ('') } }, [sel]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function add() {
     const t = title.trim()
@@ -159,6 +162,17 @@ export function TasksPage() {
     all: openAll.length,
   }
   const selDue = selTask ? dueInfo(selTask.dueDate) : null
+  // Sorted so the two rows that matter are visible without scrolling: the current assignee, then me.
+  // Azerbaijani casing (İ/i, I/ı) needs the locale-aware lowercase or "İlqar" never matches "ilqar".
+  const az = (s: string) => s.toLocaleLowerCase('az')
+  const shownPeople = selTask
+    ? [...people]
+        .sort((a, b) => {
+          const rank = (p: Assignable) => (p.id === selTask.assignedToEmployeeId ? 0 : p.id === employeeId ? 1 : 2)
+          return rank(a) - rank(b)
+        })
+        .filter((p) => !personQ.trim() || az(p.name).includes(az(personQ.trim())))
+    : []
 
   return (
     <div className="tdx" onClick={() => menu && setMenu(null)}>
@@ -252,17 +266,26 @@ export function TasksPage() {
 
             <div className="tdx-det-sec">
               <div className="tdx-det-lab">Kimə təyin et</div>
-              {people.map((p) => {
-                const on = selTask.assignedToEmployeeId === p.id
-                return (
-                  /* Tapping the current assignee un-assigns — one control, both directions. */
-                  <button key={p.id} className={`tdx-p ${on ? 'on' : ''}`} onClick={() => void assign(selTask.id, on ? null : p.id)}>
-                    <span className="tdx-av">{initialsOf(p.name)}</span>
-                    <span className="tdx-p-n">{p.name}{p.id === employeeId ? ' (mən)' : ''}</span>
-                    {on && <span className="tdx-p-on">✓</span>}
-                  </button>
-                )
-              })}
+              {/* The search appears once the list stops fitting at a glance; below it the list itself
+                  scrolls inside a fixed height. A hundred managers cost the same pixels as five. */}
+              {people.length > 6 && (
+                <input className="tdx-psearch" placeholder="Ad axtar…" value={personQ}
+                  onChange={(e) => setPersonQ(e.target.value)} />
+              )}
+              <div className="tdx-plist">
+                {shownPeople.map((p) => {
+                  const on = selTask.assignedToEmployeeId === p.id
+                  return (
+                    /* Tapping the current assignee un-assigns — one control, both directions. */
+                    <button key={p.id} className={`tdx-p ${on ? 'on' : ''}`} onClick={() => void assign(selTask.id, on ? null : p.id)}>
+                      <span className="tdx-av">{initialsOf(p.name)}</span>
+                      <span className="tdx-p-n">{p.name}{p.id === employeeId ? ' (mən)' : ''}</span>
+                      {on && <span className="tdx-p-on">✓</span>}
+                    </button>
+                  )
+                })}
+                {shownPeople.length === 0 && <div className="tdx-mut" style={{ fontSize: 12.5, padding: '6px 8px' }}>Tapılmadı</div>}
+              </div>
             </div>
 
             <div className="tdx-det-sec">
@@ -303,12 +326,13 @@ export function TasksPage() {
               <span>✓</span> {t.isDone ? 'Bərpa et' : 'Tamamla'}
             </button>
             <div className="tdx-sep" />
-            <div className="tdx-mi-h">Kimə</div>
-            {people.map((p) => (
-              <button key={p.id} className="tdx-mi" onClick={() => void assign(t.id, p.id)}>
-                <span>{t.assignedToEmployeeId === p.id ? '✔' : '·'}</span> {p.name}
-              </button>
-            ))}
+            {/* The menu never lists people — with a hundred managers it would scroll off the screen.
+                "Özümə götür" covers the overwhelmingly common case in one tap; everyone else lives in
+                the panel's searchable picker. */}
+            {employeeId && t.assignedToEmployeeId !== employeeId && (
+              <button className="tdx-mi" onClick={() => void assign(t.id, employeeId)}><span>🙋</span> Özümə götür</button>
+            )}
+            <button className="tdx-mi" onClick={() => { setSel(t.id); setMenu(null) }}><span>👤</span> Kimə təyin et…</button>
             {t.assignedToEmployeeId && (
               <button className="tdx-mi" onClick={() => void assign(t.id, null)}><span>✕</span> Təyinatı götür</button>
             )}
@@ -402,7 +426,6 @@ const CSS = `
 .tdx-add-btn{ border:none; background:var(--leaf); color:#fff; font-weight:700; font-size:13px; border-radius:8px; padding:7px 14px; cursor:pointer; }
 
 .tdx-who{ font-size:11px; font-weight:700; color:var(--blue, #2E74B5); background:var(--blue-bg, #EAF2FB); border-radius:6px; padding:2px 7px; }
-.tdx-mi-h{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--c400); padding:6px 12px 3px; }
 .tdx-list{ background:var(--white); border:1px solid var(--c100); border-radius:12px; overflow:hidden; box-shadow:var(--sh-sm); }
 .tdx-row{ display:flex; align-items:center; gap:11px; padding:11px 12px 11px 8px; border-bottom:1px solid var(--c50); transition:background .12s; }
 .tdx-row:last-child{ border-bottom:none; }
@@ -440,6 +463,10 @@ const CSS = `
 .tdx-det-x:hover{ background:var(--sand); color:var(--c700); }
 .tdx-det-sec{ margin-top:16px; position:relative; }
 .tdx-det-lab{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--c400); margin-bottom:6px; }
+.tdx-psearch{ width:100%; border:1px solid var(--c100); border-radius:8px; padding:7px 10px; font-size:13px; font-family:inherit; color:var(--c900); background:var(--white); outline:none; margin-bottom:6px; }
+.tdx-psearch:focus{ border-color:var(--leaf); }
+.tdx-psearch::placeholder{ color:var(--c400); }
+.tdx-plist{ max-height:236px; overflow-y:auto; }
 .tdx-p{ display:flex; align-items:center; gap:9px; width:100%; border:none; background:transparent; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:13.5px; color:var(--c800,var(--c900)); text-align:left; }
 .tdx-p:hover{ background:var(--sand); }
 .tdx-p.on{ background:var(--blue-bg,#EAF2FB); font-weight:700; }
