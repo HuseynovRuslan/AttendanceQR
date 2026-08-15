@@ -128,6 +128,40 @@ public static class AttendanceCalculator
     }
 
     /// <summary>
+    /// The worked minutes for a day that may mix an office scan with field visits — the ONE place
+    /// that decides WHICH stretches make up a day.
+    ///
+    /// It exists as a shared function rather than as two careful call sites because the live "today"
+    /// board and the nightly job must agree to the minute: a figure that changes at midnight, when
+    /// the nightly job overwrites what the board showed all day, is indistinguishable from the
+    /// system losing someone's hours. Reviewing two implementations for agreement is a promise;
+    /// having one is a guarantee.
+    ///
+    /// Returns null when the field data changes nothing, so the caller keeps whatever
+    /// <see cref="Compute"/> already decided:
+    ///   • no completed field visits at all;
+    ///   • a field-only day with a visit still open (that day is Incomplete, and Incomplete is 0);
+    ///   • an office day still open (nothing to merge into — an unclosed day is 0 either way).
+    /// </summary>
+    public static int? MergedWorkedMinutes(
+        AttendanceRecord? officeRecord, IReadOnlyList<WorkSpan> fieldSpans, bool anyFieldOpen)
+    {
+        if (fieldSpans.Count == 0)
+            return null;
+
+        // No office scan → the day IS the field visits.
+        if (officeRecord?.CheckInAtUtc is null)
+            return anyFieldOpen ? null : WorkedMinutesAcross(fieldSpans);
+
+        // A mixed day, but only once the office half is actually closed.
+        if (officeRecord.CheckInAtUtc is not DateTime officeIn || officeRecord.CheckOutAtUtc is not DateTime officeOut)
+            return null;
+
+        var spans = new List<WorkSpan>(fieldSpans) { new(officeIn, officeOut) };
+        return WorkedMinutesAcross(spans);
+    }
+
+    /// <summary>
     /// Resolves the status to report when an employee has no check-in for the date, in priority
     /// order: an approved LeaveRecord beats everything (even a non-working day — being on
     /// vacation over a weekend still reads as leave, not "day off"), then DayOff on a non-working

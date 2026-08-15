@@ -1,4 +1,5 @@
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Entities;
 using Xunit;
 
 namespace AttendanceQR.Application.Tests;
@@ -135,6 +136,63 @@ public class WorkedMinutesAcrossTests
         // 60 + 60 + 60 of work, two 3-hour gaps → 60 each. 180 + 120 = 300.
         var minutes = Minutes(Span(8, 9), Span(12, 13), Span(16, 17));
         Assert.Equal(300, minutes);
+    }
+
+    // --- the shared decision both paths make ---------------------------------
+    //
+    // These pin MergedWorkedMinutes rather than the raw span merge: it is the function whose
+    // existence stops the live board and the nightly job from disagreeing, and every "null" below is
+    // a case where the caller must keep whatever Compute already decided.
+
+    private static AttendanceRecord Office(double fromHour, double? toHour) => new()
+    {
+        CheckInAtUtc = Day.AddHours(fromHour),
+        CheckOutAtUtc = toHour is double t ? Day.AddHours(t) : null,
+    };
+
+    [Fact]
+    public void No_field_visits_changes_nothing()
+    {
+        Assert.Null(AttendanceCalculator.MergedWorkedMinutes(Office(9, 17), Array.Empty<AttendanceCalculator.WorkSpan>(), false));
+        Assert.Null(AttendanceCalculator.MergedWorkedMinutes(null, Array.Empty<AttendanceCalculator.WorkSpan>(), false));
+    }
+
+    [Fact]
+    public void A_field_only_day_is_its_visits()
+    {
+        Assert.Equal(120, AttendanceCalculator.MergedWorkedMinutes(null, new[] { Span(9, 11) }, false));
+    }
+
+    [Fact]
+    public void A_field_only_day_with_an_open_visit_is_left_to_Compute()
+    {
+        // Incomplete, and Incomplete is zero — measuring the closed visits would pay a day that is
+        // still, as far as anyone knows, being worked.
+        Assert.Null(AttendanceCalculator.MergedWorkedMinutes(null, new[] { Span(9, 11) }, anyFieldOpen: true));
+    }
+
+    [Fact]
+    public void A_mixed_day_is_the_union_of_both_halves()
+    {
+        // 2h field + 60 min of the hour-long drive + 5h office.
+        Assert.Equal(480, AttendanceCalculator.MergedWorkedMinutes(Office(12, 17), new[] { Span(9, 11) }, false));
+    }
+
+    [Fact]
+    public void An_office_day_still_open_is_left_to_Compute()
+    {
+        // Nothing to merge into: an unclosed day is zero either way, and inventing minutes for it
+        // would hide the very thing /admin/open-records exists to surface.
+        Assert.Null(AttendanceCalculator.MergedWorkedMinutes(Office(9, null), new[] { Span(12, 13) }, false));
+    }
+
+    [Fact]
+    public void A_still_open_field_visit_never_stops_a_closed_office_day_from_merging()
+    {
+        // The open visit contributes no span (it has no end); the closed ones still count, and the
+        // office half is untouched. anyFieldOpen must not veto a mixed day the way it vetoes a
+        // field-only one.
+        Assert.Equal(480, AttendanceCalculator.MergedWorkedMinutes(Office(12, 17), new[] { Span(9, 11) }, anyFieldOpen: true));
     }
 
     [Fact]

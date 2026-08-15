@@ -164,18 +164,11 @@ public sealed class DailySummaryService : IDailySummaryService
             // The union counts overlap once and pays each gap up to the travel cap. Status, lateness
             // and overtime are left exactly as computed above: those are judged against the shift, and
             // only the office half has an hour it was due at.
-            if (fieldByEmployee.TryGetValue(emp.Id, out var fvSpans) && fvSpans.Spans.Count > 0)
+            if (fieldByEmployee.TryGetValue(emp.Id, out var fvSpans))
             {
-                if (fieldRecord is not null && !fvSpans.AnyOpen)
-                {
-                    computed.WorkedMinutes = AttendanceCalculator.WorkedMinutesAcross(fvSpans.Spans);
-                }
-                else if (fieldRecord is null
-                         && record?.CheckInAtUtc is DateTime officeIn && record.CheckOutAtUtc is DateTime officeOut)
-                {
-                    var spans = new List<AttendanceCalculator.WorkSpan>(fvSpans.Spans) { new(officeIn, officeOut) };
-                    computed.WorkedMinutes = AttendanceCalculator.WorkedMinutesAcross(spans);
-                }
+                var merged = AttendanceCalculator.MergedWorkedMinutes(record, fvSpans.Spans, fvSpans.AnyOpen);
+                if (merged is int minutes)
+                    computed.WorkedMinutes = minutes;
             }
 
             // A field visit has no fixed arrival to be late for — the manager decides when they are

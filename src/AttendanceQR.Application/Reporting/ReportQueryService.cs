@@ -282,29 +282,22 @@ public sealed class ReportQueryService : IReportQueryService
             // overrides DayOff/OnLeave for the same reason a scan on a leave day does: turning up is
             // worked time. Lateness is never invented — a field arrival has no fixed hour to miss.
             fieldByEmployee.TryGetValue(e.Id, out var fv);
+            // A field day with no office scan is WORKED, not Qayıb — and it overrides DayOff/OnLeave
+            // for the same reason a scan on a leave day does: turning up is worked time. Lateness is
+            // never invented; a field arrival has no fixed hour to miss.
             if (fv.In is not null && record?.CheckInAtUtc is null)
             {
                 c = fv.AnyOpen
                     ? new DayComputation(DailySummaryStatus.Incomplete, 0, 0, 0)
-                    : new DayComputation(
-                        DailySummaryStatus.OnTime,
-                        AttendanceCalculator.WorkedMinutesAcross(fv.Spans),
-                        0, 0);
+                    : new DayComputation(DailySummaryStatus.OnTime, 0, 0, 0);
             }
-            else if (fv.Spans is { Count: > 0 }
-                     && record?.CheckInAtUtc is DateTime officeIn && record.CheckOutAtUtc is DateTime officeOut)
-            {
-                // A MIXED day — site in the morning, office in the afternoon (or the reverse). The
-                // office scan still decides status, lateness and overtime, because those are judged
-                // against the shift and a field arrival has no fixed hour to miss. Only the minutes
-                // change: the union of both halves, so the drive between them is paid (capped) and
-                // an overlapping visit is not counted twice.
-                var spans = new List<AttendanceCalculator.WorkSpan>(fv.Spans)
-                {
-                    new(officeIn, officeOut),
-                };
-                c = c with { WorkedMinutes = AttendanceCalculator.WorkedMinutesAcross(spans) };
-            }
+
+            // Minutes across BOTH halves — the same shared decision the nightly job makes, so the
+            // board and the stored summary can never disagree. Status, lateness and overtime stay as
+            // resolved above: only the office half has an hour it was due at.
+            var merged = AttendanceCalculator.MergedWorkedMinutes(record, fv.Spans ?? new List<AttendanceCalculator.WorkSpan>(), fv.AnyOpen);
+            if (merged is int minutes)
+                c = c with { WorkedMinutes = minutes };
 
             var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;
             rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy,
