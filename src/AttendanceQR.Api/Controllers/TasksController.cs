@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -52,6 +53,8 @@ public class TasksController : ControllerBase
                 isImportant = t.IsImportant,
                 dueDate = t.DueDate,
                 by = t.CreatedByName,
+                assignedToEmployeeId = t.AssignedToEmployeeId,
+                assignedToName = t.AssignedToName,
                 at = t.CreatedAtUtc,
             })
             .ToListAsync(ct);
@@ -130,6 +133,51 @@ public class TasksController : ControllerBase
         task.DueDate = request.DueDate;   // null clears it
         await _db.SaveChangesAsync(ct);
         return Ok(new { dueDate = task.DueDate });
+    }
+
+    /// <summary>Give a task to a teammate. The candidates are the company's own admins and managers —
+    /// this is the team's board, and putting an item on it for someone who cannot open it would be a
+    /// message sent nowhere.</summary>
+    [HttpPut("{id:guid}/assign")]
+    public async Task<IActionResult> Assign(Guid id, [FromBody] TaskAssignRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var task = await _db.Tasks.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (task is null) return NotFound(new { error = "NotFound" });
+
+        if (request.EmployeeId is not Guid target)
+        {
+            task.AssignedToEmployeeId = null;
+            task.AssignedToName = null;
+        }
+        else
+        {
+            // The tenant filter already confines this to the caller's company; the role check is what
+            // stops a task being handed to somebody with no way to see it.
+            var person = await _db.Employees.FirstOrDefaultAsync(
+                e => e.Id == target && e.IsActive
+                     && (e.Role == EmployeeRole.Admin || e.Role == EmployeeRole.Manager), ct);
+            if (person is null) return BadRequest(new { error = "NotAssignable" });
+
+            task.AssignedToEmployeeId = person.Id;
+            task.AssignedToName = person.FullName;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { assignedToEmployeeId = task.AssignedToEmployeeId, assignedToName = task.AssignedToName });
+    }
+
+    /// <summary>Who a task may be given to — the company's admins and managers, for the picker.</summary>
+    [HttpGet("assignable")]
+    public async Task<IActionResult> Assignable()
+    {
+        var ct = HttpContext.RequestAborted;
+        var people = await _db.Employees
+            .Where(e => e.IsActive && (e.Role == EmployeeRole.Admin || e.Role == EmployeeRole.Manager))
+            .OrderBy(e => e.FullName)
+            .Select(e => new { id = e.Id, name = e.FullName })
+            .ToListAsync(ct);
+        return Ok(people);
     }
 
     [HttpPut("reorder")]

@@ -31,6 +31,8 @@ export interface SidebarBadges {
   deviceChanges: number
   pinResets: number
   openRecords: number
+  /** Open team-board items past their date — the board is otherwise the only place they show. */
+  overdueTasks: number
 }
 
 /** GET /api/admin/notifications/badges */

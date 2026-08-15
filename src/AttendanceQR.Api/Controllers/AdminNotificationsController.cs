@@ -55,7 +55,12 @@ public class AdminNotificationsController : ControllerBase
         var openRecords = await _db.AttendanceRecords
             .CountAsync(r => r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayLocal, ct);
 
-        return Ok(new { deviceChanges, pinResets, openRecords });
+        // Open team-board items past their date. The board is the only place these show today, and a
+        // deadline nobody is reminded of is a deadline that quietly passes — which is exactly what the
+        // 16 items on it had been doing.
+        var overdueTasks = await _db.Tasks.CountAsync(t => !t.IsDone && t.DueDate != null && t.DueDate < todayLocal, ct);
+
+        return Ok(new { deviceChanges, pinResets, openRecords, overdueTasks });
     }
 
     [HttpGet]

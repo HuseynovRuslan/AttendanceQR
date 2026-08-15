@@ -97,6 +97,7 @@ export function AdminLayout() {
     '/admin/device-changes': badges?.deviceChanges,
     '/admin/pin-resets': badges?.pinResets,
     '/admin/open-records': badges?.openRecords,
+    '/admin/tasks': badges?.overdueTasks,
   }
 
   // Close the drawer on every navigation, and if the window is resized past the mobile

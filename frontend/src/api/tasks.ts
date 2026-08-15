@@ -9,11 +9,30 @@ export interface TaskRow {
   dueDate: string | null
   by: string
   at: string
+  /** Who the item is FOR (null = nobody in particular — the honest default on a shared list). */
+  assignedToEmployeeId: string | null
+  assignedToName: string | null
+}
+
+/** Who a task may be given to: the company's own admins and managers. */
+export interface Assignable {
+  id: string
+  name: string
 }
 
 /** Whether the signed-in operator may see the "Tapşırıqlar" board (config allowlist, not a role). */
 export function getTaskAccess() {
   return apiRequest<{ canAccess: boolean }>('/api/tasks/access')
+}
+
+export function getAssignable() {
+  return apiRequest<Assignable[]>('/api/tasks/assignable')
+}
+
+/** PUT /api/tasks/{id}/assign — employeeId null hands it back to nobody. */
+export function assignTask(id: string, employeeId: string | null) {
+  return apiRequest<{ assignedToEmployeeId: string | null; assignedToName: string | null }>(
+    `/api/tasks/${id}/assign`, { method: 'PUT', body: { employeeId } })
 }
 
 export function getTasks() {

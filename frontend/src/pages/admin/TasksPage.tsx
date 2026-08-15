@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth } from '../../auth/AuthContext'
 import {
   createTask, deleteTask, getTasks, toggleTask, toggleTaskImportant,
-  renameTask, setTaskDue, reorderTasks, type TaskRow,
-} from '../../api/tasks'
+  renameTask, setTaskDue, reorderTasks, type TaskRow, assignTask, getAssignable, type Assignable } from '../../api/tasks'
 
-type Filter = 'today' | 'important' | 'planned' | 'all'
+type Filter = 'mine' | 'today' | 'important' | 'planned' | 'all'
 
 const LISTS: { key: Filter; label: string; icon: string }[] = [
+  // "Mine" first: on a board a whole team shares, the first question anyone opens it with is what
+  // they themselves are on the hook for.
+  { key: 'mine', label: 'Mənə aid', icon: '👤' },
   { key: 'today', label: 'Bugün', icon: '☀️' },
   { key: 'important', label: 'Önəmli', icon: '⭐' },
   { key: 'planned', label: 'Planlı', icon: '🗓️' },
@@ -25,6 +28,10 @@ function dueInfo(due: string | null): { label: string; tone: 'today' | 'over' | 
 }
 
 export function TasksPage() {
+  const { employeeId } = useAuth()
+  // Who a task can be handed to. Loaded once — a company's admins and managers are a short list that
+  // does not change while the board is open.
+  const [people, setPeople] = useState<Assignable[]>([])
   const [tasks, setTasks] = useState<TaskRow[]>([])
   const [filter, setFilter] = useState<Filter>('all')
   const [title, setTitle] = useState('')
@@ -42,6 +49,12 @@ export function TasksPage() {
     setLoading(false)
   }
   useEffect(() => { void load() }, [])
+
+  useEffect(() => {
+    void getAssignable().then((r) => {
+      if (r.status === 200 && Array.isArray(r.data)) setPeople(r.data)
+    })
+  }, [])
 
   async function add() {
     const t = title.trim()
@@ -63,6 +76,15 @@ export function TasksPage() {
     setTasks((ts) => ts.filter((x) => x.id !== id)); setMenu(null)
     await deleteTask(id)
   }
+  async function assign(id: string, who: string | null) {
+    const person = who ? people.find((p) => p.id === who) ?? null : null
+    setTasks((ts) => ts.map((x) => (x.id === id
+      ? { ...x, assignedToEmployeeId: person?.id ?? null, assignedToName: person?.name ?? null }
+      : x)))
+    setMenu(null)
+    await assignTask(id, who)
+  }
+
   async function due(id: string, d: string | null) {
     setTasks((ts) => ts.map((x) => (x.id === id ? { ...x, dueDate: d } : x))); setMenu(null)
     await setTaskDue(id, d); void load()
@@ -97,14 +119,16 @@ export function TasksPage() {
   const doneAll = useMemo(() => tasks.filter((t) => t.isDone), [tasks])
   const today = iso(new Date())
   const match = (t: TaskRow) =>
-    filter === 'today' ? t.dueDate === today
-      : filter === 'important' ? t.isImportant
-        : filter === 'planned' ? !!t.dueDate
-          : true
+    filter === 'mine' ? t.assignedToEmployeeId === employeeId
+      : filter === 'today' ? t.dueDate === today
+        : filter === 'important' ? t.isImportant
+          : filter === 'planned' ? !!t.dueDate
+            : true
   const open = openAll.filter(match)
   const done = doneAll.filter(match)
   const listMeta = LISTS.find((l) => l.key === filter)!
   const counts = {
+    mine: openAll.filter((t) => t.assignedToEmployeeId === employeeId).length,
     today: openAll.filter((t) => t.dueDate === today).length,
     important: openAll.filter((t) => t.isImportant).length,
     planned: openAll.filter((t) => t.dueDate).length,
@@ -196,6 +220,16 @@ export function TasksPage() {
               <span>✓</span> {t.isDone ? 'Bərpa et' : 'Tamamla'}
             </button>
             <div className="tdx-sep" />
+            <div className="tdx-mi-h">Kimə</div>
+            {people.map((p) => (
+              <button key={p.id} className="tdx-mi" onClick={() => void assign(t.id, p.id)}>
+                <span>{t.assignedToEmployeeId === p.id ? '✔' : '·'}</span> {p.name}
+              </button>
+            ))}
+            {t.assignedToEmployeeId && (
+              <button className="tdx-mi" onClick={() => void assign(t.id, null)}><span>✕</span> Təyinatı götür</button>
+            )}
+            <div className="tdx-sep" />
             <button className="tdx-mi" onClick={() => void due(t.id, today)}><span>📅</span> Bu gün</button>
             <button className="tdx-mi" onClick={() => void due(t.id, iso(new Date(Date.now() + 864e5)))}><span>➡️</span> Sabah</button>
             {/* A bare date <input> won't open its picker on a label click, so trigger it programmatically.
@@ -273,6 +307,8 @@ function Row({
         )}
         <div className="tdx-meta">
           {d && <span className={`tdx-due ${d.tone}`}>📅 {d.label}</span>}
+          {/* Who it is FOR reads before who added it — on a shared board that is the question. */}
+          {t.assignedToName && <span className="tdx-who">👤 {t.assignedToName}</span>}
           <span className="tdx-mut">{t.by}</span>
         </div>
       </div>
@@ -307,6 +343,8 @@ const CSS = `
 .tdx-add-in::placeholder{ color:var(--c400); }
 .tdx-add-btn{ border:none; background:var(--leaf); color:#fff; font-weight:700; font-size:13px; border-radius:8px; padding:7px 14px; cursor:pointer; }
 
+.tdx-who{ font-size:11px; font-weight:700; color:var(--blue, #2E74B5); background:var(--blue-bg, #EAF2FB); border-radius:6px; padding:2px 7px; }
+.tdx-mi-h{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--c400); padding:6px 12px 3px; }
 .tdx-list{ background:var(--white); border:1px solid var(--c100); border-radius:12px; overflow:hidden; box-shadow:var(--sh-sm); }
 .tdx-row{ display:flex; align-items:center; gap:11px; padding:11px 12px 11px 8px; border-bottom:1px solid var(--c50); transition:background .12s; }
 .tdx-row:last-child{ border-bottom:none; }

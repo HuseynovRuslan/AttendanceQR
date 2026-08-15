@@ -44,6 +44,17 @@ public class TaskItem : ITenantScoped
 
     public string CreatedByName { get; set; } = string.Empty;
 
+    /// <summary>Who the item is FOR. Null = nobody in particular, which is the honest default for a
+    /// shared list — most items on a small team's board are "one of us will do it", and forcing an
+    /// owner onto every line would make the ones that DO have an owner stop standing out.
+    ///
+    /// The name is denormalised alongside the id for the same reason <see cref="CreatedByName"/> is:
+    /// the board renders a row without a join, and an employee who later leaves does not turn every
+    /// task they were given into a blank.</summary>
+    public Guid? AssignedToEmployeeId { get; set; }
+
+    public string? AssignedToName { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 
     public DateTime? DoneAtUtc { get; set; }
