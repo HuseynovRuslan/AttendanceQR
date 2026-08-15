@@ -37,7 +37,6 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
   '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
   '/admin/tasks': { title: 'Tapşırıqlar', sub: 'Komandanın ortaq görüləcək işlər siyahısı' },
-  '/admin/employee-tasks': { title: 'İşçi tapşırıqları', sub: 'İşçiyə tapşırıq ver — o, telefonundan «Hazırdır» deyəcək' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
   '/admin/reports': { title: 'Hesabatlar', sub: 'Tarix aralığı üzrə statistika' },
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
@@ -73,7 +72,6 @@ export function AdminLayout() {
   // (see [RequireFeature]); this just stops offering a screen that would refuse.
   const payrollOn = useFeatureEnabled(FEATURE.Payroll)
   const announcementsOn = useFeatureEnabled(FEATURE.Announcements)
-  const tasksOn = useFeatureEnabled('employeetasks')
 
   // The team board is no longer allowlisted — it is tenant-scoped, so every admin and manager of the
   // company shares theirs and sees no other. The /api/tasks/access probe it used to need is gone.
@@ -133,7 +131,6 @@ export function AdminLayout() {
       title: 'Davamiyyət',
       links: [
         { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
-        ...(tasksOn ? [{ to: '/admin/employee-tasks', label: 'İşçi tapşırıqları', Icon: IconClipboard }] : []),
         // Admin + Manager (no gate) — the endpoints enforce the role.
         { to: '/admin/field-visits', label: 'Sahə ziyarətləri', Icon: IconMapPin },
         { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },

@@ -23,7 +23,6 @@ import { HomePage } from './pages/HomePage'
 import { StatsPage } from './pages/StatsPage'
 import { PrivacyPage } from './pages/PrivacyPage'
 import { HelpChatPage } from './pages/HelpChatPage'
-import { MyTasksPage } from './pages/MyTasksPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { MenuPage } from './pages/MenuPage'
 
@@ -69,7 +68,6 @@ const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
 const FieldVisitsPage = lazy(() => import('./pages/FieldVisitsPage').then(m => ({ default: m.FieldVisitsPage })))
-const EmployeeTasksPage = lazy(() => import('./pages/admin/EmployeeTasksPage').then(m => ({ default: m.EmployeeTasksPage })))
 // The operator console (admin.qrlog.az) is its own chunk — only that host ever loads it.
 const OperatorRoutes = lazy(() => import('./pages/operator/OperatorRoutes').then(m => ({ default: m.OperatorRoutes })))
 const OperatorLoginPage = lazy(() => import('./pages/operator/OperatorLoginPage').then(m => ({ default: m.OperatorLoginPage })))
@@ -190,17 +188,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <PrivacyPage />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* The worker's own assigned jobs. Own header rather than the tab shell: it is opened from a
-          push or the home card, done, and left — not browsed between tabs. */}
-      <Route
-        path="/tasks"
-        element={
-          <ProtectedRoute>
-            <MyTasksPage />
           </ProtectedRoute>
         }
       />
@@ -372,8 +359,6 @@ function AppRoutes() {
         <Route path="problems" element={<ProblemsPage />} />
         {/* Field visits board + assign — Admin + Manager (the endpoints gate on Admin,Manager). */}
         <Route path="field-visits" element={<FieldVisitsAdminPage />} />
-        {/* Assigned jobs board — Admin + Manager; the endpoints scope a manager to their branches. */}
-        <Route path="employee-tasks" element={<EmployeeTasksPage />} />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
         <Route
           path="open-records"

@@ -48,10 +48,6 @@ public class AppDbContext : DbContext
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     // Global (NOT tenant-scoped) — a single shared operator task board. No query filter on purpose.
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
-
-    /// <summary>Jobs a manager assigns to a worker — tenant-scoped, unlike the operator-only
-    /// <see cref="Tasks"/> board it must never be confused with.</summary>
-    public DbSet<EmployeeTask> EmployeeTasks => Set<EmployeeTask>();
     // Global (NOT tenant-scoped) — the platform super-admin's audit trail. It spans every company, so
     // (like Tasks) it carries no TenantId and gets no query filter. Append-only.
     public DbSet<SuperAdminAuditLog> SuperAdminAuditLogs => Set<SuperAdminAuditLog>();
@@ -171,12 +167,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<FieldVisitChecklistItem>().HasIndex(i => new { i.TenantId, i.FieldVisitId });
 
         modelBuilder.Entity<TaskItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
-
-        modelBuilder.Entity<EmployeeTask>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
-        // The worker's own list ("what do I have to do?") and the manager's board, which reads by
-        // status and deadline. Both are the queries this screen makes on every open.
-        modelBuilder.Entity<EmployeeTask>().HasIndex(t => new { t.TenantId, t.EmployeeId, t.Status });
-        modelBuilder.Entity<EmployeeTask>().HasIndex(t => new { t.TenantId, t.Status, t.DueDate });
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
