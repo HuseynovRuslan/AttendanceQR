@@ -23,6 +23,13 @@ public interface IPhotoStorageService
     /// </summary>
     Task<string> UploadFieldWorkPhotoAsync(Guid tenantId, Guid visitId, byte[] jpegBytes, CancellationToken ct = default);
 
+    /// <summary>
+    /// Uploads a task's proof photo — a picture of the WORK, filed under its own <c>tasks/</c> prefix
+    /// for the same reason the field-work photo has one: the retention job prunes selfies and the
+    /// face-match worker reads them, and neither has any business with a photo of a swept corridor.
+    /// </summary>
+    Task<string> UploadTaskPhotoAsync(Guid tenantId, Guid taskId, byte[] jpegBytes, CancellationToken ct = default);
+
     /// <summary>A short-lived presigned GET URL the admin panel can load the image from directly.</summary>
     Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default);
 

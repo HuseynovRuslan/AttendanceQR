@@ -18,6 +18,7 @@ const APP_VERSION = '1.0'
 export function MenuPage() {
   const { logout, email, role } = useAuth()
   const assistantOn = useFeatureEnabled('assistant')
+  const tasksOn = useFeatureEnabled('employeetasks')
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
   // Months without a ballot have no vote screen worth opening, so the row isn't offered at all.
@@ -66,6 +67,7 @@ export function MenuPage() {
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
+        {tasksOn && <MenuRow to="/tasks" Icon={IconCheck} label="Tapşırıqlarım" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
         {/* Per-tenant flag: a company that switches the assistant off must not even see the row. */}
         {assistantOn && <MenuRow to="/help" Icon={IconSend} label="Süni intellekt köməkçisi" />}

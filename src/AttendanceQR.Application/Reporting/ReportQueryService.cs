@@ -204,7 +204,13 @@ public sealed class ReportQueryService : IReportQueryService
                     In: first.CheckInAtUtc,
                     Out: g.All(x => x.CheckOutAtUtc != null) ? g.Max(x => x.CheckOutAtUtc) : (DateTime?)null,
                     Lat: first.CheckInLatitude,
-                    Lng: first.CheckInLongitude);
+                    Lng: first.CheckInLongitude,
+                    // The visits as individual stretches, not just their outer bounds — two short
+                    // visits hours apart must not be measured as one long one.
+                    Spans: g.Where(x => x.CheckInAtUtc != null && x.CheckOutAtUtc != null)
+                        .Select(x => new AttendanceCalculator.WorkSpan(x.CheckInAtUtc!.Value, x.CheckOutAtUtc!.Value))
+                        .ToList(),
+                    AnyOpen: g.Any(x => x.CheckOutAtUtc == null));
             });
 
         // A handful of rows per tenant; loaded whole and looked up in memory.
@@ -278,12 +284,26 @@ public sealed class ReportQueryService : IReportQueryService
             fieldByEmployee.TryGetValue(e.Id, out var fv);
             if (fv.In is not null && record?.CheckInAtUtc is null)
             {
-                c = fv.Out is null
+                c = fv.AnyOpen
                     ? new DayComputation(DailySummaryStatus.Incomplete, 0, 0, 0)
                     : new DayComputation(
                         DailySummaryStatus.OnTime,
-                        (int)Math.Round((fv.Out.Value - fv.In.Value).TotalMinutes),
+                        AttendanceCalculator.WorkedMinutesAcross(fv.Spans),
                         0, 0);
+            }
+            else if (fv.Spans is { Count: > 0 }
+                     && record?.CheckInAtUtc is DateTime officeIn && record.CheckOutAtUtc is DateTime officeOut)
+            {
+                // A MIXED day — site in the morning, office in the afternoon (or the reverse). The
+                // office scan still decides status, lateness and overtime, because those are judged
+                // against the shift and a field arrival has no fixed hour to miss. Only the minutes
+                // change: the union of both halves, so the drive between them is paid (capped) and
+                // an overlapping visit is not counted twice.
+                var spans = new List<AttendanceCalculator.WorkSpan>(fv.Spans)
+                {
+                    new(officeIn, officeOut),
+                };
+                c = c with { WorkedMinutes = AttendanceCalculator.WorkedMinutesAcross(spans) };
             }
 
             var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;

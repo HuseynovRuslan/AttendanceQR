@@ -63,6 +63,70 @@ public static class AttendanceCalculator
         => IsScheduledWorkingDay(
             employee.WorkCycleDays, employee.WorkCycleOnDays, employee.WorkCycleAnchor, workDaysMask, date);
 
+    /// <summary>One continuous stretch of presence — an office scan pair, or one field visit.</summary>
+    public readonly record struct WorkSpan(DateTime StartUtc, DateTime EndUtc);
+
+    /// <summary>
+    /// How much of a gap BETWEEN two stretches of presence counts as paid travel.
+    ///
+    /// A worker who checks out of a park at 09:55 and scans in at the base at 10:40 was working for
+    /// those 45 minutes — they were driving between two of the company's own sites. But the same gap
+    /// shape covers someone who did a 20-minute visit at 09:34 and turned up at the office at 15:00,
+    /// and paying five hours for that would be inventing time nobody witnessed.
+    ///
+    /// So the gap is paid up to this cap and no further: real travel inside Baku is 30–60 minutes, so
+    /// an honest journey is paid in full, while anything longer contributes only the cap. Capping
+    /// rather than dropping keeps it monotonic — there is no cliff where 59 minutes pays 59 and 61
+    /// pays nothing, which would be the one rule guaranteed to feel arbitrary to the person losing it.
+    ///
+    /// Company-wide for now. If a tenant ever needs its own figure (out-of-town sites would want
+    /// more), this is the single place it is read from.
+    /// </summary>
+    public const int TravelGapCapMinutes = 60;
+
+    /// <summary>
+    /// Total worked minutes across every stretch of presence in one day: overlapping stretches are
+    /// counted once, and each gap between them is paid up to <see cref="TravelGapCapMinutes"/>.
+    ///
+    /// This exists because a day is no longer one scan pair. Someone can spend the morning at a site
+    /// with no poster, drive to the office, and scan in there — and the reporting used to answer that
+    /// with whichever half it happened to prefer: an office scan hid the field hours entirely, and a
+    /// field-only day was measured first-arrival-to-last-departure, which silently paid the whole
+    /// middle of a day that held two twenty-minute visits.
+    /// </summary>
+    public static int WorkedMinutesAcross(IEnumerable<WorkSpan> spans, int travelGapCapMinutes = TravelGapCapMinutes)
+    {
+        // Zero-length and inverted spans are dropped, not clamped: an inverted one means the data is
+        // wrong (a hand-edited check-out before its check-in), and guessing what it meant is worse
+        // than ignoring it.
+        var ordered = spans.Where(s => s.EndUtc > s.StartUtc).OrderBy(s => s.StartUtc).ToList();
+        if (ordered.Count == 0)
+            return 0;
+
+        var total = 0d;
+        var currentStart = ordered[0].StartUtc;
+        var currentEnd = ordered[0].EndUtc;
+
+        foreach (var span in ordered.Skip(1))
+        {
+            if (span.StartUtc <= currentEnd)
+            {
+                // Overlapping or touching — one stretch. A field visit nested inside office hours
+                // lands here, which is exactly why nothing is double-counted.
+                if (span.EndUtc > currentEnd) currentEnd = span.EndUtc;
+                continue;
+            }
+
+            total += (currentEnd - currentStart).TotalMinutes;
+            total += Math.Min((span.StartUtc - currentEnd).TotalMinutes, travelGapCapMinutes);
+            currentStart = span.StartUtc;
+            currentEnd = span.EndUtc;
+        }
+
+        total += (currentEnd - currentStart).TotalMinutes;
+        return (int)Math.Round(total);
+    }
+
     /// <summary>
     /// Resolves the status to report when an employee has no check-in for the date, in priority
     /// order: an approved LeaveRecord beats everything (even a non-working day — being on

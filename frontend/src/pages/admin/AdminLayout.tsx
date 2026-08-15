@@ -73,6 +73,7 @@ export function AdminLayout() {
   // (see [RequireFeature]); this just stops offering a screen that would refuse.
   const payrollOn = useFeatureEnabled(FEATURE.Payroll)
   const announcementsOn = useFeatureEnabled(FEATURE.Announcements)
+  const tasksOn = useFeatureEnabled('employeetasks')
 
   // The shared "Tapşırıqlar" board — also an id allowlist, and available to managers too (a person
   // who is a manager in one company still needs their task list), so it is not gated on isAdmin.
@@ -131,7 +132,7 @@ export function AdminLayout() {
       title: null, // the everyday landing screens need no caption over them
       links: [
         ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
-        ...(canTasks ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
+        ...(canTasks ? [{ to: '/admin/tasks', label: 'Daxili lövhə', Icon: IconCheck }] : []),
         ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
       ],
     },
@@ -139,6 +140,7 @@ export function AdminLayout() {
       title: 'Davamiyyət',
       links: [
         { to: '/admin/today', label: 'Bugünkü davamiyyət', Icon: IconClipboard },
+        ...(tasksOn ? [{ to: '/admin/employee-tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
         // Admin + Manager (no gate) — the endpoints enforce the role.
         { to: '/admin/field-visits', label: 'Sahə ziyarətləri', Icon: IconMapPin },
         { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },

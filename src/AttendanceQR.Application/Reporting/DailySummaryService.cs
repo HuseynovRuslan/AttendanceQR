@@ -66,17 +66,24 @@ public sealed class DailySummaryService : IDailySummaryService
         // the whole month on field visits reads as Qayıb every day and loses a month's pay.
         // Aggregated per employee: earliest arrival, latest departure, and whether any visit is still
         // open (that day is Incomplete, exactly like a forgotten office check-out).
-        var fieldByEmployee = await _db.FieldVisits
+        // Loaded as individual visits rather than as min/max bounds: two twenty-minute visits hours
+        // apart are two stretches, and measuring them first-arrival-to-last-departure would pay the
+        // whole afternoon between them. The grouping happens in memory, where the span merge lives.
+        var fieldRaw = await _db.FieldVisits
             .Where(v => v.VisitDate == date && v.Status != FieldVisitStatus.Cancelled && v.CheckInAtUtc != null)
+            .Select(v => new { v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc })
+            .ToListAsync(ct);
+        var fieldByEmployee = fieldRaw
             .GroupBy(v => v.EmployeeId)
-            .Select(g => new
+            .ToDictionary(g => g.Key, g => new
             {
-                EmployeeId = g.Key,
                 FirstIn = g.Min(v => v.CheckInAtUtc),
                 LastOut = g.Max(v => v.CheckOutAtUtc),
                 AnyOpen = g.Any(v => v.CheckOutAtUtc == null),
-            })
-            .ToDictionaryAsync(x => x.EmployeeId, ct);
+                Spans = g.Where(v => v.CheckOutAtUtc != null)
+                    .Select(v => new AttendanceCalculator.WorkSpan(v.CheckInAtUtc!.Value, v.CheckOutAtUtc!.Value))
+                    .ToList(),
+            });
 
         // Admin-declared non-working days for this date: either global (LocationId == null) or
         // specific to one of the locations in play. A location is "off" if a matching row exists.
@@ -147,6 +154,29 @@ public sealed class DailySummaryService : IDailySummaryService
                 : null;
 
             var computed = Compute(emp.Id, emp.LocationId, date, record ?? fieldRecord, shift, isWorkingDay, noRecordStatus);
+
+            // Minutes across EVERY stretch of the day, not just the pair Compute was handed. Two cases
+            // reach this, and both used to be measured wrong:
+            //   • field-only, several visits — measured first-arrival-to-last-departure, which paid
+            //     the whole gap between two twenty-minute visits;
+            //   • MIXED — a site in the morning and an office scan in the afternoon, where the office
+            //     scan won outright and the field hours vanished from the tabel.
+            // The union counts overlap once and pays each gap up to the travel cap. Status, lateness
+            // and overtime are left exactly as computed above: those are judged against the shift, and
+            // only the office half has an hour it was due at.
+            if (fieldByEmployee.TryGetValue(emp.Id, out var fvSpans) && fvSpans.Spans.Count > 0)
+            {
+                if (fieldRecord is not null && !fvSpans.AnyOpen)
+                {
+                    computed.WorkedMinutes = AttendanceCalculator.WorkedMinutesAcross(fvSpans.Spans);
+                }
+                else if (fieldRecord is null
+                         && record?.CheckInAtUtc is DateTime officeIn && record.CheckOutAtUtc is DateTime officeOut)
+                {
+                    var spans = new List<AttendanceCalculator.WorkSpan>(fvSpans.Spans) { new(officeIn, officeOut) };
+                    computed.WorkedMinutes = AttendanceCalculator.WorkedMinutesAcross(spans);
+                }
+            }
 
             // A field visit has no fixed arrival to be late for — the manager decides when they are
             // sent and the travel is not theirs to control. So a field-derived day never carries

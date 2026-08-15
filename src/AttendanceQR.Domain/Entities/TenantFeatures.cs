@@ -17,6 +17,7 @@ public static class TenantFeatures
     public const string Payroll = "payroll";
     public const string Announcements = "announcements";
     public const string Assistant = "assistant";
+    public const string EmployeeTasks = "employeetasks";
 
     /// <summary>Every togglable feature, with a human (Azerbaijani) label for the super-admin UI.</summary>
     public static readonly IReadOnlyList<(string Key, string Label)> All = new[]
@@ -24,6 +25,7 @@ public static class TenantFeatures
         (Payroll, "Maaş hesabatı"),
         (Announcements, "Elanlar"),
         (Assistant, "Süni intellekt köməkçisi"),
+        (EmployeeTasks, "İşçi tapşırıqları"),
     };
 
     /// <summary>Parses the opt-out CSV into a set of disabled keys (lowercased).</summary>

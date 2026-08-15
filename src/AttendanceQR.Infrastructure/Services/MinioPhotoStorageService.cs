@@ -26,6 +26,10 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
     /// </summary>
     public const string WorkPhotoPrefix = "fieldwork/";
 
+    /// <summary>Prefix for task proof photos. Its own prefix for the same reasons as
+    /// <see cref="WorkPhotoPrefix"/> — not a face, and not the retention job's business.</summary>
+    public const string TaskPhotoPrefix = "tasks/";
+
     // JPEG, not WebP: iOS Safari's canvas cannot encode WebP, so the client sends JPEG for
     // cross-platform capture. Older objects stored as .webp remain valid and viewable.
     private const string JpegContentType = "image/jpeg";
@@ -63,6 +67,17 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
         // stored object.
         var nowUtc = DateTime.UtcNow;
         var key = $"{WorkPhotoPrefix}{nowUtc:yyyy}/{nowUtc:MM}/{nowUtc:dd}/{tenantId}/{visitId}-{Guid.NewGuid():N}.jpg";
+        await PutAsync(key, jpegBytes, ct);
+        return key;
+    }
+
+    public async Task<string> UploadTaskPhotoAsync(Guid tenantId, Guid taskId, byte[] jpegBytes, CancellationToken ct = default)
+    {
+        // The tenant id sits in the path (unlike checkins/) so a per-customer export or a lifecycle
+        // rule is a prefix listing. The Guid suffix means a retried upload can never overwrite a
+        // stored object.
+        var nowUtc = DateTime.UtcNow;
+        var key = $"{TaskPhotoPrefix}{nowUtc:yyyy}/{nowUtc:MM}/{nowUtc:dd}/{tenantId}/{taskId}-{Guid.NewGuid():N}.jpg";
         await PutAsync(key, jpegBytes, ct);
         return key;
     }

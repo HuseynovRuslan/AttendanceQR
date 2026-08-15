@@ -116,6 +116,7 @@ public class FieldVisitScopeTests
         public Task<string> UploadCheckInPhotoAsync(Guid employeeId, Guid recordId, byte[] webpBytes, CancellationToken ct = default) => Task.FromResult("key");
         public Task<string> UploadReferencePhotoAsync(Guid employeeId, byte[] webpBytes, CancellationToken ct = default) => Task.FromResult("key");
         public Task<string> UploadFieldWorkPhotoAsync(Guid tenantId, Guid visitId, byte[] jpegBytes, CancellationToken ct = default) => Task.FromResult("fieldwork/key.jpg");
+        public Task<string> UploadTaskPhotoAsync(Guid tenantId, Guid taskId, byte[] jpegBytes, CancellationToken ct = default) => Task.FromResult("tasks/key.jpg");
         public Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default) => Task.FromResult("url");
         public Task<byte[]> GetBytesAsync(string key, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
         public Task DeleteByPrefixOlderThanAsync(string prefix, DateTime olderThanUtc, CancellationToken ct = default) => Task.CompletedTask;

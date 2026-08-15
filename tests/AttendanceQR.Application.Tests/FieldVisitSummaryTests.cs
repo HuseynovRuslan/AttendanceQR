@@ -114,7 +114,7 @@ public class FieldVisitSummaryTests
     }
 
     [Fact]
-    public async Task Several_visits_span_from_first_arrival_to_last_departure()
+    public async Task Several_visits_pay_their_work_plus_a_capped_drive_between_them()
     {
         using var h = new Harness();
         h.AddVisit(h.At(9), h.At(11), FieldVisitStatus.Completed);
@@ -123,7 +123,29 @@ public class FieldVisitSummaryTests
         var s = await h.RunAsync();
 
         Assert.Equal(DailySummaryStatus.OnTime, s.Status);
-        Assert.Equal(7 * 60, s.WorkedMinutes); // 09:00 → 16:00, travel between sites included
+        // 2h + 3h worked, and the two-hour gap pays the 60-minute travel cap — not the whole gap.
+        // This used to be measured 09:00→16:00 (7h), which paid every idle minute between two
+        // sites as if the worker had been at one of them.
+        Assert.Equal(6 * 60, s.WorkedMinutes);
+    }
+
+    [Fact]
+    public async Task A_mixed_day_counts_the_field_hours_the_office_scan_used_to_hide()
+    {
+        // Pərviz's day: a site in the morning with no poster, a drive, then the base. The office scan
+        // used to win outright and the field hours vanished from the tabel — the day read as 3 hours
+        // for a worker who had been out since nine.
+        using var h = new Harness();
+        h.AddVisit(h.At(9), h.At(11), FieldVisitStatus.Completed);
+        h.AddOfficeRecord(h.At(12), h.At(17));
+
+        var s = await h.RunAsync();
+
+        // 2h field + 60 min of the hour-long drive + 5h office.
+        Assert.Equal(8 * 60, s.WorkedMinutes);
+        // The office scan still owns the day's shape — it is the half with an hour it was due at.
+        Assert.Equal(h.At(12), s.CheckInAtUtc);
+        Assert.Equal(h.At(17), s.CheckOutAtUtc);
     }
 
     [Fact]

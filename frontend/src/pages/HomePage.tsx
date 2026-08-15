@@ -14,6 +14,7 @@ import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { AssistantFab } from '../components/AssistantFab'
 import { AssistantIntroModal } from '../components/AssistantIntroModal'
+import { MyTasksCard } from '../components/MyTasksCard'
 import { firstName, initials, todayState, todayStr, type TodayState } from '../lib/att'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { IconQr } from '../components/icons'
@@ -118,6 +119,9 @@ export function HomePage() {
       {/* First, because it is the only thing here that costs the employee a day's pay if unread. */}
       <OfflineRejectBanner />
       <AnnouncementBanner />
+      {/* Work waiting on this person, above the passive cards — it is the only one that asks
+          something of them. Renders nothing when there is none. */}
+      <MyTasksCard />
       {/* Ayın işçisi modulu deaktivdir — mükafat kartı da gizlidir. */}
       {false && <AwardCard />}
 
