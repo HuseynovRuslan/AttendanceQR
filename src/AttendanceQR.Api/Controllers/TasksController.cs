@@ -9,30 +9,32 @@ using Microsoft.EntityFrameworkCore;
 namespace AttendanceQR.Api.Controllers;
 
 /// <summary>
-/// The operator team's shared task board ("Tapşırıqlar"). GLOBAL, not per-tenant — access is a config
-/// employee-id allowlist (App:TaskBoardEmployeeIds), like the super-admin panel. Everyone allowlisted
-/// sees and edits the same one list, whichever company subdomain they are signed into.
+/// A company's own shared task board — «Tapşırıqlar». Every admin and manager of the company shares
+/// one list; the tenant query filter is what keeps one company's board out of another's.
+///
+/// It was global and allowlisted until 2026-08-15. Opening it to a whole company could not be done
+/// on a global table without showing every customer's admin the operator team's own roadmap, so the
+/// table was tenant-scoped first and the allowlist dropped second. See <see cref="TaskItem"/>.
 /// </summary>
 [ApiController]
-[Authorize]
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/tasks")]
 public class TasksController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private readonly Guid[] _allowed;
 
-    public TasksController(AppDbContext db, AppOptions options)
+    public TasksController(AppDbContext db)
     {
         _db = db;
-        _allowed = options.TaskBoardIdList();
     }
 
-    private bool CanAccess => _allowed.Contains(User.EmployeeId());
+    private bool CanAccess => true;
     private IActionResult Forbidden() => StatusCode(StatusCodes.Status403Forbidden, new { error = "NotAllowed" });
 
-    /// <summary>Whether the caller may see the board — the frontend uses this to show/hide the menu.</summary>
+    /// <summary>Kept so an older cached frontend still gets an answer it understands; every
+    /// admin/manager may now see the board, so it always says yes.</summary>
     [HttpGet("access")]
-    public IActionResult Access() => Ok(new { canAccess = CanAccess });
+    public IActionResult Access() => Ok(new { canAccess = true });
 
     [HttpGet]
     public async Task<IActionResult> List()

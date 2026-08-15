@@ -170,6 +170,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<FieldVisitChecklistItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<FieldVisitChecklistItem>().HasIndex(i => new { i.TenantId, i.FieldVisitId });
 
+        modelBuilder.Entity<TaskItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+
         modelBuilder.Entity<EmployeeTask>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         // The worker's own list ("what do I have to do?") and the manager's board, which reads by
         // status and deadline. Both are the queries this screen makes on every open.

@@ -1,12 +1,18 @@
 namespace AttendanceQR.Domain.Entities;
 
 /// <summary>
-/// A shared to-do item for the operator team's task board. GLOBAL — deliberately NOT tenant-scoped:
-/// the same handful of people run every company, so their task list is one shared list, not one per
-/// tenant. Access is a config employee-id allowlist (App:TaskBoardEmployeeIds), the same pattern as
-/// the super-admin panel — a role lives inside a tenant, this list spans them.
+/// A shared to-do item for a company's own team board — «Tapşırıqlar».
+///
+/// It used to be GLOBAL and gated on a five-person employee-id allowlist, on the reasoning that the
+/// same handful of people ran every company. That reasoning stopped holding the moment the board was
+/// wanted by a whole company's admins: opening the gate on a global table would have shown CleanFix's
+/// and EastCaf's admins the operator team's own list — «Ödəniş sisteminin qurulması (Odero,
+/// Payriff)», «KOBİA sənədləri» — which is internal business, not a customer's to read.
+///
+/// So it is tenant-scoped now, like everything else that belongs to a company, and the allowlist is
+/// gone: every admin and manager of a company shares that company's board and sees no other.
 /// </summary>
-public class TaskItem
+public class TaskItem : ITenantScoped
 {
     public TaskItem()
     {
@@ -15,6 +21,9 @@ public class TaskItem
     }
 
     public Guid Id { get; set; }
+
+    /// <summary>Multi-tenancy: which company this board belongs to (auto-stamped on save).</summary>
+    public Guid TenantId { get; set; }
 
     public string Title { get; set; } = string.Empty;
 
