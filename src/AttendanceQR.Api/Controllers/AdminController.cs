@@ -371,7 +371,7 @@ public class AdminController : ControllerBase
     /// the file comes back from a person who may have retyped the header or kept an older template.</summary>
     private static readonly (string Field, string[] Headers)[] XlsxColumns =
     [
-        ("fullName", ["ad soyad", "ad, soyad", "adı soyadı", "ad", "full name", "fullname"]),
+        ("fullName", ["ad soyad ata adı", "ad soyad ata adi", "soyad ad ata adı", "s.a.a.", "s.a.a", "ad soyad", "ad, soyad", "adı soyadı", "ad", "full name", "fullname"]),
         ("phoneNumber", ["telefon", "telefon nömrəsi", "nömrə", "phone"]),
         ("position", ["vəzifə", "vezife", "position"]),
         ("fatherName", ["ata adı", "ata adi", "atasının adı", "father"]),
@@ -381,6 +381,20 @@ public class AdminController : ControllerBase
         ("roleName", ["rol", "role"]),
         ("locationName", ["filial", "ərazi", "lokasiya", "location", "branch"]),
     ];
+
+    /// <summary>
+    /// "Ruslan Hüseynov Rasim oğlu" → ("Ruslan Hüseynov", "Rasim oğlu"). Every customer's own staff
+    /// list writes the patronymic straight after the name, so the name column accepts it and the
+    /// split happens here — but ONLY on an explicit «oğlu»/«qızı» suffix. A bare third word may be a
+    /// second surname; guessing it into FatherName would corrupt names silently.
+    /// </summary>
+    private static (string FullName, string? FatherName) SplitPatronymic(string fullName)
+    {
+        var tokens = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length >= 3 && tokens[^1].ToLowerInvariant() is "oğlu" or "oglu" or "qızı" or "qizi")
+            return (string.Join(' ', tokens[..^2]), $"{tokens[^2]} {tokens[^1]}");
+        return (fullName, null);
+    }
 
     // POST /api/admin/employees/parse-xlsx — read an uploaded .xlsx and return its rows so the admin can
     // review, then import, them. Parsing only — creates nothing.
@@ -479,12 +493,18 @@ public class AdminController : ControllerBase
                     }
                 }
 
+                // A separate Ata adı column (older files) wins; otherwise the name cell may carry the
+                // patronymic and gives it up here.
+                var fatherName = Get(row, "fatherName");
+                if (string.IsNullOrWhiteSpace(fatherName))
+                    (fullName, fatherName) = SplitPatronymic(fullName!);
+
                 rows.Add(new
                 {
                     fullName,
                     phoneNumber = phone,
                     position = Get(row, "position"),
-                    fatherName = Get(row, "fatherName"),
+                    fatherName,
                     birthYear = birthDate?.Year ?? birthYear,
                     birthDate = birthDate?.ToString("yyyy-MM-dd"),
                     email = Get(row, "email"),
@@ -535,13 +555,13 @@ public class AdminController : ControllerBase
         ws.SetTabColor(XLColor.FromHtml(Leaf));
 
         // (header, width, grey example under the header). Column A's example stays null on purpose.
-        // The person's identity reads as one block — name, patronymic, birth date side by side — the
-        // way every official staff list is laid out; contact and job details follow. parse-xlsx finds
-        // columns by header text, so this order is presentation, not contract.
+        // Name, surname and patronymic share ONE column — that is the shape of every customer's own
+        // staff list («Ruslan Hüseynov Rasim oğlu»), and SplitPatronymic separates the «oğlu»/«qızı»
+        // tail server-side. parse-xlsx finds columns by header text, so older files with a separate
+        // Ata adı column keep importing unchanged.
         (string Header, int Width, string? Note)[] columns =
         [
-            ("Ad Soyad", 28, null),
-            ("Ata adı", 20, "Rasim"),
+            ("Ad Soyad Ata adı", 34, null),
             ("Doğum tarixi", 16, "15.03.1990"),
             ("Telefon", 18, "0501234567"),
             ("Vəzifə", 22, "Operator"),
@@ -565,7 +585,7 @@ public class AdminController : ControllerBase
 
         ws.Range(2, 1, 2, columns.Length).Merge();
         var sub = ws.Cell(2, 1);
-        sub.Value = "Hər sətir bir işçidir. «Ad Soyad» və «Telefon» vacibdir, qalanı istəyə bağlıdır. Ətraflı izah: «Təlimat» vərəqi.";
+        sub.Value = "Hər sətir bir işçidir. Ad və Telefon vacibdir (məs.: Ruslan Hüseynov Rasim oğlu — ata adı istəyə bağlıdır). Ətraflı: «Təlimat» vərəqi.";
         sub.Style.Font.Italic = true;
         sub.Style.Font.FontSize = 10;
         sub.Style.Font.FontColor = XLColor.FromHtml(LeafDark);
@@ -602,11 +622,11 @@ public class AdminController : ControllerBase
         dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         dataRange.Style.Border.InsideBorderColor = XLColor.FromHtml("#DCE3D6");
         dataRange.Style.Border.OutsideBorderColor = XLColor.FromHtml("#DCE3D6");
-        ws.Range(4, 3, 4 + DataRows, 3).Style.NumberFormat.Format = "dd.mm.yyyy";
-        ws.Range(4, 4, 4 + DataRows, 4).Style.NumberFormat.Format = "@";
+        ws.Range(4, 2, 4 + DataRows, 2).Style.NumberFormat.Format = "dd.mm.yyyy";
+        ws.Range(4, 3, 4 + DataRows, 3).Style.NumberFormat.Format = "@";
 
         // Rol as an in-cell dropdown — the three labels ParseRoleName accepts, nothing to mistype.
-        var roleDv = ws.Range(5, 7, 4 + DataRows, 7).CreateDataValidation();
+        var roleDv = ws.Range(5, 6, 4 + DataRows, 6).CreateDataValidation();
         roleDv.List("\"İşçi,Menecer,Admin\"", true);
 
         // ---- «Təlimat»: the sheet the customer actually reads. Second on purpose. ----
@@ -634,8 +654,7 @@ public class AdminController : ControllerBase
 
         (string Col, string Req, string Text)[] guide =
         [
-            ("Ad Soyad", "Bəli", "İşçinin adı və soyadı. Adı boş olan sətirlər nəzərə alınmır."),
-            ("Ata adı", "Xeyr", "Rəsmi sənədlər və hesabatlar üçün."),
+            ("Ad Soyad Ata adı", "Bəli", "Ad və soyad; istəsəniz ata adını da yanına yazın: «Ruslan Hüseynov Rasim oğlu» — «oğlu»/«qızı» ilə bitən hissəni sistem özü ata adı kimi ayırır. Adı boş olan sətirlər nəzərə alınmır."),
             ("Doğum tarixi", "Xeyr", "Tam tarix: 15.03.1990. Yalnız ili bilinərsə, təkcə ili yazın (1990) — tam tarix ad günü təbrikləri üçün lazımdır."),
             ("Telefon", "Bəli", "Sistemə giriş bu nömrə ilədir; 0 ilə başlayır (məs. 0501234567) və təkrarlana bilməz."),
             ("Vəzifə", "Xeyr", "İşçinin vəzifəsi (məs. Operator, Təsərrüfat işçisi)."),
@@ -698,7 +717,7 @@ public class AdminController : ControllerBase
                 help.Cell(r, 1).Value = name;
                 r++;
             }
-            var locDv = ws.Range(5, 8, 4 + DataRows, 8).CreateDataValidation();
+            var locDv = ws.Range(5, 7, 4 + DataRows, 7).CreateDataValidation();
             locDv.List(help.Range(listStart, 1, r - 1, 1));
         }
 

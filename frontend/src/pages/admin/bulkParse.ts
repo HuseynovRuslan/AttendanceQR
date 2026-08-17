@@ -48,6 +48,17 @@ export function parseBulkText(text: string): ParsedRow[] {
       if (parts[1]) row.phoneNumber = parts[1]
       if (parts[2]) row.position = parts[2]
       if (parts[3]) row.fatherName = parts[3]
+      // "Ruslan Hüseynov Rasim oğlu" — the name field accepts the patronymic inline (that is how
+      // every customer's own list is written) and gives it up to fatherName. Only on an explicit
+      // oğlu/qızı suffix, and never over an Ata adı the line already provides.
+      if (!row.fatherName) {
+        const tokens = row.fullName.split(/\s+/).filter(Boolean)
+        const tail = tokens[tokens.length - 1]?.toLowerCase()
+        if (tokens.length >= 3 && ['oğlu', 'oglu', 'qızı', 'qizi'].includes(tail)) {
+          row.fullName = tokens.slice(0, -2).join(' ')
+          row.fatherName = tokens.slice(-2).join(' ')
+        }
+      }
       // The birth slot: a full date ("15.03.1990", "15/03/1990" or ISO) wins over a bare year, and
       // free text ("bilinmir") is neither — it must not become one.
       const dmy = parts[4]?.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)

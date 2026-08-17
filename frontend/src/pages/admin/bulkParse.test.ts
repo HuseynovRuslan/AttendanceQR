@@ -102,6 +102,39 @@ describe('parseBulkText', () => {
     expect(row.birthDate).toBeUndefined()
   })
 
+  it('splits an inline patronymic out of the name', () => {
+    // A customer's own list says "Ruslan Hüseynov Rasim oğlu" in one cell; the database keeps the
+    // name and the father's name apart, so the suffix pair moves over.
+    const [row] = parseBulkText('Ruslan Hüseynov Rasim oğlu, 0501234567')
+    expect(row.fullName).toBe('Ruslan Hüseynov')
+    expect(row.fatherName).toBe('Rasim oğlu')
+  })
+
+  it('splits qızı the same way', () => {
+    const [row] = parseBulkText('Aygün Məmmədova Elçin qızı, 0501234567')
+    expect(row.fullName).toBe('Aygün Məmmədova')
+    expect(row.fatherName).toBe('Elçin qızı')
+  })
+
+  it('never splits when the line already carries an Ata adı', () => {
+    const [row] = parseBulkText('Ruslan Hüseynov Rasim oğlu, 0501234567, Bağban, Səməd oğlu')
+    expect(row.fullName).toBe('Ruslan Hüseynov Rasim oğlu')
+    expect(row.fatherName).toBe('Səməd oğlu')
+  })
+
+  it('leaves a bare third word in the name — it may be a second surname', () => {
+    const [row] = parseBulkText('Ruslan Hüseynov Rasim, 0501234567')
+    expect(row.fullName).toBe('Ruslan Hüseynov Rasim')
+    expect(row.fatherName).toBeUndefined()
+  })
+
+  it('does not split a two-word name ending in oğlu', () => {
+    // "Rasim oğlu" alone would leave an empty name behind.
+    const [row] = parseBulkText('Rasim oğlu, 0501234567')
+    expect(row.fullName).toBe('Rasim oğlu')
+    expect(row.fatherName).toBeUndefined()
+  })
+
   it('drops blank lines and lines with no name', () => {
     expect(parseBulkText('Əli Vəliyev, 050\n\n  \n, 0557654321, Mühasib')).toHaveLength(1)
   })
