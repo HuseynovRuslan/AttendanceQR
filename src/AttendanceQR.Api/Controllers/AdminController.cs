@@ -411,20 +411,27 @@ public class AdminController : ControllerBase
             if (used.Count == 0)
                 return Ok(new { rows });
 
-            // Map field -> column number from the header row.
+            // Map field -> column number from the header row. The header is no longer necessarily the
+            // FIRST row — the template carries a title banner above it now — so scan the first few
+            // rows for the one that says "Ad Soyad"; everything above it is banner, not data.
             var map = new Dictionary<string, int>();
-            var headerRow = used[0];
-            foreach (var cell in headerRow.CellsUsed())
+            var headerIdx = -1;
+            for (var i = 0; i < Math.Min(used.Count, 6) && headerIdx < 0; i++)
             {
-                var text = cell.GetString().Trim().ToLowerInvariant();
-                var match = XlsxColumns.FirstOrDefault(c => c.Headers.Contains(text));
-                if (match.Field is not null && !map.ContainsKey(match.Field))
-                    map[match.Field] = cell.Address.ColumnNumber;
+                var candidate = new Dictionary<string, int>();
+                foreach (var cell in used[i].CellsUsed())
+                {
+                    var text = cell.GetString().Trim().ToLowerInvariant();
+                    var match = XlsxColumns.FirstOrDefault(c => c.Headers.Contains(text));
+                    if (match.Field is not null && !candidate.ContainsKey(match.Field))
+                        candidate[match.Field] = cell.Address.ColumnNumber;
+                }
+                if (candidate.ContainsKey("fullName")) { map = candidate; headerIdx = i; }
             }
 
             // No recognisable header (someone deleted it, or typed their own): fall back to the
             // original positional layout, which is what every file predating this change looks like.
-            var hasHeader = map.ContainsKey("fullName");
+            var hasHeader = headerIdx >= 0;
             if (!hasHeader)
                 map = new Dictionary<string, int> { ["fullName"] = 1, ["phoneNumber"] = 2, ["position"] = 3 };
 
@@ -435,7 +442,7 @@ public class AdminController : ControllerBase
                 return string.IsNullOrWhiteSpace(v) ? null : v;
             }
 
-            foreach (var row in used.Skip(hasHeader ? 1 : 0))
+            foreach (var row in used.Skip(hasHeader ? headerIdx + 1 : 0))
             {
                 var fullName = Get(row, "fullName");
                 var phone = Get(row, "phoneNumber");
@@ -476,61 +483,200 @@ public class AdminController : ControllerBase
 
     // GET /api/admin/employees/xlsx-template — a ready-to-fill .xlsx carrying every field the
     // single-employee form collects, so importing a spreadsheet is not a lesser way to add someone.
-    // Headers only (no example data row — an unedited example would import as a real employee).
     //
-    // The first three columns keep their original order so an older file, and the paste box, still
-    // line up. parse-xlsx reads by header text anyway, so an admin may reorder or drop columns.
+    // This file is also the one an operator SENDS TO A CUSTOMER to collect their staff list, so it
+    // has to look like the product: brand banner, a «Təlimat» sheet, dropdowns for Rol/Filial, and a
+    // phone column locked to text so Excel cannot eat the leading zero of "0501234567" — the single
+    // most common way a customer-filled sheet used to come back broken.
+    //
+    // Layout contract with parse-xlsx: the banner rows carry no "Ad Soyad" cell, the header row does,
+    // and the grey example row keeps column A EMPTY — that emptiness is exactly what stops it from
+    // importing as an employee named "Nümunə". The «Təlimat» sheet must stay SECOND: the parser
+    // reads only the first worksheet.
     [HttpGet("xlsx-template")]
     public async Task<IActionResult> XlsxTemplate()
     {
-        using var wb = new XLWorkbook();
-        var ws = wb.Worksheets.Add("İşçilər");
+        const string LeafDark = "#4E7D26";
+        const string Leaf = "#7CB342";
+        const string LeafBg = "#F1F8E9";
+        const string Grey = "#8A94A6";
+        const int DataRows = 200; // matches the parse cap — styling more would promise more
 
-        // (header, column width, note shown under the header). NOTHING goes under "Ad Soyad": row 2
-        // survives only because its column A is empty, which is exactly how parse-xlsx skips it. A
-        // note there would import as an employee called "məcburi".
-        (string Header, int Width, string? Note)[] columns =
-        [
-            ("Ad Soyad", 28, null),
-            ("Telefon", 18, "0501234567"),
-            ("Vəzifə", 22, null),
-            ("Ata adı", 20, null),
-            ("Təvəllüd ili", 14, "1990"),
-            ("Email", 26, "istəyə bağlı"),
-            ("Rol", 14, "İşçi / Menecer / Admin"),
-            ("Filial", 22, "boş = səhifədə seçilən"),
-        ];
-
-        for (var i = 0; i < columns.Length; i++)
-        {
-            var cell = ws.Cell(1, i + 1);
-            cell.Value = columns[i].Header;
-            cell.Style.Font.Bold = true;
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E8EEF7");
-            ws.Column(i + 1).Width = columns[i].Width;
-
-            // Row 2 is guidance, greyed and italic. parse-xlsx drops it: it has no name in column A.
-            if (columns[i].Note is not null)
-            {
-                var note = ws.Cell(2, i + 1);
-                note.Value = columns[i].Note;
-                note.Style.Font.Italic = true;
-                note.Style.Font.FontColor = XLColor.FromHtml("#8A94A6");
-            }
-        }
-
-        // Spell out the branch names that will match, so nobody has to guess at the spelling.
         var locationNames = await _db.Locations
             .OrderBy(l => l.Name)
             .Select(l => l.Name)
             .ToListAsync(HttpContext.RequestAborted);
-        if (locationNames.Count > 0)
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("İşçilər");
+        ws.SetTabColor(XLColor.FromHtml(Leaf));
+
+        // (header, width, grey example under the header). Column A's example stays null on purpose.
+        (string Header, int Width, string? Note)[] columns =
+        [
+            ("Ad Soyad", 28, null),
+            ("Telefon", 18, "0501234567"),
+            ("Vəzifə", 22, "Operator"),
+            ("Ata adı", 20, "Rasim"),
+            ("Təvəllüd ili", 14, "1990"),
+            ("Email", 26, "istəyə bağlı"),
+            ("Rol", 14, "boş = İşçi"),
+            ("Filial", 24, "boş = səhifədə seçilən"),
+        ];
+
+        // Row 1 — brand banner. Row 2 — one-line instruction. Both merged; neither contains a header
+        // word, so the parser's header scan walks straight past them.
+        ws.Range(1, 1, 1, columns.Length).Merge();
+        var title = ws.Cell(1, 1);
+        title.Value = "QRLog — işçi siyahısı";
+        title.Style.Font.Bold = true;
+        title.Style.Font.FontSize = 15;
+        title.Style.Font.FontColor = XLColor.White;
+        title.Style.Fill.BackgroundColor = XLColor.FromHtml(LeafDark);
+        title.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        title.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Row(1).Height = 30;
+
+        ws.Range(2, 1, 2, columns.Length).Merge();
+        var sub = ws.Cell(2, 1);
+        sub.Value = "Hər sətir bir işçidir. «Ad Soyad» və «Telefon» vacibdir, qalanı istəyə bağlıdır. Ətraflı izah: «Təlimat» vərəqi.";
+        sub.Style.Font.Italic = true;
+        sub.Style.Font.FontSize = 10;
+        sub.Style.Font.FontColor = XLColor.FromHtml(LeafDark);
+        sub.Style.Fill.BackgroundColor = XLColor.FromHtml(LeafBg);
+        sub.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        ws.Row(2).Height = 18;
+
+        // Row 3 — the header row parse-xlsx recognises. Row 4 — grey examples (column A empty).
+        for (var i = 0; i < columns.Length; i++)
         {
-            var hint = ws.Cell(2, columns.Length);
-            hint.Value = "boş = səhifədəki · " + string.Join(" / ", locationNames);
+            var cell = ws.Cell(3, i + 1);
+            cell.Value = columns[i].Header;
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml(Leaf);
+            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Column(i + 1).Width = columns[i].Width;
+
+            if (columns[i].Note is not null)
+            {
+                var note = ws.Cell(4, i + 1);
+                note.Value = columns[i].Note;
+                note.Style.Font.Italic = true;
+                note.Style.Font.FontColor = XLColor.FromHtml(Grey);
+            }
+        }
+        ws.Row(3).Height = 20;
+
+        // The fill-in area: light borders so it reads as a form, phone/year columns pre-formatted.
+        // Text format on Telefon is the load-bearing part — without it Excel turns 0501234567 into
+        // 501234567 the moment the customer types it.
+        var dataRange = ws.Range(4, 1, 4 + DataRows, columns.Length);
+        dataRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        dataRange.Style.Border.InsideBorderColor = XLColor.FromHtml("#DCE3D6");
+        dataRange.Style.Border.OutsideBorderColor = XLColor.FromHtml("#DCE3D6");
+        ws.Range(4, 2, 4 + DataRows, 2).Style.NumberFormat.Format = "@";
+        ws.Range(4, 5, 4 + DataRows, 5).Style.NumberFormat.Format = "0";
+
+        // Rol as an in-cell dropdown — the three labels ParseRoleName accepts, nothing to mistype.
+        var roleDv = ws.Range(5, 7, 4 + DataRows, 7).CreateDataValidation();
+        roleDv.List("\"İşçi,Menecer,Admin\"", true);
+
+        // ---- «Təlimat»: the sheet the customer actually reads. Second on purpose. ----
+        var help = wb.Worksheets.Add("Təlimat");
+        help.SetTabColor(XLColor.FromHtml(LeafDark));
+        help.ShowGridLines = false;
+        help.Column(1).Width = 16;
+        help.Column(2).Width = 10;
+        help.Column(3).Width = 78;
+
+        help.Range(1, 1, 1, 3).Merge();
+        var ht = help.Cell(1, 1);
+        ht.Value = "Təlimat — işçi siyahısının doldurulması";
+        ht.Style.Font.Bold = true;
+        ht.Style.Font.FontSize = 14;
+        ht.Style.Font.FontColor = XLColor.White;
+        ht.Style.Fill.BackgroundColor = XLColor.FromHtml(LeafDark);
+        ht.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        help.Row(1).Height = 28;
+
+        help.Range(2, 1, 2, 3).Merge();
+        help.Cell(2, 1).Value = "«İşçilər» vərəqini doldurun və faylı sistemə qaytarın — hesablar avtomatik yaradılacaq.";
+        help.Cell(2, 1).Style.Font.Italic = true;
+        help.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml(Grey);
+
+        (string Col, string Req, string Text)[] guide =
+        [
+            ("Ad Soyad", "Bəli", "İşçinin tam adı. Adı boş olan sətirlər nəzərə alınmır."),
+            ("Telefon", "Bəli", "Sistemə giriş bu nömrə ilədir; 0 ilə başlayır (məs. 0501234567) və təkrarlana bilməz."),
+            ("Vəzifə", "Xeyr", "İşçinin vəzifəsi (məs. Operator, Təsərrüfat işçisi)."),
+            ("Ata adı", "Xeyr", "Rəsmi sənədlər və hesabatlar üçün."),
+            ("Təvəllüd ili", "Xeyr", "Yalnız il, rəqəmlə (məs. 1990)."),
+            ("Email", "Xeyr", "Boş qala bilər — giriş telefon nömrəsi ilə də mümkündür."),
+            ("Rol", "Xeyr", "İşçi / Menecer / Admin. Boş qalsa, yükləmə səhifəsində seçilən rol tətbiq olunur."),
+            ("Filial", "Xeyr", "Boş qalsa, yükləmə səhifəsində seçilən filial tətbiq olunur. Adlar aşağıdakı siyahıdakı kimi yazılmalıdır."),
+        ];
+
+        var r = 4;
+        var gh = help.Range(r, 1, r, 3);
+        help.Cell(r, 1).Value = "Sütun";
+        help.Cell(r, 2).Value = "Vacib";
+        help.Cell(r, 3).Value = "İzah";
+        gh.Style.Font.Bold = true;
+        gh.Style.Font.FontColor = XLColor.White;
+        gh.Style.Fill.BackgroundColor = XLColor.FromHtml(Leaf);
+        r++;
+        foreach (var (col, req, text) in guide)
+        {
+            help.Cell(r, 1).Value = col;
+            help.Cell(r, 1).Style.Font.Bold = true;
+            help.Cell(r, 2).Value = req;
+            if (req == "Bəli") help.Cell(r, 2).Style.Font.FontColor = XLColor.FromHtml(LeafDark);
+            help.Cell(r, 3).Value = text;
+            help.Cell(r, 3).Style.Alignment.WrapText = true;
+            r++;
+        }
+        var guideRange = help.Range(4, 1, r - 1, 3);
+        guideRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        guideRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        guideRange.Style.Border.InsideBorderColor = XLColor.FromHtml("#DCE3D6");
+        guideRange.Style.Border.OutsideBorderColor = XLColor.FromHtml("#DCE3D6");
+
+        r += 1;
+        foreach (var line in new[]
+        {
+            "• Sütunların yerini dəyişmək və ya lazımsızları silmək olar — sistem sütunu başlığına görə tanıyır.",
+            "• Bir faylda ən çox 200 işçi oxunur; daha çox üçün ikinci fayl göndərin.",
+            "• Yüklənəndən sonra hər işçiyə müvəqqəti PIN yaradılır — işçi ilk girişdə öz PIN-ini təyin edir.",
+        })
+        {
+            help.Range(r, 1, r, 3).Merge();
+            help.Cell(r, 1).Value = line;
+            help.Cell(r, 1).Style.Alignment.WrapText = true;
+            r++;
         }
 
-        ws.SheetView.FreezeRows(1);
+        // The tenant's branch names, spelled exactly as they will match — and doubling as the source
+        // range for the Filial dropdown on the first sheet (a formula list would choke on commas).
+        if (locationNames.Count > 0)
+        {
+            r += 1;
+            help.Cell(r, 1).Value = "Filiallar";
+            help.Cell(r, 1).Style.Font.Bold = true;
+            help.Cell(r, 1).Style.Font.FontColor = XLColor.FromHtml(LeafDark);
+            r++;
+            var listStart = r;
+            foreach (var name in locationNames)
+            {
+                help.Cell(r, 1).Value = name;
+                r++;
+            }
+            var locDv = ws.Range(5, 8, 4 + DataRows, 8).CreateDataValidation();
+            locDv.List(help.Range(listStart, 1, r - 1, 1));
+        }
+
+        ws.SheetView.FreezeRows(3);
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
