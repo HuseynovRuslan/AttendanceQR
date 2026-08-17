@@ -177,7 +177,7 @@ public class AdminController : ControllerBase
         var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
         var (employee, token, error) = BuildInvite(
             request.FullName, request.Email, request.PhoneNumber, request.FatherName, request.Position,
-            request.BirthYear, request.LocationId, request.Role, takenEmails, takenPhones);
+            request.BirthYear, request.BirthDate, request.LocationId, request.Role, takenEmails, takenPhones);
 
         if (error is not null)
             return error is "EmailAlreadyExists" or "PhoneAlreadyExists"
@@ -189,9 +189,6 @@ public class AdminController : ControllerBase
             EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
         employee.MonthlySalary = request.MonthlySalary;
         employee.CanFieldCheckIn = request.CanFieldCheckIn;
-        employee.BirthDate = request.BirthDate;
-        if (request.BirthDate is { } dob)
-            employee.BirthYear = dob.Year;   // keep the year in sync so the fallback display agrees
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
@@ -285,7 +282,7 @@ public class AdminController : ControllerBase
 
             var (employee, token, error) = BuildInvite(
                 row.FullName, row.Email, row.PhoneNumber, row.FatherName, row.Position, row.BirthYear,
-                rowLocationId, rowRole, takenEmails, takenPhones);
+                row.BirthDate, rowLocationId, rowRole, takenEmails, takenPhones);
 
             if (error is not null)
             {
@@ -343,7 +340,7 @@ public class AdminController : ControllerBase
 
             var (employee, tempPin, error) = BuildActivatedWithTempPin(
                 row.FullName, row.Email, row.PhoneNumber, row.FatherName, row.Position, row.BirthYear,
-                rowLocationId, rowRole, takenEmails, takenPhones);
+                row.BirthDate, rowLocationId, rowRole, takenEmails, takenPhones);
 
             if (error is not null)
             {
@@ -379,6 +376,7 @@ public class AdminController : ControllerBase
         ("position", ["vəzifə", "vezife", "position"]),
         ("fatherName", ["ata adı", "ata adi", "atasının adı", "father"]),
         ("birthYear", ["təvəllüd ili", "təvəllüd", "tevellud", "doğum ili", "birth year", "birthyear"]),
+        ("birthDate", ["doğum tarixi", "dogum tarixi", "təvəllüd tarixi", "tevellud tarixi", "birth date", "birthdate"]),
         ("email", ["email", "e-mail", "poçt", "e-poçt"]),
         ("roleName", ["rol", "role"]),
         ("locationName", ["filial", "ərazi", "lokasiya", "location", "branch"]),
@@ -456,14 +454,39 @@ public class AdminController : ControllerBase
                     continue;
 
                 var birthYearText = Get(row, "birthYear");
+                var birthYear = int.TryParse(birthYearText?.Split('.', ',')[0], out var by) ? by : (int?)null;
+
+                // The date column may hold a REAL Excel date (the template formats it as one) or typed
+                // text. The DataType check matters: TryGetValue<DateTime> on a plain number like 1990
+                // would happily read it as an OADate in 1905. A bare year typed into the date column
+                // degrades to birthYear instead of being dropped.
+                DateOnly? birthDate = null;
+                if (map.TryGetValue("birthDate", out var bdCol))
+                {
+                    var bdCell = row.Cell(bdCol);
+                    if (bdCell.DataType == XLDataType.DateTime && bdCell.TryGetValue<DateTime>(out var dt) && dt.Year > 1900)
+                        birthDate = DateOnly.FromDateTime(dt);
+                    else
+                    {
+                        var s = bdCell.GetString().Trim();
+                        if (DateTime.TryParseExact(s,
+                                ["dd.MM.yyyy", "d.M.yyyy", "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd"],
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                System.Globalization.DateTimeStyles.None, out var typed) && typed.Year > 1900)
+                            birthDate = DateOnly.FromDateTime(typed);
+                        else if (int.TryParse(s, out var yearOnly) && yearOnly > 1900)
+                            birthYear ??= yearOnly;
+                    }
+                }
+
                 rows.Add(new
                 {
                     fullName,
                     phoneNumber = phone,
                     position = Get(row, "position"),
                     fatherName = Get(row, "fatherName"),
-                    // A year typed as "1990" or read back as "1990.0" — take the digits, ignore the rest.
-                    birthYear = int.TryParse(birthYearText?.Split('.', ',')[0], out var by) ? by : (int?)null,
+                    birthYear = birthDate?.Year ?? birthYear,
+                    birthDate = birthDate?.ToString("yyyy-MM-dd"),
                     email = Get(row, "email"),
                     roleName = Get(row, "roleName"),
                     locationName = Get(row, "locationName"),
@@ -512,13 +535,16 @@ public class AdminController : ControllerBase
         ws.SetTabColor(XLColor.FromHtml(Leaf));
 
         // (header, width, grey example under the header). Column A's example stays null on purpose.
+        // The person's identity reads as one block — name, patronymic, birth date side by side — the
+        // way every official staff list is laid out; contact and job details follow. parse-xlsx finds
+        // columns by header text, so this order is presentation, not contract.
         (string Header, int Width, string? Note)[] columns =
         [
             ("Ad Soyad", 28, null),
+            ("Ata adı", 20, "Rasim"),
+            ("Doğum tarixi", 16, "15.03.1990"),
             ("Telefon", 18, "0501234567"),
             ("Vəzifə", 22, "Operator"),
-            ("Ata adı", 20, "Rasim"),
-            ("Təvəllüd ili", 14, "1990"),
             ("Email", 26, "istəyə bağlı"),
             ("Rol", 14, "boş = İşçi"),
             ("Filial", 24, "boş = səhifədə seçilən"),
@@ -576,8 +602,8 @@ public class AdminController : ControllerBase
         dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         dataRange.Style.Border.InsideBorderColor = XLColor.FromHtml("#DCE3D6");
         dataRange.Style.Border.OutsideBorderColor = XLColor.FromHtml("#DCE3D6");
-        ws.Range(4, 2, 4 + DataRows, 2).Style.NumberFormat.Format = "@";
-        ws.Range(4, 5, 4 + DataRows, 5).Style.NumberFormat.Format = "0";
+        ws.Range(4, 3, 4 + DataRows, 3).Style.NumberFormat.Format = "dd.mm.yyyy";
+        ws.Range(4, 4, 4 + DataRows, 4).Style.NumberFormat.Format = "@";
 
         // Rol as an in-cell dropdown — the three labels ParseRoleName accepts, nothing to mistype.
         var roleDv = ws.Range(5, 7, 4 + DataRows, 7).CreateDataValidation();
@@ -608,11 +634,11 @@ public class AdminController : ControllerBase
 
         (string Col, string Req, string Text)[] guide =
         [
-            ("Ad Soyad", "Bəli", "İşçinin tam adı. Adı boş olan sətirlər nəzərə alınmır."),
+            ("Ad Soyad", "Bəli", "İşçinin adı və soyadı. Adı boş olan sətirlər nəzərə alınmır."),
+            ("Ata adı", "Xeyr", "Rəsmi sənədlər və hesabatlar üçün."),
+            ("Doğum tarixi", "Xeyr", "Tam tarix: 15.03.1990. Yalnız ili bilinərsə, təkcə ili yazın (1990) — tam tarix ad günü təbrikləri üçün lazımdır."),
             ("Telefon", "Bəli", "Sistemə giriş bu nömrə ilədir; 0 ilə başlayır (məs. 0501234567) və təkrarlana bilməz."),
             ("Vəzifə", "Xeyr", "İşçinin vəzifəsi (məs. Operator, Təsərrüfat işçisi)."),
-            ("Ata adı", "Xeyr", "Rəsmi sənədlər və hesabatlar üçün."),
-            ("Təvəllüd ili", "Xeyr", "Yalnız il, rəqəmlə (məs. 1990)."),
             ("Email", "Xeyr", "Boş qala bilər — giriş telefon nömrəsi ilə də mümkündür."),
             ("Rol", "Xeyr", "İşçi / Menecer / Admin. Boş qalsa, yükləmə səhifəsində seçilən rol tətbiq olunur."),
             ("Filial", "Xeyr", "Boş qalsa, yükləmə səhifəsində seçilən filial tətbiq olunur. Adlar aşağıdakı siyahıdakı kimi yazılmalıdır."),
@@ -700,7 +726,7 @@ public class AdminController : ControllerBase
     // by the single and bulk invite paths so their validation can never drift apart.
     private (Employee? Employee, string? Token, string? Error) BuildInvite(
         string fullName, string? emailIn, string? phoneIn, string? fatherName, string? position, int? birthYear,
-        Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
+        DateOnly? birthDate, Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
     {
         if (string.IsNullOrWhiteSpace(fullName))
             return (null, null, "NameRequired");
@@ -727,7 +753,8 @@ public class AdminController : ControllerBase
             PhoneNumber = phone,
             FatherName = string.IsNullOrWhiteSpace(fatherName) ? null : fatherName.Trim(),
             Position = string.IsNullOrWhiteSpace(position) ? null : position.Trim(),
-            BirthYear = birthYear,
+            BirthDate = birthDate,
+            BirthYear = birthDate?.Year ?? birthYear,   // year stays in sync with the full date
             LocationId = locationId,
             Role = role,
             PasswordHash = string.Empty,       // set by the employee at activation
@@ -753,7 +780,7 @@ public class AdminController : ControllerBase
     // their own PIN. Mutates the taken-sets so later rows in the batch see this row's identifiers.
     private (Employee? Employee, string? TempPin, string? Error) BuildActivatedWithTempPin(
         string fullName, string? emailIn, string? phoneIn, string? fatherName, string? position, int? birthYear,
-        Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
+        DateOnly? birthDate, Guid locationId, EmployeeRole role, HashSet<string> takenEmails, HashSet<string> takenPhones)
     {
         if (string.IsNullOrWhiteSpace(fullName))
             return (null, null, "NameRequired");
@@ -778,7 +805,8 @@ public class AdminController : ControllerBase
             PhoneNumber = phone,
             FatherName = string.IsNullOrWhiteSpace(fatherName) ? null : fatherName.Trim(),
             Position = string.IsNullOrWhiteSpace(position) ? null : position.Trim(),
-            BirthYear = birthYear,
+            BirthDate = birthDate,
+            BirthYear = birthDate?.Year ?? birthYear,   // year stays in sync with the full date
             LocationId = locationId,
             Role = role,
             PasswordHash = _passwordHasher.Hash(tempPin),

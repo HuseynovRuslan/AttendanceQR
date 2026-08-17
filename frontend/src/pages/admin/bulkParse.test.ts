@@ -66,7 +66,40 @@ describe('parseBulkText', () => {
     // The cell is free text; "bilinmir" must not become a year, and it must not shift Email either.
     const [row] = parseBulkText('Əli Vəliyev, 0501234567, Bağban, Səməd oğlu, bilinmir, ali@mail.az')
     expect(row.birthYear).toBeUndefined()
+    expect(row.birthDate).toBeUndefined()
     expect(row.email).toBe('ali@mail.az')
+  })
+
+  it('reads a full birth date and keeps the year in sync', () => {
+    // The same slot as the year — a customer's sheet says "15.03.1990" and the birthday features
+    // need the whole thing, not the truncated year.
+    const [row] = parseBulkText('Əli Vəliyev, 0501234567, , , 15.03.1990')
+    expect(row.birthDate).toBe('1990-03-15')
+    expect(row.birthYear).toBe(1990)
+  })
+
+  it('reads a single-digit day and month date', () => {
+    const [row] = parseBulkText('Əli Vəliyev, 0501234567, , , 5.3.1990')
+    expect(row.birthDate).toBe('1990-03-05')
+  })
+
+  it('reads an ISO date as the file parser emits it', () => {
+    const [row] = parseBulkText('Əli Vəliyev, 0501234567, , , 1990-03-15')
+    expect(row.birthDate).toBe('1990-03-15')
+    expect(row.birthYear).toBe(1990)
+  })
+
+  it('does not let an impossible date pass as one', () => {
+    // 45.13.1990 is neither a date nor a year — it must become nothing, not nonsense.
+    const [row] = parseBulkText('Əli Vəliyev, 0501234567, , , 45.13.1990')
+    expect(row.birthDate).toBeUndefined()
+    expect(row.birthYear).toBeUndefined()
+  })
+
+  it('still reads a bare year as year only', () => {
+    const [row] = parseBulkText('Əli Vəliyev, 0501234567, , , 1990')
+    expect(row.birthYear).toBe(1990)
+    expect(row.birthDate).toBeUndefined()
   })
 
   it('drops blank lines and lines with no name', () => {

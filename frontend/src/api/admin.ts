@@ -569,6 +569,8 @@ export interface BulkInviteRow {
   position?: string | null
   fatherName?: string | null
   birthYear?: number | null
+  /** Full date of birth "yyyy-MM-dd" (preferred over birthYear — it feeds the birthday features). */
+  birthDate?: string | null
   /** Per-row branch/role by NAME; null falls back to the batch's LocationId / Role. */
   roleName?: string | null
   locationName?: string | null
@@ -670,6 +672,8 @@ export interface ParsedXlsxRow {
   position: string | null
   fatherName: string | null
   birthYear: number | null
+  /** "yyyy-MM-dd" when the file carried a full date; null when it only had a year. */
+  birthDate: string | null
   email: string | null
   roleName: string | null
   locationName: string | null

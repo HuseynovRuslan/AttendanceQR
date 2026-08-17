@@ -33,4 +33,7 @@ public record BulkInviteRow(
     string? FatherName = null,
     int? BirthYear = null,
     string? RoleName = null,
-    string? LocationName = null);
+    string? LocationName = null,
+    // Full date of birth — preferred over BirthYear (it feeds the birthday features); the year is
+    // kept in sync from it. A spreadsheet may still carry only a year, hence both survive.
+    DateOnly? BirthDate = null);

@@ -102,16 +102,17 @@ export function BulkInvitePage() {
       setError('Faylda işçi sətri tapılmadı')
       return
     }
-    // Back into the textarea in the template's column order, so the preview shows exactly what the
-    // file said and the admin can still edit it before importing. Empty cells stay as empty fields —
-    // parse() reads them positionally.
+    // Back into the textarea in the PASTE order (not the template's visual order — the file is read
+    // by header text, the textarea by position), so the preview shows exactly what the file said and
+    // the admin can still edit it before importing. Empty cells stay as empty fields.
     const lines = parsed.map((r) => {
       const cells = [
         r.fullName,
         r.phoneNumber ?? '',
         r.position ?? '',
         r.fatherName ?? '',
-        r.birthYear != null ? String(r.birthYear) : '',
+        // A full date renders back as dd.MM.yyyy — the format the paste parser reads.
+        r.birthDate ? r.birthDate.split('-').reverse().join('.') : r.birthYear != null ? String(r.birthYear) : '',
         r.email ?? '',
         r.roleName ?? '',
         r.locationName ?? '',
@@ -236,12 +237,12 @@ export function BulkInvitePage() {
           placeholder={
             'Əli Vəliyev, 0501234567\n' +
             'Ayşə Məmmədova, 0557654321, Mühasib\n' +
-            'Rəşad Quliyev, 0701112233, Bağban, Səməd oğlu, 1990, rashad@mail.az'
+            'Rəşad Quliyev, 0701112233, Bağban, Səməd oğlu, 15.03.1990, rashad@mail.az'
           }
           style={{ fontFamily: 'inherit', resize: 'vertical' }}
         />
         <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Format: <b>Ad Soyad, Telefon, Vəzifə, Ata adı, Təvəllüd ili, Email, Rol, Filial</b> —
+          Format: <b>Ad Soyad, Telefon, Vəzifə, Ata adı, Təvəllüd (1990 və ya 15.03.1990), Email, Rol, Filial</b> —
           yalnız ad məcburidir, qalanını buraxa bilərsiniz. Vergül və ya tab ilə ayırın.
           <br />
           Ortadakı sahəni ötürmək üçün yerini boş saxlayın:{' '}
