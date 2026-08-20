@@ -119,3 +119,19 @@ if [ -z "$NEWEST" ]; then
 else
   resolved backup "backups are running again"
 fi
+
+# Silent degradation of the paid/optional pipelines. Neither stops a check-in (by design), which is
+# exactly why nobody would notice: face checks quietly pile up NotChecked, photos quietly burn their
+# retry budget. A burst of failures in the last 15 minutes is a human's problem, not a log line's.
+FACE_FAILS=$(docker logs --since 15m attendanceqr-backend-1 2>&1 | grep -c "FaceMatchWorker: processing" || true)
+if [ "${FACE_FAILS:-0}" -ge 10 ]; then
+  problem face-match "Rekognition: ${FACE_FAILS} failed face checks in 15m — keys/quota/billing?"
+else
+  resolved face-match "face matching healthy again"
+fi
+PHOTO_FAILS=$(docker logs --since 15m attendanceqr-backend-1 2>&1 | grep -c "FAILED PERMANENTLY" || true)
+if [ "${PHOTO_FAILS:-0}" -ge 1 ]; then
+  problem photo-perm "${PHOTO_FAILS} selfie(s) PERMANENTLY failed to upload in 15m — R2 down >5h or misconfigured"
+else
+  resolved photo-perm "photo uploads healthy again"
+fi

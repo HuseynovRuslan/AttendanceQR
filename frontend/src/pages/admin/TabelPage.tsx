@@ -85,6 +85,14 @@ export function TabelPage() {
       })
     : []
 
+  // The grid is ~31 <td> per employee: at 2000 people "Bütün filiallar" is ~70,000 cells, which
+  // freezes the tab and hangs printing. Rather than changing the default (small companies rightly
+  // see everyone at once), the RENDER is capped — the accountant picks a branch to go deeper, and
+  // the Excel export is untouched because the server builds that from the full data either way.
+  const RENDER_CAP = 400
+  const rows = report ? report.rows.slice(0, RENDER_CAP) : []
+  const hiddenRows = report ? report.rows.length - rows.length : 0
+
   return (
     <div className="tb-wrap">
       {/* Controls stay out of print — the printed sheet is the grid and its legend, nothing else. */}
@@ -124,6 +132,13 @@ export function TabelPage() {
         <div className="card card-pad muted" style={{ textAlign: 'center' }}>Bu ay üçün işçi tapılmadı.</div>
       )}
 
+      {!loading && report && hiddenRows > 0 && (
+        <div className="card card-pad no-print" style={{ marginBottom: 10, background: 'var(--sand)', fontSize: 13 }}>
+          Siyahı çox böyükdür: {report.rows.length} işçidən ilk {RENDER_CAP}-ü göstərilir.
+          Hamısını görmək üçün <b>filial seçin</b> — Excel faylına isə bütün işçilər onsuz da tam düşür.
+        </div>
+      )}
+
       {!loading && report && report.rows.length > 0 && (
         <div className="tb-scroll">
           <table className="tb-grid">
@@ -142,7 +157,7 @@ export function TabelPage() {
               </tr>
             </thead>
             <tbody>
-              {report.rows.map((r) => (
+              {rows.map((r) => (
                 <tr key={r.employeeId}>
                   <th className="tb-name-col" scope="row">
                     <div className="tb-name">{r.employeeName}</div>
