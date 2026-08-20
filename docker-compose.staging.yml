@@ -45,11 +45,16 @@ services:
       Cors__AllowedOrigins: ${Cors__AllowedOrigins}
       App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
-      # Left empty on purpose — the app no-ops each of these rather than failing, and staging has no
+      # Empty by DEFAULT — the app no-ops each of these rather than failing, and staging has no
       # business touching the real photo bucket, the real push subscriptions or a paid face API.
-      Storage__Minio__Endpoint: ""
-      Storage__Minio__AccessKey: ""
-      Storage__Minio__SecretKey: ""
+      # Storage stays overridable from .env.staging so load tests can point staging at an ISOLATED
+      # bucket (or at a black-hole endpoint to rehearse an R2 outage) without touching production.
+      Storage__Minio__Endpoint: ${Storage__Minio__Endpoint:-}
+      Storage__Minio__AccessKey: ${Storage__Minio__AccessKey:-}
+      Storage__Minio__SecretKey: ${Storage__Minio__SecretKey:-}
+      Storage__Minio__BucketName: ${Storage__Minio__BucketName:-attendance-photos}
+      Storage__Minio__Region: ${Storage__Minio__Region:-}
+      Storage__Minio__UseSsl: ${Storage__Minio__UseSsl:-true}
       Rekognition__AccessKey: ""
       Rekognition__SecretKey: ""
       Push__PublicKey: ""

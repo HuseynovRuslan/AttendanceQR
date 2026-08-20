@@ -36,6 +36,7 @@ public sealed class PhotoUploadWorker : BackgroundService
             try
             {
                 await ProcessAsync(job, stoppingToken);
+                _queue.MarkUploaded();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -43,6 +44,7 @@ public sealed class PhotoUploadWorker : BackgroundService
             }
             catch (Exception ex)
             {
+                _queue.MarkFailed();
                 _logger.LogWarning(ex, "PhotoUploadWorker: upload for record {RecordId} failed", job.RecordId);
             }
         }

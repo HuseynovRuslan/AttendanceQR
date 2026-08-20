@@ -15,9 +15,19 @@ public sealed record PhotoUploadJob(Guid TenantId, Guid RecordId, Guid EmployeeI
 /// </summary>
 public interface IPhotoUploadQueue
 {
-    /// <summary>Non-blocking; false when the queue is full (the photo is dropped, never the scan).</summary>
+    /// <summary>Non-blocking; false when the photo could not even be queued (the scan is never affected).</summary>
     bool TryEnqueue(PhotoUploadJob job);
     ChannelReader<PhotoUploadJob> Reader { get; }
+
+    // Counters for /api/diag/queues — the only way to SEE this queue under load. All monotonic
+    // except Depth. "Dropped" is deliberately not a counter: DropOldest evicts silently inside the
+    // channel, so it is derived (Enqueued - Uploaded - Failed - Depth) at read time.
+    long Enqueued { get; }
+    long Uploaded { get; }
+    long Failed { get; }
+    int Depth { get; }
+    void MarkUploaded();
+    void MarkFailed();
 }
 
 public sealed class PhotoUploadQueue : IPhotoUploadQueue
@@ -29,7 +39,23 @@ public sealed class PhotoUploadQueue : IPhotoUploadQueue
     private readonly Channel<PhotoUploadJob> _channel = Channel.CreateBounded<PhotoUploadJob>(
         new BoundedChannelOptions(500) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
 
-    public bool TryEnqueue(PhotoUploadJob job) => _channel.Writer.TryWrite(job);
+    private long _enqueued;
+    private long _uploaded;
+    private long _failed;
+
+    public bool TryEnqueue(PhotoUploadJob job)
+    {
+        var ok = _channel.Writer.TryWrite(job);
+        if (ok) Interlocked.Increment(ref _enqueued);
+        return ok;
+    }
 
     public ChannelReader<PhotoUploadJob> Reader => _channel.Reader;
+
+    public long Enqueued => Interlocked.Read(ref _enqueued);
+    public long Uploaded => Interlocked.Read(ref _uploaded);
+    public long Failed => Interlocked.Read(ref _failed);
+    public int Depth => _channel.Reader.CanCount ? _channel.Reader.Count : -1;
+    public void MarkUploaded() => Interlocked.Increment(ref _uploaded);
+    public void MarkFailed() => Interlocked.Increment(ref _failed);
 }
