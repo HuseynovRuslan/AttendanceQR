@@ -29,7 +29,17 @@ public sealed class PhotoUploadWorker : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    // Measured, not guessed: the 2000-employee load test arrived at 6.7 photos/s and a SINGLE
+    // consumer managed ~4/s against healthy R2 — the queue hit its cap and 38% of the selfies were
+    // evicted. Uploads are independent I/O, so twelve consumers (~40/s healthy, ~0.6/s through a 10s
+    // timeout outage) put the ceiling far above any real burst. Each job gets its own DI scope, so
+    // nothing is shared between consumers but the channel itself.
+    private const int Parallelism = 12;
+
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(Enumerable.Range(0, Parallelism).Select(_ => ConsumeAsync(stoppingToken)));
+
+    private async Task ConsumeAsync(CancellationToken stoppingToken)
     {
         await foreach (var job in _queue.Reader.ReadAllAsync(stoppingToken))
         {

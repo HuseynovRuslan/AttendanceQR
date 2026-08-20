@@ -32,12 +32,15 @@ public interface IPhotoUploadQueue
 
 public sealed class PhotoUploadQueue : IPhotoUploadQueue
 {
-    // Bounded because each item carries ~30-60KB of image: 500 items ≈ 30MB worst case, roughly a
-    // whole shift-start burst. Past that the OLDEST photo is dropped — attendance is long since
-    // committed either way, and under a real R2 outage newer selfies are the ones still worth
-    // keeping when service returns.
+    // Bounded because each item carries ~30-60KB of image. Sized from the 2000-employee load test:
+    // at 500, a healthy-R2 run still dropped 38% of photos once the single reader fell behind; 2000
+    // (~90MB worst case) holds an ENTIRE morning's photos through a full R2 outage, so when storage
+    // returns the parallel consumers catch up instead of having silently evicted the backlog. Past
+    // even that, the OLDEST photo is dropped — attendance is long since committed either way, and
+    // under a dead R2 the newest selfies are the ones still worth keeping.
+    // SingleReader is false: PhotoUploadWorker runs several consumers over this one channel.
     private readonly Channel<PhotoUploadJob> _channel = Channel.CreateBounded<PhotoUploadJob>(
-        new BoundedChannelOptions(500) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
+        new BoundedChannelOptions(2000) { SingleReader = false, FullMode = BoundedChannelFullMode.DropOldest });
 
     private long _enqueued;
     private long _uploaded;
