@@ -21,10 +21,10 @@
 # tenant subdomain could be framed by any page on the internet, and a browser that had once reached
 # it over http had nothing telling it never to do that again.
 #
-# Deliberately NOT here: Content-Security-Policy. This app loads its font from Google, its map tiles
-# from OpenStreetMap/CARTO and its photos from presigned R2 URLs, so a policy assembled from guesses
-# breaks the selfie, the map, or the typeface — silently, and on somebody's phone at 08:00. It is
-# being proven on staging first (see test.qrlog.az below).
+# Deliberately NOT here: Content-Security-Policy. It lives in its own snippet (app_csp below),
+# because the API host it may connect to differs per environment — staging talks to api-test, every
+# production host to api.qrlog.az — and because the static marketing site and the native-app host
+# have different needs from the tenant frontends.
 (security_headers) {
 	header {
 		# A year, and every subdomain: each tenant lives at one, and they are all this app.
@@ -46,6 +46,27 @@
 		# Don't advertise the server and its version to anyone scanning for a known CVE.
 		-Server
 	}
+}
+
+# Content-Security-Policy for the app frontends, ENFORCING. Argument = the API host this
+# environment's frontend talks to (connect-src). Every source below is one the app really uses —
+# read out of the code and the built bundle (all 45 chunks swept for external URLs), not guessed:
+#   fonts.googleapis / gstatic  the Manrope + IBM Plex Mono stylesheet in index.html
+#   tile.openstreetmap          LocationMapPicker
+#   basemaps.cartocdn           the dashboard, problems, field-visit and HQ maps
+#   nominatim.openstreetmap.org the address search in LocationMapPicker (connect, not img)
+#   *.r2.cloudflarestorage.com  presigned selfie URLs, loaded straight from the browser
+#   'unsafe-inline' for STYLE   the admin panel styles inline throughout, and leaflet injects its own
+#   blob: for worker            the QR decoder spins one up; blob: img covers canvas captures
+# script-src stays 'self' with no 'unsafe-inline' and no 'unsafe-eval' — that is the half that
+# actually stops an injected script, and the half most easily lost by adding sources on a hunch.
+#
+# Proven before promotion: enforced on test.qrlog.az first, then a real-Chromium sweep of 16 screens
+# (login, scan with its worker, both map screens WITH the address search, tabel, live board, charts)
+# on 2026-08-20 — zero securitypolicyviolation events. That sweep is also what had earlier caught
+# nominatim, which the first draft would have silently broken.
+(app_csp) {
+	header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.r2.cloudflarestorage.com; connect-src 'self' {args[0]} https://nominatim.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'"
 }
 
 # www → apex. The site declares https://qrlog.az/… as canonical in every <link rel="canonical">, so
@@ -86,12 +107,18 @@ qrlog.az {
 bax.qrlog.az {
 	encode zstd gzip
 	import security_headers
+	import app_csp https://api.qrlog.az
 	reverse_proxy frontend:80
 }
 
 # The native app (TWA) is served from this company-neutral host — it names no tenant, so it needs its
 # own explicit block (the on-demand catch-all's allow-tls ask would reject it as a non-tenant). Same
 # frontend build; the app detects the "app" host and logs in via the cross-tenant app-login endpoint.
+#
+# app_csp is deliberately NOT here yet: this host renders inside the native WebView, where the
+# Capacitor bridge injects its runtime into the page — script-src 'self' may refuse that injection,
+# and the failure would look like "the app opens to a blank screen" on a tester's phone. Verify on a
+# real device first, then add the same import.
 app.qrlog.az {
 	encode zstd gzip
 	import security_headers
@@ -104,12 +131,14 @@ app.qrlog.az {
 ecaf.qrlog.az {
 	encode zstd gzip
 	import security_headers
+	import app_csp https://api.qrlog.az
 	reverse_proxy frontend:80
 }
 
 cleanfix.qrlog.az {
 	encode zstd gzip
 	import security_headers
+	import app_csp https://api.qrlog.az
 	reverse_proxy frontend:80
 }
 
@@ -133,29 +162,10 @@ test.qrlog.az {
 	encode zstd gzip
 	import security_headers
 
-	# Content-Security-Policy, ENFORCING, and only here. Every source below is one this app really
-	# uses — read out of the code and the running container, not guessed:
-	#   fonts.googleapis / gstatic  the Manrope + IBM Plex Mono stylesheet in index.html
-	#   tile.openstreetmap          LocationMapPicker
-	#   basemaps.cartocdn           the dashboard, problems, field-visit and HQ maps
-	#   nominatim.openstreetmap.org the address search in LocationMapPicker (connect, not img)
-	#   *.r2.cloudflarestorage.com  presigned selfie URLs, loaded straight from the browser
-	#   'unsafe-inline' for STYLE   the admin panel styles inline throughout, and leaflet injects its own
-	#   blob: for worker            the QR decoder spins one up; blob: img covers canvas captures
-	# script-src stays 'self' with no 'unsafe-inline' and no 'unsafe-eval' — that is the half that
-	# actually stops an injected script, and the half most easily lost by adding sources on a hunch.
-	#
-	# It is here and not on production because getting this wrong breaks the selfie, the map or the
-	# typeface SILENTLY, on an employee's phone, at 08:00. Prove it on staging, then promote.
-	#
-	# Every host above was checked against what the built bundle actually references — all 45 chunks
-	# pulled and swept for external URLs. That sweep is what caught nominatim, which the first draft
-	# of this policy would have blocked: the address search on the location form would simply have
-	# returned nothing, with no error anyone would connect to a header. It also cleared the ones that
-	# look alarming and are not — cdnjs (a code path in jsPDF we never take, since PrintQrPage calls
-	# .save() rather than dataurlnewwindow), and openstreetmap.org / leafletjs.com / reactjs.org,
-	# which are <a href> attribution and documentation links. CSP does not govern navigation.
-	header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.r2.cloudflarestorage.com; connect-src 'self' https://api-test.qrlog.az https://nominatim.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'"
+	# The same policy as production (app_csp), pointed at the staging API. This is where every future
+	# change to the policy is proven first — getting it wrong breaks the selfie, the map or the
+	# typeface SILENTLY, on an employee's phone, at 08:00.
+	import app_csp https://api-test.qrlog.az
 
 	reverse_proxy stg-frontend:80
 }
@@ -179,6 +189,9 @@ api-test.qrlog.az {
 https:// {
 	encode zstd gzip
 	import security_headers
+	# Every on-demand tenant is the same frontend bundle, so it gets the same policy (this also
+	# covers admin.qrlog.az — the operator console is that same bundle too).
+	import app_csp https://api.qrlog.az
 	tls {
 		on_demand
 	}
