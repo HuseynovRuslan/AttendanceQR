@@ -651,10 +651,11 @@ public class AttendanceController : ControllerBase
         await RecordProcessedScanAsync(clientScanId, employee.Id);
 
         // Photo audit — strictly best-effort and AFTER the check-in has been committed, so a storage
-        // failure can never block or roll back attendance. Only validation happens here; the R2
-        // upload runs in PhotoUploadWorker, because 2000 phones at shift start must never wait on
-        // object storage for a scan that is already committed.
-        var photoAccepted = TryQueueCheckInPhoto(employee, record, photoBase64);
+        // failure can never block or roll back attendance. The photo is persisted to the DURABLE
+        // queue here (one insert); the R2 upload itself runs in PhotoUploadWorker with retries,
+        // because 2000 phones at shift start must never wait on object storage for a scan that is
+        // already committed — and a deploy or crash must never lose an accepted selfie.
+        var photoAccepted = await TryQueueCheckInPhotoAsync(employee, record, photoBase64);
 
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, null, ip);
 
@@ -680,10 +681,16 @@ public class AttendanceController : ControllerBase
         });
     }
 
-    // Validates the check-in selfie and hands it to PhotoUploadWorker, which uploads it, seeds the
-    // reference selfie when none exists yet, and queues the face match. Never throws: any failure is
-    // logged and swallowed so check-in still succeeds. Returns whether a photo was accepted.
-    private bool TryQueueCheckInPhoto(Employee employee, AttendanceRecord record, string? photoBase64)
+    // How many photos may sit in the durable queue at once before new ones are refused: ~180MB of
+    // bytea at the observed 45KB/photo — a full 2000-employee morning through an outage fits twice
+    // over, and the cap is what keeps a week-long outage from eating the disk.
+    private const int MaxPendingPhotos = 4000;
+
+    // Validates the check-in selfie and persists it to the DURABLE upload queue (PendingPhotoUploads);
+    // PhotoUploadWorker uploads it with retry/backoff, seeds the reference selfie when none exists
+    // yet, and queues the face match. Never throws: any failure is logged and swallowed so check-in
+    // still succeeds. Returns whether the photo was accepted (= safely persisted, not yet uploaded).
+    private async Task<bool> TryQueueCheckInPhotoAsync(Employee employee, AttendanceRecord record, string? photoBase64)
     {
         if (string.IsNullOrWhiteSpace(photoBase64))
             return false;
@@ -699,13 +706,33 @@ public class AttendanceController : ControllerBase
                 return false;
             }
 
-            // The worker has no request to resolve a tenant from, so hand it the one this record was
-            // just written under.
-            var queued = _photoQueue.TryEnqueue(new PhotoUploadJob(_db.CurrentTenantId, record.Id, employee.Id, bytes));
-            if (!queued)
+            // Disk guard: past the cap the NEW photo is refused (counted + logged, never silent).
+            // PendingApprox is -1 until the worker's first reconcile — treated as "no data, allow".
+            if (_photoQueue.PendingApprox >= MaxPendingPhotos)
+            {
+                _photoQueue.MarkDropped();
                 _logger.LogWarning(
-                    "Photo audit: upload queue full, dropping check-in photo for record {RecordId}", record.Id);
-            return queued;
+                    "Photo audit: durable queue at cap ({Cap}), dropping check-in photo for record {RecordId}",
+                    MaxPendingPhotos, record.Id);
+                return false;
+            }
+
+            var pending = new PendingPhotoUpload
+            {
+                RecordId = record.Id,
+                EmployeeId = employee.Id,
+                Bytes = bytes,
+                NextAttemptUtc = DateTime.UtcNow,
+            };
+            _db.PendingPhotoUploads.Add(pending);
+            await _db.SaveChangesAsync();
+            _photoQueue.MarkEnqueued();
+            _photoQueue.PendingDelta(+1);
+
+            // The worker has no request to resolve a tenant from, so hand it the one this record was
+            // just written under. Losing the hint costs one poll interval, nothing more.
+            _photoQueue.HintReady(new PhotoUploadHint(_db.CurrentTenantId, pending.Id));
+            return true;
         }
         catch (Exception ex)
         {

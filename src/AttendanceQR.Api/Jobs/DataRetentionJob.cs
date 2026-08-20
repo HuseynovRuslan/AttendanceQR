@@ -89,6 +89,17 @@ public sealed class DataRetentionJob : BackgroundService
                     .Where(a => a.CreatedAtUtc < now.AddDays(-AuditLogDays))
                     .ExecuteDeleteAsync(ct);
 
+                // Backstop for the durable photo queue: the worker's retry budget (~5h) removes rows
+                // itself, so anything a day old is unreachable garbage (e.g. rows orphaned by a bug).
+                // Deleting it is a FAILURE being declared, not housekeeping — hence the error log.
+                var stalePhotos = await db.PendingPhotoUploads
+                    .Where(p => p.CreatedAtUtc < now.AddDays(-1))
+                    .ExecuteDeleteAsync(ct);
+                if (stalePhotos > 0)
+                    _logger.LogError(
+                        "DataRetentionJob: tenant {Tenant} dropped {Count} pending photo uploads older than 24h — these selfies are LOST",
+                        tenantId, stalePhotos);
+
                 if (scans + notifications + audits > 0)
                     _logger.LogInformation(
                         "DataRetentionJob: tenant {Tenant} pruned {Scans} processed scans, {Notifications} notifications, {Audits} audit rows",

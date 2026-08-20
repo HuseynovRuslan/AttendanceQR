@@ -68,6 +68,7 @@ public class AppDbContext : DbContext
     public DbSet<JobPosition> JobPositions => Set<JobPosition>();
     public DbSet<FieldVisit> FieldVisits => Set<FieldVisit>();
     public DbSet<FieldVisitChecklistItem> FieldVisitChecklistItems => Set<FieldVisitChecklistItem>();
+    public DbSet<PendingPhotoUpload> PendingPhotoUploads => Set<PendingPhotoUpload>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,7 +87,7 @@ public class AppDbContext : DbContext
             typeof(Schedule), typeof(ProcessedScan), typeof(Announcement), typeof(AnnouncementRecipient),
             typeof(PushSubscription), typeof(EmployeeNotification),
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
-            typeof(FieldVisit), typeof(FieldVisitChecklistItem),
+            typeof(FieldVisit), typeof(FieldVisitChecklistItem), typeof(PendingPhotoUpload),
         };
         foreach (var t in tenantScoped)
         {
@@ -169,6 +170,12 @@ public class AppDbContext : DbContext
         // For the retention job: rows older than the offline-trust window can never be replayed, so
         // they are deleted nightly by this date index instead of a growing seq scan.
         modelBuilder.Entity<ProcessedScan>().HasIndex(p => new { p.TenantId, p.ProcessedAtUtc });
+
+        // The durable photo-upload queue: the worker's poll is "this tenant, due now", so the index
+        // leads with what it filters on. One row per record — a scan can't queue its selfie twice.
+        modelBuilder.Entity<PendingPhotoUpload>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<PendingPhotoUpload>().HasIndex(p => new { p.TenantId, p.NextAttemptUtc });
+        modelBuilder.Entity<PendingPhotoUpload>().HasIndex(p => p.RecordId).IsUnique();
 
         // Field visits — the board reads one day at a time; the worker reads their own day.
         modelBuilder.Entity<FieldVisit>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
