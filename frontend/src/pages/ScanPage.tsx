@@ -624,7 +624,10 @@ export function ScanPage() {
         successFeedback()
         setResult({
           tone: 'green',
-          title: reason === 'server' ? 'Server müvəqqəti əlçatmazdır — yadda saxlanıldı' : 'İnternet yoxdur — yadda saxlanıldı',
+          // The thrown-fetch path is NOT only "no internet": a backend down behind the proxy answers
+          // 502 without CORS headers, which a browser surfaces as the same exception. The wording
+          // stays honest about that — the connection to the SERVER is what's gone, whoever's fault.
+          title: reason === 'server' ? 'Server müvəqqəti əlçatmazdır — yadda saxlanıldı' : 'Serverlə əlaqə müvəqqəti kəsilib — yadda saxlanıldı',
           detail: 'Giriş cihazınızda saxlanıldı.',
           note: 'Əlaqə bərpa olunanda avtomatik göndəriləcək. Tətbiqi bağlaya bilərsiniz.',
           final: true,
