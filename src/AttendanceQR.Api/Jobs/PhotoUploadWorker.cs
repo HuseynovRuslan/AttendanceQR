@@ -27,8 +27,9 @@ public sealed class PhotoUploadWorker : BackgroundService
     // ~30s → 5min exponential backoff, capped so recovery after a long outage starts within
     // minutes of R2 returning, not hours. 60 attempts ≈ 5 hours of continuous outage covered;
     // past that the photo is declared failed LOUDLY (and the age cleanup is the final backstop).
-    internal const int MaxAttempts = 60;
-    internal static TimeSpan BackoffFor(int attempts) =>
+    // Public only so the schedule can be pinned by tests — nothing else may call it.
+    public const int MaxAttempts = 60;
+    public static TimeSpan BackoffFor(int attempts) =>
         TimeSpan.FromSeconds(Math.Min(300, 30 * Math.Pow(2, Math.Clamp(attempts - 1, 0, 4))));
 
     private readonly IPhotoUploadQueue _queue;
