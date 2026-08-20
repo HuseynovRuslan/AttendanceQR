@@ -35,6 +35,23 @@ export interface QueuedScan {
   employeeId?: string
 }
 
+/**
+ * Statuses that mean the SERVER is temporarily unreachable — a deploy window, a crashed backend
+ * behind a live proxy, an overloaded gateway — not that the scan was judged and refused. These are
+ * the "your tap must not be lost" cases: the scan goes to the queue exactly as if the network had
+ * dropped, and the replay is safe because every tap carries an idempotency id from the start.
+ *
+ * Deliberately NOT 500: a deterministic server bug answers 500 to the same payload every time, so
+ * queueing it would retry a scan that can never succeed and hide the bug behind a green card. And
+ * never any 4xx — those are real answers (wrong device, outside the fence, session expired), and
+ * treating them as outages would replay scans the server has already refused for a reason.
+ *
+ * A pure rule on purpose, so it can be tested without a browser.
+ */
+export function isServerUnavailable(status: number): boolean {
+  return status === 502 || status === 503 || status === 504
+}
+
 /** Fired on the window whenever the queue changes, so any badge can refresh its count. */
 export const QUEUE_CHANGED = 'qrlog:queue-changed'
 

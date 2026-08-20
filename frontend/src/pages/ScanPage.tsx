@@ -15,7 +15,7 @@ import { reportFailure, flushFailures } from '../lib/scanFailures'
 import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/feedback'
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
-import { enqueueScan } from '../lib/offlineQueue'
+import { enqueueScan, isServerUnavailable } from '../lib/offlineQueue'
 import { decodeJwt } from '../lib/jwt'
 import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
@@ -598,9 +598,55 @@ export function ScanPage() {
     const clientScanId = crypto.randomUUID()
     const clientTimestampUtc = new Date().toISOString()
 
+    // Saves the tap on the device — same id, same selfie, same timestamp — so the replay is the SAME
+    // scan, not a new one. Shared by every path where the server could not judge the scan: network
+    // down, request timed out, or the server itself answering 502/503/504 (a deploy window used to
+    // reject these taps outright — the one way a real clock-in could still be lost).
+    async function saveLocally(reason: 'network' | 'server') {
+      try {
+        await enqueueScan({
+          clientScanId,
+          qrToken,
+          deviceFingerprint: getDeviceFingerprint(),
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          photoBase64: photoBase64 ?? undefined,
+          clientTimestampUtc,
+          queuedAtMs: Date.now(),
+          // Stamp WHOSE scan this is. The queue is device storage, not session storage, so on a
+          // shared site phone the next person to sign in would otherwise replay this as their own.
+          // '?? unknown' rather than undefined: undefined means "queued before this field existed"
+          // and is replayable by anyone, so a momentary decode failure must not mint a fresh unowned
+          // item and reopen the misattribution this stamp closes.
+          employeeId: decodeJwt(getToken() ?? '')?.sub ?? 'unknown',
+        })
+        // Saved on the device IS a success for the employee — same confident buzz as a live scan.
+        successFeedback()
+        setResult({
+          tone: 'green',
+          title: reason === 'server' ? 'Server müvəqqəti əlçatmazdır — yadda saxlanıldı' : 'İnternet yoxdur — yadda saxlanıldı',
+          detail: 'Giriş cihazınızda saxlanıldı.',
+          note: 'Əlaqə bərpa olunanda avtomatik göndəriləcək. Tətbiqi bağlaya bilərsiniz.',
+          final: true,
+          photo: photoBase64 ?? undefined,
+        })
+      } catch {
+        // Both the scan AND the offline save failed — the worst case, and the one that used to leave
+        // no trace at all. Queue a failure report so it reaches the Problems screen once back online.
+        reportFailure('NetworkError')
+        errorFeedback()
+        setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.' })
+      }
+    }
+
     try {
       const { status, data } = await apiRequest<ScanResponse>('/api/attendance/scan', {
         method: 'POST',
+        // A wedged connection must become a queued scan, not an endless spinner: past this deadline
+        // the fetch throws and the catch below saves the tap. The server records in ~40ms — anything
+        // near 20s is infrastructure, and the idempotency id makes the later replay safe even if the
+        // server DID write before the deadline hit.
+        timeoutMs: 20_000,
         body: {
           qrToken,
           deviceFingerprint: getDeviceFingerprint(),
@@ -611,6 +657,13 @@ export function ScanPage() {
           clientScanId,
         },
       })
+
+      // The server did not JUDGE the scan — it was simply not there to answer (deploy window,
+      // crashed backend behind the proxy). Same treatment as no network at all.
+      if (isServerUnavailable(status)) {
+        await saveLocally('server')
+        return
+      }
 
       if (status === 200 && data?.action === 'CheckIn') {
         successFeedback()
@@ -651,42 +704,10 @@ export function ScanPage() {
       if (card.tone === 'red') errorFeedback()
       setResult(card)
     } catch {
-      // No connection — instead of failing, save the scan on the device and sync it when the network
-      // returns. GPS + selfie were already captured, so nothing is lost; only the round-trip is deferred.
-      try {
-        await enqueueScan({
-          clientScanId,
-          qrToken,
-          deviceFingerprint: getDeviceFingerprint(),
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          photoBase64: photoBase64 ?? undefined,
-          clientTimestampUtc,
-          queuedAtMs: Date.now(),
-          // Stamp WHOSE scan this is. The queue is device storage, not session storage, so on a
-          // shared site phone the next person to sign in would otherwise replay this as their own.
-          // '?? unknown' rather than undefined: undefined means "queued before this field existed"
-          // and is replayable by anyone, so a momentary decode failure must not mint a fresh unowned
-          // item and reopen the misattribution this stamp closes.
-          employeeId: decodeJwt(getToken() ?? '')?.sub ?? 'unknown',
-        })
-        // Saved on the device IS a success for the employee — same confident buzz as a live scan.
-        successFeedback()
-        setResult({
-          tone: 'green',
-          title: 'İnternet yoxdur — yadda saxlanıldı',
-          detail: 'Giriş cihazınızda saxlanıldı.',
-          note: 'İnternet qayıdanda avtomatik göndəriləcək. Tətbiqi bağlaya bilərsiniz.',
-          final: true,
-          photo: photoBase64 ?? undefined,
-        })
-      } catch {
-        // Both the scan AND the offline save failed — the worst case, and the one that used to leave
-        // no trace at all. Queue a failure report so it reaches the Problems screen once back online.
-        reportFailure('NetworkError')
-        errorFeedback()
-        setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.' })
-      }
+      // No connection, or the 20s deadline fired — instead of failing, save the scan on the device
+      // and sync it when the server is reachable again. GPS + selfie were already captured, so
+      // nothing is lost; only the round-trip is deferred.
+      await saveLocally('network')
     }
   }
 

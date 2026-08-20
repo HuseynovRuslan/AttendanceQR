@@ -86,13 +86,19 @@ interface RequestOptions {
   body?: unknown
   /** Attach the JWT (default true). Login/activate pass false so their 401 doesn't redirect. */
   auth?: boolean
+  /**
+   * Abort the request after this many ms; the fetch then THROWS (a TimeoutError), which callers see
+   * exactly like a dropped network. Set only where hanging is worse than failing — the scan uses it
+   * so a wedged connection sends the tap to the offline queue instead of a spinner that never ends.
+   */
+  timeoutMs?: number
 }
 
 export async function apiRequest<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { method = 'GET', body, auth = true } = options
+  const { method = 'GET', body, auth = true, timeoutMs } = options
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (auth) {
@@ -104,6 +110,10 @@ export async function apiRequest<T = unknown>(
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    // Guarded: an old WebView without AbortSignal.timeout simply gets no deadline, as before.
+    signal: timeoutMs !== undefined && typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+      ? AbortSignal.timeout(timeoutMs)
+      : undefined,
   })
 
   // Only bounce to login for authenticated calls — a 401 from login itself means bad credentials.

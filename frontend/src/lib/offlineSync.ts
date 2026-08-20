@@ -126,9 +126,15 @@ export function startOfflineSync(): () => void {
   // it never fires when the app is simply reopened. Coming back to the foreground is the moment a
   // phone that has been in a pocket all morning actually has signal again.
   document.addEventListener('visibilitychange', onVisible)
+  // And NEITHER of those fires when the network was fine all along but the SERVER was down — a scan
+  // queued during a deploy window, with the app left open on the result card, would wait for a
+  // signal that never comes. A slow heartbeat is the recovery path for exactly that case; with an
+  // empty queue it is a couple of local IndexedDB reads and no network, so idling costs nothing.
+  const heartbeat = window.setInterval(run, 60_000)
   return () => {
     window.removeEventListener('online', run)
     document.removeEventListener('visibilitychange', onVisible)
+    window.clearInterval(heartbeat)
   }
 
   function onVisible() {
