@@ -93,7 +93,7 @@ public class ScanHandlerTests
 
             Face = new StubFace();
             Controller = new AttendanceController(
-                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), Face,
+                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new PhotoUploadQueue(), Face,
                 new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),

@@ -34,6 +34,11 @@ public class Announcement : ITenantScoped
     // anyone mid-read). Employees only ever fetch active ones.
     public bool IsActive { get; set; } = true;
 
+    // When the push notification for it went out (banner visibility is independent — that's
+    // ScheduledForUtc). Set by AnnouncementPushWorker; the null check is what makes the scheduled
+    // sweep idempotent, and what proves a retire-before-push means no push at all.
+    public DateTime? PushedAtUtc { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 
     // Only used when Audience == Selected.

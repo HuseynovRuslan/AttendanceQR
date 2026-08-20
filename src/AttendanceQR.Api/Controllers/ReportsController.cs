@@ -6,6 +6,7 @@ using AttendanceQR.Domain.Enums;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AttendanceQR.Api.Controllers;
 
@@ -17,11 +18,13 @@ public class ReportsController : ControllerBase
 {
     private readonly IReportQueryService _reports;
     private readonly IExcelReportExporter _exporter;
+    private readonly IMemoryCache _cache;
 
-    public ReportsController(IReportQueryService reports, IExcelReportExporter exporter)
+    public ReportsController(IReportQueryService reports, IExcelReportExporter exporter, IMemoryCache cache)
     {
         _reports = reports;
         _exporter = exporter;
+        _cache = cache;
     }
 
     [HttpGet("summary")]
@@ -101,13 +104,27 @@ public class ReportsController : ControllerBase
 
     // Live "today" board (computed from raw records, not DailySummary). Scoped by role. An optional
     // ?date=yyyy-MM-dd shows a past day's board instead (same shape, so the UI can browse history).
+    //
+    // The LIVE board is cached 10s PER REQUESTER: the dashboard, the today board and the wall kiosk
+    // all poll this endpoint every 20-30s — usually under the same admin account — and each poll
+    // recomputes the whole roster. The key includes the requester precisely because the service
+    // scopes the rows by role (a manager sees only their branches); a tenant-wide key would serve
+    // one person's board to another. Ten seconds is invisible at those poll rates, and a historical
+    // ?date= browse is rare enough to stay uncached.
     [HttpGet("today")]
     public async Task<IActionResult> Today([FromQuery] DateOnly? date)
     {
         var requesterId = User.EmployeeId();
         var role = User.Role();
 
-        var rows = await _reports.GetTodayAttendanceAsync(requesterId, role, date, HttpContext.RequestAborted);
+        if (date is not null)
+            return Ok(await _reports.GetTodayAttendanceAsync(requesterId, role, date, HttpContext.RequestAborted));
+
+        var rows = await _cache.GetOrCreateAsync($"today-board:{requesterId}", entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(10);
+            return _reports.GetTodayAttendanceAsync(requesterId, role, null, HttpContext.RequestAborted);
+        });
         return Ok(rows);
     }
 

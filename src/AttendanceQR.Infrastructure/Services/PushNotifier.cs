@@ -40,21 +40,40 @@ public sealed class PushNotifier : IPushNotifier
         if (subs.Count == 0)
             return 0;
 
-        var dead = new List<Domain.Entities.PushSubscription>();
-        var reached = new HashSet<Guid>();
+        var dead = new System.Collections.Concurrent.ConcurrentBag<Domain.Entities.PushSubscription>();
+        var reached = new System.Collections.Concurrent.ConcurrentDictionary<Guid, byte>();
 
-        foreach (var s in subs)
-        {
-            // A native app registration carries an FcmToken and goes out over FCM; a browser/PWA row
-            // has the Web Push keys and goes over Web Push. Same "false = prune" contract either way.
-            var alive = !string.IsNullOrEmpty(s.FcmToken)
-                ? await _fcm.SendAsync(s.FcmToken, title, body, url, ct)
-                : await _sender.SendAsync(s.Endpoint, s.P256dh, s.Auth, title, body, url, ct);
-            if (alive) reached.Add(s.EmployeeId);
-            else dead.Add(s);
-        }
+        // Bounded-parallel fan-out with a per-send timeout. Sequential sends were fine at 95
+        // subscriptions; at a 2000-employee tenant a shift-start reminder sweep took longer than the
+        // 10-minute lead it exists to give, and one hung push endpoint stalled everyone behind it.
+        // Push endpoints are independent I/O — 16 in flight is gentle on the senders' HttpClients.
+        // The DbContext is NOT touched inside the parallel body; pruning happens after, on one thread.
+        await Parallel.ForEachAsync(
+            subs,
+            new ParallelOptions { MaxDegreeOfParallelism = 16, CancellationToken = ct },
+            async (s, token) =>
+            {
+                using var perSend = CancellationTokenSource.CreateLinkedTokenSource(token);
+                perSend.CancelAfter(TimeSpan.FromSeconds(10));
+                bool alive;
+                try
+                {
+                    // A native app registration carries an FcmToken and goes out over FCM; a browser/PWA
+                    // row has the Web Push keys and goes over Web Push. Same "false = prune" contract.
+                    alive = !string.IsNullOrEmpty(s.FcmToken)
+                        ? await _fcm.SendAsync(s.FcmToken, title, body, url, perSend.Token)
+                        : await _sender.SendAsync(s.Endpoint, s.P256dh, s.Auth, title, body, url, perSend.Token);
+                }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    // Timed out, not proven dead — keep the subscription, just skip it this round.
+                    alive = true;
+                }
+                if (alive) reached.TryAdd(s.EmployeeId, 0);
+                else dead.Add(s);
+            });
 
-        if (dead.Count > 0)
+        if (!dead.IsEmpty)
         {
             _db.PushSubscriptions.RemoveRange(dead);
             await _db.SaveChangesAsync(ct);

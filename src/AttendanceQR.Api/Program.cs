@@ -115,6 +115,12 @@ builder.Services.AddSingleton<IAmazonRekognition>(sp =>
 });
 builder.Services.AddScoped<IFaceMatchService, RekognitionFaceMatchService>();
 builder.Services.AddSingleton<IFaceMatchQueue, FaceMatchQueue>();
+// Check-in selfies upload out-of-band (bounded queue + worker) — a scan response never waits on R2.
+builder.Services.AddSingleton<IPhotoUploadQueue, PhotoUploadQueue>();
+builder.Services.AddHostedService<PhotoUploadWorker>();
+// Announcement push fan-out out-of-band + the sweep that sends SCHEDULED announcements' pushes.
+builder.Services.AddSingleton<IAnnouncementPushQueue, AnnouncementPushQueue>();
+builder.Services.AddHostedService<AnnouncementPushWorker>();
 
 // App options (time zone for shift/UTC math). Registered as a plain singleton so the
 // Application/Infrastructure layers don't need an Options package reference.

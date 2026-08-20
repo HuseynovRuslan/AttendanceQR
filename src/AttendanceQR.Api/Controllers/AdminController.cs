@@ -64,6 +64,12 @@ public class AdminController : ControllerBase
         var locationNames = await _db.Locations
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
 
+        // One dictionary, not one query per employee: the old per-row Schedules lookup below was a
+        // SYNC query inside a deferred Select — at 2000 employees the list endpoint ran 2000 blocking
+        // round-trips during JSON serialization.
+        var scheduleNames = await _db.Schedules
+            .ToDictionaryAsync(s => s.Id, s => s.Name, HttpContext.RequestAborted);
+
         // Which branches each manager oversees — the form needs it to show what is already ticked,
         // and the list needs it because a manager with none sees an empty panel and no explanation.
         var managedByEmployee = (await _db.ManagedLocations.ToListAsync(HttpContext.RequestAborted))
@@ -97,7 +103,7 @@ public class AdminController : ControllerBase
                 workStart = e.WorkStart?.ToString("HH:mm"),
                 workEnd = e.WorkEnd?.ToString("HH:mm"),
                 scheduleId = e.ScheduleId,
-                scheduleName = e.ScheduleId == null ? null : _db.Schedules.Where(sc => sc.Id == e.ScheduleId).Select(sc => sc.Name).FirstOrDefault(),
+                scheduleName = e.ScheduleId is Guid sid ? scheduleNames.GetValueOrDefault(sid) : null,
                 workCycleDays = e.WorkCycleDays,
                 workCycleOnDays = e.WorkCycleOnDays,
                 workCycleAnchor = e.WorkCycleAnchor,
@@ -130,7 +136,7 @@ public class AdminController : ControllerBase
                 deviceCount = active.Count,
                 createdAtUtc = e.CreatedAtUtc
             };
-        });
+        }).ToList(); // materialized — a deferred enumerable would run its lambdas during serialization
         return Ok(result);
     }
 

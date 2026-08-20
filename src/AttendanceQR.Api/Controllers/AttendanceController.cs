@@ -60,6 +60,7 @@ public class AttendanceController : ControllerBase
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
     private readonly IFaceMatchQueue _faceQueue;
+    private readonly IPhotoUploadQueue _photoQueue;
     private readonly IFaceMatchService _faceMatch;
     private readonly DeviceBindingOptions _deviceOptions;
     private readonly TimeZoneInfo _timeZone;
@@ -72,6 +73,7 @@ public class AttendanceController : ControllerBase
         IAttendanceQueryService attendanceQuery,
         IPhotoStorageService photoStorage,
         IFaceMatchQueue faceQueue,
+        IPhotoUploadQueue photoQueue,
         IFaceMatchService faceMatch,
         DeviceBindingOptions deviceOptions,
         AppOptions appOptions,
@@ -83,6 +85,7 @@ public class AttendanceController : ControllerBase
         _attendanceQuery = attendanceQuery;
         _photoStorage = photoStorage;
         _faceQueue = faceQueue;
+        _photoQueue = photoQueue;
         _faceMatch = faceMatch;
         _deviceOptions = deviceOptions;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
@@ -648,8 +651,10 @@ public class AttendanceController : ControllerBase
         await RecordProcessedScanAsync(clientScanId, employee.Id);
 
         // Photo audit — strictly best-effort and AFTER the check-in has been committed, so a storage
-        // failure can never block or roll back attendance. Failure just leaves the photo key null.
-        await TryStoreCheckInPhotoAsync(employee, record, photoBase64);
+        // failure can never block or roll back attendance. Only validation happens here; the R2
+        // upload runs in PhotoUploadWorker, because 2000 phones at shift start must never wait on
+        // object storage for a scan that is already committed.
+        var photoAccepted = TryQueueCheckInPhoto(employee, record, photoBase64);
 
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, null, ip);
 
@@ -669,18 +674,19 @@ public class AttendanceController : ControllerBase
             // hours when set (EffectiveShiftStart).
             late = record.Status == AttendanceStatus.Late,
             checkInAtUtc = nowUtc,
-            photoStored = record.CheckInPhotoKey is not null,
+            // "Accepted for upload" — the actual R2 write happens out-of-band moments later.
+            photoStored = photoAccepted,
             openDays
         });
     }
 
-    // Decodes and uploads the check-in selfie, then persists the resulting object key. Also seeds the
-    // employee's reference selfie the first time one is available (there is no separate enrollment
-    // capture yet). Never throws: any failure is logged and swallowed so check-in still succeeds.
-    private async Task TryStoreCheckInPhotoAsync(Employee employee, AttendanceRecord record, string? photoBase64)
+    // Validates the check-in selfie and hands it to PhotoUploadWorker, which uploads it, seeds the
+    // reference selfie when none exists yet, and queues the face match. Never throws: any failure is
+    // logged and swallowed so check-in still succeeds. Returns whether a photo was accepted.
+    private bool TryQueueCheckInPhoto(Employee employee, AttendanceRecord record, string? photoBase64)
     {
         if (string.IsNullOrWhiteSpace(photoBase64))
-            return;
+            return false;
 
         try
         {
@@ -690,38 +696,22 @@ public class AttendanceController : ControllerBase
             {
                 _logger.LogWarning(
                     "Photo audit: skipping check-in photo for employee {EmployeeId} (decoded {Bytes} bytes)", employee.Id, bytes.Length);
-                return;
+                return false;
             }
 
-            var nowUtc = DateTime.UtcNow;
-            var ct = HttpContext.RequestAborted;
-            // Whether a reference existed BEFORE this scan — decides if there's anything to face-match
-            // against (the very first check-in only seeds the reference, so there's nothing to compare).
-            var hadReference = !string.IsNullOrEmpty(employee.ReferencePhotoKey);
-
-            record.CheckInPhotoKey = await _photoStorage.UploadCheckInPhotoAsync(employee.Id, record.Id, bytes, ct);
-            record.CheckInPhotoTakenAtUtc = nowUtc;
-
-            // Reference fallback: the first time we ever have a photo for this employee, keep a copy
-            // as their reference selfie for the manager to compare future check-ins against.
-            if (!hadReference)
-            {
-                employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(employee.Id, bytes, ct);
-                employee.ReferencePhotoTakenAtUtc = nowUtc;
-            }
-
-            await _db.SaveChangesAsync(ct);
-
-            // Queue a background face-match only when there's a prior reference to compare against.
             // The worker has no request to resolve a tenant from, so hand it the one this record was
             // just written under.
-            if (hadReference)
-                _faceQueue.Enqueue(_db.CurrentTenantId, record.Id);
+            var queued = _photoQueue.TryEnqueue(new PhotoUploadJob(_db.CurrentTenantId, record.Id, employee.Id, bytes));
+            if (!queued)
+                _logger.LogWarning(
+                    "Photo audit: upload queue full, dropping check-in photo for record {RecordId}", record.Id);
+            return queued;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Photo audit: failed to store check-in photo for employee {EmployeeId}, record {RecordId}", employee.Id, record.Id);
+                "Photo audit: failed to queue check-in photo for employee {EmployeeId}, record {RecordId}", employee.Id, record.Id);
+            return false;
         }
     }
 
