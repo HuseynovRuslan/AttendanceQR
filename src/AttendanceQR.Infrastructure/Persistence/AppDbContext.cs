@@ -125,6 +125,15 @@ public class AppDbContext : DbContext
         // sweeps every few minutes can't send the same nudge twice.
         modelBuilder.Entity<EmployeeNotification>()
             .HasIndex(n => new { n.TenantId, n.EmployeeId, n.Type, n.RelatedDate }).IsUnique();
+        // Date-leading index for the retention job's nightly "older than N days" delete.
+        modelBuilder.Entity<EmployeeNotification>().HasIndex(n => new { n.TenantId, n.CreatedAtUtc });
+
+        // AuditLogs is the fastest-growing table (every scan writes here, rejections included) and
+        // BOTH its readers filter by time: the problems screen (7-day window, polled per dashboard)
+        // and the bell's "rejections today" count. Without a date-leading index each poll seq-scans
+        // millions of rows within a year at 2000 employees; the bare TenantId index cannot help when
+        // one tenant owns nearly the whole table.
+        modelBuilder.Entity<AuditLog>().HasIndex(a => new { a.TenantId, a.CreatedAtUtc });
 
         // Operator billing (GLOBAL — no tenant query filter). One invoice per company per month is the
         // rule, so this unique index IS the upsert key. Money columns pinned to numeric(10,2).
@@ -157,6 +166,9 @@ public class AppDbContext : DbContext
         // Idempotency key: a client scan id is processed at most once per tenant. The unique index is
         // what makes a replayed offline scan a no-op instead of a duplicate check-in.
         modelBuilder.Entity<ProcessedScan>().HasIndex(p => new { p.TenantId, p.ClientScanId }).IsUnique();
+        // For the retention job: rows older than the offline-trust window can never be replayed, so
+        // they are deleted nightly by this date index instead of a growing seq scan.
+        modelBuilder.Entity<ProcessedScan>().HasIndex(p => new { p.TenantId, p.ProcessedAtUtc });
 
         // Field visits — the board reads one day at a time; the worker reads their own day.
         modelBuilder.Entity<FieldVisit>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

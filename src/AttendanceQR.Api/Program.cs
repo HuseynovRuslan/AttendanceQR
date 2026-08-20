@@ -22,9 +22,16 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// EF Core / PostgreSQL. Connection string comes from appsettings.json.
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// EF Core / PostgreSQL. Connection string comes from appsettings.json. The pool is capped BELOW
+// Postgres max_connections (100 on the default image): Npgsql's own default is also 100, so one
+// saturated backend would consume every server slot and leave nothing for psql, backups or a second
+// instance. 50 concurrent connections is far beyond the request concurrency this app sees; excess
+// requests briefly queue for a pooled connection instead of crashing into the server limit.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (!string.IsNullOrEmpty(connectionString)
+    && !connectionString.Contains("Maximum Pool Size", StringComparison.OrdinalIgnoreCase))
+    connectionString += ";Maximum Pool Size=50";
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
 // Options binding.
 builder.Services.Configure<QrTokenOptions>(
@@ -73,6 +80,12 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
         // implemented"). Only compute/validate checksums when the operation actually requires them.
         RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
         ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
+        // The selfie upload currently runs INSIDE the scan request, and the SDK default is 100s x
+        // several retries — an R2 slowdown at shift start would hang every check-in for minutes
+        // after the attendance row is already committed. 10s x 2 attempts bounds the worst case at
+        // ~20s; a photo that can't make it in that time is dropped, never the scan.
+        Timeout = TimeSpan.FromSeconds(10),
+        MaxErrorRetry = 1,
     };
     if (!string.IsNullOrWhiteSpace(opts.Endpoint))
     {
@@ -135,6 +148,10 @@ builder.Services.AddHostedService<DailySummaryJob>();
 
 // Nightly photo-retention job (~01:00 local): prunes check-in selfies older than RetentionDays.
 builder.Services.AddHostedService<PhotoCleanupJob>();
+
+// Nightly ledger retention (01:30): ProcessedScans / EmployeeNotifications / AuditLogs would
+// otherwise grow ~5M rows/year at 2000 employees with no reader needing more than a year back.
+builder.Services.AddHostedService<DataRetentionJob>();
 
 // Background face-match worker — drains the queue enqueued by check-ins / admin re-check.
 builder.Services.AddHostedService<FaceMatchWorker>();

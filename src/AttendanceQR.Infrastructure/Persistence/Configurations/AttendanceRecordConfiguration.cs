@@ -27,6 +27,20 @@ public class AttendanceRecordConfiguration : IEntityTypeConfiguration<Attendance
         builder.HasIndex(a => new { a.EmployeeId, a.AttendanceDate })
             .IsUnique();
 
+        // Date-leading tenant index: the today board, the admin bell counts, the 5-minute reminder
+        // sweep, the nightly summary and announcement targeting all read "this tenant, this date".
+        // The bare TenantId index is worthless once one tenant owns most of the table — at 2000
+        // employees this is the difference between a point lookup and a 600k-row/year seq scan.
+        // Both indexes cover the same columns, so both need explicit names — unnamed, EF treats the
+        // second declaration as the first and silently emits only one.
+        builder.HasIndex(a => new { a.TenantId, a.AttendanceDate }, "IX_AttendanceRecords_TenantId_AttendanceDate");
+
+        // Partial index for the open-records question ("checked in, never out, before today") that
+        // the sidebar badge and bell recount on every admin poll. Open rows are a tiny sliver of the
+        // table, so the filtered index stays a few hundred rows no matter how the history grows.
+        builder.HasIndex(a => new { a.TenantId, a.AttendanceDate }, "IX_AttendanceRecords_Open")
+            .HasFilter("\"CheckInAtUtc\" IS NOT NULL AND \"CheckOutAtUtc\" IS NULL");
+
         builder.HasOne<Employee>()
             .WithMany()
             .HasForeignKey(a => a.EmployeeId)

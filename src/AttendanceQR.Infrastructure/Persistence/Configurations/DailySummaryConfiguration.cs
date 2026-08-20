@@ -19,6 +19,11 @@ public class DailySummaryConfiguration : IEntityTypeConfiguration<DailySummary>
         builder.HasIndex(s => new { s.EmployeeId, s.SummaryDate })
             .IsUnique();
 
+        // Every report screen (dashboard, tabel, payroll, summary) reads "this tenant, this date
+        // range" — at 2000 employees that's ~500k rows/year that would otherwise be filtered by a
+        // seq scan over the bare TenantId index.
+        builder.HasIndex(s => new { s.TenantId, s.SummaryDate });
+
         builder.HasOne<Employee>()
             .WithMany()
             .HasForeignKey(s => s.EmployeeId)

@@ -28,15 +28,23 @@ public partial class AuthController : ControllerBase
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
 
-    // Per-IP throttle for the anonymous forgot-pin endpoint: enough for a real person who taps it once
-    // or twice, tight enough that a scripted sweep can't harvest timing samples or flood the queue.
-    private const int MaxForgotPinPerWindow = 6;
+    // Per-IP throttle for the anonymous forgot-pin endpoint. One IP is not one person: a whole
+    // factory sits behind a single NAT, and onboarding week produces a real burst of these. 30 is
+    // still far too slow to harvest timing samples or flood the admin queue.
+    private const int MaxForgotPinPerWindow = 30;
     private static readonly TimeSpan ForgotPinWindow = TimeSpan.FromMinutes(15);
 
     // app-login is anonymous and spans every tenant, so identifier-rotation would otherwise give an
     // attacker unlimited PIN-spray + PBKDF2 work from one IP. Cap FAILURES per IP (a real login rarely
     // fails; a spray is all failures) — past the cap we 429 without doing the expensive verify.
-    private const int MaxAppLoginFailPerIp = 30;
+    //
+    // The cap is sized for the fact that one IP is a whole building: at 2000 employees behind one
+    // corporate NAT, a handful of fat-fingered PINs at shift start must NOT black out login for
+    // everyone (the old cap of 30 guaranteed exactly that during onboarding). 250 failures/15min is
+    // still useless for spraying a 10,000-PIN space — per-identifier lockout limits any single
+    // account regardless — and every SUCCESS from the IP pays a failure back, so a legitimately busy
+    // NAT (many successes, few typos) never accumulates toward the cap at all.
+    private const int MaxAppLoginFailPerIp = 250;
     private static readonly TimeSpan AppLoginIpWindow = TimeSpan.FromMinutes(15);
 
     // Self-service reset gates biometrically, so it needs a MUCH higher bar than the advisory check-in
@@ -223,6 +231,10 @@ public partial class AuthController : ControllerBase
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
+        // A success pays one failure back: a shared NAT with real users on it self-heals instead of
+        // creeping toward the cap on typos alone.
+        if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
+            _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
         return Ok(new { token = _jwtService.GenerateToken(matched), employeeId = matched.Id });
     }
 
@@ -300,6 +312,9 @@ public partial class AuthController : ControllerBase
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
+        // Same NAT self-healing as app-login: a success pays one failure back.
+        if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
+            _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
 
