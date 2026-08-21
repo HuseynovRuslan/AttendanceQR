@@ -1,0 +1,15 @@
+# /etc/cron.d/attendanceqr — NEW host. Installed DISABLED (every job commented) during preparation;
+# the cutover runbook uncomments them at T+41, after GO/NO-GO №2, and never before: a backup cron on a
+# host that does not yet own production would upload a dump of an EMPTY database over the real ones.
+# Schedules mirror the old host. Times are Asia/Baku (bootstrap.sh set the host timezone).
+#
+# nightly DB dump → R2 (db-backups/); the deploy script gates on this having run
+#15 23 * * * root /opt/attendanceqr/ops/backup.sh >> /opt/attendanceqr/backups/backup.log 2>&1
+# weekly restore drill into a throwaway container — a backup nobody restores is a hope
+#30 3 * * 0 root /opt/attendanceqr/ops/restore-test.sh >> /opt/attendanceqr/backups/restore-test.log 2>&1
+# health + container + disk + backup-age + silent-pipeline watchdog (Telegram via alert.sh)
+#* * * * * root /opt/attendanceqr/ops/watchdog.sh
+# docker build cache / dangling images — the old host reached 60 GB of cache before this existed
+#0 4 * * 1 root /opt/attendanceqr/ops/prune.sh >> /opt/attendanceqr/backups/prune.log 2>&1
+# staging autodeploy (push to `staging` → test.qrlog.az) — staging lives on this host too
+#*/2 * * * * root /opt/attendanceqr/ops/staging-autodeploy.sh
