@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -19,6 +20,7 @@ namespace AttendanceQR.Api.Controllers;
 public partial class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ITenantContext _tenant;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
     private readonly ILoginLockoutStore _lockoutStore;
@@ -28,10 +30,19 @@ public partial class AuthController : ControllerBase
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
 
-    // Per-IP throttle for the anonymous forgot-pin endpoint. One IP is not one person: a whole
-    // factory sits behind a single NAT, and onboarding week produces a real burst of these. 30 is
-    // still far too slow to harvest timing samples or flood the admin queue.
-    private const int MaxForgotPinPerWindow = 30;
+    // Per-IP throttle for the anonymous PIN-recovery endpoints — and "per IP" has to be read as very
+    // much coarser than it sounds. Two things widen it: a whole factory sits behind one NAT, and
+    // nothing in this API trusts X-Forwarded-For (there is no UseForwardedHeaders anywhere), so behind
+    // Caddy every request arrives from the proxy container's own address. In production this bucket is
+    // therefore closer to ONE for the whole platform than one per client. A cap sized as if it were
+    // per-person would black out recovery for everybody — which is precisely the failure it exists to
+    // prevent, because a mass lockout is when the most people need this path within one hour.
+    //
+    // Only requests that identified NOBODY are charged (see ForgotPin/ForgotPinVerify below). Probes,
+    // whether enumerating identifiers or harvesting timings, are all misses by definition, so the cap
+    // still bounds exactly what it was put there for, while the employee who really does own the
+    // account never spends from a budget shared with everyone else.
+    private const int MaxForgotPinPerWindow = 250;
     private static readonly TimeSpan ForgotPinWindow = TimeSpan.FromMinutes(15);
 
     // app-login is anonymous and spans every tenant, so identifier-rotation would otherwise give an
@@ -60,11 +71,12 @@ public partial class AuthController : ControllerBase
     private static string? _decoyHash;
 
     public AuthController(
-        AppDbContext db, IPasswordHasher passwordHasher, IJwtService jwtService, ILoginLockoutStore lockoutStore,
-        IPhotoStorageService photoStorage, IFaceMatchService faceMatch, IPushNotifier pushNotifier,
-        IMemoryCache cache, ILogger<AuthController> logger)
+        AppDbContext db, ITenantContext tenant, IPasswordHasher passwordHasher, IJwtService jwtService,
+        ILoginLockoutStore lockoutStore, IPhotoStorageService photoStorage, IFaceMatchService faceMatch,
+        IPushNotifier pushNotifier, IMemoryCache cache, ILogger<AuthController> logger)
     {
         _db = db;
+        _tenant = tenant;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _lockoutStore = lockoutStore;
@@ -318,10 +330,76 @@ public partial class AuthController : ControllerBase
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
 
+    // The per-IP throttle namespace for the PIN-recovery endpoints. It has to be computed BEFORE any
+    // lookup — the whole point of the cap is that an over-limit call does no DB work at all — so when
+    // the caller has no subdomain there is no account yet to take a tenant from, and the bucket is the
+    // tenant-less "app" one. Same shape as app-login's tenant-less lockout namespace: one company's
+    // employees can never spend another company's budget, and the app shell's callers share their own.
+    private string PinRecoveryThrottleScope() =>
+        _tenant.IsResolved ? _db.CurrentTenantId.ToString("N") : "app";
+
+    /// <summary>
+    /// Every account a PIN-recovery identifier could mean.
+    ///
+    /// On a company subdomain the middleware has already resolved the tenant, so this is exactly the
+    /// filtered lookup these endpoints have always done and nothing about their behaviour changes.
+    ///
+    /// From the single-URL native app shell (app.qrlog.az) there is no subdomain — and an employee who
+    /// has forgotten their PIN has no token either, so the identifier they type is the only thing left
+    /// to attribute the request with. So, exactly like app-login, the account is looked up across every
+    /// company with IgnoreQueryFilters and the tenant is taken FROM the matched row.
+    ///
+    /// The cross-tenant side applies app-login's candidate rule exactly — LIVE and activated. A number
+    /// left behind by someone who moved between two of our tenants (three companies hiring from one
+    /// labour market: ordinary, not a corner case) must not shadow the person using it today.
+    /// </summary>
+    private async Task<List<Employee>> ResolvePinRecoveryCandidatesAsync(string identifier, CancellationToken ct)
+    {
+        var phone = PhoneNumbers.Normalize(identifier);
+
+        if (_tenant.IsResolved)
+        {
+            var scoped = await _db.Employees.FirstOrDefaultAsync(
+                e => e.Email == identifier || (phone != null && e.PhoneNumber == phone), ct);
+            return scoped is null ? new List<Employee>() : new List<Employee> { scoped };
+        }
+
+        var candidates = await _db.Employees.IgnoreQueryFilters()
+            .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
+            .ToListAsync(ct);
+
+        return candidates.Where(c => c.IsActive && c.ActivatedAtUtc is not null).ToList();
+    }
+
+    /// <summary>
+    /// The ONE account behind a recovery identifier, or null when that cannot be decided.
+    ///
+    /// This is the rule for the path that hands a credential back: an identifier living in two
+    /// companies is AMBIGUOUS and refused, never guessed, because there is no PIN here to disambiguate
+    /// on the way app-login does. The caller answers a null exactly as it answers a miss, so nothing
+    /// distinguishes the two. (forgot-pin, which returns no credential, is deliberately more generous
+    /// — see there.)
+    ///
+    /// The matched row's tenant is resolved into the request immediately, so everything after this
+    /// point — queries, inserts, the push alert — runs under the normal fail-closed filter instead of
+    /// tenant-less.
+    /// </summary>
+    private async Task<Employee?> ResolvePinRecoveryAccountAsync(string identifier, CancellationToken ct)
+    {
+        var candidates = await ResolvePinRecoveryCandidatesAsync(identifier, ct);
+        if (candidates.Count != 1)
+            return null;
+
+        _tenant.Resolve(candidates[0].TenantId);
+        return candidates[0];
+    }
+
     // POST /api/auth/forgot-pin — an employee who forgot their PIN, and so cannot sign in, asks for a
-    // reset from the login screen. Anonymous, like Login: the tenant is resolved from the subdomain by
-    // middleware, so _db is already scoped. It only FILES a request into the admin queue — it resets
-    // nothing and returns no PIN, so on its own it grants an attacker nothing.
+    // reset from the login screen. Anonymous, like Login: on a company subdomain the tenant is resolved
+    // from the host by middleware, so _db is already scoped; from the native app shell there is no
+    // subdomain and the account itself names the company (see ResolvePinRecoveryCandidatesAsync). It only
+    // FILES a request into the admin queue — it resets nothing and returns no PIN, so on its own it
+    // grants an attacker nothing.
     //
     // Always answers 200 with the same body whether or not the identifier matches an account, so the
     // RESPONSE reveals nothing. The one asymmetry left is timing (a real match does an extra write), so
@@ -333,42 +411,71 @@ public partial class AuthController : ControllerBase
         // Per-IP throttle. Over the limit we no-op with the identical 200 — no lookup, no write — so it
         // neither reveals the throttle nor leaks anything about the identifier.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        var throttleKey = $"forgotpin:{_db.CurrentTenantId:N}:{ip}";
+        var throttleKey = $"forgotpin:{PinRecoveryThrottleScope()}:{ip}";
         var seen = _cache.TryGetValue(throttleKey, out int n) ? n : 0;
         if (seen >= MaxForgotPinPerWindow)
             return Ok(new { ok = true });
-        _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
 
         var identifier = request.Identifier?.Trim() ?? string.Empty;
         // Bound the work and give nothing away: an empty/oversized identifier just no-ops with the
         // same 200 as a miss.
-        if (identifier.Length is > 0 and <= 200)
-        {
-            var phone = PhoneNumbers.Normalize(identifier);
-            var employee = await _db.Employees.FirstOrDefaultAsync(e =>
-                e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+        var candidates = identifier.Length is > 0 and <= 200
+            ? await ResolvePinRecoveryCandidatesAsync(identifier, HttpContext.RequestAborted)
+            : new List<Employee>();
 
-            // Only a real, ALREADY-ACTIVATED account has a PIN to forget. A missing or un-activated one
-            // silently no-ops (un-activated accounts are (re)invited, not reset). Same 200 either way.
-            if (employee is { ActivatedAtUtc: not null })
+        // Only a real, ALREADY-ACTIVATED account has a PIN to forget. A missing or un-activated one
+        // silently no-ops (un-activated accounts are (re)invited, not reset). Same 200 either way.
+        var targets = candidates.Where(c => c.ActivatedAtUtc is not null).ToList();
+
+        // The throttle is charged HERE, only when the identifier named nobody. Someone cycling numbers
+        // to find out which exist gets nothing but misses and still runs into the cap; the employee who
+        // typed their own number does not spend a budget that, behind the proxy, everyone shares.
+        if (targets.Count == 0)
+            _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+
+        // Unlike verify below, this hands back no credential — it only files a plea into an admin queue
+        // and a human identifies their own employee out of band. So an identifier that two companies
+        // both use is NOT the dead end it has to be there: file into each of them. Refusing would leave
+        // that employee reading "Sorğu göndərildi" forever with nothing behind it, and the response body
+        // is the same single generic 200 either way.
+        var filed = false;
+        foreach (var employee in targets)
+        {
+            // One open request per employee: a second tap — or a bored attacker cycling numbers —
+            // can't flood the admin queue with duplicates. IgnoreQueryFilters because an app-shell call
+            // has no ambient tenant for the filter to read (it would throw) and the targets can belong
+            // to different companies. It widens nothing: EmployeeId is a global key, so this returns
+            // exactly the rows the filtered query returned on a subdomain.
+            var hasPending = await _db.PinResetRequests.IgnoreQueryFilters()
+                .AnyAsync(r => r.EmployeeId == employee.Id && r.Status == PinResetStatus.Pending,
+                    HttpContext.RequestAborted);
+            if (hasPending)
+                continue;
+
+            // TenantId comes from the ACCOUNT, not from the ambient tenant. This row is the only trace
+            // the employee's plea leaves — if it were stamped with the wrong company (or, from the
+            // tenant-less app shell, with nothing at all) it would never appear in /admin/pin-resets and
+            // the request would silently evaporate. SaveChanges' stamping only fills rows whose TenantId
+            // is still empty, so setting it here always wins; on a subdomain it is the same value
+            // stamping would have written, and with no tenant at all it is what keeps the save from
+            // throwing.
+            _db.PinResetRequests.Add(new PinResetRequest
             {
-                // One open request per employee: a second tap — or a bored attacker cycling numbers —
-                // can't flood the admin queue with duplicates.
-                var hasPending = await _db.PinResetRequests
-                    .AnyAsync(r => r.EmployeeId == employee.Id && r.Status == PinResetStatus.Pending);
-                if (!hasPending)
-                {
-                    _db.PinResetRequests.Add(new PinResetRequest { EmployeeId = employee.Id });
-                    _db.AuditLogs.Add(new AuditLog
-                    {
-                        EmployeeId = employee.Id,
-                        EventType = AuditEventType.PinResetRequested,
-                        IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
-                    });
-                    await _db.SaveChangesAsync();
-                }
-            }
+                EmployeeId = employee.Id,
+                TenantId = employee.TenantId
+            });
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EmployeeId = employee.Id,
+                TenantId = employee.TenantId,
+                EventType = AuditEventType.PinResetRequested,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
+            });
+            filed = true;
         }
+
+        if (filed)
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
         return Ok(new { ok = true });
     }
@@ -383,11 +490,22 @@ public partial class AuthController : ControllerBase
     {
         // Same per-IP throttle as forgot-pin: bounds brute-forcing the face check and enumeration.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        var throttleKey = $"forgotpin:{_db.CurrentTenantId:N}:{ip}";
+        var throttleKey = $"forgotpin:{PinRecoveryThrottleScope()}:{ip}";
         var seen = _cache.TryGetValue(throttleKey, out int n) ? n : 0;
         if (seen >= MaxForgotPinPerWindow)
             return Ok(new { verified = false });
-        _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+
+        // Charged on the way OUT of a failure, never on a verified reset — same reasoning as forgot-pin:
+        // every probe is a failure, so the cap still bounds enumeration and face brute-forcing, while
+        // someone who actually clears the face check cannot drain a bucket the platform shares. What
+        // bounds an attacker fishing for one good photo of one victim is the per-ACCOUNT cap below, and
+        // that one is unaffected by this.
+        IActionResult Miss()
+        {
+            _cache.Set(throttleKey, (_cache.TryGetValue(throttleKey, out int charged) ? charged : 0) + 1,
+                ForgotPinWindow);
+            return Ok(new { verified = false });
+        }
 
         var identifier = request.Identifier?.Trim() ?? string.Empty;
         var fingerprint = request.DeviceFingerprint?.Trim() ?? string.Empty;
@@ -395,31 +513,35 @@ public partial class AuthController : ControllerBase
         // the bytes, so ~8M chars caps the decoded image near 6 MB.
         if (identifier.Length is 0 or > 200 || fingerprint.Length == 0
             || string.IsNullOrWhiteSpace(request.PhotoBase64) || request.PhotoBase64.Length > 8_000_000)
-            return Ok(new { verified = false });
+            return Miss();
 
-        var phone = PhoneNumbers.Normalize(identifier);
-        var employee = await _db.Employees.FirstOrDefaultAsync(e =>
-            e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+        // Same resolution as forgot-pin: tenant-scoped on a subdomain, across every company (and
+        // ambiguity-refusing) from the app shell. A null here is indistinguishable from every other
+        // failure below — they all return the same false.
+        var employee = await ResolvePinRecoveryAccountAsync(identifier, HttpContext.RequestAborted);
 
         // Cheap gates first — only spend a Rekognition call once possession (bound device) is proven.
         // Every failure below returns the identical false, so none of them is distinguishable.
         if (employee is not { ActivatedAtUtc: not null }
             || !_faceMatch.Enabled
             || string.IsNullOrEmpty(employee.ReferencePhotoKey))
-            return Ok(new { verified = false });
+            return Miss();
 
         var deviceBound = await _db.DeviceBindings
             .AnyAsync(b => b.EmployeeId == employee.Id && b.IsActive && b.DeviceFingerprint == fingerprint);
         if (!deviceBound)
-            return Ok(new { verified = false });
+            return Miss();
 
         // Per-account face-attempt cap (independent of IP, which an attacker can rotate): someone
         // holding the bound device must not get unlimited tries to fish for a photo/angle that clears
         // the bar. Over the cap, the self-service path is closed for a while and they use the admin queue.
-        var faceLockKey = $"pinverify:{_db.CurrentTenantId:N}:{employee.Id:N}";
+        // Keyed on the ACCOUNT's tenant, so the cap follows the employee whether they came in through
+        // their company subdomain or through the tenant-less app shell — otherwise the app shell would
+        // hand the same account a second, independent budget of face attempts.
+        var faceLockKey = $"pinverify:{employee.TenantId:N}:{employee.Id:N}";
         var fails = _cache.TryGetValue(faceLockKey, out int f) ? f : 0;
         if (fails >= MaxFaceVerifyFailuresPerAccount)
-            return Ok(new { verified = false });
+            return Miss();
 
         // Face match — the second factor. Any problem (no face, mismatch, crowd, storage/AWS error) is a
         // uniform false; nothing here can throw its way to a 500 that would leak a difference.
@@ -429,13 +551,13 @@ public partial class AuthController : ControllerBase
             var refBytes = await _photoStorage.GetBytesAsync(employee.ReferencePhotoKey, HttpContext.RequestAborted);
             var selfie = DecodeImage(request.PhotoBase64);
             if (selfie.Length is 0 or > 4 * 1024 * 1024)
-                return Ok(new { verified = false });
+                return Miss();
             outcome = await _faceMatch.CompareAsync(refBytes, selfie, HttpContext.RequestAborted);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Forgot-pin verify: face compare failed for {EmployeeId}", employee.Id);
-            return Ok(new { verified = false });
+            return Miss();
         }
 
         // A single clear face whose similarity clears the HIGH self-service bar (NOT the advisory 85 the
@@ -443,7 +565,7 @@ public partial class AuthController : ControllerBase
         if (outcome.Status != FaceMatchStatus.Ok || outcome.Score < ForgotPinFaceThreshold)
         {
             _cache.Set(faceLockKey, fails + 1, FaceVerifyLockWindow);
-            return Ok(new { verified = false });
+            return Miss();
         }
         _cache.Remove(faceLockKey); // a genuine match clears the failure counter
 
@@ -455,15 +577,32 @@ public partial class AuthController : ControllerBase
         _db.AuditLogs.Add(new AuditLog
         {
             EmployeeId = employee.Id,
+            TenantId = employee.TenantId,
             EventType = AuditEventType.PinResetSelfService,
             IpAddress = ip
         });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
-        var tenantId = _db.CurrentTenantId;
+        // The account's own company — the lockout keys must match the ones Login/app-login spend, and
+        // an app-shell caller has no ambient tenant to read.
+        var tenantId = employee.TenantId;
         _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
         if (employee.PhoneNumber is not null)
             _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+
+        // ...and the tenant-less namespace app-login gates on, which is a DIFFERENT key (Guid.Empty).
+        // Arriving here already locked out is the normal case, not the rare one: mistyping a PIN eight
+        // times is exactly what makes someone open "PIN-i unutdum". Without this they read the fresh PIN
+        // off the screen, tap "Girişə keç", and the app answers "Çox sayda cəhd" — and their natural
+        // reaction is to run the whole recovery flow again. Proving a face match is a strictly stronger
+        // success signal than the PIN entry that clears the keys above, so it clears these too.
+        _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.Email)}");
+        if (employee.PhoneNumber is not null)
+            _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.PhoneNumber)}");
+        // And pay one failure back into the per-IP budget, exactly as a successful app-login does.
+        var appLoginIpKey = $"applogin-ip:{ip}";
+        if (_cache.TryGetValue(appLoginIpKey, out int appIpFails) && appIpFails > 0)
+            _cache.Set(appLoginIpKey, appIpFails - 1, AppLoginIpWindow);
 
         // Out-of-band alert so a fraudulent self-service reset is visible to the real employee straight
         // away, even though this same call just logged them out. Best-effort — never fail the reset if

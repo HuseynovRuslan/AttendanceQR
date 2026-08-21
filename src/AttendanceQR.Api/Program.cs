@@ -585,7 +585,17 @@ static bool TenantOptional(PathString path) =>
     // The operator console (admin.qrlog.az) names no tenant either — operator-login resolves the account
     // across every company and additionally requires the super-admin allowlist. Without this the
     // fail-closed check below would 400 it before it ran.
-    || path.StartsWithSegments("/api/auth/operator-login");
+    || path.StartsWithSegments("/api/auth/operator-login")
+    // "PIN-i unutdum" (and its self-service verify) must answer the native app shell too. The caller
+    // has no company subdomain AND, being locked out, no token either — there is nothing left to
+    // resolve a tenant from except the identifier they type, so the endpoints resolve the account
+    // across every company exactly like app-login and take the tenant FROM the matched row. Safe to
+    // let through: both answer ONE constant body for every outcome (match, miss, ambiguous), so a
+    // tenant-less call reveals nothing, and neither returns a credential — forgot-pin only files a
+    // request into that company's admin queue, and verify additionally demands a bound device plus a
+    // face match. An identifier two companies both use is never guessed at: verify, which hands back a
+    // credential, refuses it as ambiguous, and forgot-pin files into each of them instead.
+    || path.StartsWithSegments("/api/auth/forgot-pin");
 
 app.Use(async (context, next) =>
 {
