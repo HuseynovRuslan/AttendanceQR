@@ -1,0 +1,13 @@
+# Resource ceilings for the staging stack on the NEW host — same shape as production at half the
+# size: it must survive a 2000-employee load test, not run a company.
+#   docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml up -d
+services:
+  stg-backend:
+    mem_limit: 1024m
+    cpus: "2.0"
+  stg-db:
+    mem_limit: 1024m
+    cpus: "1.0"
+  stg-frontend:
+    mem_limit: 128m
+    cpus: "0.5"

@@ -1,0 +1,23 @@
+# Resource ceilings for the production stack on the NEW host:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.limits.prod.yml up -d
+#
+# Why ceilings at all: on the old box nothing had a limit, so at the morning peak the kernel's OOM
+# killer — not the operator — decided who lived. These numbers come from measurement: the
+# 2000-employee load test peaked the backend at ~260 MiB RSS and ~2.6 cores during a 2.5× burst;
+# Postgres held 23 connections and stayed small. Each ceiling is 3-6× the measured peak, so a real
+# spike never touches it while a LEAK does — and restarts one container instead of taking the host.
+services:
+  backend:
+    mem_limit: 1536m
+    mem_reservation: 512m
+    cpus: "3.0"
+  db:
+    mem_limit: 2048m
+    mem_reservation: 512m
+    cpus: "2.0"
+  frontend:
+    mem_limit: 128m
+    cpus: "0.5"
+  caddy:
+    mem_limit: 256m
+    cpus: "1.0"
