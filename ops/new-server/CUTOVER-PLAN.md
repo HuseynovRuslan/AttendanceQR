@@ -36,11 +36,12 @@ telefonların offline növbəsi 502/503-də skanı saxlayıb özü göndərir (k
 | H4b | **TLS sertifikatları köçürülür** (kor-koranə yenidən alınmır): köhnə `attendanceqr_caddy_data` volume-u (`/data/caddy` — 15 host sertifikatı + ACME hesabı, 376 KB) `tar` ilə köhnə → operator maşını → yeni hostda eyni adlı volume; transit nüsxə `shred`. Yeni Caddy mövcud etibarlı sertifikatları birbaşa istifadə edir — DNS-siz smoke **real TLS** ilə olur, DNS-dən sonra ilk sorğuda issuance yoxdur. Ehtiyat: LE limiti (50/həftə/domen) cutover günü `crt.sh`-dan yoxlanılır; yalnız canlı hostlar lazımdır (köhnəlmiş `ecafe/katalog/sinaq/tlstest` köçürülmür) | mən | 20 dəq |
 | H5 | Yeni hostda cron faylı (`backup`, `watchdog`, `prune`, `restore-test`, staging `autodeploy`) yazılır, **hamısı şərhdə** (deaktiv) | mən | 10 dəq |
 | H6 | Restore məşqi — artıq edilib (2026-08-21: prod dump, 1 s, 0 xəta, saylar eyni). Cutover günü səhər **təkrar** edilir | mən | 5 dəq |
-| H7 | Elan (tətbiqdaxili, bütün tenantlar): «Bu axşam 20:30–21:00 texniki fasilə. Skan edə bilərsiniz — qeyd telefonunuzda saxlanıb fasilədən sonra özü göndəriləcək.» | mən, operator təsdiqi ilə | 5 dəq, **T−1 gün** |
+| H7 | Elan (tətbiqdaxili, bütün tenantlar): «Bu axşam 21:30–22:00 texniki fasilə. Skan edə bilərsiniz — qeyd telefonunuzda saxlanıb fasilədən sonra özü göndəriləcək. Fasilədən sonra bir dəfə yenidən daxil olmaq lazım gələcək.» | mən, operator təsdiqi ilə | 5 dəq, **T−1 gün** |
 | H8 | Cutover səhəri kontrol siyahısı: köhnə/yeni disk, yeni hostda `docker ps`, Telegram kanalı, operatorun Cloudflare-ə girişi açıqdır, bu sənəd əldədir | operator + mən | 10 dəq |
 
-**H-qapısı (T−1 saat):** H1 TTL-in 24 saatdır 60 s olduğu `dig` ilə təsdiqlənməyibsə, H2 açarları
-hazır deyilsə, yeni hostda soyuq stack sağlam deyilsə — **keçid başqa günə.**
+**H-qapısı (T−1 saat):** H1 DNS ixracı əldə deyilsə və ya TTL gözlənilməz dəyərdədirsə, H2 açarları
+hazır deyilsə, H4b sertifikatları yeni Caddy-də görünmürsə, yeni hostda soyuq stack sağlam deyilsə —
+**keçid başqa günə.**
 
 ## 2. Sirlər — nə yenilənir, nə qorunur, təsiri
 
@@ -67,7 +68,7 @@ hazır deyilsə, yeni hostda soyuq stack sağlam deyilsə — **keçid başqa g�
 Qayda: **bir gecədə yalnız «yaranmadan dəyişə bilən» sirlər** (DB, R2, IAM, OpenAI, JWT). Mövcud
 məlumatı və ya cihaz tərəfindəki vəziyyəti poza bilən hər şey (QR, VAPID, FCM) toxunulmaz qalır.
 
-## 3. Cutover gecəsi — addım-addım (T0 = 20:30)
+## 3. Cutover gecəsi — addım-addım (T0 = 21:30)
 
 | Vaxt | Addım | Müddət | Yoxlama / abort meyarı |
 |---|---|---|---|
