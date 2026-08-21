@@ -10,7 +10,9 @@ sınanır, sonra yük testi, yalnız bundan sonra production cutover planlaşdı
 
 ## 1. Bootstrap (bir dəfə, root kimi)
     scp -i ~/.ssh/qrlog_vps_l ops/new-server/bootstrap.sh root@<YENİ_IP>:/root/
-    ssh -i ~/.ssh/qrlog_vps_l root@<YENİ_IP> 'bash /root/bootstrap.sh "<public key>"'
+    ssh -i ~/.ssh/qrlog_vps_l root@<YENİ_IP> 'bash /root/bootstrap.sh phase1 "<public key>"'
+    # AYRI terminalda açarla girişi sına:  ssh -i ~/.ssh/qrlog_vps_l deploy@<YENİ_IP> 'echo ok && sudo -n true'
+    # yalnız uğurdan SONRA (köhnə sessiya açıq qalsın):  sudo bash /root/bootstrap.sh phase2
 Nəticə: `deploy` istifadəçisi (sudo), yalnız açarla SSH, root login bağlı, ufw 22/80/443, fail2ban,
 avtomatik təhlükəsizlik yeniləmələri, Docker (rəsmi repo) + compose, 4G swap, log limitləri, Asia/Baku.
 Yoxlama: `ssh -i ~/.ssh/qrlog_vps_l deploy@<YENİ_IP> 'docker ps && sudo ufw status'`.
