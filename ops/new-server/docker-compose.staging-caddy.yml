@@ -1,0 +1,38 @@
+# Staging on a host WITHOUT the production stack (the new VPS, before cutover).
+#
+# On the old box staging had no Caddy of its own: it joined production's network and production's
+# Caddy proxied test/api-test to it. Here there is no production yet, so this overlay (1) gives the
+# staging stack its own Caddy, serving the staging-internal Caddyfile (tls internal — LE cannot issue
+# while DNS still points at the old host), and (2) turns the "edge" network from production's
+# external one into a plain local network, so the stack stands alone.
+#
+#   docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml \
+#                  -f ops/new-server/docker-compose.staging-caddy.yml --env-file .env.staging up -d --build
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ops/new-server/Caddyfile.staging-internal:/etc/caddy/Caddyfile:ro
+      - stg_caddy_data:/data
+      - stg_caddy_config:/config
+    depends_on:
+      - stg-frontend
+      - stg-backend
+    networks:
+      - default
+      - edge
+    mem_limit: 256m
+    cpus: "1.0"
+
+networks:
+  edge:
+    external: false
+    name: qrlog-staging_edge
+
+volumes:
+  stg_caddy_data:
+  stg_caddy_config:
