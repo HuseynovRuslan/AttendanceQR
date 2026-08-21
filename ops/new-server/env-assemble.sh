@@ -12,7 +12,8 @@
 #
 #   OLD_SSH='ssh -o StrictHostKeyChecking=no root@62.84.179.39' \
 #   NEW_SSH='ssh -i ~/.ssh/qrlog_vps_l -o BatchMode=yes -o IdentitiesOnly=yes deploy@94.20.153.137' \
-#   NEW_SECRETS_FILE="$USERPROFILE/.qrlog/new-secrets.env"   # optional; omit → rotated keys left EMPTY
+#   CARRY_OLD_KEYS=1                                          # carry production's current keys (pipe)
+#   NEW_SECRETS_FILE="$USERPROFILE/.qrlog/new-secrets.env"   # or: operator intake file; neither → EMPTY
 #   bash ops/new-server/env-assemble.sh
 #
 # Intake file format (exactly these keys, one per line, no quotes):
@@ -31,8 +32,14 @@ $OLD_SSH "grep -E '^[A-Za-z_][A-Za-z0-9_]*=' /opt/attendanceqr/.env | grep -vE '
   | $NEW_SSH 'umask 077; sudo install -d -m 750 -o deploy -g deploy /opt/attendanceqr; cat > /opt/attendanceqr/.env.preserved.tmp; echo "   preserved: $(wc -l < /opt/attendanceqr/.env.preserved.tmp) keys"'
 
 echo "== 2/3 rotated third-party keys: intake file → new (pipe) =="
-if [ -n "${NEW_SECRETS_FILE:-}" ] && [ -s "$NEW_SECRETS_FILE" ]; then
-  tr -d '\r' < "$NEW_SECRETS_FILE" | grep -E '^(Storage__Minio__(AccessKey|SecretKey)|Backup__R2__(AccessKey|SecretKey)|Rekognition__(AccessKey|SecretKey)|Assistant__ApiKey)=.+' \
+KEYS_RE='^(Storage__Minio__(AccessKey|SecretKey)|Backup__R2__(AccessKey|SecretKey)|Rekognition__(AccessKey|SecretKey)|Assistant__ApiKey)=.+'
+if [ "${CARRY_OLD_KEYS:-0}" = 1 ]; then
+  # Decision 2026-08-21: third-party rotation is NOT a cutover blocker — the production keys are
+  # carried over old → new through the same memory pipe, and rotated as separate mandatory work
+  # after the move (old keys revoked at T+7 only once the new ones are verified).
+  $OLD_SSH "grep -E '$KEYS_RE' /opt/attendanceqr/.env | tr -d '\r'" | $NEW_SSH 'umask 077; cat > /opt/attendanceqr/.env.rotated.tmp; echo "   carried from old production (pipe): $(cut -d= -f1 /opt/attendanceqr/.env.rotated.tmp | tr "\n" " ")"'
+elif [ -n "${NEW_SECRETS_FILE:-}" ] && [ -s "$NEW_SECRETS_FILE" ]; then
+  tr -d '\r' < "$NEW_SECRETS_FILE" | grep -E "$KEYS_RE" \
     | $NEW_SSH 'umask 077; cat > /opt/attendanceqr/.env.rotated.tmp; echo "   rotated keys received: $(cut -d= -f1 /opt/attendanceqr/.env.rotated.tmp | tr "\n" " ")"'
   # overwrite then delete the local intake file — it has done its one job
   SZ=$(stat -c %s "$NEW_SECRETS_FILE"); head -c "$SZ" /dev/urandom > "$NEW_SECRETS_FILE" && rm -f "$NEW_SECRETS_FILE"

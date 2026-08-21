@@ -30,8 +30,8 @@ telefonların offline növbəsi 502/503-də skanı saxlayıb özü göndərir (k
 | # | Addım | Kim | Müddət |
 |---|---|---|---|
 | H1 | DNS «əvvəl» vəziyyəti: Cloudflare panelindən **tam qeyd siyahısını ixrac et** və `dns-before-2026-08-21.txt` ilə tutuşdur (catch-all tenantları — məs. `pivezakuska` — siyahıya düşsün). TTL hər yerdə 300 s-dir, **24 saat gözləmə lazım deyil** (keş ≤ 5 dəq). İstəyə bağlı: T−1 saat TTL → 60 s. Proxy statusuna toxunma (DNS-only qalır) | operator (Cloudflare) | 10 dəq, cutover günü |
-| H2 | Yeni sirlər (bölmə 2): Cloudflare-də iki **yeni R2 API tokeni** (foto bucket; backup bucket), AWS IAM-da **yeni Rekognition açarı**, OpenAI-də **yeni Assistant açarı**, BotFather-də Telegram tokeni (istəyə bağlı). Köhnələr **hələ ləğv edilmir** | operator | 30 dəq |
-| H3 | Yeni hostda prod `.env`-i yığ: köhnə `.env`-dən qorunan dəyərlər + H2 yeniləri + yeni `POSTGRES_PASSWORD` + yeni `Jwt__SigningKey`. Yalnız `/opt/attendanceqr/.env`, `chmod 600`, Git-ə yox | mən | 20 dəq |
+| H2 | ~~Yeni üçüncü-tərəf sirləri~~ **Qərar 2026-08-21: xarici credential rotasiyası cutover üçün BLOKLAYICI DEYİL** — production-da işləyən R2 (foto + backup), Rekognition və OpenAI açarları `env-assemble.sh CARRY_OLD_KEYS=1` ilə köhnə `.env`-dən iki SSH arasında yaddaş borusu ilə yeni hosta köçürülür (disk/log/Git/çat yox). Əsas: R2 tokenləri artıq bucket-scoped (çarpaz bucket → AccessDenied, yoxlanıb), OpenAI açarı project-səviyyəli, AWS açarı tələb olunandan bir qədər geniş amma S3-süz. Minimum-səlahiyyətli yeni açarlar **köçürmədən sonra ayrıca MƏCBURİ iş** (bölmə 7) | mən | 5 dəq |
+| H3 | Yeni hostda prod `.env`-i yığ: köhnə `.env`-dən qorunan dəyərlər + H2 köçürülən açarlar + yeni `POSTGRES_PASSWORD` + yeni `Jwt__SigningKey`. Yalnız `/opt/attendanceqr/.env`, `chmod 600`, Git-ə yox. **EDİLİB (2026-08-21): 9/9 dolu; DNS-siz smoke: R2 foto put/head/delete ✓, R2 backup put/ls(146 backup)/delete ✓, Rekognition DetectFaces ✓, OpenAI chat ✓, backend start-da R2 bucket xəbərdarlığı 0; sonra backend STOP** | mən | 20 dəq |
 | H4 | **App SHA sabitlənir:** deploy commit-i `D` üçün `git diff --quiet 798601a D -- src frontend docker-compose.prod.yml` boş olmalıdır (prod-dakı tətbiqlə eyni), `D` `prod-cutover` teqi ilə işarələnir; **T−1 gündən cutover bitənə qədər `main`-ə tətbiq kodu merge olunmur.** Yeni hostda staging-i prod modelinə keçir (staging Caddy overlay-ı çıxar, `edge` = `attendanceqr_default` external). Prod stack-i **real `Caddyfile`** və köçürülmüş sertifikatlarla (H4b) **soyuq** qaldır: DB boş, frontend, landing (`ops/build-landing.sh`). **Backend yalnız bir dəfə, ilkin `/health` + miqrasiya yoxlaması üçün qalxır, sonra `docker stop` edilir və bütün worker/job-larla birlikdə T+11-ə qədər bağlı qalır** (restore məşqləri də backend-siz — ayrıca konteynerdə). Hələ heç bir istifadəçi buraya gəlmir. Paritet qapısı: `ops/new-server/app-parity-check.sh 798601a <D>` — src, frontend, hər iki Dockerfile, .dockerignore-lar, docker-compose.prod.yml, Caddyfile, root .NET build faylları | mən | 40 dəq |
 | H4b | **TLS sertifikatları köçürülür** — `ops/new-server/caddy-data-transfer.sh`: köhnə host `tar`-ı stdout-a yazır, baytlar **iki SSH tuneli arasında operator prosesinin yaddaşındakı borudan** keçir, yeni host birbaşa volume-a açır — **operator diskinə heç nə yazılmır** (shred-ə ehtiyac yoxdur). Skript sonra yeni hostda hər canlı hostun sertifikatının müddətini `openssl -checkend` ilə yoxlayır (≥ 20 gün, əks halda exit 4) və ACME hesabının gəldiyini təsdiqləyir. **Məşq edilib (2026-08-21):** 51 fayl, 2 ACME hesabı, 11 canlı host, ən erkən bitmə 9 oktyabr (~49 gün); müvəqqəti Caddy ilə `curl` `-k`-sız real Let's Encrypt TLS keçdi; sınaq volume-u silindi. Köhnəlmiş `ecafe/katalog/sinaq/tlstest` qapıdan kənardır | mən | 10 dəq |
 | H5 | Yeni hostda cron faylı (`backup`, `watchdog`, `prune`, `restore-test`, staging `autodeploy`) yazılır, **hamısı şərhdə** (deaktiv) | mən | 10 dəq |
@@ -52,12 +52,12 @@ hazır deyilsə, H4b sertifikatları yeni Caddy-də görünmürsə, yeni hostda 
 | `QrToken__Secret` | **QORUNUR** | Dəyişsə 3 şirkətdəki bütün çap olunmuş posterlər ölür. Ayrıca layihə: lokasiya-lokasiya `QrVersion` artırmaqla poster yenidən çap dövrü |
 | `Push__PublicKey` / `Push__PrivateKey` / `Push__Subject` (VAPID) | **QORUNUR** | Dəyişsə bütün push abunəlikləri etibarsızlaşır, hər telefon yenidən icazə verməlidir |
 | `Fcm__ProjectId` / `Fcm__ServiceAccountBase64` | **QORUNUR** (sonra istəyə bağlı) | Cihaz tokenləri Firebase layihəsinə bağlıdır, service account-a yox — rotasiya təhlükəsizdir, amma Firebase konsolu istəyir; cutover gecəsinə aid deyil |
-| `Storage__Minio__AccessKey/SecretKey` (foto R2) | **YENİ** (H2) | Obyektlər bucket-da qalır, yalnız açar dəyişir. Köhnə token **T+7 gün** ləğv edilir (köhnə server rollback üçün işlək qalsın) |
+| `Storage__Minio__AccessKey/SecretKey` (foto R2) | **KÖÇÜRÜLÜR** (H2), rotasiya T+7-dən sonra | Bucket-scoped token. Köçürmədən sonra yeni token yaradılır, yeni hostda yoxlanılır, yalnız SONRA (T+7-də, rollback pəncərəsi bitəndə) köhnəsi ləğv edilir |
 | `Storage__Minio__Endpoint/BucketName/Region/UseSsl` | qorunur | eyni bucket |
-| `Backup__R2__AccessKey/SecretKey` | **YENİ** (H2) | eyni məntiq; köhnə token T+7 gün ləğv |
-| `Rekognition__AccessKey/SecretKey` | **YENİ** (H2) | IAM-da yeni açar; köhnəsi T+7 gün deaktiv |
+| `Backup__R2__AccessKey/SecretKey` | **KÖÇÜRÜLÜR** (H2), rotasiya T+7-dən sonra | eyni məntiq |
+| `Rekognition__AccessKey/SecretKey` | **KÖÇÜRÜLÜR** (H2), rotasiya T+7-dən sonra | Köçürmədən sonra yeni IAM user yalnız `rekognition:CompareFaces`+`DetectFaces`; köhnə `rekotest` (geniş, S3-süz) yenisi yoxlanandan sonra deaktiv |
 | `Rekognition__Region` | qorunur | |
-| `Assistant__ApiKey` | **YENİ** (H2) | OpenAI açarı; köhnə T+1 gün ləğv (rollback-da köməkçi çat qısa müddət işləməyə bilər — qəbul edilir) |
+| `Assistant__ApiKey` | **KÖÇÜRÜLÜR** (H2), rotasiya T+7-dən sonra | Köçürmədən sonra yeni project key (yalnız chat completions + audio transcriptions) |
 | `Assistant__Model` | qorunur | |
 | `ALERT_TELEGRAM_TOKEN/CHAT` | qorunur (rotasiya istəyə bağlı) | Bot tokeni dəyişsə watchdog bir müddət lal qalar; cutover gecəsində riskə dəyməz |
 | `Cors__AllowedOrigins`, `VITE_API_URL`, `App__*`, `DeviceBinding__*` | qorunur | konfiqurasiya, sirr deyil |
@@ -154,7 +154,7 @@ yalnız «yenidən cutover» şəklində mümkündür.
 
 - Heç nə silinmir, heç nə yenilənmir: konteynerlər (backend dayanmış, DB read-only, Caddy maintenance), volume-lar, `.env`, backup faylları, CompreFace (dayanmış).
 - Cron-lar şərhdə qalır (backup köhnə DB-ni yox, yeni host DB-ni çəkir).
-- Köhnə R2/IAM/OpenAI açarları **T+7 gün** ləğv edilir — ondan əvvəl yox (6-B üçün).
+- **Məcburi köçürmə-sonrası iş — credential rotasiyası:** T+7-də (rollback pəncərəsi bitəndə) operator minimum-səlahiyyətli yeni açarlar yaradır (2 bucket-scoped R2 tokeni; IAM user yalnız CompareFaces+DetectFaces; OpenAI project key), `env-assemble.sh NEW_SECRETS_FILE=` (DPAPI-dən yaddaşda açılaraq) ilə yeni `.env`-ə yazılır, yuxarıdakı smoke təkrarlanır, və **yalnız yeni açarlar yoxlanandan sonra** köhnələr ləğv edilir. Ondan əvvəl heç bir köhnə açar ləğv edilmir (6-B üçün).
 - 7-ci gün: operator qərarı — söndürmək, yoxsa staging/ehtiyat kimi saxlamaq. Sonra: QR sirri rotasiyası layihəsi (poster çapı ilə), FCM service account rotasiyası (istəyə bağlı), Phase 2 prinsipi köhnə host üçün aktual deyil (söndürüləcək).
 
 ## 8. Hazırlanacaq fayllar (icra yox, plan daxilində)
@@ -167,4 +167,4 @@ Hamısı yazılıb və 2026-08-21-də staging/izolyasiya olunmuş mühitdə sın
 - `cutover-checklist.sh` — `snapshot` / `dump` / `compare` / `smoke`, hamısı yalnız oxuyur; staging-də tam dövrə + mənfi kontrollar keçib
 - `cron.attendanceqr.template` — yeni host üçün, bütün işlər şərhdə; T+41-də açılır
 
-Hələ edilməyən hazırlıq addımları (operatorun H2 sirlərini gözləyir): H3 (yeni prod `.env`), H4 (soyuq prod stack + staging-in prod modelinə keçməsi), H4b-nin **real** volume-a köçürülməsi, H5 (cron faylının qurulması). Cutover üçün ayrıca «GO» gözlənilir.
+**H2–H5 hamısı EDİLİB (2026-08-21 gecə):** `.env` 9/9 dolu (açarlar köçürülüb, DB/JWT yeni), soyuq prod stack (db/frontend/caddy UP, backend STOP), staging prod modelində (`docker-compose.staging-alias.yml`), sertifikatlar real volume-da, `/etc/cron.d/attendanceqr` hamısı şərhdə, xarici servis smoke-ları keçib. Cutover üçün ayrıca «GO» gözlənilir.
