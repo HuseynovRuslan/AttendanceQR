@@ -40,7 +40,7 @@ export function LoginPage() {
         setError(
           rem !== undefined && rem <= 3
             ? `Yanlış PIN — ${rem} cəhdiniz qaldı`
-            : 'Email/nömrə və ya PIN yanlışdır',
+            : 'Nömrə və ya PIN yanlışdır',
         )
       }
     } catch {
@@ -85,10 +85,17 @@ export function LoginPage() {
           )}
 
           <div style={{ marginBottom: 12 }}>
-            <label className="form-label">Email və ya telefon nömrəsi</label>
+            <label className="form-label">Telefon nömrəsi</label>
             <input
               className="inp"
-              type="text"
+              // The field still carries whatever is typed straight to the same endpoint, which resolves
+              // it as a phone number OR an email — the admins who sign in with an email keep working.
+              // Only the wording changed: "Email və ya telefon nömrəsi" meant nothing to the older
+              // employees, who then typed nothing at all. type="tel" opens the number pad on a phone
+              // without restricting what can be entered.
+              type="tel"
+              inputMode="tel"
+              placeholder="0XX XXX XX XX"
               required
               autoComplete="username"
               value={email}

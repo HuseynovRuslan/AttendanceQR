@@ -247,9 +247,9 @@ export function ForgotPinPage() {
         {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
         <input
           className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-center text-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          type="text"
-          inputMode="text"
-          placeholder="Telefon və ya email"
+          type="tel"
+          inputMode="tel"
+          placeholder="Telefon nömrəsi"
           value={identifier}
           onChange={(e) => setIdentifier(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && startFlow()}
