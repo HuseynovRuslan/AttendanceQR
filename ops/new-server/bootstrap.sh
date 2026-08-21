@@ -106,7 +106,7 @@ phase2() {
     echo "Open a NEW terminal, log in with the key, then re-run phase2." >&2
     exit 3
   fi
-  cat > /etc/ssh/sshd_config.d/90-hardening.conf <<'SSHD'
+  cat > /etc/ssh/sshd_config.d/00-hardening.conf <<'SSHD'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
