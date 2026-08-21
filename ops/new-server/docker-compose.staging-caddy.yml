@@ -9,6 +9,17 @@
 #   docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml \
 #                  -f ops/new-server/docker-compose.staging-caddy.yml --env-file .env.staging up -d --build
 services:
+  # The frontend's nginx proxies /manifest.webmanifest to a host literally named "backend". On the
+  # old box that name resolved — to PRODUCTION's backend, over the shared network — so staging's
+  # manifest quietly came from the wrong environment. Here the alias points it at staging's own
+  # backend, which is what it should always have been (and without it nginx refuses to start:
+  # "host not found in upstream").
+  stg-backend:
+    networks:
+      default:
+        aliases: [backend]
+      edge: {}
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
