@@ -97,7 +97,11 @@ MSG
 
 phase2() {
   # Gate: the auth journal must show deploy getting in WITH A KEY. No proof, no lockdown.
-  if ! journalctl -u ssh --since "-24h" --no-pager 2>/dev/null | grep -q "Accepted publickey for $DEPLOY_USER"; then
+  # grep -c, not grep -q: under pipefail a -q that exits on the first hit leaves journalctl with
+  # SIGPIPE, the pipeline reads as failed, and a perfectly proven key gets refused.
+  local hits
+  hits=$(journalctl -u ssh --since "-24h" --no-pager 2>/dev/null | grep -c "Accepted publickey for $DEPLOY_USER" || true)
+  if [ "${hits:-0}" -lt 1 ]; then
     echo "REFUSING: no successful public-key login for '$DEPLOY_USER' in the last 24h." >&2
     echo "Open a NEW terminal, log in with the key, then re-run phase2." >&2
     exit 3
