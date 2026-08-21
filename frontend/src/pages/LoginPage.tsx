@@ -9,14 +9,17 @@ import { BrandLogo } from '../components/BrandLogo'
 import { IconX } from '../components/icons'
 
 export function LoginPage() {
-  const [email, setEmail] = useState('')
+  const location = useLocation()
+  // Coming back from "PIN-i unutdum" with a freshly issued temporary PIN: that screen hands the number
+  // back in the nav state (both directions now), so nobody has to retype a phone number from memory on
+  // a keypad while holding a temp PIN in their head.
+  const [email, setEmail] = useState((location.state as { identifier?: string } | null)?.identifier ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const { saveToken } = useAuth()
   const branding = useBranding()
   const navigate = useNavigate()
-  const location = useLocation()
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()

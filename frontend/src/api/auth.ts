@@ -54,6 +54,9 @@ export function forgotPin(identifier: string) {
     method: 'POST',
     auth: false,
     body: { identifier },
+    // Same reason as verify below: the caller is already locked out and this button is their way
+    // forward, so a stalled connection must fail rather than sit on "Göndərilir…" for ever.
+    timeoutMs: 20_000,
   })
 }
 
@@ -65,6 +68,12 @@ export function forgotPinVerify(identifier: string, deviceFingerprint: string, p
     method: 'POST',
     auth: false,
     body: { identifier, deviceFingerprint, photoBase64 },
+    // A deadline, not an optimisation: without it a connection that opens and then stalls (one bar of
+    // signal, a captive portal, the backend restarting mid-deploy) never settles, and the caller is
+    // stranded on "Yoxlanılır…" with no way out. Aborting makes the fetch throw, which the screen
+    // turns into its retry + admin-request state. 30s rather than the scan's 20s — the body carries a
+    // base64 JPEG.
+    timeoutMs: 30_000,
   })
 }
 
