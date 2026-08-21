@@ -1,0 +1,14 @@
+# Staging on a host WITH the production stack (the new VPS after H4): staging has no Caddy of its own
+# again — production's Caddy proxies test/api-test over the shared attendanceqr_default network,
+# exactly as on the old host. What this overlay keeps from the standalone days is ONLY the alias: the
+# frontend's nginx hard-codes http://backend:8080 for /manifest.webmanifest, and on staging's own
+# network that name must resolve to staging's backend, or nginx refuses to start whenever production's
+# backend is stopped (as it is, deliberately, until cutover T+11).
+#   docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml \
+#                  -f ops/new-server/docker-compose.staging-alias.yml --env-file .env.staging up -d
+services:
+  stg-backend:
+    networks:
+      default:
+        aliases: [backend]
+      edge: {}
