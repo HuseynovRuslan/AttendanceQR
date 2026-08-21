@@ -1,6 +1,15 @@
 # QRLog — Production cutover planı (62.84.179.39 → 94.20.153.137)
 
-Status: **PLAN v2 — heç nə icra olunmayıb.** Hər addım ayrıca təsdiqlə başlayır. DNS-ə bu sənəd
+Status: **İCRA OLUNDU — 2026-08-21, 15:12:30 → 15:19:39 Bakı (yazı dondurulması ~7 dəq, plan 25 dəq idi).**
+Production artıq 94.20.153.137-dədir. Köhnə server (62.84.179.39) T+7 = **2026-08-28**-ə qədər isti ehtiyatdır:
+backend dayanmış, DB read-only, Caddy API-maintenance, cron şərhdə. Rollback pəncərəsi bitənə qədər Cloudflare
+DNS tokeni (DPAPI, `cf-token.dpapi`) saxlanılır, sonra Cloudflare-də SİLİNİR (çata düşmüşdü) və bölmə 7-dəki
+credential rotasiyası başlayır. Qeydlər: dump sha256 `bfec21a2…` (3 nüsxə eyni: köhnə, operator, yeni; R2
+`db-backups/cutover/`), restore 13/13 cədvəl bire-bir, 0 miqrasiya, smoke: real selfili skan → R2 4.6 KB,
+AlreadyRecorded, JWT yad imza 401, app-login 200, Telegram ✓; admin hesabat smoke-u admin PIN olmadığı üçün
+yalnız auth-davranışı səviyyəsində (401/403, 500 yox) — paritet eyni kod olduğu üçün qəbul edildi.
+
+Plan v2 (tarixi): Hər addım ayrıca təsdiqlə başlayır. DNS-ə bu sənəd
 təsdiqlənib «GO» deyilənə qədər toxunulmur. v2: rəy üzrə 6 düzəliş (frontend açıq qalır, JWT sınağı
 sübutlu, restore backend-siz, TLS sertifikatları köçürülür, app SHA sabit, TTL gözləməsi ləğv).
 
