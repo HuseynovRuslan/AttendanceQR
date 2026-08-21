@@ -1,0 +1,16 @@
+# qrlog.az DNS — cutover-dən ƏVVƏLKİ vəziyyət (2026-08-21, Resolve-DnsName ilə 3 resolver + authoritative NS)
+# Authoritative NS: courtney.ns.cloudflare.com, sage.ns.cloudflare.com (Cloudflare DNS-only, proxy YOX)
+# Hər host, hər resolver (1.1.1.1 / 8.8.8.8 / 9.9.9.9) və authoritative: A = 62.84.179.39, TTL = 300 s
+qrlog.az              A  62.84.179.39  TTL 300
+www.qrlog.az          A  62.84.179.39  TTL 300
+api.qrlog.az          A  62.84.179.39  TTL 300
+bax.qrlog.az          A  62.84.179.39  TTL 300
+app.qrlog.az          A  62.84.179.39  TTL 300
+ecaf.qrlog.az         A  62.84.179.39  TTL 300
+cleanfix.qrlog.az     A  62.84.179.39  TTL 300
+test.qrlog.az         A  62.84.179.39  TTL 300
+api-test.qrlog.az     A  62.84.179.39  TTL 300
+admin.qrlog.az        A  62.84.179.39  TTL 300
+pivezakuska.qrlog.az  A  62.84.179.39  TTL 300
+# Köhnə Caddy anbarında sertifikatı olan, amma DNS-də yoxlanmayan/köhnəlmiş adlar: ecafe, katalog, sinaq, tlstest — köçürülmür.
+# Cutover günü bu siyahı Cloudflare panelindən ixrac edilən tam siyahı ilə tutuşdurulur (catch-all tenantları ola bilər).

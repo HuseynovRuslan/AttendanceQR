@@ -1,10 +1,16 @@
 # QRLog — Production cutover planı (62.84.179.39 → 94.20.153.137)
 
-Status: **PLAN — heç nə icra olunmayıb.** Hər addım ayrıca təsdiqlə başlayır. DNS-ə bu sənəd
-təsdiqlənib «GO» deyilənə qədər toxunulmur.
+Status: **PLAN v2 — heç nə icra olunmayıb.** Hər addım ayrıca təsdiqlə başlayır. DNS-ə bu sənəd
+təsdiqlənib «GO» deyilənə qədər toxunulmur. v2: rəy üzrə 6 düzəliş (frontend açıq qalır, JWT sınağı
+sübutlu, restore backend-siz, TLS sertifikatları köçürülür, app SHA sabit, TTL gözləməsi ləğv).
 
 Faktlar (2026-08-21): prod DB 18 MB (dump 1 MB, restore 1 s); DNS Cloudflare **proxy-siz** (A qeydləri
-birbaşa köhnə IP-yə, TTL «Auto» ≈ 300 s); köhnə server yeni serverin 22 portuna çata bilmir (AZ-only) —
+birbaşa köhnə IP-yə, **TTL = 300 s** — 3 resolver + authoritative NS ilə təsdiqlənib, ixrac:
+`dns-before-2026-08-21.txt`); **app SHA: prod-da `798601a` işləyir, `main` HEAD-də tətbiq kodu onunla
+eynidir** (fərq yalnız ops/ və Caddyfile); **JWT rotasiyası real brauzerlə sübut edilib** (2026-08-21,
+yeni hostdakı staging: kəsintidə köhnə JWT ilə növbəyə düşən skan → açar dəyişdi → 401, növbə qaldı →
+yenidən login → skan bir dəfə yazıldı); trafik: son 14 gündə 21:00-dan sonra saatda 1–6 skan,
+23:00-da 0–1; köhnə server yeni serverin 22 portuna çata bilmir (AZ-only) —
 bütün fayllar köhnə → operator maşını → yeni yolu ilə keçir; Data Protection açarları konteyner
 daxilindədir və hər deploy-da onsuz da yenilənir (heç nə onlardan asılı deyil); JWT müddətsizdir;
 telefonların offline növbəsi 502/503-də skanı saxlayıb özü göndərir (keçid pəncərəsinin sığortası).
@@ -13,9 +19,9 @@ telefonların offline növbəsi 502/503-də skanı saxlayıb özü göndərir (k
 
 | | |
 |---|---|
-| Pəncərə | Çərşənbə axşamı və ya çərşənbə, **20:30–22:30 Bakı** (17:00–19:00 pikindən sonra, 23:15 backup və 00:30 gecə işindən əvvəl). Cümə/şənbə axşamı YOX (bazar ertəsi səhəri yoxlanmamış qalar) |
-| Yazı dondurulması (downtime) | **~25 dəqiqə** (T+0 → T+25). Bu müddətdə skan edənlər yaşıl «yadda saxlanıldı» kartı görür, skanlar telefonlarda növbələnir və keçiddən sonra özü düşür |
-| Oxu kəsilməsi | Admin panel/hesabatlar ~25 dəq; landing (qrlog.az) DNS keçidinə qədər köhnə serverdən xidmət edir |
+| Pəncərə | **Çərşənbə axşamı və ya çərşənbə, T0 = 21:30 Bakı** — son 14 günün saatlıq trafikinə görə 21:00–23:00 ən sakit zolaqdır (saatda 1–6 skan; 18:00-da 17–35), 23:15 backup və 00:30 gecə işinə qədər 1,5 saat ehtiyat qalır. Cümə/şənbə axşamı YOX |
+| Yazı dondurulması (downtime) | **~25 dəqiqə** (T+0 → T+25). **Frontend bütün müddət açıq qalır** — yalnız API 503 qaytarır; QR açan işçi tətbiqi yükləyir, skan edir, yaşıl «yadda saxlanıldı» kartı görür, skan telefonda növbələnir və keçiddən sonra özü düşür (eyni mexanizm staging-də real brauzerlə sübut edilib) |
+| Oxu kəsilməsi | Admin panel/hesabatlar ~25 dəq (API yoxdur); tətbiq və landing yüklənir |
 | GO/NO-GO qapıları | 3 (T−1 saat, T+22, T+40) — hər birində abort meyarı var |
 | Köhnə server | **7 gün toxunulmur**, maintenance + DB read-only + backend dayandırılmış vəziyyətdə «isti ehtiyat» |
 
@@ -23,10 +29,11 @@ telefonların offline növbəsi 502/503-də skanı saxlayıb özü göndərir (k
 
 | # | Addım | Kim | Müddət |
 |---|---|---|---|
-| H1 | Cloudflare-də bütün qeydlərin **TTL-ini 60 s-ə** endir: `qrlog.az`, `www`, `api`, `bax`, `app`, `ecaf`, `cleanfix`, `test`, `api-test`, `admin` + catch-all ilə işləyən hər tenant subdomeni (Cloudflare-də siyahıya bax). Proxy statusuna toxunma (DNS-only qalır) | operator (Cloudflare) | 10 dəq, **T−24 saat** (köhnə 300 s TTL-in keşlərdən çıxması üçün) |
+| H1 | DNS «əvvəl» vəziyyəti: Cloudflare panelindən **tam qeyd siyahısını ixrac et** və `dns-before-2026-08-21.txt` ilə tutuşdur (catch-all tenantları — məs. `pivezakuska` — siyahıya düşsün). TTL hər yerdə 300 s-dir, **24 saat gözləmə lazım deyil** (keş ≤ 5 dəq). İstəyə bağlı: T−1 saat TTL → 60 s. Proxy statusuna toxunma (DNS-only qalır) | operator (Cloudflare) | 10 dəq, cutover günü |
 | H2 | Yeni sirlər (bölmə 2): Cloudflare-də iki **yeni R2 API tokeni** (foto bucket; backup bucket), AWS IAM-da **yeni Rekognition açarı**, OpenAI-də **yeni Assistant açarı**, BotFather-də Telegram tokeni (istəyə bağlı). Köhnələr **hələ ləğv edilmir** | operator | 30 dəq |
 | H3 | Yeni hostda prod `.env`-i yığ: köhnə `.env`-dən qorunan dəyərlər + H2 yeniləri + yeni `POSTGRES_PASSWORD` + yeni `Jwt__SigningKey`. Yalnız `/opt/attendanceqr/.env`, `chmod 600`, Git-ə yox | mən | 20 dəq |
-| H4 | Yeni hostda staging-i **prod modelinə** keçir: staging Caddy overlay-ı çıxar (80/443-ü prod Caddy tutacaq), `edge` = `attendanceqr_default` external. Prod stack-i `Caddyfile.cutover-internal` ilə (bütün prod hostlar `tls internal`) **soyuq** qaldır: DB boş, backend sağlam, frontend, landing (`ops/build-landing.sh`). Hələ heç bir istifadəçi buraya gəlmir | mən | 40 dəq |
+| H4 | **App SHA sabitlənir:** deploy commit-i `D` üçün `git diff --quiet 798601a D -- src frontend docker-compose.prod.yml` boş olmalıdır (prod-dakı tətbiqlə eyni), `D` `prod-cutover` teqi ilə işarələnir; **T−1 gündən cutover bitənə qədər `main`-ə tətbiq kodu merge olunmur.** Yeni hostda staging-i prod modelinə keçir (staging Caddy overlay-ı çıxar, `edge` = `attendanceqr_default` external). Prod stack-i **real `Caddyfile`** və köçürülmüş sertifikatlarla (H4b) **soyuq** qaldır: DB boş, backend sağlam, frontend, landing (`ops/build-landing.sh`). Hələ heç bir istifadəçi buraya gəlmir | mən | 40 dəq |
+| H4b | **TLS sertifikatları köçürülür** (kor-koranə yenidən alınmır): köhnə `attendanceqr_caddy_data` volume-u (`/data/caddy` — 15 host sertifikatı + ACME hesabı, 376 KB) `tar` ilə köhnə → operator maşını → yeni hostda eyni adlı volume; transit nüsxə `shred`. Yeni Caddy mövcud etibarlı sertifikatları birbaşa istifadə edir — DNS-siz smoke **real TLS** ilə olur, DNS-dən sonra ilk sorğuda issuance yoxdur. Ehtiyat: LE limiti (50/həftə/domen) cutover günü `crt.sh`-dan yoxlanılır; yalnız canlı hostlar lazımdır (köhnəlmiş `ecafe/katalog/sinaq/tlstest` köçürülmür) | mən | 20 dəq |
 | H5 | Yeni hostda cron faylı (`backup`, `watchdog`, `prune`, `restore-test`, staging `autodeploy`) yazılır, **hamısı şərhdə** (deaktiv) | mən | 10 dəq |
 | H6 | Restore məşqi — artıq edilib (2026-08-21: prod dump, 1 s, 0 xəta, saylar eyni). Cutover günü səhər **təkrar** edilir | mən | 5 dəq |
 | H7 | Elan (tətbiqdaxili, bütün tenantlar): «Bu axşam 20:30–21:00 texniki fasilə. Skan edə bilərsiniz — qeyd telefonunuzda saxlanıb fasilədən sonra özü göndəriləcək.» | mən, operator təsdiqi ilə | 5 dəq, **T−1 gün** |
@@ -40,7 +47,7 @@ hazır deyilsə, yeni hostda soyuq stack sağlam deyilsə — **keçid başqa g�
 | Sirr (`.env` adı) | Qərar | Səbəb / təsir |
 |---|---|---|
 | `POSTGRES_PASSWORD` (+USER/DB) | **YENİ** | Yeni DB konteyneri sıfırdan yaranır; dump-da parol yoxdur; heç nəyi pozmur |
-| `Jwt__SigningKey` | **YENİ (tövsiyə)** | 10 iyul kompromisinin əsas sirri. Təsir: **bütün sessiyalar ləğv olur — hər işçi və admin bir dəfə telefon+PIN ilə yenidən girir**; nativ tətbiq də. H7 elanında yazılır. Alternativ (operator qərarı): qorumaq və 1 həftə sonra ayrıca rotasiya — təhlükəsizlik borcu qalır |
+| `Jwt__SigningKey` | **YENİ** | 10 iyul kompromisinin əsas sirri. Təsir: **bütün sessiyalar ləğv olur — hər işçi və admin bir dəfə telefon+PIN ilə yenidən girir**; nativ tətbiq də. **Sübut (2026-08-21, real brauzer):** kəsintidə köhnə JWT ilə növbəyə düşən skan, açar dəyişəndən sonra 401 alır, amma növbə SİLİNMİR; yenidən logindən sonra bir dəfə yazılır. H7 elanında «yenidən giriş lazım olacaq» yazılır |
 | `QrToken__Secret` | **QORUNUR** | Dəyişsə 3 şirkətdəki bütün çap olunmuş posterlər ölür. Ayrıca layihə: lokasiya-lokasiya `QrVersion` artırmaqla poster yenidən çap dövrü |
 | `Push__PublicKey` / `Push__PrivateKey` / `Push__Subject` (VAPID) | **QORUNUR** | Dəyişsə bütün push abunəlikləri etibarsızlaşır, hər telefon yenidən icazə verməlidir |
 | `Fcm__ProjectId` / `Fcm__ServiceAccountBase64` | **QORUNUR** (sonra istəyə bağlı) | Cihaz tokenləri Firebase layihəsinə bağlıdır, service account-a yox — rotasiya təhlükəsizdir, amma Firebase konsolu istəyir; cutover gecəsinə aid deyil |
@@ -55,7 +62,7 @@ hazır deyilsə, yeni hostda soyuq stack sağlam deyilsə — **keçid başqa g�
 | `Cors__AllowedOrigins`, `VITE_API_URL`, `App__*`, `DeviceBinding__*` | qorunur | konfiqurasiya, sirr deyil |
 | `App__SuperAdminEmployeeIds`, `App__TaskBoardEmployeeIds`, `App__HiddenEmails` | qorunur | ID-lər DB ilə gəlir |
 | Data Protection açarları | **heç nə** | konteyner daxilində, hər deploy yenilənir, heç bir axın onlara bağlı deyil |
-| TLS sertifikatları (Caddy `caddy_data`) | **köçürülmür** | Yeni Caddy DNS-dən sonra ilk sorğuda Let's Encrypt-dən yenisini alır (host başına saniyələr; LE limiti 50/həftə — 10-12 host problemsiz) |
+| TLS sertifikatları + ACME hesabı (Caddy `caddy_data`) | **KÖÇÜRÜLÜR** (H4b) | Mövcud etibarlı sertifikatlar yeni hostda olduğu kimi işləyir; DNS-dən sonra kütləvi issuance və LE limit riski yoxdur; yenilənmə Caddy-nin adi dövründə. Transit nüsxə operator maşınında `shred` edilir |
 
 Qayda: **bir gecədə yalnız «yaranmadan dəyişə bilən» sirlər** (DB, R2, IAM, OpenAI, JWT). Mövcud
 məlumatı və ya cihaz tərəfindəki vəziyyəti poza bilən hər şey (QR, VAPID, FCM) toxunulmaz qalır.
@@ -67,16 +74,17 @@ məlumatı və ya cihaz tərəfindəki vəziyyəti poza bilən hər şey (QR, VA
 | **T−30** | **Autodeploy-lar dayandırılır** — köhnə: `/etc/cron.d/attendanceqr`-da `staging-autodeploy`, `watchdog`, `backup`, `prune`, `restore-test` sətirləri şərhə alınır (watchdog xüsusilə — əks halda dayandırdığımız backend-i özü qaldırar). Yeni hostda cron onsuz da deaktivdir. Git-ə push **qadağan** bitənə qədər | 3 dəq | `pgrep` boşdur |
 | T−25 | Köhnə prod sayları çıxarılır və saxlanılır (Tenants, Employees, AttendanceRecords, ProcessedScans, DailySummaries, PendingPhotoUploads, LeaveRecords, DeviceBindings) | 1 dəq | sonra müqayisə üçün |
 | T−20 | Yeni hostda H6 restore məşqi bir daha (dünənki dump) | 3 dəq | 0 xəta |
-| **T+0** | **Maintenance (köhnə):** Caddyfile-ın maintenance variantı — `api.qrlog.az` və `api-test` → `503 {"error":"Maintenance"}`; frontend hostlar → statik «texniki fasilə» səhifəsi (`Retry-After: 1800`); landing olduğu kimi. `caddy validate` + force-recreate. **Nəticə:** telefonlar 503 alır → skan növbəyə düşür (yaşıl kart) | 2 dəq | `curl` api → 503; bax → fasilə səhifəsi |
+| **T+0** | **Maintenance (köhnə) — YALNIZ API:** Caddyfile-ın maintenance variantı — `api.qrlog.az` və `api-test` → `503 {"error":"Maintenance"}` (`Retry-After: 1500`); **frontend hostlar, landing və statik fayllar OLDUĞU KİMİ qalır** — tətbiq yüklənir, skan ekranı açılır, CORS-suz 503 brauzerdə şəbəkə xətası kimi görünür → skan növbəyə düşür (yaşıl kart; staging-də real brauzerlə sübut edilib). `caddy validate` + force-recreate | 2 dəq | `curl` api → 503; `curl` bax → 200 (SPA) |
 | T+2 | **Yazı dayandırılır (sərt):** köhnə backend konteyneri `docker stop` (watchdog dayanıb — qalxmayacaq); köhnə DB-də `ALTER DATABASE attendanceqr SET default_transaction_read_only = on` + aktiv bağlantılar kəsilir. Bu andan köhnə DB-yə heç bir yazı mümkün deyil — **split-brain qoruması №1** | 1 dəq | `docker ps` backend yox; test `INSERT` → xəta |
 | T+3 | Foto növbəsi: `PendingPhotoUploads` sayı = 0 olmalıdır (PhotoUploadWorker backend dayanana qədər boşaldıb). Deyilsə qalan sətirlər dump-a düşür və yeni hostda worker davam etdirir — itki yoxdur | 1 dəq | say qeyd olunur |
 | T+4 | **Son dump:** `pg_dump --no-owner --clean --if-exists \| gzip` → `attendanceqr_cutover_<ts>.sql.gz`; `sha256sum`; ölçü ≥ dünənki gecə dump-ı (−5 %-dən çox kiçikdirsə → **ABORT**); dump-dan sətir sayları (`COPY` blokları) T−25 sayları ilə üst-üstə düşür | 2 dəq | sha256 + ölçü + saylar |
 | T+6 | R2 nüsxəsi: `s3://qrlog-backups/db-backups/cutover/<fayl>` (köhnə backup tokeni ilə) + lokal operator maşınına `scp`; yeni hosta `scp`; yeni hostda `sha256sum` **eynidir** (deyilsə → yenidən köçür, ABORT yox) | 3 dəq | 3 yerdə eyni hash |
-| T+9 | **Restore (yeni):** yeni prod DB volume-u sıfırdan (H4-də boş yaranmışdı) → `gunzip \| psql -v ON_ERROR_STOP=1`; saylar T−25 ilə **bire-bir**; `__EFMigrationsHistory` = 64 | 2 dəq | fərq varsa → **ABORT (köhnəyə qayıt, bölmə 6-A)** |
-| T+11 | Yeni backend `.env` (H3) ilə qaldırılır; startup miqrasiyası «0 pending» yazmalıdır (eyni commit); `/health` ok; Caddy hələ `tls internal` | 2 dəq | loglarda `Applying migration` YOXDUR |
-| **T+13** | **DNS-siz smoke (yeni prod)** — operator maşınında `--resolve`/hosts ilə: admin login (bax), işçi login, **demo Elvin ilə real selfili skan** → qeyd + foto açarı + R2 obyekti (real foto bucket-ı, yeni açarla) → izlər silinir; `/api/diag/queues` pending=0 failed=0 dropped=0; today board, tabel, maaş, problems; `/admin/live`; landing 200; `test.qrlog.az` (staging) 200; Telegram `alert.sh` test; Rekognition sorğusu (foto-check 1 çağırış); JWT yeni açarla imzalanır (köhnə token → 401) | 9 dəq | hər bənd ✓ |
+| T+8 | **Yeni backend və bütün worker/job-lar DAYANDIRILIR:** `docker stop` backend (PhotoUploadWorker, FaceMatchWorker, ReminderJob, DailySummaryJob, AnnouncementPushWorker hamısı backend prosesindədir — o dayananda heç biri işləmir). Yalnız DB və Caddy işləyir; `docker ps`-də backend yoxdur | 1 dəq | backend yox |
+| T+9 | **Restore (yeni, backend-siz):** prod DB sıfırdan → `gunzip \| psql -v ON_ERROR_STOP=1`; saylar T−25 ilə **bire-bir**; `__EFMigrationsHistory` = 64; restore bitənə qədər heç bir tətbiq prosesi bazaya qoşulmur | 2 dəq | fərq varsa → **ABORT (köhnəyə qayıt, bölmə 6-A)** |
+| T+11 | Yalnız indi: yeni backend `.env` (H3) ilə qaldırılır; startup miqrasiyası «0 pending» yazmalıdır (eyni app SHA); `/health` ok; Caddy real Caddyfile + köçürülmüş sertifikatlarla artıq işləyir | 2 dəq | loglarda `Applying migration` YOXDUR |
+| **T+13** | **DNS-siz smoke (yeni prod)** — operator maşınında `--resolve`/hosts ilə: admin login (bax), işçi login, **demo Elvin ilə real selfili skan** → qeyd + foto açarı + R2 obyekti (real foto bucket-ı, yeni açarla) → izlər silinir; `/api/diag/queues` pending=0 failed=0 dropped=0; today board, tabel, maaş, problems; `/admin/live`; landing 200; `test.qrlog.az` (staging) 200; Telegram `alert.sh` test; Rekognition sorğusu (foto-check 1 çağırış); JWT yeni açarla imzalanır (köhnə token → 401; növbədəki skanlar yenidən logindən sonra düşür — sübutlu); TLS: `--resolve` ilə **real sertifikat** etibarlıdır (`curl` `-k`-sız) | 9 dəq | hər bənd ✓ |
 | **T+22 — GO/NO-GO №1** | Smoke-da tək bir qırmızı → **NO-GO → bölmə 6-A** (heç nə itməyib, köhnə 10 dəqiqəyə qayıdır) | — | |
-| T+23 | **DNS:** Cloudflare-də bütün A qeydləri → `94.20.153.137` (H1 siyahısı). Eyni anda yeni hostda Caddy `Caddyfile` (real, LE + on-demand) ilə force-recreate. **Köhnə server maintenance-də QALIR** — split-brain qoruması №2: DNS keşi köhnəyə aparan telefon 503 alır, skanı saxlayır, 60 s heartbeat-lə yenidən cəhd edir və DNS yenilənəndə yeniyə düşür | 3 dəq | `dig @1.1.1.1` yeni IP; Caddy logunda `certificate obtained` hər host üçün |
+| T+23 | **DNS:** Cloudflare-də bütün A qeydləri → `94.20.153.137` (H1 siyahısı). Caddy artıq real konfiqlə və köçürülmüş sertifikatlarla işləyir — issuance gözlənilmir. **Köhnə server API-maintenance-də QALIR** — split-brain qoruması №2: DNS keşi köhnəyə aparan telefon 503 alır, skanı saxlayır, 60 s heartbeat-lə yenidən cəhd edir və ≤ 5 dəq-ə (TTL 300) yeniyə düşür | 3 dəq | `dig @1.1.1.1 @8.8.8.8 @9.9.9.9` yeni IP; Caddy logunda issuance XƏTASI yoxdur |
 | T+26 | **Keçiddən sonra yoxlamalar** (bölmə 4) | 12 dəq | |
 | **T+40 — GO/NO-GO №2** | Bölmə 4 meyarları ödənmirsə → **bölmə 6-B** (yeni hostda qəbul edilən qeydlərlə birlikdə geri) | — | |
 | T+41 | Yeni hostda cron aktiv (backup 23:15, watchdog, prune, restore-test); staging autodeploy yeni hostda aktiv; Git push qadağası götürülür | 3 dəq | |
@@ -150,8 +158,9 @@ yalnız «yenidən cutover» şəklində mümkündür.
 
 ## 8. Hazırlanacaq fayllar (icra yox, plan daxilində)
 
-- `ops/new-server/Caddyfile.maintenance` — köhnə server üçün: api hostlar 503 JSON, frontend hostlar statik fasilə səhifəsi (`Retry-After`), landing dəyişməz
-- `ops/new-server/Caddyfile.cutover-internal` — yeni hostda DNS-siz smoke üçün bütün prod hostlar `tls internal`
+- `ops/new-server/Caddyfile.maintenance` — köhnə server üçün: **yalnız** `api` və `api-test` 503 JSON (`Retry-After`); frontend hostlar, landing, statik fayllar dəyişməz
+- (`Caddyfile.cutover-internal` LƏĞV — sertifikatlar köçürüldüyü üçün yeni hostda real Caddyfile ilə smoke edilir)
+- `ops/new-server/caddy-data-transfer.sh` — `caddy_data` volume-unun tar ilə çıxarılması/yüklənməsi və transit nüsxənin `shred`-i
 - `ops/new-server/cutover-checklist.sh` — T−25 sayları, dump+sha256, saylar müqayisəsi, smoke curl-ları (yalnız oxuyan/yoxlayan; heç bir dəyişiklik etmir)
 - Yeni hostda cron faylı şablonu (hamısı şərhdə)
 
