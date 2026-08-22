@@ -17,9 +17,10 @@
  *     request always see the truth and nothing sensitive is ever cached.
  *
  * Bump CACHE to force-invalidate on a breaking service-worker change (activate deletes every other
- * cache — v1→v2 is what evicts the stale Bakı Abadlıq icons from existing installs).
+ * cache — v1→v2 evicted the stale Bakı Abadlıq icons from existing installs, and v2→v3 does the same
+ * for bax after it was corrected to Green Garden: the company was misnamed, so its icons changed too).
  */
-const CACHE = 'qrlog-shell-v2'
+const CACHE = 'qrlog-shell-v3'
 const SHELL = '/index.html'
 
 self.addEventListener('install', (event) => {

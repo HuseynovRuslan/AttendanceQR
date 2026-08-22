@@ -6,9 +6,9 @@ import { useBranding } from '../branding/BrandingContext'
 const QRLOG_LOGO = '/brand/qrlog.svg'
 
 /**
- * The tenant's brand mark. In order: QRLog wordmark (every non-bax tenant, promoting the product
+ * The tenant's brand mark. In order: QRLog wordmark (the sentinel LogoKey, promoting the product
  * brand) → the tenant's own uploaded image logo → a neutral initial badge in the tenant accent →
- * the default Bakı Abadlıq leaf (bax, which has no branding).
+ * the QRLog wordmark again when a tenant has nothing at all.
  */
 export function BrandLogo({ size = 34 }: { size?: number }) {
   const { logoUrl, displayName, color } = useBranding()
@@ -19,25 +19,7 @@ export function BrandLogo({ size = 34 }: { size?: number }) {
   // overran the square logo slot. The chip gives it a balanced, intentional shape that reads on both the
   // dark chrome and the light employee bar.
   if (logoUrl === QRLOG_LOGO) {
-    return (
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          background: '#fff',
-          borderRadius: Math.round(size * 0.26),
-          padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.28)}px`,
-          border: '1px solid rgba(15,27,45,0.08)',
-          boxShadow: '0 1px 3px rgba(15,27,45,0.12)',
-        }}
-      >
-        <img
-          src="/brand/qrlog-logo.png"
-          alt="QRLog"
-          style={{ height: Math.round(size * 0.56), width: 'auto', display: 'block' }}
-        />
-      </span>
-    )
+    return <QrlogChip size={size} />
   }
 
   if (logoUrl && !broken) {
@@ -79,13 +61,33 @@ export function BrandLogo({ size = 34 }: { size?: number }) {
     )
   }
 
-  // Default: Bakı Abadlıq leaf mark.
+  // Default: the PRODUCT mark. It used to be a leaf drawn for Bakı Abadlıq — one customer's mark
+  // standing in as everybody's default, which is how a company ended up wearing another company's
+  // identity (see the Green Garden correction, 2026-08-22). A tenant with no branding of its own now
+  // shows QRLog, which is true for every one of them.
+  return <QrlogChip size={size} />
+}
+
+/** The QRLog wordmark on a white chip. Bare, the wide navy lockup read as a floating white box on the
+ *  dark chrome and overran the square logo slot; the chip gives it a shape that works on both. */
+function QrlogChip({ size }: { size: number }) {
   return (
-    <svg viewBox="0 0 100 120" fill="none" style={{ width: size, height: size }}>
-      <path d="M50 4C74 30 92 55 92 76C92 100 73 116 50 116C27 116 8 100 8 76C8 55 26 30 50 4Z" fill="#3D3E3E" />
-      <path d="M50 20C68 40 82 58 82 74C82 92 68 104 50 104C32 104 18 92 18 74C18 58 32 40 50 20Z" fill="#F7F6F2" />
-      <path d="M50 32C63 47 73 60 73 72C73 85 62 94 50 94C38 94 27 85 27 72C27 60 37 47 50 32Z" fill="#7CB342" />
-      <path d="M50 40V88M50 66L38 56M50 70L64 58" stroke="#F7F6F2" strokeWidth="3" strokeLinecap="round" />
-    </svg>
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        background: '#fff',
+        borderRadius: Math.round(size * 0.26),
+        padding: `${Math.round(size * 0.16)}px ${Math.round(size * 0.28)}px`,
+        border: '1px solid rgba(15,27,45,0.08)',
+        boxShadow: '0 1px 3px rgba(15,27,45,0.12)',
+      }}
+    >
+      <img
+        src="/brand/qrlog-logo.png"
+        alt="QRLog"
+        style={{ height: Math.round(size * 0.56), width: 'auto', display: 'block' }}
+      />
+    </span>
   )
 }

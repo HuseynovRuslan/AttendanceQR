@@ -76,7 +76,9 @@ const HEADLINE: Record<CameraFailKind, { title: string; detail: string; showStep
   },
   insecure: {
     title: 'Təhlükəsiz bağlantı yoxdur',
-    detail: 'Səhifəni https://bax.qrlog.az ünvanından açın.',
+    // The address was hard-coded to one company's subdomain, so employees of every OTHER company were
+    // told to open a host that is not theirs. The page already knows where it is — say that instead.
+    detail: `Səhifəni https://${typeof location === 'undefined' ? 'qrlog.az' : location.host} ünvanından açın.`,
     showSteps: false,
   },
 }
