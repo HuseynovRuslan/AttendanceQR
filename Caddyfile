@@ -195,6 +195,25 @@ katalog.qrlog.az {
 	redir https://woodmark.qrlog.az{uri} permanent
 }
 
+# The other projects that used to live on the old host, moved here 2026-08-22. Each has its own
+# stack under /opt and joins the shared docker network with an alias (docker-compose.shared-caddy.yml
+# in each project, started via that project's up.sh). They are reached BY NAME, not by an open port:
+# this host only lets 80/443 through the provider firewall, and a name gets TLS for free.
+budget.qrlog.az {
+	encode zstd gzip
+	reverse_proxy budget-web:80
+}
+
+pricebase.qrlog.az {
+	encode zstd gzip
+	reverse_proxy pricebase-web:8000
+}
+
+psklub.qrlog.az {
+	encode zstd gzip
+	reverse_proxy psklub-app:8080
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #
