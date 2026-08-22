@@ -176,6 +176,25 @@ api-test.qrlog.az {
 	reverse_proxy stg-backend:8080
 }
 
+# QRCatalog (WOODMARK) — a separate project with its own stack in /opt/qrcatalog, reached over the
+# shared docker network (its compose attaches to attendanceqr_default with the alias qrcatalog-web).
+#
+# IT LIVES HERE, IN THE REPO, ON PURPOSE. On the old host this block existed only on the server, typed
+# in by hand — so when the cutover replaced that Caddyfile with one generated from this file, the block
+# vanished with it and the catalogue went dark until somebody noticed. Anything that is only on a
+# server is one deploy away from being lost.
+woodmark.qrlog.az {
+	encode zstd gzip
+	reverse_proxy qrcatalog-web:8080
+}
+
+# The catalogue answered on katalog.qrlog.az until 2026-08-22, and QR codes printed under that name
+# carry it inside them. They must keep working, so the old host name is kept and redirected rather
+# than retired — a redirect a phone camera follows silently.
+katalog.qrlog.az {
+	redir https://woodmark.qrlog.az{uri} permanent
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #
