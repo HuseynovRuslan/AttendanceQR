@@ -18,9 +18,10 @@
  *
  * Bump CACHE to force-invalidate on a breaking service-worker change (activate deletes every other
  * cache — v1→v2 evicted the stale Bakı Abadlıq icons from existing installs, and v2→v3 does the same
- * for bax after it was corrected to Green Garden: the company was misnamed, so its icons changed too).
+ * for bax after it was corrected to Green Garden, and v3→v4 for the QRLog wordmark itself, which was
+ * replaced with the clean one — the old file was a sheet with the square mark and a divider baked in).
  */
-const CACHE = 'qrlog-shell-v3'
+const CACHE = 'qrlog-shell-v4'
 const SHELL = '/index.html'
 
 self.addEventListener('install', (event) => {
