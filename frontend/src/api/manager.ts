@@ -10,6 +10,8 @@ export interface ManagerLocation {
 
 export interface ManagerEmployee {
   id: string
+  /** The manager's own row — only ever present when the caller asked for it (the leave form does). */
+  isSelf?: boolean
   fullName: string
   firstName: string | null
   lastName: string | null
@@ -71,8 +73,10 @@ export function getManagerPositions() {
   return apiRequest<{ name: string }[]>('/api/manager/positions')
 }
 
-export function getManagerEmployees() {
-  return apiRequest<ManagerEmployee[]>('/api/manager/employees')
+/** `includeSelf` adds the manager's OWN row — the leave form needs it, since a manager may file their
+ *  own absence. Every other screen leaves it off: those buttons refuse a non-Employee row anyway. */
+export function getManagerEmployees(includeSelf = false) {
+  return apiRequest<ManagerEmployee[]>(`/api/manager/employees${includeSelf ? '?includeSelf=true' : ''}`)
 }
 
 export function createManagerEmployee(input: ManagerEmployeeInput) {

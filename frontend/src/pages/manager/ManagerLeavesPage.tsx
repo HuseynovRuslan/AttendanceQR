@@ -36,7 +36,7 @@ export function ManagerLeavesPage() {
 
   async function load() {
     setLoading(true)
-    const [l, e] = await Promise.all([getManagerLeaves(), getManagerEmployees()])
+    const [l, e] = await Promise.all([getManagerLeaves(), getManagerEmployees(true)])
     if (l.status === 200 && Array.isArray(l.data)) setLeaves(l.data)
     if (e.status === 200 && Array.isArray(e.data)) setStaff(e.data.filter((x) => x.isActive))
     setLoading(false)
@@ -76,7 +76,11 @@ export function ManagerLeavesPage() {
             <label className="form-label">İşçi</label>
             <select className="inp" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
               <option value="">— seçin —</option>
-              {staff.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
+              {/* The manager's own row is in this list on purpose (and only here) — a holiday of their
+                  own used to need an admin, and until one entered it the day counted as Qayıb. */}
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>{s.isSelf ? `${s.fullName} (özüm)` : s.fullName}</option>
+              ))}
             </select>
           </div>
           <div>

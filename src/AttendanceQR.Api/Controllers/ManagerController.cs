@@ -97,6 +97,27 @@ public class ManagerController : ControllerBase
         return (target, null);
     }
 
+    /// <summary>
+    /// Who a LEAVE may be filed for: this manager's own staff, or the manager THEMSELVES.
+    ///
+    /// Self is the single exception to <see cref="ManageableEmployeeAsync"/>'s Role==Employee rule.
+    /// That rule exists to stop a manager touching a PEER's or an ADMIN's record (the branch-only
+    /// takeover of 2026-08-08), and it still does — but it also caught the harmless case, so a manager
+    /// had to ask an admin to enter every day of their own holiday and, until they did, the day was
+    /// counted as Qayıb against them. Their own absence is not a privilege: the admin sees and can
+    /// remove it like any other leave row.
+    /// </summary>
+    private async Task<(Employee? Employee, IActionResult? Error)> LeaveSubjectAsync(
+        Guid id, IActionResult outOfScope)
+    {
+        if (id == M15())
+        {
+            var self = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
+            return self is null ? (null, outOfScope) : (self, null);
+        }
+        return await ManageableEmployeeAsync(id, outOfScope);
+    }
+
     // --- reference data (for the manager's own forms) ---------------------------
 
     // GET /api/manager/locations — the branches this manager may file against, for dropdowns.
@@ -253,19 +274,25 @@ public class ManagerController : ControllerBase
     // in at the branch are not the manager's to manage (ManageableEmployeeAsync refuses them anyway),
     // so listing them would only leak their contact details behind buttons that 403.
     [HttpGet("employees")]
-    public async Task<IActionResult> Employees()
+    public async Task<IActionResult> Employees([FromQuery] bool includeSelf = false)
     {
+        // includeSelf is for the LEAVE form only: a manager may file their own absence (see
+        // LeaveSubjectAsync), so that one screen needs their own row in the picker. Off by default, and
+        // it can only ever add the caller's OWN row — never a peer's.
+        var self = M15();
         var managed = await ManagedLocationIdsAsync();
         var locationNames = await _db.Locations
             .Where(l => managed.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
 
         var rows = await _db.Employees
-            .Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)
+            .Where(e => (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)
+                        || (includeSelf && e.Id == self))
             .OrderBy(e => e.FullName)
             .Select(e => new
             {
                 id = e.Id,
+                isSelf = e.Id == self,
                 fullName = e.FullName,
                 firstName = e.FirstName,
                 lastName = e.LastName,
@@ -291,7 +318,7 @@ public class ManagerController : ControllerBase
 
         return Ok(rows.Select(r => new
         {
-            r.id, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
+            r.id, r.isSelf, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn, r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
@@ -435,16 +462,17 @@ public class ManagerController : ControllerBase
 
     // --- leaves -----------------------------------------------------------------
 
-    // GET /api/manager/leaves — leave records for the manager's own staff only. Same boundary as the
-    // writes: only Role==Employee. A same-branch admin's or fellow manager's leaves are not the
-    // manager's business, and showing rows the manager can no longer delete would only confuse.
+    // GET /api/manager/leaves — leave records for the manager's own staff, plus the manager's own.
+    // Same boundary as the writes (see LeaveSubjectAsync): a same-branch admin's or FELLOW manager's
+    // leaves are still not this manager's business, and showing rows they cannot delete would confuse.
     [HttpGet("leaves")]
     public async Task<IActionResult> Leaves([FromQuery] DateOnly? from, [FromQuery] DateOnly? to)
     {
         var ct = HttpContext.RequestAborted;
         var managed = await ManagedLocationIdsAsync();
+        var self = M15();
         var staff = await _db.Employees
-            .Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)
+            .Where(e => (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee) || e.Id == self)
             .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
 
         var staffIds = staff.Keys.ToList();
@@ -467,7 +495,7 @@ public class ManagerController : ControllerBase
         }));
     }
 
-    // POST /api/manager/leaves — file a leave for one of the manager's own staff.
+    // POST /api/manager/leaves — file a leave for one of the manager's own staff, or for themselves.
     [HttpPost("leaves")]
     public async Task<IActionResult> CreateLeave([FromBody] LeaveRecordRequest request)
     {
@@ -480,7 +508,7 @@ public class ManagerController : ControllerBase
         // The employee must be one this manager MANAGES — same central rule as the profile edit, so a
         // manager cannot file (and thus alter the paid attendance of) an admin's or a peer's days.
         // Out-of-scope keeps its historical 403 EmployeeNotManaged, which the manager UI translates.
-        var (target, denied) = await ManageableEmployeeAsync(
+        var (target, denied) = await LeaveSubjectAsync(
             request.EmployeeId,
             StatusCode(StatusCodes.Status403Forbidden, new { error = "EmployeeNotManaged" }));
         if (target is null)
@@ -502,7 +530,7 @@ public class ManagerController : ControllerBase
         return Ok(new { id = leave.Id, employeeId = leave.EmployeeId, fromDate = leave.FromDate, toDate = leave.ToDate, type = leave.Type.ToString() });
     }
 
-    // DELETE /api/manager/leaves/{id} — remove a leave, but only for the manager's own staff.
+    // DELETE /api/manager/leaves/{id} — remove a leave of the manager's own staff, or their own.
     [HttpDelete("leaves/{id:guid}")]
     public async Task<IActionResult> DeleteLeave(Guid id)
     {
@@ -513,7 +541,7 @@ public class ManagerController : ControllerBase
         // The record exists, but does it belong to someone THIS manager may manage? Out of scope
         // answers as if it doesn't exist rather than confirm a leave belonging to another branch;
         // an admin's/manager's leave in the manager's own branch is refused like every other edit.
-        var (target, denied) = await ManageableEmployeeAsync(
+        var (target, denied) = await LeaveSubjectAsync(
             leave.EmployeeId, NotFound(new { error = "NotFound" }));
         if (target is null)
             return denied!;
