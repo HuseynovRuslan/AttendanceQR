@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { IconDots } from './icons'
 
 export type RowAction = {
   label: string
@@ -83,7 +84,7 @@ export function RowActions({ primary, actions }: { primary?: RowAction; actions:
           aria-expanded={open}
           aria-label="Digər əməliyyatlar"
         >
-          •••
+          <IconDots />
         </button>
       )}
       {open && (

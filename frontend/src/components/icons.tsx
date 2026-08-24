@@ -9,6 +9,17 @@ const base: SVGProps<SVGSVGElement> = {
   strokeLinejoin: 'round',
 }
 
+/** The "more actions" glyph for a row menu. Three dots as a TEXT character (•••) sat on the baseline,
+ *  came out at whatever weight the font felt like, and read as punctuation rather than a control —
+ *  drawn here it is centred, sized like every other icon, and takes the button's colour. */
+export const IconDots = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+  </svg>
+)
+
 export const IconMenu = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <line x1="4" y1="7" x2="20" y2="7" />
