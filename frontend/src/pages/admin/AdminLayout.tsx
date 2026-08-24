@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { getImpersonation } from '../../api/client'
 import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
@@ -222,11 +223,15 @@ export function AdminLayout() {
 
         <div className="sidebar-footer">
           {/* Admins/managers also clock in and out themselves — one tap over to the employee shell
-              (scan lives behind its centre button). Without this they'd have to type the URL. */}
-          <Link to="/home" className="nav-item" style={{ color: 'var(--c400)' }}>
-            <IconPhone />
-            İşçi rejimi (skan)
-          </Link>
+              (scan lives behind its centre button). Without this they'd have to type the URL.
+              Hidden while impersonating: this link is how an operator would end up scanning a poster
+              as the customer's admin, with their own face. See ImpersonationBoundary. */}
+          {!getImpersonation() && (
+            <Link to="/home" className="nav-item" style={{ color: 'var(--c400)' }}>
+              <IconPhone />
+              İşçi rejimi (skan)
+            </Link>
+          )}
           <button
             onClick={logout}
             className="nav-item"

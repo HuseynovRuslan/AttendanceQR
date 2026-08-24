@@ -737,7 +737,15 @@ public partial class AuthController : ControllerBase
         // step after setting its PIN. An EXISTING employee who just had their PIN reset already has a
         // reference photo — re-capturing it here would overwrite a good baseline for no reason, so the
         // client skips that step when this is false.
-        var needsReferencePhoto = string.IsNullOrEmpty(employee.ReferencePhotoKey);
+        //
+        // An ADMIN is never asked. The reference photo is the baseline a check-in selfie is matched
+        // against, and an admin's first act is to open the panel, not a camera — the account is often
+        // handed over by phone, so the person who set the PIN may not even be the person the account
+        // is for. Forcing a face here put a camera between them and the company they had just been
+        // given. If an admin does clock in later, PhotoUploadWorker seeds the baseline from that first
+        // check-in selfie exactly as it does for anyone else, so nothing is lost by not asking.
+        var needsReferencePhoto = employee.Role != EmployeeRole.Admin
+                                  && string.IsNullOrEmpty(employee.ReferencePhotoKey);
 
         return Ok(new { token = _jwtService.GenerateToken(employee), needsReferencePhoto });
     }

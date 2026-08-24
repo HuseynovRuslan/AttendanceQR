@@ -844,6 +844,8 @@ export interface SuperTenant {
   locationCount: number
   /** "yyyy-MM-dd" of the last scan, or null if nobody has ever scanned. */
   lastScanDate: string | null
+  /** False while the company's admin account still belongs to nobody — built, not yet handed over. */
+  hasAdmin: boolean
   plan: string | null
   maxEmployees: number | null
   maxLocations: number | null
@@ -871,9 +873,12 @@ export interface CreateTenantResult {
   /** What the operator typed — the handover card names the company, not its hostname label. */
   displayName: string
   host: string
-  adminPhone: string
-  /** Shown once — there is no way to read it back, only to reset it. */
-  tempPin: string
+  /** The company's admin account. It exists from creation; it belongs to nobody until named. */
+  adminId: string
+  /** Null when the company was created without naming an admin — the ordinary case now. */
+  adminPhone: string | null
+  /** Shown once — there is no way to read it back, only to reset it. Null with no admin named. */
+  tempPin: string | null
 }
 
 export interface SuperMe {
@@ -1131,6 +1136,29 @@ export function retireGlobalAnnouncement(id: string) {
 
 export function createTenant(input: CreateTenantInput) {
   return apiRequest<CreateTenantResult | { error: string }>('/api/super/tenants', { method: 'POST', body: input })
+}
+
+/**
+ * POST /api/super/tenants/{id}/admin — give the company's admin account to a real person.
+ *
+ * The operator builds a company before it has an owner, so this is the handover: it names the admin,
+ * issues the temporary PIN they sign in with, and returns it once. It claims the account the company
+ * was created with rather than adding a second one, unless that account already belongs to somebody.
+ */
+export function setTenantAdmin(id: string, input: { phone: string; fullName?: string; pin?: string }) {
+  return apiRequest<SetTenantAdminResult | { error: string }>(`/api/super/tenants/${id}/admin`, {
+    method: 'POST',
+    body: input,
+  })
+}
+
+export interface SetTenantAdminResult {
+  id: string
+  fullName: string
+  phone: string
+  /** True when a second admin was added beside an existing one, false when the unclaimed one was named. */
+  created: boolean
+  tempPin: string
 }
 
 export function setTenantActive(id: string, isActive: boolean) {

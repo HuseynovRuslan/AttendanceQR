@@ -295,7 +295,10 @@ builder.Services
                 // bumps TokenVersion, but a bulk import or a hand-run SQL update would not, and these
                 // tokens never expire. Cheap: the row is already being read for the version.
                 if (!account.IsActive)
+                {
                     context.Fail("AccountDeactivated");
+                    return;
+                }
 
                 // Still on the temporary PIN an admin generated for them. Flagged here — from the DB,
                 // not the "mcp" claim — and enforced by UseTemporaryPinGate below, which allows only
@@ -641,6 +644,11 @@ app.Use(async (context, next) =>
 // choose a real one. Sits after the tenant middleware so a rejected request has still been attributed
 // to a company, and before authorization so no controller ever runs for such a caller.
 app.UseTemporaryPinGate();
+
+// A support impersonation may read, but may only write through the admin surfaces. Sits beside the
+// temp-PIN gate for the same reason: before authorization, so no controller runs for a refused call.
+// See ImpersonationBoundary for what a single stray check-in would do to the borrowed admin's face.
+app.UseImpersonationBoundary();
 
 app.UseAuthorization();
 

@@ -1,8 +1,11 @@
 namespace AttendanceQR.Api.Contracts;
 
 /// <summary>
-/// Stand up a new company. Everything except the slug and the admin's phone has a sensible default,
+/// Stand up a new company. Only the slug is required — everything else has a sensible default,
 /// because this replaces a startup env-var block that had none and still worked.
+///
+/// The admin's phone is optional: a company is built before it has an owner, so the account is
+/// created without a way to sign in and SetTenantAdminRequest gives it to a person at handover.
 /// </summary>
 /// <param name="Slug">Becomes the hostname: &lt;slug&gt;.qrlog.az. Lowercase, 2–20 chars.</param>
 /// <param name="AdminPin">Their first PIN, 4 digits. Omit and one is generated — either way they are
@@ -55,3 +58,13 @@ public record GlobalAnnouncementRequest(
 
 /// <summary>Set an operator's role — "Full" / "Support" / "Billing" (see OperatorRoleType).</summary>
 public record OperatorRoleRequest(string? Role);
+
+/// <summary>
+/// Naming the customer's admin on a company the operator has already built. The phone is the login;
+/// a blank PIN generates one. No email field on purpose — nothing here has ever needed an address,
+/// and inventing one is what this surface stopped doing.
+/// </summary>
+public record SetTenantAdminRequest(
+    string Phone,
+    string? FullName = null,
+    string? Pin = null);

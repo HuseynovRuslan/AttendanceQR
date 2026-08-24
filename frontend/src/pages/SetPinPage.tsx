@@ -10,8 +10,9 @@ import { roleHome } from '../lib/jwt'
  * own PIN, then — ONLY for a brand-new account with no reference photo yet — takes a reference selfie
  * (the face-audit baseline a link-activated account would have taken at activation). An existing
  * employee whose PIN was reset already has one, so `needsReferencePhoto` is false and the selfie step
- * is skipped. When shown, the selfie is required if the camera works; if it can't open, it's skippable
- * and the reference falls back to auto-seeding from the first check-in.
+ * is skipped, as is an ADMIN, who is handed the panel rather than a camera (see AuthController).
+ * When shown, the step is always skippable — the reference falls back to auto-seeding from the first
+ * check-in selfie, so nothing about it is worth trapping somebody on this screen for.
  */
 export function SetPinPage() {
   const { saveToken, mustChangePin, role } = useAuth()
@@ -198,13 +199,25 @@ export function SetPinPage() {
               </button>
             </div>
           ) : (
-            <button
-              onClick={capturePhoto}
-              disabled={!camReady}
-              className="mt-3 w-full rounded-2xl bg-blue-600 py-3 text-lg font-bold text-white transition disabled:opacity-50"
-            >
-              📷 Şəkil çək
-            </button>
+            <>
+              <button
+                onClick={capturePhoto}
+                disabled={!camReady}
+                className="mt-3 w-full rounded-2xl bg-blue-600 py-3 text-lg font-bold text-white transition disabled:opacity-50"
+              >
+                📷 Şəkil çək
+              </button>
+              {/* A way past, even when the camera works. It used to exist only if the camera FAILED,
+                  which made a working camera the one thing that could trap someone on this screen —
+                  and the reference is seeded from the first check-in selfie anyway, so nothing is
+                  lost by taking it later. */}
+              <button
+                onClick={goHome}
+                className="mt-2 w-full rounded-2xl py-2 text-sm font-semibold text-slate-500"
+              >
+                Sonra çəkərəm
+              </button>
+            </>
           )}
         </div>
       </div>

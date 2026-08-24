@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { slugify, withSuffix } from '../../lib/tenantSlug'
+import { RowActions } from '../../components/RowActions'
 import {
   createTenant,
   getSuperTenants,
@@ -11,6 +12,8 @@ import {
   reactivateSuperUser,
   revokeSuperUserSessions,
   impersonateTenant,
+  setTenantAdmin,
+  type SetTenantAdminResult,
   getSuperFeatures,
   setTenantPlan,
   type CreateTenantResult,
@@ -336,6 +339,12 @@ export function TenantsTab() {
   const [planEdit, setPlanEdit] = useState<SuperTenant | null>(null)
   const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', priceOverride: '', disabled: [] as string[] })
   const [savingPlan, setSavingPlan] = useState(false)
+  // Naming the customer's admin — the handover, which now happens after the company is built rather
+  // than in the first field of the creation form.
+  const [adminFor, setAdminFor] = useState<SuperTenant | null>(null)
+  const [adminForm, setAdminForm] = useState({ fullName: '', phone: '', pin: '' })
+  const [savingAdmin, setSavingAdmin] = useState(false)
+  const [adminIssued, setAdminIssued] = useState<{ tenant: string; result: SetTenantAdminResult } | null>(null)
 
   async function refresh() {
     const { status, data } = await getSuperTenants()
@@ -465,6 +474,34 @@ export function TenantsTab() {
     }
   }
 
+  function openAdmin(t: SuperTenant) {
+    setError(null)
+    setAdminIssued(null)
+    setAdminFor(t)
+    setAdminForm({ fullName: '', phone: '', pin: '' })
+  }
+
+  async function submitAdmin(e: FormEvent) {
+    e.preventDefault()
+    if (!adminFor) return
+    setError(null)
+    setSavingAdmin(true)
+    const { status, data } = await setTenantAdmin(adminFor.id, {
+      phone: adminForm.phone.trim(),
+      fullName: adminForm.fullName.trim() || undefined,
+      pin: adminForm.pin.trim() || undefined,
+    })
+    setSavingAdmin(false)
+    if (status === 200 && data && !('error' in data)) {
+      setAdminIssued({ tenant: adminFor.displayName, result: data as SetTenantAdminResult })
+      setAdminFor(null)
+      setCreated(null)
+      await refresh()
+    } else {
+      setError(ERRORS[errorCodeOf(data)] ?? 'Təyin edilmədi')
+    }
+  }
+
   async function copyHandover() {
     if (!created) return
     const text =
@@ -498,7 +535,40 @@ export function TenantsTab() {
         </div>
       )}
 
-      {created && (
+      {/* A company was just created. If no admin was named, the next step is to BUILD it — not to
+          hand credentials to anybody, because there is nobody yet. */}
+      {created && !created.tempPin && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IconCheck /> «{created.displayName || created.slug}» yaradıldı
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+            Şirkət hazırdır: bir filial («Baş ofis») və iki növbə şablonu yaradıldı.
+            <br />
+            İndi <b>«Qur»</b> düyməsi ilə içəri keçib filialın koordinatını, iş saatını və işçiləri təyin edin.
+            Hazır olanda müştərinin adminini təyin edərsiniz — PIN o vaxt yaranacaq.
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            Filial Bakının mərkəzində yaranır — koordinatı düzəltməsəniz heç kim skan edə bilməyəcək.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                const t = rows.find((r) => r.id === created.id)
+                if (t) void impersonate(t)
+              }}
+            >
+              Şirkəti qur
+            </button>
+            <button className="btn btn-sm" onClick={() => setCreated(null)}>Bağla</button>
+          </div>
+        </div>
+      )}
+
+      {/* Created WITH an admin named — the old one-step path, still there for a company whose owner
+          is known on day one. */}
+      {created && created.tempPin && (
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
           <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <IconCheck /> «{created.displayName || created.slug}» yaradıldı
@@ -526,6 +596,101 @@ export function TenantsTab() {
         </div>
       )}
 
+      {/* The handover itself: the PIN exists for one screenful and is never readable again. */}
+      {adminIssued && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IconCheck /> «{adminIssued.tenant}» müştəriyə hazırdır
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.9 }}>
+            Admin: <b>{adminIssued.result.fullName}</b>
+            <br />
+            Giriş: <b>https://app.qrlog.az</b>
+            <br />
+            Telefon: <b>0{adminIssued.result.phone}</b>
+            <br />
+            Müvəqqəti PIN: <b style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 16 }}>{adminIssued.result.tempPin}</b>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            PIN yalnız indi görünür. Admin ilk girişdə öz PIN-ini təyin edəcək — şəkil istənməyəcək.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                const r = adminIssued.result
+                void navigator.clipboard
+                  .writeText(
+                    `Giriş: https://app.qrlog.az\nTelefon: 0${r.phone}\nMüvəqqəti PIN: ${r.tempPin}\n` +
+                      `(ilk girişdə öz PIN-inizi təyin edəcəksiniz)`,
+                  )
+                  .then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  })
+                  .catch(() => {})
+              }}
+            >
+              {copied ? '✓ Kopyalandı' : 'Məlumatları kopyala'}
+            </button>
+            <button className="btn btn-sm" onClick={() => setAdminIssued(null)}>Bağla</button>
+          </div>
+        </div>
+      )}
+
+      {/* Naming the admin. */}
+      {adminFor && (
+        <form className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }} onSubmit={submitAdmin}>
+          <div className="card-title">«{adminFor.displayName}» — müştərinin adminini təyin et</div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            {adminFor.hasAdmin
+              ? 'Bu şirkətin artıq admini var — bu, yanına ikinci admin əlavə edəcək.'
+              : 'Şirkət qurularkən yaradılan admin hesabı bu şəxsə veriləcək.'}
+          </div>
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Adı, soyadı</label>
+              <input
+                className="inp"
+                value={adminForm.fullName}
+                onChange={(e) => setAdminForm((f) => ({ ...f, fullName: e.target.value }))}
+                placeholder="Admin"
+              />
+            </div>
+            <div>
+              <label className="form-label">Telefon</label>
+              <input
+                className="inp"
+                type="tel"
+                inputMode="tel"
+                required
+                value={adminForm.phone}
+                onChange={(e) => setAdminForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="0501234567"
+              />
+            </div>
+          </div>
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Müvəqqəti PIN</label>
+              <input
+                className="inp"
+                value={adminForm.pin}
+                onChange={(e) => setAdminForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, '') }))}
+                placeholder="boş = avtomatik"
+                maxLength={4}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button className="btn btn-primary" disabled={savingAdmin || !adminForm.phone.trim()}>
+              {savingAdmin ? 'Təyin edilir…' : 'Təyin et və PIN ver'}
+            </button>
+            <button type="button" className="btn" onClick={() => setAdminFor(null)}>Ləğv et</button>
+          </div>
+        </form>
+      )}
+
       {showForm && (
         <form className="card card-pad" style={{ marginBottom: 16 }} onSubmit={onSubmit}>
           <div className="card-title">Yeni şirkət</div>
@@ -542,18 +707,17 @@ export function TenantsTab() {
               />
             </div>
             <div>
-              <label className="form-label">Admin telefonu</label>
+              <label className="form-label">Admin telefonu — istəyə bağlı</label>
               <input
                 className="inp"
                 type="tel"
                 inputMode="tel"
-                required
                 value={form.adminPhone}
                 onChange={(e) => set('adminPhone', e.target.value)}
-                placeholder="0501234567"
+                placeholder="boş buraxın"
               />
               <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                Şirkətin öz admini — bu nömrə ilə app.qrlog.az-dan girəcək.
+                Boş buraxsanız şirkəti özünüz qurub, sonda «Admini təyin et» ilə müştəriyə verirsiniz.
               </p>
             </div>
           </div>
@@ -579,7 +743,7 @@ export function TenantsTab() {
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            <button className="btn btn-primary" disabled={saving || !form.displayName.trim() || !form.adminPhone.trim()}>
+            <button className="btn btn-primary" disabled={saving || !form.displayName.trim()}>
               {saving ? 'Yaradılır…' : 'Şirkəti yarat'}
             </button>
             <button type="button" className="btn" onClick={() => { setShowForm(false); setError(null) }}>Ləğv et</button>
@@ -675,6 +839,13 @@ export function TenantsTab() {
                     {fmtDate(t.createdAtUtc.slice(0, 10))} tarixindən
                     {t.plan ? <> · <span style={{ fontWeight: 600, color: 'var(--leaf-d)' }}>{t.plan}</span></> : null}
                   </div>
+                  {/* Built but not handed over: the admin account exists and belongs to nobody. Without
+                      this the operator has no way to tell the two apart from the outside. */}
+                  {!t.hasAdmin && (
+                    <span className="tag" style={{ background: 'rgba(154,52,18,0.12)', color: '#9a3412', marginTop: 4 }}>
+                      admin təyin edilməyib
+                    </span>
+                  )}
                 </td>
                 <td className="num">
                   {t.employeeCount}
@@ -694,22 +865,36 @@ export function TenantsTab() {
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {canManage && (
-                    <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => openPlan(t)} title="Plan, limit və funksiyalar">
-                      Plan
-                    </button>
-                  )}{' '}
-                  {t.isActive && canImpersonate && (
-                    <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void impersonate(t)} title="Admin kimi daxil ol (dəstək)">
-                      Daxil ol
-                    </button>
-                  )}{' '}
-                  {canManage && (
-                    <button className="btn btn-sm" disabled={busyId === t.id} onClick={() => void toggle(t)}>
-                      {busyId === t.id ? '…' : t.isActive ? 'Söndür' : 'Aç'}
-                    </button>
+                  {canManage || canImpersonate ? (
+                    <RowActions
+                      primary={{
+                        // The verb changed with the job: this is how the operator gets inside to build
+                        // a company, not only how they answer a support question about one.
+                        label: t.hasAdmin ? 'Daxil ol' : 'Qur',
+                        onClick: () => void impersonate(t),
+                        disabled: busyId === t.id,
+                        hidden: !t.isActive || !canImpersonate,
+                        title: t.hasAdmin ? 'Admin kimi daxil ol (dəstək)' : 'İçəri keçib şirkəti qur',
+                      }}
+                      actions={[
+                        {
+                          label: t.hasAdmin ? 'Admin əlavə et' : 'Admini təyin et',
+                          onClick: () => openAdmin(t),
+                          hidden: !canManage,
+                        },
+                        { label: 'Plan və limitlər', onClick: () => openPlan(t), hidden: !canManage },
+                        {
+                          label: t.isActive ? 'Söndür' : 'Aç',
+                          onClick: () => void toggle(t),
+                          danger: t.isActive,
+                          disabled: busyId === t.id,
+                          hidden: !canManage,
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <span className="muted" style={{ fontSize: 12 }}>—</span>
                   )}
-                  {!canManage && !canImpersonate && <span className="muted" style={{ fontSize: 12 }}>—</span>}
                 </td>
               </tr>
             ))}

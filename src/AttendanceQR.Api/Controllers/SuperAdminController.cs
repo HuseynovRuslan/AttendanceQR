@@ -71,6 +71,33 @@ public partial class SuperAdminController : ControllerBase
     private async Task<bool> CanAsync(OperatorPermission perm, CancellationToken ct)
         => IsSuperAdmin && OperatorAccess.Allows(await CurrentRoleAsync(ct), perm);
 
+    /// <summary>
+    /// Runs a block of work scoped to ONE customer's tenant, and puts it back afterwards.
+    ///
+    /// Everything on /api/super runs as the operator, whose own tenant is whichever company their
+    /// employee row lives in. Writing a row into a CUSTOMER therefore means moving the request's
+    /// tenant scope by hand first, because AppDbContext stamps TenantId from whatever is in scope at
+    /// SaveChanges — silently, with no error to notice. A super endpoint that forgets, or that
+    /// resolves the wrong id, writes one company's branches or staff into another company's data.
+    ///
+    /// So there is exactly one Resolve() call on this surface and it is here, where a reviewer can
+    /// find it by grepping for the name. The scope is restored on the way out so a later part of the
+    /// same request cannot inherit the customer's tenant by accident.
+    /// </summary>
+    private async Task<T> WithTenantAsync<T>(Guid tenantId, Func<Task<T>> body)
+    {
+        var previous = _tenant.IsResolved ? _tenant.TenantId : (Guid?)null;
+        _tenant.Resolve(tenantId);
+        try
+        {
+            return await body();
+        }
+        finally
+        {
+            if (previous is Guid back) _tenant.Resolve(back);
+        }
+    }
+
     /// <summary>Lowercase letters, digits and dashes; 2–20 chars. It becomes a hostname.</summary>
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,19}$")]
     private static partial Regex SlugFormat();
@@ -113,6 +140,16 @@ public partial class SuperAdminController : ControllerBase
             .Select(g => new { TenantId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.TenantId, x => x.Count, ct);
 
+        // Whether the company's admin account belongs to anybody yet. A company is now built before it
+        // has an owner, and the account it is built through has no phone and no email until handover —
+        // so this is the difference between "ready to hand over" and "handed over", and the console
+        // says which on the row rather than leaving the operator to remember.
+        var claimedAdmins = await _db.Employees.IgnoreQueryFilters()
+            .Where(e => e.IsActive && e.Role == EmployeeRole.Admin && (e.PhoneNumber != null || e.Email != null))
+            .Select(e => e.TenantId)
+            .Distinct()
+            .ToListAsync(ct);
+
         // Last scan tells you whether a company actually uses this, which "created 3 weeks ago" does not.
         var lastScan = await _db.AttendanceRecords.IgnoreQueryFilters()
             .GroupBy(r => r.TenantId)
@@ -134,6 +171,7 @@ public partial class SuperAdminController : ControllerBase
             employeeCount = employeeCounts.GetValueOrDefault(t.Id, 0),
             locationCount = locationCounts.GetValueOrDefault(t.Id, 0),
             lastScanDate = lastScan.TryGetValue(t.Id, out var d) ? d.ToString("yyyy-MM-dd") : null,
+            hasAdmin = claimedAdmins.Contains(t.Id),
             plan = t.Plan,
             maxEmployees = t.MaxEmployees,
             maxLocations = t.MaxLocations,
@@ -163,9 +201,21 @@ public partial class SuperAdminController : ControllerBase
             return Conflict(new { error = "SlugTaken" });
 
         var displayName = string.IsNullOrWhiteSpace(request.DisplayName) ? slug : request.DisplayName.Trim();
-        var phone = PhoneNumbers.Normalize(request.AdminPhone);
-        if (phone is null)
-            return BadRequest(new { error = "AdminPhoneInvalid" });
+
+        // The customer's admin no longer has to be named here. The operator sets a company up before
+        // handing it over — branches, staff, shifts — and at minute zero they often do not yet know
+        // which person at the customer will hold the account, or their number. Leaving the phone out
+        // creates the admin WITHOUT a way to sign in: no phone, no email, and a password nobody
+        // holds. It exists so the company has an admin to configure it through (impersonation needs
+        // one), and POST tenants/{id}/admin gives it to a real person at handover.
+        var wantsCredentials = !string.IsNullOrWhiteSpace(request.AdminPhone);
+        string? phone = null;
+        if (wantsCredentials)
+        {
+            phone = PhoneNumbers.Normalize(request.AdminPhone);
+            if (phone is null)
+                return BadRequest(new { error = "AdminPhoneInvalid" });
+        }
 
         var pin = string.IsNullOrWhiteSpace(request.AdminPin)
             ? PinRules.Generate()
@@ -188,46 +238,58 @@ public partial class SuperAdminController : ControllerBase
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
-        // Everything from here belongs to the NEW company: the auto-stamp reads the request's tenant,
-        // and this request's is the operator's. Same move the startup seed makes.
-        _tenant.Resolve(tenant.Id);
-
-        var location = new Location
+        // Everything from here belongs to the NEW company, so it runs inside the target's tenant
+        // scope — see WithTenantAsync for what happens to a super endpoint that forgets.
+        var admin = await WithTenantAsync(tenant.Id, async () =>
         {
-            Name = string.IsNullOrWhiteSpace(request.LocationName) ? "Baş ofis" : request.LocationName.Trim(),
-            Latitude = request.Latitude ?? 40.4093,
-            Longitude = request.Longitude ?? 49.8671,
-            RadiusMeters = 150,
-            ShiftStart = new TimeOnly(9, 0),
-            ShiftEnd = new TimeOnly(18, 0),
-            LateThresholdMinutes = 15,
-        };
-        _db.Locations.Add(location);
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            var starterLocation = new Location
+            {
+                Name = string.IsNullOrWhiteSpace(request.LocationName) ? "Baş ofis" : request.LocationName.Trim(),
+                // Baku, until the admin drops a map link on it. A branch at the wrong coordinates
+                // refuses every scan as "outside the area", so this is the first thing to fix.
+                Latitude = request.Latitude ?? 40.4093,
+                Longitude = request.Longitude ?? 49.8671,
+                RadiusMeters = 150,
+                ShiftStart = new TimeOnly(9, 0),
+                ShiftEnd = new TimeOnly(18, 0),
+                LateThresholdMinutes = 15,
+            };
+            _db.Locations.Add(starterLocation);
 
-        var admin = new Employee
-        {
-            FullName = string.IsNullOrWhiteSpace(request.AdminName) ? "Admin" : request.AdminName.Trim(),
-            // No email. This used to synthesise "admin-{slug}@baki.local" — an address at a domain that
-            // does not exist, carrying the name of the first customer, shown back to the operator as if
-            // it were something the account owned. Login is by phone, and the ordinary create-employee
-            // path already keeps a null email for a phone-only employee ("no synthesised placeholder",
-            // AdminController). The unique index is (TenantId, Email) and Postgres treats NULLs as
-            // distinct, so any number of them coexist.
-            Email = null,
-            PhoneNumber = phone,
-            Role = EmployeeRole.Admin,
-            LocationId = location.Id,
-            PasswordHash = _passwordHasher.Hash(pin),
-            IsActive = true,
-            ActivatedAtUtc = DateTime.UtcNow, // no activation link — the temp PIN is the credential
-            MustChangePin = true,
-        };
-        _db.Employees.Add(admin);
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            // The shift picker is empty without these, and it used to fill only on the next backend
+            // restart — after the company had already been set up and handed over.
+            _db.Schedules.AddRange(DefaultSchedules.For(tenant.Id));
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+            var firstAdmin = new Employee
+            {
+                FullName = string.IsNullOrWhiteSpace(request.AdminName) ? "Admin" : request.AdminName.Trim(),
+                // No email. This used to synthesise "admin-{slug}@baki.local" — an address at a domain
+                // that does not exist, carrying the name of the first customer, shown back to the
+                // operator as if it were something the account owned. Login is by phone, and the
+                // ordinary create-employee path already keeps a null email for a phone-only employee
+                // ("no synthesised placeholder", AdminController). The unique index is (TenantId,
+                // Email) and Postgres treats NULLs as distinct, so any number of them coexist.
+                Email = null,
+                PhoneNumber = phone,
+                Role = EmployeeRole.Admin,
+                LocationId = starterLocation.Id,
+                // With no phone there is no way to sign in as this account at all: login matches a
+                // phone or an email, and it has neither. The hash is a random one nobody is told, so
+                // the row is an anchor for the operator to configure through and nothing else, until
+                // POST tenants/{id}/admin gives it to a real person.
+                PasswordHash = _passwordHasher.Hash(wantsCredentials ? pin : PinRules.Generate()),
+                IsActive = true,
+                ActivatedAtUtc = DateTime.UtcNow, // no activation link — the temp PIN is the credential
+                MustChangePin = true,
+            };
+            _db.Employees.Add(firstAdmin);
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            return firstAdmin;
+        });
 
         await AuditAsync("TenantCreated", tenant.Id, slug,
-            $"'{displayName}' — {slug}.qrlog.az, admin {phone}", HttpContext.RequestAborted);
+            $"'{displayName}' — admin {phone ?? "(təyin edilməyib)"}", HttpContext.RequestAborted);
 
         return Ok(new
         {
@@ -235,9 +297,11 @@ public partial class SuperAdminController : ControllerBase
             slug,
             displayName,
             host = $"{slug}.qrlog.az",
+            adminId = admin.Id,
             adminPhone = phone,
-            // Shown once. There is no way to read it back — only a reset.
-            tempPin = pin,
+            // Shown once. There is no way to read it back — only a reset. Null when no phone was
+            // given: nothing was issued, because there is nobody yet to issue it to.
+            tempPin = wantsCredentials ? pin : null,
         });
     }
 
