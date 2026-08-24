@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -40,14 +41,21 @@ public partial class SuperAdminController
         if (tenant is null)
             return NotFound(new { error = "TenantNotFound" });
 
-        var (used, usage) = await UsageAsync(id, ct);
-        var counts = await TenantPurge.CountAsync(_db, id, ct);
+        var (refusal, usage) = await RefusalAsync(tenant, ct);
+        // Nothing to preview for a company that cannot be deleted — and on a real customer that count
+        // is 28 queries across a year of history to draw a list nobody will act on.
+        var counts = refusal is null
+            ? await TenantPurge.CountAsync(_db, id, ct)
+            : new Dictionary<string, int>();
 
         return Ok(new
         {
             id = tenant.Id,
             displayName = tenant.DisplayName,
-            canDelete = !used,
+            canDelete = refusal is null,
+            // Which rail stopped it, so the console can say what to do about it rather than only that
+            // the button will not work.
+            reason = refusal,
             usage,
             // Row counts per table, so "delete" is a number the operator can recognise as their test
             // company or fail to recognise as somebody's real one.
@@ -72,9 +80,9 @@ public partial class SuperAdminController
         if (!string.Equals(request.Confirm?.Trim(), tenant.DisplayName, StringComparison.Ordinal))
             return BadRequest(new { error = "ConfirmMismatch", expected = tenant.DisplayName });
 
-        var (used, usage) = await UsageAsync(id, ct);
-        if (used)
-            return Conflict(new { error = "TenantHasHistory", usage });
+        var (refusal, usage) = await RefusalAsync(tenant, ct);
+        if (refusal is not null)
+            return Conflict(new { error = refusal, usage });
 
         // Photo keys BEFORE the rows that name them: afterwards the objects are orphans nobody can
         // find, and the bucket's retention job never touches reference/ at all. Same order and same
@@ -84,11 +92,6 @@ public partial class SuperAdminController
         var rowsDeleted = await TenantPurge.PurgeAsync(_db, id, ct);
         _db.Tenants.Remove(tenant);
         await _db.SaveChangesAsync(ct);
-
-        // Written after the delete, from the operator's own scope, into the one log the purge cannot
-        // reach. Details rather than an id, because the id now refers to nothing.
-        await AuditAsync("TenantDeleted", null, tenant.Slug,
-            $"'{tenant.DisplayName}' silindi — {rowsDeleted} sətir, {photoKeys.Count} şəkil", ct);
 
         // Object storage has no transaction to join, so it goes last and best-effort: the rows are
         // already gone, and a failure here leaves objects nobody references rather than a company
@@ -108,19 +111,76 @@ public partial class SuperAdminController
             }
         }
 
-        return Ok(new { deleted = id, rowsDeleted, photosDeleted });
+        // Photos that were named but not removed — a storage client with no endpoint configured
+        // returns 0 rather than throwing (the .env-alone trap), so silence here would have read as
+        // success while the faces stayed in the bucket.
+        var photosPending = photoKeys.Count - photosDeleted;
+        if (photosPending > 0)
+        {
+            _logger?.LogError(
+                "Tenant {TenantId} deleted, but {Pending} of {Total} photos remain in storage",
+                id, photosPending, photoKeys.Count);
+        }
+
+        // Written AFTER storage, with what actually happened. Recording photoKeys.Count beforehand
+        // would have let the log say "12 şəkil" about twelve objects still sitting in the bucket.
+        await AuditAsync("TenantDeleted", null, tenant.Slug,
+            $"'{tenant.DisplayName}' silindi — {rowsDeleted} sətir, {photosDeleted} şəkil"
+            + (photosPending > 0 ? $", {photosPending} şəkil SİLİNMƏDİ" : string.Empty), ct);
+
+        return Ok(new { deleted = id, rowsDeleted, photosDeleted, photosPending });
     }
 
     /// <summary>
-    /// Whether anybody ever worked here. One record of somebody's attendance is the line between a
-    /// test company and a customer's history, and it is the only thing this endpoint refuses on.
+    /// Every reason not to delete this company, checked in the order that matters — the first rail
+    /// that stops it, or null when none do.
+    ///
+    /// One rail is not a safeguard. The operator works alone, at speed, on a table where the rows
+    /// either side of the one they meant look exactly like it, so each of these has to fail
+    /// independently for the wrong company to go.
     /// </summary>
-    private async Task<(bool Used, object Usage)> UsageAsync(Guid tenantId, CancellationToken ct)
+    private async Task<(string? Refusal, object Usage)> RefusalAsync(Tenant tenant, CancellationToken ct)
     {
-        var records = await _db.AttendanceRecords.IgnoreQueryFilters().CountAsync(a => a.TenantId == tenantId, ct);
-        var summaries = await _db.DailySummaries.IgnoreQueryFilters().CountAsync(d => d.TenantId == tenantId, ct);
-        var visits = await _db.FieldVisits.IgnoreQueryFilters().CountAsync(v => v.TenantId == tenantId, ct);
-        return (records + summaries + visits > 0, new { records, summaries, visits });
+        var id = tenant.Id;
+        var records = await _db.AttendanceRecords.IgnoreQueryFilters().CountAsync(a => a.TenantId == id, ct);
+        var summaries = await _db.DailySummaries.IgnoreQueryFilters().CountAsync(d => d.TenantId == id, ct);
+        var visits = await _db.FieldVisits.IgnoreQueryFilters().CountAsync(v => v.TenantId == id, ct);
+        var invoices = await _db.TenantInvoices.CountAsync(i => i.TenantId == id, ct);
+        var usage = new { records, summaries, visits, invoices };
+
+        // A running company is never one keystroke from deletion. Switching it off first is reversible,
+        // takes a second, and puts a deliberate act between a live customer and this endpoint — which
+        // matters because the row menu renders "Söndür" and "Şirkəti sil" as neighbours.
+        if (tenant.IsActive)
+            return ("TenantIsActive", usage);
+
+        // One scan is somebody's day of pay.
+        if (records + summaries + visits > 0)
+            return ("TenantHasHistory", usage);
+
+        // A company that has been billed is a customer whether or not anybody ever scanned — and the
+        // invoice carries a TenantId, so the sweep would have taken the billing history with it,
+        // silently, with nothing in the response to say so.
+        if (invoices > 0)
+            return ("TenantHasInvoices", usage);
+
+        // An operator whose own employee row lives inside this company would delete their own account
+        // along with it and lock themselves out of the console. SetActive already refuses the same
+        // shape of mistake for suspension.
+        var operators = _superAdminIds;
+        if (operators.Length > 0 &&
+            await _db.Employees.IgnoreQueryFilters().AnyAsync(e => e.TenantId == id && operators.Contains(e.Id), ct))
+            return ("TenantHasOperator", usage);
+
+        // The same rail for a console team member who is not on the .env allowlist: their profile row
+        // would survive the sweep and point at an employee that no longer exists, which the Team page
+        // renders as a nameless entry nobody can explain.
+        var profileIds = await _db.OperatorProfiles.Select(p => p.EmployeeId).ToListAsync(ct);
+        if (profileIds.Count > 0 &&
+            await _db.Employees.IgnoreQueryFilters().AnyAsync(e => e.TenantId == id && profileIds.Contains(e.Id), ct))
+            return ("TenantHasOperator", usage);
+
+        return (null, usage);
     }
 
     /// <summary>Every photo this company put in the bucket: enrolment selfies, check-ins, field visits.</summary>

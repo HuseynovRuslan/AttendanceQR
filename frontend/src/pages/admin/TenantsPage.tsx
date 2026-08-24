@@ -17,6 +17,7 @@ import {
   getTenantDeletable,
   deleteTenant,
   type TenantDeletable,
+  type DeleteTenantResult,
   getSuperFeatures,
   setTenantPlan,
   type CreateTenantResult,
@@ -57,6 +58,9 @@ const ERRORS: Record<string, string> = {
   SlugTaken: 'Bu ünvan artıq istifadə olunur',
   ConfirmMismatch: 'Yazdığınız ad şirkətin adı ilə üst-üstə düşmür',
   TenantHasHistory: 'Bu şirkətdə davamiyyət tarixçəsi var — silinmir, söndürün',
+  TenantIsActive: 'Əvvəlcə şirkəti söndürün',
+  TenantHasInvoices: 'Bu şirkətə hesab kəsilib — silinmir',
+  TenantHasOperator: 'Bu şirkətin içində operator hesabı var',
   PhoneAlreadyExists: 'Bu nömrə həmin şirkətdə artıq istifadə olunur',
   NoLocation: 'Şirkətdə aktiv filial yoxdur',
   AdminPhoneInvalid: 'Admin nömrəsi yanlışdır',
@@ -373,6 +377,7 @@ export function TenantsTab() {
   const [deleteFor, setDeleteFor] = useState<TenantDeletable | null>(null)
   const [deleteTyped, setDeleteTyped] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [deleted, setDeleted] = useState<{ name: string; result: DeleteTenantResult } | null>(null)
 
   async function refresh() {
     const { status, data } = await getSuperTenants()
@@ -544,9 +549,13 @@ export function TenantsTab() {
     if (!deleteFor) return
     setError(null)
     setDeleting(true)
+    const name = deleteFor.displayName
     const { status, data } = await deleteTenant(deleteFor.id, deleteTyped.trim())
     setDeleting(false)
     if (status === 200 && data && !('error' in data)) {
+      // Said out loud, because the row simply vanishing from the table is not an answer to "did it
+      // take the photos too" — and storage can fail without failing the request.
+      setDeleted({ name, result: data as DeleteTenantResult })
       setDeleteFor(null)
       setCreated(null)
       await refresh()
@@ -744,6 +753,32 @@ export function TenantsTab() {
         </form>
       )}
 
+      {deleted && (
+        <div
+          className="card card-pad"
+          style={{ marginBottom: 16, borderColor: deleted.result.photosPending > 0 ? 'var(--clay)' : 'var(--leaf)' }}
+        >
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IconCheck /> «{deleted.name}» silindi
+          </div>
+          <div style={{ fontSize: 13 }}>
+            {deleted.result.rowsDeleted} sətir, {deleted.result.photosDeleted} şəkil silindi.
+          </div>
+          {deleted.result.photosPending > 0 && (
+            <div className="fb fb-err" style={{ marginTop: 10 }}>
+              <IconX />
+              <span>
+                Diqqət: {deleted.result.photosPending} şəkil anbardan silinmədi. Şirkət getdi, şəkillər
+                qaldı — server loglarına baxın.
+              </span>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn btn-sm" onClick={() => setDeleted(null)}>Bağla</button>
+          </div>
+        </div>
+      )}
+
       {/* Deleting a company. Shown as a panel rather than a browser confirm() because the numbers are
           the safeguard: an operator recognises "3 employees, 1 branch" as their own test company and
           fails to recognise 64 as anything they made. */}
@@ -754,11 +789,30 @@ export function TenantsTab() {
           {!deleteFor.canDelete ? (
             <>
               <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-                Bu şirkətdə <b>davamiyyət tarixçəsi var</b> — {deleteFor.usage.records} skan,{' '}
-                {deleteFor.usage.summaries} günlük yekun, {deleteFor.usage.visits} sahə ziyarəti.
-                <br />
-                Bir skan kiminsə bir günlük maaşıdır, ona görə belə şirkət silinmir. Əvəzinə{' '}
-                <b>«Söndür»</b> edin: heç kim girə bilməyəcək, məlumat isə olduğu kimi qalacaq.
+                {deleteFor.reason === 'TenantIsActive' && (
+                  <>Bu şirkət <b>işləkdir</b>. Silmək üçün əvvəlcə <b>«Söndür»</b> edin — bu geri qaytarıla bilər.</>
+                )}
+                {deleteFor.reason === 'TenantHasHistory' && (
+                  <>
+                    Bu şirkətdə <b>davamiyyət tarixçəsi var</b> — {deleteFor.usage.records} skan,{' '}
+                    {deleteFor.usage.summaries} günlük yekun, {deleteFor.usage.visits} sahə ziyarəti.
+                    <br />
+                    Bir skan kiminsə bir günlük maaşıdır, ona görə belə şirkət silinmir. Söndürülmüş
+                    halda qalsın: heç kim girə bilməyəcək, məlumat isə olduğu kimi qalacaq.
+                  </>
+                )}
+                {deleteFor.reason === 'TenantHasInvoices' && (
+                  <>
+                    Bu şirkətə <b>{deleteFor.usage.invoices} hesab</b> kəsilib — yəni müştəridir, skan
+                    olub-olmamasından asılı olmayaraq. Hesab tarixçəsi silinməməlidir.
+                  </>
+                )}
+                {deleteFor.reason === 'TenantHasOperator' && (
+                  <>
+                    Bu şirkətin içində <b>operator hesabı</b> var — silinsə, öz girişinizi itirərsiniz.
+                    Əvvəlcə həmin hesabı çıxarın.
+                  </>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn btn-sm" onClick={() => setDeleteFor(null)}>Bağla</button>
@@ -1008,11 +1062,14 @@ export function TenantsTab() {
                           hidden: !canManage,
                         },
                         {
+                          // Only for a company that is already switched off. A live customer's menu
+                          // has no delete in it at all — which matters because RowActions groups every
+                          // danger item together, so "Söndür" and "Şirkəti sil" would be neighbours.
                           label: 'Şirkəti sil',
                           onClick: () => void openDelete(t),
                           danger: true,
                           disabled: busyId === t.id,
-                          hidden: !canManage,
+                          hidden: !canManage || t.isActive,
                           title: 'Yalnız heç vaxt skan olunmamış şirkət silinə bilər',
                         },
                       ]}

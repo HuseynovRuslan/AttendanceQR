@@ -40,6 +40,8 @@ public class TenantDeleteTests
         public AppDbContext Db { get; }
         public SuperAdminController Controller { get; }
         public Guid OperatorId { get; } = Guid.NewGuid();
+        /// <summary>Allowlisted, with no employee row of their own — a colleague on the console.</summary>
+        public Guid SecondOperatorId { get; } = Guid.NewGuid();
 
         public Harness(bool asOperator = true)
         {
@@ -64,7 +66,12 @@ public class TenantDeleteTests
 
             Controller = new SuperAdminController(
                 Db, tenant, new Hasher(), new Jwt(),
-                new AppOptions { SuperAdminEmployeeIds = asOperator ? OperatorId.ToString() : Guid.NewGuid().ToString() })
+                new AppOptions
+                {
+                    SuperAdminEmployeeIds = asOperator
+                        ? $"{OperatorId},{SecondOperatorId}"
+                        : Guid.NewGuid().ToString(),
+                })
             {
                 ControllerContext = new ControllerContext
                 {
@@ -86,6 +93,14 @@ public class TenantDeleteTests
             var result = await Controller.CreateTenant(new CreateTenantRequest(Slug: slug, DisplayName: name));
             var ok = Assert.IsType<OkObjectResult>(result);
             return (Guid)ok.Value!.GetType().GetProperty("id")!.GetValue(ok.Value)!;
+        }
+
+        /// <summary>Switching a company off, which the delete now requires first.</summary>
+        public void Suspend(Guid tenantId)
+        {
+            var t = Db.Tenants.First(x => x.Id == tenantId);
+            t.IsActive = false;
+            Db.SaveChanges();
         }
 
         /// <summary>The three tables a freshly created company always has rows in.</summary>
@@ -122,6 +137,7 @@ public class TenantDeleteTests
     {
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
         Assert.True(h.RowsIn(id) > 0);
 
         var result = await h.Controller.DeleteTenant(id, new DeleteTenantRequest("Test Sirketi"));
@@ -139,6 +155,7 @@ public class TenantDeleteTests
         // company. This is the whole reason the purge reads EF's model instead of a copied list.
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
         h.Db.Tasks.Add(new TaskItem
         {
             TenantId = id, Title = "Qalıq tapşırıq", CreatedByEmployeeId = h.OperatorId,
@@ -157,6 +174,7 @@ public class TenantDeleteTests
         // Not a list this test maintains either: it asks the model, and asserts nothing is left.
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
 
         await h.Controller.DeleteTenant(id, new DeleteTenantRequest("Test Sirketi"));
 
@@ -172,6 +190,7 @@ public class TenantDeleteTests
         // have deleted nothing at all, or, pointed the other way, the wrong company entirely.
         using var h = new Harness();
         var doomed = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(doomed);
         var keeper = await h.CreateAsync("real", "Real Sirket");
         var keeperRows = h.RowsIn(keeper);
 
@@ -192,6 +211,7 @@ public class TenantDeleteTests
         // A scan is somebody's day of pay. There is no force flag past this point.
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
         var employee = h.Db.Employees.IgnoreQueryFilters().First(e => e.TenantId == id);
         h.Db.AttendanceRecords.Add(new AttendanceRecord
         {
@@ -213,6 +233,7 @@ public class TenantDeleteTests
         // An absence is money too — the nightly job writes a Qayıb row for somebody who never came.
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
         var employee = h.Db.Employees.IgnoreQueryFilters().First(e => e.TenantId == id);
         h.Db.DailySummaries.Add(new DailySummary
         {
@@ -230,6 +251,7 @@ public class TenantDeleteTests
         // The rows either side of the one the operator meant look exactly like it.
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
 
         Assert.Equal("ConfirmMismatch", ErrorOf(await h.Controller.DeleteTenant(id, new DeleteTenantRequest("test sirketi"))));
         Assert.Equal("ConfirmMismatch", ErrorOf(await h.Controller.DeleteTenant(id, new DeleteTenantRequest(""))));
@@ -257,6 +279,57 @@ public class TenantDeleteTests
     }
 
     [Fact]
+    public async Task A_running_company_has_no_delete_at_all()
+    {
+        // The highest-value rail, and the cheapest: switching a company off first is reversible, takes
+        // a second, and puts a deliberate act between a live customer and this endpoint. The console
+        // does not even show the item for a running company — this is the server saying the same.
+        using var h = new Harness();
+        var id = await h.CreateAsync("test", "Test Sirketi");
+
+        Assert.Equal("TenantIsActive", ErrorOf(await h.Controller.DeleteTenant(id, new DeleteTenantRequest("Test Sirketi"))));
+        Assert.NotNull(h.Db.Tenants.AsNoTracking().FirstOrDefault(t => t.Id == id));
+    }
+
+    [Fact]
+    public async Task A_company_that_has_been_billed_is_a_customer_even_with_no_scans()
+    {
+        // And the sharper reason: TenantInvoice carries a TenantId, so the model-driven sweep would
+        // have deleted the billing history along with everything else — silently, with nothing in the
+        // response to say a money record had gone.
+        using var h = new Harness();
+        var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
+        h.Db.TenantInvoices.Add(new TenantInvoice
+        {
+            TenantId = id, PeriodYear = 2026, PeriodMonth = 8, EmployeeCount = 3, Amount = 12m,
+        });
+        h.Db.SaveChanges();
+
+        Assert.Equal("TenantHasInvoices", ErrorOf(await h.Controller.DeleteTenant(id, new DeleteTenantRequest("Test Sirketi"))));
+        Assert.Single(h.Db.TenantInvoices.AsNoTracking().Where(i => i.TenantId == id));
+    }
+
+    [Fact]
+    public async Task A_company_holding_an_operator_account_is_refused()
+    {
+        // Deleting it would delete the operator's own employee row and lock them out of the console
+        // they are standing in.
+        using var h = new Harness();
+        var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
+        h.Db.Employees.Add(new Employee
+        {
+            Id = h.SecondOperatorId, TenantId = id, FullName = "Operator (ikinci sətir)",
+            Role = EmployeeRole.Admin, IsActive = true, PasswordHash = "h",
+            LocationId = h.Db.Locations.IgnoreQueryFilters().First(l => l.TenantId == id).Id,
+        });
+        h.Db.SaveChanges();
+
+        Assert.Equal("TenantHasOperator", ErrorOf(await h.Controller.DeleteTenant(id, new DeleteTenantRequest("Test Sirketi"))));
+    }
+
+    [Fact]
     public async Task An_unknown_company_is_not_found()
     {
         using var h = new Harness();
@@ -279,6 +352,7 @@ public class TenantDeleteTests
     {
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
 
         var ok = Assert.IsType<OkObjectResult>(await h.Controller.TenantDeletable(id));
         var value = ok.Value!;
@@ -295,6 +369,7 @@ public class TenantDeleteTests
     {
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
         var employee = h.Db.Employees.IgnoreQueryFilters().First(e => e.TenantId == id);
         h.Db.AttendanceRecords.Add(new AttendanceRecord
         {
@@ -306,6 +381,7 @@ public class TenantDeleteTests
 
         var ok = Assert.IsType<OkObjectResult>(await h.Controller.TenantDeletable(id));
         Assert.Equal(false, ok.Value!.GetType().GetProperty("canDelete")!.GetValue(ok.Value));
+        Assert.Equal("TenantHasHistory", ok.Value!.GetType().GetProperty("reason")!.GetValue(ok.Value));
     }
 
     // --- what survives -----------------------------------------------------------------------------
@@ -317,6 +393,7 @@ public class TenantDeleteTests
         // that disappears along with what it describes is not a record.
         using var h = new Harness();
         var id = await h.CreateAsync("test", "Test Sirketi");
+        h.Suspend(id);
 
         await h.Controller.DeleteTenant(id, new DeleteTenantRequest("Test Sirketi"));
 

@@ -47,6 +47,9 @@ public class AppDbContext : DbContext
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     // Global (NOT tenant-scoped) — a single shared operator task board. No query filter on purpose.
+    // Tenant-scoped (query filter below) but NOT in the tenantScoped array above, so it has no FK to
+    // Tenants and no index on TenantId. TenantPurge sweeps it because it reads the model rather than
+    // that array — which is the reason it reads the model.
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     // Global (NOT tenant-scoped) — the platform super-admin's audit trail. It spans every company, so
     // (like Tasks) it carries no TenantId and gets no query filter. Append-only.

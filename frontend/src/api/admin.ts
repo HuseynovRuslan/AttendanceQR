@@ -1174,19 +1174,29 @@ export function getTenantDeletable(id: string) {
 export interface TenantDeletable {
   id: string
   displayName: string
-  /** False when anybody ever clocked in — a company with history is switched off, never deleted. */
+  /** False when any rail stops it — see `reason`. */
   canDelete: boolean
-  usage: { records: number; summaries: number; visits: number }
+  /** Which rail: TenantIsActive | TenantHasHistory | TenantHasInvoices | TenantHasOperator. */
+  reason: string | null
+  usage: { records: number; summaries: number; visits: number; invoices: number }
   /** Row counts per table, only the non-empty ones. */
   rows: Record<string, number>
 }
 
 /** DELETE /api/super/tenants/{id} — permanent. `confirm` must be the company's own display name. */
 export function deleteTenant(id: string, confirm: string) {
-  return apiRequest<{ deleted: string; rowsDeleted: number; photosDeleted: number } | { error: string }>(
+  return apiRequest<DeleteTenantResult | { error: string }>(
     `/api/super/tenants/${id}`,
     { method: 'DELETE', body: { confirm } },
   )
+}
+
+export interface DeleteTenantResult {
+  deleted: string
+  rowsDeleted: number
+  photosDeleted: number
+  /** Photos named but not removed — storage has no transaction and can fail silently. */
+  photosPending: number
 }
 
 export function setTenantActive(id: string, isActive: boolean) {

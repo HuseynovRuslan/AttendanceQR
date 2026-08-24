@@ -32,6 +32,9 @@ public static class TenantPurge
     private static readonly MethodInfo PurgeOne = typeof(TenantPurge)
         .GetMethod(nameof(PurgeTypeAsync), BindingFlags.NonPublic | BindingFlags.Static)!;
 
+    private static readonly MethodInfo CountOne = typeof(TenantPurge)
+        .GetMethod(nameof(CountTypeAsync), BindingFlags.NonPublic | BindingFlags.Static)!;
+
     /// <summary>Every entity type that belongs to a company, straight from the model.</summary>
     public static IReadOnlyList<IEntityType> ScopedTypes(IModel model) =>
         model.GetEntityTypes()
@@ -49,8 +52,11 @@ public static class TenantPurge
         var counts = new Dictionary<string, int>();
         foreach (var type in ScopedTypes(db.Model))
         {
-            var rows = await RowsAsync(db, type, tenantId, ct);
-            if (rows.Count > 0) counts[type.ClrType.Name] = rows.Count;
+            // COUNT(*), not "load the table and measure the list". A company with a year of AuditLogs
+            // behind it would otherwise be pulled into memory whole just to draw a preview.
+            var task = (Task<int>)CountOne.MakeGenericMethod(type.ClrType).Invoke(null, [db, tenantId, ct])!;
+            var n = await task;
+            if (n > 0) counts[type.ClrType.Name] = n;
         }
         return counts;
     }
@@ -71,21 +77,8 @@ public static class TenantPurge
         return total;
     }
 
-    private static async Task<List<object>> RowsAsync(DbContext db, IEntityType type, Guid tenantId, CancellationToken ct)
-    {
-        var task = (Task<List<object>>)typeof(TenantPurge)
-            .GetMethod(nameof(RowsOfAsync), BindingFlags.NonPublic | BindingFlags.Static)!
-            .MakeGenericMethod(type.ClrType)
-            .Invoke(null, [db, tenantId, ct])!;
-        return await task;
-    }
-
-    private static async Task<List<object>> RowsOfAsync<T>(DbContext db, Guid tenantId, CancellationToken ct)
-        where T : class
-    {
-        var rows = await Query<T>(db, tenantId).AsNoTracking().ToListAsync(ct);
-        return rows.Cast<object>().ToList();
-    }
+    private static Task<int> CountTypeAsync<T>(DbContext db, Guid tenantId, CancellationToken ct)
+        where T : class => Query<T>(db, tenantId).CountAsync(ct);
 
     private static async Task<int> PurgeTypeAsync<T>(DbContext db, Guid tenantId, CancellationToken ct)
         where T : class
