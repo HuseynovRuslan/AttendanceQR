@@ -9,6 +9,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -35,8 +36,20 @@ public partial class SuperAdminController : ControllerBase
     private readonly IJwtService _jwt;
     private readonly Guid[] _superAdminIds;
     private readonly AppOptions _appOptions;
+    private readonly IPhotoStorageService? _photoStorage;
+    private readonly ILogger<SuperAdminController>? _logger;
 
-    public SuperAdminController(AppDbContext db, ITenantContext tenant, IPasswordHasher passwordHasher, IJwtService jwt, AppOptions options)
+    /// <param name="photoStorage">Only the tenant delete needs it, and only to clean the bucket after
+    /// the rows are gone. Optional so the console's other twenty endpoints — and their tests — do not
+    /// have to know about object storage; DI always supplies it in the running app.</param>
+    public SuperAdminController(
+        AppDbContext db,
+        ITenantContext tenant,
+        IPasswordHasher passwordHasher,
+        IJwtService jwt,
+        AppOptions options,
+        IPhotoStorageService? photoStorage = null,
+        ILogger<SuperAdminController>? logger = null)
     {
         _db = db;
         _tenant = tenant;
@@ -44,6 +57,8 @@ public partial class SuperAdminController : ControllerBase
         _jwt = jwt;
         _superAdminIds = options.SuperAdminIdList();
         _appOptions = options;
+        _photoStorage = photoStorage;
+        _logger = logger;
     }
 
     // An impersonation token carries sub = the impersonated TENANT admin, not the operator. If that admin

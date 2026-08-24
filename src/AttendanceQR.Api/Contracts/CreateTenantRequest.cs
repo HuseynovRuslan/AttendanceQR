@@ -68,3 +68,9 @@ public record SetTenantAdminRequest(
     string Phone,
     string? FullName = null,
     string? Pin = null);
+
+/// <summary>
+/// Deleting a company. <paramref name="Confirm"/> must be the company's own display name, typed by
+/// the operator — the console shows what would be destroyed and asks for the name before it will send.
+/// </summary>
+public record DeleteTenantRequest(string? Confirm);

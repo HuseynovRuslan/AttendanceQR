@@ -1161,6 +1161,34 @@ export interface SetTenantAdminResult {
   tempPin: string
 }
 
+/**
+ * GET /api/super/tenants/{id}/deletable — what deleting this company would destroy.
+ *
+ * Asked before the button is offered, so the console never shows an action that would only refuse,
+ * and so the operator sees the row counts of the company they are about to remove.
+ */
+export function getTenantDeletable(id: string) {
+  return apiRequest<TenantDeletable | { error: string }>(`/api/super/tenants/${id}/deletable`)
+}
+
+export interface TenantDeletable {
+  id: string
+  displayName: string
+  /** False when anybody ever clocked in — a company with history is switched off, never deleted. */
+  canDelete: boolean
+  usage: { records: number; summaries: number; visits: number }
+  /** Row counts per table, only the non-empty ones. */
+  rows: Record<string, number>
+}
+
+/** DELETE /api/super/tenants/{id} — permanent. `confirm` must be the company's own display name. */
+export function deleteTenant(id: string, confirm: string) {
+  return apiRequest<{ deleted: string; rowsDeleted: number; photosDeleted: number } | { error: string }>(
+    `/api/super/tenants/${id}`,
+    { method: 'DELETE', body: { confirm } },
+  )
+}
+
 export function setTenantActive(id: string, isActive: boolean) {
   return apiRequest<{ id: string; isActive: boolean } | { error: string }>(`/api/super/tenants/${id}/active`, {
     method: 'PUT',

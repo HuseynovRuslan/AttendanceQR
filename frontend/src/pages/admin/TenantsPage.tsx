@@ -14,6 +14,9 @@ import {
   impersonateTenant,
   setTenantAdmin,
   type SetTenantAdminResult,
+  getTenantDeletable,
+  deleteTenant,
+  type TenantDeletable,
   getSuperFeatures,
   setTenantPlan,
   type CreateTenantResult,
@@ -30,11 +33,32 @@ import { parseMoney, moneyInputFilter, formatMoney } from '../../lib/money'
 import { useCan } from '../operator/OperatorContext'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
 
+/** EF entity names as the operator knows them. Anything unmapped falls through as-is. */
+const TABLE_NAMES: Record<string, string> = {
+  Employee: 'işçi',
+  Location: 'filial',
+  Schedule: 'növbə',
+  JobPosition: 'vəzifə',
+  AuditLog: 'audit qeydi',
+  Announcement: 'elan',
+  NonWorkingDay: 'qeyri-iş günü',
+  ManagedLocation: 'filial təyinatı',
+  PushSubscription: 'bildiriş abunəsi',
+  EmployeeNotification: 'bildiriş',
+  DeviceBinding: 'cihaz',
+  TaskItem: 'tapşırıq',
+  TenantInvoice: 'hesab',
+}
+
 const ERRORS: Record<string, string> = {
   NotSuperAdmin: 'İcazəniz yoxdur',
   SlugInvalid: 'Ünvan yalnız kiçik hərf, rəqəm və tire ola bilər (2–20 simvol)',
   SlugReserved: 'Bu ünvan sistem üçün ayrılıb — başqasını seçin',
   SlugTaken: 'Bu ünvan artıq istifadə olunur',
+  ConfirmMismatch: 'Yazdığınız ad şirkətin adı ilə üst-üstə düşmür',
+  TenantHasHistory: 'Bu şirkətdə davamiyyət tarixçəsi var — silinmir, söndürün',
+  PhoneAlreadyExists: 'Bu nömrə həmin şirkətdə artıq istifadə olunur',
+  NoLocation: 'Şirkətdə aktiv filial yoxdur',
   AdminPhoneInvalid: 'Admin nömrəsi yanlışdır',
   AdminPinInvalid: 'PIN 4 rəqəm olmalıdır',
   AdminPinTooWeak: 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir',
@@ -345,6 +369,10 @@ export function TenantsTab() {
   const [adminForm, setAdminForm] = useState({ fullName: '', phone: '', pin: '' })
   const [savingAdmin, setSavingAdmin] = useState(false)
   const [adminIssued, setAdminIssued] = useState<{ tenant: string; result: SetTenantAdminResult } | null>(null)
+  // Deleting a company: what it would destroy, and the typed name that has to match before it can.
+  const [deleteFor, setDeleteFor] = useState<TenantDeletable | null>(null)
+  const [deleteTyped, setDeleteTyped] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   async function refresh() {
     const { status, data } = await getSuperTenants()
@@ -499,6 +527,31 @@ export function TenantsTab() {
       await refresh()
     } else {
       setError(ERRORS[errorCodeOf(data)] ?? 'Təyin edilmədi')
+    }
+  }
+
+  async function openDelete(t: SuperTenant) {
+    setError(null)
+    setDeleteTyped('')
+    setBusyId(t.id)
+    const { status, data } = await getTenantDeletable(t.id)
+    setBusyId(null)
+    if (status === 200 && data && !('error' in data)) setDeleteFor(data as TenantDeletable)
+    else setError('Yoxlanmadı')
+  }
+
+  async function confirmDelete() {
+    if (!deleteFor) return
+    setError(null)
+    setDeleting(true)
+    const { status, data } = await deleteTenant(deleteFor.id, deleteTyped.trim())
+    setDeleting(false)
+    if (status === 200 && data && !('error' in data)) {
+      setDeleteFor(null)
+      setCreated(null)
+      await refresh()
+    } else {
+      setError(ERRORS[errorCodeOf(data)] ?? 'Silinmədi')
     }
   }
 
@@ -689,6 +742,70 @@ export function TenantsTab() {
             <button type="button" className="btn" onClick={() => setAdminFor(null)}>Ləğv et</button>
           </div>
         </form>
+      )}
+
+      {/* Deleting a company. Shown as a panel rather than a browser confirm() because the numbers are
+          the safeguard: an operator recognises "3 employees, 1 branch" as their own test company and
+          fails to recognise 64 as anything they made. */}
+      {deleteFor && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--clay)' }}>
+          <div className="card-title">«{deleteFor.displayName}» silinsin?</div>
+
+          {!deleteFor.canDelete ? (
+            <>
+              <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+                Bu şirkətdə <b>davamiyyət tarixçəsi var</b> — {deleteFor.usage.records} skan,{' '}
+                {deleteFor.usage.summaries} günlük yekun, {deleteFor.usage.visits} sahə ziyarəti.
+                <br />
+                Bir skan kiminsə bir günlük maaşıdır, ona görə belə şirkət silinmir. Əvəzinə{' '}
+                <b>«Söndür»</b> edin: heç kim girə bilməyəcək, məlumat isə olduğu kimi qalacaq.
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button className="btn btn-sm" onClick={() => setDeleteFor(null)}>Bağla</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+                Bu şirkətdə heç kim heç vaxt skan etməyib, ona görə silinə bilər. Həmişəlik gedəcək:
+              </div>
+              <div style={{ fontSize: 13, marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {Object.keys(deleteFor.rows).length === 0 ? (
+                  <span className="muted">boş şirkət — silinəcək sətir yoxdur</span>
+                ) : (
+                  Object.entries(deleteFor.rows).map(([table, n]) => (
+                    <span key={table} className="tag">
+                      {TABLE_NAMES[table] ?? table}: {n}
+                    </span>
+                  ))
+                )}
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+                Geri qaytarmaq olmur. Baza gecə ehtiyat nüsxəsindən bərpa oluna bilər, şəkillər isə yox.
+              </div>
+              <div style={{ marginTop: 12, maxWidth: 360 }}>
+                <label className="form-label">Təsdiq üçün şirkətin adını yazın</label>
+                <input
+                  className="inp"
+                  value={deleteTyped}
+                  onChange={(e) => setDeleteTyped(e.target.value)}
+                  placeholder={deleteFor.displayName}
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  className="btn btn-sm btn-danger"
+                  disabled={deleting || deleteTyped.trim() !== deleteFor.displayName}
+                  onClick={() => void confirmDelete()}
+                >
+                  {deleting ? 'Silinir…' : 'Həmişəlik sil'}
+                </button>
+                <button className="btn btn-sm" onClick={() => setDeleteFor(null)}>Ləğv et</button>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {showForm && (
@@ -889,6 +1006,14 @@ export function TenantsTab() {
                           danger: t.isActive,
                           disabled: busyId === t.id,
                           hidden: !canManage,
+                        },
+                        {
+                          label: 'Şirkəti sil',
+                          onClick: () => void openDelete(t),
+                          danger: true,
+                          disabled: busyId === t.id,
+                          hidden: !canManage,
+                          title: 'Yalnız heç vaxt skan olunmamış şirkət silinə bilər',
                         },
                       ]}
                     />
