@@ -7,6 +7,13 @@ const base: SVGProps<SVGSVGElement> = {
   strokeWidth: 2,
   strokeLinecap: 'round',
   strokeLinejoin: 'round',
+  // A default size, because an SVG without one fills whatever box it lands in. Only `.btn svg` and a
+  // handful of other rules ever set it, so an icon used anywhere else — a card heading, a menu row —
+  // came out the height of the page. It has happened three times now. CSS and inline styles both beat
+  // an attribute, so every existing rule (.btn svg, .nav-item svg, .logo-mark svg, BrandLogo's own
+  // size prop) still wins; this is only the floor under the ones nobody thought to style.
+  width: 16,
+  height: 16,
 }
 
 /** The "more actions" glyph for a row menu. Three dots as a TEXT character (•••) sat on the baseline,
