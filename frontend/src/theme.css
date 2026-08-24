@@ -539,3 +539,32 @@ select.inp{cursor:pointer}
 .lux-map{position:relative;z-index:0;isolation:isolate}
 .lux-map .leaflet-pane,.lux-map .leaflet-top,.lux-map .leaflet-bottom{z-index:1}
 .lux-map .leaflet-control-container{z-index:2}
+
+/* ---------- Row actions (⋯ menu) ----------
+   The tables used to carry every action as a button in the row. The menu that replaced them has to
+   look like the rest of the panel, which means the icons need sizing here: `.btn svg` was the only
+   rule constraining them, so outside a button they rendered at their intrinsic size — a trash can
+   the height of four rows. */
+.ra{position:relative;display:inline-flex;align-items:center;gap:8px}
+.ra-dots{padding:6px 11px !important;font-size:15px;line-height:1;letter-spacing:1px;color:var(--c600)}
+.ra-menu{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:212px;
+  background:var(--white);border:1px solid var(--c100);border-radius:var(--r);
+  box-shadow:0 2px 6px rgba(0,0,0,.06),0 14px 34px -10px rgba(0,0,0,.22);
+  padding:6px;overflow:hidden;
+  animation:ra-in .1s ease-out;
+}
+@keyframes ra-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.ra-item{
+  display:grid;grid-template-columns:18px 1fr;align-items:center;gap:11px;
+  width:100%;padding:9px 11px;border:none;background:none;border-radius:9px;
+  font-family:inherit;font-size:13.5px;font-weight:500;color:var(--c800);
+  text-align:left;white-space:nowrap;cursor:pointer;transition:background .12s;
+}
+.ra-item svg{width:16px;height:16px;color:var(--c500)}
+.ra-item:hover:not(:disabled){background:var(--c50)}
+.ra-item:disabled{opacity:.45;cursor:default}
+.ra-item.danger{color:var(--clay)}
+.ra-item.danger svg{color:var(--clay)}
+.ra-item.danger:hover:not(:disabled){background:var(--clay-bg)}
+.ra-sep{height:1px;background:var(--c100);margin:6px 4px}

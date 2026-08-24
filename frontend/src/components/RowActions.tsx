@@ -4,7 +4,7 @@ export type RowAction = {
   label: string
   onClick: () => void
   icon?: ReactNode
-  /** Destructive — rendered apart, at the bottom, in red. */
+  /** Destructive — rendered apart, at the bottom, in the clay accent. */
   danger?: boolean
   disabled?: boolean
   title?: string
@@ -15,14 +15,14 @@ export type RowAction = {
 /**
  * One visible button and a "⋯" menu for the rest.
  *
- * Every admin table row used to carry its whole action set as buttons — six of them on the employees
- * table, six on locations — which wrapped onto two lines, pushed the columns that carry the actual
- * information out of view, and put a red "Sil" one mis-tap away from every other action. The row is
- * for reading; the actions are for the one row you came for.
+ * Every admin table row used to carry its whole action set as buttons — six on employees, six on
+ * locations. They wrapped onto two lines, pushed the columns that carry the actual information out of
+ * view, and put a red "Sil" one mis-tap away from every other action, on every row of a 64-person
+ * table. The row is for reading; the actions are for the one row you came for.
  *
- * The primary action stays visible because it is the one people came to press. Everything else lives
- * behind the ⋯, in the order given, with destructive actions separated at the bottom — so deleting
- * takes two deliberate taps and can never be the one your thumb lands on.
+ * Styling lives in theme.css (.ra-*) rather than inline, and not only for tidiness: `.btn svg` was the
+ * only rule sizing these icons, so the first version — inline styles, no class — rendered a trash can
+ * the height of four rows.
  */
 export function RowActions({ primary, actions }: { primary?: RowAction; actions: RowAction[] }) {
   const [open, setOpen] = useState(false)
@@ -48,48 +48,27 @@ export function RowActions({ primary, actions }: { primary?: RowAction; actions:
   const ordinary = shown.filter((a) => !a.danger)
   const destructive = shown.filter((a) => a.danger)
 
-  function run(a: RowAction) {
-    setOpen(false)
-    a.onClick()
-  }
-
-  const item = (a: RowAction, i: number) => (
+  const item = (a: RowAction, key: number) => (
     <button
-      key={i}
+      key={key}
       type="button"
-      onClick={() => run(a)}
+      role="menuitem"
+      className={`ra-item${a.danger ? ' danger' : ''}`}
       disabled={a.disabled}
       title={a.title}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        width: '100%',
-        padding: '9px 12px',
-        background: 'none',
-        border: 'none',
-        textAlign: 'left',
-        fontSize: 13.5,
-        fontWeight: 500,
-        cursor: a.disabled ? 'default' : 'pointer',
-        opacity: a.disabled ? 0.45 : 1,
-        color: a.danger ? 'var(--danger, #C0392B)' : 'inherit',
-        whiteSpace: 'nowrap',
-      }}
-      onMouseEnter={(e) => {
-        if (!a.disabled) e.currentTarget.style.background = 'rgba(15,27,45,0.05)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'none'
+      onClick={() => {
+        setOpen(false)
+        a.onClick()
       }}
     >
-      {a.icon}
-      {a.label}
+      {/* The icon column stays even when an action has no icon, so the labels line up. */}
+      <span aria-hidden="true">{a.icon}</span>
+      <span>{a.label}</span>
     </button>
   )
 
   return (
-    <div ref={wrap} style={{ position: 'relative', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+    <div className="ra" ref={wrap}>
       {primary && !primary.hidden && (
         <button className="btn btn-sm" onClick={primary.onClick} disabled={primary.disabled} title={primary.title}>
           {primary.icon} {primary.label}
@@ -97,37 +76,20 @@ export function RowActions({ primary, actions }: { primary?: RowAction; actions:
       )}
       {shown.length > 0 && (
         <button
-          className="btn btn-sm"
           type="button"
+          className="btn btn-sm ra-dots"
           onClick={() => setOpen((o) => !o)}
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label="Digər əməliyyatlar"
-          style={{ padding: '6px 10px', fontSize: 16, lineHeight: 1 }}
         >
-          ⋯
+          •••
         </button>
       )}
       {open && (
-        <div
-          role="menu"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            right: 0,
-            zIndex: 40,
-            minWidth: 190,
-            background: '#fff',
-            border: '1px solid var(--line, rgba(15,27,45,0.10))',
-            borderRadius: 12,
-            boxShadow: '0 12px 32px -12px rgba(15,27,45,0.35)',
-            padding: '6px 0',
-          }}
-        >
+        <div className="ra-menu" role="menu">
           {ordinary.map(item)}
-          {destructive.length > 0 && ordinary.length > 0 && (
-            <div style={{ height: 1, background: 'var(--line, rgba(15,27,45,0.10))', margin: '6px 0' }} />
-          )}
+          {destructive.length > 0 && ordinary.length > 0 && <div className="ra-sep" />}
           {destructive.map((a, i) => item(a, ordinary.length + i))}
         </div>
       )}
