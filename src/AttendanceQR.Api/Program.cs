@@ -527,7 +527,9 @@ using (var scope = app.Services.CreateScope())
             db.Employees.Add(new Employee
             {
                 FullName = "Admin",
-                Email = $"admin-{seedSlug}@baki.local",
+                // No synthesised address — the seed admin signs in with the phone below, same as the
+                // one SuperAdminController creates. See the note there.
+                Email = null,
                 PhoneNumber = AttendanceQR.Api.PhoneNumbers.Normalize(seedPhone),
                 Role = EmployeeRole.Admin,
                 LocationId = starterLocation.Id,

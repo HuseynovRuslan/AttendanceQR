@@ -208,8 +208,13 @@ public partial class SuperAdminController : ControllerBase
         var admin = new Employee
         {
             FullName = string.IsNullOrWhiteSpace(request.AdminName) ? "Admin" : request.AdminName.Trim(),
-            // Login is by phone; the address only has to be unique within this tenant.
-            Email = $"admin-{slug}@baki.local",
+            // No email. This used to synthesise "admin-{slug}@baki.local" — an address at a domain that
+            // does not exist, carrying the name of the first customer, shown back to the operator as if
+            // it were something the account owned. Login is by phone, and the ordinary create-employee
+            // path already keeps a null email for a phone-only employee ("no synthesised placeholder",
+            // AdminController). The unique index is (TenantId, Email) and Postgres treats NULLs as
+            // distinct, so any number of them coexist.
+            Email = null,
             PhoneNumber = phone,
             Role = EmployeeRole.Admin,
             LocationId = location.Id,

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { slugify, withSuffix } from '../../lib/tenantSlug'
 import {
   createTenant,
   getSuperTenants,
@@ -66,32 +67,6 @@ function fmtDateTime(iso: string) {
   return d.toLocaleString('az-AZ', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
-}
-
-/**
- * A company name turned into the hostname label the tenant is stored under.
- *
- * Nobody types this any more and nobody is shown it while creating a company, so it has to come out
- * valid on its own: the server takes 2–20 characters, starting with a letter or digit. Azerbaijani
- * letters fold to ASCII, everything else becomes a dash. A name that folds to nothing returns empty
- * and the caller substitutes — better a generic label than a rejected form the operator cannot fix.
- */
-function slugify(name: string): string {
-  const map: Record<string, string> = { ə: 'e', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ç: 'c', ü: 'u' }
-  const label = name
-    .toLowerCase()
-    .replace(/[əğıöşçü]/g, (c) => map[c] ?? c)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 20)
-    .replace(/-+$/, '')
-  return label.length >= 2 ? label : ''
-}
-
-/** The same label with a counter, for the second company to be called the same thing. */
-function withSuffix(base: string, n: number): string {
-  const tail = `-${n}`
-  return base.slice(0, 20 - tail.length).replace(/-+$/, '') + tail
 }
 
 function errorCodeOf(data: unknown): string {
@@ -289,10 +264,7 @@ export function SuperOverview() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {d.attention.map((a) => (
               <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{a.displayName}</div>
-                  <div style={{ fontSize: 11, color: 'var(--c400)' }}>{a.slug}.qrlog.az</div>
-                </div>
+                <div style={{ fontWeight: 700 }}>{a.displayName}</div>
                 <span className="tag" style={{ background: 'rgba(154,52,18,0.12)', color: '#9a3412', whiteSpace: 'nowrap' }}>{a.reason}</span>
               </div>
             ))}
@@ -464,7 +436,7 @@ export function TenantsTab() {
   }
 
   async function toggle(t: SuperTenant) {
-    if (t.isActive && !window.confirm(`"${t.displayName}" söndürülsün? ${t.host} açılmayacaq, məlumat qalır.`)) return
+    if (t.isActive && !window.confirm(`"${t.displayName}" söndürülsün? İşçiləri daxil ola bilməyəcək, məlumat qalır.`)) return
     setError(null)
     setBusyId(t.id)
     const { status, data } = await setTenantActive(t.id, !t.isActive)
@@ -540,7 +512,7 @@ export function TenantsTab() {
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
             PIN yalnız indi görünür — saxlanmır, sonra yalnız sıfırlamaq olar. Admin ilk girişdə öz PIN-ini
-            təyin edəcək. Şirkətin öz ünvanı da var — <b>{created.host}</b> — amma giriş üçün lazım deyil.
+            təyin edəcək.
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button className="btn btn-sm btn-primary" onClick={copyHandover}>
@@ -681,7 +653,6 @@ export function TenantsTab() {
           <thead>
             <tr>
               <th>Şirkət</th>
-              <th>Ünvan</th>
               <th className="num">İşçi</th>
               <th className="num">Filial</th>
               <th>Son skan</th>
@@ -704,9 +675,6 @@ export function TenantsTab() {
                     {fmtDate(t.createdAtUtc.slice(0, 10))} tarixindən
                     {t.plan ? <> · <span style={{ fontWeight: 600, color: 'var(--leaf-d)' }}>{t.plan}</span></> : null}
                   </div>
-                </td>
-                <td>
-                  <a href={`https://${t.host}`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>{t.host}</a>
                 </td>
                 <td className="num">
                   {t.employeeCount}
