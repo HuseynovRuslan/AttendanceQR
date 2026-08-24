@@ -83,6 +83,10 @@ export const CUSTOMERS = {
       logo: '/customers/cleanfix.png', logoH: 44 },
     { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D8C486',
       logo: '/customers/eastcaf.png', logoH: 74 },
+    // Green Garden came in as a round badge like EastCaf's, so it takes the same taller height —
+    // a circular mark carries less ink than a wordmark and looks small at a wordmark's height.
+    { key: 'c4', name: 'Green Garden', mark: 'GG', accent: '#549C30',
+      logo: '/customers/greengarden.png', logoH: 72 },
   ],
 } as const
 
