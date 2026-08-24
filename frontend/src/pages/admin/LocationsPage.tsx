@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { RowActions } from '../../components/RowActions'
+import { formatCoord, isShortMapLink, parseCoords } from '../../lib/geoLink'
 import { useNavigate } from 'react-router-dom'
 import {
   createLocation,
@@ -69,6 +70,9 @@ function inUseMessage(name: string, employees: number, history: number): string 
 }
 
 export function LocationsPage() {
+  // Pasting a map link beats typing two long decimals — see geoLink for the shapes Google produces.
+  const [mapLink, setMapLink] = useState('')
+  const [linkNote, setLinkNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const navigate = useNavigate()
   const [rows, setRows] = useState<AdminLocation[]>([])
   const [form, setForm] = useState<FormState>(EMPTY)
@@ -314,6 +318,50 @@ export function LocationsPage() {
         <div className="form-row">
           <label className="form-label">Ad</label>
           <input className="inp" required value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="məs. Baş ofis" />
+        </div>
+
+        <div className="form-row">
+          <label className="form-label">Xəritə linki (istəyə bağlı)</label>
+          <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
+            Google Maps-də yeri tapıb linki buraya yapışdırın — koordinat özü dolacaq. Koordinatın
+            özünü (40.396690, 49.865642) yapışdırmaq da olar.
+          </p>
+          <input
+            className="inp"
+            value={mapLink}
+            placeholder="https://www.google.com/maps?q=40.396690,49.865642"
+            onChange={(e) => {
+              const text = e.target.value
+              setMapLink(text)
+              if (!text.trim()) {
+                setLinkNote(null)
+                return
+              }
+              const coords = parseCoords(text)
+              if (coords) {
+                set('latitude', formatCoord(coords.lat))
+                set('longitude', formatCoord(coords.lng))
+                setLinkNote({ kind: 'ok', text: `Koordinat götürüldü: ${formatCoord(coords.lat)}, ${formatCoord(coords.lng)} — xəritədə yoxlayın.` })
+              } else if (isShortMapLink(text)) {
+                // A short link is a redirect with no coordinates in it, and the browser cannot follow
+                // it from here — so say exactly what to do instead of "invalid".
+                setLinkNote({
+                  kind: 'err',
+                  text: 'Bu qısa linkdir. Onu brauzerdə açın, açılan tam ünvanı kopyalayıb buraya yapışdırın.',
+                })
+              } else {
+                setLinkNote({ kind: 'err', text: 'Linkdə koordinat tapılmadı — xəritədən yeri seçin və ya koordinatı əl ilə yazın.' })
+              }
+            }}
+          />
+          {linkNote && (
+            <p
+              className="muted"
+              style={{ fontSize: 12, marginTop: 6, color: linkNote.kind === 'ok' ? 'var(--leaf-d)' : 'var(--clay)' }}
+            >
+              {linkNote.text}
+            </p>
+          )}
         </div>
 
         <div className="form-row">
