@@ -68,6 +68,18 @@ function fmtDateTime(iso: string) {
   })
 }
 
+/** A company name turned into a hostname label: Azerbaijani letters folded to ASCII, everything else
+ *  to a dash. Only ever a starting point — the field below stays editable. */
+function slugify(name: string): string {
+  const map: Record<string, string> = { ə: 'e', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ç: 'c', ü: 'u' }
+  return name
+    .toLowerCase()
+    .replace(/[əğıöşçü]/g, (c) => map[c] ?? c)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
 export function TenantsPage() {
   const [tab, setTab] = useState<Tab>('overview')
 
@@ -318,6 +330,8 @@ export function SuperAudit() {
 
 // ── Şirkətlər: create + list + enable/disable (the original panel) ──────────
 export function TenantsTab() {
+  // Once the operator edits the address by hand, the company name stops writing over it.
+  const [slugTouched, setSlugTouched] = useState(false)
   const canManage = useCan('ManageTenants')
   const canImpersonate = useCan('Impersonate')
   const [rows, setRows] = useState<SuperTenant[]>([])
@@ -521,23 +535,62 @@ export function TenantsTab() {
 
           <div className="form-row cols2">
             <div>
-              <label className="form-label">Ünvan (subdomain)</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input
-                  className="inp"
-                  value={form.slug}
-                  onChange={(e) => set('slug', e.target.value.toLowerCase())}
-                  placeholder="məs. yenisirket"
-                  required
-                />
-                <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>.qrlog.az</span>
-              </div>
+              <label className="form-label">Şirkətin adı</label>
+              <input
+                className="inp"
+                required
+                value={form.displayName}
+                onChange={(e) => {
+                  set('displayName', e.target.value)
+                  // The address is derived, not asked for. Staff sign in at app.qrlog.az, which finds
+                  // the company from the phone number, so nobody has to know a subdomain — but the
+                  // tenant still needs a stable slug internally, and one typed by hand was a decision
+                  // with no information behind it. Editing it stays possible below for a company that
+                  // wants its own address.
+                  if (!slugTouched) set('slug', slugify(e.target.value))
+                }}
+                placeholder="məs. Yeni Şirkət MMC"
+              />
             </div>
             <div>
-              <label className="form-label">Şirkətin adı</label>
-              <input className="inp" value={form.displayName} onChange={(e) => set('displayName', e.target.value)} placeholder="məs. Yeni Şirkət MMC" />
+              <label className="form-label">Admin telefonu</label>
+              <input
+                className="inp"
+                type="tel"
+                inputMode="tel"
+                value={form.adminPhone}
+                onChange={(e) => set('adminPhone', e.target.value)}
+                placeholder="0501234567"
+              />
+              <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Şirkətin öz admini — bu nömrə ilə app.qrlog.az-dan girəcək.
+              </p>
             </div>
           </div>
+
+          {/* Kept, not removed: a company that wants its own address still gets one, and an existing
+              tenant's slug is part of links already handed out. It is simply no longer something the
+              operator has to invent before they can start. */}
+          <details style={{ marginBottom: 12 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--c500)' }}>
+              Ayrıca ünvan (istəyə bağlı) — {form.slug || 'avtomatik'}.qrlog.az
+            </summary>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <input
+                className="inp"
+                value={form.slug}
+                onChange={(e) => {
+                  setSlugTouched(true)
+                  set('slug', e.target.value.toLowerCase())
+                }}
+                placeholder="avtomatik"
+              />
+              <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>.qrlog.az</span>
+            </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Boş buraxsanız şirkətin adından yaranır. İşçilər onsuz da app.qrlog.az-dan girir.
+            </p>
+          </details>
 
           <div className="form-row cols2">
             <div>

@@ -109,14 +109,19 @@ select.inp{cursor:pointer}
 .form-label{font-size:12px;font-weight:700;color:var(--c600);margin-bottom:5px;display:block}
 
 /* Table */
+/* `table.tbl` is the same table without the wrapper div. Six pages — the whole SuperAdmin console
+   among them — used that class believing it was styled, and it was not: every rule below was written
+   for `.tbl-wrap table`, so those tables rendered as bare HTML with the headings run together. Both
+   spellings are honoured now rather than rewriting six files and hoping the seventh remembers. */
+table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(--white);overflow:hidden}
 .tbl-wrap{overflow-x:auto;border-radius:var(--r-lg);border:1px solid var(--c100);background:var(--white)}
-.tbl-wrap table{width:100%;border-collapse:collapse;font-size:13px}
-.tbl-wrap thead tr{background:var(--c50);border-bottom:1px solid var(--c100)}
-.tbl-wrap th{padding:11px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--c500);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
-.tbl-wrap td{padding:11px 14px;border-bottom:1px solid var(--c50);color:var(--c700);vertical-align:middle}
-.tbl-wrap tr:last-child td{border-bottom:none}
-.tbl-wrap tbody tr:hover td{background:rgba(0,0,0,.015)}
-.tbl-wrap tfoot td{background:var(--c50);font-weight:700;color:var(--c900)}
+.tbl-wrap table,table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl-wrap thead tr,table.tbl thead tr{background:var(--c50);border-bottom:1px solid var(--c100)}
+.tbl-wrap th,table.tbl th{padding:11px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--c500);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.tbl-wrap td,table.tbl td{padding:11px 14px;border-bottom:1px solid var(--c50);color:var(--c700);vertical-align:middle}
+.tbl-wrap tr:last-child td,table.tbl tr:last-child td{border-bottom:none}
+.tbl-wrap tbody tr:hover td,table.tbl tbody tr:hover td{background:rgba(0,0,0,.015)}
+.tbl-wrap tfoot td,table.tbl tfoot td{background:var(--c50);font-weight:700;color:var(--c900)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 /* Centre the numeric columns in tables that opt in (e.g. reports). */
 .tbl-center-nums .num{text-align:center}
