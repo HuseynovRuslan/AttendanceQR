@@ -628,6 +628,11 @@ public partial class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
     {
+        // Same reason as set-initial-pin: an impersonation session must not be able to change the
+        // password of the account it is borrowing.
+        if (User.IsImpersonating())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
+
         var employeeId = User.EmployeeId();
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId);
@@ -662,6 +667,14 @@ public partial class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> SetInitialPin([FromBody] SetInitialPinRequest request)
     {
+        // Not from an impersonation session. The operator holds a token for the customer's admin while
+        // setting their company up, and that admin is still on the temporary PIN handed over to them —
+        // so this endpoint would let the operator burn the credential the customer has not used yet,
+        // and walk away with a normal, never-expiring token for someone else's admin. The PIN is the
+        // customer's to choose; the operator's session ends at the hour.
+        if (User.IsImpersonating())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
+
         var employeeId = User.EmployeeId();
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId);
