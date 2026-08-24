@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react'
+import { BrandLogo } from '../../components/BrandLogo'
+import { PinInput } from '../../components/PinInput'
 import { useNavigate } from 'react-router-dom'
 import { operatorLogin } from '../../api/auth'
 import { useAuth } from '../../auth/AuthContext'
@@ -53,18 +55,18 @@ export function OperatorLoginPage() {
     >
       <div style={{ width: '100%', maxWidth: 380 }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          {/* The same mark the rest of the app shows. This screen used to point at /brand/qrlog.svg —
+              a sentinel path, not a picture anyone drew — so the console opened on a logo the product
+              had already replaced. */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-            <img src="/brand/qrlog.svg" alt="QRLog" width={52} height={52} style={{ borderRadius: 12 }} />
+            <BrandLogo size={52} />
           </div>
-          <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: '#fff' }}>
-            QRLog
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 2 }}>Operator paneli</div>
+          <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 10 }}>SuperAdmin paneli</div>
         </div>
 
         <form onSubmit={onSubmit} style={{ background: '#fff', borderRadius: 20, padding: 28 }}>
           <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 18, color: 'var(--c900)' }}>
-            Operator girişi
+            SuperAdmin girişi
           </div>
 
           {error && (
@@ -75,6 +77,8 @@ export function OperatorLoginPage() {
           )}
 
           <div style={{ marginBottom: 12 }}>
+            {/* An operator signs in with an email as often as a number, so unlike the staff screen this
+                one keeps both — the label says so rather than making them guess. */}
             <label className="form-label">Email və ya telefon nömrəsi</label>
             <input
               className="inp"
@@ -86,15 +90,8 @@ export function OperatorLoginPage() {
             />
           </div>
           <div style={{ marginBottom: 18 }}>
-            <label className="form-label">Şifrə / PIN</label>
-            <input
-              className="inp"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <label className="form-label">PIN (4 rəqəm)</label>
+            <PinInput value={password} onChange={setPassword} />
           </div>
 
           <button type="submit" disabled={loading} className="btn btn-primary btn-bl btn-lg">

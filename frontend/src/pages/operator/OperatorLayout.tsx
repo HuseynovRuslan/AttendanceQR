@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { BrandLogo } from '../../components/BrandLogo'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { getSuperMe } from '../../api/admin'
@@ -69,7 +70,7 @@ export function OperatorLayout() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  const title = TITLES[location.pathname] ?? 'Operator paneli'
+  const title = TITLES[location.pathname] ?? 'SuperAdmin paneli'
   const links = LINKS.filter((l) => !l.perm || operator.permissions.includes(l.perm))
 
   return (
@@ -78,12 +79,14 @@ export function OperatorLayout() {
 
       <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
+          {/* The product's own mark, like every other shell — this pointed at /brand/qrlog.svg, which
+              is a sentinel path rather than a picture, so the console wore the old logo. */}
           <div className="logo-mark">
-            <img src="/brand/qrlog.svg" alt="QRLog" width={34} height={34} />
+            <BrandLogo size={34} />
           </div>
           <div className="logo-text">
             <div className="t1">QRLog</div>
-            <div className="t2">Operator paneli</div>
+            <div className="t2">SuperAdmin paneli</div>
           </div>
         </div>
 
