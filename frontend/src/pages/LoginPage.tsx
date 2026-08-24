@@ -69,9 +69,16 @@ export function LoginPage() {
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
             <BrandLogo size={52} />
           </div>
-          <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: '#fff' }}>
-            {branding.displayName || 'Davamiyyət'}
-          </div>
+          {/* The company's name, when we know it. On app.qrlog.az we do not — the app shell serves every
+              company and only learns which one from the phone number typed below — and the fallback used
+              to print "Davamiyyət" directly above the "Davamiyyət sistemi" line, saying the same word
+              twice under a logo that already says QRLog. With no company to name, the logo and the
+              subtitle are the whole heading. */}
+          {branding.displayName && (
+            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: '#fff' }}>
+              {branding.displayName}
+            </div>
+          )}
           <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 2 }}>Davamiyyət sistemi</div>
         </div>
 

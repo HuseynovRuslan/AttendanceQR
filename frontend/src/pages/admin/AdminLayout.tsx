@@ -184,8 +184,11 @@ export function AdminLayout() {
           <div className="logo-mark">
             <BrandLogo size={34} />
           </div>
+          {/* Same as the login screen: on app.qrlog.az there is no company to name, and the fallback
+              printed "Davamiyyət" straight above "Davamiyyət sistemi". With no name, the mark and the
+              one line say it. */}
           <div className="logo-text">
-            <div className="t1">{branding.displayName || 'Davamiyyət'}</div>
+            {branding.displayName && <div className="t1">{branding.displayName}</div>}
             <div className="t2">Davamiyyət sistemi</div>
           </div>
         </div>
