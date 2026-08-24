@@ -224,6 +224,7 @@ export const ui = {
     'cust.c1s': 'Abadlıq və şəhər təsərrüfatı',
     'cust.c2s': 'Peşəkar təmizlik xidmətləri',
     'cust.c3s': 'Kafe və restoran',
+    'cust.c4s': 'Landşaft və istirahət məkanı',
 
     'faq.eyebrow': 'Suallar',
     'faq.title': 'Tez-tez verilən suallar',
@@ -258,6 +259,7 @@ export const ui = {
     'cta.title': 'Davamiyyəti bu gün rəqəmsallaşdırın',
     'cta.sub': 'Filialı və işçiləri əlavə edin, QR posteri asın — həmin gün işə düşür.',
     'cta.btn1': 'Əlaqə saxlayın',
+    'cta.login': 'Daxil ol',
 
     'foot.tag': 'QR əsaslı işçi davamiyyəti sistemi. Telefonla işləyir, avadanlıq tələb etmir.',
     'foot.product': 'Məhsul',
@@ -514,6 +516,7 @@ export const ui = {
     'cust.c1s': 'Городское благоустройство',
     'cust.c2s': 'Профессиональный клининг',
     'cust.c3s': 'Кафе и рестораны',
+    'cust.c4s': 'Ландшафт и зона отдыха',
 
     'faq.eyebrow': 'Вопросы',
     'faq.title': 'Часто задаваемые вопросы',
@@ -548,6 +551,7 @@ export const ui = {
     'cta.title': 'Оцифруйте посещаемость уже сегодня',
     'cta.sub': 'Добавьте филиалы и сотрудников, повесьте QR-постер — заработает в тот же день.',
     'cta.btn1': 'Связаться',
+    'cta.login': 'Войти',
 
     'foot.tag': 'Система учёта посещаемости по QR. Работает с телефона, оборудование не нужно.',
     'foot.product': 'Продукт',
@@ -805,6 +809,7 @@ export const ui = {
     'cust.c1s': 'Municipal grounds and upkeep',
     'cust.c2s': 'Professional cleaning services',
     'cust.c3s': 'Café and restaurant',
+    'cust.c4s': 'Landscaping and leisure venue',
 
     'faq.eyebrow': 'FAQ',
     'faq.title': 'Frequently asked questions',
@@ -839,6 +844,7 @@ export const ui = {
     'cta.title': 'Digitise attendance today',
     'cta.sub': 'Add your sites and employees, put up the QR poster — it works the same day.',
     'cta.btn1': 'Contact us',
+    'cta.login': 'Log in',
 
     'foot.tag': 'QR-based staff attendance. Runs on a phone, needs no hardware.',
     'foot.product': 'Product',

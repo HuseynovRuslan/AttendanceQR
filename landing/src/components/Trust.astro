@@ -29,8 +29,10 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
   <section class="cust" aria-labelledby="cust-h">
     <div class="cust-bg" aria-hidden="true"></div>
     <div class="wrap cust-inner">
-      <p class="cust-eyebrow rv">{t('cust.eyebrow')}</p>
-      <h2 id="cust-h" class="cust-h rv">{t('cust.title')}</h2>
+      <div class="cust-heading">
+        <p class="cust-eyebrow rv">{t('cust.eyebrow')}</p>
+        <h2 id="cust-h" class="cust-h rv">{t('cust.title')}</h2>
+      </div>
 
       <div class="cust-grid">
         {CUSTOMERS.items.map((c, i) => (

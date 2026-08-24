@@ -35,6 +35,9 @@ const links = [
     </a>
     <nav class="nav-links" id="navlinks" aria-label="Main">
       {links.map((l) => <a href={l.href}>{l.label}</a>)}
+      <!-- Mobile only: the header buttons are hidden under 560px, and an employee reaching this site
+           on a phone is exactly the person who wants the app. -->
+      <a class="nav-login-mobile" href="https://app.qrlog.az">{t('cta.login')}</a>
     </nav>
     <div class="nav-right">
       {routeLangs.length > 1 && (
@@ -50,10 +53,16 @@ const links = [
       </div>
       )}
       <!--
-        No staff-login link anywhere on this site: the marketing pages point at sales, and people
-        who already use QRLog reach the app by its own address. Under 560px this button is hidden
-        by global.css, which is fine — "Əlaqə" is in the mobile menu above.
+        Two calls to action, and they are for different people. "Əlaqə saxlayın" is for a company that
+        does not have QRLog yet — it stays the primary, because that is what this site is for. "Daxil
+        ol" is for the staff who already use it and land here by typing the name they remember; it goes
+        to app.qrlog.az, the one address that works for every company without knowing which company
+        they belong to. It is the quiet ghost button on purpose: it must not compete with sales.
+        (This site deliberately had no login link at all until 2026-08-24 — people were expected to
+        reach the app by its own address, and enough of them did not.)
+        Under 560px global.css hides .nav-right .btn, so both live in the mobile menu instead.
       -->
+      <a class="btn btn-ghost nav-login" href="https://app.qrlog.az">{t('cta.login')}</a>
       <a class="btn btn-primary" href={localizedPath(lang, '/elaqe/')}>{t('cta.btn1')}</a>
       <button class="menu-toggle" id="menuToggle" aria-label={t('nav.menu')} aria-expanded="false">
         <span></span><span></span><span></span>

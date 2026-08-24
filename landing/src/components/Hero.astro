@@ -4,13 +4,12 @@ import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 const home = localizedPath(lang, '/')
-
-// Illustrative names for the mock feed — the card is labelled as a sample screen.
+const todayLabel = lang === 'az' ? 'Bugünkü davamiyyət' : lang === 'ru' ? 'Посещаемость сегодня' : 'Today’s attendance'
+const timelineLabel = lang === 'az' ? 'Giriş aktivliyi' : lang === 'ru' ? 'Активность приходов' : 'Check-in activity'
 const people = [
-  { n: 'Aygün Məmmədova', i: 'AM', c: '#1E63E9', t: '09:01' },
-  { n: 'Rəşad Əliyev', i: 'RƏ', c: '#0EA5A5', t: '09:02' },
-  { n: 'Nigar Hüseynova', i: 'NH', c: '#7C3AED', t: '09:03' },
-  { n: 'Elvin Qasımov', i: 'EQ', c: '#F97316', t: '09:03' },
+  { name: 'Aygün Məmmədova', initials: 'AM', time: '09:01' },
+  { name: 'Rəşad Əliyev', initials: 'RƏ', time: '09:02' },
+  { name: 'Nigar Hüseynova', initials: 'NH', time: '09:03' },
 ]
 ---
 
@@ -20,50 +19,53 @@ const people = [
   <div class="aurora a2"></div>
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <span class="badge fade-up d1"><span class="dot"></span>{t('hero.badge')}</span>
-      <h1 class="hero-title fade-up d2">
+      <h1 class="hero-title">
         {t('hero.title.a')}<span class="hl">{t('hero.title.hl')}</span>{t('hero.title.b')}
       </h1>
-      <p class="hero-sub fade-up d3">{t('hero.sub')}</p>
-      <div class="hero-cta fade-up d4">
-        <a href={localizedPath(lang, '/elaqe/')} class="btn btn-primary">{t('cta.btn1')}</a>
+      <p class="hero-sub">{t('hero.sub')}</p>
+      <div class="hero-cta">
+        <a href={localizedPath(lang, '/elaqe/')} class="btn btn-primary">
+          {t('cta.btn1')}
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" /></svg>
+        </a>
         <a href={`${home}#how`} class="btn btn-ghost">{t('hero.cta2')}</a>
       </div>
-      <div class="stats fade-up d5">
+      <div class="stats" aria-label={t('stats.title')}>
         <div class="stat"><div class="num">{t('hero.s1n')}</div><div class="lab">{t('hero.s1l')}</div></div>
         <div class="stat"><div class="num">{t('hero.s2n')}</div><div class="lab">{t('hero.s2l')}</div></div>
         <div class="stat"><div class="num">{t('hero.s3n')}</div><div class="lab">{t('hero.s3l')}</div></div>
       </div>
     </div>
 
-    <div class="scan-card">
-      <div class="scan-head">
-        <span class="live"><i></i>{t('scan.live')}</span>
-        <span class="clock mono" id="clock">09:03:14</span>
+    <div class="ops-board" aria-label={`${todayLabel}. ${t('scan.demo')}`}>
+      <div class="ops-head">
+        <div><span>{todayLabel}</span><strong>24 / 08 / 2026</strong></div>
+        <span class="ops-live"><i></i>{t('scan.live')}</span>
       </div>
-      <div class="scanner">
-        <div class="corner tl"></div><div class="corner tr"></div>
-        <div class="corner bl"></div><div class="corner br"></div>
-        <div class="scanline"></div>
-        <svg class="qr" viewBox="0 0 25 25" id="qrsvg" aria-hidden="true"></svg>
+      <div class="ops-kpis">
+        <div class="ops-primary"><span>{t('dash.present')}</span><strong>184</strong><small>+12%</small></div>
+        <div><span>{t('dash.out')}</span><strong>46</strong></div>
+        <div><span>{t('dash.absent')}</span><strong>8</strong></div>
       </div>
-      <div class="feed">
-        <div class="feed-label">{t('scan.feed')} · {t('scan.demo')}</div>
-        <div id="rows">
-          {people.map((p, idx) => (
-            <div class="row" style={`animation-delay:${0.5 + idx * 0.35}s`}>
-              <div class="av" style={`background:${p.c}`}>{p.i}</div>
-              <div><div class="who">{p.n}</div></div>
-              <div style="margin-left:auto">
-                <div class="status">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3"><path d="m5 13 4 4L19 7"/></svg>
-                  {t('scan.status')}
-                </div>
-                <div class="t">{p.t}</div>
-              </div>
-            </div>
-          ))}
+      <div class="ops-timeline" aria-hidden="true">
+        <div class="timeline-label"><span>{timelineLabel}</span><b>08:00 — 18:00</b></div>
+        <div class="timeline-hours"><span>08</span><span>10</span><span>12</span><span>14</span><span>16</span><span>18</span></div>
+        <div class="timeline-track">
+          <span class="timeline-bar b1"></span><span class="timeline-bar b2"></span><span class="timeline-bar b3"></span>
+          <span class="timeline-bar b4"></span><span class="timeline-bar b5"></span><span class="timeline-bar b6"></span>
+          <span class="timeline-now"><i></i></span>
         </div>
+      </div>
+      <div class="ops-feed">
+        <div class="ops-feed-head"><span>{t('scan.feed')}</span><small>{t('scan.demo')}</small></div>
+        {people.map((person, index) => (
+          <div class="ops-row" style={`--row-delay:${index * 1.6}s`}>
+            <span class="ops-avatar">{person.initials}</span>
+            <strong>{person.name}</strong>
+            <span class="ops-state"><i></i>{t('scan.status')}</span>
+            <time>{person.time}</time>
+          </div>
+        ))}
       </div>
     </div>
   </div>
