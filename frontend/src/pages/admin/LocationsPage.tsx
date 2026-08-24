@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { RowActions } from '../../components/RowActions'
+import { useNavigate } from 'react-router-dom'
 import {
   createLocation,
   createSchedule,
@@ -68,6 +69,7 @@ function inUseMessage(name: string, employees: number, history: number): string 
 }
 
 export function LocationsPage() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<AdminLocation[]>([])
   const [form, setForm] = useState<FormState>(EMPTY)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -517,46 +519,51 @@ export function LocationsPage() {
                   </span>
                 </td>
                 <td data-label="">
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                    {l.isActive && (
-                      <>
-                        <a
-                          className="btn btn-sm"
-                          href={`/kiosk/${l.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Bu lokasiyanın kiosk QR ekranını yeni tabda aç"
-                        >
-                          <IconQr /> Kiosk aç
-                        </a>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => copyKioskLink(l)}
-                          title="Kiosk linkini kopyala"
-                        >
-                          {copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala'}
-                        </button>
-                        <Link
-                          className="btn btn-sm"
-                          to={`/admin/locations/${l.id}/print-qr`}
-                          title="Çap üçün sabit QR (PNG/PDF)"
-                        >
-                          <IconQr /> Çap üçün QR
-                        </Link>
-                      </>
-                    )}
-                    <button
-                      className="btn btn-sm"
-                      disabled={togglingId === l.id}
-                      onClick={() => toggleActive(l)}
-                      title={l.isActive ? 'Kiosku dayandır (məlumat silinmir)' : 'Yenidən aktiv et'}
-                    >
-                      {l.isActive ? 'Deaktiv et' : 'Aktiv et'}
-                    </button>
-                    <button className="btn btn-sm" onClick={() => startEdit(l)}>Redaktə</button>
-                    <button className="btn btn-danger btn-sm" disabled={deletingId === l.id} onClick={() => onDelete(l)}>
-                      <IconTrash /> Sil
-                    </button>
+                  {/* "Çap üçün QR" stays out front — a poster on a wall is what a location is for.
+                      The rest folds into the ⋯ menu; see RowActions for why six buttons a row was
+                      worse than none. */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <RowActions
+                      primary={
+                        l.isActive
+                          ? {
+                              label: 'Çap üçün QR',
+                              icon: <IconQr />,
+                              onClick: () => navigate(`/admin/locations/${l.id}/print-qr`),
+                              title: 'Çap üçün sabit QR (PNG/PDF)',
+                            }
+                          : undefined
+                      }
+                      actions={[
+                        {
+                          label: 'Kiosk aç',
+                          icon: <IconQr />,
+                          hidden: !l.isActive,
+                          onClick: () => window.open(`/kiosk/${l.id}`, '_blank', 'noopener,noreferrer'),
+                          title: 'Bu lokasiyanın kiosk QR ekranını yeni tabda aç',
+                        },
+                        {
+                          label: copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala',
+                          hidden: !l.isActive,
+                          onClick: () => copyKioskLink(l),
+                          title: 'Kiosk linkini kopyala',
+                        },
+                        {
+                          label: l.isActive ? 'Deaktiv et' : 'Aktiv et',
+                          disabled: togglingId === l.id,
+                          onClick: () => toggleActive(l),
+                          title: l.isActive ? 'Kiosku dayandır (məlumat silinmir)' : 'Yenidən aktiv et',
+                        },
+                        { label: 'Redaktə', onClick: () => startEdit(l) },
+                        {
+                          label: 'Sil',
+                          icon: <IconTrash />,
+                          danger: true,
+                          disabled: deletingId === l.id,
+                          onClick: () => onDelete(l),
+                        },
+                      ]}
+                    />
                   </div>
                 </td>
               </tr>

@@ -13,7 +13,6 @@ import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { AssistantFab } from '../components/AssistantFab'
-import { AssistantIntroModal } from '../components/AssistantIntroModal'
 import { firstName, initials, todayState, todayStr, type TodayState } from '../lib/att'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { IconQr } from '../components/icons'
@@ -113,7 +112,10 @@ export function HomePage() {
   return (
     <div className="flex flex-col gap-4">
       <AssistantFab />
-      <AssistantIntroModal />
+      {/* The "meet the assistant" dialog is gone (owner's call, 2026-08-24): it announced itself to
+          every employee once, and an announcement people did not ask for is a door in the way of the
+          one thing they opened the app to do. The assistant itself is unchanged — the blue button and
+          the menu row are still there for anyone who wants it. */}
       <InstallHint onShown={setInstallShown} />
       {/* First, because it is the only thing here that costs the employee a day's pay if unread. */}
       <OfflineRejectBanner />

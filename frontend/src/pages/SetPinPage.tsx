@@ -74,7 +74,9 @@ export function SetPinPage() {
           ? 'PIN düz 4 rəqəm olmalıdır'
           : code === 'PinTooWeak'
             ? 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir'
-            : 'PIN təyin edilmədi',
+            : code === 'NotDuringImpersonation'
+              ? 'Dəstək sessiyasındasınız — PIN hesabın öz sahibinindir, onu siz təyin edə bilməzsiniz'
+              : 'PIN təyin edilmədi',
       )
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')

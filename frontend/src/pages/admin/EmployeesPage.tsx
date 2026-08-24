@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { RowActions } from '../../components/RowActions'
 import { BulkInvitePage } from './BulkInvitePage'
 import { PositionSelect } from '../../components/PositionSelect'
 import { NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
@@ -79,6 +80,10 @@ const ERRORS: Record<string, string> = {
   WorkCycleDaysInvalid: 'Növbə dövrü 2–28 gün aralığında olmalıdır',
   WorkCycleOnDaysInvalid: 'İş günlərinin sayı dövrədən az olmalıdır',
   WorkCycleAnchorRequired: 'Növbə üçün işlədiyi bir gün seçilməlidir',
+  CannotManageOperator: 'Bu hesab platforma operatoruna aiddir — buradan idarə olunmur',
+  // Dəstək sessiyası (operator müştərinin adminı kimi daxil olub) admin hesabının PIN-inə və ya
+  // telefon/email-inə toxuna bilməz — bu, borc alınmış hesabın açarını dəyişmək olardı.
+  NotDuringImpersonation: 'Dəstək sessiyasında admin hesabının PIN-i və ya giriş nömrəsi dəyişdirilə bilməz',
 }
 
 type FormState = {
@@ -416,7 +421,8 @@ export function EmployeesPage() {
     } else if (data && 'error' in data && data.error === 'NotActivated') {
       setError('Bu işçi hələ aktivləşməyib — «Qeyd. linki» göndərin.')
     } else {
-      setError('PIN sıfırlanmadı')
+      const code = data && 'error' in data ? (data as { error: string }).error : ''
+      setError(ERRORS[code] ?? 'PIN sıfırlanmadı')
     }
   }
 
@@ -1226,47 +1232,53 @@ export function EmployeesPage() {
                 <td>{lastActiveBadge(e.lastActiveAtUtc)}</td>
                 <td>{statusBadge(e.activated)}</td>
                 <td>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                    {!e.activated && (
-                      <button
-                        className="btn btn-sm"
-                        disabled={linkBusyId === e.id}
-                        onClick={() => onReinvite(e)}
-                        title="Qeydiyyat linkini (yenidən) yarat"
-                      >
-                        <IconSend /> Qeyd. linki
-                      </button>
-                    )}
-                    {e.activated && (
-                      <>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => openAttendance(e)}
-                          title="Giriş/çıxış qeydlərinə bax, düzəlt və ya əlavə et"
-                        >
-                          <IconCalendar /> Davamiyyət
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          disabled={resettingId === e.id}
-                          onClick={() => onResetAttendance(e)}
-                          title="Giriş/çıxış tarixçəsini sil — hesab qalır, yenidən test edin"
-                        >
-                          <IconRefresh /> Sıfırla
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => onResetPin(e)}
-                          title="İşçi PIN-ini unudubsa — müvəqqəti PIN ver"
-                        >
-                          <IconPhone /> PIN sıfırla
-                        </button>
-                      </>
-                    )}
-                    <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
-                    <button className="btn btn-danger btn-sm" disabled={deletingId === e.id} onClick={() => onDelete(e)}>
-                      <IconTrash /> Sil
-                    </button>
+                  {/* One button, then a ⋯ menu. Six buttons a row wrapped onto two lines, pushed the
+                      columns people actually read out of view, and left a red "Sil" one mis-tap from
+                      every other action — see RowActions. */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <RowActions
+                      primary={{ label: 'Redaktə', onClick: () => startEdit(e) }}
+                      actions={[
+                        {
+                          label: 'Qeyd. linki',
+                          icon: <IconSend />,
+                          hidden: e.activated,
+                          disabled: linkBusyId === e.id,
+                          onClick: () => onReinvite(e),
+                          title: 'Qeydiyyat linkini (yenidən) yarat',
+                        },
+                        {
+                          label: 'Davamiyyət',
+                          icon: <IconCalendar />,
+                          hidden: !e.activated,
+                          onClick: () => openAttendance(e),
+                          title: 'Giriş/çıxış qeydlərinə bax, düzəlt və ya əlavə et',
+                        },
+                        {
+                          label: 'PIN sıfırla',
+                          icon: <IconPhone />,
+                          hidden: !e.activated,
+                          onClick: () => onResetPin(e),
+                          title: 'İşçi PIN-ini unudubsa — müvəqqəti PIN ver',
+                        },
+                        {
+                          label: 'Davamiyyəti sıfırla',
+                          icon: <IconRefresh />,
+                          hidden: !e.activated,
+                          danger: true,
+                          disabled: resettingId === e.id,
+                          onClick: () => onResetAttendance(e),
+                          title: 'Giriş/çıxış tarixçəsini sil — hesab qalır',
+                        },
+                        {
+                          label: 'Sil',
+                          icon: <IconTrash />,
+                          danger: true,
+                          disabled: deletingId === e.id,
+                          onClick: () => onDelete(e),
+                        },
+                      ]}
+                    />
                   </div>
                 </td>
               </tr>

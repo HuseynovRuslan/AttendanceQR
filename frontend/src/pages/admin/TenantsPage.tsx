@@ -40,6 +40,7 @@ const ERRORS: Record<string, string> = {
   NoAdmin: 'Bu şirkətdə aktiv admin yoxdur',
   CannotImpersonateSelf: 'Öz hesabınıza daxil ola bilməzsiniz',
   CannotImpersonateOperator: 'Bu şirkətin adminı özü operatordur — operator kimi daxil olmaq olmaz',
+  NoImpersonableAdmin: 'Bu şirkətdə yalnız operator adminlər var — əvvəlcə müştərinin öz adminini yaradın',
 }
 
 const EMPTY = { slug: '', displayName: '', adminName: '', adminPhone: '', adminPin: '', locationName: '' }
