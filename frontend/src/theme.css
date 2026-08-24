@@ -551,8 +551,10 @@ select.inp{cursor:pointer}
 .ra-dots{padding:0 !important;width:34px;height:32px;justify-content:center;color:var(--c600)}
 .ra-dots svg{width:17px;height:17px}
 .ra-dots:hover{color:var(--c900)}
+/* Rendered into <body>, so it is positioned from the button's rect in JS — inside the row it was
+   clipped by the table's scroll container and its last items could not be reached. */
 .ra-menu{
-  position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:212px;
+  position:fixed;z-index:1200;width:212px;
   background:var(--white);border:1px solid var(--c100);border-radius:var(--r);
   box-shadow:0 2px 6px rgba(0,0,0,.06),0 14px 34px -10px rgba(0,0,0,.22);
   padding:6px;overflow:hidden;
