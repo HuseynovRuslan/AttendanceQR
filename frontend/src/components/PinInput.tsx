@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react'
-import { applyBackspace, applyDigit, applyPaste } from './pinInput'
+import { applyBackspace, applyDigit, applyPaste } from './pinDigits'
 
 /**
  * The PIN box on the login screen: four squares instead of one long field.

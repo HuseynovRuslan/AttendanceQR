@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyBackspace, applyDigit, applyPaste } from './pinInput'
+import { applyBackspace, applyDigit, applyPaste } from './pinDigits'
 
 /**
  * The PIN box is the last thing between an employee and their shift, so what is pinned here is what
@@ -57,6 +57,6 @@ describe('applyPaste', () => {
   })
 
   it('takes only as many digits as there are boxes', () => {
-    expect(applyPaste('123456', 4).next).toBe('1234')
+    expect(applyPaste('123456', 4)?.next).toBe('1234')
   })
 })
