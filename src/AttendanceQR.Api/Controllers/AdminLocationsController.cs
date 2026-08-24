@@ -90,22 +90,58 @@ public class AdminLocationsController : ControllerBase
         if (location is null)
             return NotFound(new { error = "LocationNotFound" });
 
-        // Refuse to delete a location that is still referenced — it would orphan employees /
+        // Refuse to delete a location that is still referenced — it would orphan employees or the
         // attendance history (and the DB foreign keys would reject it anyway).
         //
-        // Report WHAT is holding it, because the two cases have different answers and the admin
-        // cannot see which they are in: staff can be moved and then the branch deletes, but history
-        // never can — that branch has to be deactivated instead. "Cannot be deleted" on its own left
-        // someone staring at a branch whose only occupant was their own admin account.
-        var employeeCount = await _db.Employees.CountAsync(e => e.LocationId == id);
-        var historyCount = await _db.AttendanceRecords.CountAsync(a => a.LocationId == id)
-                           + await _db.DailySummaries.CountAsync(d => d.LocationId == id);
+        // Report WHAT is holding it, because the two cases have different answers and the admin cannot
+        // see which they are in: staff can be moved and then the branch deletes, but history never can
+        // — that branch has to be deactivated instead. "Cannot be deleted" on its own left someone
+        // staring at a branch whose only occupant was their own admin account.
+        var ct = HttpContext.RequestAborted;
+        var employeeCount = await _db.Employees.CountAsync(e => e.LocationId == id, ct);
+        var historyCount = await _db.AttendanceRecords.CountAsync(a => a.LocationId == id, ct);
         if (employeeCount > 0 || historyCount > 0)
             return Conflict(new { error = "LocationInUse", employeeCount, historyCount });
 
+        // DailySummaries used to count as history here, and that is what made empty branches
+        // undeletable for months: a summary is DERIVED — the night job writes one per employee per day,
+        // including days nobody scanned — and it keeps pointing at whichever branch the employee was in
+        // that day, long after they moved. So a branch with nobody in it and not one scan against it
+        // still had rows, and the answer the admin got was "istifadə olunur", about a branch that was
+        // demonstrably not.
+        //
+        // With no employees and no scans left there is nothing to protect, so the derived rows follow
+        // the employee: the day and its status stay (they are payroll-relevant — an absence is money),
+        // only the branch they are filed under moves to where that person is now. A summary whose
+        // employee is gone has nothing left to describe and goes with the branch.
+        var summaries = await _db.DailySummaries.Where(d => d.LocationId == id).ToListAsync(ct);
+        var moved = 0;
+        var dropped = 0;
+        if (summaries.Count > 0)
+        {
+            var employeeIds = summaries.Select(d => d.EmployeeId).Distinct().ToList();
+            var currentLocation = await _db.Employees
+                .Where(e => employeeIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => e.LocationId, ct);
+
+            foreach (var summary in summaries)
+            {
+                if (currentLocation.TryGetValue(summary.EmployeeId, out var location2) && location2 != id)
+                {
+                    summary.LocationId = location2;
+                    moved++;
+                }
+                else
+                {
+                    _db.DailySummaries.Remove(summary);
+                    dropped++;
+                }
+            }
+        }
+
         _db.Locations.Remove(location);
-        await _db.SaveChangesAsync();
-        return Ok(new { deleted = id });
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { deleted = id, summariesMoved = moved, summariesRemoved = dropped });
     }
 
     // Enable/disable without deleting — a disabled location stops issuing kiosk QR and rejects
