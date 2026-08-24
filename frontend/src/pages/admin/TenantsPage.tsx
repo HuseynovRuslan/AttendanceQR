@@ -43,7 +43,7 @@ const ERRORS: Record<string, string> = {
   NoImpersonableAdmin: 'Bu şirkətdə yalnız operator adminlər var — əvvəlcə müştərinin öz adminini yaradın',
 }
 
-const EMPTY = { slug: '', displayName: '', adminName: '', adminPhone: '', adminPin: '', locationName: '' }
+const EMPTY = { displayName: '', adminName: '', adminPhone: '', adminPin: '', locationName: '' }
 
 // Stable action codes → readable Azerbaijani labels for the audit trail.
 const AUDIT_LABELS: Record<string, string> = {
@@ -68,16 +68,34 @@ function fmtDateTime(iso: string) {
   })
 }
 
-/** A company name turned into a hostname label: Azerbaijani letters folded to ASCII, everything else
- *  to a dash. Only ever a starting point — the field below stays editable. */
+/**
+ * A company name turned into the hostname label the tenant is stored under.
+ *
+ * Nobody types this any more and nobody is shown it while creating a company, so it has to come out
+ * valid on its own: the server takes 2–20 characters, starting with a letter or digit. Azerbaijani
+ * letters fold to ASCII, everything else becomes a dash. A name that folds to nothing returns empty
+ * and the caller substitutes — better a generic label than a rejected form the operator cannot fix.
+ */
 function slugify(name: string): string {
   const map: Record<string, string> = { ə: 'e', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ç: 'c', ü: 'u' }
-  return name
+  const label = name
     .toLowerCase()
     .replace(/[əğıöşçü]/g, (c) => map[c] ?? c)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
+    .slice(0, 20)
+    .replace(/-+$/, '')
+  return label.length >= 2 ? label : ''
+}
+
+/** The same label with a counter, for the second company to be called the same thing. */
+function withSuffix(base: string, n: number): string {
+  const tail = `-${n}`
+  return base.slice(0, 20 - tail.length).replace(/-+$/, '') + tail
+}
+
+function errorCodeOf(data: unknown): string {
+  return data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
 }
 
 export function TenantsPage() {
@@ -331,7 +349,6 @@ export function SuperAudit() {
 // ── Şirkətlər: create + list + enable/disable (the original panel) ──────────
 export function TenantsTab() {
   // Once the operator edits the address by hand, the company name stops writing over it.
-  const [slugTouched, setSlugTouched] = useState(false)
   const canManage = useCan('ManageTenants')
   const canImpersonate = useCan('Impersonate')
   const [rows, setRows] = useState<SuperTenant[]>([])
@@ -418,14 +435,23 @@ export function TenantsTab() {
     e.preventDefault()
     setError(null)
     setSaving(true)
-    const { status, data } = await createTenant({
-      slug: form.slug.trim(),
+    const payload = {
       displayName: form.displayName.trim() || undefined,
       adminName: form.adminName.trim() || undefined,
       adminPhone: form.adminPhone.trim() || undefined,
       adminPin: form.adminPin.trim() || undefined,
       locationName: form.locationName.trim() || undefined,
-    })
+    }
+
+    // The address is derived and no longer on screen, so a clash cannot be handed back to the operator
+    // to fix in a field they cannot see. A second "Yeni Şirkət MMC", or a name that folds onto a
+    // reserved label like "app", takes the next free counter here instead of failing the form.
+    const base = slugify(form.displayName) || 'sirket'
+    let result = await createTenant({ ...payload, slug: base })
+    for (let n = 2; n <= 20 && ['SlugTaken', 'SlugReserved', 'SlugInvalid'].includes(errorCodeOf(result.data)); n++) {
+      result = await createTenant({ ...payload, slug: withSuffix(base, n) })
+    }
+    const { status, data } = result
     setSaving(false)
     if (status === 200 && data && !('error' in data)) {
       setCreated(data)
@@ -433,8 +459,7 @@ export function TenantsTab() {
       setShowForm(false)
       await refresh()
     } else {
-      const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
-      setError(ERRORS[code] ?? 'Yaradılmadı')
+      setError(ERRORS[errorCodeOf(data)] ?? 'Yaradılmadı')
     }
   }
 
@@ -471,7 +496,7 @@ export function TenantsTab() {
   async function copyHandover() {
     if (!created) return
     const text =
-      `Ünvan: https://${created.host}\n` +
+      `Giriş: https://app.qrlog.az\n` +
       `Telefon: 0${created.adminPhone}\n` +
       `Müvəqqəti PIN: ${created.tempPin}\n` +
       `(ilk girişdə öz PIN-inizi təyin edəcəksiniz)`
@@ -504,10 +529,10 @@ export function TenantsTab() {
       {created && (
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
           <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <IconCheck /> «{created.slug}» yaradıldı
+            <IconCheck /> «{created.displayName || created.slug}» yaradıldı
           </div>
           <div style={{ fontSize: 13, lineHeight: 1.9 }}>
-            Ünvan: <b>https://{created.host}</b>
+            Giriş: <b>https://app.qrlog.az</b>
             <br />
             Admin telefonu: <b>0{created.adminPhone}</b>
             <br />
@@ -515,14 +540,14 @@ export function TenantsTab() {
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
             PIN yalnız indi görünür — saxlanmır, sonra yalnız sıfırlamaq olar. Admin ilk girişdə öz PIN-ini
-            təyin edəcək. Sertifikat ilk açılışda alınır, bir neçə saniyə çəkə bilər.
+            təyin edəcək. Şirkətin öz ünvanı da var — <b>{created.host}</b> — amma giriş üçün lazım deyil.
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button className="btn btn-sm btn-primary" onClick={copyHandover}>
               {copied ? '✓ Kopyalandı' : 'Məlumatları kopyala'}
             </button>
-            <a className="btn btn-sm" href={`https://${created.host}`} target="_blank" rel="noreferrer">
-              Ünvanı aç
+            <a className="btn btn-sm" href="https://app.qrlog.az" target="_blank" rel="noreferrer">
+              Girişi aç
             </a>
             <button className="btn btn-sm" onClick={() => setCreated(null)}>Bağla</button>
           </div>
@@ -540,15 +565,7 @@ export function TenantsTab() {
                 className="inp"
                 required
                 value={form.displayName}
-                onChange={(e) => {
-                  set('displayName', e.target.value)
-                  // The address is derived, not asked for. Staff sign in at app.qrlog.az, which finds
-                  // the company from the phone number, so nobody has to know a subdomain — but the
-                  // tenant still needs a stable slug internally, and one typed by hand was a decision
-                  // with no information behind it. Editing it stays possible below for a company that
-                  // wants its own address.
-                  if (!slugTouched) set('slug', slugify(e.target.value))
-                }}
+                onChange={(e) => set('displayName', e.target.value)}
                 placeholder="məs. Yeni Şirkət MMC"
               />
             </div>
@@ -558,6 +575,7 @@ export function TenantsTab() {
                 className="inp"
                 type="tel"
                 inputMode="tel"
+                required
                 value={form.adminPhone}
                 onChange={(e) => set('adminPhone', e.target.value)}
                 placeholder="0501234567"
@@ -568,38 +586,15 @@ export function TenantsTab() {
             </div>
           </div>
 
-          {/* Kept, not removed: a company that wants its own address still gets one, and an existing
-              tenant's slug is part of links already handed out. It is simply no longer something the
-              operator has to invent before they can start. */}
-          <details style={{ marginBottom: 12 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--c500)' }}>
-              Ayrıca ünvan (istəyə bağlı) — {form.slug || 'avtomatik'}.qrlog.az
-            </summary>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-              <input
-                className="inp"
-                value={form.slug}
-                onChange={(e) => {
-                  setSlugTouched(true)
-                  set('slug', e.target.value.toLowerCase())
-                }}
-                placeholder="avtomatik"
-              />
-              <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>.qrlog.az</span>
-            </div>
-            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              Boş buraxsanız şirkətin adından yaranır. İşçilər onsuz da app.qrlog.az-dan girir.
-            </p>
-          </details>
-
           <div className="form-row cols2">
             <div>
               <label className="form-label">Admin adı</label>
               <input className="inp" value={form.adminName} onChange={(e) => set('adminName', e.target.value)} placeholder="Admin" />
             </div>
             <div>
-              <label className="form-label">Admin telefonu</label>
-              <input className="inp" value={form.adminPhone} onChange={(e) => set('adminPhone', e.target.value)} placeholder="0501234567" required />
+              <label className="form-label">İlk filialın adı</label>
+              <input className="inp" value={form.locationName} onChange={(e) => set('locationName', e.target.value)} placeholder="Baş ofis" />
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Koordinatı admin özü təyin edəcək.</div>
             </div>
           </div>
 
@@ -609,15 +604,10 @@ export function TenantsTab() {
               <input className="inp" value={form.adminPin} onChange={(e) => set('adminPin', e.target.value)} placeholder="boş = avtomatik" maxLength={4} />
               <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Boş buraxsanız təsadüfi PIN yaranır.</div>
             </div>
-            <div>
-              <label className="form-label">İlk filialın adı</label>
-              <input className="inp" value={form.locationName} onChange={(e) => set('locationName', e.target.value)} placeholder="Baş ofis" />
-              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Koordinatı admin özü təyin edəcək.</div>
-            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-            <button className="btn btn-primary" disabled={saving || !form.slug.trim() || !form.adminPhone.trim()}>
+            <button className="btn btn-primary" disabled={saving || !form.displayName.trim() || !form.adminPhone.trim()}>
               {saving ? 'Yaradılır…' : 'Şirkəti yarat'}
             </button>
             <button type="button" className="btn" onClick={() => { setShowForm(false); setError(null) }}>Ləğv et</button>

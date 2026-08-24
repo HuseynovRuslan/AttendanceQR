@@ -868,6 +868,8 @@ export interface CreateTenantInput {
 export interface CreateTenantResult {
   id: string
   slug: string
+  /** What the operator typed — the handover card names the company, not its hostname label. */
+  displayName: string
   host: string
   adminPhone: string
   /** Shown once — there is no way to read it back, only to reset it. */

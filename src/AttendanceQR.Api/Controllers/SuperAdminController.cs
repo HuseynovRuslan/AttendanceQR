@@ -228,6 +228,7 @@ public partial class SuperAdminController : ControllerBase
         {
             id = tenant.Id,
             slug,
+            displayName,
             host = $"{slug}.qrlog.az",
             adminPhone = phone,
             // Shown once. There is no way to read it back — only a reset.
