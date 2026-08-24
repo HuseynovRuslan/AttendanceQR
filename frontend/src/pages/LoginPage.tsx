@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useBranding } from '../branding/BrandingContext'
 import { decodeJwt, roleHome } from '../lib/jwt'
 import { BrandLogo } from '../components/BrandLogo'
+import { PinInput } from '../components/PinInput'
 import { IconX } from '../components/icons'
 
 export function LoginPage() {
@@ -113,15 +114,11 @@ export function LoginPage() {
             />
           </div>
           <div style={{ marginBottom: 18 }}>
-            <label className="form-label">Şifrə / PIN</label>
-            <input
-              className="inp"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            {/* Four boxes rather than one field, because nothing on the old screen said how much was
+                expected and people typed their phone number in again. See PinInput for the escape
+                hatch and why the eye toggle is not optional here. */}
+            <label className="form-label">PIN (4 rəqəm)</label>
+            <PinInput value={password} onChange={setPassword} />
           </div>
 
           <button type="submit" disabled={loading} className="btn btn-primary btn-bl btn-lg">
