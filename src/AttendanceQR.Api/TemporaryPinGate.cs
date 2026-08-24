@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 namespace AttendanceQR.Api;
 
 /// <summary>
@@ -25,6 +27,24 @@ public static class TemporaryPinGate
 {
     /// <summary>Set on the request by OnTokenValidated when the caller is still on a temporary PIN.</summary>
     public const string ItemKey = "TempPin";
+
+    /// <summary>
+    /// Whether this request should be flagged as being on a temporary PIN. Lives here rather than
+    /// inline in OnTokenValidated so it can be tested: it is one boolean, and it is the whole
+    /// difference between "the operator can set the company up" and "nobody can".
+    ///
+    /// An IMPERSONATION session is exempt. A company is created with the CUSTOMER's admin, who is by
+    /// definition still on the temporary PIN until they first sign in, so without the exemption there
+    /// was nothing an operator could configure on the day they created the company — and the only way
+    /// through was to enrol themselves as an admin inside the customer's company. The gate exists to
+    /// force a PERSON off a shared temporary credential; the operator is not that person and cannot
+    /// become them, because every route that would hand them that account's credential refuses an
+    /// impersonation session: set-initial-pin and change-password (AuthController), reset-pin and
+    /// reinvite (AdminController), pin-resets/resolve (AdminPinResetController). The customer's own
+    /// forced PIN change is still theirs to make, unconsumed.
+    /// </summary>
+    public static bool ShouldFlag(bool mustChangePin, ClaimsPrincipal? principal)
+        => mustChangePin && principal?.IsImpersonating() != true;
 
     /// <summary>
     /// The endpoints that still answer while on a temporary PIN. Deliberately tiny — an allowlist,

@@ -28,8 +28,9 @@ namespace AttendanceQR.Application.Tests;
 ///     session cannot touch the credential itself: set-initial-pin and change-password refuse it, so the
 ///     customer's own forced PIN change is still theirs to make, unconsumed.
 ///
-/// If a test here fails, either the handover is blocked again or an impersonation session has grown the
-/// ability to take the account it is borrowing.
+/// If a test here fails, the handover is blocked again. What a borrowed session may NOT do — the
+/// credential and identifier guards the exemption above rests on — is pinned in
+/// ImpersonationCredentialGuardTests; this file does not cover them.
 /// </summary>
 public class ImpersonationHandoverTests
 {
@@ -181,6 +182,27 @@ public class ImpersonationHandoverTests
         h.Db.SaveChanges();
 
         Assert.Equal("NoAdmin", ValueOf(await h.Controller.Impersonate(TenantId), "error"));
+    }
+
+    // --- the company can see it happened -------------------------------------------
+
+    [Fact]
+    public async Task Borrowing_an_admin_writes_a_row_into_the_COMPANYS_own_audit()
+    {
+        // Everything the borrowed session then does is recorded under the admin's own id (AuditLog has
+        // no impersonator field), and the operator console's log lives behind /api/super, which no
+        // tenant may read. Without this row a company has no way of knowing the platform was ever
+        // inside their account — which is exactly what enrolling an operator as a visible employee row
+        // used to provide, and what this feature removes.
+        using var h = new Harness();
+
+        Assert.IsType<OkObjectResult>(await h.Controller.Impersonate(TenantId));
+
+        var row = Assert.Single(h.Db.AuditLogs.IgnoreQueryFilters()
+            .Where(a => a.EventType == AuditEventType.ImpersonationStarted).ToList());
+        Assert.Equal(TenantId, row.TenantId);              // the TARGET company, not the operator's own
+        Assert.Equal(h.CustomerAdminId, row.EmployeeId);
+        Assert.Contains(h.OperatorId.ToString(), row.Reason);
     }
 
     // --- the borrowed account keeps its own credential -----------------------------

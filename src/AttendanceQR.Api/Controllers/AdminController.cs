@@ -177,6 +177,15 @@ public class AdminController : ControllerBase
     [HttpPost("invite")]
     public async Task<IActionResult> Invite([FromBody] InviteRequest request)
     {
+        // A borrowed hour must not leave a permanent key behind. Every creation route hands the CALLER
+        // the new account's credential (an activation token here, a temporary PIN in bulk-import), so an
+        // admin created from an impersonation session is one the OPERATOR can sign in as long after the
+        // session has expired — and nothing inside the tenant would show where it came from. The
+        // customer's admins are the customer's to appoint; staff rows, which are the actual setup work,
+        // are unaffected. Mirrored in bulk-invite/bulk-import (ResolveRowScope) and in Update below.
+        if (User.IsImpersonating() && request.Role == EmployeeRole.Admin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
+
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 
@@ -222,7 +231,8 @@ public class AdminController : ControllerBase
     /// matches nothing fails that row alone rather than silently landing the person somewhere else.
     /// </summary>
     private static (Guid LocationId, EmployeeRole Role, string? Error) ResolveRowScope(
-        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid> locationsByName)
+        BulkInviteRow row, Guid batchLocationId, EmployeeRole batchRole, Dictionary<string, Guid> locationsByName,
+        bool impersonating)
     {
         var locationId = batchLocationId;
         if (!string.IsNullOrWhiteSpace(row.LocationName))
@@ -240,6 +250,12 @@ public class AdminController : ControllerBase
                 return (default, default, "RoleNotRecognised");
             role = parsed.Value;
         }
+
+        // Same rule as Invite: an impersonation session may fill the company with staff, but not appoint
+        // its admins — the batch hands the caller each new account's temporary PIN. Failed per row, so
+        // the rest of the spreadsheet still imports.
+        if (impersonating && role == EmployeeRole.Admin)
+            return (default, default, "NotDuringImpersonation");
 
         return (locationId, role, null);
     }
@@ -279,7 +295,8 @@ public class AdminController : ControllerBase
 
         foreach (var row in request.Rows)
         {
-            var (rowLocationId, rowRole, scopeError) = ResolveRowScope(row, request.LocationId, request.Role, locationsByName);
+            var (rowLocationId, rowRole, scopeError) = ResolveRowScope(
+                row, request.LocationId, request.Role, locationsByName, User.IsImpersonating());
             if (scopeError is not null)
             {
                 failed.Add(new { fullName = row.FullName, error = scopeError });
@@ -337,7 +354,8 @@ public class AdminController : ControllerBase
 
         foreach (var row in request.Rows)
         {
-            var (rowLocationId, rowRole, scopeError) = ResolveRowScope(row, request.LocationId, request.Role, locationsByName);
+            var (rowLocationId, rowRole, scopeError) = ResolveRowScope(
+                row, request.LocationId, request.Role, locationsByName, User.IsImpersonating());
             if (scopeError is not null)
             {
                 failed.Add(new { fullName = row.FullName, error = scopeError });
@@ -868,6 +886,10 @@ public class AdminController : ControllerBase
                 return BadRequest(new { error = "CannotChangeOwnRole" });
         }
 
+        // Promotion is account creation by another name — see Invite.
+        if (User.IsImpersonating() && request.Role == EmployeeRole.Admin && employee.Role != EmployeeRole.Admin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
+
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 
@@ -882,6 +904,16 @@ public class AdminController : ControllerBase
             return Conflict(new { error = "EmailAlreadyExists" });
         if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone && e.Id != id))
             return Conflict(new { error = "PhoneAlreadyExists" });
+
+        // The identifier is the credential's other half — it is what Login matches on and where a
+        // forgot-PIN reset is delivered. Repointing an admin's (or the borrowed account's own) from an
+        // impersonation session aims the customer's login at the operator, and the customer's own number
+        // stops working; see ImpersonationRefusal. Ordinary edits by the tenant's own admins, and edits
+        // to staff rows, are untouched.
+        var identifierChanged =
+            !string.Equals(email, employee.Email, StringComparison.OrdinalIgnoreCase) || phone != employee.PhoneNumber;
+        if (identifierChanged && ImpersonationRefusal(employee) is { } identifierRefusal)
+            return identifierRefusal;
 
         // A token carries the role and never expires, and nothing re-checks it per request — so
         // changing either of these has to invalidate the sessions already issued. Without this a
@@ -1104,6 +1136,10 @@ public class AdminController : ControllerBase
             return NotFound(new { error = "EmployeeNotFound" });
         if (employee.ActivatedAtUtc is not null)
             return Conflict(new { error = "AlreadyActivated" });
+        // The activation token below IS a credential — /api/auth/activate turns it into an account with
+        // a PIN of the holder's choosing. Same rule as reset-pin.
+        if (ImpersonationRefusal(employee) is { } impersonationRefusal)
+            return impersonationRefusal;
 
         var (activationToken, randomHash) = ActivationToken.Create(employee.Id);
         employee.InvitationTokenHash = randomHash;
@@ -1117,6 +1153,28 @@ public class AdminController : ControllerBase
             activationUrl = $"/activate?token={activationToken}"
         });
     }
+
+    /// <summary>
+    /// 403 <c>NotDuringImpersonation</c> when an impersonation session reaches for a PRIVILEGED
+    /// account's credential or login identifier; null otherwise.
+    ///
+    /// An impersonation token's "sub" is the CUSTOMER's own admin, borrowed for an hour so the operator
+    /// can set the company up without enrolling themselves inside it. set-initial-pin and
+    /// change-password already refuse that session — but they were not the only ways to the same place.
+    /// reset-pin returns the new PIN in plaintext and reinvite returns an activation token, so either
+    /// one turns the borrowed hour into an ordinary, never-expiring login for somebody else's admin —
+    /// and the temporary PIN written on the customer's handover slip silently stops working. Repointing
+    /// the account's email or phone is the same takeover by a quieter route: the operator receives the
+    /// forgot-PIN traffic and the customer's own number no longer signs in.
+    ///
+    /// The line is drawn at ADMINS and at the borrowed account itself, not at every employee: handing
+    /// out staff temporary PINs IS the setup work this feature exists for, and an ordinary employee's
+    /// PIN buys nothing but their own scan screen.
+    /// </summary>
+    private IActionResult? ImpersonationRefusal(Employee target) =>
+        User.IsImpersonating() && (target.Id == User.EmployeeId() || target.Role == EmployeeRole.Admin)
+            ? StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" })
+            : null;
 
     // POST /api/admin/employees/{id}/reset-pin — set a random temporary PIN for an activated employee
     // who forgot theirs (a hashed PIN can never be read back). Returns the plaintext temp PIN so the
@@ -1136,6 +1194,11 @@ public class AdminController : ControllerBase
         // activation check, so the response cannot be used to probe which employees are operators.
         if (_operatorIds.Contains(employee.Id))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
+        // Nor is a borrowed account's credential the borrower's to replace. See ImpersonationRefusal:
+        // this endpoint returns the new PIN in plaintext, so without this an impersonation session
+        // could convert its hour into a permanent login for the customer's admin.
+        if (ImpersonationRefusal(employee) is { } impersonationRefusal)
+            return impersonationRefusal;
         if (employee.ActivatedAtUtc is null)
             return Conflict(new { error = "NotActivated" });
 

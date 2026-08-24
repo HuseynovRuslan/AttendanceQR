@@ -302,16 +302,10 @@ builder.Services
                 // the endpoints that get them off it. See TemporaryPinGate for why this cannot stay a
                 // client-side redirect.
                 //
-                // An IMPERSONATION session is exempt, and that exemption is what makes handing a
-                // company over possible at all: a tenant is created with the CUSTOMER's admin, who is
-                // by definition still on the temporary PIN until they first sign in — so without this,
-                // the operator could not set the company up on the day they created it, and the only
-                // way through was to enrol themselves as an admin inside the customer's company. The
-                // gate exists to force a PERSON off a temporary credential; the operator is not that
-                // person and cannot be, because set-initial-pin and change-password refuse an
-                // impersonation session (see AuthController) — so the customer's own forced PIN change
-                // still stands, untouched and unconsumed.
-                if (account.MustChangePin && !context.Principal!.IsImpersonating())
+                // An IMPERSONATION session is exempt — see TemporaryPinGate.ShouldFlag for why, and
+                // for the list of routes that keep the borrowed credential out of the operator's
+                // hands. The decision lives there rather than here so it can be tested.
+                if (TemporaryPinGate.ShouldFlag(account.MustChangePin, context.Principal))
                     context.HttpContext.Items[TemporaryPinGate.ItemKey] = true;
             }
         };

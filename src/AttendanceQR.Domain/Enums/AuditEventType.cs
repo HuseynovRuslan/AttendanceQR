@@ -29,5 +29,11 @@ public enum AuditEventType
     PinResetResolved = 12,
 
     // An employee reset their OWN PIN with no admin, proving identity by face match from a bound device.
-    PinResetSelfService = 13
+    PinResetSelfService = 13,
+
+    // A platform operator borrowed this company's admin account for a support/setup session. Written
+    // into the COMPANY's own audit, because the operator console's log is invisible from inside the
+    // tenant and every edit the borrowed session makes is recorded under the admin's own id — without
+    // this row the customer has no way of knowing the platform was ever in their account.
+    ImpersonationStarted = 14
 }

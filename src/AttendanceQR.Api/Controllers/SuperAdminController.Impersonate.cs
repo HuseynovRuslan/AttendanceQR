@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Domain;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -58,6 +59,22 @@ public partial class SuperAdminController
             return BadRequest(new { error = "NoImpersonableAdmin" });
 
         var token = _jwt.GenerateImpersonationToken(admin, actorId, ImpersonationMinutes);
+
+        // The CUSTOMER's own audit gets a row as well as the operator console's. Everything the borrowed
+        // session then does inside the tenant is recorded under the admin's own id (AuditLog has no
+        // impersonator field), and the console's log lives in SuperAdminAuditLogs behind /api/super,
+        // which no tenant can read — so without this line the company has no way of knowing the platform
+        // was ever in their account. TenantId is set by hand: this row belongs to the TARGET company, not
+        // to whichever tenant the operator's own employee row happens to live in.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenant.Id,
+            EmployeeId = admin.Id,
+            EventType = AuditEventType.ImpersonationStarted,
+            Reason = $"Operator {actorId}",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+
         await AuditAsync("ImpersonationStarted", tenant.Id, tenant.Slug,
             $"{admin.FullName} ({admin.PhoneNumber})", ct);
 

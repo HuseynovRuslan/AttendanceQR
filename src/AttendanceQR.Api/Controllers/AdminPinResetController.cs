@@ -62,6 +62,20 @@ public class AdminPinResetController : ControllerBase
         if (employeeId is null)
             return NotFound(new { error = "RequestNotFound" });
 
+        // An impersonation session must not mint a credential for a privileged account: this endpoint
+        // returns the plaintext PIN, so resolving a request filed against the borrowed admin (or any
+        // other admin) is the same takeover AdminController.ResetPin refuses. Checked BEFORE the claim
+        // below, so a refusal does not consume the customer's queue entry.
+        if (User.IsImpersonating())
+        {
+            var target = await _db.Employees
+                .Where(e => e.Id == employeeId.Value)
+                .Select(e => new { e.Id, e.Role })
+                .FirstOrDefaultAsync(ct);
+            if (target is not null && (target.Id == User.EmployeeId() || target.Role == EmployeeRole.Admin))
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
+        }
+
         // Atomically CLAIM the request (Pending -> Resolved) in one UPDATE. Without this, two admins
         // resolving the same id at once would each pass a read-then-check guard and each reset the PIN
         // to a DIFFERENT random value — last write wins, and one admin reads out a PIN that no longer

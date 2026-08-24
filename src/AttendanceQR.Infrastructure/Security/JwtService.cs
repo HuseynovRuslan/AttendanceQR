@@ -31,6 +31,14 @@ public sealed class JwtService : IJwtService
         // banner. The security boundary is still tid + tv: the token is confined to exactly this
         // employee in this tenant, so it can never reach another company or escalate.
         claims.Add(new Claim("imp", impersonatedBy.ToString()));
+        // ...and never the "mcp" flag, even when the borrowed admin is still on the temporary PIN —
+        // which on the day a company is created they always are. The claim is a client instruction:
+        // AdminRoute/ProtectedRoute redirect to the forced "set your PIN" screen while it is set, and
+        // that screen's only button refuses an impersonation session (AuthController.SetInitialPin).
+        // Leaving it on would send the operator to a dead end on exactly the tenant this exists to set
+        // up. Nothing is weakened: the customer's forced change lives on Employee.MustChangePin in the
+        // database — which is what the server-side gate reads — so their own next login still faces it.
+        claims.RemoveAll(c => c.Type == "mcp");
         return Write(claims, DateTime.UtcNow.AddMinutes(expiryMinutes));
     }
 
