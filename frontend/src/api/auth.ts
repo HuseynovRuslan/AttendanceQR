@@ -60,6 +60,17 @@ export function forgotPin(identifier: string) {
   })
 }
 
+/** POST /api/auth/forgot-pin/check — is this number known here? Asked BEFORE the camera opens, so a
+ *  mistyped digit is answered as a mistyped digit instead of as a face that did not match. */
+export function forgotPinCheck(identifier: string) {
+  return apiRequest<{ known: boolean } | ApiErrorBody>('/api/auth/forgot-pin/check', {
+    method: 'POST',
+    auth: false,
+    body: { identifier },
+    timeoutMs: 15_000,
+  })
+}
+
 /** POST /api/auth/forgot-pin/verify — self-service reset: prove it's you with a selfie (matched to your
  *  reference photo) from a device already bound to your account. On success returns a fresh temp PIN;
  *  otherwise `verified: false` (the caller then offers the admin-queue path). */

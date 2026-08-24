@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { forgotPin, forgotPinVerify } from '../api/auth'
+import { forgotPin, forgotPinCheck, forgotPinVerify } from '../api/auth'
 import { getDeviceFingerprint } from '../lib/device'
 import { platform } from '../lib/geo'
 import { classifyAdminRequest, classifyVerify, NETWORK_MESSAGE } from './forgotPinOutcome'
@@ -108,13 +108,30 @@ export function ForgotPinPage() {
     setCamReady(false)
   }
 
-  function startFlow() {
+  async function startFlow() {
     if (!identifier.trim()) {
-      setError('Telefon nömrəsi və ya email daxil edin')
+      setError('Telefon nömrəsi daxil edin')
       return
     }
     setError(null)
-    setPhase('camera')
+    setBusy(true)
+    try {
+      // Ask first whether the number is known here. Without this the camera opened for everybody and
+      // every failure read the same, so a typo looked exactly like "we did not recognise your face" —
+      // people retook the selfie again and again for a wrong digit.
+      const { status, data } = await forgotPinCheck(identifier.trim())
+      if (status === 200 && data && 'known' in data && data.known === false) {
+        setError('Bu nömrə sistemdə yoxdur. Nömrəni yoxlayın və ya rəhbərinizə deyin.')
+        return
+      }
+      // Anything else — a server hiccup, a rate limit — is not a reason to block a locked-out person:
+      // carry on to the camera, where a real account still verifies.
+      setPhase('camera')
+    } catch {
+      setPhase('camera')
+    } finally {
+      setBusy(false)
+    }
   }
 
   function retryPhoto() {
@@ -393,10 +410,10 @@ export function ForgotPinPage() {
           placeholder="Telefon nömrəsi"
           value={identifier}
           onChange={(e) => setIdentifier(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && startFlow()}
+          onKeyDown={(e) => e.key === 'Enter' && void startFlow()}
         />
-        <button onClick={startFlow} className="mt-4 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white">
-          Davam et
+        <button onClick={() => void startFlow()} disabled={busy} className="mt-4 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white">
+          {busy ? 'Yoxlanılır…' : 'Davam et'}
         </button>
         {backLink}
       </div>

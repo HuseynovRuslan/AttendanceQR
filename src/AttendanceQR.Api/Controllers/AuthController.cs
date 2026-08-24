@@ -405,6 +405,43 @@ public partial class AuthController : ControllerBase
     // RESPONSE reveals nothing. The one asymmetry left is timing (a real match does an extra write), so
     // the endpoint is throttled per IP: past the cap it returns the same 200 with no DB work at all,
     // which bounds both timing-sample harvesting (enumeration) and admin-queue flooding.
+    // POST /api/auth/forgot-pin/check — does this number belong to anybody here?
+    //
+    // The screen used to walk everyone to the selfie and answer every failure the same way, so a
+    // mistyped digit and a face that did not match were indistinguishable — people retook the photo
+    // five times for a typo. This says which it is, before the camera opens.
+    //
+    // It does reveal whether an identifier exists, which the rest of this controller deliberately never
+    // does. The trade was made with eyes open: recovery is for people who are already stuck, the
+    // alternative is a dead end they cannot read, and the leak is bounded three ways — the answer costs
+    // an attempt from the same per-IP budget the reset flow uses, past the cap it always answers
+    // "known" (so a scraper learns nothing and the employee still reaches the camera), and it says
+    // nothing about WHO: no name, no company, no role.
+    [HttpPost("forgot-pin/check")]
+    public async Task<IActionResult> ForgotPinCheck([FromBody] ForgotPinRequest request)
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var throttleKey = $"forgotpin:{PinRecoveryThrottleScope()}:{ip}";
+        var seen = _cache.TryGetValue(throttleKey, out int n) ? n : 0;
+        if (seen >= MaxForgotPinPerWindow)
+            // Out of budget: answer as if it were known. The employee carries on to the camera (where a
+            // real account still verifies), and somebody cycling numbers is told nothing.
+            return Ok(new { known = true });
+
+        var identifier = request.Identifier?.Trim() ?? string.Empty;
+        var candidates = identifier.Length is > 0 and <= 200
+            ? await ResolvePinRecoveryCandidatesAsync(identifier, HttpContext.RequestAborted)
+            : new List<Employee>();
+        var known = candidates.Any(c => c.ActivatedAtUtc is not null);
+
+        // Charged only on a miss — the same rule the reset endpoint uses, for the same reason: an
+        // enumeration probe is all misses, an employee's own number is not.
+        if (!known)
+            _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+
+        return Ok(new { known });
+    }
+
     [HttpPost("forgot-pin")]
     public async Task<IActionResult> ForgotPin([FromBody] ForgotPinRequest request)
     {

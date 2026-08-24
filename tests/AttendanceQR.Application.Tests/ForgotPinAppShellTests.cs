@@ -520,4 +520,77 @@ public class ForgotPinAppShellTests
         Assert.NotEqual("hashed:1234", h.Row(h.AliceId).PasswordHash);
         Assert.Equal(TenantA, Assert.Single(h.AuditLogs()).TenantId);
     }
+
+    // --- "is this number known here?" — asked before the camera opens -----------
+
+    private static bool KnownOf(IActionResult result)
+    {
+        var ok = Assert.IsType<OkObjectResult>(result);
+        return (bool)(ok.Value!.GetType().GetProperty("known")!.GetValue(ok.Value))!;
+    }
+
+    [Fact]
+    public async Task Check_says_yes_for_a_number_that_is_here()
+    {
+        using var h = new Harness();
+        Assert.True(KnownOf(await h.Subdomain(TenantA).ForgotPinCheck(new ForgotPinRequest(Harness.AlicePhone))));
+    }
+
+    [Fact]
+    public async Task Check_says_no_for_a_number_that_is_not()
+    {
+        // The whole point: a typo is answered as a typo, instead of walking the person to a selfie that
+        // was never going to match anybody.
+        using var h = new Harness();
+        Assert.False(KnownOf(await h.Subdomain(TenantA).ForgotPinCheck(new ForgotPinRequest("500000001"))));
+    }
+
+    [Fact]
+    public async Task Check_answers_from_the_app_shell_too()
+    {
+        using var h = new Harness();
+        Assert.True(KnownOf(await h.AppShell().ForgotPinCheck(new ForgotPinRequest(Harness.AlicePhone))));
+    }
+
+    [Fact]
+    public async Task Check_says_nothing_about_another_companys_employee()
+    {
+        // Bahar is in tenant B. Asked on tenant A's subdomain she must not exist — the tenant boundary
+        // is not softened by the convenience.
+        using var h = new Harness();
+        Assert.False(KnownOf(await h.Subdomain(TenantA).ForgotPinCheck(new ForgotPinRequest(Harness.BaharPhone))));
+    }
+
+    [Fact]
+    public async Task An_empty_identifier_is_simply_unknown()
+    {
+        using var h = new Harness();
+        Assert.False(KnownOf(await h.Subdomain(TenantA).ForgotPinCheck(new ForgotPinRequest(""))));
+    }
+
+    [Fact]
+    public async Task Past_the_per_ip_cap_it_stops_telling_anyone_anything()
+    {
+        // A scraper cycling numbers burns the budget on misses and then gets "known" for everything,
+        // so the answers stop being worth collecting — while a real employee still reaches the camera.
+        using var h = new Harness();
+        var controller = h.Subdomain(TenantA);
+        for (var i = 0; i < 250; i++)
+            await controller.ForgotPinCheck(new ForgotPinRequest($"5000{i:D5}"));
+
+        Assert.True(KnownOf(await controller.ForgotPinCheck(new ForgotPinRequest("500000001"))));
+    }
+
+    [Fact]
+    public async Task A_real_number_does_not_spend_the_budget()
+    {
+        // Charged only on misses: a site behind one router must not lock itself out by looking up its
+        // own people.
+        using var h = new Harness();
+        var controller = h.Subdomain(TenantA);
+        for (var i = 0; i < 300; i++)
+            await controller.ForgotPinCheck(new ForgotPinRequest(Harness.AlicePhone));
+
+        Assert.False(KnownOf(await controller.ForgotPinCheck(new ForgotPinRequest("500000002"))));
+    }
 }
