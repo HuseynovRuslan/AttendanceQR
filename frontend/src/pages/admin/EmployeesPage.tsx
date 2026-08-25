@@ -83,7 +83,12 @@ const ERRORS: Record<string, string> = {
   CannotManageOperator: 'Bu hesab platforma operatoruna aiddir — buradan idarə olunmur',
   // Dəstək sessiyası (operator müştərinin adminı kimi daxil olub) admin hesabının PIN-inə və ya
   // telefon/email-inə toxuna bilməz — bu, borc alınmış hesabın açarını dəyişmək olardı.
-  NotDuringImpersonation: 'Dəstək sessiyasında admin hesabının PIN-i və ya giriş nömrəsi dəyişdirilə bilməz',
+  // One code, two situations, and the old wording described only one of them: an operator who set the
+  // role to "Admin" was told something about PINs and phone numbers, which is not what they had done.
+  // Menecer is deliberately NOT restricted — appointing branch managers is the setup work.
+  NotDuringImpersonation:
+    'Dəstək sessiyasında admin TƏYİN etmək və admin hesabının PIN-ini / nömrəsini dəyişmək olmaz. '
+    + 'Menecer təyin etmək olar. Admin lazımdırsa: SuperAdmin konsolunda ⋯ → «Admini təyin et».',
 }
 
 type FormState = {
