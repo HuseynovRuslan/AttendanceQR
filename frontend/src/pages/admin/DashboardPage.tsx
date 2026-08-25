@@ -113,11 +113,16 @@ function Sparkline({ points }: { points: number[] }) {
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const [rows, setRows] = useState<DayAttendanceRow[]>([])
+  // Everything the panel shows for today comes from here; `rows` below is this, narrowed to the
+  // branch in view.
+  const [allRows, setAllRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [openBucket, setOpenBucket] = useState<Bucket | null>(null)
   const [actions, setActions] = useState({ open: 0, devices: 0, problems: 0 })
   const [locations, setLocations] = useState<AdminLocation[]>([])
+  // '' = the whole company. With one branch this was a question nobody had; with six, "how many are
+  // at work" has six different answers and the panel was only ever giving the sum.
+  const [filterLoc, setFilterLoc] = useState('')
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -140,7 +145,7 @@ export function DashboardPage() {
       getProblems(todayIso(), todayIso()),
     ])
     if (today.status === 200 && Array.isArray(today.data)) {
-      setRows(today.data)
+      setAllRows(today.data)
       setError(null)
     } else if (today.status === 403) setError('İcazəniz yoxdur')
     else setError('Məlumat yüklənmədi')
@@ -150,6 +155,14 @@ export function DashboardPage() {
       problems: problems.data && 'rejectedCount' in problems.data ? problems.data.rejectedCount : 0,
     })
   }, 30_000)
+
+  // One filter, applied once. Every tile, the rate, the hero number, the activity feed and the map
+  // all read `rows`, so narrowing it here is the whole feature — and there is no second place that
+  // can be forgotten when a tile is added next month.
+  const rows = useMemo(
+    () => (filterLoc ? allRows.filter((r) => r.locationId === filterLoc) : allRows),
+    [allRows, filterLoc],
+  )
 
   const activity = useMemo(() => {
     const ev: { id: string; empId: string; name: string; loc: string; type: 'in' | 'out'; at: string }[] = []
@@ -196,6 +209,7 @@ export function DashboardPage() {
   const sites = useMemo<DashSite[]>(() => {
     return locations
       .filter((l) => l.isActive && Number.isFinite(l.latitude) && Number.isFinite(l.longitude))
+      .filter((l) => !filterLoc || l.id === filterLoc)
       .map((l) => {
         const mine = rows.filter((r) => r.locationId === l.id)
         return {
@@ -208,7 +222,7 @@ export function DashboardPage() {
           staff: mine.length,
         }
       })
-  }, [locations, rows])
+  }, [locations, rows, filterLoc])
 
   // Individual people, plotted where they actually scanned in (green = on duty, blue = left). Only
   // those whose check-in position is known; the rest fall back to the site marker inside the map.
@@ -251,11 +265,12 @@ export function DashboardPage() {
       : manual
 
   useEffect(() => {
-    void getDashboard(range.from, range.to).then(({ status, data }) => {
+    // The endpoint has always taken a locationId — the panel simply never sent one.
+    void getDashboard(range.from, range.to, filterLoc || undefined).then(({ status, data }) => {
       if (status === 200 && data && 'trend' in data) setReport(data)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, manual.from, manual.to])
+  }, [mode, manual.from, manual.to, filterLoc])
 
   const spark = useMemo(() => (report?.trend ?? []).map((t) => t.attendanceRate), [report])
   // Direction of travel: the second half of the window against the first. A rising second half is ▲.
@@ -279,9 +294,28 @@ export function DashboardPage() {
       <header className="lux-head lux-rise lux-d1">
         <div>
           <div className="lux-title">İdarəetmə paneli</div>
-          <div className="lux-sub">Bu gün · canlı davamiyyət</div>
+          <div className="lux-sub">
+            {filterLoc
+              ? `${locations.find((l) => l.id === filterLoc)?.name ?? 'Filial'} · canlı davamiyyət`
+              : 'Bütün filiallar · canlı davamiyyət'}
+          </div>
         </div>
         <div className="lux-head-r">
+          {/* Sits with the clock rather than above the tiles: it changes what every number on the
+              page means, so it belongs where the page says what it is showing. */}
+          {locations.length > 1 && (
+            <select
+              className="inp"
+              value={filterLoc}
+              onChange={(e) => setFilterLoc(e.target.value)}
+              style={{ width: 'auto', minWidth: 150, padding: '6px 10px', fontSize: 13 }}
+            >
+              <option value="">Bütün filiallar</option>
+              {locations.filter((l) => l.isActive).map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          )}
           <span className="lux-live"><i />CANLI</span>
           <span className="lux-clock">{clock}</span>
         </div>
@@ -412,9 +446,22 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* Action center — the things that need a person. */}
+      {/* Action center — the things that need a person.
+
+          Only the first tile follows the branch filter: it is counted from `rows`. The other three
+          come from endpoints that do not carry a branch at all — the problems report returns a number
+          rather than rows, and the device queue has no location on it — so rather than filter one and
+          silently leave two company-wide next to a branch name, the panel says which it is. A wrong
+          count under a filter is worse than an honest unfiltered one. */}
       <section className="card lux-panel lux-rise lux-d5">
-        <div className="lux-panel-h"><span>Diqqət mərkəzi</span></div>
+        <div className="lux-panel-h">
+          <span>Diqqət mərkəzi</span>
+          {filterLoc && (
+            <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>
+              son üçü bütün filiallar üzrə
+            </span>
+          )}
+        </div>
         <div className="lux-actions">
           {[
             // Goes to the today board rather than opening the pill list at the very top of the page —
