@@ -196,8 +196,12 @@ public class ReportsController : ControllerBase
 
     // GET /api/reports/payroll?from=&to=&locationId= — the payroll (Maaş) table: each employee's
     // fixed monthly salary minus a per-day share for unexcused absences. Same scope as the summary.
+    // Manager too: GetPayrollAsync is built on GetSummaryAsync, which runs through LocationScope —
+    // so a manager's table already contains exactly their own branches' Role==Employee staff and
+    // nobody else. The attribute was the only thing keeping them out, and a branch manager who cannot
+    // see what their own staff are owed has to ask the admin for every question about it.
     [HttpGet("payroll")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     [RequireFeature(TenantFeatures.Payroll)]
     public async Task<IActionResult> Payroll(
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)

@@ -3,16 +3,26 @@ using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
 
-/// <summary>Admin side of the "PIN-i unutdum" flow: the queue of employees who asked for a reset, and
-/// the two actions on each — resolve (reset the PIN, get a temporary one to pass on) or dismiss.</summary>
+/// <summary>
+/// Admin side of the "PIN-i unutdum" flow: the queue of employees who asked for a reset, and the two
+/// actions on each — resolve (reset the PIN, get a temporary one to pass on) or dismiss.
+///
+/// A branch manager works this queue too, for their own staff only. They can already reset those same
+/// people's PINs from their own screen (ManagerController), so keeping them out of the queue did not
+/// protect anything — it just meant the employee who forgot their PIN waited for an admin who was not
+/// in the building. Every row and every action runs through CanManageEmployeeAsync, which stops at
+/// Role==Employee inside their ManagedLocations: the branch-only reach that let a manager reset a
+/// same-branch ADMIN's PIN was the P0 of 2026-08-08 and does not come back here.
+/// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/pin-resets")]
 public class AdminPinResetController : ControllerBase
 {
@@ -31,10 +41,21 @@ public class AdminPinResetController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Pending()
     {
+        var ct = HttpContext.RequestAborted;
+        var people = _db.Employees.AsQueryable();
+
+        // Manager scope: the queue shows only requests filed by staff this caller may act on, because
+        // every row here is an offer to mint a credential for that person.
+        if (User.Role() == EmployeeRole.Manager)
+        {
+            var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), ct);
+            people = people.Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee);
+        }
+
         var rows = await _db.PinResetRequests
             .Where(r => r.Status == PinResetStatus.Pending)
             .OrderBy(r => r.RequestedAtUtc)
-            .Join(_db.Employees, r => r.EmployeeId, e => e.Id, (r, e) => new
+            .Join(people, r => r.EmployeeId, e => e.Id, (r, e) => new
             {
                 requestId = r.Id,
                 employeeId = e.Id,
@@ -43,7 +64,7 @@ public class AdminPinResetController : ControllerBase
                 email = e.Email,
                 requestedAtUtc = r.RequestedAtUtc
             })
-            .ToListAsync(HttpContext.RequestAborted);
+            .ToListAsync(ct);
         return Ok(rows);
     }
 
@@ -61,6 +82,12 @@ public class AdminPinResetController : ControllerBase
             .FirstOrDefaultAsync(ct);
         if (employeeId is null)
             return NotFound(new { error = "RequestNotFound" });
+
+        // The same boundary the list applies, re-checked on the action — a request id guessed or held
+        // from before a branch reassignment must not resolve into a PIN. Checked before the atomic
+        // claim below so a refusal does not consume somebody else's queue entry.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         // An impersonation session must not mint a credential for a privileged account: this endpoint
         // returns the plaintext PIN, so resolving a request filed against the borrowed admin (or any
@@ -121,6 +148,17 @@ public class AdminPinResetController : ControllerBase
     public async Task<IActionResult> Dismiss(Guid id)
     {
         var ct = HttpContext.RequestAborted;
+
+        // Same boundary as Resolve. Dismissing hands out no credential, but it silences somebody
+        // else's request — a locked-out employee whose queue entry vanishes has no way to tell it
+        // ever arrived, and files another.
+        var owner = await _db.PinResetRequests.Where(r => r.Id == id)
+            .Select(r => (Guid?)r.EmployeeId).FirstOrDefaultAsync(ct);
+        if (owner is null)
+            return NotFound(new { error = "RequestNotFound" });
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), owner.Value, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
         // Atomic claim, same as Resolve — flip only a still-Pending row so concurrent dismisses (or a
         // dismiss racing a resolve) can't both act.
         var claimed = await _db.PinResetRequests

@@ -112,6 +112,11 @@ export function AdminLayout() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // A Manager now reaches most of this, narrowed to their own branches by the API rather than by the
+  // menu — the rule the owner set: "hər menecer ancaq və ancaq özünə aid şeyləri görsün". What stays
+  // Admin-only is what is COMPANY-wide and cannot be narrowed to one branch: the full staff list,
+  // leave for anyone, the job catalogue, holidays, branches, and announcements to everybody.
+  //
   // Grouped by CADENCE, not by feature: what an admin opens every morning sits at the top, what
   // they open once a month sits at the bottom, and the section label answers "where would that be?"
   // without reading nineteen rows. A section whose every row is filtered out (role, tenant flag)
@@ -124,7 +129,7 @@ export function AdminLayout() {
     {
       title: null, // the everyday landing screens need no caption over them
       links: [
-        ...(isAdmin ? [{ to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome }] : []),
+        { to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome },
         ...(isAdmin || isManager ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
         ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
       ],
@@ -136,7 +141,10 @@ export function AdminLayout() {
         // Admin + Manager (no gate) — the endpoints enforce the role.
         { to: '/admin/field-visits', label: 'Sahə ziyarətləri', Icon: IconMapPin },
         { to: '/admin/problems', label: 'Problemlər', Icon: IconAlert },
-        ...(isAdmin ? [{ to: '/admin/open-records', label: 'Çıxışı unudulan günlər', Icon: IconClock }] : []),
+        // Manager too: AdminMissedCheckoutController is [Authorize(Roles = "Admin,Manager")] and has
+        // been since it was written — the menu was the only thing hiding it, so branch managers could
+        // not close their own staff's open days and had to ask an admin for every one.
+        { to: '/admin/open-records', label: 'Çıxışı unudulan günlər', Icon: IconClock },
       ],
     },
     {
@@ -144,7 +152,7 @@ export function AdminLayout() {
       links: [
         { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
         { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconTable },
-        ...(isAdmin && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconMoney }] : []),
+        ...((isAdmin || isManager) && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconMoney }] : []),
       ],
     },
     {
@@ -156,15 +164,15 @@ export function AdminLayout() {
         ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
         { to: '/admin/schedules', label: 'Növbələr', Icon: IconRefresh },
         ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconBriefcase }] : []),
-        ...(isAdmin ? [{ to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconGift }] : []),
+        { to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconGift },
       ],
     },
     {
       // The inbox screens: rows that WAIT for the admin, as opposed to screens they go look at.
       title: 'Müraciətlər',
       links: [
-        ...(isAdmin ? [{ to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone }] : []),
-        ...(isAdmin ? [{ to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconKey }] : []),
+        { to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone },
+        { to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconKey },
       ],
     },
     {

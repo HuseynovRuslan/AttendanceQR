@@ -1,8 +1,10 @@
 using System.Globalization;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +13,12 @@ namespace AttendanceQR.Api.Controllers;
 
 /// <summary>Location management — list + create/edit/delete. Admin-only.</summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+// The LIST is open to a branch manager, narrowed to the branches they manage — the dashboard's own
+// filter needs it, and a manager who cannot see their branch's name or print its QR poster is missing
+// the two things the screen is for. Everything that CHANGES a branch stays with the admin, and that is
+// not squeamishness: the geofence is the anti-fraud boundary, and a manager who could move it could
+// move it to their own house and clock in from there.
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/locations")]
 public class AdminLocationsController : ControllerBase
 {
@@ -33,13 +40,21 @@ public class AdminLocationsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        var locations = await _db.Locations
-            .OrderBy(l => l.Name)
-            .ToListAsync(HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var query = _db.Locations.AsQueryable();
+
+        if (User.Role() == EmployeeRole.Manager)
+        {
+            var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), ct);
+            query = query.Where(l => managed.Contains(l.Id));
+        }
+
+        var locations = await query.OrderBy(l => l.Name).ToListAsync(ct);
         return Ok(locations.Select(Project));
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] LocationRequest request)
     {
         if (!TryValidate(request, out var start, out var end, out var error))
@@ -62,6 +77,7 @@ public class AdminLocationsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] LocationRequest request)
     {
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
@@ -84,6 +100,7 @@ public class AdminLocationsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
@@ -147,6 +164,7 @@ public class AdminLocationsController : ControllerBase
     // Enable/disable without deleting — a disabled location stops issuing kiosk QR and rejects
     // scans, but keeps its employees and history. Use this instead of delete for in-use locations.
     [HttpPut("{id:guid}/active")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request)
     {
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
@@ -162,6 +180,7 @@ public class AdminLocationsController : ControllerBase
     // one). Same crypto/scan path as the kiosk token — just a longer TTL — so it works with the
     // employee's existing scan flow with no special-casing.
     [HttpPost("{id:guid}/static-qr")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GenerateStaticQr(Guid id)
     {
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
@@ -177,6 +196,7 @@ public class AdminLocationsController : ControllerBase
     // printed static poster — by bumping the version every issued token must match. Use when a
     // poster is lost/leaked, or just to force a fresh print cycle.
     [HttpPost("{id:guid}/invalidate-qr")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> InvalidateQr(Guid id)
     {
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);

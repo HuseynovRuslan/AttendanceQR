@@ -17,7 +17,12 @@ namespace AttendanceQR.Api.Controllers;
 /// copy taken at the time. Both the delete guard below and the admin UI say so.
 /// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+// A branch manager may READ the shift templates — the sidebar has always offered them this screen,
+// and until now clicking it returned 403, because the class gate said Admin while the menu said
+// otherwise. Reading is what they need: a manager looking at a late arrival has to know which shift
+// that person is on. Writing stays with the admin, because a shift template is company-wide — one
+// manager editing "Gündüz" changes it for every branch.
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/schedules")]
 public class SchedulesController : ControllerBase
 {
@@ -36,6 +41,7 @@ public class SchedulesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] ScheduleRequest request)
     {
         if (!TryParse(request, out var start, out var end, out var error))
@@ -57,6 +63,7 @@ public class SchedulesController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] ScheduleRequest request)
     {
         var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
@@ -81,6 +88,7 @@ public class SchedulesController : ControllerBase
     // their branch's hours, which is a change to how their pay is calculated that nobody asked for.
     // The count comes back with the error so the UI can say who is affected.
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
