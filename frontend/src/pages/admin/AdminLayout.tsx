@@ -178,7 +178,9 @@ export function AdminLayout() {
     {
       title: 'Tənzimləmələr',
       links: [
-        ...(isAdmin ? [{ to: '/admin/locations', label: 'Lokasiyalar', Icon: IconBuilding }] : []),
+        // A manager sees and edits the branches they manage — they are the one who knows where the
+        // poster hangs and how wide the yard is. Creating and deleting stays with the admin.
+        { to: '/admin/locations', label: 'Lokasiyalar', Icon: IconBuilding },
         ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
       ],
     },

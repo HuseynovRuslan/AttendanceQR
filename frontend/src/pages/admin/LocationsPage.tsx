@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { RowActions } from '../../components/RowActions'
 import { formatCoord, isShortMapLink, parseCoords } from '../../lib/geoLink'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import {
   createLocation,
   createSchedule,
@@ -70,6 +71,8 @@ function inUseMessage(name: string, employees: number, history: number): string 
 }
 
 export function LocationsPage() {
+  const { role } = useAuth()
+  const isManager = role === 'Manager'
   // Pasting a map link beats typing two long decimals — see geoLink for the shapes Google produces.
   const [mapLink, setMapLink] = useState('')
   const [linkNote, setLinkNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -294,9 +297,13 @@ export function LocationsPage() {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
         <div className="card-title" style={{ marginBottom: 0 }}>Lokasiyalar</div>
-        <button className="btn btn-primary" onClick={showForm ? closeForm : startCreate}>
-          {showForm ? 'Ləğv et' : '＋ Lokasiya əlavə et'}
-        </button>
+        {/* Adding a branch is 5 ₼ a month on the customer's bill, so it belongs to whoever pays it.
+            A manager edits the branches they already have — which is the half they actually know. */}
+        {!isManager && (
+          <button className="btn btn-primary" onClick={showForm ? closeForm : startCreate}>
+            {showForm ? 'Ləğv et' : '＋ Lokasiya əlavə et'}
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -603,14 +610,19 @@ export function LocationsPage() {
                         {
                           label: l.isActive ? 'Deaktiv et' : 'Aktiv et',
                           disabled: togglingId === l.id,
+                          hidden: isManager,
                           onClick: () => toggleActive(l),
                           title: l.isActive ? 'Kiosku dayandır (məlumat silinmir)' : 'Yenidən aktiv et',
                         },
                         { label: 'Redaktə', onClick: () => startEdit(l) },
                         {
+                          // Deleting a branch is not a manager's call, and neither is adding one: a
+                          // branch is 5 ₼ a month on the customer's bill, so the count of them belongs
+                          // to whoever pays it.
                           label: 'Sil',
                           icon: <IconTrash />,
                           danger: true,
+                          hidden: isManager,
                           disabled: deletingId === l.id,
                           onClick: () => onDelete(l),
                         },

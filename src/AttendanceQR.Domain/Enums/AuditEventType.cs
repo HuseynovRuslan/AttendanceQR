@@ -40,5 +40,10 @@ public enum AuditEventType
     // An admin issued fresh temporary PINs to a group at once — the onboarding list, reissued. Worth
     // its own row rather than a hundred PinResetResolved ones: it invalidates every PIN already handed
     // out to those people, so "why did my PIN stop working" has an answer with a time on it.
-    BulkPinReset = 15
+    BulkPinReset = 15,
+
+    // A branch's geofence was moved — its centre, its radius, or both. The one edit in the product
+    // that changes who is able to clock in from where, and the reason a manager correcting their own
+    // site is safe to allow: it is written down, with the distance, every time.
+    LocationMoved = 16
 }

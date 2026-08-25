@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
+using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
@@ -257,24 +258,103 @@ public class ManagerScreenScopeTests
     // in-memory provider cannot translate it. Every refusal above returns before that call, which is
     // the half that decides who may act.
 
+    // --- the branch a manager may correct ---------------------------------------------------------
+
+    [Fact]
+    public async Task A_manager_can_edit_a_branch_they_manage_and_the_move_is_recorded()
+    {
+        // The permission the owner asked for: the manager knows where the poster hangs and how wide
+        // the yard is; the admin was guessing from an office, which is how the wrong poster ended up
+        // on a wall at Dədə Qorqud Parkı. The move is allowed and written down — the record is what
+        // makes it safe, not a refusal.
+        using var f = new Fixture();
+        var before = f.Db.Locations.AsNoTracking().First(l => l.Id == f.ManagedBranch);
+        Assert.Null(before.GeofenceMovedAtUtc);
+
+        var result = await Locations(f, f.ManagerId, EmployeeRole.Manager).Update(
+            f.ManagedBranch,
+            new LocationRequest("Mənim filialım", 40.41, 49.86, 200, "09:00", "18:00", 15, 126));
+
+        Assert.IsType<OkObjectResult>(result);
+        var after = f.Db.Locations.AsNoTracking().First(l => l.Id == f.ManagedBranch);
+        Assert.Equal(200, after.RadiusMeters);
+        Assert.NotNull(after.GeofenceMovedAtUtc);
+        Assert.Equal(f.ManagerId, after.GeofenceMovedByEmployeeId);
+        Assert.True(after.GeofenceMovedMeters > 0, "köçmə məsafəsi yazılmayıb");
+
+        var audit = f.Db.AuditLogs.AsNoTracking().Where(a => a.EventType == AuditEventType.LocationMoved).ToList();
+        var row = Assert.Single(audit);
+        Assert.Equal(f.ManagerId, row.EmployeeId);
+        Assert.Contains("→", row.Reason!);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_edit_a_branch_they_do_not_manage()
+    {
+        using var f = new Fixture();
+        var refused = Assert.IsAssignableFrom<ObjectResult>(
+            await Locations(f, f.ManagerId, EmployeeRole.Manager).Update(
+                f.OtherBranch,
+                new LocationRequest("Oğurlanmış", 40.41, 49.86, 200, "09:00", "18:00", 15, 126)));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal("Başqa filial", f.Db.Locations.AsNoTracking().First(l => l.Id == f.OtherBranch).Name);
+    }
+
+    [Fact]
+    public async Task Editing_hours_without_touching_the_fence_records_nothing()
+    {
+        // The stamp has to mean something. If every edit set it, "this branch was moved" would be
+        // noise and nobody would look at it.
+        using var f = new Fixture();
+        var b = f.Db.Locations.AsNoTracking().First(l => l.Id == f.ManagedBranch);
+
+        await Locations(f, f.ManagerId, EmployeeRole.Manager).Update(
+            f.ManagedBranch,
+            new LocationRequest("Yeni ad", b.Latitude, b.Longitude, b.RadiusMeters, "08:00", "17:00", 10, 126));
+
+        var after = f.Db.Locations.AsNoTracking().First(l => l.Id == f.ManagedBranch);
+        Assert.Equal("Yeni ad", after.Name);
+        Assert.Null(after.GeofenceMovedAtUtc);
+        Assert.Empty(f.Db.AuditLogs.AsNoTracking().Where(a => a.EventType == AuditEventType.LocationMoved).ToList());
+    }
+
+    [Fact]
+    public async Task A_manager_prints_their_own_branchs_poster_but_not_another_branchs()
+    {
+        // The reason this is here at all: the posters hanging at Dədə Qorqud Parkı belonged to two
+        // other branches, so nobody at that site could clock in — and the person standing in front of
+        // the wall could not reprint it.
+        using var f = new Fixture();
+        Assert.IsType<OkObjectResult>(
+            await Locations(f, f.ManagerId, EmployeeRole.Manager).GenerateStaticQr(f.ManagedBranch));
+
+        var refused = Assert.IsAssignableFrom<ObjectResult>(
+            await Locations(f, f.ManagerId, EmployeeRole.Manager).GenerateStaticQr(f.OtherBranch));
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+    }
+
     // --- what stays with the admin ----------------------------------------------------------------
 
     [Theory]
     [InlineData(typeof(AdminLocationsController), "Create")]
-    [InlineData(typeof(AdminLocationsController), "Update")]
     [InlineData(typeof(AdminLocationsController), "Delete")]
     [InlineData(typeof(AdminLocationsController), "SetActive")]
-    [InlineData(typeof(AdminLocationsController), "GenerateStaticQr")]
     [InlineData(typeof(AdminLocationsController), "InvalidateQr")]
     [InlineData(typeof(SchedulesController), "Create")]
     [InlineData(typeof(SchedulesController), "Update")]
     [InlineData(typeof(SchedulesController), "Delete")]
     public void Changing_a_branch_or_a_shift_is_still_admin_only(Type controller, string action)
     {
-        // These classes are now [Authorize(Roles = "Admin,Manager")] so a manager can READ them, which
-        // means every write needs its own attribute — and an attribute is exactly the kind of thing
-        // that gets left off the tenth action added next year. The geofence is the anti-fraud
-        // boundary: a manager who could move it could move it to their own house.
+        // These classes are [Authorize(Roles = "Admin,Manager")], so every action that must stay with
+        // the admin needs its own attribute — and an attribute is exactly the kind of thing left off
+        // the tenth action added next year.
+        //
+        // Update and GenerateStaticQr are deliberately NOT here any more: a manager corrects their own
+        // branch's fence and prints its poster, which is scope-checked in the action and recorded (see
+        // the tests above). What remains is what a branch manager has no business doing — creating a
+        // branch or deleting one (both are money on the customer's bill), switching one off, and
+        // invalidating a QR, which voids every printed poster in the company at once.
         var method = controller.GetMethod(action, BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(method);
         var attr = method!.GetCustomAttribute<AuthorizeAttribute>();

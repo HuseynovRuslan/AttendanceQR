@@ -143,6 +143,9 @@ export function getDashboard(from: string, to: string, locationId?: string) {
 export interface AdminLocation {
   id: string
   name: string
+  /** When this branch's geofence was last moved, and by how far. Null = never moved. */
+  geofenceMovedAtUtc: string | null
+  geofenceMovedMeters: number | null
   latitude: number
   longitude: number
   radiusMeters: number
@@ -156,7 +159,9 @@ export interface AdminLocation {
 }
 
 /** Create/update payload — active state is managed separately via setLocationActive. */
-export type LocationInput = Omit<AdminLocation, 'id' | 'isActive'>
+/** What a branch form sends. The geofence-move stamps are read-only — the server writes them when it
+ *  notices the fence has moved, and a client cannot claim its own. */
+export type LocationInput = Omit<AdminLocation, 'id' | 'isActive' | 'geofenceMovedAtUtc' | 'geofenceMovedMeters'>
 
 /** The attendance board. Omit `date` for the live today board; pass "yyyy-MM-dd" for a past day. */
 export function getToday(date?: string) {

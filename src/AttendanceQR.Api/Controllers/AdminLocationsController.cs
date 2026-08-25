@@ -13,11 +13,19 @@ namespace AttendanceQR.Api.Controllers;
 
 /// <summary>Location management — list + create/edit/delete. Admin-only.</summary>
 [ApiController]
-// The LIST is open to a branch manager, narrowed to the branches they manage — the dashboard's own
-// filter needs it, and a manager who cannot see their branch's name or print its QR poster is missing
-// the two things the screen is for. Everything that CHANGES a branch stays with the admin, and that is
-// not squeamishness: the geofence is the anti-fraud boundary, and a manager who could move it could
-// move it to their own house and clock in from there.
+// A branch manager sees, edits and prints the poster for the branches they manage. Creating and
+// deleting branches stays with the admin, and that line is commercial rather than technical: a branch
+// costs the customer 5 ₼ a month, so adding one is the decision of whoever pays the bill.
+//
+// Editing a geofence is the interesting permission. It IS the anti-fraud boundary — a manager who
+// moved it onto their own house could clock in from there with their whole crew — and the honest
+// answer is not to refuse it. Refusing it leaves nine sites on coordinates an admin guessed from an
+// office, which is what put the wrong poster on a wall at Dədə Qorqud Parkı and cost a day of scans.
+// The manager is the one who knows where the poster hangs and how wide the yard is.
+//
+// So the move is allowed and RECORDED: stamped on the branch (who, when, how many metres) and written
+// to the audit log in full. Detection rather than prevention — which is also the first time an
+// ADMIN's move has been recorded, because until now nothing anywhere was.
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/locations")]
 public class AdminLocationsController : ControllerBase
@@ -77,15 +85,24 @@ public class AdminLocationsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] LocationRequest request)
     {
-        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
+        var ct = HttpContext.RequestAborted;
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id, ct);
         if (location is null)
             return NotFound(new { error = "LocationNotFound" });
 
+        if (await OutOfScopeAsync(location.Id, ct) is { } refusal)
+            return refusal;
+
         if (!TryValidate(request, out var start, out var end, out var error))
             return BadRequest(new { error });
+
+        // Read the old fence BEFORE overwriting it — the distance is the whole point of the record,
+        // and after the assignment below there is nothing left to measure against.
+        var (oldLat, oldLng, oldRadius) = (location.Latitude, location.Longitude, location.RadiusMeters);
+        var moved = GeoCalculator.DistanceMeters(oldLat, oldLng, request.Latitude, request.Longitude);
+        var fenceChanged = moved >= 1 || oldRadius != request.RadiusMeters;
 
         location.Name = request.Name.Trim();
         location.Latitude = request.Latitude;
@@ -95,8 +112,42 @@ public class AdminLocationsController : ControllerBase
         location.ShiftEnd = end;
         location.LateThresholdMinutes = request.LateThresholdMinutes;
         location.WorkDaysMask = request.WorkDaysMask;
-        await _db.SaveChangesAsync();
+
+        if (fenceChanged)
+        {
+            var by = User.EmployeeId();
+            location.GeofenceMovedAtUtc = DateTime.UtcNow;
+            location.GeofenceMovedByEmployeeId = by;
+            location.GeofenceMovedMeters = (int)Math.Round(moved);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EmployeeId = by,
+                EventType = AuditEventType.LocationMoved,
+                Reason = $"{location.Name}: {oldLat:F5},{oldLng:F5} r{oldRadius}m → "
+                         + $"{request.Latitude:F5},{request.Longitude:F5} r{request.RadiusMeters}m "
+                         + $"({Math.Round(moved)} m)",
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
         return Ok(Project(location));
+    }
+
+    /// <summary>
+    /// A refusal when this caller may not touch this branch, or null when they may. An admin may touch
+    /// any of their company's; a manager only the ones they manage — the same ManagedLocations set
+    /// that decides everything else they see.
+    /// </summary>
+    private async Task<IActionResult?> OutOfScopeAsync(Guid locationId, CancellationToken ct)
+    {
+        if (User.Role() != EmployeeRole.Manager)
+            return null;
+        var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), ct);
+        return managed.Contains(locationId)
+            ? null
+            : StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
     }
 
     [HttpDelete("{id:guid}")]
@@ -179,13 +230,19 @@ public class AdminLocationsController : ControllerBase
     // Long-lived QR meant to be printed and posted at the location (unlike the kiosk's 60s-rotating
     // one). Same crypto/scan path as the kiosk token — just a longer TTL — so it works with the
     // employee's existing scan flow with no special-casing.
+    // A manager prints their own branch's poster. It is the strongest argument in this whole change:
+    // the posters hanging at Dədə Qorqud Parkı belonged to two OTHER branches, so nobody at that site
+    // could clock in — and the person standing in front of the wall could not fix it. Invalidating the
+    // QR stays with the admin below, because that one voids every printed poster at once.
     [HttpPost("{id:guid}/static-qr")]
-    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GenerateStaticQr(Guid id)
     {
-        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id);
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id, HttpContext.RequestAborted);
         if (location is null)
             return NotFound(new { error = "LocationNotFound" });
+
+        if (await OutOfScopeAsync(location.Id, HttpContext.RequestAborted) is { } refusal)
+            return refusal;
 
         var token = _qrTokenService.Generate(id, location.QrVersion, StaticQrTtlSeconds);
         var expiresAtUtc = DateTime.UtcNow.AddSeconds(StaticQrTtlSeconds);
@@ -210,6 +267,8 @@ public class AdminLocationsController : ControllerBase
 
     private static object Project(Location l) => new
     {
+        geofenceMovedAtUtc = l.GeofenceMovedAtUtc,
+        geofenceMovedMeters = l.GeofenceMovedMeters,
         id = l.Id,
         name = l.Name,
         latitude = l.Latitude,

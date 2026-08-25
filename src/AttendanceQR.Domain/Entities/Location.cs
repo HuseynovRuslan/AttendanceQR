@@ -20,6 +20,26 @@ public class Location : ITenantScoped
 
     public int RadiusMeters { get; set; }
 
+    /// <summary>
+    /// When this branch's geofence was last moved, by whom, and by how many metres.
+    ///
+    /// The geofence is the anti-fraud boundary: everything the product claims about somebody being at
+    /// work rests on it. Until now it could be changed by anyone with the screen open and nothing
+    /// anywhere recorded it — not the time, not the person, not the distance — so a fence quietly
+    /// moved onto somebody's house would have looked exactly like a fence that was always there.
+    ///
+    /// Now that a branch MANAGER may correct their own coordinates (they know the site; the admin was
+    /// guessing), the move has to be visible. It is not prevented — refusing the edit would keep nine
+    /// sites on coordinates nobody has ever checked — it is recorded, stamped on the branch itself so
+    /// the list can show it, and written to the audit log in full.
+    /// </summary>
+    public DateTime? GeofenceMovedAtUtc { get; set; }
+
+    public Guid? GeofenceMovedByEmployeeId { get; set; }
+
+    /// <summary>How far the centre moved, in metres. Null when it has never been moved.</summary>
+    public int? GeofenceMovedMeters { get; set; }
+
     public TimeOnly ShiftStart { get; set; }
 
     public TimeOnly ShiftEnd { get; set; }
