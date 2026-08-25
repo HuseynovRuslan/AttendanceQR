@@ -586,8 +586,16 @@ public class ManagerController : ControllerBase
             employee.ScheduleId = null;
             return null;
         }
-        if (!await _db.Schedules.AnyAsync(s => s.Id == id, HttpContext.RequestAborted))
+        var schedule = await _db.Schedules
+            .Where(s => s.Id == id)
+            .Select(s => new { s.LocationId })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+        if (schedule is null)
             return "ScheduleNotFound";
+        // A shift pinned to a branch is offered only to that branch's staff — see ScheduleAssignmentRule,
+        // which the manager path shares so the two can never drift apart.
+        if (ScheduleAssignmentRule.Refusal(schedule.LocationId, employee.LocationId) is { } branchRefusal)
+            return branchRefusal;
         employee.ScheduleId = id;
         return null;
     }

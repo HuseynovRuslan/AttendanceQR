@@ -1,7 +1,9 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +22,9 @@ namespace AttendanceQR.Api.Controllers;
 // A branch manager may READ the shift templates — the sidebar has always offered them this screen,
 // and until now clicking it returned 403, because the class gate said Admin while the menu said
 // otherwise. Reading is what they need: a manager looking at a late arrival has to know which shift
-// that person is on. Writing stays with the admin, because a shift template is company-wide — one
-// manager editing "Gündüz" changes it for every branch.
+// that person is on, and they see the company's shared shifts plus their own branches' — not another
+// branch's crew. Writing stays with the admin: a shared shift belongs to every branch at once, and a
+// branch's own shift is still the company's to define.
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/schedules")]
 public class SchedulesController : ControllerBase
@@ -33,11 +36,43 @@ public class SchedulesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        var rows = await _db.Schedules
-            .OrderBy(s => s.CreatedAtUtc)
-            .Select(s => Project(s))
-            .ToListAsync(HttpContext.RequestAborted);
-        return Ok(rows);
+        var ct = HttpContext.RequestAborted;
+        var query = _db.Schedules.AsQueryable();
+
+        if (User.Role() == EmployeeRole.Manager)
+        {
+            var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), ct);
+            query = query.Where(s => s.LocationId == null || managed.Contains(s.LocationId.Value));
+        }
+
+        // The branch name comes back with the row so the picker can say "FM 2-ci növbə · Fəvvarələr
+        // Meydanı" without a second call and without the name having to carry the branch itself.
+        var rows = await query
+            .OrderBy(s => s.LocationId == null ? 0 : 1)
+            .ThenBy(s => s.CreatedAtUtc)
+            .Select(s => new
+            {
+                schedule = s,
+                locationName = _db.Locations.Where(l => l.Id == s.LocationId).Select(l => l.Name).FirstOrDefault(),
+            })
+            .ToListAsync(ct);
+
+        return Ok(rows.Select(r => Project(r.schedule, r.locationName)));
+    }
+
+    /// <summary>The branch a shift is being pinned to, checked to exist in THIS company.</summary>
+    private async Task<string?> ApplyLocationAsync(Schedule schedule, Guid? locationId)
+    {
+        if (locationId is not Guid id)
+        {
+            schedule.LocationId = null;
+            return null;
+        }
+        // Tenant-filtered, so a branch id belonging to another company reads as not found.
+        if (!await _db.Locations.AnyAsync(l => l.Id == id, HttpContext.RequestAborted))
+            return "LocationNotFound";
+        schedule.LocationId = id;
+        return null;
     }
 
     [HttpPost]
@@ -55,6 +90,8 @@ public class SchedulesController : ControllerBase
             LateThresholdMinutes = request.LateThresholdMinutes,
             WorkDaysMask = request.WorkDaysMask,
         };
+        if (await ApplyLocationAsync(schedule, request.LocationId) is { } locationError)
+            return BadRequest(new { error = locationError });
         if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
         _db.Schedules.Add(schedule);
@@ -77,8 +114,22 @@ public class SchedulesController : ControllerBase
         schedule.ShiftEnd = end;
         schedule.LateThresholdMinutes = request.LateThresholdMinutes;
         schedule.WorkDaysMask = request.WorkDaysMask;
+        if (await ApplyLocationAsync(schedule, request.LocationId) is { } locationError)
+            return BadRequest(new { error = locationError });
         if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+
+        // Moving a shift to a branch strands anyone already on it who works somewhere else — their
+        // hours would come from a shift their branch no longer offers. Refused with the count, the
+        // same shape as deleting a shift that is in use.
+        if (schedule.LocationId is Guid pinned)
+        {
+            var stranded = await _db.Employees
+                .CountAsync(e => e.ScheduleId == schedule.Id && e.LocationId != pinned, HttpContext.RequestAborted);
+            if (stranded > 0)
+                return Conflict(new { error = "ScheduleUsedByOtherBranch", employeeCount = stranded });
+        }
+
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
     }
@@ -130,10 +181,13 @@ public class SchedulesController : ControllerBase
         return true;
     }
 
-    private static object Project(Schedule s) => new
+    private static object Project(Schedule s, string? locationName = null) => new
     {
         id = s.Id,
         name = s.Name,
+        locationId = s.LocationId,
+        // Null for a shift the whole company shares.
+        locationName,
         shiftStart = s.ShiftStart.ToString("HH:mm"),
         shiftEnd = s.ShiftEnd.ToString("HH:mm"),
         lateThresholdMinutes = s.LateThresholdMinutes,

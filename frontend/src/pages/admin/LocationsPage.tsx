@@ -139,6 +139,10 @@ export function LocationsPage() {
       shiftEnd: newSchedule.end,
       lateThresholdMinutes: Number(form.lateThresholdMinutes) || 15,
       workDaysMask: form.workDaysMask,
+      // Created from a branch's own form, so it belongs to that branch — it carries that branch's
+      // hours and days, and offering it to another site's staff would be offering them the wrong ones.
+      // A shift meant for the whole company is made on the Növbələr page, where the branch is a choice.
+      locationId: editingId,
       // A shift created from here is a plain weekly one; rotations are set on the Növbələr page.
       workCycleDays: null,
       workCycleOnDays: null,

@@ -1220,6 +1220,10 @@ export function setTenantBranding(id: string, input: { displayName?: string; col
 export interface Schedule {
   id: string
   name: string
+  /** The branch this shift belongs to, or null for one the whole company shares. */
+  locationId: string | null
+  /** Resolved for display; null for a company-wide shift. */
+  locationName: string | null
   shiftStart: string // "HH:mm"
   shiftEnd: string
   lateThresholdMinutes: number
@@ -1231,7 +1235,7 @@ export interface Schedule {
   isOvernight: boolean
 }
 
-export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight'>
+export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight' | 'locationName'>
 
 export function getSchedules() {
   return apiRequest<Schedule[]>('/api/admin/schedules')

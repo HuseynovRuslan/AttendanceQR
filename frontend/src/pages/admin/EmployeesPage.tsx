@@ -960,11 +960,18 @@ export function EmployeesPage() {
               }}
             >
               <option value="">— növbə yoxdur (filialın saatları) —</option>
-              {schedules.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} · {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
-                </option>
-              ))}
+              {/* Only the shifts this person's branch actually offers: the company-wide ones, plus the
+                  ones pinned to their own branch. With several branches the unfiltered list was every
+                  shift in the company on every card, and putting another site's crew shift on somebody
+                  was one mis-click that showed up nowhere afterwards except in hours that did not add
+                  up. The server refuses it too (ScheduleBelongsToOtherBranch) — this is the door. */}
+              {schedules
+                .filter((s) => s.locationId === null || s.locationId === form.locationId)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} · {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
+                  </option>
+                ))}
               <option value="__new__">＋ Yeni növbə yarat…</option>
             </select>
             <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 6, marginBottom: 0, lineHeight: 1.6 }}>

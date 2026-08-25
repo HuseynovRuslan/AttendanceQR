@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   createSchedule,
+  getAdminLocations,
   deleteSchedule,
   getEmployees,
   getSchedules,
@@ -54,6 +55,8 @@ const ERRORS: Record<string, string> = {
 
 type FormState = {
   name: string
+  /** '' = a shift the whole company shares. */
+  locationId: string
   shiftStart: string
   shiftEnd: string
   lateThresholdMinutes: string
@@ -63,6 +66,7 @@ type FormState = {
 
 const EMPTY: FormState = {
   name: '',
+  locationId: '',
   shiftStart: '09:00',
   shiftEnd: '18:00',
   lateThresholdMinutes: '15',
@@ -72,6 +76,7 @@ const EMPTY: FormState = {
 
 export function SchedulesPage() {
   const { role } = useAuth()
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
   const isManager = role === 'Manager'
   // Same screen, different surface: a manager's writes are scope-checked server-side.
   const api = isManager
@@ -113,6 +118,14 @@ export function SchedulesPage() {
 
   useEffect(() => { void refresh() }, [])
 
+  // The branch list for the form's picker. A manager gets their own branches back from the same
+  // endpoint, so the choice they are offered is already the choice they are allowed.
+  useEffect(() => {
+    void getAdminLocations().then(({ status, data }) => {
+      if (status === 200 && Array.isArray(data)) setBranches(data.map((l) => ({ id: l.id, name: l.name })))
+    })
+  }, [])
+
   /** How many people are on each shift — the number that decides whether it can be deleted, and the
    *  one an admin needs before editing hours that will move somebody's pay. */
   const usedBy = (id: string) => employees.filter((e) => e.scheduleId === id && e.isActive).length
@@ -138,6 +151,7 @@ export function SchedulesPage() {
     setEditingId(s.id)
     setForm({
       name: s.name,
+      locationId: s.locationId ?? '',
       shiftStart: s.shiftStart,
       shiftEnd: s.shiftEnd,
       lateThresholdMinutes: String(s.lateThresholdMinutes),
@@ -159,6 +173,7 @@ export function SchedulesPage() {
     setSaving(true); setErr(null)
     const payload: ScheduleInput = {
       name: form.name.trim(),
+      locationId: form.locationId || null,
       shiftStart: form.shiftStart,
       shiftEnd: form.shiftEnd,
       lateThresholdMinutes: Number(form.lateThresholdMinutes) || 0,
@@ -248,6 +263,23 @@ export function SchedulesPage() {
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
+            </div>
+            <div>
+              {/* Which branch this shift belongs to. Left on "Bütün şirkət" it behaves exactly as
+                  every shift did before there was a choice — offered to everybody. Pinned to a branch
+                  it appears only on that branch's staff cards, which is the difference between a
+                  picker of two and a picker of twenty once there are ten branches. */}
+              <label className="form-label">Filial</label>
+              <select
+                className="inp"
+                value={form.locationId}
+                onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
+              >
+                <option value="">Bütün şirkət</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="form-label">Gecikmə həddi (dəq)</label>
@@ -340,7 +372,12 @@ export function SchedulesPage() {
                 return (
                   <Fragment key={s.id}>
                     <tr onClick={() => setExpanded(isOpen ? null : s.id)} style={{ cursor: 'pointer' }}>
-                      <td data-label="Ad"><b>{s.name}</b></td>
+                      <td data-label="Ad">
+                        <b>{s.name}</b>
+                        <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
+                          {s.locationName ?? 'bütün şirkət'}
+                        </div>
+                      </td>
                       <td data-label="Saatlar">
                         {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
                       </td>

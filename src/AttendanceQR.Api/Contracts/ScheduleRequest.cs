@@ -6,6 +6,8 @@ public record ScheduleRequest(
     string Name,
     string ShiftStart,
     string ShiftEnd,
+    // The branch this shift belongs to, or null for one the whole company shares. See Schedule.
+    Guid? LocationId = null,
     int LateThresholdMinutes = 15,
     int WorkDaysMask = 126,
     // Rotation. Null WorkCycleDays = no rotation and WorkDaysMask decides. Two crews alternating on

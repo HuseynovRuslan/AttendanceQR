@@ -117,6 +117,17 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<NonWorkingDay>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<LeaveRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Schedule>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+
+        // A shift may belong to one branch or to the whole company (null). SetNull rather than
+        // Restrict: deleting a branch must not be blocked by a shift, and must not delete a shift out
+        // from under the people still assigned to it — it widens to the company instead, which is
+        // visible on the schedules screen rather than silent.
+        modelBuilder.Entity<Schedule>()
+            .HasOne<Location>()
+            .WithMany()
+            .HasForeignKey(s => s.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Schedule>().HasIndex(s => new { s.TenantId, s.LocationId });
         modelBuilder.Entity<ProcessedScan>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Announcement>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AnnouncementRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

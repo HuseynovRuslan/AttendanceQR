@@ -35,6 +35,23 @@ public class Schedule : ITenantScoped, IHasWorkCycle
     /// <summary>What the admin calls it in the picker, e.g. "Gündüz" or "Gecə növbəsi".</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The branch this shift belongs to, or null for one the whole company shares.
+    ///
+    /// Both are real. "Gündüz 09:00–18:00" is usually the same everywhere and duplicating it per
+    /// branch would be ten rows that drift apart; but "FM 2-ci növbə 13:00–23:00" is one site's
+    /// cleaning crew and means nothing at another branch — and while a shift belonged to the company,
+    /// nothing stopped it being assigned to somebody who works somewhere else. With several branches
+    /// the picker also became a list of every shift in the company, on every employee's card, with no
+    /// way to tell which was which except by the name somebody remembered to prefix.
+    ///
+    /// So: null = offered everywhere, set = offered only to that branch's staff and refused for
+    /// anyone else (AdminController.ApplyScheduleAsync). Deleting a branch does not delete its
+    /// shifts — the FK is SetNull, so they widen to the whole company rather than vanishing from
+    /// under the people still assigned to them.
+    /// </summary>
+    public Guid? LocationId { get; set; }
+
     public TimeOnly ShiftStart { get; set; }
 
     /// <summary>Earlier than <see cref="ShiftStart"/> means an overnight shift (crosses midnight) —
