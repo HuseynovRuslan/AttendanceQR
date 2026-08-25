@@ -505,29 +505,80 @@ public class ManagerController : ControllerBase
         if (request.ToDate.DayNumber - request.FromDate.DayNumber + 1 > MaxLeaveRangeDays)
             return BadRequest(new { error = "DateRangeTooLong" });
 
-        // The employee must be one this manager MANAGES — same central rule as the profile edit, so a
-        // manager cannot file (and thus alter the paid attendance of) an admin's or a peer's days.
-        // Out-of-scope keeps its historical 403 EmployeeNotManaged, which the manager UI translates.
-        var (target, denied) = await LeaveSubjectAsync(
-            request.EmployeeId,
-            StatusCode(StatusCodes.Status403Forbidden, new { error = "EmployeeNotManaged" }));
-        if (target is null)
-            return denied!;
+        var subjects = request.Subjects;
+        if (subjects.Count == 0)
+            return BadRequest(new { error = "EmployeeNotFound" });
 
-        var leave = new LeaveRecord
+        var existing = await _db.LeaveRecords
+            .Where(l => subjects.Contains(l.EmployeeId)
+                        && l.FromDate <= request.ToDate && l.ToDate >= request.FromDate)
+            .ToListAsync(ct);
+
+        var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        var created = new List<object>();
+        var skipped = new List<object>();
+
+        foreach (var employeeId in subjects)
         {
-            EmployeeId = request.EmployeeId,
-            FromDate = request.FromDate,
-            ToDate = request.ToDate,
-            Type = request.Type,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-            CreatedByEmployeeId = M15(),
-        };
-        _db.LeaveRecords.Add(leave);
+            // Each row goes through the same central rule as a single one did: a manager cannot file
+            // (and so cannot alter the paid attendance of) an admin's or a peer's days. Filing for
+            // several people at once must not become a way around it.
+            var (target, denied) = await LeaveSubjectAsync(employeeId, null);
+            if (target is null)
+            {
+                skipped.Add(new { employeeId, fullName = "", reason = "EmployeeNotManaged" });
+                continue;
+            }
+
+            var clash = existing.FirstOrDefault(l =>
+                l.EmployeeId == employeeId && LeaveOverlapRule.Overlaps(l, request.FromDate, request.ToDate));
+            if (clash is not null)
+            {
+                skipped.Add(new
+                {
+                    employeeId,
+                    fullName = target.FullName,
+                    reason = "Overlaps",
+                    conflictType = clash.Type.ToString(),
+                    conflictFrom = clash.FromDate,
+                    conflictTo = clash.ToDate,
+                });
+                continue;
+            }
+
+            var leave = new LeaveRecord
+            {
+                EmployeeId = employeeId,
+                FromDate = request.FromDate,
+                ToDate = request.ToDate,
+                Type = request.Type,
+                Note = note,
+                CreatedByEmployeeId = M15(),
+            };
+            _db.LeaveRecords.Add(leave);
+            created.Add(new { id = leave.Id, employeeId, fullName = target.FullName });
+        }
+
+        if (created.Count == 0)
+        {
+            var onlyScope = skipped.Count > 0 && skipped.All(x =>
+                x.GetType().GetProperty("reason")?.GetValue(x)?.ToString() == "EmployeeNotManaged");
+            return onlyScope
+                ? StatusCode(StatusCodes.Status403Forbidden, new { error = "EmployeeNotManaged" })
+                : Conflict(new { error = "AllOverlap", skipped });
+        }
+
         await _db.SaveChangesAsync(ct);
         await RecomputeRangeAsync(request.FromDate, request.ToDate);
 
-        return Ok(new { id = leave.Id, employeeId = leave.EmployeeId, fromDate = leave.FromDate, toDate = leave.ToDate, type = leave.Type.ToString() });
+        return Ok(new
+        {
+            created,
+            skipped,
+            fromDate = request.FromDate,
+            toDate = request.ToDate,
+            type = request.Type.ToString(),
+        });
     }
 
     // DELETE /api/manager/leaves/{id} — remove a leave of the manager's own staff, or their own.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LeaveForm } from '../../components/LeaveForm'
 import {
   createManagerLeave,
   deleteManagerLeave,
@@ -7,7 +8,6 @@ import {
   type ManagerEmployee,
   type ManagerLeave,
 } from '../../api/manager'
-import { IconX } from '../../components/icons'
 import './manager.css'
 
 const TYPES = [
@@ -26,13 +26,7 @@ export function ManagerLeavesPage() {
   const [leaves, setLeaves] = useState<ManagerLeave[]>([])
   const [staff, setStaff] = useState<ManagerEmployee[]>([])
   const [loading, setLoading] = useState(true)
-  const [employeeId, setEmployeeId] = useState('')
-  const [type, setType] = useState('Vacation')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
-  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -44,23 +38,6 @@ export function ManagerLeavesPage() {
 
   useEffect(() => { void load() }, [])
 
-  async function add() {
-    if (!employeeId || !fromDate || !toDate) { setErr('İşçi və tarixləri seçin'); return }
-    setBusy(true)
-    setErr(null)
-    const { status, data } = await createManagerLeave({ employeeId, fromDate, toDate, type, note: note || null })
-    setBusy(false)
-    if (status === 200 && data && 'id' in data) {
-      setEmployeeId(''); setFromDate(''); setToDate(''); setNote('')
-      void load()
-    } else {
-      const code = data && 'error' in data ? data.error : ''
-      setErr(code === 'DateRangeInvalid' ? 'Bitmə tarixi başlanğıcdan əvvəl ola bilməz'
-        : code === 'EmployeeNotManaged' ? 'Bu işçi sizə aid deyil'
-        : 'Əlavə edilmədi')
-    }
-  }
-
   async function remove(l: ManagerLeave) {
     if (!window.confirm(`${l.employeeName} — ${fmt(l.fromDate)}–${fmt(l.toDate)} silinsin?`)) return
     const { status } = await deleteManagerLeave(l.id)
@@ -69,46 +46,28 @@ export function ManagerLeavesPage() {
 
   return (
     <div>
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="card-title">Yeni məzuniyyət / icazə</div>
-        <div className="form-row cols2">
-          <div>
-            <label className="form-label">İşçi</label>
-            <select className="inp" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
-              <option value="">— seçin —</option>
-              {/* The manager's own row is in this list on purpose (and only here) — a holiday of their
-                  own used to need an admin, and until one entered it the day counted as Qayıb. */}
-              {staff.map((s) => (
-                <option key={s.id} value={s.id}>{s.isSelf ? `${s.fullName} (özüm)` : s.fullName}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">Növ</label>
-            <select className="inp" value={type} onChange={(e) => setType(e.target.value)}>
-              {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="form-row cols2">
-          <div>
-            <label className="form-label">Başlanğıc</label>
-            <input className="inp" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">Bitmə</label>
-            <input className="inp" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <label className="form-label">Qeyd (istəyə bağlı)</label>
-          <input className="inp" value={note} onChange={(e) => setNote(e.target.value)} />
-        </div>
-        {err && <div className="fb fb-err" style={{ marginTop: 10 }}><IconX /><span>{err}</span></div>}
-        <button className="btn btn-primary" style={{ marginTop: 12 }} disabled={busy} onClick={() => void add()}>
-          {busy ? 'Əlavə edilir…' : 'Əlavə et'}
-        </button>
-      </div>
+      {/* The same form the admin uses — one component, so the two cannot drift apart again. The
+          manager's own row is in the list on purpose: a holiday of their own used to need an admin,
+          and until one entered it the day counted as Qayıb against them. */}
+      <LeaveForm
+        people={staff.map((x) => ({ id: x.id, fullName: x.fullName }))}
+        busy={busy}
+        onSubmit={async (input) => {
+          setBusy(true)
+          const { status, data } = await createManagerLeave({
+            employeeIds: input.employeeIds,
+            fromDate: input.fromDate,
+            toDate: input.toDate,
+            type: input.type,
+            note: input.note || null,
+          })
+          setBusy(false)
+          void load()
+          if (status === 200 && data && 'created' in data) return data
+          if (data && 'skipped' in data && data.skipped) return { created: [], skipped: data.skipped }
+          return null
+        }}
+      />
 
       {loading && <div className="card card-pad muted">Yüklənir…</div>}
       {!loading && leaves.length === 0 && <div className="card card-pad muted" style={{ textAlign: 'center' }}>Qeyd yoxdur.</div>}

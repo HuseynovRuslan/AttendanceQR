@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import type { LeaveBatchResult } from './leaves'
 
 // A manager's own write surface. Every call is scoped server-side to the branches they oversee, so
 // the client never has to (and never should) enforce scope itself — it only shows what it is given.
@@ -121,16 +122,19 @@ export function getManagerLeaves(from?: string, to?: string) {
 }
 
 export function createManagerLeave(input: {
-  employeeId: string
+  employeeIds: string[]
   fromDate: string
   toDate: string
   type: string
   note: string | null
 }) {
-  return apiRequest<{ id: string } | { error: string }>('/api/manager/leaves', {
-    method: 'POST',
-    body: input,
-  })
+  return apiRequest<LeaveBatchResult | { error: string; skipped?: LeaveBatchResult['skipped'] }>(
+    '/api/manager/leaves',
+    {
+      method: 'POST',
+      body: { ...input, employeeId: input.employeeIds[0] },
+    },
+  )
 }
 
 export function deleteManagerLeave(id: string) {

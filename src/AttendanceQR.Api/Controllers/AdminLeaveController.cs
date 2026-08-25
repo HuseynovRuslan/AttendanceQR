@@ -68,33 +68,83 @@ public class AdminLeaveController : ControllerBase
             return BadRequest(new { error = "DateRangeInvalid" });
         if (request.ToDate.DayNumber - request.FromDate.DayNumber + 1 > MaxRangeDays)
             return BadRequest(new { error = "DateRangeTooLong" });
-        if (!await _db.Employees.AnyAsync(e => e.Id == request.EmployeeId))
+        var subjects = request.Subjects;
+        if (subjects.Count == 0)
             return BadRequest(new { error = "EmployeeNotFound" });
 
+        var ct = HttpContext.RequestAborted;
+        var people = await _db.Employees
+            .Where(e => subjects.Contains(e.Id))
+            .Select(e => new { e.Id, e.FullName })
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        if (people.Count == 0)
+            return BadRequest(new { error = "EmployeeNotFound" });
+
+        // Everything these people already have that touches the range, in one read rather than one
+        // per person — a crew of forty would otherwise be forty round trips for a rest day.
+        var existing = await _db.LeaveRecords
+            .Where(l => subjects.Contains(l.EmployeeId)
+                        && l.FromDate <= request.ToDate && l.ToDate >= request.FromDate)
+            .ToListAsync(ct);
+
         var requesterId = User.EmployeeId();
+        var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        var created = new List<object>();
+        var skipped = new List<object>();
 
-        var leave = new LeaveRecord
+        foreach (var employeeId in subjects)
         {
-            EmployeeId = request.EmployeeId,
-            FromDate = request.FromDate,
-            ToDate = request.ToDate,
-            Type = request.Type,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-            CreatedByEmployeeId = requesterId
-        };
-        _db.LeaveRecords.Add(leave);
-        await _db.SaveChangesAsync();
+            if (!people.TryGetValue(employeeId, out var fullName))
+            {
+                skipped.Add(new { employeeId, fullName = "", reason = "EmployeeNotFound" });
+                continue;
+            }
 
+            // Already off over these days. Skipped rather than failing the whole batch: one person in
+            // a crew who is already on holiday must not stop the other thirty-nine being marked.
+            var clash = existing.FirstOrDefault(l =>
+                l.EmployeeId == employeeId && LeaveOverlapRule.Overlaps(l, request.FromDate, request.ToDate));
+            if (clash is not null)
+            {
+                skipped.Add(new
+                {
+                    employeeId,
+                    fullName,
+                    reason = "Overlaps",
+                    conflictType = clash.Type.ToString(),
+                    conflictFrom = clash.FromDate,
+                    conflictTo = clash.ToDate,
+                });
+                continue;
+            }
+
+            var leave = new LeaveRecord
+            {
+                EmployeeId = employeeId,
+                FromDate = request.FromDate,
+                ToDate = request.ToDate,
+                Type = request.Type,
+                Note = note,
+                CreatedByEmployeeId = requesterId,
+            };
+            _db.LeaveRecords.Add(leave);
+            created.Add(new { id = leave.Id, employeeId, fullName });
+        }
+
+        if (created.Count == 0)
+            return Conflict(new { error = "AllOverlap", skipped });
+
+        await _db.SaveChangesAsync(ct);
+        // One recompute for the whole batch — the range is the same for everybody in it.
         await RecomputeRangeAsync(request.FromDate, request.ToDate);
 
         return Ok(new
         {
-            id = leave.Id,
-            employeeId = leave.EmployeeId,
-            fromDate = leave.FromDate,
-            toDate = leave.ToDate,
-            type = leave.Type.ToString(),
-            note = leave.Note
+            created,
+            skipped,
+            fromDate = request.FromDate,
+            toDate = request.ToDate,
+            type = request.Type.ToString(),
         });
     }
 

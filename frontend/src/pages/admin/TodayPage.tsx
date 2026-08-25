@@ -108,8 +108,8 @@ export function TodayPage() {
     // Changing an already-assigned reason: drop the old single-day leave first, then add the new one.
     if (existingLeaveId) await (role === 'Manager' ? deleteManagerLeave(existingLeaveId) : deleteLeave(existingLeaveId))
     const res = role === 'Manager'
-      ? await createManagerLeave({ employeeId, fromDate: date, toDate: date, type, note: null })
-      : await addLeave(employeeId, date, date, type)
+      ? await createManagerLeave({ employeeIds: [employeeId], fromDate: date, toDate: date, type, note: null })
+      : await addLeave({ employeeIds: [employeeId], fromDate: date, toDate: date, type })
     setAssigningId(null)
     setReasonFor(null)
     if (res.status === 200) await load()
