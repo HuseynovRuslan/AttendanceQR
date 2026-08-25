@@ -124,6 +124,9 @@ export function ScanPage() {
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
+  // Seconds left on the GPS wait, shown on the checklist. Only appears once the fix is taking long
+  // enough to be worth explaining — a countdown that starts at 45 makes a two-second check look slow.
+  const [geoWait, setGeoWait] = useState<number | null>(null)
   // The visible pre-scan verification (device → location → camera). An overlay while it runs.
   // Starts false: runChecks turns it on the moment the checks really begin. It used to start true, so
   // any wait before that (today's status loading, the notification gate) showed a checklist with three
@@ -239,8 +242,9 @@ export function ScanPage() {
         getMyDeviceStatus(getDeviceFingerprint()).catch(() => null),
         delay(3000).then(() => null),
       ]),
-      getPosition(),
+      getPosition((left) => setGeoWait(left <= 38 ? left : null)),
     ])
+    setGeoWait(null)
 
     // 1) Device — advisory only; null (slow/failed) is treated as a pass.
     const deviceStep =
@@ -743,7 +747,12 @@ export function ScanPage() {
           </div>
         )}
 
-        {verifying && today.kind !== 'completed' && <ScanChecklist checks={checks} />}
+        {verifying && today.kind !== 'completed' && (
+          <ScanChecklist
+            checks={checks}
+            waitingHint={geoWait !== null ? `Peyk siqnalı gözlənilir — ${geoWait} san. Açıq yerdə dayanın.` : null}
+          />
+        )}
 
         <TodayBanner today={today} />
 

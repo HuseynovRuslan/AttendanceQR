@@ -61,31 +61,74 @@ function once(options: PositionOptions): Promise<GeolocationPosition> {
 }
 
 /**
- * Ask for a position, forgivingly. A plain getCurrentPosition({enableHighAccuracy:true}) gets two
- * things wrong on a real phone: it demands a fresh satellite fix even when a perfectly good
- * 20-second-old one is sitting there, and it reports a GPS timeout as outright failure even though a
- * coarse Wi-Fi/cell position was available for the asking. So: accept a recent fix, then fall back
- * to network positioning before giving up.
+ * Ask for a position, patiently.
+ *
+ * The first version gave the satellites 12 seconds and then fell back to a coarse network fix for 8
+ * more. Both numbers were wrong for the people who actually fail this, and Dədə Qorqud Parkı proved
+ * it: one worker there logged five "GPS siqnal tapmadı" in a row, having granted the permission two
+ * refusals earlier — so his phone had no cached fix at all and was doing a genuine cold start, under
+ * trees, on a phone with no data. A cold start takes thirty to sixty seconds. Twelve is not a timeout,
+ * it is a coin toss.
+ *
+ * Worse, the fallback that existed for exactly this case could not run for exactly these people: a
+ * coarse position is a NETWORK position, computed from nearby Wi-Fi and cell IDs by a service on the
+ * internet. A phone with no data plan cannot obtain one. The safety net was missing under the only
+ * people who fall.
+ *
+ * So it watches instead of asking once, and takes the first fix that arrives — accuracy is only ever a
+ * warning here, never a block, so an early coarse fix is worth more than a perfect one that comes
+ * after the person has given up. The coarse attempt still runs at the end for anyone who does have
+ * data. `onCountdown` lets the screen show the seconds rather than looking frozen: a wait nobody can
+ * see is a wait people abandon.
  */
-export async function getPosition(): Promise<GeoResult> {
+const COLD_FIX_BUDGET_MS = 45_000
+
+export async function getPosition(onCountdown?: (secondsLeft: number) => void): Promise<GeoResult> {
   if (!navigator.geolocation) return { ok: false, kind: 'unsupported' }
 
+  const watched = await new Promise<GeolocationPosition | GeolocationPositionError | null>((resolve) => {
+    let settled = false
+    const finish = (v: GeolocationPosition | GeolocationPositionError | null) => {
+      if (settled) return
+      settled = true
+      navigator.geolocation.clearWatch(id)
+      clearInterval(tick)
+      clearTimeout(deadline)
+      resolve(v)
+    }
+
+    const id = navigator.geolocation.watchPosition(
+      (pos) => finish(pos),
+      // A hard refusal is final and there is nothing to wait for; anything else may still resolve
+      // itself when a satellite comes into view, so the watch stays open until the budget runs out.
+      (err) => { if (err.code === 1) finish(err) },
+      { enableHighAccuracy: true, timeout: COLD_FIX_BUDGET_MS, maximumAge: 30_000 },
+    )
+
+    const startedAt = Date.now()
+    const tick = setInterval(() => {
+      const left = Math.ceil((COLD_FIX_BUDGET_MS - (Date.now() - startedAt)) / 1000)
+      onCountdown?.(Math.max(0, left))
+    }, 1000)
+    onCountdown?.(COLD_FIX_BUDGET_MS / 1000)
+
+    const deadline = setTimeout(() => finish(null), COLD_FIX_BUDGET_MS)
+  })
+
+  if (watched && 'coords' in watched) return { ok: true, coords: watched.coords }
+  if (watched && 'code' in watched && watched.code === 1) return { ok: false, kind: 'denied' }
+
+  // Nothing from the sky. A network position needs the internet, so this is the branch that helps
+  // somebody with data and cannot help somebody without it.
   try {
-    const pos = await once({ enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 })
+    const pos = await once({ enableHighAccuracy: false, timeout: 8_000, maximumAge: 120_000 })
     return { ok: true, coords: pos.coords }
   } catch (err) {
-    if ((err as GeolocationPositionError)?.code === 1) return { ok: false, kind: 'denied' }
-
-    try {
-      const pos = await once({ enableHighAccuracy: false, timeout: 8_000, maximumAge: 60_000 })
-      return { ok: true, coords: pos.coords }
-    } catch (err2) {
-      const code = (err2 as GeolocationPositionError)?.code
-      if (code === 1) return { ok: false, kind: 'denied' }
-      // iOS reports a hard "denied" as POSITION_UNAVAILABLE often enough that the error code alone
-      // isn't trustworthy — if the browser will state the permission outright, believe it instead.
-      if ((await permissionState()) === 'denied') return { ok: false, kind: 'denied' }
-      return { ok: false, kind: code === 3 ? 'timeout' : 'unavailable' }
-    }
+    const code = (err as GeolocationPositionError)?.code
+    if (code === 1) return { ok: false, kind: 'denied' }
+    // iOS reports a hard "denied" as POSITION_UNAVAILABLE often enough that the error code alone
+    // isn't trustworthy — if the browser will state the permission outright, believe it instead.
+    if ((await permissionState()) === 'denied') return { ok: false, kind: 'denied' }
+    return { ok: false, kind: code === 3 ? 'timeout' : 'unavailable' }
   }
 }

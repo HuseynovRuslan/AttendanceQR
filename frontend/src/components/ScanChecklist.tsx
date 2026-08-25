@@ -44,7 +44,7 @@ function Indicator({ step }: { step: CheckStep }) {
   return <span className="h-8 w-8 rounded-full border-[3px] border-white/10" />
 }
 
-export function ScanChecklist({ checks }: { checks: ScanChecks }) {
+export function ScanChecklist({ checks, waitingHint }: { checks: ScanChecks; waitingHint?: string | null }) {
   return (
     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-slate-900 px-6">
       <p className="text-lg font-semibold text-slate-200">Yoxlanılır…</p>
@@ -72,6 +72,12 @@ export function ScanChecklist({ checks }: { checks: ScanChecks }) {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-white">{row.label}</div>
+                {/* A cold GPS fix can take the better part of a minute, and a row that simply sits
+                    there reads as a frozen app — which is when people give up and report that the
+                    scan does not work. The seconds are the difference between waiting and failing. */}
+                {waitingHint && row.key === 'location' && checks.location === 'run' && (
+                  <div className="text-[12px] text-amber-300">{waitingHint}</div>
+                )}
                 <div className="text-xs text-slate-400">{row.hint}</div>
               </div>
               <Indicator step={step} />
