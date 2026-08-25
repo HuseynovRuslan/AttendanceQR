@@ -1,0 +1,705 @@
+<title>QRLog işçi təlimatı</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Noto+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@600&display=swap">
+
+<style>
+  /* The palette is not invented: every value is lifted from the app's own theme.css, so a worker
+     holding this sheet sees the same green, the same near-black and the same clay red they will see
+     on the phone. The two typefaces do a real job rather than a decorative one — Manrope is what the
+     app renders in (chosen there because Sora has no Azerbaijani ə), so anything set in Manrope here
+     is the PHONE talking; Noto Sans is the sheet's own voice. IBM Plex Mono appears exactly where the
+     app uses it: on an address and a PIN. */
+  :root {
+    --leaf: #7CB342;
+    --leaf-d: #4E7D26;
+    --leaf-bg: #F1F8E9;
+    --clay: #C85A3D;
+    --clay-bg: #FBECE8;
+    --ink: #18191A;
+    --ink-2: #3D3E3E;
+    --grey: #6E6F6F;
+    --rule: #DCDEDA;      /* a grey pulled toward the leaf, so the hairlines belong to the palette */
+    --paper: #FFFFFF;
+    --desk: #E8EAE4;      /* what the sheet lies on, on screen */
+  }
+
+  /* Deliberately single-theme: this page exists to be printed on white paper and pinned to a wall.
+     It commits to paper rather than following the viewer's theme — but it paints its own ground and
+     every colour explicitly, so it holds on any host background instead of borrowing one. */
+  .wrap { background: var(--desk); padding: 24px 16px; min-height: 100%; }
+
+  .sheet {
+    background: var(--paper);
+    color: var(--ink);
+    width: 210mm;
+    max-width: 100%;
+    margin: 0 auto 24px;
+    padding: 15mm 14mm;
+    box-sizing: border-box;
+    font-family: 'Noto Sans', system-ui, sans-serif;
+    font-size: 11.5pt;
+    line-height: 1.5;
+    box-shadow: 0 1px 3px rgba(24, 25, 26, 0.14);
+  }
+
+  /* --- masthead ------------------------------------------------------------------------------
+     Three sheets, and the eyebrow says which rhythm each one belongs to: something you do once,
+     something you do every day, something you only read when it goes wrong. That distinction is the
+     document's structure, not decoration — the daily sheet is the one that goes on the wall. */
+  .masthead {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 9pt;
+    letter-spacing: 0.14em;
+    color: var(--leaf-d);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .masthead h1 {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 24pt;
+    line-height: 1.05;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .masthead .sub { color: var(--grey); font-size: 10.5pt; margin-top: 3px; }
+  .brandmark {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 15pt;
+    color: var(--leaf-d);
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }
+
+  /* --- what you need before you start -------------------------------------------------------- */
+  .kit { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .kit > div { border: 1.5px solid var(--rule); border-left: 5px solid var(--leaf); padding: 8px 12px; }
+  .kit b { display: block; font-size: 11.5pt; }
+  .kit span { color: var(--grey); font-size: 10pt; }
+
+  /* --- the steps ------------------------------------------------------------------------------
+     A numbered sequence is honest here: these genuinely happen in order, and step 3 cannot be done
+     before step 2. The numeral sits in its own margin column so a foreman can point at "4". */
+  .step {
+    display: grid;
+    grid-template-columns: 44px 1fr 55mm;
+    gap: 14px;
+    align-items: start;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--rule);
+    break-inside: avoid;
+  }
+  .step:last-of-type { border-bottom: 0; }
+  .num {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 29pt;
+    line-height: 0.85;
+    color: var(--leaf);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .step h2 {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 14pt;
+    margin: 0 0 3px;
+    text-wrap: balance;
+  }
+  .step p { margin: 0 0 5px; }
+  .step p:last-child { margin-bottom: 0; }
+  .note {
+    background: var(--leaf-bg);
+    border-left: 4px solid var(--leaf-d);
+    padding: 6px 10px;
+    font-size: 10.5pt;
+    margin-top: 6px;
+  }
+  .note b { color: var(--leaf-d); }
+
+  /* --- the phone ------------------------------------------------------------------------------
+     A faithful recreation rather than a wireframe: the real strings, the real green, the real four
+     PIN boxes. The point of the sheet is that the screen in the hand matches the screen on the wall. */
+  .phone {
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+    overflow: hidden;
+    font-family: 'Manrope', system-ui, sans-serif;
+    background: var(--paper);
+  }
+  .phone .bar {
+    background: var(--ink);
+    color: #fff;
+    font-size: 7pt;
+    padding: 2px 8px;
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 0.04em;
+  }
+  .scr { padding: 9px; }
+  .scr.dark { background: var(--ink); }
+
+  .card-w { background: #fff; border-radius: 8px; padding: 9px; }
+  .app-title { font-weight: 800; font-size: 9.5pt; margin-bottom: 6px; }
+  .lbl { font-size: 7pt; font-weight: 700; color: var(--grey); margin-bottom: 2px; letter-spacing: 0.03em; }
+  .inp {
+    border: 1.5px solid #CFD2CB;
+    border-radius: 5px;
+    padding: 4px 6px;
+    font-size: 8.5pt;
+    color: var(--ink-2);
+    background: #fff;
+  }
+  .pinrow { display: flex; gap: 4px; }
+  .pinbox {
+    flex: 1;
+    border: 1.5px solid #CFD2CB;
+    border-radius: 5px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-weight: 600;
+    font-size: 12pt;
+    padding: 3px 0;
+  }
+  .btn-leaf {
+    background: var(--leaf);
+    color: #fff;
+    text-align: center;
+    font-weight: 800;
+    font-size: 10pt;
+    border-radius: 7px;
+    padding: 7px;
+  }
+  .btn-ghost { text-align: center; font-size: 8pt; color: var(--grey); text-decoration: underline; padding-top: 5px; }
+  .logo-dot {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: var(--leaf); margin: 0 auto 5px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 12pt;
+  }
+  .white-c { color: #fff; text-align: center; }
+
+  .big-scan {
+    background: var(--leaf);
+    color: #fff;
+    border-radius: 10px;
+    text-align: center;
+    padding: 14px 8px;
+    font-weight: 800;
+    font-size: 12pt;
+  }
+  .big-scan .qricon { font-size: 20pt; display: block; line-height: 1.1; }
+  .rowline {
+    display: flex; justify-content: space-between;
+    font-size: 8pt; color: var(--grey);
+    border-top: 1px solid #E6E8E3; padding-top: 4px; margin-top: 6px;
+  }
+  .ok-banner {
+    background: var(--leaf-bg);
+    border: 1.5px solid var(--leaf);
+    border-radius: 8px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .ok-banner .tick { font-size: 19pt; line-height: 1; }
+  .ok-banner .t { font-weight: 800; font-size: 10.5pt; margin-top: 3px; }
+  .ok-banner .s { font-size: 8pt; color: var(--grey); margin-top: 2px; }
+
+  /* --- the install band -----------------------------------------------------------------------
+     Not a numbered step, because it is not part of the sequence: it happens once, it is optional in
+     the strict sense, and it forks by phone. A number would force everybody through a branch that
+     only half of them need to read. */
+  .install {
+    border: 2.5px solid var(--ink);
+    margin-top: 14px;
+    break-inside: avoid;
+  }
+  .install-head {
+    background: var(--ink);
+    color: #fff;
+    padding: 8px 14px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .install-head h2 {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 14pt;
+    margin: 0;
+  }
+  .install-head span { font-size: 9.5pt; opacity: 0.8; }
+  .install-why { padding: 9px 14px 0; font-size: 10.5pt; }
+  .install-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .install-cols > div { padding: 10px 14px 12px; }
+  .install-cols > div:first-child { border-right: 1.5px solid var(--rule); }
+  .plat {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 11.5pt;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .plat .tag {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    background: var(--leaf-bg);
+    color: var(--leaf-d);
+    border: 1px solid var(--leaf);
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .plat-steps { margin: 0; padding-left: 18px; font-size: 10.5pt; }
+  .plat-steps li { margin-bottom: 3px; }
+  .glyph {
+    display: inline-block;
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    padding: 0 5px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  /* --- the daily sheet ------------------------------------------------------------------------ */
+  .daily { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 14px; }
+  .daily > div { padding: 16px 16px 18px; break-inside: avoid; }
+  .daily > div:first-child { border-right: 2px solid var(--ink); }
+  .when {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 19pt;
+    margin: 0 0 2px;
+  }
+  .when-sub { color: var(--grey); font-size: 10.5pt; margin-bottom: 10px; }
+  .daily ol { margin: 12px 0 0; padding-left: 20px; font-size: 11.5pt; }
+  .daily ol li { margin-bottom: 5px; }
+  .daily .phone { max-width: 52mm; margin: 0 auto; }
+
+  .warnbar {
+    border: 2.5px solid var(--clay);
+    background: var(--clay-bg);
+    padding: 11px 14px;
+    margin-top: 16px;
+    break-inside: avoid;
+  }
+  .warnbar b { color: var(--clay); }
+  .warnbar p { margin: 0; font-size: 11.5pt; }
+
+  /* --- page three: what goes wrong ------------------------------------------------------------- */
+  .h-sec-sub { color: var(--grey); font-size: 10.5pt; margin: 10px 0 12px; }
+
+  table.tr { width: 100%; border-collapse: collapse; }
+  table.tr th {
+    text-align: left;
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 9pt;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--grey);
+    border-bottom: 1.5px solid var(--ink);
+    padding: 0 8px 5px 0;
+  }
+  table.tr td {
+    vertical-align: top;
+    padding: 8px 8px 8px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 11pt;
+  }
+  table.tr td:first-child { width: 34%; }
+  table.tr td:last-child { padding-right: 0; }
+  .say {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-weight: 700;
+    background: var(--clay-bg);
+    border-left: 4px solid var(--clay);
+    padding: 4px 8px;
+    display: inline-block;
+    font-size: 10.5pt;
+  }
+  .say.calm { background: var(--leaf-bg); border-left-color: var(--leaf-d); }
+  .do { font-weight: 600; }
+
+  .offline {
+    border: 2px solid var(--ink);
+    padding: 12px 14px;
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: 1fr 52mm;
+    gap: 14px;
+    align-items: center;
+    break-inside: avoid;
+  }
+  .offline h3 { font-family: 'Manrope', system-ui, sans-serif; font-weight: 800; font-size: 13pt; margin: 0 0 4px; }
+  .offline p { margin: 0; font-size: 11pt; }
+
+  .footstrip {
+    margin-top: 16px;
+    border-top: 3px solid var(--ink);
+    padding-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 10pt;
+    color: var(--grey);
+  }
+  .footstrip b { color: var(--ink); }
+
+  .addr {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-weight: 600;
+    background: var(--ink);
+    color: #fff;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11pt;
+    white-space: nowrap;
+  }
+
+  .screen-only {
+    max-width: 210mm;
+    margin: 0 auto 14px;
+    font-family: 'Noto Sans', system-ui, sans-serif;
+    font-size: 11pt;
+    color: var(--ink-2);
+    background: var(--paper);
+    border-left: 5px solid var(--leaf);
+    padding: 10px 14px;
+  }
+  .screen-only b { color: var(--ink); }
+
+  /* --- print ------------------------------------------------------------------------------------
+     Three A4 sheets. Colour is forced through because the green is doing work (it marks every "this
+     is the button you press"), but nothing depends on colour alone: every green block carries a word
+     and every clay block carries the phone's own error text in quotes, so a black-and-white print
+     loses nothing. */
+  @page { size: A4; margin: 0; }
+  @media print {
+    .wrap { background: #fff; padding: 0; }
+    .screen-only { display: none; }
+    .sheet {
+      box-shadow: none;
+      margin: 0;
+      width: auto;
+      padding: 13mm 13mm;
+      break-after: page;
+    }
+    .sheet:last-of-type { break-after: auto; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  @media (max-width: 760px) {
+    .step { grid-template-columns: 34px 1fr; }
+    .step .phone { grid-column: 2; max-width: 240px; }
+    .kit, .offline, .install-cols, .daily { grid-template-columns: 1fr; }
+    .install-cols > div:first-child { border-right: 0; border-bottom: 1.5px solid var(--rule); }
+    .daily > div:first-child { border-right: 0; border-bottom: 2px solid var(--ink); }
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="screen-only">
+    <b>Çap üçün:</b> Ctrl+P (Mac-də ⌘+P) → «Hədəf: PDF olaraq saxla» → A4. Üç səhifə çıxır:
+    <b>ilk gün</b> (bir dəfə edilir), <b>hər gün</b> (divara vurmaq üçün), <b>problem olsa</b>.
+  </div>
+
+  <!-- ============================== SHEET ONE — the first day ============================== -->
+  <section class="sheet">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">İlk gün · bir dəfə edilir</div>
+        <h1>Telefonu bir dəfə<br>hazırlayırsınız</h1>
+        <div class="sub">Bundan sonra hər gün cəmi iki toxunuş qalır.</div>
+      </div>
+      <div class="brandmark">QRLog</div>
+    </header>
+
+    <div class="kit">
+      <div>
+        <b>Telefon nömrəniz</b>
+        <span>Şirkətə verdiyiniz nömrə</span>
+      </div>
+      <div>
+        <b>4 rəqəmli müvəqqəti PIN</b>
+        <span>Rəhbərinizdən alırsınız — bir dəfəlikdir</span>
+      </div>
+    </div>
+
+    <!-- 1 -->
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h2>Telefonda ünvanı açın</h2>
+        <p>Brauzeri açın (Chrome və ya Safari) və yuxarıdakı ünvan sətrinə yazın:</p>
+        <p><span class="addr">app.qrlog.az</span></p>
+      </div>
+      <div class="phone">
+        <div class="bar"><span>09:41</span><span>▮▮▮</span></div>
+        <div class="scr" style="background:#EFF1EC">
+          <div class="inp" style="display:flex;justify-content:space-between;align-items:center;border-radius:14px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">app.qrlog.az</span>
+            <span style="color:var(--grey)">↻</span>
+          </div>
+          <div style="text-align:center;color:var(--grey);font-size:7.5pt;margin-top:24px">
+            ünvanı bura yazın
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 -->
+    <div class="step">
+      <div class="num">2</div>
+      <div>
+        <h2>Nömrə və PIN ilə daxil olun</h2>
+        <p>Nömrəni <b>0</b> ilə başlayaraq yazın. PIN dörd xanadır — rəhbərinizin verdiyi dörd
+          rəqəmi bir-bir yığın, sonra yaşıl <b>«Daxil ol»</b> düyməsinə basın.</p>
+      </div>
+      <div class="phone">
+        <div class="bar"><span>09:41</span><span>▮▮▮</span></div>
+        <div class="scr dark">
+          <div class="logo-dot">Q</div>
+          <div class="white-c" style="font-size:7pt;opacity:.75;margin-bottom:7px">Davamiyyət sistemi</div>
+          <div class="card-w">
+            <div class="app-title">Sistemə daxil olun</div>
+            <div class="lbl">TELEFON NÖMRƏSİ</div>
+            <div class="inp" style="margin-bottom:7px">0XX XXX XX XX</div>
+            <div class="lbl">PIN (4 RƏQƏM)</div>
+            <div class="pinrow" style="margin-bottom:8px">
+              <div class="pinbox">•</div><div class="pinbox">•</div>
+              <div class="pinbox">•</div><div class="pinbox">•</div>
+            </div>
+            <div class="btn-leaf">Daxil ol</div>
+            <div class="btn-ghost">PIN-i unutdum?</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 -->
+    <div class="step">
+      <div class="num">3</div>
+      <div>
+        <h2>Öz PIN-inizi təyin edin</h2>
+        <p>Sistem sizdən <b>yeni PIN</b> istəyir. Bu, yalnız sizin biləcəyiniz dörd rəqəmdir —
+          rəhbərinizin verdiyi PIN bundan sonra işləməyəcək.</p>
+        <div class="note">Şəkil çəkmək istəsə, <b>«Sonra çəkərəm»</b> düyməsinə basa bilərsiniz.
+          Məcburi deyil.</div>
+      </div>
+      <div class="phone">
+        <div class="bar"><span>09:42</span><span>▮▮▮</span></div>
+        <div class="scr" style="background:#F5F6F3">
+          <div class="card-w">
+            <div class="app-title" style="text-align:center">Öz PIN-inizi təyin edin</div>
+            <div style="font-size:7.5pt;color:var(--grey);text-align:center;margin-bottom:8px;line-height:1.35">
+              Bu ilk girişdir. Müvəqqəti PIN-i öz PIN-inizlə əvəz edin.
+            </div>
+            <div class="pinrow" style="margin-bottom:7px">
+              <div class="pinbox">•</div><div class="pinbox">•</div>
+              <div class="pinbox">•</div><div class="pinbox">•</div>
+            </div>
+            <div class="btn-leaf">Təsdiqlə</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- install -->
+    <div class="install">
+      <div class="install-head">
+        <h2>Tətbiqi ana ekrana əlavə edin</h2>
+        <span>bir dəfə · 30 saniyə</span>
+      </div>
+      <p class="install-why">
+        Bundan sonra ünvanı yazmağa ehtiyac qalmır: telefonun ekranında <b>yaşıl QRLog nişanı</b>
+        görünür, ona toxunmaqla açılır. Üstəlik <b>internetsiz skan</b> yalnız bu halda tam etibarlı
+        işləyir.
+      </p>
+      <div class="install-cols">
+        <div>
+          <div class="plat">Android <span class="tag">Chrome</span></div>
+          <ol class="plat-steps">
+            <li>Ekranın <b>yuxarı sağ küncündə</b> alt-alta üç xırda nöqtə var
+              (<span class="glyph">⋮</span>) — ona toxunun.</li>
+            <li>Açılan siyahıdan <b>«Ana ekrana əlavə et»</b> seçin.</li>
+            <li>Sonra <b>«Əlavə et»</b> düyməsinə basın.</li>
+          </ol>
+        </div>
+        <div>
+          <div class="plat">iPhone <span class="tag">Safari</span></div>
+          <ol class="plat-steps">
+            <li>Ekranın <b>aşağısında, ortada</b> içindən yuxarı ox çıxan kvadrat var
+              (<span class="glyph">↑</span>) — ona toxunun.</li>
+            <li>Açılan siyahını <b>yuxarı sürüşdürün</b>.</li>
+            <li><b>«Ana ekrana əlavə et»</b>, sonra <b>«Əlavə et»</b>.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== SHEET TWO — every day ============================== -->
+  <section class="sheet">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">Hər gün · iki dəfə</div>
+        <h1>Gələndə skan, gedəndə skan</h1>
+        <div class="sub">Divardakı QR plakatına — hər dəfə eyni qayda.</div>
+      </div>
+      <div class="brandmark">QRLog</div>
+    </header>
+
+    <div class="daily">
+      <div>
+        <h2 class="when">İşə gələndə</h2>
+        <div class="when-sub">Yaşıl düymədə <b>«Giriş et»</b> yazır</div>
+        <div class="phone">
+          <div class="bar"><span>07:58</span><span>▮▮▮</span></div>
+          <div class="scr" style="background:#F5F6F3">
+            <div style="font-size:7.5pt;color:var(--grey);margin-bottom:6px">Hələ giriş etməmisiniz</div>
+            <div class="big-scan"><span class="qricon">▣</span>Giriş et</div>
+            <div class="rowline"><span>Son davamiyyət</span><span>Ətraflı ›</span></div>
+          </div>
+        </div>
+        <ol>
+          <li>Yaşıl düyməyə basın — kamera açılır.</li>
+          <li>Telefonu <b>QR plakatına</b> tutun, çərçivəyə salın.</li>
+          <li>Üzünüzü kameraya tutun — papağı bir anlığa çəkin.</li>
+          <li><b>«Giriş qeydə alındı»</b> göründü — bitdi.</li>
+        </ol>
+      </div>
+      <div>
+        <h2 class="when">İş bitəndə</h2>
+        <div class="when-sub">Eyni düymədə indi <b>«Çıxış et»</b> yazır</div>
+        <div class="phone">
+          <div class="bar"><span>17:04</span><span>▮▮▮</span></div>
+          <div class="scr" style="background:#F5F6F3">
+            <div class="ok-banner">
+              <div class="tick" style="color:var(--leaf-d)">✓</div>
+              <div class="t">Çıxış qeydə alındı</div>
+              <div class="s">Sabaha qədər!</div>
+            </div>
+          </div>
+        </div>
+        <ol>
+          <li>Yenidən eyni plakata gedin.</li>
+          <li>Düyməyə basın və plakatı skan edin.</li>
+          <li>Çıxışda <b>şəkil çəkilmir</b> — dərhal bitir.</li>
+          <li><b>«Çıxış qeydə alındı»</b> göründü — evə.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="warnbar">
+      <p><b>Çıxışı unutmayın.</b> Gün yalnız giriş və çıxış birlikdə olanda tam sayılır.
+        Çıxış olmasa, həmin gün natamam qalır və iş saatınız hesablanmır.</p>
+    </div>
+
+    <div class="footstrip">
+      <div><b>Gündə iki skan:</b> gələndə və gedəndə</div>
+      <div><b>Plakat:</b> hər zaman eyni yerdə, divarda</div>
+      <div><b>Xəta çıxsa:</b> arxa səhifəyə baxın</div>
+    </div>
+  </section>
+
+  <!-- ============================== SHEET THREE — when it goes wrong ============================== -->
+  <section class="sheet">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">Problem olsa</div>
+        <h1>Ekranda nə yazırsa,<br>nə etməli</h1>
+        <div class="sub">Soldakı yazı telefonun öz sözüdür. Onu tapın və sağdakını edin.</div>
+      </div>
+      <div class="brandmark">QRLog</div>
+    </header>
+
+    <table class="tr" style="margin-top:14px">
+      <thead>
+        <tr><th>Telefon yazır</th><th>Nə etməli</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="say">Radius xaricindəsiniz</span></td>
+          <td><span class="do">Plakata yaxınlaşın</span> və açıq havada dayanın, sonra yenidən skan
+            edin. Telefon sizin harada olduğunuzu tapa bilmir — bina içində və ya plakatdan uzaqda
+            belə olur.</td>
+        </tr>
+        <tr>
+          <td><span class="say">Bu cihaz hesabınıza bağlı deyil</span></td>
+          <td><span class="do">Rəhbərinizə deyin.</span> Hesabınız başqa telefona bağlıdır.
+            Telefonu dəyişmisinizsə, rəhbəriniz bir dəfə təsdiq etməlidir.</td>
+        </tr>
+        <tr>
+          <td><span class="say">QR kod köhnəlib</span></td>
+          <td><span class="do">Rəhbərinizə deyin</span> — plakat yenilənməlidir. Yenidən skan etmək
+            kömək etməyəcək.</td>
+        </tr>
+        <tr>
+          <td><span class="say">Tez çıxdınız</span></td>
+          <td>Girişdən sonra <span class="do">5 dəqiqə keçməlidir.</span> Bir az gözləyin və yenidən
+            skan edin.</td>
+        </tr>
+        <tr>
+          <td><span class="say calm">Giriş artıq qeydə alınıb</span></td>
+          <td><span class="do">Hər şey qaydasındadır</span> — bu gün artıq giriş etmisiniz. İkinci
+            dəfə etməyə ehtiyac yoxdur.</td>
+        </tr>
+        <tr>
+          <td><span class="say">Nömrə və ya PIN yanlışdır</span></td>
+          <td>Nömrəni <span class="do">0 ilə</span> yazdığınızı yoxlayın. PIN yadınızdan çıxıbsa —
+            giriş ekranındakı <b>«PIN-i unutdum?»</b> və ya rəhbərinizə deyin, yenisini verə bilər.</td>
+        </tr>
+        <tr>
+          <td><span class="say">Kamera açılmadı</span></td>
+          <td>Telefon kameraya icazə istəyir — <span class="do">«İcazə ver»</span> seçin. Səhvən
+            «İmtina» seçmisinizsə, brauzeri bağlayıb yenidən açın.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="offline">
+      <div>
+        <h3>İnternet yoxdursa, yenə skan edin</h3>
+        <p>Skan <b>internetsiz də işləyir</b>. Telefon qeydi özündə saxlayır və internet gələn kimi
+          özü göndərir — sizin heç nə etməyinizə ehtiyac yoxdur. Ekranda
+          <b>«Giriş cihazınızda saxlanıldı»</b> yazısını görsəniz, qeyd alınıb.</p>
+        <p style="margin-top:6px;color:var(--grey);font-size:10pt">Şərt budur: həmin gün ərzində bir
+          dəfə internetə çıxın — evdəki və ya iş yerindəki Wi-Fi kifayətdir. Tətbiq ana ekrana əlavə
+          olunubsa, bu daha etibarlı işləyir.</p>
+      </div>
+      <div class="phone">
+        <div class="bar"><span>08:02</span><span>✕</span></div>
+        <div class="scr" style="background:#F5F6F3">
+          <div class="ok-banner" style="background:#fff;border-color:var(--ink)">
+            <div class="tick">↑</div>
+            <div class="t">Giriş cihazınızda<br>saxlanıldı</div>
+            <div class="s">İnternet gələndə<br>özü göndəriləcək.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footstrip">
+      <div><b>Giriş ünvanı:</b> app.qrlog.az</div>
+      <div><b>PIN yadınızdan çıxdı?</b> Rəhbərinizə deyin</div>
+      <div><b>Gündə iki skan:</b> gələndə və gedəndə</div>
+    </div>
+  </section>
+
+</div>
