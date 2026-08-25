@@ -43,7 +43,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
   '/admin/birthdays': { title: 'Doğum günləri', sub: 'Bu ay doğum günü olan işçilər' },
   '/admin/tabel': { title: 'Aylıq tabel', sub: 'Günlər üzrə davamiyyət cədvəli — çap və Excel' },
-  '/admin/my-employees': { title: 'İşçilərim', sub: 'Öz filialınızın işçiləri — əlavə et, redaktə et' },
+  '/admin/my-employees': { title: 'İşçilər', sub: 'Öz filialınızın işçiləri — əlavə et, redaktə et' },
   '/admin/my-leaves': { title: 'Məzuniyyət / İcazə', sub: 'Öz işçiləriniz üçün icazə və məzuniyyət' },
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/schedules': { title: 'Növbələr', sub: 'Saatlar, iş günləri və rotasiya — bir dəfə qurulur, işçilərə təyin edilir' },
@@ -159,7 +159,7 @@ export function AdminLayout() {
       title: 'İşçilər',
       links: [
         ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
-        ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilərim', Icon: IconUsers }] : []),
+        ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilər', Icon: IconUsers }] : []),
         ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
         ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
         { to: '/admin/schedules', label: 'Növbələr', Icon: IconRefresh },
