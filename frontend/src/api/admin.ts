@@ -506,6 +506,8 @@ export interface AdminEmployee {
   managedLocationNames: string[]
   isActive: boolean
   activated: boolean
+  /** Still on an admin-issued temporary PIN — i.e. has never signed in and chosen their own. */
+  mustChangePin: boolean
   /** "Son aktivlik" — last time the employee opened the app (home/menu load). null = never opened. */
   lastActiveAtUtc: string | null
   /** True when at least one device is subscribed to push — i.e. announcements actually reach them. */
@@ -555,6 +557,24 @@ export function reinviteEmployee(id: string) {
 
 /** POST /api/admin/employees/{id}/reset-pin — set a random temporary PIN for an activated employee
  * who forgot theirs (a PIN can't be read back — only reset). Returns the temp PIN to pass on. */
+/**
+ * POST /api/admin/employees/bulk-reset-pin — issue fresh temporary PINs to a group, returned once.
+ *
+ * Not a recovery: a temporary PIN is hashed the moment it is made and cannot be read back. This gives
+ * everybody named a NEW one, so any PIN already handed to them stops working.
+ */
+export function bulkResetPin(employeeIds: string[]) {
+  return apiRequest<BulkPinResult | { error: string }>('/api/admin/employees/bulk-reset-pin', {
+    method: 'POST',
+    body: { employeeIds },
+  })
+}
+
+export interface BulkPinResult {
+  issued: { id: string; fullName: string; phoneNumber: string | null; tempPin: string }[]
+  skipped: { id: string; fullName: string; reason: string }[]
+}
+
 export function resetPin(id: string) {
   return apiRequest<{ tempPin: string } | { error: string }>(`/api/admin/employees/${id}/reset-pin`, {
     method: 'POST',

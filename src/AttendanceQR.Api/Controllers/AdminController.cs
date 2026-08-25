@@ -127,6 +127,9 @@ public class AdminController : ControllerBase
                     : [],
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
+                // Still on the PIN an admin generated for them — i.e. has never signed in. The
+                // onboarding screen counts these to offer a fresh list; see BulkResetPin.
+                mustChangePin = e.MustChangePin,
                 lastActiveAtUtc = e.LastActiveAtUtc,
                 // Whether this employee will actually receive announcements/reminders on their phone.
                 pushEnabled = pushEmployeeIds.Contains(e.Id),
@@ -1218,6 +1221,96 @@ public class AdminController : ControllerBase
             _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
 
         return Ok(new { tempPin = pin });
+    }
+
+    // POST /api/admin/employees/bulk-reset-pin — issue a fresh temporary PIN to many people at once
+    // and return the whole list, in plaintext, exactly once.
+    //
+    // A temporary PIN is shown once and hashed immediately, which is right: it passes through several
+    // hands and ends up written on paper, so storing it would make it a permanent weakness. The cost
+    // of that is real, though, and it landed on the first company onboarded this way — nineteen people
+    // were imported, the page was refreshed before the list was copied, and nineteen credentials were
+    // gone. Not lost data, exactly: nobody had used them. But the only way back was nineteen separate
+    // resets, and there were another hundred and seventy-eight people still to hand PINs to.
+    //
+    // So this does not recover anything — it reissues. Everyone named gets a NEW PIN, which means any
+    // PIN already handed to them stops working, and the screen says so before it is pressed.
+    [HttpPost("bulk-reset-pin")]
+    public async Task<IActionResult> BulkResetPin([FromBody] BulkResetPinRequest request)
+    {
+        var ids = (request.EmployeeIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+            return BadRequest(new { error = "NoEmployees" });
+        // A whole company at once is a legitimate first-day action; beyond that it is a mistake or a
+        // script, and a response carrying a thousand live credentials is its own hazard.
+        if (ids.Count > 300)
+            return BadRequest(new { error = "TooMany" });
+
+        var ct = HttpContext.RequestAborted;
+        var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+
+        var issued = new List<object>();
+        var skipped = new List<object>();
+        var tenantId = _db.CurrentTenantId;
+
+        foreach (var employee in employees)
+        {
+            // Every guard the single reset applies, per row — this endpoint hands back plaintext just
+            // as that one does, so weakening any of them here would simply move the hole.
+            if (_operatorIds.Contains(employee.Id))
+            {
+                skipped.Add(new { id = employee.Id, fullName = employee.FullName, reason = "CannotManageOperator" });
+                continue;
+            }
+            if (ImpersonationRefusal(employee) is not null)
+            {
+                skipped.Add(new { id = employee.Id, fullName = employee.FullName, reason = "NotDuringImpersonation" });
+                continue;
+            }
+            if (employee.ActivatedAtUtc is null)
+            {
+                skipped.Add(new { id = employee.Id, fullName = employee.FullName, reason = "NotActivated" });
+                continue;
+            }
+            if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employee.Id, ct))
+            {
+                skipped.Add(new { id = employee.Id, fullName = employee.FullName, reason = "OutOfScope" });
+                continue;
+            }
+
+            var pin = PinRules.Generate();
+            employee.PasswordHash = _passwordHasher.Hash(pin);
+            employee.MustChangePin = true;
+            employee.TokenVersion++;
+
+            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
+            if (employee.PhoneNumber is not null)
+                _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+
+            issued.Add(new
+            {
+                id = employee.Id,
+                fullName = employee.FullName,
+                phoneNumber = employee.PhoneNumber,
+                tempPin = pin,
+            });
+        }
+
+        // One save for the batch: a half-issued list is a list where some of the PINs on the paper
+        // are the live ones and some are not, and nothing on screen would say which.
+        await _db.SaveChangesAsync(ct);
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = User.EmployeeId(),
+            EventType = AuditEventType.BulkPinReset,
+            Reason = $"Toplu PIN: {issued.Count} nəfərə yeni müvəqqəti PIN verildi"
+                      + (skipped.Count > 0 ? $", {skipped.Count} buraxıldı" : string.Empty),
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { issued, skipped });
     }
 
     /// <summary>

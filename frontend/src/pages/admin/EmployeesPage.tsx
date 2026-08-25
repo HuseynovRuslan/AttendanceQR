@@ -5,6 +5,8 @@ import { PositionSelect } from '../../components/PositionSelect'
 import { NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  bulkResetPin,
+  type BulkPinResult,
   deleteEmployee,
   getAdminLocations,
   getEmployees,
@@ -31,7 +33,7 @@ import {
 import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
 import { StatusBadge } from '../../components/StatusBadge'
-import { IconCalendar, IconCheck, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
+import { IconCalendar, IconCheck, IconKey, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
 
 const ATTENDANCE_ERRORS: Record<string, string> = {
   NothingToUpdate: 'Heç nə dəyişmədi',
@@ -553,6 +555,33 @@ export function EmployeesPage() {
     }
   }
 
+  // The reissued list, held on screen until it is dismissed on purpose. Deliberately NOT cleared by
+  // a refresh of the roster underneath it: losing this list to an accidental reload is the whole
+  // reason this exists.
+  const [pinList, setPinList] = useState<BulkPinResult | null>(null)
+  const [issuing, setIssuing] = useState(false)
+  const [pinCopied, setPinCopied] = useState(false)
+
+  async function issuePins(targets: AdminEmployee[]) {
+    if (targets.length === 0) return
+    const names = targets.length === 1 ? `"${targets[0].fullName}"` : `${targets.length} nəfər`
+    if (!window.confirm(
+      `${names} üçün YENİ müvəqqəti PIN veriləcək.\n\n` +
+      'Diqqət: əvvəl paylanmış PIN-lər işləməyəcək. Köhnə PIN-ləri geri qaytarmaq mümkün deyil — ' +
+      'onlar saxlanmır.\n\nDavam edilsin?',
+    )) return
+
+    setIssuing(true)
+    const { status, data } = await bulkResetPin(targets.map((t) => t.id))
+    setIssuing(false)
+    if (status === 200 && data && !('error' in data)) {
+      setPinList(data as BulkPinResult)
+      await refresh()
+    } else {
+      window.alert('PIN verilmədi')
+    }
+  }
+
   const q = search.trim().toLowerCase()
   const visible = rows.filter((r) => {
     if (filterLoc && r.locationId !== filterLoc) return false
@@ -564,6 +593,11 @@ export function EmployeesPage() {
   // Reach = the share of employees who can actually be reached, over the branch currently in view.
   // Only active, activated staff count — a deactivated or not-yet-onboarded person needs no reminder,
   // and counting them would understate how well the reachable ones are covered.
+  // Onboarding: who is still holding the PIN an admin generated for them, in the branch on screen.
+  // These are the people whose PIN list was printed once and, if it was lost, cannot be printed again
+  // — only replaced. The count is what makes that offer visible at the moment it is needed.
+  const pendingPin = visible.filter((r) => r.isActive && r.activated && r.mustChangePin)
+
   const reachPool = rows.filter((r) => r.isActive && r.activated && (!filterLoc || r.locationId === filterLoc))
   const reachOn = reachPool.filter((r) => r.pushEnabled).length
   const reachPct = reachPool.length > 0 ? Math.round((reachOn / reachPool.length) * 100) : 0
@@ -605,6 +639,98 @@ export function EmployeesPage() {
           </button>
         </div>
       </div>
+
+      {/* The reissued PINs. Shown until closed, with a copy button and a print button, because the
+          accident this feature exists for was a page refresh between "issued" and "written down". */}
+      {pinList && (
+        <div className="card card-pad" style={{ marginBottom: 12, borderColor: 'var(--leaf)' }}>
+          <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <IconKey /> {pinList.issued.length} nəfərə yeni müvəqqəti PIN verildi
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+            Bu siyahı yalnız indi görünür — bağlasanız bir daha açılmır. Kopyalayın və ya çap edin.
+            İşçi ilk girişdə öz PIN-ini təyin edəcək.
+          </div>
+
+          <div className="tbl-wrap" style={{ maxHeight: 360, overflowY: 'auto' }}>
+            <table>
+              <thead><tr><th>İşçi</th><th>Telefon</th><th>PIN</th></tr></thead>
+              <tbody>
+                {pinList.issued.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.fullName}</td>
+                    <td>{r.phoneNumber ? `0${r.phoneNumber}` : '—'}</td>
+                    <td style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 16, fontWeight: 700 }}>
+                      {r.tempPin}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {pinList.skipped.length > 0 && (
+            <div className="fb fb-err" style={{ marginTop: 10 }}>
+              <IconX />
+              <span>
+                {pinList.skipped.length} nəfərə verilmədi:{' '}
+                {pinList.skipped.map((sk) => sk.fullName).join(', ')}
+              </span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                const text = pinList.issued
+                  .map((r) => `${r.fullName}\t${r.phoneNumber ? '0' + r.phoneNumber : ''}\t${r.tempPin}`)
+                  .join('\n')
+                void navigator.clipboard.writeText(text).then(() => {
+                  setPinCopied(true)
+                  setTimeout(() => setPinCopied(false), 1500)
+                }).catch(() => {})
+              }}
+            >
+              {pinCopied ? '✓ Kopyalandı' : 'Siyahını kopyala'}
+            </button>
+            <button className="btn btn-sm" onClick={() => window.print()}>Çap et</button>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                if (window.confirm('Siyahı bağlanacaq və bir daha açılmayacaq. Kopyaladınızmı?')) setPinList(null)
+              }}
+            >
+              Bağla
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding strip: the people in this branch who have never signed in and are still holding
+          the PIN somebody printed for them. It is the moment the list is needed, and the only moment
+          it can be produced — so the offer lives here rather than in a menu nobody opens. */}
+      {pendingPin.length > 0 && !pinList && (
+        <div
+          className="card"
+          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 16px', marginBottom: 12 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 22 }}>🔑</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>{pendingPin.length} nəfər hələ heç vaxt girməyib</div>
+              <div className="muted" style={{ fontSize: 12 }}>
+                Müvəqqəti PIN-dədirlər. PIN-i itirmisinizsə, yenisini verib siyahını götürə bilərsiniz.
+              </div>
+            </div>
+          </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <button className="btn btn-sm" disabled={issuing} onClick={() => void issuePins(pendingPin)}>
+              {issuing ? 'Verilir…' : 'Yeni PIN siyahısı ver'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Reach strip: how many of the (active, onboarded) staff a reminder/announcement actually
           reaches, for the branch in view — plus a one-tap way to list exactly who is missing so a

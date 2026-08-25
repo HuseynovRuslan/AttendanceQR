@@ -35,5 +35,10 @@ public enum AuditEventType
     // into the COMPANY's own audit, because the operator console's log is invisible from inside the
     // tenant and every edit the borrowed session makes is recorded under the admin's own id — without
     // this row the customer has no way of knowing the platform was ever in their account.
-    ImpersonationStarted = 14
+    ImpersonationStarted = 14,
+
+    // An admin issued fresh temporary PINs to a group at once — the onboarding list, reissued. Worth
+    // its own row rather than a hundred PinResetResolved ones: it invalidates every PIN already handed
+    // out to those people, so "why did my PIN stop working" has an answer with a time on it.
+    BulkPinReset = 15
 }
