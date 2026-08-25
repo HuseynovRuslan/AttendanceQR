@@ -25,21 +25,46 @@ public static class LocationScopeRules
             .ToListAsync(ct);
 
     /// <summary>
-    /// Whether <paramref name="requesterId"/> may see <paramref name="targetEmployeeId"/>'s data
-    /// (attendance drill-down, check-in selfies, missed-checkout detail). Everyone sees their own;
-    /// beyond self it is exactly <see cref="CanManageEmployeeAsync"/> — Admin sees all, a Manager sees
-    /// only Role==Employee workers in their ManagedLocations, an Employee sees no one else. The
-    /// manager branch once stopped at branch membership, which let a manager pull a same-branch
-    /// admin's records and selfies; visibility now stops where management stops.
+    /// Whether <paramref name="requesterId"/> may SEE <paramref name="targetEmployeeId"/>'s data
+    /// (attendance drill-down, check-in selfies, missed-checkout detail).
+    ///
+    /// Seeing is wider than managing, and the two came apart on purpose. A manager's boards used to
+    /// stop at Role==Employee, which meant a site with two managers showed each of them a headcount
+    /// that was short by the other — a branch of 97 read as 95, and no screen explained the gap. That
+    /// is not a safeguard, it is a wrong number: they work the same site and see each other every
+    /// morning.
+    ///
+    /// What the Role==Employee rule was actually protecting is ACTING on somebody — resetting a PIN,
+    /// editing an account, closing their day — because a manager who could act on a same-branch ADMIN
+    /// could take the company (the P0 of 2026-08-08). That rule is untouched and lives in
+    /// <see cref="CanManageEmployeeAsync"/>. This one only decides who is visible, and the answer is
+    /// everyone at the branches they manage.
     /// </summary>
     public static async Task<bool> CanAccessEmployeeAsync(
         AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
     {
-        // Everyone can always see their own records — the one way this is wider than "manage".
+        // Everyone can always see their own records.
         if (requesterId == targetEmployeeId)
             return true;
 
-        return await CanManageEmployeeAsync(db, requesterId, role, targetEmployeeId, ct);
+        if (role == EmployeeRole.Admin)
+            return true;
+        if (role != EmployeeRole.Manager)
+            return false;
+
+        // Anyone at a branch this manager oversees, whatever their role. Note this includes an ADMIN
+        // who clocks in at that branch: a manager can see that they arrived, and their check-in
+        // selfie, exactly as for anyone else standing at the same gate. They still cannot touch the
+        // account — see CanManageEmployeeAsync, which is what reset-pin, edit and delete ask.
+        var location = await db.Employees
+            .Where(e => e.Id == targetEmployeeId)
+            .Select(e => (Guid?)e.LocationId)
+            .FirstOrDefaultAsync(ct);
+        if (location is not Guid branch)
+            return false;
+
+        var managed = await ManagedLocationIdsAsync(db, requesterId, ct);
+        return managed.Contains(branch);
     }
 
     /// <summary>

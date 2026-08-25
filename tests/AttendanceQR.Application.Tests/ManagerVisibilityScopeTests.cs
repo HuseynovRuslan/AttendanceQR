@@ -140,10 +140,32 @@ public class ManagerVisibilityScopeTests
     }
 
     [Fact]
-    public async Task Manager_cannot_access_same_branch_admin()
+    public async Task Manager_CAN_see_a_same_branch_admin_but_still_cannot_manage_them()
     {
+        // The two halves of what used to be one rule, and the whole reason they were split.
+        //
+        // Seeing was collateral damage: a site with two managers reported a headcount short by one,
+        // with nothing on screen to explain the gap — 97 people read as 95 and the owner had to ask
+        // why. They work the same site and see each other every morning; hiding the row was not
+        // protecting anything.
+        //
+        // Managing is the P0 of 2026-08-08 and does not move. A manager who could act on a
+        // same-branch ADMIN could reset that admin's PIN, read the plaintext back, and take the
+        // company. Both assertions belong in one test so nobody widens the second while widening the
+        // first.
         using var h = new Harness();
-        Assert.False(await h.Access(h.ManagerId, EmployeeRole.Manager, h.SameBranchAdminId));
+
+        Assert.True(await h.Access(h.ManagerId, EmployeeRole.Manager, h.SameBranchAdminId));
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(
+            h.Db, h.ManagerId, EmployeeRole.Manager, h.SameBranchAdminId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Seeing_another_branch_is_still_refused()
+    {
+        // Widening "who can I see" to the whole branch must not widen it to the whole company.
+        using var h = new Harness();
+        Assert.False(await h.Access(h.ManagerId, EmployeeRole.Manager, h.OtherBranchEmployeeId));
     }
 
     [Fact]
@@ -172,13 +194,16 @@ public class ManagerVisibilityScopeTests
     // --- LocationScope: report/export summaries ----------------------------------
 
     [Fact]
-    public async Task Manager_summary_scope_excludes_admin_rows_but_keeps_their_own()
+    public async Task Manager_summary_scope_is_their_branches_and_stops_there()
     {
+        // The tabel and the reports have to agree with the roster. While this excluded Role!=Employee
+        // rows, a branch's timesheet was short by however many managers worked there and the totals
+        // on two screens disagreed with no way to reconcile them.
         using var h = new Harness();
         h.Summary(h.SameBranchEmployeeId, h.BranchA);
-        h.Summary(h.SameBranchAdminId, h.BranchA);   // same branch, above the manager — must vanish
-        h.Summary(h.ManagerId, h.BranchA);           // the manager's own row — must stay
-        h.Summary(h.OtherBranchEmployeeId, h.BranchB);
+        h.Summary(h.SameBranchAdminId, h.BranchA);   // same branch, above the manager — now visible
+        h.Summary(h.ManagerId, h.BranchA);           // the manager's own row
+        h.Summary(h.OtherBranchEmployeeId, h.BranchB); // another branch — must stay out
 
         var scoped = await LocationScope.ApplyLocationScopeAsync(
             h.Db, h.Db.DailySummaries, h.ManagerId, EmployeeRole.Manager, null, CancellationToken.None);
@@ -186,8 +211,9 @@ public class ManagerVisibilityScopeTests
         Assert.Equal(ReportAccess.Allowed, scoped.Access);
         var ids = scoped.Query.Select(s => s.EmployeeId).ToList();
         Assert.Equal(
-            new[] { h.ManagerId, h.SameBranchEmployeeId }.OrderBy(x => x),
+            new[] { h.ManagerId, h.SameBranchEmployeeId, h.SameBranchAdminId }.OrderBy(x => x),
             ids.OrderBy(x => x));
+        Assert.DoesNotContain(h.OtherBranchEmployeeId, ids);
     }
 
     // --- Missed-checkout review: the write side ----------------------------------

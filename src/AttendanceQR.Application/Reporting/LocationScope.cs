@@ -32,9 +32,9 @@ public static class LocationScope
 
             case EmployeeRole.Manager:
                 // Same managed-location source as the attendance query — one rule, one query. And the
-                // same PEOPLE boundary as the live boards (CanManageEmployeeAsync): only Role==Employee
-                // rows, plus the manager's own — a same-branch admin's summarized days are not theirs
-                // to read. The role lives on Employee, so the summary row is joined to it.
+                // same PEOPLE boundary as the live boards: everyone at the branches they manage. It
+                // once stopped at Role==Employee here too, which meant the tabel and the reports
+                // disagreed with the roster by however many managers a site had.
                 var managed = await LocationScopeRules.ManagedLocationIdsAsync(db, requesterId, ct);
 
                 if (requestedLocationId is Guid reqLoc)
@@ -44,18 +44,14 @@ public static class LocationScope
                         return new ScopedSummaryQuery(ReportAccess.Forbidden, baseQuery.Where(_ => false), "Forbidden");
                     return new ScopedSummaryQuery(
                         ReportAccess.Allowed,
-                        baseQuery.Where(s => s.LocationId == reqLoc
-                            && (s.EmployeeId == requesterId
-                                || db.Employees.Any(e => e.Id == s.EmployeeId && e.Role == EmployeeRole.Employee))),
+                        baseQuery.Where(s => s.LocationId == reqLoc),
                         $"Location {reqLoc}");
                 }
 
                 // No location filter → everything across their managed locations.
                 return new ScopedSummaryQuery(
                     ReportAccess.Allowed,
-                    baseQuery.Where(s => s.EmployeeId == requesterId
-                        || (managed.Contains(s.LocationId)
-                            && db.Employees.Any(e => e.Id == s.EmployeeId && e.Role == EmployeeRole.Employee))),
+                    baseQuery.Where(s => s.EmployeeId == requesterId || managed.Contains(s.LocationId)),
                     "Managed locations");
 
             default: // Employee — strictly their own summaries, regardless of any locationId passed.

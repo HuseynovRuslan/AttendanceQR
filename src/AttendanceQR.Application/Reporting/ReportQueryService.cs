@@ -123,8 +123,10 @@ public sealed class ReportQueryService : IReportQueryService
     {
         // For an ADMIN, admins/managers who also clock in ARE included (e.g. a director who scans);
         // only the system/root accounts in HiddenEmails are left out. Same rule as the nightly job.
-        // A MANAGER's boards stop at Role==Employee (plus their own row) — the people above them are
-        // not theirs to watch, mirroring LocationScopeRules.CanManageEmployeeAsync.
+        // A MANAGER sees everyone at the branches they manage, including other managers and an admin
+        // who clocks in there. It used to stop at Role==Employee, which made a two-manager site report
+        // a headcount short by one with nothing on screen to explain it. Acting on those people is a
+        // separate question and still refused — see LocationScopeRules.CanManageEmployeeAsync.
         var query = _db.Employees.Where(e =>
             e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())));
 
@@ -141,12 +143,11 @@ public sealed class ReportQueryService : IReportQueryService
                 {
                     if (!managed.Contains(reqLoc))
                         return (ReportAccess.Forbidden, []);
-                    query = query.Where(e => e.LocationId == reqLoc && (e.Role == EmployeeRole.Employee || e.Id == requesterId));
+                    query = query.Where(e => e.LocationId == reqLoc);
                 }
                 else
                 {
-                    query = query.Where(e =>
-                        (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee) || e.Id == requesterId);
+                    query = query.Where(e => managed.Contains(e.LocationId) || e.Id == requesterId);
                 }
                 break;
 
