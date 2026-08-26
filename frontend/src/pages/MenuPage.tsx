@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ComponentType, SVGProps } from 'react'
 import {
+  getMyAvatar,
   getMyDeviceStatus,
   getMyProfile,
   getMySummary,
@@ -13,13 +14,16 @@ import { getVoteStatus } from '../api/vote'
 import { useAuth } from '../auth/AuthContext'
 import { useFeatureEnabled } from '../branding/BrandingContext'
 import { getDeviceFingerprint } from '../lib/device'
-import { initials } from '../lib/att'
+import { avatarIsStale, dropAvatar, putAvatar } from '../lib/avatar'
 import { fmtDayMonth } from '../lib/format'
+import { Avatar } from '../components/Avatar'
+import { AvatarPickerSheet } from '../components/AvatarPickerSheet'
 import { InstallAppCard } from '../components/InstallAppCard'
 import { AccountSwitcherSheet } from '../components/AccountSwitcherSheet'
 import { PinChangeSheet } from '../components/PinChangeSheet'
 import { PushToggle } from '../components/PushToggle'
 import {
+  IconCamera,
   IconChart,
   IconCheck,
   IconChevronDown,
@@ -59,12 +63,14 @@ function thisMonth(): { from: string; to: string } {
  * the list of everywhere else. Changing a PIN and switching account are both sheets — they are
  * actions, not identities, and neither is worth a screen of its own.
  *
- * No photograph, deliberately. The check-in selfie is an admin's evidence on a face-flagged row; the
- * profile photo card was removed on purpose once already (a0e1772); and this screen is now handed
- * around a work site. Initials recognise a person well enough for that.
+ * The picture is one the employee CHOSE, and it is not the check-in selfie. That distinction is load
+ * bearing: the selfie is a face-audit baseline, shown only where there is a reason to inspect a face
+ * (a0e1772, f293ca1), and putting it here would have quietly undone that. This one is picked, it is
+ * compared to nothing, and it earns its place by solving a real problem — a crew phone holding thirty
+ * accounts shows thirty pairs of initials, and "Məmmədov Elçin" and "Məmmədov Elvin" are both ME.
  */
 export function MenuPage() {
-  const { logout, role, profiles } = useAuth()
+  const { logout, role, profiles, employeeId } = useAuth()
   const assistantOn = useFeatureEnabled('assistant')
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [totals, setTotals] = useState<ReportTotals | null>(null)
@@ -73,12 +79,32 @@ export function MenuPage() {
   const [hasBallot, setHasBallot] = useState(false)
   const [switching, setSwitching] = useState(false)
   const [changingPin, setChangingPin] = useState(false)
+  const [pickingAvatar, setPickingAvatar] = useState(false)
+  // Bumped after the picture changes, purely to make <Avatar> re-read the cache it renders from.
+  const [avatarNonce, setAvatarNonce] = useState(0)
   const navigate = useNavigate()
 
   useEffect(() => {
     const { from, to } = thisMonth()
     void getMyProfile().then((r) => {
-      if (r.status === 200 && r.data && 'fullName' in r.data) setProfile(r.data)
+      if (r.status !== 200 || !r.data || !('fullName' in r.data)) return
+      const me = r.data
+      setProfile(me)
+      if (!employeeId) return
+
+      // Fetch the picture only when what we hold is out of date — which, after the first time, is
+      // whenever they changed it. Every other profile open costs nothing.
+      if (!me.hasAvatar) {
+        dropAvatar(employeeId)
+        setAvatarNonce((n) => n + 1)
+      } else if (avatarIsStale(employeeId, me.avatarUpdatedAtUtc)) {
+        void getMyAvatar().then((a) => {
+          if (a.status === 200 && a.data && 'dataUrl' in a.data) {
+            putAvatar(employeeId, a.data.dataUrl, me.avatarUpdatedAtUtc)
+            setAvatarNonce((n) => n + 1)
+          }
+        })
+      }
     })
     void getMySummary(from, to).then((r) => {
       if (r.status === 200 && r.data && 'totals' in r.data) setTotals(r.data.totals)
@@ -89,7 +115,7 @@ export function MenuPage() {
     void getVoteStatus().then((r) => {
       if (r.status === 200 && r.data && 'candidates' in r.data) setHasBallot(r.data.enabled)
     })
-  }, [])
+  }, [employeeId])
 
   const subtitle = [profile?.position, profile?.locationName].filter(Boolean).join(' · ')
 
@@ -99,9 +125,20 @@ export function MenuPage() {
         {/* Face, then figures — side by side, the way a phone opens a profile. The figures are this
             month's, because a month is the unit everything here is paid and reported in. */}
         <div className="flex items-center gap-5">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-700">
-            {initials(profile?.fullName)}
-          </div>
+          {/* Tap the picture to change the picture, tap the name to change WHO YOU ARE. Two controls
+              that sit next to each other and mean different things — which is exactly the split a
+              phone makes, and the reason the switcher was moved off the avatar and onto the name. */}
+          <button
+            type="button"
+            onClick={() => setPickingAvatar(true)}
+            className="relative shrink-0 rounded-full transition active:scale-95"
+            aria-label="Profil şəklini dəyiş"
+          >
+            <Avatar key={avatarNonce} employeeId={employeeId} name={profile?.fullName} size={80} />
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-700 text-white">
+              <IconCamera className="h-3 w-3" />
+            </span>
+          </button>
           {/* Tapping the figures opens the full history, the way tapping a count opens the list it
               counts — and saves the trip back out to the tab bar. */}
           <button
@@ -165,6 +202,12 @@ export function MenuPage() {
       </div>
 
       {switching && <AccountSwitcherSheet onClose={() => setSwitching(false)} />}
+      {pickingAvatar && (
+        <AvatarPickerSheet
+          onClose={() => setPickingAvatar(false)}
+          onChanged={() => setAvatarNonce((n) => n + 1)}
+        />
+      )}
       {changingPin && <PinChangeSheet onClose={() => setChangingPin(false)} />}
 
       {totals && totals.absentDays > 0 && (

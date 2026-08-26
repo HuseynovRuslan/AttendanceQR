@@ -91,6 +91,10 @@ export interface MyProfile {
   /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). Gates the
    *  menu row + the home self-report; off by default so a plain office worker never sees any of it. */
   canFieldCheckIn?: boolean
+  /** Whether a profile picture is set. Deliberately not a URL — see getMyAvatar. */
+  hasAvatar?: boolean
+  /** When it last changed; the client's cached copy is stale when this differs. */
+  avatarUpdatedAtUtc?: string | null
   /** True until the employee has accepted the data-processing notice — the app blocks until then. */
   consentRequired?: boolean
   /** Check-ins this month whose photo showed no face — shown to the employee themselves. */
@@ -118,6 +122,37 @@ export function getMyProfile(
   token?: string,
 ) {
   return apiRequest<MyProfile>('/api/attendance/me/profile', token ? { token } : {})
+}
+
+// --- profile picture (PROFİL ŞƏKLİ) -------------------------------------------------------------
+// A picture the employee chose. Kept strictly apart from the reference selfie below: nothing compares
+// this to anything and it never reaches the face-match worker.
+
+/** POST /api/attendance/me/avatar — set (or replace) my own profile picture. */
+export function setMyAvatar(photoBase64: string) {
+  return apiRequest<{ ok: boolean; avatarUpdatedAtUtc: string } | { error: string }>('/api/attendance/me/avatar', {
+    method: 'POST',
+    body: { photoBase64 },
+  })
+}
+
+/** DELETE /api/attendance/me/avatar — back to initials. */
+export function deleteMyAvatar() {
+  return apiRequest<{ ok: boolean } | { error: string }>('/api/attendance/me/avatar', { method: 'DELETE' })
+}
+
+/**
+ * GET /api/attendance/me/avatar — the picture itself, as a data URL, so it can be kept and shown with
+ * no signal. 404 when there is none.
+ *
+ * `token` asks on behalf of a SAVED PROFILE rather than the active session — the account switcher
+ * calls this once, when an account is added, so thirty faces cost thirty requests in total.
+ */
+export function getMyAvatar(token?: string) {
+  return apiRequest<{ dataUrl: string } | { error: string }>(
+    '/api/attendance/me/avatar',
+    token ? { token } : {},
+  )
 }
 
 /** POST /api/attendance/me/reference-photo — set the caller's own face-audit reference selfie. Used by

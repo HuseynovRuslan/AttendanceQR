@@ -1067,6 +1067,10 @@ public class AdminController : ControllerBase
         var photoKeys = new List<string>();
         if (!string.IsNullOrWhiteSpace(employee.ReferencePhotoKey))
             photoKeys.Add(employee.ReferencePhotoKey);
+        // The profile picture they chose is under its own prefix, which the retention job also never
+        // touches — so like the reference selfie it would outlive the account unless named here.
+        if (!string.IsNullOrWhiteSpace(employee.AvatarPhotoKey))
+            photoKeys.Add(employee.AvatarPhotoKey);
         photoKeys.AddRange(await _db.AttendanceRecords
             .Where(a => a.EmployeeId == id && a.CheckInPhotoKey != null)
             .Select(a => a.CheckInPhotoKey!)

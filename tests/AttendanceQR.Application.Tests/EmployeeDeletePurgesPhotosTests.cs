@@ -46,6 +46,7 @@ public class EmployeeDeletePurgesPhotosTests
 
         public Task<string> UploadCheckInPhotoAsync(Guid e, Guid r, byte[] b, CancellationToken ct = default) => Task.FromResult("checkins/k.jpg");
         public Task<string> UploadReferencePhotoAsync(Guid e, byte[] b, CancellationToken ct = default) => Task.FromResult("reference/k.jpg");
+        public Task<string> UploadAvatarAsync(Guid e, byte[] b, CancellationToken ct = default) => Task.FromResult("avatars/k.jpg");
         public Task<string> UploadFieldWorkPhotoAsync(Guid t, Guid v, byte[] b, CancellationToken ct = default) => Task.FromResult("fieldwork/k.jpg");
         public Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default) => Task.FromResult($"https://r2/{key}");
         public Task<byte[]> GetBytesAsync(string key, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
@@ -154,6 +155,25 @@ public class EmployeeDeletePurgesPhotosTests
         await h.Controller.Delete(h.EmployeeId);
 
         Assert.Equal(new[] { $"reference/{h.EmployeeId}.jpg" }, h.Photos.Deleted);
+        Assert.False(await h.Db.Employees.AnyAsync(e => e.Id == h.EmployeeId));
+    }
+
+    [Fact]
+    public async Task The_profile_picture_they_chose_goes_too()
+    {
+        // A fourth home for a photograph of this person, added when employees started choosing their
+        // own profile picture. It is under avatars/, which — exactly like reference/ — the retention
+        // job never touches, so nothing else in the system would ever have removed it. The published
+        // promise says "referans (profil) şəkli"; a picture they chose of their own face is plainly
+        // covered by that, whatever the column is called.
+        using var h = new Harness();
+        var employee = await h.Db.Employees.FirstAsync(e => e.Id == h.EmployeeId);
+        employee.AvatarPhotoKey = $"avatars/{h.EmployeeId}.jpg";
+        await h.Db.SaveChangesAsync();
+
+        await h.Controller.Delete(h.EmployeeId);
+
+        Assert.Contains($"avatars/{h.EmployeeId}.jpg", h.Photos.Deleted);
         Assert.False(await h.Db.Employees.AnyAsync(e => e.Id == h.EmployeeId));
     }
 

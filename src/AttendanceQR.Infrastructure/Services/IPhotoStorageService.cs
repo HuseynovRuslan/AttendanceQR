@@ -17,6 +17,13 @@ public interface IPhotoStorageService
     Task<string> UploadReferencePhotoAsync(Guid employeeId, byte[] webpBytes, CancellationToken ct = default);
 
     /// <summary>
+    /// Uploads (or overwrites) the employee's chosen PROFİL ŞƏKLİ. Its own <c>avatars/</c> prefix, so
+    /// the retention job cannot prune it and the face-match worker never sees it — this is a picture
+    /// somebody picked, not a biometric baseline. Returns the object key.
+    /// </summary>
+    Task<string> UploadAvatarAsync(Guid employeeId, byte[] jpegBytes, CancellationToken ct = default);
+
+    /// <summary>
     /// Uploads a field visit's İŞ ŞƏKLİ — a photo of the WORK, not of a face. Filed under its own
     /// <c>fieldwork/</c> prefix so the retention job (which prunes selfies) and the face-match worker
     /// (which reads them) never touch it. Returns the object key.

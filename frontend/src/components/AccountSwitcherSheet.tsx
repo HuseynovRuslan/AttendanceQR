@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { appLogin, login } from '../api/auth'
-import { getMyProfile } from '../api/attendance'
+import { getMyAvatar, getMyProfile } from '../api/attendance'
 import { useAuth } from '../auth/AuthContext'
 import { isAppMode } from '../lib/host'
 import { decodeJwt } from '../lib/jwt'
-import { initials } from '../lib/att'
+import { putAvatar } from '../lib/avatar'
 import { listProfiles, MAX_PROFILES, saveProfile } from '../lib/profiles'
+import { Avatar } from './Avatar'
 import { PinInput } from './PinInput'
 import { IconCheck, IconUser, IconX } from './icons'
 
@@ -60,13 +61,12 @@ export function AccountSwitcherSheet({ onClose }: { onClose: () => void }) {
                     onClick={() => (active ? onClose() : switchProfile(p.employeeId))}
                     className="flex items-center gap-3 rounded-2xl p-3 text-left transition active:bg-slate-50"
                   >
-                    <span
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                        active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {initials(p.name)}
-                    </span>
+                    <Avatar
+                      employeeId={p.employeeId}
+                      name={p.name}
+                      size={44}
+                      className={active ? 'ring-2 ring-blue-600 ring-offset-2' : ''}
+                    />
                     <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">{p.name}</span>
                     {active && <IconCheck className="h-5 w-5 shrink-0 text-blue-600" />}
                   </button>
@@ -146,6 +146,18 @@ function AddAccountForm({ onAdded, onCancel }: { onAdded: (employeeId: string) =
       const { status: st, data: me } = await getMyProfile(token)
       const name = st === 200 && me && 'fullName' in me ? me.fullName : 'İşçi'
       saveProfile({ employeeId: sub, name, token, addedAtMs: Date.now() })
+
+      // Their face, fetched ONCE — here, while there is still a connection, and never again. Thirty
+      // accounts on a crew phone are thirty pairs of initials otherwise, and in these names they
+      // collide: Məmmədov Elçin and Məmmədov Elvin are both ME, and the wrong tap files the wrong
+      // person's day. Awaited rather than fired off, so the row that appears already has the face on
+      // it; a failure is not an error worth stopping for, since initials still work.
+      if (st === 200 && me && 'hasAvatar' in me && me.hasAvatar) {
+        const a = await getMyAvatar(token)
+        if (a.status === 200 && a.data && 'dataUrl' in a.data)
+          putAvatar(sub, a.data.dataUrl, me.avatarUpdatedAtUtc)
+      }
+
       onAdded(sub)
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')

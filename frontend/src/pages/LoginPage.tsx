@@ -5,8 +5,8 @@ import { isAppMode } from '../lib/host'
 import { useAuth } from '../auth/AuthContext'
 import { useBranding } from '../branding/BrandingContext'
 import { decodeJwt, roleHome } from '../lib/jwt'
-import { initials } from '../lib/att'
 import { listProfiles } from '../lib/profiles'
+import { Avatar } from '../components/Avatar'
 import { BrandLogo } from '../components/BrandLogo'
 import { PinInput } from '../components/PinInput'
 import { IconX } from '../components/icons'
@@ -106,15 +106,7 @@ export function LoginPage() {
                     background: 'none', border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
                   }}
                 >
-                  <span
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                      background: 'var(--c100)', color: 'var(--c700)', fontSize: 13, fontWeight: 700,
-                    }}
-                  >
-                    {initials(p.name)}
-                  </span>
+                  <Avatar employeeId={p.employeeId} name={p.name} size={36} />
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--c900)' }}>
                     {p.name}
                   </span>

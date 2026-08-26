@@ -148,6 +148,12 @@ public class AttendanceController : ControllerBase
                 canFieldCheckIn = e.CanFieldCheckIn,
                 // The app blocks on the consent screen until this is accepted.
                 consentRequired = e.ConsentAcceptedAtUtc == null,
+                // Whether there is a profile picture, and when it last changed — NOT a URL. Minting a
+                // presigned URL on every profile open is exactly what was taken out of the admin
+                // employee page (a0e1772); the client caches the image against this timestamp and
+                // asks for a URL only when it actually changed, which is roughly never.
+                hasAvatar = e.AvatarPhotoKey != null,
+                avatarUpdatedAtUtc = e.AvatarUpdatedAtUtc,
                 e.LocationId, e.ScheduleId,
                 e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
                 locationName = _db.Locations
@@ -223,6 +229,86 @@ public class AttendanceController : ControllerBase
         var ct = HttpContext.RequestAborted;
         employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(employee.Id, bytes, ct);
         employee.ReferencePhotoTakenAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
+    }
+
+    // ---- PROFİL ŞƏKLİ ------------------------------------------------------------------------------
+    // A picture the employee chose, not a face-audit baseline. Kept strictly apart from
+    // me/reference-photo above: this one is never compared to anything, never reaches the face-match
+    // worker, and lives under its own avatars/ prefix. See Employee.AvatarPhotoKey for why it exists.
+
+    // POST /api/attendance/me/avatar — set (or replace) my own profile picture.
+    [HttpPost("me/avatar")]
+    public async Task<IActionResult> SetMyAvatar([FromBody] ReferencePhotoRequest request)
+    {
+        var employeeId = User.EmployeeId();
+        var ct = HttpContext.RequestAborted;
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null)
+            return Unauthorized(new { error = "InvalidToken" });
+
+        // The client resizes to a small square before sending, so anything approaching the cap is a
+        // client that did not — refuse it rather than filling the bucket with camera originals.
+        var bytes = DecodeImage(request.PhotoBase64);
+        if (bytes.Length is <= 0 or > 1024 * 1024)
+            return BadRequest(new { error = "InvalidPhoto" });
+
+        employee.AvatarPhotoKey = await _photoStorage.UploadAvatarAsync(employee.Id, bytes, ct);
+        employee.AvatarUpdatedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { ok = true, avatarUpdatedAtUtc = employee.AvatarUpdatedAtUtc });
+    }
+
+    // GET /api/attendance/me/avatar — my own profile picture, as a data URL.
+    //
+    // The BYTES, not a presigned URL, and for two reasons. A presigned URL expires, so it cannot be
+    // kept — and the whole point of this call is that the client keeps the answer: a crew phone works
+    // where there is no signal, and a list of thirty faces that only renders online is a list of
+    // thirty question marks at the poster. Re-encoding a cross-origin image to store it is also not
+    // open to us; a canvas tainted by an R2 response cannot be read back.
+    //
+    // Asked for only when the cached copy is older than avatarUpdatedAtUtc, which is to say once per
+    // change. The account switcher asks once per account, at the moment the account is added, using
+    // that account's own token — thirty faces cost thirty requests in total, not thirty per open.
+    // The picture is already small: the client resizes to a 192px square before uploading.
+    [HttpGet("me/avatar")]
+    public async Task<IActionResult> MyAvatar()
+    {
+        var employeeId = User.EmployeeId();
+        var ct = HttpContext.RequestAborted;
+
+        var key = await _db.Employees
+            .Where(e => e.Id == employeeId)
+            .Select(e => e.AvatarPhotoKey)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(key))
+            return NotFound(new { error = "NoAvatar" });
+
+        var bytes = await _photoStorage.GetBytesAsync(key, ct);
+        return Ok(new { dataUrl = $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}" });
+    }
+
+    // DELETE /api/attendance/me/avatar — go back to initials.
+    //
+    // The row is cleared but the object is left in the bucket, where the NEXT upload overwrites it at
+    // the same key and employee deletion removes it by name. Deleting it here would mean a failed
+    // storage call could leave the employee with a broken picture they cannot clear; the wasted object
+    // is at most one small JPEG per person.
+    [HttpDelete("me/avatar")]
+    public async Task<IActionResult> DeleteMyAvatar()
+    {
+        var employeeId = User.EmployeeId();
+        var ct = HttpContext.RequestAborted;
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null)
+            return Unauthorized(new { error = "InvalidToken" });
+
+        employee.AvatarPhotoKey = null;
+        employee.AvatarUpdatedAtUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });
     }

@@ -27,6 +27,10 @@ export function PrivacyPage() {
             items={[
               ['📍 Yerləşdiyiniz yer', 'Yalnız skan etdiyiniz an — iş yerində olduğunuzu yoxlamaq üçün. Gün ərzində sizi izləmir, arxa fonda yer məlumatı yığmır.'],
               ['📸 Giriş şəkli', 'Skan anında çəkilən şəkil — girişin sizin tərəfinizdən edildiyini təsdiqləmək üçün.'],
+              // Listed separately from the check-in photo on purpose: this one is OPTIONAL, chosen by
+              // the employee, and compared to nothing. Saying so is the difference between a notice
+              // that describes the app and one that merely mentions photographs.
+              ['👤 Profil şəkli', 'Yalnız siz özünüz əlavə etsəniz — məcburi deyil. Heç nə ilə müqayisə olunmur, istənilən vaxt silə bilərsiniz.'],
               ['🕒 İş vaxtı', 'Giriş-çıxış saatları, davamiyyət, icazə və məzuniyyət qeydləri, tətbiqi son açma vaxtınız.'],
               ['💼 İş məlumatları', 'Ad, vəzifə, filial, telefon, əməkhaqqı.'],
               ['📱 Cihaz', 'Telefonunuzun brauzer identifikatoru — başqasının sizin yerinizə giriş etməsinin qarşısını almaq üçün.'],

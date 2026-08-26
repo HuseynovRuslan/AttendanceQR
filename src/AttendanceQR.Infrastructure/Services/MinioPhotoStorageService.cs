@@ -26,6 +26,15 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
     /// </summary>
     public const string WorkPhotoPrefix = "fieldwork/";
 
+    /// <summary>
+    /// The employee's own chosen profile picture. Separate from <see cref="ReferencePrefix"/> on
+    /// purpose: that one is a face-audit baseline the retention job must never prune and the
+    /// face-match worker reads; this one is a picture somebody picked, and nothing compares it to
+    /// anything. Keeping them apart is what stops a future lifecycle rule or audit listing from
+    /// treating the two as the same kind of object.
+    /// </summary>
+    public const string AvatarPrefix = "avatars/";
+
     // JPEG, not WebP: iOS Safari's canvas cannot encode WebP, so the client sends JPEG for
     // cross-platform capture. Older objects stored as .webp remain valid and viewable.
     private const string JpegContentType = "image/jpeg";
@@ -53,6 +62,15 @@ public sealed class MinioPhotoStorageService : IPhotoStorageService
     {
         var key = $"{ReferencePrefix}{employeeId}.jpg";
         await PutAsync(key, webpBytes, ct);
+        return key;
+    }
+
+    public async Task<string> UploadAvatarAsync(Guid employeeId, byte[] jpegBytes, CancellationToken ct = default)
+    {
+        // One object per employee, overwritten in place — an avatar has no history worth keeping and
+        // a Guid suffix would leave every picture they ever chose in the bucket for ever.
+        var key = $"{AvatarPrefix}{employeeId}.jpg";
+        await PutAsync(key, jpegBytes, ct);
         return key;
     }
 

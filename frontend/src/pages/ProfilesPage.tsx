@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { initials } from '../lib/att'
 import { clearProfiles, listProfiles, removeProfile } from '../lib/profiles'
+import { dropAvatar } from '../lib/avatar'
+import { Avatar } from '../components/Avatar'
 import { SubPageHeader } from '../components/SubPageHeader'
 import { IconCheck, IconLogout, IconX } from '../components/icons'
 
@@ -40,13 +41,12 @@ export function ProfilesPage() {
                   onClick={() => !active && switchProfile(p.employeeId)}
                   className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 >
-                  <span
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                      active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {initials(p.name)}
-                  </span>
+                  <Avatar
+                    employeeId={p.employeeId}
+                    name={p.name}
+                    size={44}
+                    className={active ? 'ring-2 ring-blue-600 ring-offset-2' : ''}
+                  />
                   <span className="min-w-0">
                     <span className="block truncate font-semibold text-slate-900">{p.name}</span>
                     <span className="block text-xs text-slate-400">
@@ -67,6 +67,10 @@ export function ProfilesPage() {
                       // No confirm dialog: nothing on the server is touched, and re-adding costs
                       // twenty seconds. A modal here would be ceremony over a cheap mistake.
                       removeProfile(p.employeeId)
+                      // Their face goes with their account. Leaving it behind would keep a picture of
+                      // somebody who is no longer on this phone, in storage nothing else will ever
+                      // come looking through.
+                      dropAvatar(p.employeeId)
                       setProfiles(listProfiles())
                     }}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-300 transition active:bg-slate-100"

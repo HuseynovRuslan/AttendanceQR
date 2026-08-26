@@ -178,4 +178,24 @@ public class Employee : ITenantScoped, IHasWorkCycle
     public string? ReferencePhotoKey { get; set; }
 
     public DateTime? ReferencePhotoTakenAtUtc { get; set; }
+
+    /// <summary>
+    /// PROFİL ŞƏKLİ — a picture the employee chose for themselves, shown on their own profile and in
+    /// the account switcher on a shared handset.
+    ///
+    /// Deliberately NOT <see cref="ReferencePhotoKey"/>, and the distinction is the whole point. That
+    /// one is a face-audit baseline: it is captured for comparison, it is fed to Rekognition, and it
+    /// is only ever shown where there is a reason to inspect a face. This one is chosen, it is never
+    /// compared to anything, it never reaches the face-match worker, and it exists for one reason —
+    /// a crew phone holding thirty accounts shows thirty pairs of initials, and "Məmmədov Elçin" and
+    /// "Məmmədov Elvin" are both ME. Tapping the wrong row files the wrong person's attendance.
+    ///
+    /// Own prefix (<c>avatars/</c>) so the retention job, which prunes check-in selfies, cannot reach
+    /// it and the face-match worker never lists it. Null means show initials.
+    /// </summary>
+    public string? AvatarPhotoKey { get; set; }
+
+    /// <summary>When the avatar was last set. The client caches the image against this, so it fetches
+    /// a presigned URL once per change rather than on every profile open.</summary>
+    public DateTime? AvatarUpdatedAtUtc { get; set; }
 }
