@@ -28,6 +28,36 @@ const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
 
 const BAKU: [number, number] = [40.4093, 49.8671]
 
+/** Metres between two points. Same haversine the geofence uses; kept local so the map has no server. */
+function metresBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371000, rad = (d: number) => (d * Math.PI) / 180
+  const dLat = rad(bLat - aLat), dLng = rad(bLng - aLng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Where this is, said in the company's own words.
+ *
+ * A self-reported visit has no target, so the map showed a bare dot and the basemap's own labels —
+ * "Sabunçu", a road name — which told the director nothing he could act on. He does not hold the city
+ * in his head as street names; he holds it as HIS OBJECTS. So the point is measured against the
+ * company's own branches and reported as "1.2 km from Qala Anbar", which is an answer he can use.
+ *
+ * No geocoding service is called. The company's own sites are already on this page, the arithmetic is
+ * four lines, and a street address would have been a worse answer anyway.
+ */
+function nearestSite(sites: AdminLocation[], lat: number, lng: number) {
+  let best: { name: string; metres: number; inside: boolean } | null = null
+  for (const site of sites) {
+    if (!Number.isFinite(site.latitude) || !Number.isFinite(site.longitude)) continue
+    const metres = metresBetween(lat, lng, site.latitude, site.longitude)
+    if (!best || metres < best.metres)
+      best = { name: site.name, metres, inside: metres <= site.radiusMeters }
+  }
+  return best
+}
+
 /** Mirrors the server cap. The server is the real rule (it trims silently); this is a courtesy. */
 const MAX_CHECKLIST = 10
 /** The words these crews actually use. A hardcoded starter set, NOT a catalogue — no table, no page:
@@ -552,6 +582,7 @@ export function FieldVisitsAdminPage() {
       {detail && (
         <DetailOverlay
           v={detail}
+          sites={sites}
           checklist={detailChecklist}
           workPhoto={detailWorkPhoto}
           onOpenPhoto={setLightbox}
@@ -668,7 +699,8 @@ function StatCard({ variant, label, value, sub, active, onClick }: {
   )
 }
 
-function DetailOverlay({ v, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onForceCheckout, stuck }: {
+function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onForceCheckout, stuck }: {
+  sites: AdminLocation[]
   v: BoardFieldVisit
   checklist: ChecklistItem[] | null
   workPhoto: { url: string | null } | null
@@ -716,6 +748,39 @@ function DetailOverlay({ v, checklist, workPhoto, onOpenPhoto, onClose, onCancel
         ) : v.checkInAtUtc ? (
           <div className="fb fb-info" style={{ marginBottom: 12 }}>Hədəf təyin edilməyib — məsafə yoxlanmayıb.</div>
         ) : null}
+
+        {/* "Which area is this?" — the director's question, answered against his own objects rather
+            than against a basemap he does not read that way. */}
+        {v.checkInLatitude != null && v.checkInLongitude != null && (() => {
+          const near = nearestSite(sites, v.checkInLatitude, v.checkInLongitude)
+          const maps = `https://www.google.com/maps?q=${v.checkInLatitude},${v.checkInLongitude}`
+          return (
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                border: '1px solid var(--c100)', borderRadius: 10, padding: '8px 12px', marginBottom: 12,
+              }}
+            >
+              <span style={{ fontSize: 13 }}>
+                {near
+                  ? near.inside
+                    ? <><b>{near.name}</b> ərazisindədir</>
+                    : <>Ən yaxın obyektimiz: <b>{near.name}</b> — {fmtDist(near.metres)}</>
+                  : <span className="muted">Müqayisə üçün obyekt yoxdur</span>}
+              </span>
+              <a
+                className="btn btn-sm"
+                href={maps}
+                target="_blank"
+                rel="noreferrer"
+                style={{ marginLeft: 'auto' }}
+                title="Nöqtəni Google Xəritədə aç — küçə adı və peyk görüntüsü ilə"
+              >
+                Xəritədə aç
+              </a>
+            </div>
+          )
+        })()}
 
         {/* Timeline */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, marginBottom: 12 }}>
