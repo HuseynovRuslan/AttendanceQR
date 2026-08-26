@@ -16,6 +16,7 @@ import { ForgotPinPage } from './pages/ForgotPinPage'
 import { ScanPage } from './pages/ScanPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { ProfilesPage } from './pages/ProfilesPage'
 import { DeviceChangeRequestPage } from './pages/DeviceChangeRequestPage'
 import { EmployeeLayout } from './pages/EmployeeLayout'
 import { SetPinPage } from './pages/SetPinPage'
@@ -252,6 +253,16 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      {/* Several accounts on one handset — the crew phone. Not lazy-loaded: it sits one tap from the
+          scanner on a device that is used where there is no signal to fetch a chunk with. */}
+      <Route
+        path="/profiles"
+        element={
+          <ProtectedRoute>
+            <ProfilesPage />
           </ProtectedRoute>
         }
       />

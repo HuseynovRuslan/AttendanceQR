@@ -5,6 +5,8 @@ import { isAppMode } from '../lib/host'
 import { useAuth } from '../auth/AuthContext'
 import { useBranding } from '../branding/BrandingContext'
 import { decodeJwt, roleHome } from '../lib/jwt'
+import { initials } from '../lib/att'
+import { listProfiles } from '../lib/profiles'
 import { BrandLogo } from '../components/BrandLogo'
 import { PinInput } from '../components/PinInput'
 import { IconX } from '../components/icons'
@@ -18,7 +20,12 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const { saveToken } = useAuth()
+  const { saveToken, switchProfile } = useAuth()
+  // Accounts already on this device. On a personal phone this is empty (logout removes the profile it
+  // ended) — on a crew phone it is the way back in without knowing anybody's PIN, which matters most
+  // exactly here: the holder lands on this screen when a token is retired mid-shift, and the PINs are
+  // the one thing they do not have.
+  const saved = listProfiles()
   const branding = useBranding()
   const navigate = useNavigate()
 
@@ -82,6 +89,40 @@ export function LoginPage() {
           )}
           <div style={{ fontSize: 13, color: 'var(--c400)', marginTop: 2 }}>Davamiyyət sistemi</div>
         </div>
+
+        {saved.length > 0 && (
+          <div style={{ background: '#fff', borderRadius: 20, padding: 16, marginBottom: 14 }}>
+            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--c900)' }}>
+              Bu telefondakı hesablar
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {saved.map((p) => (
+                <button
+                  key={p.employeeId}
+                  type="button"
+                  onClick={() => switchProfile(p.employeeId)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 6px',
+                    background: 'none', border: 'none', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                      background: 'var(--c100)', color: 'var(--c700)', fontSize: 13, fontWeight: 700,
+                    }}
+                  >
+                    {initials(p.name)}
+                  </span>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--c900)' }}>
+                    {p.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <form onSubmit={onSubmit} style={{ background: '#fff', borderRadius: 20, padding: 28 }}>
           <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 18, color: 'var(--c900)' }}>
