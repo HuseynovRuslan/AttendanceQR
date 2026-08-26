@@ -15,6 +15,15 @@ public record InviteRequest(
     DateOnly? BirthDate = null,
     // Fixed monthly salary in AZN for the payroll report; null = not set.
     decimal? MonthlySalary = null,
+    /// <summary>
+    /// True to activate the account immediately with a temporary PIN, instead of handing back an
+    /// activation link. Both paths already existed — bulk-import makes PIN accounts and bulk-invite
+    /// makes links — but adding ONE person could only ever produce a link, which is the wrong half
+    /// for the people this is used on: a link has to reach a phone that can open it, and the workers
+    /// being added one at a time are the ones whose number was mistyped, who arrived mid-week, or who
+    /// never got the first message. A PIN is read out loud.
+    /// </summary>
+    bool ActivateWithPin = false,
     // Optional per-employee work hours ("HH:mm") at creation — lets a schedule (day/night) be assigned
     // right away instead of only after activation. Empty/null → falls back to the location's shift.
     string? WorkStart = null,

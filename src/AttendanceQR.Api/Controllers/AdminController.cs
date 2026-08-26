@@ -193,9 +193,22 @@ public class AdminController : ControllerBase
             return BadRequest(new { error = "LocationNotFound" });
 
         var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
-        var (employee, token, error) = BuildInvite(
-            request.FullName, request.Email, request.PhoneNumber, request.FatherName, request.Position,
-            request.BirthYear, request.BirthDate, request.LocationId, request.Role, takenEmails, takenPhones);
+
+        // Two ways to hand somebody their first credential, and the caller picks. The builders are the
+        // ones the bulk paths use, so the validation cannot drift between adding one person and adding
+        // forty.
+        string? token = null;
+        string? tempPin = null;
+        Employee? employee;
+        string? error;
+        if (request.ActivateWithPin)
+            (employee, tempPin, error) = BuildActivatedWithTempPin(
+                request.FullName, request.Email, request.PhoneNumber, request.FatherName, request.Position,
+                request.BirthYear, request.BirthDate, request.LocationId, request.Role, takenEmails, takenPhones);
+        else
+            (employee, token, error) = BuildInvite(
+                request.FullName, request.Email, request.PhoneNumber, request.FatherName, request.Position,
+                request.BirthYear, request.BirthDate, request.LocationId, request.Role, takenEmails, takenPhones);
 
         if (error is not null)
             return error is "EmailAlreadyExists" or "PhoneAlreadyExists"
@@ -217,13 +230,15 @@ public class AdminController : ControllerBase
         await RegisterPositionsAsync();
         await _db.SaveChangesAsync();
 
-        // No email/SMS channel yet — return the PLAINTEXT token so it can be shared by hand.
-        // (Base64Url is URL-safe, so it needs no additional encoding in the link.)
+        // No email/SMS channel yet — the credential comes back in plaintext to be passed on by hand,
+        // whichever kind it is. The PIN is shown once and never readable again; the token is
+        // Base64Url, so the link needs no further encoding.
         return Ok(new
         {
             employeeId = employee!.Id,
+            tempPin,
             activationToken = token,
-            activationUrl = $"/activate?token={token}"
+            activationUrl = token is null ? null : $"/activate?token={token}"
         });
     }
 

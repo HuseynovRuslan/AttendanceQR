@@ -317,6 +317,7 @@ export function EmployeesPage() {
       workCycleDays: form.cycle.days,
       workCycleOnDays: form.cycle.days ? form.cycle.onDays : null,
       workCycleAnchor: form.cycle.days ? form.cycle.anchor || null : null,
+      activateWithPin,
     }
     const res = editingId
       ? await updateEmployee(editingId, {
@@ -543,21 +544,18 @@ export function EmployeesPage() {
     }
   }
 
-  const activationLink = link ? `${window.location.origin}/activate?token=${link.result.activationToken}` : ''
+  const activationLink = link?.result.activationToken
+    ? `${window.location.origin}/activate?token=${link.result.activationToken}`
+    : ''
 
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(activationLink)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      window.prompt('Qeydiyyat linki (kopyalayın):', activationLink)
-    }
-  }
 
   // The reissued list, held on screen until it is dismissed on purpose. Deliberately NOT cleared by
   // a refresh of the roster underneath it: losing this list to an accidental reload is the whole
   // reason this exists.
+  // How the new person gets their first credential: a link to tap, or four digits to be told. Both
+  // existed for bulk already; adding one person could only ever produce a link.
+  const [activateWithPin, setActivateWithPin] = useState(true)
+
   const [pinList, setPinList] = useState<BulkPinResult | null>(null)
   const [issuing, setIssuing] = useState(false)
   const [pinCopied, setPinCopied] = useState(false)
@@ -796,12 +794,39 @@ export function EmployeesPage() {
           <div className="fb fb-ok" style={{ marginBottom: 12 }}>
             <IconCheck />
             <span>
-              <b>{link.name}</b> üçün qeydiyyat linki. İşçiyə göndərin (email/SMS yoxdur — əl ilə paylaşın):
+              {link.result.tempPin ? (
+                <><b>{link.name}</b> əlavə edildi. Müvəqqəti PIN — işçiyə deyin, ilk girişdə özü dəyişəcək:</>
+              ) : (
+                <><b>{link.name}</b> üçün qeydiyyat linki. İşçiyə göndərin (email/SMS yoxdur — əl ilə paylaşın):</>
+              )}
             </span>
           </div>
-          <div className="link-box">{activationLink}</div>
+
+          {link.result.tempPin ? (
+            <div className="link-box" style={{ fontSize: 28, fontWeight: 800, letterSpacing: 6, textAlign: 'center' }}>
+              {link.result.tempPin}
+            </div>
+          ) : (
+            <div className="link-box">{activationLink}</div>
+          )}
+
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            {link.result.tempPin
+              ? 'PIN yalnız indi görünür — saxlanmır, sonra yalnız sıfırlamaq olar.'
+              : 'Link bir dəfəlikdir; işçi onu açıb öz PIN-ini təyin edir.'}
+          </div>
+
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button className="btn btn-primary btn-sm" onClick={copyLink}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                const text = link.result.tempPin ?? activationLink
+                void navigator.clipboard?.writeText(text).then(() => {
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1500)
+                }).catch(() => window.prompt('Kopyalayın:', text))
+              }}
+            >
               {copied ? 'Kopyalandı ✓' : 'Kopyala'}
             </button>
             <button className="btn btn-sm" onClick={() => setLink(null)}>
@@ -1118,10 +1143,45 @@ export function EmployeesPage() {
             )}
           </div>
 
+          {/* How this person gets in the first time. Only on create — an existing employee already
+              has a credential, and replacing it is "PIN sıfırla" on their row. The PIN is the default
+              because it is what works for the people added one at a time: a link has to reach a phone
+              that can open it, and four digits can be read out loud across a yard. */}
+          {!editingId && (
+            <div style={{ marginBottom: 14 }}>
+              <label className="form-label">İlk giriş necə verilsin?</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm${activateWithPin ? ' btn-primary' : ''}`}
+                  onClick={() => setActivateWithPin(true)}
+                >
+                  Müvəqqəti PIN
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm${activateWithPin ? '' : ' btn-primary'}`}
+                  onClick={() => setActivateWithPin(false)}
+                >
+                  Qeydiyyat linki
+                </button>
+              </div>
+              <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+                {activateWithPin
+                  ? 'Hesab dərhal açılır, 4 rəqəmli PIN bir dəfə göstərilir — işçiyə deyirsiniz, o da ilk girişdə özününkünü təyin edir.'
+                  : 'İşçiyə link göndərilir; linki açıb öz PIN-ini özü təyin edir.'}
+              </p>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="btn btn-primary" disabled={saving || !form.locationId}>
               <IconCheck />
-              {saving ? 'Yadda saxlanır…' : editingId ? 'Yadda saxla' : 'Əlavə et və link yarat'}
+              {saving
+                ? 'Yadda saxlanır…'
+                : editingId
+                  ? 'Yadda saxla'
+                  : activateWithPin ? 'Əlavə et və PIN ver' : 'Əlavə et və link yarat'}
             </button>
             <button type="button" className="btn" onClick={closeForm} disabled={saving}>
               Ləğv et

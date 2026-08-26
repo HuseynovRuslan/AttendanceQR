@@ -435,8 +435,11 @@ export async function downloadReportExcel(from: string, to: string, locationId?:
 
 export interface InviteResult {
   employeeId: string
-  activationToken: string
-  activationUrl: string
+  /** Set when the account was activated with a temporary PIN. Shown once, never readable again. */
+  tempPin: string | null
+  /** Set when an activation link was issued instead. */
+  activationToken: string | null
+  activationUrl: string | null
 }
 
 export interface InvitePayload {
