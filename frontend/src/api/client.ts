@@ -92,17 +92,29 @@ interface RequestOptions {
    * so a wedged connection sends the tap to the offline queue instead of a spinner that never ends.
    */
   timeoutMs?: number
+  /**
+   * Speak as SOMEBODY ELSE on this device, using their saved profile's JWT instead of the active
+   * session's. Set by exactly one caller: the offline drain, which has to replay each queued scan
+   * under the account that made it. A crew phone can come back from a day with no signal holding
+   * thirty people's taps, and draining only the profile that happens to be active would leave the
+   * other twenty-nine queued until somebody switched to each of them in turn.
+   *
+   * A 401 on such a request is that PROFILE's problem — its PIN was changed, its token retired — and
+   * must never end the session of the person actually holding the phone, so the bounce below is
+   * suppressed whenever this is set.
+   */
+  token?: string
 }
 
 export async function apiRequest<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { method = 'GET', body, auth = true, timeoutMs } = options
+  const { method = 'GET', body, auth = true, timeoutMs, token: asToken } = options
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (auth) {
-    const token = getToken()
+    const token = asToken ?? getToken()
     if (token) headers.Authorization = `Bearer ${token}`
   }
 
@@ -116,8 +128,9 @@ export async function apiRequest<T = unknown>(
       : undefined,
   })
 
-  // Only bounce to login for authenticated calls — a 401 from login itself means bad credentials.
-  if (res.status === 401 && auth) {
+  // Only bounce to login for authenticated calls — a 401 from login itself means bad credentials —
+  // and never for a call deliberately made as another saved profile (see RequestOptions.token).
+  if (res.status === 401 && auth && asToken === undefined) {
     clearToken()
     onUnauthorized?.()
   }

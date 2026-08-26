@@ -45,10 +45,17 @@ export function getMyToday() {
  * instead of vanishing. */
 /** `scanAtUtc` is WHEN the scan was taken, for an offline report sent later — the audit row's own
  *  timestamp is the moment of reporting, so without it an admin cannot tell which day was lost. */
-export function reportScanFailure(reason: string, accuracyMeters?: number, scanAtUtc?: string) {
+export function reportScanFailure(
+  reason: string,
+  accuracyMeters?: number,
+  scanAtUtc?: string,
+  /** Send as a saved profile rather than the active session — see RequestOptions.token. */
+  token?: string,
+) {
   return apiRequest<void>('/api/attendance/scan-failure', {
     method: 'POST',
     body: { reason, accuracyMeters: accuracyMeters ?? null, scanAtUtc: scanAtUtc ?? null },
+    ...(token ? { token } : {}),
   })
 }
 
@@ -105,8 +112,12 @@ export function acceptConsent() {
 }
 
 /** GET /api/attendance/me/profile — the caller's own name/location for the home greeting + menu. */
-export function getMyProfile() {
-  return apiRequest<MyProfile>('/api/attendance/me/profile')
+export function getMyProfile(
+  /** Ask about a SAVED PROFILE rather than the active session — used when adding one, whose name is
+   *  not in the JWT. Omitted everywhere else. See RequestOptions.token. */
+  token?: string,
+) {
+  return apiRequest<MyProfile>('/api/attendance/me/profile', token ? { token } : {})
 }
 
 /** POST /api/attendance/me/reference-photo — set the caller's own face-audit reference selfie. Used by

@@ -3,19 +3,45 @@
 // server de-duplicates replays — a scan is never double-recorded even if this runs twice.
 //
 // Two rules this file exists to keep:
-//   • Only replay the SIGNED-IN employee's own scans. The queue lives on the device; a shared site
-//     phone would otherwise send A's scan under B's session.
+//   • Every scan is replayed AS THE PERSON WHO MADE IT, never as whoever is signed in. The queue
+//     lives on the device, so on a crew phone — where thirty workers take turns at one handset — the
+//     naive drain files A's scan, and A's selfie, under B. Each item carries its owner and each is
+//     sent with that owner's own saved token.
 //   • A queued scan never disappears in silence. If it cannot be replayed honestly, the employee is
 //     told and the admin sees it on the Problems screen — because the person tapped the button, saw
 //     a green card, and would otherwise just be marked absent.
 import { apiRequest, getToken } from '../api/client'
 import { decodeJwt } from './jwt'
+import { listProfiles } from './profiles'
 import { reportFailure } from './scanFailures'
 import { addReject } from './offlineRejects'
 import { allScans, removeScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
 import { flushFailures } from './scanFailures'
 
 let syncing = false
+
+/** One account this device can speak for, and the token to speak with. */
+interface Identity {
+  employeeId: string | null
+  /**
+   * Undefined for the ACTIVE session — it goes through the ordinary path, so a 401 there correctly
+   * ends the session of the person holding the phone. A saved profile carries its own token instead,
+   * and its 401 is contained to that profile.
+   */
+  token?: string
+}
+
+/**
+ * Everyone whose queued scans this device may send: the signed-in employee first, then every other
+ * saved profile. Order matters only in that the holder's own scans go first, which is the queue most
+ * likely to be watched.
+ */
+function identities(activeToken: string): Identity[] {
+  const me = decodeJwt(activeToken)?.sub ?? null
+  const out: Identity[] = [{ employeeId: me }]
+  for (const p of listProfiles()) if (p.employeeId !== me) out.push({ employeeId: p.employeeId, token: p.token })
+  return out
+}
 
 function toBody(item: QueuedScan) {
   return {
@@ -46,71 +72,99 @@ function errorCode(data: unknown): string | undefined {
     : undefined
 }
 
-/** Replays every queued scan for the signed-in employee. Safe to call repeatedly; re-entrant is a no-op. */
+/**
+ * Replays every queued scan this device can still speak for — the signed-in employee's, and every
+ * saved profile's. Safe to call repeatedly; re-entrant is a no-op.
+ */
 export async function syncOfflineScans(): Promise<void> {
   if (syncing) return
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return
-  // Only sync while signed in — otherwise the replay would 401 and bounce a logged-out user to /login.
+  // A signed-in session is still the precondition: with nobody signed in there is no active account
+  // to bound the pass, and replaying saved profiles from a logged-out phone would be a background
+  // job nobody asked for.
   const token = getToken()
   if (!token) return
-  const me = decodeJwt(token)?.sub ?? null
 
   syncing = true
   try {
-    // Age out EVERY stale item first, including one belonging to somebody else: a foreign item is
-    // skipped by the owner filter below and would otherwise sit on this phone for ever, carrying a
-    // few hundred kB of selfie. It is dropped locally and NOT reported — the audit row would be
-    // attributed to whoever is signed in now, which is the very misattribution this change fixed.
+    const who = identities(token)
+    const known = new Set(who.map((i) => i.employeeId))
+
+    // Age out every stale item belonging to somebody this device can NO LONGER speak for — a profile
+    // that was removed, or a scan left behind by a previous holder of the phone. Such an item is
+    // skipped by every drain below and would otherwise sit here for ever carrying a few hundred kB of
+    // selfie. Dropped locally and NOT reported: the report would be attributed to whoever is signed
+    // in now, which is the very misattribution this file exists to prevent.
     const now = Date.now()
     for (const item of await allScans()) {
-      if (isTooOldToReplay(item, now) && item.employeeId !== undefined && item.employeeId !== me)
+      if (isTooOldToReplay(item, now) && item.employeeId !== undefined && !known.has(item.employeeId))
         await removeScan(item.clientScanId)
     }
 
-    const items = await scansFor(me)
-    for (const item of items) {
-      // Too old to replay honestly: past the server's 18-hour trust window it stops using the phone's
-      // clock and stamps SERVER time, so this would not be recorded late — it would be recorded on
-      // the wrong DAY, and if they have already checked in today it would be read as their check-out
-      // and close a live shift. Drop it, but loudly: the employee sees a banner and the admin gets a
-      // Problems row, which is what makes a manual correction possible.
-      if (isTooOldToReplay(item, Date.now())) {
-        // Dropped FIRST: if the report threw, "reported but still queued" would report it again on
-        // every drain, and the throw would escape and abandon the remaining items.
-        await removeScan(item.clientScanId)
-        reportFailure('OfflineExpired', undefined, item.clientTimestampUtc)
-        addReject({ kind: 'OfflineExpired', scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
-        continue
-      }
-
-      try {
-        const { status, data } = await apiRequest('/api/attendance/scan', { method: 'POST', body: toBody(item) })
-        // 401 → the session needs attention (apiRequest already bounced to login); keep the queue and
-        // stop, so nothing is lost. 5xx → transient server issue; keep it and stop too.
-        //
-        // 403 as well, and it is the interesting one: an account still on a temporary PIN is refused
-        // everything but the "set your PIN" endpoint, so a scan queued before the reset would be
-        // thrown away for a condition that clears the moment they pick a PIN. Every 403 the scan can
-        // draw is a state of the ACCOUNT, not of the scan, so none of them is a reason to drop it.
-        if (status === 401 || status === 403 || status >= 500) break
-
-        // A definitive 4xx (OutsideRadius, AlreadyCompleted, …) can never succeed on a retry, so the
-        // item goes — but it is NOT a silent drop. The employee was shown a green "saved" card when
-        // they tapped; without this they are simply absent that day and nobody knows why.
-        const code = errorCode(data)
-        await removeScan(item.clientScanId)
-        if (status >= 400 && !ALREADY_RECORDED.has(code ?? '')) {
-          reportFailure('OfflineRejected', undefined, item.clientTimestampUtc)
-          addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
-        }
-      } catch {
-        // Network dropped mid-drain — stop; the rest stays queued for the next attempt.
-        break
-      }
-    }
+    for (const identity of who) if (!(await drainFor(identity))) break
   } finally {
     syncing = false
   }
+}
+
+/**
+ * Replays one account's queued scans. Returns false when the drain should stop entirely — the network
+ * dropped or the server is unwell, so trying the next account would only burn battery on a phone that
+ * has just come back from a day in a pocket.
+ *
+ * A 401 or 403 returns TRUE: those are states of one ACCOUNT (its PIN was reset, it is still on a
+ * temporary PIN), and the other twenty-nine people on a crew phone have nothing to do with it.
+ */
+async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
+  const as = token ? { token } : {}
+  // Which account a failure report should be filed under. Undefined for the active session — the
+  // report then goes the ordinary way, as the signed-in employee — and the profile's own id when we
+  // are draining somebody else's queue, so scanFailures can send it with THEIR token.
+  const reportAs = token ? me ?? undefined : undefined
+
+  for (const item of await scansFor(me)) {
+    // Too old to replay honestly: past the server's 18-hour trust window it stops using the phone's
+    // clock and stamps SERVER time, so this would not be recorded late — it would be recorded on the
+    // wrong DAY, and if they have already checked in today it would be read as their check-out and
+    // close a live shift. Drop it, but loudly: the employee sees a banner and the admin gets a
+    // Problems row, which is what makes a manual correction possible.
+    if (isTooOldToReplay(item, Date.now())) {
+      // Dropped FIRST: if the report threw, "reported but still queued" would report it again on
+      // every drain, and the throw would escape and abandon the remaining items.
+      await removeScan(item.clientScanId)
+      reportFailure('OfflineExpired', undefined, item.clientTimestampUtc, reportAs)
+      addReject({ kind: 'OfflineExpired', scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
+      continue
+    }
+
+    try {
+      const { status, data } = await apiRequest('/api/attendance/scan', { method: 'POST', body: toBody(item), ...as })
+
+      // The server is unwell — a deploy window, an overloaded gateway. Stop the whole pass; nothing
+      // is dropped and the heartbeat tries again shortly.
+      if (status >= 500) return false
+
+      // 401 and 403 are states of one ACCOUNT, not of the scan and not of the server: its PIN was
+      // reset, or it is still on a temporary PIN and refused everything but the "set your PIN"
+      // endpoint. Its queue keeps — a scan must never be thrown away for a condition that clears the
+      // moment somebody picks a PIN — and the other accounts on this phone still get their turn.
+      if (status === 401 || status === 403) return true
+
+      // A definitive 4xx (OutsideRadius, AlreadyCompleted, …) can never succeed on a retry, so the
+      // item goes — but it is NOT a silent drop. The employee was shown a green "saved" card when
+      // they tapped; without this they are simply absent that day and nobody knows why.
+      const code = errorCode(data)
+      await removeScan(item.clientScanId)
+      if (status >= 400 && !ALREADY_RECORDED.has(code ?? '')) {
+        reportFailure('OfflineRejected', undefined, item.clientTimestampUtc, reportAs)
+        addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
+      }
+    } catch {
+      // Network dropped mid-drain — stop everything; the rest stays queued for the next attempt.
+      return false
+    }
+  }
+  return true
 }
 
 /** Wire the app so the queue drains on load and whenever the connection returns. Idempotent. */

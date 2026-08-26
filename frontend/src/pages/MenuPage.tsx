@@ -8,7 +8,7 @@ import { useFeatureEnabled } from '../branding/BrandingContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
-import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconSend, IconShield, IconUser } from '../components/icons'
+import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconSend, IconShield, IconUser, IconUsers } from '../components/icons'
 
 // Keep in step with versionName in frontend/android/app/build.gradle — a tester who sees one number
 // in the Play listing and another at the bottom of the menu has no way to tell which build they are
@@ -16,7 +16,7 @@ import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, Ico
 const APP_VERSION = '1.0'
 
 export function MenuPage() {
-  const { logout, email, role } = useAuth()
+  const { logout, email, role, profiles } = useAuth()
   const assistantOn = useFeatureEnabled('assistant')
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
@@ -64,6 +64,18 @@ export function MenuPage() {
           <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
+        {/* Several accounts on one handset. Called HESAB, not "profil": this bottom-tab section is
+            itself named Profil and already holds "Profil məlumatları / PIN", so a third row with the
+            same word would have read as another way into the same screen. The word here has to mean
+            somebody ELSE's login.
+
+            The count is in the label because the one question the holder of a crew phone has on the
+            way to the poster is whether the person in front of them is on this device at all. */}
+        <MenuRow
+          to="/profiles"
+          Icon={IconUsers}
+          label={profiles.length > 1 ? `Hesab dəyiş (${profiles.length})` : 'Bu telefona hesab əlavə et'}
+        />
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
@@ -84,7 +96,7 @@ export function MenuPage() {
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50">
           <IconLogout className="h-5 w-5" />
         </span>
-        Hesabdan çıxış
+        {profiles.length > 1 && profile?.fullName ? `Çıxış — ${profile.fullName}` : 'Hesabdan çıxış'}
       </button>
 
       {/* "AttendanceQR" was the repository's name, never the product's. It is QRLog on the poster, the
