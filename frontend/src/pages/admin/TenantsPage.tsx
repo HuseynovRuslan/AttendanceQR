@@ -365,7 +365,7 @@ export function TenantsTab() {
   const [copied, setCopied] = useState(false)
   const [features, setFeatures] = useState<SuperFeature[]>([])
   const [planEdit, setPlanEdit] = useState<SuperTenant | null>(null)
-  const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', priceOverride: '', disabled: [] as string[] })
+  const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', priceOverride: '', trialEnds: '', disabled: [] as string[] })
   const [savingPlan, setSavingPlan] = useState(false)
   // Naming the customer's admin — the handover, which now happens after the company is built rather
   // than in the first field of the creation form.
@@ -402,6 +402,8 @@ export function TenantsTab() {
       maxEmployees: t.maxEmployees != null ? String(t.maxEmployees) : '',
       maxLocations: t.maxLocations != null ? String(t.maxLocations) : '',
       priceOverride: t.monthlyPriceOverride != null ? String(t.monthlyPriceOverride) : '',
+      // Seeded from the tenant so saving the form cannot quietly clear a demo — see TenantPlanInput.
+      trialEnds: t.trialEndsAtUtc ? t.trialEndsAtUtc.slice(0, 10) : '',
       disabled: [...t.disabledFeatures],
     })
   }
@@ -430,6 +432,7 @@ export function TenantsTab() {
       maxEmployees: planForm.maxEmployees ? Number(planForm.maxEmployees) : null,
       maxLocations: planForm.maxLocations ? Number(planForm.maxLocations) : null,
       monthlyPriceOverride: override,
+      trialEndsAtUtc: planForm.trialEnds || null,
       disabledFeatures: planForm.disabled,
     })
     setSavingPlan(false)
@@ -963,6 +966,21 @@ export function TenantsTab() {
               </div>
             </div>
           </div>
+          <div style={{ marginTop: 10 }}>
+            <label className="form-label">Demo bitmə tarixi</label>
+            <input
+              type="date"
+              className="inp"
+              style={{ maxWidth: 220 }}
+              value={planForm.trialEnds}
+              onChange={(e) => setPlanForm((f) => ({ ...f, trialEnds: e.target.value }))}
+            />
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Bu tarixə qədər müştəri «Demo versiya» görür və heç nə hesablanmır. Boş = adi abunəlik.
+              Tarix keçəndə <b>heç nə söndürülmür</b> — sadəcə ekranda demo bitdiyi yazılır.
+            </div>
+          </div>
+
           <div style={{ marginTop: 10 }}>
             <label className="form-label">Funksiyalar (işarəli = aktiv)</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 6 }}>

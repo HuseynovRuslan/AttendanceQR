@@ -80,6 +80,52 @@ export interface AttendanceReport {
   totals: ReportTotals
 }
 
+// --- subscription (Abunəlik) -------------------------------------------------------------------
+// Read-only, self-scoped. Plan, price and collection stay with the platform operator; this is what the
+// paying company can SEE about its own subscription.
+
+export interface MyBillingInvoice {
+  year: number
+  /** 1–12. */
+  month: number
+  amount: number
+  employeeCount: number
+  isPaid: boolean
+  paidAtUtc: string | null
+  note: string | null
+}
+
+export interface MyBilling {
+  /** The package set on the company, when one was set. */
+  plan: string | null
+  /** Which published package this head-count falls in — shown when no plan was set explicitly. */
+  packageByHeadcount: string
+  onTrial: boolean
+  trialEndsAtUtc: string | null
+  trialDaysLeft: number
+  trialEnded: boolean
+  employees: number
+  locations: number
+  maxEmployees: number | null
+  maxLocations: number | null
+  monthly: {
+    amount: number
+    /** True when a negotiated flat price replaces the published formula. */
+    isNegotiated: boolean
+    formulaAmount: number
+    ratePerEmployee: number
+    employeeTotal: number
+    locationFee: number
+    locationTotal: number
+  }
+  invoices: MyBillingInvoice[]
+}
+
+/** GET /api/tenant/billing — this company's own subscription. Admin only. */
+export function getMyBilling() {
+  return apiRequest<MyBilling | { error: string }>('/api/tenant/billing')
+}
+
 export interface LocationDto {
   id: string
   name: string
@@ -879,6 +925,8 @@ export interface SuperTenant {
   maxLocations: number | null
   /** Negotiated flat monthly price (AZN); null = billed on the graduated per-employee formula. */
   monthlyPriceOverride: number | null
+  /** Demo end date (ISO), or null for an ordinary paying subscription. */
+  trialEndsAtUtc: string | null
   /** Feature keys turned OFF for this tenant (see /super/features for the catalogue). */
   disabledFeatures: string[]
 }
@@ -1050,6 +1098,14 @@ export interface TenantPlanInput {
   monthlyPriceOverride: number | null
   /** Feature keys to turn OFF. */
   disabledFeatures: string[]
+  /**
+   * Demo end date, "yyyy-MM-dd" or null for no demo.
+   *
+   * ALWAYS send it. This request replaces every field it names, so omitting this one clears a
+   * company's demo as a side effect of editing their feature switches — the same shape of trap as
+   * EmployeeUpdateRequest, which blanks what it omits.
+   */
+  trialEndsAtUtc: string | null
 }
 
 /** PUT /api/super/tenants/{id}/plan — set plan, soft limits, price override and disabled features. */

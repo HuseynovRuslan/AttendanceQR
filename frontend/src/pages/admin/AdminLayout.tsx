@@ -48,6 +48,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/schedules': { title: 'Növbələr', sub: 'Saatlar, iş günləri və rotasiya — bir dəfə qurulur, işçilərə təyin edilir' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
+  '/admin/billing': { title: 'Abunəlik', sub: 'Paketiniz, aylıq məbləğ və ödəniş tarixçəsi' },
   '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
   '/admin/field-visits': { title: 'Sahə ziyarətləri', sub: 'Səyyar işçilər — tapşır, görülən işi və şəkli yoxla' },
   '/admin/open-records': { title: 'Çıxışı unudulan günlər', sub: 'Giriş edib çıxış etməyən günlər' },
@@ -182,6 +183,9 @@ export function AdminLayout() {
         // poster hangs and how wide the yard is. Creating and deleting stays with the admin.
         { to: '/admin/locations', label: 'Lokasiyalar', Icon: IconBuilding },
         ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
+        // What the company pays for the product, and whether it is settled. Admin only — a manager
+        // runs a branch, not the contract.
+        ...(isAdmin ? [{ to: '/admin/billing', label: 'Abunəlik', Icon: IconMoney }] : []),
       ],
     },
   ].filter((s) => s.links.length > 0)

@@ -45,6 +45,7 @@ const TodayPage = lazy(() => import('./pages/admin/TodayPage').then(m => ({ defa
 const TasksPage = lazy(() => import('./pages/admin/TasksPage').then(m => ({ default: m.TasksPage })))
 const GroupBoardPage = lazy(() => import('./pages/hq/GroupBoardPage').then(m => ({ default: m.GroupBoardPage })))
 const PayrollPage = lazy(() => import('./pages/admin/PayrollPage').then(m => ({ default: m.PayrollPage })))
+const BillingPage = lazy(() => import('./pages/admin/BillingPage').then(m => ({ default: m.BillingPage })))
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
@@ -313,6 +314,16 @@ function AppRoutes() {
           element={
             <AdminOnly>
               <PayrollPage />
+            </AdminOnly>
+          }
+        />
+        {/* Abunəlik — Admin only. It carries what the company pays and whether it is settled; a
+            manager runs a branch, not the contract. */}
+        <Route
+          path="billing"
+          element={
+            <AdminOnly>
+              <BillingPage />
             </AdminOnly>
           }
         />

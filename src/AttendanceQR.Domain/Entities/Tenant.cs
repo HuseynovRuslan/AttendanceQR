@@ -46,6 +46,18 @@ public class Tenant
 
     public int? MaxLocations { get; set; }
 
+    /// <summary>
+    /// While this is in the future the company is on a DEMO — the product works in full and nothing is
+    /// billed. Null means no demo: an ordinary paying subscription from day one.
+    ///
+    /// Informational, and deliberately so. Nothing switches off when it passes; the customer sees that
+    /// their demo ended and what the monthly amount will be, and the operator decides what happens
+    /// next. A trial that silently locks people out of clocking in would cost them a day's pay over a
+    /// billing question, which is never the right trade in this product — the same reason a missing
+    /// photo or a failed face check does not block a scan.
+    /// </summary>
+    public DateTime? TrialEndsAtUtc { get; set; }
+
     /// <summary>Negotiated flat monthly price in AZN. When set it OVERRIDES the graduated per-employee
     /// formula (<see cref="Pricing"/>) for billing — big/Enterprise accounts are hand-priced. Null = use
     /// the formula on the live employee count.</summary>

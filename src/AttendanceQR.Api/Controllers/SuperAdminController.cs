@@ -191,6 +191,7 @@ public partial class SuperAdminController : ControllerBase
             maxEmployees = t.MaxEmployees,
             maxLocations = t.MaxLocations,
             monthlyPriceOverride = t.MonthlyPriceOverride,
+            trialEndsAtUtc = t.TrialEndsAtUtc,
             disabledFeatures = TenantFeatures.ParseDisabled(t.DisabledFeatures),
         }));
     }

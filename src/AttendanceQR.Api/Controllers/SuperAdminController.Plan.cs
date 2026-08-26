@@ -47,12 +47,18 @@ public partial class SuperAdminController
         // >= 0 sets it (0 = a comped/free tenant); null or negative clears → billing uses the formula.
         tenant.MonthlyPriceOverride = request.MonthlyPriceOverride is decimal p and >= 0m ? p : null;
         tenant.DisabledFeatures = TenantFeatures.ToCsv(request.DisabledFeatures ?? Array.Empty<string>());
+        // Extending or ending a demo is the same field, so "give them two more weeks" and "they are
+        // paying now" are one control rather than two. A date in the past reads as an ended demo.
+        tenant.TrialEndsAtUtc = request.TrialEndsAtUtc is DateTime t
+            ? DateTime.SpecifyKind(t.Date, DateTimeKind.Utc)
+            : null;
         await _db.SaveChangesAsync(ct);
 
         await AuditAsync("TenantPlanChanged", tenant.Id, tenant.Slug,
             $"plan={plan ?? "—"}, maxİşçi={tenant.MaxEmployees?.ToString() ?? "∞"}, " +
             $"maxFilial={tenant.MaxLocations?.ToString() ?? "∞"}, " +
             $"qiymət={(tenant.MonthlyPriceOverride is decimal pr ? $"{pr:0.##}₼" : "formul")}, " +
+            $"demo={(tenant.TrialEndsAtUtc is DateTime td ? td.ToString("yyyy-MM-dd") : "—")}, " +
             $"bağlı=[{tenant.DisabledFeatures ?? ""}]", ct);
 
         return Ok(new
@@ -62,6 +68,7 @@ public partial class SuperAdminController
             maxEmployees = tenant.MaxEmployees,
             maxLocations = tenant.MaxLocations,
             monthlyPriceOverride = tenant.MonthlyPriceOverride,
+            trialEndsAtUtc = tenant.TrialEndsAtUtc,
             disabledFeatures = TenantFeatures.ParseDisabled(tenant.DisabledFeatures),
         });
     }

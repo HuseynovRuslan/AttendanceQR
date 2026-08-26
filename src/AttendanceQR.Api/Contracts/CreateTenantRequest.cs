@@ -38,7 +38,11 @@ public record TenantPlanRequest(
     int? MaxLocations = null,
     string[]? DisabledFeatures = null,
     // Negotiated flat monthly price (AZN). Null clears the override → billing falls back to the formula.
-    decimal? MonthlyPriceOverride = null);
+    decimal? MonthlyPriceOverride = null,
+    // Demo end date. While it is in the future the customer's billing screen says DEMO and shows what
+    // the first real bill will be; null means an ordinary paying subscription. Nothing is switched off
+    // when it passes — see Tenant.TrialEndsAtUtc.
+    DateTime? TrialEndsAtUtc = null);
 
 /// <summary>Mark a company's bill for a period paid/unpaid. Year/Month default to the current month;
 /// Amount defaults to the tenant's negotiated/ formula price.</summary>
