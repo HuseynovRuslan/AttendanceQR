@@ -3,6 +3,7 @@ import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from '
 import 'leaflet/dist/leaflet.css'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
+import { getAdminLocations, type AdminLocation } from '../../api/admin'
 import {
   getFieldVisitBoard,
   getAssignablePeople,
@@ -85,8 +86,17 @@ function FitPts({ pts }: { pts: [number, number][] }) {
 }
 
 function VisitMap({ v }: { v: BoardFieldVisit }) {
-  const marks: { at: [number, number]; label: string; color: string }[] = []
-  if (v.targetLatitude != null) marks.push({ at: [v.targetLatitude, v.targetLongitude!], label: 'Hədəf', color: '#1E70C8' })
+  const marks: { at: [number, number]; label: string; color: string; always?: boolean }[] = []
+  // The place's own name on the pin rather than the word "Hədəf". Whoever opens this map is asking
+  // WHERE, and a blue dot labelled "target" answers nothing — least of all on a stretch of road that
+  // has no name on the basemap, which is exactly where these visits happen.
+  if (v.targetLatitude != null)
+    marks.push({
+      at: [v.targetLatitude, v.targetLongitude!],
+      label: v.targetLabel?.trim() || 'Hədəf',
+      color: '#1E70C8',
+      always: true,
+    })
   if (v.checkInLatitude != null) marks.push({ at: [v.checkInLatitude, v.checkInLongitude!], label: 'Giriş', color: '#16a34a' })
   if (v.checkOutLatitude != null) marks.push({ at: [v.checkOutLatitude, v.checkOutLongitude!], label: 'Çıxış', color: '#d97706' })
   const centre: [number, number] = marks.length ? marks[0].at : BAKU
@@ -101,7 +111,9 @@ function VisitMap({ v }: { v: BoardFieldVisit }) {
         )}
         {marks.map((m, i) => (
           <CircleMarker key={i} center={m.at} radius={8} pathOptions={{ color: '#fff', weight: 2, fillColor: m.color, fillOpacity: 0.95 }}>
-            <Tooltip direction="top">{m.label}</Tooltip>
+            {/* The place name stays on screen; arrival and departure appear on hover, so three
+                labels do not sit on top of each other at the same corner. */}
+            <Tooltip direction="top" permanent={m.always}>{m.label}</Tooltip>
           </CircleMarker>
         ))}
       </MapContainer>
@@ -128,11 +140,38 @@ export function FieldVisitsAdminPage() {
   // assign form
   const [showForm, setShowForm] = useState(false)
   const [employeeId, setEmployeeId] = useState('')
+  // The company's own sites, offered by NAME. The manager assigning a visit knows the place as
+  // "Dədə Qorqud Parkı"; they do not know its coordinates and, as the director put it, they cannot be
+  // expected to know what a stretch of road is called on a map. Picking a site fills the label, the
+  // point and the radius at once.
+  const [sites, setSites] = useState<AdminLocation[]>([])
+  const [siteId, setSiteId] = useState('')
+
   const [label, setLabel] = useState('')
   const [useTarget, setUseTarget] = useState(false)
   const [lat, setLat] = useState(BAKU[0])
   const [lng, setLng] = useState(BAKU[1])
   const [radius, setRadius] = useState(200)
+
+  useEffect(() => {
+    // The same endpoint the branches screen uses, so a manager gets their own branches and an admin
+    // gets all of them — the scope is already decided in one place.
+    void getAdminLocations().then(({ status, data }) => {
+      if (status === 200 && Array.isArray(data)) setSites(data.filter((l) => l.isActive))
+    })
+  }, [])
+
+  /** Picking one of our sites fills everything the form needs; "Digər" leaves it to be typed. */
+  function pickSite(id: string) {
+    setSiteId(id)
+    const site = sites.find((l) => l.id === id)
+    if (!site) return
+    setLabel(site.name)
+    setLat(site.latitude)
+    setLng(site.longitude)
+    setRadius(site.radiusMeters)
+    setUseTarget(true)
+  }
   const [note, setNote] = useState('')
   const [checklist, setChecklist] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -319,8 +358,36 @@ export function FieldVisitsAdminPage() {
               {people.length === 0 && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Sahə girişi icazəsi olan işçi yoxdur (işçi profilində açın).</div>}
             </div>
             <div>
-              <label className="form-label">Yer / obyekt (ad)</label>
-              <input className="inp" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="məs. Nərimanov parkı" maxLength={160} />
+              <label className="form-label">Yer / obyekt</label>
+              <select
+                className="inp"
+                value={siteId}
+                onChange={(e) => {
+                  if (e.target.value === '') { setSiteId(''); return }
+                  pickSite(e.target.value)
+                }}
+                style={{ marginBottom: 6 }}
+              >
+                <option value="">Digər — adını özüm yazacağam</option>
+                {sites.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+              {/* Still free text underneath: a roadside stretch or a one-off job has no branch record,
+                  and inventing one for it would put 5 ₼ a month on the customer's bill for a place
+                  nobody clocks in at. Picking a site fills this; typing over it is allowed. */}
+              <input
+                className="inp"
+                value={label}
+                onChange={(e) => { setLabel(e.target.value); setSiteId('') }}
+                placeholder="məs. Aeroport yolu, 3-cü km"
+                maxLength={160}
+              />
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                {siteId
+                  ? 'Obyektin koordinatı və radiusu avtomatik götürüldü.'
+                  : 'Siyahıda yoxdursa adını yazın və aşağıda xəritədən nöqtəni göstərin.'}
+              </div>
             </div>
           </div>
 
