@@ -123,6 +123,13 @@ export const IconX = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+/** Points at a control that opens something below it — the account switcher's affordance. */
+export const IconChevronDown = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} strokeWidth={2.5} {...p}>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+)
+
 export const IconArrowLeft = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <line x1="19" y1="12" x2="5" y2="12" />

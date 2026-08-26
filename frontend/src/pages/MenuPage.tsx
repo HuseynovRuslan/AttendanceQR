@@ -8,7 +8,8 @@ import { useFeatureEnabled } from '../branding/BrandingContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
 import { InstallAppCard } from '../components/InstallAppCard'
-import { IconChart, IconCheck, IconClock, IconLogout, IconMapPin, IconPhone, IconSend, IconShield, IconUser, IconUsers } from '../components/icons'
+import { AccountSwitcherSheet } from '../components/AccountSwitcherSheet'
+import { IconChart, IconCheck, IconChevronDown, IconClock, IconLogout, IconMapPin, IconPhone, IconSend, IconShield, IconUser } from '../components/icons'
 
 // Keep in step with versionName in frontend/android/app/build.gradle — a tester who sees one number
 // in the Play listing and another at the bottom of the menu has no way to tell which build they are
@@ -22,6 +23,7 @@ export function MenuPage() {
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
   // Months without a ballot have no vote screen worth opening, so the row isn't offered at all.
   const [hasBallot, setHasBallot] = useState(false)
+  const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
     void getMyProfile().then((r) => {
@@ -37,12 +39,23 @@ export function MenuPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+      {/* Who you are, and the way to become somebody else — one control, because they are the same
+          question. The switcher hangs off the identity card rather than sitting in the list below it:
+          on a crew phone this is tapped thirty times in the ten minutes before a shift, with people
+          waiting at the poster, and a menu row buried among nine others is not that. */}
+      <button
+        type="button"
+        onClick={() => setSwitching(true)}
+        className="flex w-full items-center gap-4 rounded-3xl border border-slate-100 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]"
+      >
         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-700">
           {initials(profile?.fullName)}
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-lg font-bold">{profile?.fullName ?? '…'}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-lg font-bold">{profile?.fullName ?? '…'}</span>
+            <IconChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+          </div>
           <div className="truncate text-sm text-slate-500">{profile?.email ?? email}</div>
           {profile?.locationName && (
             <div className="truncate text-sm text-slate-400">
@@ -51,7 +64,16 @@ export function MenuPage() {
             </div>
           )}
         </div>
-      </div>
+        {/* The count only appears once there is something to count — on a personal phone this badge
+            would be a permanent "1" that explains nothing. */}
+        {profiles.length > 1 && (
+          <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+            {profiles.length}
+          </span>
+        )}
+      </button>
+
+      {switching && <AccountSwitcherSheet onClose={() => setSwitching(false)} />}
 
       <DeviceCard device={device} />
 
@@ -64,18 +86,6 @@ export function MenuPage() {
           <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
         )}
         <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
-        {/* Several accounts on one handset. Called HESAB, not "profil": this bottom-tab section is
-            itself named Profil and already holds "Profil məlumatları / PIN", so a third row with the
-            same word would have read as another way into the same screen. The word here has to mean
-            somebody ELSE's login.
-
-            The count is in the label because the one question the holder of a crew phone has on the
-            way to the poster is whether the person in front of them is on this device at all. */}
-        <MenuRow
-          to="/profiles"
-          Icon={IconUsers}
-          label={profiles.length > 1 ? `Hesab dəyiş (${profiles.length})` : 'Bu telefona hesab əlavə et'}
-        />
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
