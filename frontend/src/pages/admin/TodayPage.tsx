@@ -433,7 +433,7 @@ export function TodayPage() {
                   {/* This giriş-çıxış was entered/changed by hand, not scanned — attribute it. */}
                   {r.manualBy && (
                     <div style={{ fontSize: 11, marginTop: 4, color: 'var(--amber)' }}>
-                      ✍️ Əl ilə — {r.manualBy}
+                      Əl ilə daxil edilib · {r.manualBy}
                     </div>
                   )}
                   {/* Not a manual entry and not a poster scan: the worker closed their own field visit

@@ -395,7 +395,7 @@ export function EmployeeProfilePage() {
                       <td data-label="Tarix">
                         {fmtDate(r.attendanceDate)}
                         {r.manualByName && (
-                          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>✍️ Əl ilə — {r.manualByName}</div>
+                          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>Əl ilə daxil edilib · {r.manualByName}</div>
                         )}
                         {r.closedByFieldVisit && (
                           <div style={{ fontSize: 11, marginTop: 2, color: 'var(--c600)' }}>📍 Ərazi çıxışı ilə bağlandı</div>

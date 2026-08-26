@@ -165,6 +165,7 @@ export function EmployeesPage() {
   // help them switch it on. A workforce that won't self-serve is what keeps reach stuck, and a name
   // list per branch is what actually converts.
   const [onlyNoPush, setOnlyNoPush] = useState(false)
+  const [onlyNotStarted, setOnlyNotStarted] = useState(false)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   // Adding can be one-at-a-time or in bulk — both live under the single "İşçi əlavə et" button now
@@ -584,6 +585,10 @@ export function EmployeesPage() {
   const visible = rows.filter((r) => {
     if (filterLoc && r.locationId !== filterLoc) return false
     if (onlyNoPush && r.pushEnabled) return false
+    // "Not started" = has never signed in and chosen their own PIN. Two different states mean the
+    // same thing to whoever is chasing them: an invite link nobody opened (never activated), and a
+    // temporary PIN nobody used (activated at creation, still on it).
+    if (onlyNotStarted && r.activated && !r.mustChangePin) return false
     if (q && !`${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.id}`.toLowerCase().includes(q)) return false
     return true
   })
@@ -595,6 +600,13 @@ export function EmployeesPage() {
   // These are the people whose PIN list was printed once and, if it was lost, cannot be printed again
   // — only replaced. The count is what makes that offer visible at the moment it is needed.
   const pendingPin = visible.filter((r) => r.isActive && r.activated && r.mustChangePin)
+
+  // Onboarding progress for the branch in view: who is actually using the app, and who has not
+  // started. During a rollout this is the number the owner asks for every day, and it was only
+  // visible as a side effect of the PIN-reissue strip.
+  const onboardPool = rows.filter((r) => r.isActive && (!filterLoc || r.locationId === filterLoc))
+  const started = onboardPool.filter((r) => r.activated && !r.mustChangePin).length
+  const notStarted = onboardPool.length - started
 
   const reachPool = rows.filter((r) => r.isActive && r.activated && (!filterLoc || r.locationId === filterLoc))
   const reachOn = reachPool.filter((r) => r.pushEnabled).length
@@ -702,6 +714,48 @@ export function EmployeesPage() {
               Bağla
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Onboarding progress. Always on screen, not only while there is something to fix: during a
+          rollout "how many have started" is the question of the week, and it was previously readable
+          only as a side effect of the PIN-reissue offer below. */}
+      {onboardPool.length > 0 && (
+        <div
+          className="card"
+          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '10px 16px', marginBottom: 12 }}
+        >
+          <div style={{ fontWeight: 700 }}>
+            {onboardPool.length} işçi
+            {filterLoc && <span className="muted" style={{ fontWeight: 500 }}> · bu filialda</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--leaf-d)', fontWeight: 700 }}>
+              {started} <span style={{ fontWeight: 500 }}>hesabını aktivləşdirib</span>
+            </span>
+            <span style={{ color: notStarted > 0 ? 'var(--clay)' : 'var(--c400)', fontWeight: 700 }}>
+              {notStarted} <span style={{ fontWeight: 500 }}>hələ aktivləşdirməyib</span>
+            </span>
+          </div>
+          <div style={{ flex: 1, minWidth: 120, height: 8, borderRadius: 999, background: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${onboardPool.length ? Math.round((started / onboardPool.length) * 100) : 0}%`,
+                height: '100%',
+                borderRadius: 999,
+                background: 'var(--leaf)',
+                transition: 'width .4s ease',
+              }}
+            />
+          </div>
+          {notStarted > 0 && (
+            <button
+              className={`btn btn-sm${onlyNotStarted ? ' btn-primary' : ''}`}
+              onClick={() => setOnlyNotStarted((v) => !v)}
+            >
+              {onlyNotStarted ? 'Hamısını göstər' : 'Kimlər olduğunu göstər'}
+            </button>
+          )}
         </div>
       )}
 
