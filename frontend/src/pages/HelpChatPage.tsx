@@ -23,7 +23,7 @@ const QUICK: string[] = [
 /** Screen keys the server may suggest → button label + route. Must mirror the backend allowlist. */
 const ACTIONS: Record<string, { label: string; to: string }> = {
   'device-request': { label: '📱 Yeni telefon tələbi göndər', to: '/device-change-request' },
-  profile: { label: '👤 Profil / PIN', to: '/profile' },
+  profile: { label: '👤 Profil / PIN', to: '/menu' },
   history: { label: '🕐 Skan tarixçəm', to: '/stats' },
   scan: { label: '📷 Skan et', to: '/scan' },
 }

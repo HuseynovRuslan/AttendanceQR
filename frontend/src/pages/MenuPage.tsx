@@ -1,33 +1,87 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { ComponentType, SVGProps } from 'react'
-import { getMyDeviceStatus, getMyProfile, type MyDeviceStatus, type MyProfile } from '../api/attendance'
+import {
+  getMyDeviceStatus,
+  getMyProfile,
+  getMySummary,
+  type MyDeviceStatus,
+  type MyProfile,
+} from '../api/attendance'
+import type { ReportTotals } from '../api/admin'
 import { getVoteStatus } from '../api/vote'
 import { useAuth } from '../auth/AuthContext'
 import { useFeatureEnabled } from '../branding/BrandingContext'
 import { getDeviceFingerprint } from '../lib/device'
 import { initials } from '../lib/att'
+import { fmtDayMonth } from '../lib/format'
 import { InstallAppCard } from '../components/InstallAppCard'
 import { AccountSwitcherSheet } from '../components/AccountSwitcherSheet'
-import { IconChart, IconCheck, IconChevronDown, IconClock, IconLogout, IconMapPin, IconPhone, IconSend, IconShield, IconUser } from '../components/icons'
+import { PinChangeSheet } from '../components/PinChangeSheet'
+import { PushToggle } from '../components/PushToggle'
+import {
+  IconChart,
+  IconCheck,
+  IconChevronDown,
+  IconClock,
+  IconKey,
+  IconLogout,
+  IconMapPin,
+  IconPhone,
+  IconSend,
+  IconShield,
+} from '../components/icons'
 
 // Keep in step with versionName in frontend/android/app/build.gradle — a tester who sees one number
 // in the Play listing and another at the bottom of the menu has no way to tell which build they are
 // actually running, which is the one thing this line exists to answer.
 const APP_VERSION = '1.0'
 
+/** First day of the current month and today, as the summary endpoint wants them. */
+function thisMonth(): { from: string; to: string } {
+  const now = new Date()
+  const ymd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: ymd(now) }
+}
+
+/**
+ * The Profil tab — the employee's own profile, and everything reachable from it.
+ *
+ * There used to be two screens here, and both called themselves Profil: this tab, which was a list of
+ * links under an identity card, and a sub-page behind "Profil məlumatları / PIN", which was three
+ * password boxes and an email address. Neither was a profile. The one screen that should answer
+ * "whose phone am I in right now" named nobody, which stopped being cosmetic the moment a single
+ * handset started holding a whole crew's accounts.
+ *
+ * They are one screen now, built the way a phone builds a profile: a face and this month's figures,
+ * then the name and what they do and where, then the two things you can actually DO, and only then
+ * the list of everywhere else. Changing a PIN and switching account are both sheets — they are
+ * actions, not identities, and neither is worth a screen of its own.
+ *
+ * No photograph, deliberately. The check-in selfie is an admin's evidence on a face-flagged row; the
+ * profile photo card was removed on purpose once already (a0e1772); and this screen is now handed
+ * around a work site. Initials recognise a person well enough for that.
+ */
 export function MenuPage() {
-  const { logout, email, role, profiles } = useAuth()
+  const { logout, role, profiles } = useAuth()
   const assistantOn = useFeatureEnabled('assistant')
   const [profile, setProfile] = useState<MyProfile | null>(null)
+  const [totals, setTotals] = useState<ReportTotals | null>(null)
   const [device, setDevice] = useState<MyDeviceStatus | null>(null)
   // Months without a ballot have no vote screen worth opening, so the row isn't offered at all.
   const [hasBallot, setHasBallot] = useState(false)
   const [switching, setSwitching] = useState(false)
+  const [changingPin, setChangingPin] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
+    const { from, to } = thisMonth()
     void getMyProfile().then((r) => {
       if (r.status === 200 && r.data && 'fullName' in r.data) setProfile(r.data)
+    })
+    void getMySummary(from, to).then((r) => {
+      if (r.status === 200 && r.data && 'totals' in r.data) setTotals(r.data.totals)
     })
     void getMyDeviceStatus(getDeviceFingerprint()).then((r) => {
       if (r.status === 200 && r.data && 'bound' in r.data) setDevice(r.data)
@@ -37,45 +91,91 @@ export function MenuPage() {
     })
   }, [])
 
+  const subtitle = [profile?.position, profile?.locationName].filter(Boolean).join(' · ')
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Who you are, and the way to become somebody else — one control, because they are the same
-          question. The switcher hangs off the identity card rather than sitting in the list below it:
-          on a crew phone this is tapped thirty times in the ten minutes before a shift, with people
-          waiting at the poster, and a menu row buried among nine others is not that. */}
-      <button
-        type="button"
-        onClick={() => setSwitching(true)}
-        className="flex w-full items-center gap-4 rounded-3xl border border-slate-100 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]"
-      >
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-700">
-          {initials(profile?.fullName)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-lg font-bold">{profile?.fullName ?? '…'}</span>
-            <IconChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+      <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+        {/* Face, then figures — side by side, the way a phone opens a profile. The figures are this
+            month's, because a month is the unit everything here is paid and reported in. */}
+        <div className="flex items-center gap-5">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-700">
+            {initials(profile?.fullName)}
           </div>
-          <div className="truncate text-sm text-slate-500">{profile?.email ?? email}</div>
-          {profile?.locationName && (
-            <div className="truncate text-sm text-slate-400">
-              {profile.locationName}
-              {profile.position ? ` · ${profile.position}` : ''}
-            </div>
-          )}
+          {/* Tapping the figures opens the full history, the way tapping a count opens the list it
+              counts — and saves the trip back out to the tab bar. */}
+          <button
+            type="button"
+            onClick={() => navigate('/stats')}
+            className="flex flex-1 items-center justify-around rounded-2xl py-1 transition active:bg-slate-50"
+          >
+            <Stat value={totals?.workDays} label="gün" />
+            <Stat value={totals ? Math.round(totals.totalWorkedHours) : undefined} label="saat" />
+            <Stat value={totals ? Math.round(totals.overtimeHours) : undefined} label="əlavə" />
+          </button>
         </div>
-        {/* The count only appears once there is something to count — on a personal phone this badge
-            would be a permanent "1" that explains nothing. */}
-        {profiles.length > 1 && (
-          <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
-            {profiles.length}
+
+        {/* The name is the switcher. Who you are and how to become somebody else are the same
+            question, and on a crew phone this is tapped thirty times in the ten minutes before a
+            shift — a row buried among nine others is not that. */}
+        <button
+          type="button"
+          onClick={() => setSwitching(true)}
+          className="mt-4 flex w-full items-center gap-2 rounded-2xl text-left transition active:bg-slate-50"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              <span className="truncate text-lg font-bold">{profile?.fullName ?? '…'}</span>
+              <IconChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+            </span>
+            {subtitle && <span className="block truncate text-sm text-slate-500">{subtitle}</span>}
+            {profile?.birthDate && (
+              <span className="block text-sm text-slate-400">🎂 {fmtDayMonth(profile.birthDate)}</span>
+            )}
+            {/* Only the reassuring state lives here. An unbound or revoked context needs an
+                explanation and a button, and gets the full card below instead of a green line. */}
+            {device?.bound && <span className="block text-sm text-green-700">📱 Bu cihaz bağlıdır</span>}
           </span>
-        )}
-      </button>
+          {/* The count only appears once there is something to count — on a personal phone this badge
+              would be a permanent "1" that explains nothing. */}
+          {profiles.length > 1 && (
+            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+              {profiles.length}
+            </span>
+          )}
+        </button>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setChangingPin(true)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-100 py-3 font-semibold text-slate-700 transition active:bg-slate-200"
+          >
+            <IconKey className="h-4 w-4" />
+            PIN dəyiş
+          </button>
+          <Link
+            to="/device-change-request"
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-100 py-3 font-semibold text-slate-700 transition active:bg-slate-200"
+          >
+            <IconPhone className="h-4 w-4" />
+            Yeni telefon
+          </Link>
+        </div>
+      </div>
 
       {switching && <AccountSwitcherSheet onClose={() => setSwitching(false)} />}
+      {changingPin && <PinChangeSheet onClose={() => setChangingPin(false)} />}
 
-      <DeviceCard device={device} />
+      {totals && totals.absentDays > 0 && (
+        <div className="rounded-3xl border border-red-100 bg-red-50 p-4 text-sm text-red-800">
+          Bu ay <b>{totals.absentDays} gün</b> qayıb görünür. Səhv olduğunu düşünürsünüzsə rəhbərinizə
+          deyin — düzəltmək mümkündür.
+        </div>
+      )}
+
+      {/* Only when there is something to do about it — the bound case is a line in the card above. */}
+      {device && !device.bound && <DeviceCard device={device} />}
 
       <InstallAppCard />
 
@@ -85,7 +185,6 @@ export function MenuPage() {
         {(role === 'Admin' || role === 'Manager') && (
           <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
         )}
-        <MenuRow to="/profile" Icon={IconUser} label="Profil məlumatları / PIN" />
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}
         <MenuRow to="/stats" Icon={IconClock} label="Skan tarixçəsi" />
@@ -93,11 +192,21 @@ export function MenuPage() {
         {assistantOn && <MenuRow to="/help" Icon={IconSend} label="Süni intellekt köməkçisi" />}
         {/* Ayın işçisi modulu hələlik deaktivdir. */}
         {false && hasBallot && <MenuRow to="/vote" Icon={IconCheck} label="Ayın işçisi — səsvermə" />}
-        <MenuRow to="/device-change-request" Icon={IconPhone} label="Yeni telefon tələbi" />
         {/* The app photographs their face and reads their position; where that goes has to be
             reachable from inside the app, not only from the website they never visit. */}
         <MenuRow to="/privacy" Icon={IconShield} label="Məlumatlarınız / məxfilik" />
       </div>
+
+      {/* Notifications carry the announcements and the checkout reminder, so turning them off should
+          be possible but never a casual tap. */}
+      <details>
+        <summary className="cursor-pointer list-none py-2 text-center text-sm text-slate-400">
+          Bildiriş ayarları
+        </summary>
+        <div className="mt-1 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <PushToggle />
+        </div>
+      </details>
 
       <button
         onClick={logout}
@@ -106,6 +215,7 @@ export function MenuPage() {
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-red-50">
           <IconLogout className="h-5 w-5" />
         </span>
+        {/* On a shared handset "Hesabdan çıxış" alone does not say whose session is about to end. */}
         {profiles.length > 1 && profile?.fullName ? `Çıxış — ${profile.fullName}` : 'Hesabdan çıxış'}
       </button>
 
@@ -117,37 +227,30 @@ export function MenuPage() {
   )
 }
 
+function Stat({ value, label }: { value: number | undefined; label: string }) {
+  return (
+    <span className="flex flex-col items-center">
+      {/* tabular-nums so the three columns do not shuffle sideways as the figures grow during a month */}
+      <span className="text-xl font-bold tabular-nums">{value ?? '—'}</span>
+      <span className="text-xs text-slate-500">{label}</span>
+    </span>
+  )
+}
+
 /** Safari and the installed app are separate contexts, so "am I bound?" is a question the employee
- *  otherwise answers by walking to the poster and failing. Three states, three different actions. */
-function DeviceCard({ device }: { device: MyDeviceStatus | null }) {
-  if (!device) return null
-
-  if (device.bound) {
-    return (
-      <div className="rounded-3xl border border-green-100 bg-green-50 p-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-100 text-lg">📱</span>
-          <div className="min-w-0">
-            <div className="font-semibold text-green-800">Bu cihaz bağlıdır ✅</div>
-            <div className="text-sm text-green-700">
-              {device.deviceLabel ?? 'Bu cihaz'} — skan edə bilərsiniz
-              {device.activeDeviceCount > 1 && ` · ${device.activeDeviceCount} cihazınız var`}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Revoked is not "not yet bound": no amount of scanning brings it back, only an admin.
+ *  otherwise answers by walking to the poster and failing. Shown only when something is wrong — the
+ *  bound case is a single green line in the identity card. */
+function DeviceCard({ device }: { device: MyDeviceStatus }) {
   if (device.revoked) {
     return (
       <div className="rounded-3xl border border-red-100 bg-red-50 p-4">
         <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg">🚫</span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-lg">📱</span>
           <div className="min-w-0">
-            <div className="font-semibold text-red-800">Bu cihaz ləğv edilib</div>
-            <div className="text-sm text-red-700">Administrator ilə əlaqə saxlayın — skan işləməyəcək.</div>
+            <div className="font-semibold text-red-800">Bu cihaz bağlanmayıb</div>
+            <div className="text-sm text-red-700">
+              Skan edə bilməyəcəksiniz. «Yeni telefon» düyməsi ilə müraciət göndərin.
+            </div>
           </div>
         </div>
       </div>
@@ -157,13 +260,11 @@ function DeviceCard({ device }: { device: MyDeviceStatus | null }) {
   return (
     <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4">
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-lg">⚠️</span>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-lg">📱</span>
         <div className="min-w-0">
           <div className="font-semibold text-amber-900">Bu cihaz hələ bağlanmayıb</div>
           <div className="text-sm text-amber-800">
-            {device.autoBindEnabled
-              ? 'İş yerində bir dəfə QR skan edin — cihaz özü bağlanacaq.'
-              : 'Skan işləməyəcək. «Yeni telefon tələbi» göndərin.'}
+            İş yerinizdə ilk dəfə skan edəndə avtomatik bağlanacaq.
           </div>
         </div>
       </div>
@@ -171,16 +272,21 @@ function DeviceCard({ device }: { device: MyDeviceStatus | null }) {
   )
 }
 
-function MenuRow({ to, Icon, label }: { to: string; Icon: ComponentType<SVGProps<SVGSVGElement>>; label: string }) {
+function MenuRow({
+  to,
+  Icon,
+  label,
+}: {
+  to: string
+  Icon: ComponentType<SVGProps<SVGSVGElement>>
+  label: string
+}) {
   return (
     <Link to={to} className="flex items-center gap-3 p-4 transition active:bg-slate-50">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
         <Icon className="h-5 w-5" />
       </span>
-      <span className="flex-1 font-semibold">{label}</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 text-slate-300">
-        <polyline points="9 6 15 12 9 18" />
-      </svg>
+      <span className="font-semibold">{label}</span>
     </Link>
   )
 }

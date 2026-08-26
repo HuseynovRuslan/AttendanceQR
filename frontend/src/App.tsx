@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -15,7 +15,6 @@ import { ActivatePage } from './pages/ActivatePage'
 import { ForgotPinPage } from './pages/ForgotPinPage'
 import { ScanPage } from './pages/ScanPage'
 import { HistoryPage } from './pages/HistoryPage'
-import { ProfilePage } from './pages/ProfilePage'
 import { ProfilesPage } from './pages/ProfilesPage'
 import { DeviceChangeRequestPage } from './pages/DeviceChangeRequestPage'
 import { EmployeeLayout } from './pages/EmployeeLayout'
@@ -248,14 +247,10 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <ProfilePage />
-          </ProtectedRoute>
-        }
-      />
+      {/* The profile IS the Profil tab now — one screen, not two that both used the word. Kept as a
+          redirect rather than deleted: the AI assistant hands this path out, and an installed app can
+          still be sitting on it. */}
+      <Route path="/profile" element={<Navigate to="/menu" replace />} />
       {/* Several accounts on one handset — the crew phone. Not lazy-loaded: it sits one tap from the
           scanner on a device that is used where there is no signal to fetch a chunk with. */}
       <Route
