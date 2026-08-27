@@ -32,7 +32,21 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   // Measured, warned about, but never blocked — so it isn't a "could not scan" reason.
   GpsInaccurate: { label: 'GPS dəqiq deyil', cls: 'bg-amber-100 text-amber-700' },
   // Reported by the phone for a non-GPS failure — the scan never became a record.
-  CameraBlocked: { label: 'Kamera açılmadı', cls: 'bg-red-100 text-red-700', blocking: true },
+  //
+  // Why the camera failed, not just that it did. All of these arrived as CameraBlocked until the
+  // labels were split, and the difference decides what the admin does: a denial is the employee's own
+  // settings screen, "in use" is another app on the same phone, and "not found" means that phone will
+  // not work at all — somebody has to record them from a colleague's handset today. CameraBlocked
+  // itself is kept for rows written by an older copy of the app.
+  CameraDenied: { label: 'Kamera icazəsi verilməyib', cls: 'bg-red-100 text-red-700', blocking: true },
+  CameraInUse: { label: 'Kamera başqa proqramda açıqdır', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  CameraNotFound: { label: 'Cihazda kamera tapılmadı', cls: 'bg-red-100 text-red-700', blocking: true },
+  CameraInsecure: { label: 'Təhlükəsiz bağlantı yoxdur', cls: 'bg-red-100 text-red-700', blocking: true },
+  // Not the camera at all: the scanner itself could not be fetched, which is a connection problem
+  // wearing a camera error's clothes.
+  ScannerLoadFailed: { label: 'Skan proqramı yüklənmədi', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  CameraFailed: { label: 'Kamera açılmadı (səbəb bilinmir)', cls: 'bg-red-100 text-red-700', blocking: true },
+  CameraBlocked: { label: 'Kamera açılmadı (köhnə versiya)', cls: 'bg-red-100 text-red-700', blocking: true },
   NetworkError: { label: 'İnternet çatmadı', cls: 'bg-red-100 text-red-700', blocking: true },
   ScanError: { label: 'Skan xətası', cls: 'bg-amber-100 text-amber-700', blocking: true },
   AlreadyCompleted: { label: 'Gün artıq tamamlanıb', cls: 'bg-slate-100 text-slate-600' },

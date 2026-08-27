@@ -24,12 +24,24 @@ public class AttendanceController : ControllerBase
 
     // Reasons the client may self-report against its own account. An allow-list, not free text:
     // the body is employee-controlled and lands straight in the audit log the admin panel reads.
-    private static readonly string[] ClientFailureReasons =
+    /// <remarks>Public so a test can pin it against the reasons the phone actually sends: an unknown
+    /// reason is a 4xx, the client drops the report rather than queueing it, and the failure becomes
+    /// invisible again — the exact silence these reasons exist to end.</remarks>
+    public static readonly string[] ClientFailureReasons =
         ["GpsPermissionDenied", "GpsUnavailable", "GpsTimeout", "GpsUnsupported", "GpsInaccurate",
          // The scan failed on the phone for a non-GPS reason too — so a stuck employee is visible on
-         // the Problems screen instead of only phoning in. CameraBlocked = the camera would not open;
-         // NetworkError = the request never reached us (reported later, once the phone reconnects).
-         "CameraBlocked", "NetworkError", "ScanError",
+         // the Problems screen instead of only phoning in. NetworkError = the request never reached
+         // us (reported later, once the phone reconnects).
+         "NetworkError", "ScanError",
+         // Why the camera would not open. These were one label, CameraBlocked, and the difference is
+         // the whole of the admin's answer: CameraDenied is a settings screen the employee can fix,
+         // CameraInUse is another app holding the device, CameraNotFound means this phone will never
+         // work and somebody must record them another way, and ScannerLoadFailed is not the camera at
+         // all — the phone could not fetch the scanner over a weak connection. CameraFailed is the
+         // honest one: the browser did not say. CameraBlocked stays accepted because phones run a
+         // cached copy of the app for days and queue reports offline for up to 18 hours.
+         "CameraDenied", "CameraInUse", "CameraNotFound", "CameraInsecure", "ScannerLoadFailed",
+         "CameraFailed", "CameraBlocked",
          // An offline scan that never became a record. OfflineRejected = the replay was refused by a
          // definitive 4xx; OfflineExpired = it sat past the window in which the phone's clock is still
          // trusted, so replaying it would have written the wrong DAY. Both used to be a silent delete

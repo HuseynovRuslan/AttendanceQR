@@ -23,7 +23,7 @@ import { PushGate } from '../components/PushGate'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
 import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
 import { GpsHelp } from '../components/GpsHelp'
-import { CameraHelp, cameraFailKind, type CameraFailKind } from '../components/CameraHelp'
+import { CameraHelp, cameraFailKind, CAMERA_FAIL_REASON, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
 import { checkForFace } from '../lib/faceCheck'
 import { getMyProfile, type MyProfile } from '../api/attendance'
@@ -381,10 +381,13 @@ export function ScanPage() {
         } catch (err) {
           // A real getUserMedia failure (denied / no camera / in use) — no point retrying.
           await stopCamera()
-          setCameraError(cameraFailKind(err))
+          const kind = cameraFailKind(err)
+          setCameraError(kind)
           // Surface it to the admin's Problems screen — a phone whose camera won't open is a scan that
-          // silently never happened, otherwise visible only as a phone call.
-          reportFailure('CameraBlocked')
+          // silently never happened, otherwise visible only as a phone call. The KIND goes with it:
+          // these all used to arrive as one 'CameraBlocked', so the screen could say a scan failed but
+          // never why, and "have you allowed the camera?" was the only answer anyone could give.
+          reportFailure(CAMERA_FAIL_REASON[kind])
           return
         }
 
