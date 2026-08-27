@@ -21,7 +21,7 @@ import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
-import { fmtDate, fmtDuration, fmtTime } from '../../lib/format'
+import { fmtDate, fmtDuration, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
@@ -171,12 +171,10 @@ export function EmployeeProfilePage() {
 
   // --- attendance correction (record edit / create / clear checkout) ----------
   const toInput = (iso: string | null) => {
-    if (!iso) return ''
-    const d = new Date(iso)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+    // Company timezone in both directions — see toCompanyInputValue.
+    return iso ? toCompanyInputValue(iso) : ''
   }
-  const fromInput = (local: string) => (local ? new Date(local).toISOString() : undefined)
+  const fromInput = (local: string) => (local ? fromCompanyInputValue(local) : undefined)
 
   function startEditRecord(r: AttendanceRecord) {
     setEditRecId(r.recordId)

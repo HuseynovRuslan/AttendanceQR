@@ -11,7 +11,7 @@ import {
 } from '../../api/admin'
 import { usePolling } from '../../lib/usePolling'
 import { IconCheck, IconPhone, IconTrash, IconX } from '../../components/icons'
-import { fmtDateTime } from '../../lib/format'
+import { fmtDateTime, fmtFullDateTime } from '../../lib/format'
 
 const ORIGIN: Record<DeviceBinding['boundVia'], { label: string; cls: string }> = {
   Activation: { label: 'Aktivləşdirmə', cls: 'bg-slate-100 text-slate-600' },
@@ -87,7 +87,7 @@ export function DeviceChangesPage() {
                     <span className="mono">{r.newDeviceFingerprint}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
-                    {new Date(r.requestedAtUtc).toLocaleString('az-AZ')}
+                    {fmtFullDateTime(r.requestedAtUtc)}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>

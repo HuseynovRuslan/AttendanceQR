@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../auth/AuthContext'
+import { COMPANY_TZ } from '../../lib/format'
 import {
   createTask, deleteTask, getTasks, toggleTask, toggleTaskImportant,
   renameTask, setTaskDue, reorderTasks, type TaskRow, assignTask, getAssignable, type Assignable } from '../../api/tasks'
@@ -193,7 +194,7 @@ export function TasksPage() {
           <span className="tdx-ico-lg">{listMeta.icon}</span>
           <div>
             <div className="tdx-title">{listMeta.label}</div>
-            <div className="tdx-date">{new Date().toLocaleDateString('az-AZ', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase())}</div>
+            <div className="tdx-date">{new Date().toLocaleDateString('az-AZ', { weekday: 'long', day: 'numeric', month: 'long', timeZone: COMPANY_TZ }).replace(/^./, (c) => c.toUpperCase())}</div>
           </div>
         </div>
 

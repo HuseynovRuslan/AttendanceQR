@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { getKioskLocation, getKioskToken } from '../api/kiosk'
+import { COMPANY_TZ } from '../lib/format'
 
 export function KioskPage() {
   const { locationId } = useParams()
@@ -105,7 +106,10 @@ export function KioskPage() {
       <header className="text-center">
         <h1 className="text-4xl md:text-5xl font-bold">{locationName ?? '…'}</h1>
         <p className="text-3xl md:text-4xl text-slate-200 mt-3 tabular-nums">
-          {now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          {/* Baku's clock, not the tablet's. This screen is what an employee checks their scan
+              against; a device with a mis-set timezone would have it quietly disagreeing with the
+              record it is standing next to. */}
+          {now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })}
         </p>
         <p className="text-slate-400 mt-1 capitalize">
           {now.toLocaleDateString('az-AZ', {
@@ -113,6 +117,7 @@ export function KioskPage() {
             day: 'numeric',
             month: 'long',
             year: 'numeric',
+            timeZone: COMPANY_TZ,
           })}
         </p>
       </header>

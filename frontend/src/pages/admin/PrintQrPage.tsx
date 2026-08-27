@@ -5,6 +5,7 @@ import { QRCodeCanvas } from 'qrcode.react'
 import { generateStaticQr, invalidateLocationQr, type StaticQrResult } from '../../api/admin'
 import { useBranding } from '../../branding/BrandingContext'
 import { IconCheck, IconDownload, IconQr, IconX } from '../../components/icons'
+import { fmtDateOfInstant } from '../../lib/format'
 
 // The QR is rendered at print resolution (large), shown small on screen. Its data is unchanged by size.
 const QR_RENDER = 1000
@@ -420,7 +421,7 @@ export function PrintQrPage() {
               {qr.locationName}
             </div>
             <div className="muted" style={{ fontSize: 12, marginBottom: 18 }}>
-              Etibarlıdır: {new Date(qr.expiresAtUtc).toLocaleDateString('az-AZ')} tarixinə qədər
+              Etibarlıdır: {fmtDateOfInstant(qr.expiresAtUtc)} tarixinə qədər
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>

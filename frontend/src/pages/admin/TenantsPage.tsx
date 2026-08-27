@@ -29,7 +29,7 @@ import {
   type SuperFeature,
 } from '../../api/admin'
 import { startImpersonation } from '../../api/client'
-import { fmtDate } from '../../lib/format'
+import { COMPANY_TZ, fmtDate } from '../../lib/format'
 import { parseMoney, moneyInputFilter, formatMoney } from '../../lib/money'
 import { useCan } from '../operator/OperatorContext'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
@@ -94,9 +94,11 @@ const TABS: { key: Tab; label: string }[] = [
 ]
 
 function fmtDateTime(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleString('az-AZ', {
+  // The operator may well be reading this from anywhere; the companies are all in Baku, and so are
+  // the events being listed.
+  return new Date(iso).toLocaleString('az-AZ', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    timeZone: COMPANY_TZ,
   })
 }
 

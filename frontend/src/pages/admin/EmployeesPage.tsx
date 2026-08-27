@@ -4,6 +4,7 @@ import { BulkInvitePage } from './BulkInvitePage'
 import { PositionSelect } from '../../components/PositionSelect'
 import { NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { COMPANY_TZ, fmtFullDateTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import {
   bulkResetPin,
   type BulkPinResult,
@@ -48,15 +49,15 @@ const ATTENDANCE_ERRORS: Record<string, string> = {
 }
 
 function toLocalInputValue(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  // Through the COMPANY's timezone, not the device's: an admin on a phone set to UTC+3 was shown a
+  // check-out an hour early, and "correcting" a time that only looked wrong writes their device's
+  // hour into somebody's attendance record.
+  return iso ? toCompanyInputValue(iso) : ''
 }
 
 function fromLocalInputValue(local: string): string | undefined {
   if (!local) return undefined
-  return new Date(local).toISOString()
+  return fromCompanyInputValue(local)
 }
 
 const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
@@ -1358,8 +1359,8 @@ export function EmployeesPage() {
                       <>
                         <td className="mono">{r.attendanceDate}</td>
                         <td><StatusBadge status={r.status} /></td>
-                        <td className="mono">{r.checkInAtUtc ? new Date(r.checkInAtUtc).toLocaleString('az-AZ') : '—'}</td>
-                        <td className="mono">{r.checkOutAtUtc ? new Date(r.checkOutAtUtc).toLocaleString('az-AZ') : '—'}</td>
+                        <td className="mono">{r.checkInAtUtc ? fmtFullDateTime(r.checkInAtUtc) : '—'}</td>
+                        <td className="mono">{r.checkOutAtUtc ? fmtFullDateTime(r.checkOutAtUtc) : '—'}</td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                             {r.checkOutAtUtc && (
@@ -1593,9 +1594,9 @@ function lastActiveBadge(lastActiveAtUtc: string | null) {
   const ageMs = Date.now() - d.getTime()
   const day = 24 * 60 * 60 * 1000
   const label = ageMs < day
-    ? d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit' }) +
-      ' ' + d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
+    ? d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', timeZone: COMPANY_TZ })
+    : d.toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit', timeZone: COMPANY_TZ }) +
+      ' ' + d.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', timeZone: COMPANY_TZ })
   if (ageMs < day) return pill(label, '#2e7d32', 'rgba(124,179,66,0.15)')
   if (ageMs < 7 * day) return pill(label, '#9a6a00', 'rgba(227,150,62,0.16)')
   return <span style={{ fontSize: 11, color: 'var(--c400)', fontFamily: "'IBM Plex Mono',monospace" }}>{label}</span>

@@ -10,7 +10,7 @@ import { DashboardMap, type DashSite, type DashPerson } from './DashboardMap'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
-import { fmtTime } from '../../lib/format'
+import { COMPANY_TZ, fmtTime } from '../../lib/format'
 
 /**
  * The admin's live "today" board, dressed as the group panel a director reacted to — but in white,
@@ -286,7 +286,8 @@ export function DashboardPage() {
   const bucketRows = openBucket ? rows.filter((r) => rowInBucket(r, openBucket)).sort((a, b) => a.employeeName.localeCompare(b.employeeName)) : []
   const openPill = (b: Bucket) => setOpenBucket((cur) => (cur === b ? null : b))
 
-  const clock = now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  // The board hangs on a wall in Baku; it shows Baku's time whatever the machine driving it thinks.
+  const clock = now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })
 
   return (
     <div className="lux">

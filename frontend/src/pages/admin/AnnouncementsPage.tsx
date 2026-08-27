@@ -10,6 +10,7 @@ import {
 import { getEmployees, type AdminEmployee } from '../../api/admin'
 import { sendTestPush } from '../../lib/push'
 import { IconSend, IconTrash, IconX } from '../../components/icons'
+import { fmtDateOfInstant, fmtFullDateTime } from '../../lib/format'
 
 const AUDIENCE: { value: AnnouncementAudience; label: string; hint: string }[] = [
   { value: 'All', label: '👥 Hamı', hint: 'Bütün işçilər' },
@@ -255,11 +256,11 @@ export function AnnouncementsPage() {
                         </span>
                         {scheduledFuture && (
                           <span className="tag" style={{ background: 'var(--amber-bg)', color: 'var(--amber)' }}>
-                            🕒 {new Date(a.scheduledForUtc!).toLocaleString('az-AZ')}
+                            🕒 {fmtFullDateTime(a.scheduledForUtc!)}
                           </span>
                         )}
                         {!a.isActive && <span className="tag">söndürülüb</span>}
-                        <span className="tag muted">{new Date(a.createdAtUtc).toLocaleDateString('az-AZ')}</span>
+                        <span className="tag muted">{fmtDateOfInstant(a.createdAtUtc)}</span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { adminUpdateRecord, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
-import { fmtDate, fmtTime } from '../../lib/format'
+import { fmtDate, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 
 // datetime-local <-> ISO, matching EmployeesPage. The input reads/writes the admin's local time; the
 // wire is always UTC ISO.
 function toLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  // The company's wall clock, not the device's — see toCompanyInputValue. This screen WRITES the hour
+  // an employee is paid for, so a reader's timezone must never reach it.
+  return toCompanyInputValue(d.toISOString())
 }
 
 // Default check-out: the check-in's own date at 18:00 local — a plausible end of a work day, which
@@ -48,7 +49,7 @@ export function OpenRecordsPage() {
 
   async function close(r: OpenRecord) {
     const local = timeFor(r)
-    const iso = new Date(local).toISOString()
+    const iso = fromCompanyInputValue(local)
     if (new Date(iso) < new Date(r.checkInAtUtc)) {
       setError('Çıxış girişdən əvvəl ola bilməz')
       return

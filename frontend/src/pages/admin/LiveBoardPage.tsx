@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getToday, type DayAttendanceRow } from '../../api/admin'
-import { fmtTime } from '../../lib/format'
+import { COMPANY_TZ, fmtTime } from '../../lib/format'
 import { IconX } from '../../components/icons'
 import { leaveVisual } from '../../components/StatusBadge'
 
@@ -28,8 +28,11 @@ function offLabel(r: DayAttendanceRow): string {
   return OFF_LABEL[r.status] ?? 'Yoxdur'
 }
 
-function twoDigit(n: number) {
-  return String(n).padStart(2, '0')
+/** A wall clock in the COMPANY's timezone — "HH:mm:ss". */
+function clockOf(d: Date) {
+  return d.toLocaleTimeString('az-AZ', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ,
+  })
 }
 
 export function LiveBoardPage() {
@@ -112,10 +115,12 @@ export function LiveBoardPage() {
       <div className="live-head">
         <span className="live-dot" aria-hidden />
         <span className="live-live">Canlı</span>
-        <span className="live-clock">{twoDigit(now.getHours())}:{twoDigit(now.getMinutes())}:{twoDigit(now.getSeconds())}</span>
+        {/* Baku's clock. getHours() reads the DEVICE, and a board driven by a machine on the wrong
+            timezone would sit beside today's attendance disagreeing with all of it. */}
+        <span className="live-clock">{clockOf(now)}</span>
         {updatedAt && (
           <span className="live-updated">
-            Son yeniləmə {twoDigit(updatedAt.getHours())}:{twoDigit(updatedAt.getMinutes())}:{twoDigit(updatedAt.getSeconds())}
+            Son yeniləmə {clockOf(updatedAt)}
           </span>
         )}
         <button className="btn btn-sm live-fs" onClick={toggleFullscreen}>⛶ Tam ekran</button>

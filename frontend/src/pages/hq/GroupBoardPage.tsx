@@ -3,6 +3,7 @@ import { getGroupOverview, type GroupOverview } from '../../api/hq'
 import { SiteMap } from './SiteMap'
 import 'leaflet/dist/leaflet.css'
 import './hq.css'
+import { COMPANY_TZ } from '../../lib/format'
 
 /** Refresh cadence. Fast enough that a figure visibly moves while someone watches, slow enough that
  *  the board is not hammering the API all day on a wall screen. */
@@ -15,7 +16,7 @@ const ACCENTS = ['#7CB342', '#38BDF8', '#F59E0B', '#A78BFA', '#F472B6']
 const fmt = new Intl.NumberFormat('az-AZ')
 
 function timeOf(iso: string): string {
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', timeZone: COMPANY_TZ })
 }
 
 /** Counts from the previous value to the new one. The movement is the point: it is what tells a
@@ -200,7 +201,7 @@ export function GroupBoardPage() {
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <span className="hq-live"><i />CANLI</span>
             <span className="hq-clock hq-num">
-              {clock.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {clock.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })}
             </span>
             <button
               type="button"

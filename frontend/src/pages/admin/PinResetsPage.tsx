@@ -8,6 +8,7 @@ import {
 } from '../../api/admin'
 import { usePolling } from '../../lib/usePolling'
 import { IconCheck, IconX } from '../../components/icons'
+import { fmtFullDateTime } from '../../lib/format'
 
 /** Admin queue for "PIN-i unutdum". Resolving resets the PIN and shows the temporary one so the admin
  *  can pass it on; the employee logs in with it and is forced to pick their own. */
@@ -121,7 +122,7 @@ export function PinResetsPage() {
                     {r.phoneNumber ?? r.email ?? '—'}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
-                    {new Date(r.requestedAtUtc).toLocaleString('az-AZ')}
+                    {fmtFullDateTime(r.requestedAtUtc)}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
