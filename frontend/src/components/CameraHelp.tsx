@@ -10,9 +10,11 @@ import { platform, type Platform } from '../lib/geo'
  * absent for a day she worked.
  *
  * So: name the real reason when the browser tells us one, and when it does not, say so and show all
- * three things it could be instead of asserting the most likely. And show the settings screens as
- * pictures — the per-site permission is a lock icon nobody has ever noticed, and it is a great deal
- * easier to recognise a drawing of it than to parse "ünvan sətrinin solundakı 🔒 işarəsi".
+ * three things it could be instead of asserting the most likely.
+ *
+ * And show it. Every state opens with a picture of the FAULT, and each remedy is drawn as the phone
+ * screen it lives on — because "ünvan sətrinin solundakı kilid işarəsi" is a sentence about a thing
+ * nobody has ever consciously looked at, and a drawing of that screen is recognised in a second.
  */
 
 export type CameraFailKind = 'denied' | 'inuse' | 'notfound' | 'insecure' | 'loadfailed' | 'unknown'
@@ -76,178 +78,336 @@ export function cameraFailKind(err: unknown): CameraFailKind {
 }
 
 // ── Pictures ────────────────────────────────────────────────────────────────────────────────────
-// Drawn rather than photographed: a screenshot is one phone, one Android version and one language,
-// and it is a file to ship. These carry the shape people actually look for — where on the screen,
-// which icon, which row — and stay legible at the size the card gives them.
+//
+// Drawn, not photographed. A screenshot is one phone, one Android version and one language — and
+// three of them is a megabyte on a connection that is often the problem in the first place. These
+// are built from the parts people actually navigate by: the omnibox pill, the permission sheet, the
+// blue toggle, the recents cards.
 
-const C = {
-  bg: '#0f172a', // slate-900, one step darker than the card
-  chrome: '#1e293b',
-  line: '#334155',
-  muted: '#475569',
-  text: '#94a3b8',
-  accent: '#fbbf24', // amber-400 — the thing to look at
-  accentSoft: 'rgba(251,191,36,0.16)',
-  ok: '#34d399',
-  bad: '#f87171',
+/** Phone-screen palette. Light, because the screens being imitated are light — a dark illustration
+ *  on a dark card reads as an icon, and this needs to read as a phone. */
+const UI = {
+  bezel: '#04070f',
+  screen: '#f6f7f9',
+  card: '#ffffff',
+  line: '#dfe3e8',
+  fill: '#eef1f4',
+  text: '#111418',
+  dim: '#5f6368',
+  blue: '#1a73e8',
+  blueSoft: '#e8f0fe',
+  green: '#188038',
+  red: '#d93025',
+  hiBg: '#fff4d6',
+  hiLine: '#e8a317',
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+/** The card behind the illustrations — used to punch a hole in a glyph so a badge reads as on top. */
+const CARD_BG = '#1e293b'
+
+const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
+
+/** A phone, with the status bar people subconsciously use to tell a screenshot from a diagram. */
+function Phone({ h = 156, children }: { h?: number; children: React.ReactNode }) {
   return (
-    <svg viewBox="0 0 240 108" className="mt-2.5 w-full" role="img" aria-hidden="true">
-      <rect x="0" y="0" width="240" height="108" rx="10" fill={C.bg} />
+    <svg viewBox={`0 0 240 ${h}`} className="mt-3 w-full" role="img" aria-hidden="true" fontFamily={FONT}>
+      <rect x="6" y="0" width="228" height={h} rx="19" fill={UI.bezel} />
+      <rect x="11" y="5" width="218" height={h - 10} rx="14" fill={UI.screen} />
+      <text x="25" y="17" fontSize="8" fontWeight="600" fill={UI.dim}>08:14</text>
+      <g fill={UI.dim}>
+        <rect x="186" y="13" width="3" height="4" rx="1" />
+        <rect x="191" y="11" width="3" height="6" rx="1" />
+        <rect x="196" y="9" width="3" height="8" rx="1" />
+        <rect x="204" y="9" width="13" height="8" rx="2.5" />
+        <rect x="218" y="11" width="2" height="4" rx="1" />
+      </g>
       {children}
     </svg>
   )
 }
 
-/** A tap: the ring people read as "press here". */
-function Tap({ x, y }: { x: number; y: number }) {
+/** "Press here." */
+function Tap({ x, y, r = 11 }: { x: number; y: number; r?: number }) {
   return (
     <>
-      <circle cx={x} cy={y} r="13" fill="none" stroke={C.accent} strokeWidth="1.5" opacity="0.5" />
-      <circle cx={x} cy={y} r="8.5" fill="none" stroke={C.accent} strokeWidth="2" />
+      <circle cx={x} cy={y} r={r + 4} fill="none" stroke={UI.hiLine} strokeWidth="1.4" opacity="0.45" />
+      <circle cx={x} cy={y} r={r} fill="none" stroke={UI.hiLine} strokeWidth="2" />
     </>
   )
 }
 
-/** The per-site permission — the address bar, and the sheet that opens from it. */
-function ArtSitePermission({ os }: { os: Platform }) {
+/** A small camera, for list rows. */
+function MiniCam({ x, y, color }: { x: number; y: number; color: string }) {
   return (
-    <Frame>
-      {/* address bar */}
-      <rect x="14" y="12" width="212" height="22" rx="11" fill={C.chrome} />
-      {os === 'ios' ? (
-        <text x="27" y="27" fontSize="10" fontWeight="700" fill={C.accent} textAnchor="middle">AA</text>
-      ) : (
-        <>
-          {/* padlock */}
-          <rect x="22" y="21" width="10" height="7" rx="1.5" fill={C.accent} />
-          <path d="M24.5 21v-2a2.5 2.5 0 0 1 5 0v2" fill="none" stroke={C.accent} strokeWidth="1.6" />
-        </>
-      )}
-      <rect x="40" y="19" width="86" height="7" rx="3.5" fill={C.muted} />
-      <Tap x={27} y={23} />
-
-      {/* the sheet it opens */}
-      <rect x="34" y="46" width="150" height="50" rx="8" fill={C.chrome} stroke={C.line} />
-      <rect x="44" y="55" width="52" height="6" rx="3" fill={C.muted} />
-      <rect x="40" y="68" width="138" height="22" rx="6" fill={C.accentSoft} stroke={C.accent} strokeWidth="1.2" />
-      {/* camera glyph */}
-      <rect x="48" y="74" width="14" height="10" rx="2.5" fill="none" stroke={C.accent} strokeWidth="1.4" />
-      <circle cx="55" cy="79" r="2.6" fill="none" stroke={C.accent} strokeWidth="1.4" />
-      <rect x="68" y="76" width="40" height="6" rx="3" fill={C.accent} opacity="0.85" />
-      {/* switch, on */}
-      <rect x="146" y="74" width="22" height="11" rx="5.5" fill={C.accent} />
-      <circle cx="162.5" cy="79.5" r="4" fill={C.bg} />
-    </Frame>
+    <g fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round">
+      <rect x={x} y={y + 2.5} width="14" height="10.5" rx="2.5" />
+      <path d={`M${x + 4} ${y + 2.5}l1.5-2.5h3l1.5 2.5`} />
+      <circle cx={x + 7} cy={y + 7.8} r="3" />
+    </g>
   )
 }
 
-/** The OS app permission — Settings → Apps → browser → Permissions → Camera. */
-function ArtAppPermission() {
+function Toggle({ x, y, on }: { x: number; y: number; on: boolean }) {
   return (
-    <Frame>
-      <rect x="14" y="12" width="212" height="18" rx="6" fill={C.chrome} />
-      <rect x="24" y="18" width="58" height="6" rx="3" fill={C.text} />
+    <>
+      <rect x={x} y={y} width="24" height="13" rx="6.5" fill={on ? UI.blue : UI.line} />
+      <circle cx={on ? x + 17.5 : x + 6.5} cy={y + 6.5} r="4.6" fill="#fff" />
+    </>
+  )
+}
 
-      {[0, 1, 2].map((i) => {
-        const y = 38 + i * 22
-        const on = i === 1
+/** Step 1 — the per-site permission: the omnibox lock, and the sheet it opens. */
+function ArtSitePermission({ os }: { os: Platform }) {
+  return (
+    <Phone>
+      {/* browser toolbar */}
+      <rect x="11" y="22" width="218" height="27" fill={UI.card} />
+      <line x1="11" y1="49" x2="229" y2="49" stroke={UI.line} strokeWidth="1" />
+      <rect x="22" y="27" width="146" height="17" rx="8.5" fill={UI.fill} />
+      {os === 'ios' ? (
+        <text x="33" y="39" fontSize="9" fontWeight="700" fill={UI.hiLine} textAnchor="middle">AA</text>
+      ) : (
+        <g>
+          <rect x="29" y="34" width="8.5" height="6.5" rx="1.4" fill={UI.hiLine} />
+          <path d="M31.2 34v-1.7a2.05 2.05 0 0 1 4.1 0V34" fill="none" stroke={UI.hiLine} strokeWidth="1.5" />
+        </g>
+      )}
+      <text x="45" y="39" fontSize="8.5" fill={UI.text}>app.qrlog.az</text>
+      <rect x="180" y="29" width="13" height="13" rx="3" fill="none" stroke={UI.dim} strokeWidth="1.3" />
+      <text x="186.5" y="39.5" fontSize="7.5" fill={UI.dim} textAnchor="middle">3</text>
+      <g fill={UI.dim}>
+        <circle cx="208" cy="30.5" r="1.5" />
+        <circle cx="208" cy="35.5" r="1.5" />
+        <circle cx="208" cy="40.5" r="1.5" />
+      </g>
+      <Tap x={33} y={37} />
+
+      {/* the sheet the lock opens */}
+      <rect x="26" y="60" width="166" height="84" rx="11" fill={UI.card} stroke={UI.line} strokeWidth="1" />
+      <text x="38" y="77" fontSize="8.5" fontWeight="700" fill={UI.text}>app.qrlog.az</text>
+      <text x="38" y="88" fontSize="7" fill={UI.dim}>İcazələr</text>
+
+      <rect x="32" y="95" width="154" height="24" rx="7" fill={UI.hiBg} stroke={UI.hiLine} strokeWidth="1.3" />
+      <MiniCam x={41} y={100} color={UI.text} />
+      <text x="62" y="110.5" fontSize="8.5" fontWeight="700" fill={UI.text}>Kamera</text>
+      <Toggle x={152} y={100.5} on />
+
+      <line x1="32" y1="122" x2="186" y2="122" stroke={UI.line} strokeWidth="1" />
+      <g fill="none" stroke={UI.dim} strokeWidth="1.5">
+        <path d="M48 138c0 0-6-5.5-6-9.5a6 6 0 0 1 12 0c0 4-6 9.5-6 9.5Z" />
+      </g>
+      <text x="62" y="135" fontSize="8.5" fill={UI.dim}>Məkan</text>
+      <Toggle x={152} y={125} on />
+    </Phone>
+  )
+}
+
+/** Step 2 — the OS app permission: Settings → Apps → browser → Permissions. */
+function ArtAppPermission({ os }: { os: Platform }) {
+  const rows: { label: string; note: string; ok: boolean }[] = [
+    { label: 'Kamera', note: 'İcazə verilib', ok: true },
+    { label: 'Mikrofon', note: 'İcazə verilməyib', ok: false },
+    { label: 'Məkan', note: 'İcazə verilib', ok: true },
+  ]
+  return (
+    <Phone>
+      <rect x="11" y="22" width="218" height="29" fill={UI.card} />
+      <line x1="11" y1="51" x2="229" y2="51" stroke={UI.line} strokeWidth="1" />
+      <path d="M31 31l-6 6 6 6" fill="none" stroke={UI.text} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <text x="43" y="41" fontSize="10.5" fontWeight="700" fill={UI.text}>{os === 'ios' ? 'Safari' : 'Chrome'}</text>
+      <text x="24" y="66" fontSize="7" fontWeight="700" fill={UI.blue} letterSpacing="0.9">İCAZƏLƏR</text>
+
+      {rows.map((r, i) => {
+        const y = 72 + i * 26
+        const on = i === 0
         return (
-          <g key={i}>
-            <rect
-              x="14" y={y} width="212" height="18" rx="6"
-              fill={on ? C.accentSoft : 'none'}
-              stroke={on ? C.accent : C.line}
-              strokeWidth={on ? 1.2 : 1}
-            />
-            {on ? (
-              <>
-                <rect x="24" y={y + 4} width="13" height="10" rx="2.5" fill="none" stroke={C.accent} strokeWidth="1.4" />
-                <circle cx="30.5" cy={y + 9} r="2.5" fill="none" stroke={C.accent} strokeWidth="1.4" />
-                <rect x="45" y={y + 6} width="46" height="6" rx="3" fill={C.accent} opacity="0.85" />
-                <rect x="188" y={y + 4} width="22" height="11" rx="5.5" fill={C.accent} />
-                <circle cx="204.5" cy={y + 9.5} r="4" fill={C.bg} />
-              </>
-            ) : (
-              <>
-                <circle cx="30" cy={y + 9} r="5" fill={C.line} />
-                <rect x="45" y={y + 6} width="52" height="6" rx="3" fill={C.muted} />
-                <rect x="188" y={y + 4} width="22" height="11" rx="5.5" fill={C.line} />
-                <circle cx="193.5" cy={y + 9.5} r="4" fill={C.muted} />
-              </>
+          <g key={r.label}>
+            {on && <rect x="18" y={y} width="204" height="24" rx="7" fill={UI.hiBg} stroke={UI.hiLine} strokeWidth="1.3" />}
+            <circle cx="35" cy={y + 12} r="9.5" fill={on ? '#fff' : UI.blueSoft} />
+            {i === 0 && <MiniCam x={28} y={y + 5} color={UI.blue} />}
+            {i === 1 && (
+              <g fill="none" stroke={UI.blue} strokeWidth="1.5" strokeLinecap="round">
+                <rect x="32" y={y + 6} width="6" height="9.5" rx="3" />
+                <path d={`M29.5 ${y + 13}a5.5 5.5 0 0 0 11 0M35 ${y + 18.5}v2`} />
+              </g>
+            )}
+            {i === 2 && (
+              <path
+                d={`M35 ${y + 18}c0 0-6-5.5-6-9.5a6 6 0 0 1 12 0c0 4-6 9.5-6 9.5Z`}
+                fill="none" stroke={UI.blue} strokeWidth="1.5"
+              />
+            )}
+            <text x="52" y={y + 11} fontSize="8.5" fontWeight={on ? 700 : 400} fill={UI.text}>{r.label}</text>
+            <text x="52" y={y + 20} fontSize="7" fill={r.ok ? UI.green : UI.dim}>{r.note}</text>
+            {r.ok && (
+              <path
+                d={`M196 ${y + 12.5}l3 3.5 6-7`}
+                fill="none" stroke={UI.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              />
             )}
           </g>
         )
       })}
-    </Frame>
+    </Phone>
   )
 }
 
-/** Which browser: the real one, not the window inside another app. */
-function ArtBrowser({ os }: { os: Platform }) {
-  const good = os === 'ios' ? 'Safari' : 'Chrome'
+/** Step 3 — leave the window inside another app. Drawn as the menu that actually does it, rather
+ *  than as a comparison of two browsers: the employee needs the tap, not the concept. */
+function ArtOpenInBrowser({ os }: { os: Platform }) {
+  const target = os === 'ios' ? 'Safari-də aç' : 'Chrome-da aç'
   return (
-    <Frame>
-      {/* wrong: a page inside another app — note the app's own bar above it */}
-      <g>
-        <rect x="24" y="20" width="80" height="70" rx="9" fill={C.chrome} stroke={C.line} />
-        <rect x="24" y="20" width="80" height="16" rx="9" fill={C.line} />
-        <rect x="24" y="28" width="80" height="8" fill={C.line} />
-        <rect x="32" y="25" width="26" height="6" rx="3" fill={C.muted} />
-        <rect x="34" y="46" width="60" height="5" rx="2.5" fill={C.muted} />
-        <rect x="34" y="56" width="44" height="5" rx="2.5" fill={C.muted} />
-        <circle cx="64" cy="76" r="9" fill="none" stroke={C.bad} strokeWidth="1.8" />
-        <path d="M60 72l8 8M68 72l-8 8" stroke={C.bad} strokeWidth="1.8" strokeLinecap="round" />
+    <Phone h={150}>
+      {/* an in-app browser: the host app's own bar, not a browser's */}
+      <rect x="11" y="22" width="218" height="28" fill="#1f2328" />
+      <path d="M23 32l9 9M32 32l-9 9" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" />
+      <text x="44" y="40" fontSize="8.5" fontWeight="600" fill="#fff">app.qrlog.az</text>
+      <g fill="#fff">
+        <circle cx="212" cy="31" r="1.6" />
+        <circle cx="212" cy="36" r="1.6" />
+        <circle cx="212" cy="41" r="1.6" />
       </g>
+      <Tap x={212} y={36} r={9} />
 
-      <path d="M112 55h16" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M124 51l4 4-4 4" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-
-      {/* right: the browser itself */}
-      <g>
-        <rect x="136" y="20" width="80" height="70" rx="9" fill={C.chrome} stroke={C.accent} strokeWidth="1.2" />
-        <rect x="144" y="27" width="64" height="12" rx="6" fill={C.bg} />
-        <text x="176" y="36" fontSize="7.5" fontWeight="700" fill={C.accent} textAnchor="middle">{good}</text>
-        <rect x="146" y="48" width="60" height="5" rx="2.5" fill={C.muted} />
-        <rect x="146" y="58" width="44" height="5" rx="2.5" fill={C.muted} />
-        <circle cx="176" cy="76" r="9" fill="none" stroke={C.ok} strokeWidth="1.8" />
-        <path d="M172 76l3 3.5 5.5-6" fill="none" stroke={C.ok} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </g>
-    </Frame>
-  )
-}
-
-/** The camera is held by something else: clear the open apps, then restart. */
-function ArtRestart() {
-  return (
-    <Frame>
-      {/* two app cards being swiped away */}
-      <rect x="26" y="30" width="52" height="58" rx="8" fill={C.chrome} stroke={C.line} />
-      <rect x="34" y="40" width="36" height="5" rx="2.5" fill={C.muted} />
-      <rect x="34" y="50" width="24" height="5" rx="2.5" fill={C.muted} />
-      <rect x="86" y="30" width="52" height="58" rx="8" fill={C.chrome} stroke={C.line} />
-      {/* a camera glyph on the second card — the app holding it */}
-      <rect x="97" y="46" width="20" height="14" rx="3" fill="none" stroke={C.bad} strokeWidth="1.6" />
-      <circle cx="107" cy="53" r="3.6" fill="none" stroke={C.bad} strokeWidth="1.6" />
-      {/* swiped away, above both cards */}
-      <path d="M82 26V10" stroke={C.accent} strokeWidth="1.8" strokeLinecap="round" strokeDasharray="4 4" />
-      <path d="M77 16l5-6 5 6" fill="none" stroke={C.accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-
-      <path d="M150 57h14" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M160 53l4 4-4 4" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-
-      {/* power: a dashed ring leaves the gap at the top, which is deterministic — an arc path here
-          depends on the sweep flag putting the opening on the right side, and it did not. */}
-      <circle cx="196" cy="57" r="20" fill="none" stroke={C.line} strokeWidth="2" />
-      <circle
-        cx="196" cy="57" r="11" fill="none" stroke={C.accent} strokeWidth="2.2"
-        strokeDasharray="52 17" transform="rotate(-45 196 57)"
+      {/* the menu it opens */}
+      <rect x="108" y="58" width="116" height="62" rx="9" fill={UI.card} stroke={UI.line} strokeWidth="1" />
+      <text x="120" y="76" fontSize="8.5" fill={UI.dim}>Linki kopyala</text>
+      <rect x="112" y="84" width="108" height="28" rx="7" fill={UI.hiBg} stroke={UI.hiLine} strokeWidth="1.3" />
+      <path
+        d="M124 96h9m-3-3l3 3-3 3M122 90h-4v12h12v-4"
+        fill="none" stroke={UI.text} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
       />
-      <path d="M196 43v14" stroke={C.accent} strokeWidth="2.2" strokeLinecap="round" />
-    </Frame>
+      <text x="142" y="101" fontSize="8.5" fontWeight="700" fill={UI.text}>{target}</text>
+
+      {/* page underneath */}
+      <rect x="26" y="62" width="66" height="6" rx="3" fill={UI.line} />
+      <rect x="26" y="76" width="48" height="6" rx="3" fill={UI.line} />
+      <rect x="26" y="126" width="120" height="6" rx="3" fill={UI.line} />
+    </Phone>
   )
+}
+
+/** Free the camera: the recents screen, with the app that is holding it. */
+function ArtRecents() {
+  return (
+    <Phone h={150}>
+      {/* the app holding the camera */}
+      <rect x="24" y="40" width="88" height="80" rx="11" fill={UI.card} stroke={UI.line} strokeWidth="1" />
+      <text x="36" y="55" fontSize="8" fontWeight="700" fill={UI.text}>Kamera</text>
+      <circle cx="100" cy="51" r="3.6" fill={UI.red} />
+      <rect x="32" y="62" width="72" height="50" rx="7" fill="#20242a" />
+      <circle cx="68" cy="87" r="13" fill="none" stroke="#6b7280" strokeWidth="2.4" />
+      <circle cx="68" cy="87" r="6" fill="#6b7280" opacity="0.5" />
+
+      {/* swipe it away */}
+      <path d="M68 34V16" stroke={UI.hiLine} strokeWidth="2" strokeLinecap="round" strokeDasharray="4 4" />
+      <path d="M63 21l5-5 5 5" fill="none" stroke={UI.hiLine} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+      <rect x="126" y="40" width="88" height="80" rx="11" fill={UI.card} stroke={UI.line} strokeWidth="1" />
+      <text x="138" y="55" fontSize="8" fontWeight="700" fill={UI.dim}>QRLog</text>
+      <rect x="134" y="64" width="60" height="6" rx="3" fill={UI.line} />
+      <rect x="134" y="76" width="44" height="6" rx="3" fill={UI.line} />
+      <rect x="134" y="94" width="72" height="18" rx="9" fill={UI.fill} />
+
+      <rect x="86" y="126" width="70" height="17" rx="8.5" fill={UI.card} stroke={UI.line} strokeWidth="1" />
+      <text x="121" y="137.5" fontSize="8" fontWeight="600" fill={UI.dim} textAnchor="middle">Hamısını bağla</text>
+    </Phone>
+  )
+}
+
+// ── The fault itself ────────────────────────────────────────────────────────────────────────────
+// Each state opens with a picture of what went wrong, so the screen is recognisable before it is
+// read — including the three states that have no remedy to walk through and used to show nothing
+// but an emoji.
+
+function Hero({ children }: { children: React.ReactNode }) {
+  return (
+    <svg viewBox="0 0 100 72" className="mx-auto h-20 w-auto" role="img" aria-hidden="true" fontFamily={FONT}>
+      {children}
+    </svg>
+  )
+}
+
+function CameraBody({ color, dashed = false }: { color: string; dashed?: boolean }) {
+  return (
+    <g
+      fill="none" stroke={color} strokeWidth="3.4" strokeLinejoin="round" strokeLinecap="round"
+      strokeDasharray={dashed ? '5 4.5' : undefined}
+    >
+      <path d="M20 30h60a4 4 0 0 1 4 4v26a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V34a4 4 0 0 1 4-4Z" />
+      <path d="M36 30l5-8h18l5 8" />
+      <circle cx="50" cy="47" r="12" />
+    </g>
+  )
+}
+
+/** A badge sitting on the corner of the camera — the ring is card-coloured so it reads as on top. */
+function Badge({ cx, cy, fill, children }: { cx: number; cy: number; fill: string; children: React.ReactNode }) {
+  return (
+    <>
+      <circle cx={cx} cy={cy} r="15" fill={CARD_BG} />
+      <circle cx={cx} cy={cy} r="11.5" fill={fill} />
+      {children}
+    </>
+  )
+}
+
+const HERO: Record<CameraFailKind, React.ReactNode> = {
+  // Locked, not broken — the distinction the whole screen turns on.
+  denied: (
+    <Hero>
+      <CameraBody color={UI.red} />
+      <Badge cx={78} cy={57} fill={UI.red}>
+        <rect x="73" y="57" width="10" height="7.5" rx="1.6" fill="#fff" />
+        <path d="M75.4 57v-2a2.6 2.6 0 0 1 5.2 0v2" fill="none" stroke="#fff" strokeWidth="1.8" />
+      </Badge>
+    </Hero>
+  ),
+  // Working, and somebody else has it.
+  inuse: (
+    <Hero>
+      <CameraBody color={UI.hiLine} />
+      <Badge cx={79} cy={25} fill={UI.red}>
+        <circle cx="79" cy="25" r="4.6" fill="#fff" />
+      </Badge>
+    </Hero>
+  ),
+  // Absent. The dashed outline says "there is nothing here" without a second symbol.
+  notfound: (
+    <Hero>
+      <CameraBody color={UI.red} dashed />
+    </Hero>
+  ),
+  // Not a camera fault at all — an open padlock, which is what the browser is objecting to.
+  insecure: (
+    <Hero>
+      <g fill="none" stroke={UI.red} strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="28" y="38" width="44" height="30" rx="5" />
+        <path d="M37 38V29a13 13 0 0 1 26 0" />
+      </g>
+      <circle cx="50" cy="50" r="4" fill={UI.red} />
+      <rect x="48.2" y="52" width="3.6" height="8" rx="1.8" fill={UI.red} />
+    </Hero>
+  ),
+  // The connection, drawn as the thing everyone already reads as connection.
+  loadfailed: (
+    <Hero>
+      <rect x="20" y="50" width="11" height="16" rx="2.5" fill={UI.hiLine} />
+      <rect x="36" y="40" width="11" height="26" rx="2.5" fill="#475569" />
+      <rect x="52" y="28" width="11" height="38" rx="2.5" fill="#475569" />
+      <Badge cx={77} cy={30} fill={UI.hiLine}>
+        <rect x="75.2" y="23" width="3.6" height="9" rx="1.8" fill={CARD_BG} />
+        <circle cx="77" cy="35.5" r="2.1" fill={CARD_BG} />
+      </Badge>
+    </Hero>
+  ),
+  // Says what it is: we do not know.
+  unknown: (
+    <Hero>
+      <CameraBody color={UI.red} />
+      <text x="50" y="54" fontSize="19" fontWeight="800" fill={UI.red} textAnchor="middle">?</text>
+    </Hero>
+  ),
 }
 
 // ── Steps ───────────────────────────────────────────────────────────────────────────────────────
@@ -267,11 +427,11 @@ const STEPS: Record<Platform, Record<StepId, Step>> = {
     },
     browser: {
       title: 'Düzgün brauzer',
-      body: 'WhatsApp və ya Instagram-ın içindəki pəncərədə kamera işləmir. Linki Chrome-da açın.',
+      body: 'WhatsApp və ya Instagram-ın içindəki pəncərədə kamera işləmir. Menyudan «Chrome-da aç» seçin.',
     },
     restart: {
       title: 'Kameranı boşaldın',
-      body: 'Kamera, video zəng və QRLog-un digər tablarını bağlayın, sonra telefonu söndürüb yandırın.',
+      body: 'Açıq tətbiqlərə baxıb Kameranı və video zəngi bağlayın, sonra telefonu söndürüb yandırın.',
     },
   },
   ios: {
@@ -285,11 +445,11 @@ const STEPS: Record<Platform, Record<StepId, Step>> = {
     },
     browser: {
       title: 'Düzgün brauzer',
-      body: 'Səhifəni Safari-də açın — başqa tətbiqin içindəki pəncərədə kamera açılmır.',
+      body: 'Başqa tətbiqin içindəki pəncərədə kamera açılmır. Menyudan «Safari-də aç» seçin.',
     },
     restart: {
       title: 'Kameranı boşaldın',
-      body: 'Kamera və video zəng tətbiqlərini bağlayın, sonra telefonu söndürüb yandırın.',
+      body: 'Açıq tətbiqlərə baxıb Kameranı və video zəngi bağlayın, sonra telefonu söndürüb yandırın.',
     },
   },
   other: {
@@ -302,20 +462,20 @@ const STEPS: Record<Platform, Record<StepId, Step>> = {
 
 function art(id: StepId, os: Platform) {
   if (id === 'site') return <ArtSitePermission os={os} />
-  if (id === 'app') return <ArtAppPermission />
-  if (id === 'browser') return <ArtBrowser os={os} />
-  return <ArtRestart />
+  if (id === 'app') return <ArtAppPermission os={os} />
+  if (id === 'browser') return <ArtOpenInBrowser os={os} />
+  return <ArtRecents />
 }
 
-/** A crew phone can record someone whose own phone will not cooperate — worth saying on the two
- *  screens where the phone may never be fixed today, and nowhere else. */
+/** A crew phone can record someone whose own phone will not cooperate — worth saying on the screens
+ *  where the phone may never be fixed today, and nowhere else. */
 const CREW_NOTE =
   'Bu gün qeyd olunmaq üçün: yanınızdakı işçinin telefonunda Profil → adın yanındakı ⌄ → «Hesab əlavə et» ilə öz hesabınıza keçib skan edin.'
 
 type Headline = {
   title: string
   detail: string
-  /** Which remedies to show, in order. Empty means the text above is the whole answer. */
+  /** Which remedies to show, in order. Empty means the picture and the text are the whole answer. */
   steps: StepId[]
   note?: string
 }
@@ -331,7 +491,7 @@ function headline(kind: CameraFailKind): Headline {
     case 'inuse':
       return {
         title: 'Kamera başqa proqramda açıqdır',
-        detail: 'Kamera hazırda başqa tətbiq tərəfindən tutulub — icazə ilə bağlı deyil.',
+        detail: 'Kameranı hazırda başqa tətbiq tutub — icazə ilə bağlı deyil.',
         steps: ['restart'],
       }
     case 'notfound':
@@ -377,8 +537,8 @@ export function CameraHelp({ kind, onRetry }: { kind: CameraFailKind; onRetry: (
   return (
     <div className="w-full max-w-sm rounded-2xl bg-slate-800 p-5 shadow-lg">
       <div className="text-center">
-        <div className="text-5xl">📷</div>
-        <h2 className="mt-2 text-lg font-bold text-white">{title}</h2>
+        {HERO[kind]}
+        <h2 className="mt-3 text-lg font-bold text-white">{title}</h2>
         <p className="mt-1 text-sm text-slate-300">{detail}</p>
       </div>
 
