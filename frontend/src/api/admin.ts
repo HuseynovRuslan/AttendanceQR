@@ -307,12 +307,20 @@ export function recheckFaces() {
   })
 }
 
-/** Grant or withdraw the shared-phone permission for many people at once — around 260 workers own no
- *  phone, and a permission too tedious to grant properly gets granted carelessly or turned off. */
-export function bulkShareDevice(employeeIds: string[], allowed: boolean) {
-  return apiRequest<{ changed: number; total: number } | { error: string }>(
-    '/api/admin/employees/bulk-share-device',
-    { method: 'POST', body: { employeeIds, allowed } },
+/** An opt-in capability a whole branch can be given at once. */
+export type BulkPermission = 'ShareDevice' | 'FieldCheckIn'
+
+/**
+ * Grant or withdraw one capability across many people.
+ *
+ * It exists for the arithmetic: ~260 workers own no phone and need ShareDevice, whole brigades work
+ * at poster-less sites and need FieldCheckIn. A checkbox each is an afternoon nobody finishes, and a
+ * permission too tedious to grant properly gets granted carelessly instead.
+ */
+export function bulkPermission(employeeIds: string[], permission: BulkPermission, allowed: boolean) {
+  return apiRequest<{ changed: number; total: number; skipped?: number } | { error: string }>(
+    '/api/admin/employees/bulk-permission',
+    { method: 'POST', body: { employeeIds, permission, allowed } },
   )
 }
 

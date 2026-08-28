@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  bulkPermissionAsManager,
   createManagerEmployee,
   getManagerEmployees,
   getManagerLocations,
@@ -58,6 +59,29 @@ export function ManagerEmployeesPage() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [pin, setPin] = useState<{ name: string; pin: string } | null>(null)
+
+  /** Grant or withdraw a capability across this manager's whole list. The server narrows it to their
+   *  branches' plain staff, so a name they may not act on is skipped rather than failing the call —
+   *  refusing all of it would teach them to stop using the button. */
+  async function grant(permission: 'ShareDevice' | 'FieldCheckIn', allowed: boolean) {
+    const has = (r: ManagerEmployee) =>
+      (permission === 'ShareDevice' ? r.canShareDevice : r.canFieldCheckIn) === true
+    const affected = rows.filter((r) => has(r) !== allowed)
+    if (affected.length === 0) return
+
+    const what = permission === 'ShareDevice' ? 'ortaq telefon' : 'sahə ziyarəti'
+    if (!window.confirm(
+      allowed
+        ? `${affected.length} nəfərə «${what}» icazəsi verilsin?`
+        : `${affected.length} nəfərdən «${what}» icazəsi alınsın?`,
+    )) return
+
+    setBusy(true)
+    const { status } = await bulkPermissionAsManager(affected.map((r) => r.id), permission, allowed)
+    setBusy(false)
+    if (status === 200) await load()
+    else setErr('Dəyişmədi')
+  }
 
   async function load() {
     setLoading(true)
@@ -136,6 +160,49 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           <div style={{ fontWeight: 700 }}>{pin.name} — müvəqqəti PIN: <span className="mono" style={{ fontSize: 16 }}>{pin.pin}</span></div>
           <div style={{ fontSize: 12, marginTop: 4 }}>Bu PIN-i işçiyə verin. İlk girişdə öz PIN-ini təyin edəcək. Bu pəncərə bağlananda PIN yenidən görünməyəcək.</div>
           <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setPin(null)}>Bağla</button>
+        </div>
+      )}
+
+      {/* The two opt-in capabilities across this manager's own staff. The manager is who knows which
+          of their brigade owns no phone and which of their sites has no poster; making them ask an
+          admin for every name is how a permission ends up either never granted or granted to
+          everyone. The server narrows it to their branches' plain staff regardless. */}
+      {!editing && rows.length > 0 && (
+        <div className="card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {([
+            {
+              key: 'ShareDevice' as const,
+              icon: '📱',
+              title: 'Ortaq telefon icazəsi',
+              hint: 'Telefonu olmayanlar üçün: hesabı briqadanın telefonunda saxlanıla bilər.',
+              count: rows.filter((r) => r.canShareDevice === true).length,
+            },
+            {
+              key: 'FieldCheckIn' as const,
+              icon: '📍',
+              title: 'Sahə ziyarəti icazəsi',
+              hint: 'QR plakatı olmayan obyektlər üçün: GPS + selfi ilə davamiyyət.',
+              count: rows.filter((r) => r.canFieldCheckIn === true).length,
+            },
+          ]).map((p) => (
+            <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ fontSize: 22 }}>{p.icon}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>{p.title} — {rows.length} nəfərdən {p.count}-də var</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{p.hint}</div>
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button className="btn btn-sm" disabled={busy} onClick={() => void grant(p.key, true)}>
+                  Hamısına ver
+                </button>
+                <button className="btn btn-sm" disabled={busy} onClick={() => void grant(p.key, false)}>
+                  Geri al
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

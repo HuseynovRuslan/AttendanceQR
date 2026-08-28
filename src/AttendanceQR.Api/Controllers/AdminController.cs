@@ -1246,23 +1246,24 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
-    /// Grant or withdraw the shared-phone permission for many people at once.
+    /// Grant or withdraw one opt-in capability for many people at once.
     ///
-    /// It exists because of the arithmetic: around 260 workers own no phone, and setting a checkbox on
-    /// each of their cards is an afternoon of clicking that nobody would finish. A permission that is
-    /// too tedious to grant properly gets granted carelessly instead — or the rule gets turned off.
+    /// It exists because of the arithmetic. Around 260 workers own no phone and need the shared-phone
+    /// permission; whole brigades work at sites with no QR poster and need field check-in. Setting a
+    /// checkbox on each card is an afternoon of clicking nobody finishes, and a permission too tedious
+    /// to grant properly gets granted carelessly instead — or the rule protecting it gets turned off.
     ///
     /// Withdrawal is here too, and not as an afterthought. A permission that can only be switched on
-    /// is a ratchet: the day a brigade stops sharing a phone, or one is lost, there has to be a way
-    /// back that is no harder than the way in.
+    /// is a ratchet: the day a brigade stops sharing a phone there has to be a way back no harder than
+    /// the way in.
     ///
-    /// Nobody is signed out and no binding is touched. This changes what may be adopted NEXT; a
+    /// Nobody is signed out and no device binding is touched. This changes what may happen NEXT; a
     /// handset already carrying these people keeps working until its bindings are revoked, which is
-    /// the shared-devices screen's job. Splitting it that way is deliberate — revoking a permission
+    /// the shared-devices screen's job. Splitting it that way is deliberate — withdrawing a permission
     /// should never be the thing that strands somebody at a poster mid-morning.
     /// </summary>
-    [HttpPost("bulk-share-device")]
-    public async Task<IActionResult> BulkShareDevice([FromBody] BulkShareDeviceRequest request)
+    [HttpPost("bulk-permission")]
+    public async Task<IActionResult> BulkGrant([FromBody] BulkPermissionRequest request)
     {
         var ids = (request.EmployeeIds ?? []).Distinct().ToList();
         if (ids.Count == 0)
@@ -1272,21 +1273,30 @@ public class AdminController : ControllerBase
         if (ids.Count > 300)
             return BadRequest(new { error = "TooMany" });
 
-        var ct = HttpContext.RequestAborted;
-        var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+        var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(HttpContext.RequestAborted);
+        var changed = ApplyPermission(employees, request.Permission, request.Allowed);
 
+        if (changed > 0)
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        return Ok(new { changed, total = employees.Count, allowed = request.Allowed });
+    }
+
+    /// <summary>Sets one capability across a list, returning how many rows actually moved. Shared with
+    /// the manager's own bulk endpoint so the two can never mean different things.</summary>
+    public static int ApplyPermission(IEnumerable<Employee> employees, BulkPermission permission, bool allowed)
+    {
         var changed = 0;
         foreach (var e in employees)
         {
-            if (e.CanShareDevice == request.Allowed) continue;
-            e.CanShareDevice = request.Allowed;
+            var current = permission == BulkPermission.ShareDevice ? e.CanShareDevice : e.CanFieldCheckIn;
+            if (current == allowed) continue;
+
+            if (permission == BulkPermission.ShareDevice) e.CanShareDevice = allowed;
+            else e.CanFieldCheckIn = allowed;
             changed++;
         }
-
-        if (changed > 0)
-            await _db.SaveChangesAsync(ct);
-
-        return Ok(new { changed, total = employees.Count, allowed = request.Allowed });
+        return changed;
     }
 
     // POST /api/admin/employees/bulk-reset-pin — issue a fresh temporary PIN to many people at once

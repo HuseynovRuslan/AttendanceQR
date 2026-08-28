@@ -35,6 +35,10 @@ export interface ManagerEmployee {
   workCycleAnchor: string | null
   photoExempt: boolean
   canFieldCheckIn: boolean
+  /** Read-only for a manager. Whether an account may ride on somebody else's phone is granted here in
+   *  bulk over their own staff, but the per-employee edit form does not carry it — see the manager
+   *  projection in ManagerController for why. */
+  canShareDevice: boolean
   isActive: boolean
   activated: boolean
 }
@@ -98,6 +102,18 @@ export function resetManagerEmployeePin(id: string) {
   return apiRequest<{ id: string; tempPin: string } | { error: string }>(
     `/api/manager/employees/${id}/reset-pin`,
     { method: 'POST' },
+  )
+}
+
+/** The manager's own version — same body, narrowed server-side to their branches' plain staff. */
+export function bulkPermissionAsManager(
+  employeeIds: string[],
+  permission: 'ShareDevice' | 'FieldCheckIn',
+  allowed: boolean,
+) {
+  return apiRequest<{ changed: number; total: number; skipped: number } | { error: string }>(
+    '/api/manager/employees/bulk-permission',
+    { method: 'POST', body: { employeeIds, permission, allowed } },
   )
 }
 

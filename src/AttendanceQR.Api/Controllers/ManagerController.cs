@@ -487,6 +487,47 @@ public class ManagerController : ControllerBase
         return Ok(new { id = employee.Id, tempPin });
     }
 
+    /// <summary>
+    /// Grant or withdraw an opt-in capability across this manager's own staff.
+    ///
+    /// The manager is the one who knows which of their brigade owns no phone and which of their sites
+    /// has no poster, so making them ask an admin for every name is how the permission ends up either
+    /// never granted or granted to everyone. The owner asked for this deliberately.
+    ///
+    /// It is narrower than the admin's in the way that matters: the same
+    /// <see cref="ManageableEmployeeAsync"/> boundary as every other manager write. Their own
+    /// branches, and Role==Employee only — a manager cannot hand a capability to a fellow manager or
+    /// to an admin who clocks in at their site, which is the 2026-08-08 rule and stays.
+    ///
+    /// Silently skipping anyone out of reach rather than failing the whole call is deliberate too: a
+    /// bulk action over a filtered list will sometimes include a name the manager may not act on, and
+    /// refusing all of it would teach them to stop using the button.
+    /// </summary>
+    [HttpPost("employees/bulk-permission")]
+    public async Task<IActionResult> BulkGrant([FromBody] BulkPermissionRequest request)
+    {
+        var ids = (request.EmployeeIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+            return BadRequest(new { error = "NoEmployees" });
+        if (ids.Count > 300)
+            return BadRequest(new { error = "TooMany" });
+
+        var ct = HttpContext.RequestAborted;
+        var managed = await ManagedLocationIdsAsync();
+        var targets = await _db.Employees
+            .Where(e => ids.Contains(e.Id)
+                        && managed.Contains(e.LocationId)
+                        && e.Role == EmployeeRole.Employee)
+            .ToListAsync(ct);
+
+        var changed = AdminController.ApplyPermission(targets, request.Permission, request.Allowed);
+        if (changed > 0)
+            await _db.SaveChangesAsync(ct);
+
+        // "skipped" so the screen can say so rather than quietly doing less than it was asked.
+        return Ok(new { changed, total = targets.Count, skipped = ids.Count - targets.Count, allowed = request.Allowed });
+    }
+
     // --- leaves -----------------------------------------------------------------
 
     // GET /api/manager/leaves — leave records for everyone at this manager's branches, plus their own.

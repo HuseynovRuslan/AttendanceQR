@@ -7,7 +7,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { COMPANY_TZ, fmtFullDateTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import {
   bulkResetPin,
-  bulkShareDevice,
+  bulkPermission,
+  type BulkPermission,
   type BulkPinResult,
   deleteEmployee,
   getAdminLocations,
@@ -568,33 +569,41 @@ export function EmployeesPage() {
   const [sharing, setSharing] = useState(false)
 
   /**
-   * Grant or withdraw the shared-phone permission across the VISIBLE list — whatever the branch
-   * filter and search have narrowed it to. Acting on the filtered set is this page's idiom, and it is
-   * the shape the work actually has: a whole brigade at a branch, not people picked one at a time.
+   * Grant or withdraw a capability across the VISIBLE list — whatever the branch filter and search
+   * have narrowed it to. Acting on the filtered set is this page's idiom, and it is the shape the
+   * work actually has: a whole brigade at a branch, not people picked one at a time.
    *
-   * Withdrawal is offered beside it deliberately. A permission that can only be switched on is a
-   * ratchet, and the day a brigade stops sharing a phone there has to be a way back that is no harder
-   * than the way in.
+   * Withdrawal sits beside it deliberately. A permission that can only be switched on is a ratchet,
+   * and the day a brigade stops sharing a phone there has to be a way back no harder than the way in.
    */
-  async function setShareDevice(targets: AdminEmployee[], allowed: boolean) {
-    const affected = targets.filter((t) => (t.canShareDevice === true) !== allowed)
+  async function setPermission(targets: AdminEmployee[], permission: BulkPermission, allowed: boolean) {
+    const has = (t: AdminEmployee) =>
+      (permission === 'ShareDevice' ? t.canShareDevice : t.canFieldCheckIn) === true
+    const affected = targets.filter((t) => has(t) !== allowed)
     if (affected.length === 0) return
+
+    const what = permission === 'ShareDevice' ? 'ORTAQ TELEFON' : 'SAHƏ ZİYARƏTİ'
+    const why = permission === 'ShareDevice'
+      ? 'Onların hesabı briqadanın ortaq telefonunda saxlanıla biləcək. Bu, həmin işçilər üçün ' +
+        '«bir telefon, bir işçi» qorumasını ləğv edir — telefonu olmayanlar üçün nəzərdə tutulub.'
+      : 'Onlar QR plakatı olmayan obyektlərdə GPS + selfi ilə davamiyyət qeyd edə biləcək.'
+    const back = permission === 'ShareDevice'
+      ? 'Artıq bağlanmış telefonlar işləməyə davam edir — onları ayırmaq üçün Cihazlar səhifəsindəki ' +
+        '«Ortaq telefonlar» bölməsindən istifadə edin.'
+      : 'Başlanmış ziyarətlər olduğu kimi qalır.'
+
     if (!window.confirm(
       allowed
-        ? `${affected.length} nəfərə ORTAQ TELEFON icazəsi verilsin?
+        ? `${affected.length} nəfərə ${what} icazəsi verilsin?
 
-` +
-          'Onların hesabı briqadanın ortaq telefonunda saxlanıla biləcək. Bu, həmin işçilər üçün ' +
-          '«bir telefon, bir işçi» qorumasını ləğv edir — telefonu olmayanlar üçün nəzərdə tutulub.'
-        : `${affected.length} nəfərdən ortaq telefon icazəsi alınsın?
+${why}`
+        : `${affected.length} nəfərdən ${what} icazəsi alınsın?
 
-` +
-          'Artıq bağlanmış telefonlar işləməyə davam edir — onları ayırmaq üçün Cihazlar səhifəsindəki ' +
-          '«Ortaq telefonlar» bölməsindən istifadə edin.',
+${back}`,
     )) return
 
     setSharing(true)
-    const { status } = await bulkShareDevice(affected.map((t) => t.id), allowed)
+    const { status } = await bulkPermission(affected.map((t) => t.id), permission, allowed)
     setSharing(false)
     if (status === 200) {
       await refresh()
@@ -831,36 +840,49 @@ export function EmployeesPage() {
         </div>
       )}
 
-      {/* Shared-phone permission over the visible list. It sits here rather than on each card because
-          of the arithmetic: around 260 workers own no phone, and a checkbox per person is an
-          afternoon nobody finishes — a permission too tedious to grant properly gets granted
-          carelessly instead, or the rule gets turned off. Filter to a branch, then act. */}
+      {/* The two opt-in capabilities, over the visible list. They sit here rather than on each card
+          because of the arithmetic: ~260 workers own no phone and whole brigades work at poster-less
+          sites, and a checkbox per person is an afternoon nobody finishes — a permission too tedious
+          to grant properly gets granted carelessly instead, or the rule gets turned off. Filter to a
+          branch, then act. */}
       {visible.length > 0 && (
-        <div
-          className="card"
-          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 16px', marginBottom: 12 }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 22 }}>📱</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>
-                Ortaq telefon icazəsi — görünən {visible.length} nəfərdən{' '}
-                {visible.filter((r) => r.canShareDevice === true).length}-də var
+        <div className="card" style={{ padding: '12px 16px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {([
+            {
+              key: 'ShareDevice' as BulkPermission,
+              icon: '📱',
+              title: 'Ortaq telefon icazəsi',
+              hint: 'Telefonu olmayanlar üçün: hesabı briqadanın telefonunda saxlanıla bilər.',
+              count: visible.filter((r) => r.canShareDevice === true).length,
+            },
+            {
+              key: 'FieldCheckIn' as BulkPermission,
+              icon: '📍',
+              title: 'Sahə ziyarəti icazəsi',
+              hint: 'QR plakatı olmayan obyektlər üçün: GPS + selfi ilə davamiyyət.',
+              count: visible.filter((r) => r.canFieldCheckIn === true).length,
+            },
+          ]).map((p) => (
+            <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ fontSize: 22 }}>{p.icon}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>
+                    {p.title} — görünən {visible.length} nəfərdən {p.count}-də var
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>{p.hint}</div>
+                </div>
               </div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                Telefonu olmayanlar üçün: hesabı briqadanın telefonunda saxlanıla bilər. Filialı seçib
-                bütün briqadaya bir dəfəyə verin.
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button className="btn btn-sm" disabled={sharing} onClick={() => void setPermission(visible, p.key, true)}>
+                  {sharing ? '…' : 'Görünənlərə ver'}
+                </button>
+                <button className="btn btn-sm" disabled={sharing} onClick={() => void setPermission(visible, p.key, false)}>
+                  Geri al
+                </button>
               </div>
             </div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button className="btn btn-sm" disabled={sharing} onClick={() => void setShareDevice(visible, true)}>
-              {sharing ? '…' : 'Görünənlərə ver'}
-            </button>
-            <button className="btn btn-sm" disabled={sharing} onClick={() => void setShareDevice(visible, false)}>
-              Geri al
-            </button>
-          </div>
+          ))}
         </div>
       )}
 
