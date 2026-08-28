@@ -17,7 +17,12 @@ namespace AttendanceQR.Api.Controllers;
 /// and immediately recomputes that date's DailySummary so reports agree right away.
 /// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+// Manager too, for the two actions a branch manager is actually asked about: seeing which of THEIR
+// staff has an unclosed day, and closing it. A day left open reads as zero hours, so leaving it to an
+// admin means a manager watching their own people's time silently disappear. Every read below is
+// filtered to their branches and every write re-checks the employee — the wider actions (creating a
+// record from nothing, re-running face checks tenant-wide) keep their own Admin-only attributes.
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/attendance")]
 public class AdminAttendanceController : ControllerBase
 {
@@ -46,9 +51,18 @@ public class AdminAttendanceController : ControllerBase
         // the "not today" cutoff uses the same UTC day — no timezone conversion to get out of step.
         var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
 
+        // A manager sees their own branches; an admin sees the company. Without this the list was
+        // tenant-wide for whoever could reach it, and the 500-row cap would have quietly hidden a
+        // manager's own people behind another branch's backlog.
+        var role = User.Role();
+        var managed = role == EmployeeRole.Manager
+            ? await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), HttpContext.RequestAborted)
+            : null;
+
         var rows = await (
             from r in _db.AttendanceRecords
             where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayUtc
+                  && (managed == null || managed.Contains(r.LocationId))
             join e in _db.Employees on r.EmployeeId equals e.Id
             join l in _db.Locations on r.LocationId equals l.Id
             orderby r.AttendanceDate descending, e.FullName
@@ -76,6 +90,13 @@ public class AdminAttendanceController : ControllerBase
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
+
+        // A manager may only correct their OWN staff's record. Same boundary as every other manager
+        // write: their branches, and Role==Employee — the 2026-08-08 rule that stopped a manager
+        // reaching a same-branch admin's account. An admin passes straight through.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId);
         if (location is null)
@@ -113,7 +134,10 @@ public class AdminAttendanceController : ControllerBase
         return Ok(Project(record));
     }
 
+    // Admin-only by its own attribute now the class admits managers: this writes a day out of
+    // nothing, for anyone, which is a different power from correcting a record that already exists.
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] AdminAttendanceCreateRequest request)
     {
         if (request.Date > DateOnly.FromDateTime(DateTime.UtcNow))
@@ -166,6 +190,13 @@ public class AdminAttendanceController : ControllerBase
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
 
+        // A manager may only correct their OWN staff's record. Same boundary as every other manager
+        // write: their branches, and Role==Employee — the 2026-08-08 rule that stopped a manager
+        // reaching a same-branch admin's account. An admin passes straight through.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
         if (record.CheckOutAtUtc is not null)
         {
             record.CheckOutAtUtc = null;
@@ -182,7 +213,9 @@ public class AdminAttendanceController : ControllerBase
 
     // Re-queue a background face-match for every record that has a check-in photo — e.g. after the
     // references were corrected, to (re)score the history. Returns how many were queued.
+    // Admin-only by its own attribute: a paid Rekognition call per record, tenant-wide.
     [HttpPost("recheck-faces")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RecheckFaces()
     {
         var ids = await _db.AttendanceRecords

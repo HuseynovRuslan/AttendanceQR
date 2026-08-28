@@ -23,6 +23,8 @@ import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
+import { useAuth } from '../../auth/AuthContext'
+import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
 
@@ -30,6 +32,19 @@ const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial me
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
  * from existing admin endpoints — no new backend. Reached at /admin/employees/:id. */
 export function EmployeeProfilePage() {
+  // Role decides which API this screen talks to, never what it hides. A manager's data comes from
+  // /api/manager/*, which cannot carry salary or role at all.
+  const { role } = useAuth()
+  const isManager = role === 'Manager'
+  /**
+   * Whether this caller may ACT on the person whose card is open.
+   *
+   * Opening a card and changing it are two different boundaries. A manager may open anyone at their
+   * branches — a peer, the admin who clocks in there — because a name on a board should never be dead
+   * text. They may change only their own plain staff. Without this the card offered PIN reset and
+   * deactivate on an admin, and the refusal arrived as a 403 the person reads as a broken button.
+   */
+  const [manageable, setManageable] = useState(true)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -75,8 +90,11 @@ export function EmployeeProfilePage() {
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
     const today = now.toISOString().slice(0, 10)
 
+    // A manager loads ONE person from their own endpoint. The admin roster is not merely bigger — it
+    // is unscoped and carries monthlySalary, so it must never be the thing a manager's screen fetches
+    // and filters client-side.
     const [empRes, attRes, devRes, sumRes, daysRes] = await Promise.all([
-      getEmployees(),
+      isManager ? getManagerEmployee(id) : getEmployees(),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
@@ -84,8 +102,18 @@ export function EmployeeProfilePage() {
     ])
     if (daysRes.status === 200 && Array.isArray(daysRes.data)) setMonthDays(daysRes.data)
 
-    const found = empRes.status === 200 && Array.isArray(empRes.data) ? empRes.data.find((e) => e.id === id) ?? null : null
+    const found = empRes.status !== 200 || !empRes.data || 'error' in empRes.data
+      ? null
+      : Array.isArray(empRes.data)
+        ? empRes.data.find((e) => e.id === id) ?? null
+        // The manager row is the same shape minus salary and role — which is the point, so the cast
+        // goes through unknown rather than pretending the two types overlap. The fields this screen
+        // reads (identity, hours, shift, flags) are present on both; salary it never displays, and
+        // role only decorates a badge.
+        : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
+    // The manager endpoint says so outright; an admin may act on anyone.
+    setManageable(!isManager || (found != null && (found as unknown as { manageable?: boolean }).manageable === true))
     if (!found) {
       setNotFound(true)
       setLoading(false)
@@ -106,7 +134,9 @@ export function EmployeeProfilePage() {
     if (!emp) return
     setBusy(true)
     setErr(null)
-    const r = await resetPin(emp.id)
+    // The manager twin re-checks the branch and the target's role; the admin one 403s for them
+    // outright, so an unbranched call made the button look broken rather than refused.
+    const r = isManager ? await resetManagerEmployeePin(emp.id) : await resetPin(emp.id)
     setBusy(false)
     if (r.status === 200 && r.data && 'tempPin' in r.data) setPin(r.data.tempPin)
     else setErr('PIN sıfırlanmadı')
@@ -128,7 +158,34 @@ export function EmployeeProfilePage() {
       return
     setBusy(true)
     setErr(null)
-    const r = await updateEmployee(emp.id, {
+    // THE hazard on this screen. EmployeeUpdateRequest null-defaults every field, so this re-sends
+    // the whole employee to change one flag — including monthlySalary. A manager's `emp` never
+    // carries salary (their endpoint does not send it), so routing their save to the admin PUT would
+    // wipe the salary of every person they toggled, silently, one at a time. The manager endpoint
+    // has no salary field at all, which is why the branch is here and not a hidden input.
+    const r = isManager
+      ? await updateManagerEmployee(emp.id, {
+          fullName: emp.fullName,
+          firstName: emp.firstName,
+          lastName: emp.lastName,
+          fatherName: emp.fatherName,
+          position: emp.position,
+          phoneNumber: emp.phoneNumber,
+          email: emp.email || null,
+          locationId: emp.locationId,
+          birthDate: emp.birthDate ?? null,
+          birthYear: emp.birthYear,
+          workStart: emp.workStart ?? null,
+          workEnd: emp.workEnd ?? null,
+          photoExempt: emp.photoExempt === true,
+          canFieldCheckIn: emp.canFieldCheckIn === true,
+          scheduleId: emp.scheduleId ?? null,
+          workCycleDays: emp.workCycleDays ?? null,
+          workCycleOnDays: emp.workCycleOnDays ?? null,
+          workCycleAnchor: emp.workCycleAnchor ?? null,
+          isActive: !emp.isActive,
+        })
+      : await updateEmployee(emp.id, {
       fullName: emp.fullName,
       // Re-sent like the rest — an omitted part would blank it and the backend would recompose the
       // name from the remaining fields.
@@ -156,7 +213,7 @@ export function EmployeeProfilePage() {
       workCycleOnDays: emp.workCycleOnDays ?? null,
       workCycleAnchor: emp.workCycleAnchor ?? null,
       isActive: !emp.isActive,
-    })
+        })
     setBusy(false)
     if (r.status === 200) void load()
     else setErr('Status dəyişmədi')
@@ -273,14 +330,38 @@ export function EmployeeProfilePage() {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Actions. Every one of these is refused server-side for a card this caller may not act on —
+            a manager opening a peer's or their branch admin's card. Showing them anyway would turn a
+            deliberate boundary into what looks like a broken button. */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate(`/admin/employees?edit=${emp.id}`)}>Redaktə et</button>
-          <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
-          {!emp.activated && <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>}
-          <button className={`btn btn-sm ${emp.isActive ? 'btn-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
-            {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
-          </button>
+          {!manageable && (
+            <span className="muted" style={{ fontSize: 13, alignSelf: 'center' }}>
+              Bu hesab sizin idarənizdə deyil — yalnız baxa bilərsiniz.
+            </span>
+          )}
+          {/* A manager edits from their OWN roster; the admin one is not theirs to open, and
+              sending them there landed on a page that renders its 403 as "no employees". */}
+          {manageable && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => navigate(`/admin/${isManager ? 'my-employees' : 'employees'}?edit=${emp.id}`)}
+            >
+              Redaktə et
+            </button>
+          )}
+          {manageable && (
+            <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
+          )}
+          {/* Re-invite mints an activation link and has no manager endpoint; offering it would
+              only ever 403. A manager reissues a temporary PIN instead, which they can do. */}
+          {!emp.activated && !isManager && (
+            <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
+          )}
+          {manageable && (
+            <button className={`btn btn-sm ${emp.isActive ? 'btn-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
+              {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
+            </button>
+          )}
         </div>
 
         {err && <div className="fb fb-err" style={{ marginTop: 12 }}><IconX /><span>{err}</span></div>}
@@ -338,9 +419,14 @@ export function EmployeeProfilePage() {
       <div className="card card-pad">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div className="card-title" style={{ margin: 0 }}>Son davamiyyət</div>
-          <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setShowCreate((v) => !v); setRecErr(null) }}>
-            + Qeyd əlavə et
-          </button>
+          {/* Creating a day from nothing stayed Admin-only when the controller opened to managers —
+              correcting a record that exists is a different power from inventing one. Offering the
+              button anyway would only ever 403. A manager corrects the rows below instead. */}
+          {!isManager && (
+            <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setShowCreate((v) => !v); setRecErr(null) }}>
+              + Qeyd əlavə et
+            </button>
+          )}
         </div>
 
         {recErr && <div className="fb fb-err" style={{ marginBottom: 10 }}><IconX /><span>{recErr}</span></div>}
@@ -441,7 +527,9 @@ export function EmployeeProfilePage() {
                     <div className="muted" style={{ fontSize: 11 }}>{d.boundVia} · {fmtDate(d.boundAtUtc.slice(0, 10))}</div>
                   </div>
                 </div>
-                <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void onRevokeDevice(d.id)}>Ləğv et</button>
+                {manageable && (
+                  <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void onRevokeDevice(d.id)}>Ləğv et</button>
+                )}
               </div>
             ))}
           </div>

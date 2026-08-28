@@ -117,6 +117,14 @@ export function bulkPermissionAsManager(
   )
 }
 
+/** ONE employee at this manager's branches — what the shared profile screen loads instead of the
+ *  admin roster, which is unscoped and carries monthlySalary. */
+export function getManagerEmployee(id: string) {
+  return apiRequest<(ManagerEmployee & { manageable: boolean }) | { error: string }>(
+    `/api/manager/employees/${id}`,
+  )
+}
+
 // --- leaves ---
 
 export interface ManagerLeave {

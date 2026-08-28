@@ -191,6 +191,24 @@ public class BulkPermissionScopeTests
     }
 
     [Fact]
+    public async Task The_managers_own_list_reports_the_permission_back()
+    {
+        // It was projected and then dropped from the reshaped response, so the manager's screen
+        // counted zero however many people had it and "take it back" computed an empty set and
+        // returned in silence. A grant you cannot see is a grant nobody trusts.
+        using var h = new Harness();
+        await h.GrantAsync([h.StaffId], BulkPermission.ShareDevice, true);
+
+        var ok = Assert.IsType<OkObjectResult>(await h.Manager.Employees(false));
+        var row = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value)
+            .Single(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)! == h.StaffId);
+
+        var field = row.GetType().GetProperty("canShareDevice");
+        Assert.NotNull(field);
+        Assert.Equal(true, field!.GetValue(row));
+    }
+
+    [Fact]
     public async Task An_empty_list_is_refused_rather_than_silently_doing_nothing()
     {
         using var h = new Harness();

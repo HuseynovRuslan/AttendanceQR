@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { canOpen } from '../../lib/panelAccess'
 import { getImpersonation } from '../../api/client'
 import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
@@ -188,7 +189,13 @@ export function AdminLayout() {
         ...(isAdmin ? [{ to: '/admin/billing', label: 'Abunəlik', Icon: IconMoney }] : []),
       ],
     },
-  ].filter((s) => s.links.length > 0)
+  ]
+    // Every row is checked against the SAME table the router uses, so a link can no longer outlive
+    // the route behind it. That is not hypothetical: seven rows were opened here while the routes
+    // stayed shut, and for two commits a manager tapped them and was silently bounced back to the
+    // today board — indistinguishable, from their side, from a mis-tap.
+    .map((s) => ({ ...s, links: s.links.filter((l) => canOpen(l.to.replace('/admin/', ''), role)) }))
+    .filter((s) => s.links.length > 0)
 
   return (
     <div className="app">

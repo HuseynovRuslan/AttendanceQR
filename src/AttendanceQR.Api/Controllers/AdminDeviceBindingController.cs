@@ -1,6 +1,8 @@
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +15,10 @@ namespace AttendanceQR.Api.Controllers;
 /// makes the open adoption window safe to close later.
 /// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+// Manager too. A device that will not scan is the complaint a branch manager gets first and can do
+// nothing about, so revocation belonged with the person standing next to the poster. Every read is
+// filtered to their branches and every revoke re-checks the employee — see ScopeAsync below.
+[Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/device-bindings")]
 public class AdminDeviceBindingController : ControllerBase
 {
@@ -21,15 +26,30 @@ public class AdminDeviceBindingController : ControllerBase
 
     public AdminDeviceBindingController(AppDbContext db) => _db = db;
 
+    /// <summary>The branches to filter reads by — null for an admin, meaning the whole company.</summary>
+    private async Task<List<Guid>?> ManagedOrAllAsync()
+        => User.Role() == EmployeeRole.Manager
+            ? await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), HttpContext.RequestAborted)
+            : null;
+
+    /// <summary>May the caller act on this employee's device? Their branches and Role==Employee for a
+    /// manager, everything for an admin — the same boundary as every other manager write, so revoking
+    /// a device never becomes a way to reach a same-branch admin's account.</summary>
+    private Task<bool> MayActOnAsync(Guid employeeId)
+        => LocationScopeRules.CanManageEmployeeAsync(
+            _db, User.EmployeeId(), User.Role(), employeeId, HttpContext.RequestAborted);
+
     // GET /api/admin/device-bindings — every active binding, newest first, so a freshly adopted
     // device is at the top where an admin will actually see it.
     [HttpGet]
     public async Task<IActionResult> List()
     {
+        var managed = await ManagedOrAllAsync();
         var rows = await (
             from d in _db.DeviceBindings
             where d.IsActive
             join e in _db.Employees on d.EmployeeId equals e.Id
+            where managed == null || managed.Contains(e.LocationId)
             orderby d.BoundAtUtc descending
             select new
             {
@@ -61,10 +81,15 @@ public class AdminDeviceBindingController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
 
+        var managed = await ManagedOrAllAsync();
         var rows = await (
             from d in _db.DeviceBindings
             where d.IsActive
             join e in _db.Employees on d.EmployeeId equals e.Id
+            // A manager sees the handsets their OWN people are on. A shared phone can straddle two
+            // branches, so the count they see is the count they can act on — which is the honest one
+            // for them, even though it may be smaller than the phone really carries.
+            where managed == null || managed.Contains(e.LocationId)
             select new
             {
                 d.DeviceFingerprint, d.DeviceLabel, d.BoundAtUtc, d.LastSeenAtUtc,
@@ -129,8 +154,20 @@ public class AdminDeviceBindingController : ControllerBase
         if (bindings.Count == 0)
             return NotFound(new { error = "DeviceNotFound" });
 
-        var now = DateTime.UtcNow;
+        // A shared phone can straddle two branches. A manager detaches the accounts they are
+        // responsible for and leaves the rest bound — silently revoking another branch's people
+        // because their colleague's phone was lost would strand workers a different manager answers
+        // for. An admin, whose scope is the company, detaches all of them.
+        var actionable = new List<DeviceBinding>();
         foreach (var b in bindings)
+            if (await MayActOnAsync(b.EmployeeId))
+                actionable.Add(b);
+
+        if (actionable.Count == 0)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
+        var now = DateTime.UtcNow;
+        foreach (var b in actionable)
         {
             b.RevokedAtUtc = now;
             _db.AuditLogs.Add(new AuditLog
@@ -143,7 +180,9 @@ public class AdminDeviceBindingController : ControllerBase
         }
 
         await _db.SaveChangesAsync(ct);
-        return Ok(new { revoked = bindings.Count });
+        // "skipped" so the screen can say the phone still carries somebody rather than implying the
+        // handset is now clean.
+        return Ok(new { revoked = actionable.Count, skipped = bindings.Count - actionable.Count });
     }
 
     // POST /api/admin/device-bindings/{id}/revoke — kill one context. It is NOT deleted: the row
@@ -154,6 +193,9 @@ public class AdminDeviceBindingController : ControllerBase
         var binding = await _db.DeviceBindings.FirstOrDefaultAsync(d => d.Id == id, HttpContext.RequestAborted);
         if (binding is null)
             return NotFound(new { error = "BindingNotFound" });
+
+        if (!await MayActOnAsync(binding.EmployeeId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         if (!binding.IsActive)
             return Ok(new { status = "AlreadyRevoked" });

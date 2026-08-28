@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { AdminRoute, AdminOnly } from './components/AdminRoute'
+import { AdminRoute, PanelPage } from './components/AdminRoute'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
@@ -297,24 +297,24 @@ function AppRoutes() {
         <Route
           path="dashboard"
           element={
-            <AdminOnly>
-              <DashboardPage />
-            </AdminOnly>
+              <PanelPage path="dashboard">
+                <DashboardPage />
+              </PanelPage>
           }
         />
         {/* Live board — Admin + Manager (manager scoped to their locations server-side, like today). */}
-        <Route path="today" element={<TodayPage />} />
+        <Route path="today" element={<PanelPage path="today"><TodayPage /></PanelPage>} />
         {/* Shared task board — access is a server-side id allowlist, so the route stays open (admin +
             manager) and the page/API 403s anyone not on the list. */}
-        <Route path="tasks" element={<TasksPage />} />
-        <Route path="reports" element={<ReportsPage />} />
+        <Route path="tasks" element={<PanelPage path="tasks"><TasksPage /></PanelPage>} />
+        <Route path="reports" element={<PanelPage path="reports"><ReportsPage /></PanelPage>} />
         {/* Payroll — Admin only (salaries are sensitive; a manager must not see them). */}
         <Route
           path="payroll"
           element={
-            <AdminOnly>
-              <PayrollPage />
-            </AdminOnly>
+              <PanelPage path="payroll">
+                <PayrollPage />
+              </PanelPage>
           }
         />
         {/* Abunəlik — Admin only. It carries what the company pays and whether it is settled; a
@@ -322,49 +322,49 @@ function AppRoutes() {
         <Route
           path="billing"
           element={
-            <AdminOnly>
-              <BillingPage />
-            </AdminOnly>
+              <PanelPage path="billing">
+                <BillingPage />
+              </PanelPage>
           }
         />
         <Route
           path="announcements"
           element={
-            <AdminOnly>
-              <AnnouncementsPage />
-            </AdminOnly>
+              <PanelPage path="announcements">
+                <AnnouncementsPage />
+              </PanelPage>
           }
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
-        <Route path="tabel" element={<TabelPage />} />
+        <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
         {/* Manager write surface — the endpoints are Manager-only + location-scoped server-side. */}
-        <Route path="my-employees" element={<ManagerEmployeesPage />} />
-        <Route path="my-leaves" element={<ManagerLeavesPage />} />
+        <Route path="my-employees" element={<PanelPage path="my-employees"><ManagerEmployeesPage /></PanelPage>} />
+        <Route path="my-leaves" element={<PanelPage path="my-leaves"><ManagerLeavesPage /></PanelPage>} />
         <Route
           path="positions"
           element={
-            <AdminOnly>
-              <PositionsPage />
-            </AdminOnly>
+              <PanelPage path="positions">
+                <PositionsPage />
+              </PanelPage>
           }
         />
         {/* Admin + Manager. A manager's writes are scope-checked server-side: they may define a
             shift, but not edit one another branch's staff are on. */}
-        <Route path="schedules" element={<SchedulesPage />} />
+        <Route path="schedules" element={<PanelPage path="schedules"><SchedulesPage /></PanelPage>} />
         <Route
           path="vote"
           element={
-            <AdminOnly>
-              <VoteResultsPage />
-            </AdminOnly>
+              <PanelPage path="vote">
+                <VoteResultsPage />
+              </PanelPage>
           }
         />
         <Route
           path="birthdays"
           element={
-            <AdminOnly>
-              <BirthdaysPage />
-            </AdminOnly>
+              <PanelPage path="birthdays">
+                <BirthdaysPage />
+              </PanelPage>
           }
         />
         {/* Foto audit is HIDDEN on purpose (owner, 2026-08-09): it listed every check-in selfie, which
@@ -373,72 +373,72 @@ function AppRoutes() {
             is still in the repo — restoring it is this route + the lazy import + the nav entry. The
             route is REMOVED, not just the nav link: a hidden link on a live route is not hidden. */}
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
-        <Route path="problems" element={<ProblemsPage />} />
+        <Route path="problems" element={<PanelPage path="problems"><ProblemsPage /></PanelPage>} />
         {/* Field visits board + assign — Admin + Manager (the endpoints gate on Admin,Manager). */}
-        <Route path="field-visits" element={<FieldVisitsAdminPage />} />
+        <Route path="field-visits" element={<PanelPage path="field-visits"><FieldVisitsAdminPage /></PanelPage>} />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
         <Route
           path="open-records"
           element={
-            <AdminOnly>
-              <OpenRecordsPage />
-            </AdminOnly>
+              <PanelPage path="open-records">
+                <OpenRecordsPage />
+              </PanelPage>
           }
         />
         <Route
           path="locations"
           element={
-            <AdminOnly>
-              <LocationsPage />
-            </AdminOnly>
+              <PanelPage path="locations">
+                <LocationsPage />
+              </PanelPage>
           }
         />
         <Route
           path="non-working-days"
           element={
-            <AdminOnly>
-              <NonWorkingDaysPage />
-            </AdminOnly>
+              <PanelPage path="non-working-days">
+                <NonWorkingDaysPage />
+              </PanelPage>
           }
         />
         <Route
           path="leaves"
           element={
-            <AdminOnly>
-              <LeavesPage />
-            </AdminOnly>
+              <PanelPage path="leaves">
+                <LeavesPage />
+              </PanelPage>
           }
         />
         <Route
           path="locations/:locationId/print-qr"
           element={
-            <AdminOnly>
-              <PrintQrPage />
-            </AdminOnly>
+              <PanelPage path="locations/:locationId/print-qr">
+                <PrintQrPage />
+              </PanelPage>
           }
         />
         <Route
           path="employees"
           element={
-            <AdminOnly>
-              <EmployeesPage />
-            </AdminOnly>
+              <PanelPage path="employees">
+                <EmployeesPage />
+              </PanelPage>
           }
         />
         <Route
           path="employees/:id"
           element={
-            <AdminOnly>
-              <EmployeeProfilePage />
-            </AdminOnly>
+              <PanelPage path="employees/:id">
+                <EmployeeProfilePage />
+              </PanelPage>
           }
         />
         <Route
           path="bulk-invite"
           element={
-            <AdminOnly>
-              <BulkInvitePage />
-            </AdminOnly>
+              <PanelPage path="bulk-invite">
+                <BulkInvitePage />
+              </PanelPage>
           }
         />
         {/* Company management ("Şirkətlər") moved OUT of the tenant admin to the operator console on
@@ -446,17 +446,17 @@ function AppRoutes() {
         <Route
           path="device-changes"
           element={
-            <AdminOnly>
-              <DeviceChangesPage />
-            </AdminOnly>
+              <PanelPage path="device-changes">
+                <DeviceChangesPage />
+              </PanelPage>
           }
         />
         <Route
           path="pin-resets"
           element={
-            <AdminOnly>
-              <PinResetsPage />
-            </AdminOnly>
+              <PanelPage path="pin-resets">
+                <PinResetsPage />
+              </PanelPage>
           }
         />
       </Route>

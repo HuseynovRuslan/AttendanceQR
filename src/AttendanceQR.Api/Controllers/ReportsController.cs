@@ -223,10 +223,12 @@ public class ReportsController : ControllerBase
 
     // GET /api/reports/payroll?from=&to=&locationId= — the payroll (Maaş) table: each employee's
     // fixed monthly salary minus a per-day share for unexcused absences. Same scope as the summary.
-    // Manager too: GetPayrollAsync is built on GetSummaryAsync, which runs through LocationScope —
-    // so a manager's table already contains exactly their own branches' Role==Employee staff and
-    // nobody else. The attribute was the only thing keeping them out, and a branch manager who cannot
-    // see what their own staff are owed has to ask the admin for every question about it.
+    // Manager too: a branch manager who cannot see what their own staff are owed has to ask the admin
+    // about every question of it. The role ceiling is applied INSIDE GetPayrollAsync, not by the shared
+    // scope — that helper deliberately carries every role, because a board headcount that quietly
+    // omitted the managers read short. This comment used to claim the scope filtered by role. It did
+    // not, and for as long as it said so a manager's payroll table listed their peers' and their
+    // admin's salary.
     [HttpGet("payroll")]
     [Authorize(Roles = "Admin,Manager")]
     [RequireFeature(TenantFeatures.Payroll)]

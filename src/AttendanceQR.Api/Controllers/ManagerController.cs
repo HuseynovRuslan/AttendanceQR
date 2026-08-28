@@ -333,10 +333,10 @@ public class ManagerController : ControllerBase
                 workCycleAnchor = e.WorkCycleAnchor,
                 photoExempt = e.PhotoExempt,
                 canFieldCheckIn = e.CanFieldCheckIn,
-                // Read-only here. Whether an account may ride on somebody else's phone is the
-                // COMPANY's call, not a branch manager's: a manager who could grant it could assemble
-                // a shared handset for their own staff and remove the one-phone-one-employee control
-                // on their own authority. Shown so they know why a scan was refused; set by an admin.
+                // Not settable through the per-employee edit — ManagerEmployeeRequest carries it but
+                // UpdateEmployee never assigns it — and granted only through the bulk action below,
+                // which narrows to this manager's own branches' plain staff. Projected because their
+                // screen counts and displays it.
                 canShareDevice = e.CanShareDevice,
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
@@ -347,9 +347,86 @@ public class ManagerController : ControllerBase
         {
             r.id, r.isSelf, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
-            r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn, r.isActive, r.activated,
+            r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn,
+            // Was projected above and then dropped here, so the manager's screen counted zero however
+            // many people had it and the "take it back" button computed an empty set and did nothing.
+            r.canShareDevice,
+            r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
+    }
+
+    /// <summary>
+    /// ONE employee at one of this manager's branches — what the profile screen needs.
+    ///
+    /// The admin profile page fetches the whole company and picks the row out of it, which is fine for
+    /// an admin and impossible for a manager: that list is unscoped and carries <c>monthlySalary</c>.
+    /// This is the same projection as the manager roster, one row, so the profile screen can be shared
+    /// without the salary ever leaving the server.
+    ///
+    /// Uses the SEE boundary, not the ACT one: a manager may open the card of anyone at their branches,
+    /// including a peer or an admin who clocks in there — the same rule the boards already follow, and
+    /// the reason a two-manager site stopped reading a headcount short. What they may CHANGE is still
+    /// decided by <see cref="ManageableEmployeeAsync"/> on each write.
+    /// </summary>
+    [HttpGet("employees/{id:guid}")]
+    public async Task<IActionResult> Employee(Guid id)
+    {
+        var ct = HttpContext.RequestAborted;
+        var managed = await ManagedLocationIdsAsync();
+
+        var e = await _db.Employees
+            .FirstOrDefaultAsync(x => x.Id == id && (managed.Contains(x.LocationId) || x.Id == M15()), ct);
+        if (e is null)
+            return NotFound(new { error = "EmployeeNotFound" });
+
+        var locationName = await _db.Locations
+            .Where(l => l.Id == e.LocationId).Select(l => l.Name).FirstOrDefaultAsync(ct) ?? "";
+
+        // WHO may open the card is the SEE boundary — anyone at their branches, so a name on the board
+        // is never dead. WHAT the card shows is not the same question.
+        //
+        // Login here is a phone number or an email plus a four-digit PIN. Handing a manager the
+        // telephone number of the admin who clocks in at their branch hands them half of that admin's
+        // credentials, which is the reconnaissance half of the 2026-08-08 takeover — the same reason
+        // `role` is withheld below. This file already refuses it twice for exactly this reason: the
+        // roster filters Role==Employee because "listing them would only leak their contact details
+        // behind buttons that 403", and LeaveSubjectList exists as a name-only endpoint on the same
+        // argument. A first draft of this card reversed both without noticing.
+        var mayAct = e.Role == EmployeeRole.Employee && e.Id != M15() && managed.Contains(e.LocationId);
+        var ownContacts = mayAct || e.Id == M15();
+
+        return Ok(new
+        {
+            id = e.Id,
+            isSelf = e.Id == M15(),
+            fullName = e.FullName,
+            firstName = e.FirstName,
+            lastName = e.LastName,
+            fatherName = e.FatherName,
+            position = e.Position,
+            // Null for a peer or an admin: identity, not identifiers.
+            phoneNumber = ownContacts ? e.PhoneNumber : null,
+            email = ownContacts ? e.Email : null,
+            locationId = e.LocationId,
+            locationName,
+            birthDate = ownContacts ? e.BirthDate : (DateOnly?)null,
+            birthYear = ownContacts ? e.BirthYear : null,
+            workStart = e.WorkStart?.ToString("HH:mm"),
+            workEnd = e.WorkEnd?.ToString("HH:mm"),
+            photoExempt = e.PhotoExempt,
+            canFieldCheckIn = e.CanFieldCheckIn,
+            canShareDevice = e.CanShareDevice,
+            isActive = e.IsActive,
+            activated = e.ActivatedAtUtc != null,
+            scheduleId = e.ScheduleId,
+            workCycleDays = e.WorkCycleDays,
+            workCycleOnDays = e.WorkCycleOnDays,
+            workCycleAnchor = e.WorkCycleAnchor,
+            // Deliberately absent: MonthlySalary and Role. Not hidden in the UI — never sent.
+            // Whether this manager may ACT on this person is a separate question, answered per write.
+            manageable = mayAct,
+        });
     }
 
     // POST /api/manager/employees — add an employee to one of the manager's branches, activated with a

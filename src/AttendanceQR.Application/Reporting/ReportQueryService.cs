@@ -647,6 +647,26 @@ public sealed class ReportQueryService : IReportQueryService
             return (ReportAccess.Forbidden, null);
 
         var ids = summary.Rows.Select(r => r.EmployeeId).ToList();
+
+        // A MANAGER sees what their own staff are owed — and not what their peers or the admin at the
+        // same branch are paid. The scope this is built on deliberately carries every role (it feeds
+        // the boards, where a headcount that quietly omitted the managers read short), so the ceiling
+        // has to be applied here rather than by narrowing the shared helper.
+        //
+        // The controller's comment claimed this already happened. It did not: the scope has no role
+        // filter, so a manager's payroll table listed a peer manager's and a same-branch admin's
+        // salary. One pay figure is the most sensitive number in this product.
+        if (role == EmployeeRole.Manager)
+        {
+            var ownStaff = await _db.Employees
+                .Where(e => ids.Contains(e.Id) && (e.Role == EmployeeRole.Employee || e.Id == requesterId))
+                .Select(e => e.Id)
+                .ToListAsync(ct);
+            var allowed = ownStaff.ToHashSet();
+            summary = summary with { Rows = summary.Rows.Where(r => allowed.Contains(r.EmployeeId)).ToList() };
+            ids = summary.Rows.Select(r => r.EmployeeId).ToList();
+        }
+
         var salaries = await _db.Employees
             .Where(e => ids.Contains(e.Id))
             .ToDictionaryAsync(e => e.Id, e => e.MonthlySalary, ct);
