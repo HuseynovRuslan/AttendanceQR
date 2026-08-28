@@ -3,9 +3,9 @@ import { LeaveForm } from '../../components/LeaveForm'
 import {
   createManagerLeave,
   deleteManagerLeave,
-  getManagerEmployees,
+  getLeaveSubjects,
   getManagerLeaves,
-  type ManagerEmployee,
+  type LeaveSubject,
   type ManagerLeave,
 } from '../../api/manager'
 import './manager.css'
@@ -24,15 +24,15 @@ const fmt = (iso: string) => iso.split('-').reverse().join('.')
 /** Leave and permission for a manager's own staff — scoped server-side to their branches. */
 export function ManagerLeavesPage() {
   const [leaves, setLeaves] = useState<ManagerLeave[]>([])
-  const [staff, setStaff] = useState<ManagerEmployee[]>([])
+  const [staff, setStaff] = useState<LeaveSubject[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
 
   async function load() {
     setLoading(true)
-    const [l, e] = await Promise.all([getManagerLeaves(), getManagerEmployees(true)])
+    const [l, e] = await Promise.all([getManagerLeaves(), getLeaveSubjects()])
     if (l.status === 200 && Array.isArray(l.data)) setLeaves(l.data)
-    if (e.status === 200 && Array.isArray(e.data)) setStaff(e.data.filter((x) => x.isActive))
+    if (e.status === 200 && Array.isArray(e.data)) setStaff(e.data)
     setLoading(false)
   }
 
@@ -46,11 +46,16 @@ export function ManagerLeavesPage() {
 
   return (
     <div>
-      {/* The same form the admin uses — one component, so the two cannot drift apart again. The
-          manager's own row is in the list on purpose: a holiday of their own used to need an admin,
-          and until one entered it the day counted as Qayıb against them. */}
+      {/* The same form the admin uses — one component, so the two cannot drift apart again. The list
+          holds the manager's own row and their colleagues' at the same branches on purpose: a holiday
+          of a manager's own, or of the other manager in a two-manager company, used to need an admin,
+          and until one entered it the days counted as Qayıb against them. */}
       <LeaveForm
-        people={staff.map((x) => ({ id: x.id, fullName: x.fullName }))}
+        people={staff.map((x) => ({
+          id: x.id,
+          // Say which row is which: an unexplained manager or admin in a staff picker reads as a bug.
+          fullName: x.isSelf ? `${x.fullName} (özüm)` : x.isColleague ? `${x.fullName} (həmkar)` : x.fullName,
+        }))}
         busy={busy}
         onSubmit={async (input) => {
           setBusy(true)

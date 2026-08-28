@@ -113,6 +113,22 @@ export interface ManagerLeave {
   note: string | null
 }
 
+/** A name the leave form may file against: this manager's staff, their colleagues at the same
+ *  branches (a fellow manager, an admin who works there) and themselves. Deliberately separate from
+ *  getManagerEmployees — that one carries phone, email and birth date, which a manager has no reason
+ *  to see for a peer. */
+export interface LeaveSubject {
+  id: string
+  fullName: string
+  position: string | null
+  isSelf: boolean
+  isColleague: boolean
+}
+
+export function getLeaveSubjects() {
+  return apiRequest<LeaveSubject[]>('/api/manager/leave-subjects')
+}
+
 export function getManagerLeaves(from?: string, to?: string) {
   const q = new URLSearchParams()
   if (from) q.set('from', from)

@@ -16,14 +16,19 @@ using Xunit;
 namespace AttendanceQR.Application.Tests;
 
 /// <summary>
-/// A manager may file their OWN leave — and still nobody else's above Role==Employee.
+/// Who a manager may record an ABSENCE for — and the account powers that stayed shut.
 ///
 /// The branch-only takeover fix (see ManagerAccountScopeTests) routed every manager write through
-/// ManageableEmployeeAsync, which refuses any target that is not a plain Employee, self included. It
-/// caught the harmless case too: a manager's own holiday needed an admin, and until one entered it the
-/// day counted as Qayıb against them (reported from CleanFix, 2026-08-21). LeaveSubjectAsync carves out
-/// exactly self, for leaves only. If a test here fails, either that hole is back (a peer's or an
-/// admin's record) or a manager can no longer record their own absence.
+/// ManageableEmployeeAsync, which refuses any target that is not a plain Employee. That is right for
+/// the two endpoints that can take an account over — the employee edit and reset-pin — and wrong for
+/// filing a leave, which touches no PIN, no device and no role. Applied to leaves it produced, first,
+/// a manager unable to record their own holiday (CleanFix, 2026-08-21), and then the same thing one
+/// person over: a company with two managers where neither could record the other's, so the days
+/// counted as unexcused absence until an admin entered them by hand.
+///
+/// Leaves are now scoped by BRANCH alone: anyone at the manager's own locations, whatever their role,
+/// plus themselves. Platform operators stay out. If a test here fails it is one of two things — a
+/// manager can no longer record an absence they are responsible for, or the account hole is back.
 /// </summary>
 public class ManagerSelfLeaveTests
 {
@@ -139,19 +144,23 @@ public class ManagerSelfLeaveTests
     }
 
     [Fact]
-    public async Task Manager_cannot_file_leave_for_a_peer_manager()
+    public async Task Manager_can_file_leave_for_a_peer_manager()
     {
+        // The case this change exists for: two managers, one goes on holiday, and until now neither
+        // could record it — the other was refused and the absentee could not file it while away.
         using var h = new Harness();
-        AssertForbidden(await h.Controller.CreateLeave(Leave(h.PeerManagerId)));
-        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == h.PeerManagerId));
+        Assert.IsType<OkObjectResult>(await h.Controller.CreateLeave(Leave(h.PeerManagerId)));
+        Assert.Single(h.Db.LeaveRecords.Where(l => l.EmployeeId == h.PeerManagerId));
     }
 
     [Fact]
-    public async Task Manager_cannot_file_leave_for_an_admin()
+    public async Task Manager_can_file_leave_for_an_admin_at_their_branch()
     {
+        // Owner's call: in these companies the admin is not a second manager, they are someone who
+        // looks at reports and also turns up to work. An absence of theirs is a fact about the branch.
         using var h = new Harness();
-        AssertForbidden(await h.Controller.CreateLeave(Leave(h.AdminId)));
-        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == h.AdminId));
+        Assert.IsType<OkObjectResult>(await h.Controller.CreateLeave(Leave(h.AdminId)));
+        Assert.Single(h.Db.LeaveRecords.Where(l => l.EmployeeId == h.AdminId));
     }
 
     [Fact]
@@ -175,7 +184,7 @@ public class ManagerSelfLeaveTests
     }
 
     [Fact]
-    public async Task A_peer_managers_leave_stays_invisible_and_undeletable()
+    public async Task A_peer_managers_leave_is_visible_and_deletable()
     {
         using var h = new Harness();
         h.Db.LeaveRecords.Add(new LeaveRecord
@@ -191,20 +200,82 @@ public class ManagerSelfLeaveTests
         h.Db.SaveChanges();
         var peerLeaveId = h.Db.LeaveRecords.Single(l => l.EmployeeId == h.PeerManagerId).Id;
 
+        // Filing without seeing would be a screen that swallows what it was given; seeing without
+        // deleting would be a typo nobody can take back. The row records who filed it either way.
         var ok = Assert.IsType<OkObjectResult>(await h.Controller.Leaves(null, null));
-        Assert.Empty(Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value));
-        AssertForbidden(await h.Controller.DeleteLeave(peerLeaveId));
-        Assert.Single(h.Db.LeaveRecords.Where(l => l.EmployeeId == h.PeerManagerId));
+        Assert.Single(Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value));
+        Assert.IsType<OkObjectResult>(await h.Controller.DeleteLeave(peerLeaveId));
+        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == h.PeerManagerId));
     }
 
     [Fact]
     public async Task Employee_picker_offers_self_only_when_asked()
     {
+        // The ACCOUNT list is unchanged by the leave widening: still plain staff, plus self on request.
+        // It feeds edit and reset-pin, and it projects phone, email and birth date.
         using var h = new Harness();
         var without = Assert.IsType<OkObjectResult>(await h.Controller.Employees(false));
         Assert.Single(Assert.IsAssignableFrom<IEnumerable<object>>(without.Value));
 
         var with = Assert.IsType<OkObjectResult>(await h.Controller.Employees(true));
         Assert.Equal(2, Assert.IsAssignableFrom<IEnumerable<object>>(with.Value).Count());
+    }
+
+    [Fact]
+    public async Task The_leave_picker_offers_staff_peers_and_self()
+    {
+        using var h = new Harness();
+        var ok = Assert.IsType<OkObjectResult>(await h.Controller.LeaveSubjectList());
+        var rows = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).ToList();
+
+        // staff + peer manager + admin + self
+        Assert.Equal(4, rows.Count);
+    }
+
+    [Fact]
+    public async Task The_leave_picker_carries_no_contact_details()
+    {
+        // Why this endpoint exists instead of a wider GET employees. A manager has no business editing
+        // a peer or an admin, so handing over their telephone number and email to let a name be picked
+        // from a list would be paying for the feature with somebody else's privacy.
+        using var h = new Harness();
+        var ok = Assert.IsType<OkObjectResult>(await h.Controller.LeaveSubjectList());
+        var row = Assert.IsAssignableFrom<IEnumerable<object>>(ok.Value).First();
+        var fields = row.GetType().GetProperties().Select(pr => pr.Name).ToList();
+
+        Assert.DoesNotContain("phoneNumber", fields);
+        Assert.DoesNotContain("email", fields);
+        Assert.DoesNotContain("birthDate", fields);
+        Assert.Contains("fullName", fields);
+    }
+
+    [Fact]
+    public async Task Another_branchs_manager_is_still_out_of_reach()
+    {
+        // Branch scope is what carries the whole rule now that role no longer does. If this fails,
+        // widening leaves has quietly made every manager in the company reachable by every other.
+        using var h = new Harness();
+        var elsewhere = Guid.NewGuid();
+        h.Db.Employees.Add(new Employee
+        {
+            Id = elsewhere, TenantId = TenantA, FullName = "Basqa Filial Meneceri",
+            Role = EmployeeRole.Manager, IsActive = true, PasswordHash = "h",
+            LocationId = Guid.NewGuid(), ActivatedAtUtc = DateTime.UtcNow,
+        });
+        h.Db.SaveChanges();
+
+        var result = await h.Controller.CreateLeave(Leave(elsewhere));
+        Assert.IsNotType<OkObjectResult>(result);
+        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == elsewhere));
+    }
+
+    [Fact]
+    public async Task Widening_leaves_did_not_widen_the_account_powers()
+    {
+        // The point of the split. Leaves went branch-scoped; reset-pin did NOT. A manager reaching a
+        // same-branch admin's PIN is the 2026-08-08 takeover, and it stays shut.
+        using var h = new Harness();
+        AssertForbidden(await h.Controller.ResetPin(h.AdminId));
+        AssertForbidden(await h.Controller.ResetPin(h.PeerManagerId));
     }
 }

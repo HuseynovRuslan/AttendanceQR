@@ -247,21 +247,40 @@ public class ManagerAccountScopeTests
         Assert.Equal("original-hash", h.Row(h.OtherTenantEmployeeId).PasswordHash);
     }
 
-    // --- the same central rule guards the remaining per-account writes -----------
+    // --- the central rule guards ACCOUNTS; absences are scoped by branch alone ----
+    //
+    // Leaves deliberately no longer sit behind the Role==Employee gate — see ManagerSelfLeaveTests for
+    // why (a two-manager company could not record either manager's holiday). What must not move with
+    // them is anything that can take an account over, which the tests above cover. These two pin the
+    // seam from this side: the leave widened, and it widened ONLY the leave.
 
     [Fact]
-    public async Task CreateLeave_for_same_branch_admin_is_forbidden()
+    public async Task CreateLeave_for_same_branch_admin_is_allowed()
     {
         using var h = new Harness();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var result = await h.Controller.CreateLeave(
             new LeaveRecordRequest(h.SameBranchAdminId, today, today, LeaveType.Vacation, null));
-        AssertForbidden(result);
-        Assert.Empty(h.Db.LeaveRecords.IgnoreQueryFilters().ToList());
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Single(h.Db.LeaveRecords.IgnoreQueryFilters().ToList());
     }
 
     [Fact]
-    public async Task Leaves_list_excludes_same_branch_admin_records()
+    public async Task Recording_that_admins_absence_still_grants_nothing_over_their_account()
+    {
+        // The distinction the whole split rests on: a manager may say the admin was away, and still
+        // cannot touch the PIN that would let them BE the admin.
+        using var h = new Harness();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        Assert.IsType<OkObjectResult>(await h.Controller.CreateLeave(
+            new LeaveRecordRequest(h.SameBranchAdminId, today, today, LeaveType.Vacation, null)));
+
+        AssertForbidden(await h.Controller.ResetPin(h.SameBranchAdminId));
+        Assert.Equal("original-hash", h.Row(h.SameBranchAdminId).PasswordHash);
+    }
+
+    [Fact]
+    public async Task Leaves_list_includes_same_branch_admin_records()
     {
         using var h = new Harness();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -281,7 +300,9 @@ public class ManagerAccountScopeTests
         var ids = ((System.Collections.IEnumerable)ok.Value!).Cast<object>()
             .Select(r => (Guid)r.GetType().GetProperty("employeeId")!.GetValue(r)!)
             .ToList();
-        Assert.Equal(new[] { h.SameBranchEmployeeId }, ids);
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(h.SameBranchAdminId, ids);
+        Assert.Contains(h.SameBranchEmployeeId, ids);
     }
 
     // --- schedules: the indirect write (shift hours re-judge pay for everyone on the shift) ---------
