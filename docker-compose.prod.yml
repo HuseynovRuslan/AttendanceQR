@@ -86,6 +86,11 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL}
+        # Naming it here is not optional: a value that lives only in .env reaches nothing, because
+        # Compose passes exactly the variables a service lists — and THIS is the file the production
+        # deploy uses (ops/deploy-prod.sh -f docker-compose.prod.yml), not docker-compose.yml.
+        # Empty is a supported state: the maps fall back to OpenStreetMap.
+        VITE_CARTO_KEY: ${VITE_CARTO_KEY:-}
     restart: unless-stopped
     depends_on:
       - backend

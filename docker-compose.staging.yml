@@ -82,6 +82,9 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL}
+        # Same as prod: Compose passes only what a service names. Empty is fine — the maps
+        # fall back to OpenStreetMap rather than to a watermark.
+        VITE_CARTO_KEY: ${VITE_CARTO_KEY:-}
     restart: unless-stopped
     depends_on:
       - stg-backend
