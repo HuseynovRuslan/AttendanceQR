@@ -1,6 +1,10 @@
 import { useEffect, useMemo } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { basemap } from '../../lib/basemap'
 import 'leaflet/dist/leaflet.css'
+
+// Resolved once: the key does not change while the page is open.
+const BASE = basemap()
 
 /**
  * The company's people on a light map — each a dot where they actually scanned in, green if still on
@@ -94,7 +98,8 @@ export function DashboardMap({ sites, people }: { sites: DashSite[]; people: Das
         attributionControl={false}
         style={{ height: '100%', width: '100%', background: '#eef2f7' }}
       >
-        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+        <TileLayer url={BASE.url} attribution={BASE.attribution}
+                   subdomains={BASE.subdomains} maxZoom={BASE.maxZoom} />
         <FitTo sites={sites} people={people} />
 
         {/* Location layer — geofence + a small centre pin, always drawn so the site is marked even

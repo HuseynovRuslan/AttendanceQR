@@ -69,6 +69,9 @@ services:
       args:
         # Baked into the SPA at build time — point it at the backend's public URL.
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+        # Naming it here is not optional: a value that lives only in .env reaches nothing,
+        # because Compose passes exactly the variables a service lists.
+        VITE_CARTO_KEY: ${VITE_CARTO_KEY:-}
     ports:
       - "8081:80"
     depends_on:

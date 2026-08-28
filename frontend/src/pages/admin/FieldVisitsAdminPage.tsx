@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { basemap } from '../../lib/basemap'
 import 'leaflet/dist/leaflet.css'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
@@ -18,6 +19,9 @@ import {
 } from '../../api/fieldVisits'
 import { getPosition } from '../../lib/geo'
 import { fmtTime } from '../../lib/format'
+
+// Resolved once: the key does not change while the page is open.
+const BASE = basemap()
 
 const STATUS: Record<string, { label: string; bg: string; fg: string }> = {
   Assigned: { label: 'Tapşırılıb', bg: 'var(--purple-bg)', fg: 'var(--purple)' },
@@ -133,7 +137,8 @@ function VisitMap({ v }: { v: BoardFieldVisit }) {
   return (
     <div style={{ height: 300, width: '100%', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c100)' }}>
       <MapContainer center={centre} zoom={15} scrollWheelZoom style={{ height: '100%', width: '100%' }} attributionControl={false}>
-        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+        <TileLayer url={BASE.url} attribution={BASE.attribution}
+                   subdomains={BASE.subdomains} maxZoom={BASE.maxZoom} />
         <FitPts pts={marks.map((m) => m.at)} />
         {v.targetLatitude != null && v.targetRadiusMeters != null && (
           <Circle center={[v.targetLatitude, v.targetLongitude!]} radius={v.targetRadiusMeters}

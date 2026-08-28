@@ -1,7 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { basemap } from '../../lib/basemap'
 import type { Map as LeafletMap } from 'leaflet'
 import type { GroupSite } from '../../api/hq'
+
+// Resolved once: the key does not change while the page is open. This console is dark, so a
+// keyless build gets light tiles inverted rather than a white slab under dark chrome.
+const BASE = basemap('dark')
 
 /** Roughly 55 km. Sites inside this of each other count as one working area. */
 const CLUSTER_DEGREES = 0.5
@@ -109,7 +114,14 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
           attributionControl={false}
           style={{ height: '100%', width: '100%', background: '#0B1020' }}
         >
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+          <TileLayer
+          url={BASE.url}
+          attribution={BASE.attribution}
+          subdomains={BASE.subdomains}
+          maxZoom={BASE.maxZoom}
+          // Only when standing in with light tiles; the real dark_all needs no help.
+          className={BASE.needsDarkFilter ? 'tiles-dark' : undefined}
+        />
           <FitTo sites={sites} register={setActions} />
           {sites.map((s) => {
             const colour = accentOf(s.companyIndex < 0 ? 0 : s.companyIndex)

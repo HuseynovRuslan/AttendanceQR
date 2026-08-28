@@ -14,6 +14,10 @@ RUN npm ci
 # so it must be supplied here (NOT at container runtime).
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+# The CARTO basemap key. Absent is a supported state, not a broken one: the maps fall back to
+# OpenStreetMap (see src/lib/basemap.ts), so a build without it still draws real maps.
+ARG VITE_CARTO_KEY
+ENV VITE_CARTO_KEY=$VITE_CARTO_KEY
 
 COPY . .
 RUN npm run build

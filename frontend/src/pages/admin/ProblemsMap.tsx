@@ -1,8 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { basemap } from '../../lib/basemap'
 import 'leaflet/dist/leaflet.css'
 import type { MapGeofence, ProblemRow } from '../../api/admin'
 import { fmtTime } from '../../lib/format'
+
+// Resolved once: the key does not change while the page is open.
+const BASE = basemap()
 
 /**
  * Where the "outside the radius" rejections actually happened, drawn against the geofence they fell
@@ -99,8 +103,10 @@ export function ProblemsMap({ rows, geofences }: { rows: ProblemRow[]; geofences
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            attribution="&copy; OpenStreetMap &copy; CARTO"
+            url={BASE.url}
+            attribution={BASE.attribution}
+            subdomains={BASE.subdomains}
+            maxZoom={BASE.maxZoom}
           />
           <FitBounds pts={points} fences={geofences} />
 

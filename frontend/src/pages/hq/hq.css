@@ -234,3 +234,12 @@
 }
 .hq-site-n { font-size: 13px; font-weight: 800; color: var(--live); flex-shrink: 0; }
 .hq-site.is-idle .hq-site-n { color: var(--fg-faint); }
+
+/* A light tile layer standing in for a dark one — OpenStreetMap publishes no dark style, and this
+   console is dark, so a keyless build would otherwise put a white slab under dark chrome. Applied to
+   the tile <img> elements only: the Leaflet panes above them carry our own markers and circles, and
+   inverting those would turn the colours that mean something inside out. */
+.leaflet-container img.leaflet-tile.tiles-dark,
+.leaflet-container .tiles-dark img.leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88);
+}
