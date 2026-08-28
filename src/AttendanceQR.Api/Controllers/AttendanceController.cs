@@ -979,6 +979,33 @@ public class AttendanceController : ControllerBase
         if (recentBinds >= _deviceOptions.MaxBindsPer30Days)
             return await RejectDeviceAsync(employee, ip);
 
+        // Somebody ELSE'S device. Adopting it is what turns a phone into a brigade's shared handset,
+        // and it is the moment the "one phone, one employee" control is given up for this person — so
+        // it is the moment to ask whether the company agreed to that.
+        //
+        // Every other limit above is per employee, which left this axis unbounded: one phone could
+        // quietly accumulate the whole company, and no screen showed it. Both halves are checked here.
+        //
+        // Already-bound employees never reach this code (their binding is found earlier), so switching
+        // the flag on does not strand a brigade that is already working this way.
+        var othersOnDevice = await _db.DeviceBindings
+            .Where(d => d.DeviceFingerprint == fingerprint
+                        && d.EmployeeId != employee.Id
+                        && d.RevokedAtUtc == null)
+            .Select(d => d.EmployeeId)
+            .Distinct()
+            .CountAsync();
+
+        // Not a mistake to hide: the employee is standing at the poster and cannot clock in, so the
+        // refusal has to reach the Problems screen with a reason an admin can act on rather than the
+        // generic device mismatch. The rule itself lives in DeviceBindingRules, where it is tested.
+        var refusal = DeviceBindingRules.MayJoinDevice(
+            employee.CanShareDevice, othersOnDevice, _deviceOptions.MaxAccountsPerDevice);
+        if (refusal is DeviceBindingRules.ShareRefusal.NotAllowed)
+            return await RejectDeviceAsync(employee, ip, "SharedDeviceNotAllowed");
+        if (refusal is DeviceBindingRules.ShareRefusal.AccountLimit)
+            return await RejectDeviceAsync(employee, ip, "DeviceAccountLimit");
+
         var binding = DeviceBindingRules.Bind(
             employee.DeviceBindings.ToList(),
             employee.Id,
@@ -1009,11 +1036,17 @@ public class AttendanceController : ControllerBase
         return null;
     }
 
-    private async Task<IActionResult> RejectDeviceAsync(Employee employee, string? ip)
+    /// <param name="overrideReason">
+    /// A more specific cause than "wrong device". The two generic reasons tell an employee what to do
+    /// next but tell the admin almost nothing; a shared-phone refusal has an exact, actionable fix
+    /// ("give this person shared-device permission") which is lost if it arrives as DeviceMismatch.
+    /// </param>
+    private async Task<IActionResult> RejectDeviceAsync(Employee employee, string? ip, string? overrideReason = null)
     {
         // "No device at all" and "the wrong device" send the employee down different paths in the
         // app — the first is an admin problem, the second offers "this is my new phone".
-        var reason = employee.DeviceBindings.Any(d => d.IsActive) ? "DeviceMismatch" : "NoDeviceBound";
+        var reason = overrideReason
+                     ?? (employee.DeviceBindings.Any(d => d.IsActive) ? "DeviceMismatch" : "NoDeviceBound");
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, reason, ip);
         return StatusCode(StatusCodes.Status403Forbidden, new { error = reason });
     }

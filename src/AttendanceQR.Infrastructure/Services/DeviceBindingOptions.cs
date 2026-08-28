@@ -24,4 +24,17 @@ public sealed class DeviceBindingOptions
     /// otherwise mint a binding on every single scan, for ever. A normal employee never gets near it.
     /// </summary>
     public int MaxBindsPer30Days { get; set; } = 3;
+
+    /// <summary>
+    /// How many DIFFERENT employees one device may carry.
+    ///
+    /// Every other limit here is per EMPLOYEE, so nothing bounded the other axis: one phone could
+    /// accumulate the whole company. The client caps its saved profiles at 60, but that lives in
+    /// localStorage and is therefore not a control at all.
+    ///
+    /// The number is an operational ceiling rather than a security one — a shared phone past about
+    /// fifteen people is already unworkable, because each scan takes half a minute of queue and the
+    /// brigade spends a quarter of an hour twice a day standing at a poster.
+    /// </summary>
+    public int MaxAccountsPerDevice { get; set; } = 20;
 }

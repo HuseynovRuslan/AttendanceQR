@@ -94,7 +94,10 @@ public sealed class ReportQueryService : IReportQueryService
     private sealed record ScopedEmployee(
         Guid Id, string FullName, Guid LocationId, Guid? ScheduleId,
         TimeOnly? WorkStart, TimeOnly? WorkEnd,
-        int? WorkCycleDays, int WorkCycleOnDays, DateOnly? WorkCycleAnchor);
+        int? WorkCycleDays, int WorkCycleOnDays, DateOnly? WorkCycleAnchor,
+        // Carried so the board can show this person's selfie on every scan, not only a flagged one:
+        // once their account may ride on a shared phone, the face is the control that remains.
+        bool CanShareDevice = false);
 
     /// <summary>One employee's computed day with everything it was computed from still attached — so
     /// the two callers can each project what they need (the board wants the record's photo/face/reason
@@ -159,7 +162,7 @@ public sealed class ReportQueryService : IReportQueryService
         var employees = await query
             .Select(e => new ScopedEmployee(
                 e.Id, e.FullName, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd,
-                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor))
+                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.CanShareDevice))
             .ToListAsync(ct);
         return (ReportAccess.Allowed, employees);
     }
@@ -781,7 +784,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
                     d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy,
                     d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng,
-                    d.Record?.ClosedByFieldVisitId != null);
+                    d.Record?.ClosedByFieldVisitId != null,
+                    d.Employee.CanShareDevice);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

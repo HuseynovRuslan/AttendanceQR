@@ -473,9 +473,11 @@ export function TodayPage() {
                   )}
                 </td>
                 <td data-label="Foto">
-                  {/* Şəkil düyməsi yalnız üz-uyğunluğu flaqlı olanda görünür (uyğunsuz / çoxlu üz / üz yox).
-                      "Uyğun" olanda foto lazım deyil — düymə çıxmır, foto R2-dən də yüklənmir (gecikmə gedir). */}
-                  {r.hasPhoto && r.recordId && faceIsFlagged(r.faceMatchStatus) ? (
+                  {/* Şəkil düyməsi üz-uyğunluğu flaqlı olanda (uyğunsuz / çoxlu üz / üz yox) — VƏ ortaq
+                      telefon icazəsi olan işçidə həmişə. İkincisi qəsdəndir: onlarda «bir telefon, bir
+                      işçi» qoruması yoxdur, geriyə qalan yeganə nəzarət üzdür, baxılmayan nəzarət isə
+                      nəzarət deyil. Qalanlarda «uyğun» olanda foto R2-dən yüklənmir (gecikmə gedir). */}
+                  {r.hasPhoto && r.recordId && (faceIsFlagged(r.faceMatchStatus) || r.sharedDevice) ? (
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.recordId}

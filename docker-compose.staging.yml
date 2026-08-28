@@ -62,6 +62,7 @@ services:
       DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
       DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
       DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}
+      DeviceBinding__MaxAccountsPerDevice: ${DeviceBinding__MaxAccountsPerDevice:-20}
       # Bootstraps the one tenant staging needs, so test.qrlog.az resolves to a company on first run.
       TenantSeed__Slug: ${TenantSeed__Slug:-}
       TenantSeed__Name: ${TenantSeed__Name:-}

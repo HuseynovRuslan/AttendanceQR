@@ -3,6 +3,9 @@ import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   approveDeviceChange,
   getDeviceBindings,
+  getSharedDevices,
+  revokeSharedDevice,
+  type SharedDevice,
   getPendingDeviceChanges,
   rejectDeviceChange,
   revokeDeviceBinding,
@@ -104,8 +107,90 @@ export function DeviceChangesPage() {
         )}
       </section>
 
+      <SharedDevices />
       <BoundDevices />
     </div>
+  )
+}
+
+/**
+ * Handsets carrying more than one employee — the brigade phones.
+ *
+ * The company could not see these at all. One phone, one employee is what stops a colleague clocking
+ * in for an absent worker, and a shared handset gives that up for everybody on it. Doing so can be
+ * the right call for a worker with no phone; not being able to see that it happened never is.
+ */
+function SharedDevices() {
+  const [devices, setDevices] = useState<SharedDevice[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { void load() }, [])
+
+  async function load() {
+    const { status, data } = await getSharedDevices()
+    if (status === 200 && Array.isArray(data)) setDevices(data)
+    else setError('Ortaq cihaz siyahısı yüklənmədi')
+  }
+
+  async function revokeAll(d: SharedDevice) {
+    if (!confirm(
+      `"${d.label ?? 'cihaz'}" — ${d.accountCount} hesabın hamısı bu cihazdan ayrılsın?
+
+` +
+      'Telefon itibsə bunu edin. Heç kim hesabdan ÇIXMIR — yalnız bu telefondan skan bağlanır.'))
+      return
+    setBusy(d.fingerprint)
+    const { status } = await revokeSharedDevice(d.fingerprint)
+    setBusy(null)
+    if (status === 200) void load()
+    else setError('Ləğv edilmədi')
+  }
+
+  if (devices !== null && devices.length === 0) return null
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <h2 style={{ fontSize: 15, fontWeight: 800, color: 'var(--c900)', marginBottom: 4 }}>
+        Ortaq telefonlar
+      </h2>
+      <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+        Bir telefonda bir neçə işçinin hesabı. Telefonu olmayanlar üçün nəzərdə tutulub — amma bu
+        işçilər üçün «bir telefon, bir işçi» qoruması işləmir, ona görə burada görünür.
+      </div>
+
+      {error && (
+        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+          <IconX />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {(devices ?? []).map((d) => (
+        <div key={d.fingerprint} className="card card-pad" style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <div>
+              <span style={{ fontWeight: 700 }}>{d.label ?? 'Naməlum cihaz'}</span>
+              <span className="badge b-sick" style={{ marginLeft: 8 }}>{d.accountCount} hesab</span>
+            </div>
+            <button className="btn btn-sm" disabled={busy === d.fingerprint} onClick={() => void revokeAll(d)}>
+              Telefon itib — hamısını ayır
+            </button>
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {d.employees.map((e) => (
+              <span
+                key={e.bindingId}
+                className={`badge ${e.canShareDevice ? 'b-present' : 'b-late'}`}
+                title={e.canShareDevice ? 'Ortaq telefon icazəsi var' : 'İCAZƏSİ YOXDUR — qayda qoyulmazdan əvvəldən qalıb'}
+              >
+                {e.fullName}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
   )
 }
 

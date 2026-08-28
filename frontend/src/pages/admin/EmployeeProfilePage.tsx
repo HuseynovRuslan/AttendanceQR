@@ -146,6 +146,7 @@ export function EmployeeProfilePage() {
       monthlySalary: emp.monthlySalary ?? null,
       photoExempt: emp.photoExempt === true,
       canFieldCheckIn: emp.canFieldCheckIn === true,
+      canShareDevice: emp.canShareDevice === true,
       workStart: emp.workStart ?? null,
       workEnd: emp.workEnd ?? null,
       // Re-sent for the same reason as the rest: an omitted field is nulled, so toggling active

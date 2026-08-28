@@ -115,6 +115,9 @@ type FormState = {
   photoExempt: boolean
   /** Whether the employee may use field/mobile check-in ("Səyyar / Sahə ziyarəti"). */
   canFieldCheckIn: boolean
+  /** Whether this account may be carried on somebody else's phone — a brigade's shared handset, for
+   *  a worker who has none of their own. Off by default: it gives up one-phone-one-employee. */
+  canShareDevice: boolean
   /** Manager only: the branches they may SEE in reports. Separate from locationId, which is where
    *  they clock in. Empty on a manager means an empty panel. */
   managedLocationIds: string[]
@@ -142,6 +145,7 @@ const EMPTY: FormState = {
   monthlySalary: '',
   photoExempt: false,
   canFieldCheckIn: false,
+  canShareDevice: false,
   managedLocationIds: [],
   cycle: NO_CYCLE,
   scheduleId: '',
@@ -261,6 +265,7 @@ export function EmployeesPage() {
       monthlySalary: e.monthlySalary != null ? String(e.monthlySalary) : '',
       photoExempt: e.photoExempt === true,
       canFieldCheckIn: e.canFieldCheckIn === true,
+      canShareDevice: e.canShareDevice === true,
       managedLocationIds: e.managedLocationIds ?? [],
       cycle: e.workCycleDays
         ? { days: e.workCycleDays, onDays: e.workCycleOnDays ?? 1, anchor: e.workCycleAnchor ?? '' }
@@ -306,6 +311,7 @@ export function EmployeesPage() {
       monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
       photoExempt: form.photoExempt,
       canFieldCheckIn: form.canFieldCheckIn,
+      canShareDevice: form.canShareDevice,
       // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
       workStart: form.workStart || null,
       workEnd: form.workEnd || null,
@@ -1147,6 +1153,26 @@ export function EmployeesPage() {
               <span style={{ fontWeight: 700, fontSize: 13 }}>Sahə girişi icazəsi</span>
               <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
                 İşçi QR-suz, GPS ilə sahə ziyarəti qeyd edə bilər (poster olmayan obyektlər üçün). Bağlı olsa, bu işçidə funksiya görünmür.
+              </span>
+            </span>
+          </label>
+
+          {/* The one-phone-one-employee rule is what stops a colleague clocking in for an absent
+              worker, and this hands it away for whoever is on the shared handset. Off by default and
+              granted per person, so a brigade phone is a decision the company makes and can see —
+              before, any employee could quietly assemble one and nothing showed it. */}
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '10px 0 4px' }}>
+            <input
+              type="checkbox"
+              checked={form.canShareDevice}
+              onChange={(e) => set('canShareDevice', e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>Ortaq telefon icazəsi</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
+                Telefonu olmayan işçilər üçün: hesabı briqadanın ortaq telefonunda saxlanıla bilər.
+                Bağlı olsa, bu işçi yalnız öz cihazından skan edə bilər.
               </span>
             </span>
           </label>

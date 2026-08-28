@@ -29,6 +29,10 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   GpsUnavailable: { label: 'Telefonda məkan bağlıdır', cls: 'bg-red-100 text-red-700', blocking: true },
   GpsTimeout: { label: 'GPS siqnal tapmadı', cls: 'bg-amber-100 text-amber-700', blocking: true },
   GpsUnsupported: { label: 'Brauzer məkanı dəstəkləmir', cls: 'bg-red-100 text-red-700', blocking: true },
+  // Refused at the moment a phone would have become a shared one. Both have an exact fix an admin can
+  // apply, which is why they are not folded into the generic DeviceMismatch.
+  SharedDeviceNotAllowed: { label: 'Ortaq cihaz icazəsi yoxdur', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  DeviceAccountLimit: { label: 'Cihazdakı hesab həddi dolub', cls: 'bg-amber-100 text-amber-700', blocking: true },
   // Measured, warned about, but never blocked — so it isn't a "could not scan" reason.
   GpsInaccurate: { label: 'GPS dəqiq deyil', cls: 'bg-amber-100 text-amber-700' },
   // Reported by the phone for a non-GPS failure — the scan never became a record.

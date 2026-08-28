@@ -153,6 +153,24 @@ public class Employee : ITenantScoped, IHasWorkCycle
     public bool CanFieldCheckIn { get; set; }
 
     /// <summary>
+    /// Whether this employee's account may be carried on a device that already belongs to someone
+    /// else — a brigade's shared phone, for the ~260 workers who have no phone of their own.
+    ///
+    /// Off by default, and the default is the point. One phone, one employee is what stops a colleague
+    /// recording an absent worker's arrival, and the shared-phone feature removes it for whoever is on
+    /// the device. Without this flag ANY of the 114 employees could quietly assemble a shared phone —
+    /// the company's own control weakened by a decision the company never made and could not see.
+    ///
+    /// It is enforced when a device is ADOPTED, not on every scan: a shared phone that already carries
+    /// an employee keeps working, so turning this on does not strand anyone mid-morning. What it stops
+    /// is a NEW account being added to somebody else's device.
+    ///
+    /// The two remaining controls are untouched and are the stronger pair anyway — the scan must happen
+    /// inside the geofence, and the selfie must be this employee's face.
+    /// </summary>
+    public bool CanShareDevice { get; set; }
+
+    /// <summary>
     /// When the employee accepted the data-processing notice (GPS, check-in selfie, work data).
     ///
     /// The digital stand-in for a signature: the app stores face + location + salary, which is

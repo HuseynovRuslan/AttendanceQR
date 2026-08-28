@@ -35,6 +35,9 @@ public record InviteRequest(
     DateOnly? WorkCycleAnchor = null,
     // Whether this employee may use field/mobile check-in ("Sahə ziyarəti") from creation.
     bool CanFieldCheckIn = false,
+    // Whether this employee's account may be carried on a brigade's shared phone. Off unless asked
+    // for — see Employee.CanShareDevice for why the default matters.
+    bool CanShareDevice = false,
     // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
     string? FirstName = null,
     string? LastName = null);
@@ -73,6 +76,10 @@ public record EmployeeUpdateRequest(
     // Whether this employee may use field/mobile check-in ("Sahə ziyarəti"). Defaults to false — like
     // every field here, a caller that omits it turns it OFF. Every updateEmployee caller must send it.
     bool CanFieldCheckIn = false,
+    // Whether this employee's account may be carried on somebody else's phone (a brigade's shared
+    // handset). Defaults to false — like every field here, a caller that omits it turns it OFF, which
+    // for this one means the person can no longer clock in on the shared phone. Send it everywhere.
+    bool CanShareDevice = false,
     // The named shift ("növbə") this employee is on. Set → it decides their hours, working days AND
     // rotation, and the three WorkCycle fields below are ignored. Null → the per-employee fields.
     Guid? ScheduleId = null,

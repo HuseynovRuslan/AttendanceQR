@@ -333,6 +333,11 @@ public class ManagerController : ControllerBase
                 workCycleAnchor = e.WorkCycleAnchor,
                 photoExempt = e.PhotoExempt,
                 canFieldCheckIn = e.CanFieldCheckIn,
+                // Read-only here. Whether an account may ride on somebody else's phone is the
+                // COMPANY's call, not a branch manager's: a manager who could grant it could assemble
+                // a shared handset for their own staff and remove the one-phone-one-employee control
+                // on their own authority. Shown so they know why a scan was refused; set by an admin.
+                canShareDevice = e.CanShareDevice,
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
             })

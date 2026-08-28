@@ -39,6 +39,9 @@ export interface DayAttendanceRow {
   /** True when this day's check-out was written by the worker's own field check-out (they went home
    *  from the site). Distinct from manualBy — nobody typed the time in. */
   closedByFieldVisit?: boolean
+  /** This employee's account may ride on a brigade's shared phone, so the board shows their selfie on
+   *  every scan — the face is the control that remains once one-phone-one-employee is given up. */
+  sharedDevice?: boolean
   /** Field/mobile attendance ([[field-visit-mobile-attendance]]): today's field check-in/out + where.
    *  When status is "Field", the worker checked in from an ad-hoc site (no office scan). */
   fieldCheckInAtUtc?: string | null
@@ -513,6 +516,8 @@ export interface InvitePayload {
   // Grants field/mobile check-in ("Sahə ziyarəti"). Same null-default trap as photoExempt: every
   // updateEmployee caller must send it, or an unrelated edit silently revokes it.
   canFieldCheckIn?: boolean
+  /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
+  canShareDevice?: boolean
   // The named shift this employee is on. Set → it decides hours, days AND rotation, and the three
   // workCycle fields below are ignored server-side. Same null-default rule as photoExempt: omit it on
   // an edit and the assignment is dropped.
@@ -541,6 +546,8 @@ export interface AdminEmployee {
   photoExempt?: boolean
   /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). */
   canFieldCheckIn?: boolean
+  /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
+  canShareDevice?: boolean
   /** The named shift they are on, if any, plus its name for display. */
   scheduleId?: string | null
   scheduleName?: string | null
@@ -892,6 +899,38 @@ export interface DeviceBinding {
  * browser context (Safari, the installed PWA), so several rows per person is normal. */
 export function getDeviceBindings() {
   return apiRequest<DeviceBinding[]>('/api/admin/device-bindings')
+}
+
+/** A handset carrying more than one employee — a brigade's shared phone. Invisible until now: every
+ *  device limit is per EMPLOYEE, so nothing bounded or displayed how many accounts one phone held. */
+export interface SharedDevice {
+  fingerprint: string
+  label: string | null
+  accountCount: number
+  lastSeenAtUtc: string | null
+  employees: {
+    bindingId: string
+    employeeId: string
+    fullName: string
+    position: string | null
+    /** False means this account is riding on a shared phone WITHOUT permission — a leftover from
+     *  before the rule existed, and a row worth an admin's decision. */
+    canShareDevice: boolean
+    boundAtUtc: string
+  }[]
+}
+
+export function getSharedDevices() {
+  return apiRequest<SharedDevice[]>('/api/admin/device-bindings/shared')
+}
+
+/** Revoke every account on one handset — the answer to a lost brigade phone. Does NOT sign anyone
+ *  out; it stops that device scanning and leaves every account exactly as it was. */
+export function revokeSharedDevice(fingerprint: string) {
+  return apiRequest<{ revoked: number } | { error: string }>(
+    `/api/admin/device-bindings/device/revoke-all?fingerprint=${encodeURIComponent(fingerprint)}`,
+    { method: 'POST' },
+  )
 }
 
 /** POST /api/admin/device-bindings/{id}/revoke — kill one context. The row is kept and marked

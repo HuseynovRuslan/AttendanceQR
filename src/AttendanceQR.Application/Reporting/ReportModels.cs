@@ -139,7 +139,12 @@ public sealed record DayAttendanceRow(
     // poster scan — the worker went home from the site. Distinct from ManualBy on purpose: nobody
     // typed this time in, it came from their departure with its GPS and selfie. See
     // AttendanceRecord.ClosedByFieldVisitId.
-    bool ClosedByFieldVisit = false);
+    bool ClosedByFieldVisit = false,
+    // This employee's account may ride on a brigade's shared phone, so a scan of theirs did not
+    // necessarily come from a device only they hold. The board shows the selfie for every one of
+    // their scans rather than only for a face-flagged row: the face IS the remaining control once
+    // one-phone-one-employee has been given up, and a control nobody looks at is not a control.
+    bool SharedDevice = false);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(
