@@ -11,7 +11,9 @@ import {
   resetSuperUserPin,
   reactivateSuperUser,
   revokeSuperUserSessions,
+  getImpersonationTargets,
   impersonateTenant,
+  type ImpersonationTarget,
   setTenantAdmin,
   type SetTenantAdminResult,
   getTenantDeletable,
@@ -63,6 +65,8 @@ const ERRORS: Record<string, string> = {
   TenantHasOperator: 'Bu şirkətin içində operator hesabı var',
   PhoneAlreadyExists: 'Bu nömrə həmin şirkətdə artıq istifadə olunur',
   NoLocation: 'Şirkətdə aktiv filial yoxdur',
+  TargetNotFound: 'Bu işçi tapılmadı və ya söndürülüb',
+  TargetNotImpersonable: 'Yalnız admin və menecer kimi daxil olmaq olar',
   AdminPhoneInvalid: 'Admin nömrəsi yanlışdır',
   AdminPinInvalid: 'PIN 4 rəqəm olmalıdır',
   AdminPinTooWeak: 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir',
@@ -71,7 +75,7 @@ const ERRORS: Record<string, string> = {
   TenantInactive: 'Şirkət söndürülüb — əvvəl aktiv edin',
   NoAdmin: 'Bu şirkətdə aktiv admin yoxdur',
   CannotImpersonateSelf: 'Öz hesabınıza daxil ola bilməzsiniz',
-  CannotImpersonateOperator: 'Bu şirkətin adminı özü operatordur — operator kimi daxil olmaq olmaz',
+  CannotImpersonateOperator: 'Operator hesabı kimi daxil olmaq olmaz — müştərinin öz hesabını seçin',
   NoImpersonableAdmin: 'Bu şirkətdə yalnız operator adminlər var — əvvəlcə müştərinin öz adminini yaradın',
 }
 
@@ -371,6 +375,10 @@ export function TenantsTab() {
   const [savingPlan, setSavingPlan] = useState(false)
   // Naming the customer's admin — the handover, which now happens after the company is built rather
   // than in the first field of the creation form.
+  // The company whose seats are being offered, with the seats themselves — held together so the
+  // dialog cannot render a stale list against a different tenant.
+  const [impersonateFor, setImpersonateFor] =
+    useState<{ tenant: SuperTenant; targets: ImpersonationTarget[] } | null>(null)
   const [adminFor, setAdminFor] = useState<SuperTenant | null>(null)
   const [adminForm, setAdminForm] = useState({ fullName: '', phone: '', pin: '' })
   const [savingAdmin, setSavingAdmin] = useState(false)
@@ -495,20 +503,42 @@ export function TenantsTab() {
     }
   }
 
+  // Opening the picker rather than borrowing the admin outright. Half the support calls are about a
+  // MANAGER's screen — a branch gate, an empty employee list, a leave they cannot file — and the
+  // admin's view is the one screen guaranteed not to reproduce any of them.
   async function impersonate(t: SuperTenant) {
     if (!t.isActive) { setError(ERRORS.TenantInactive); return }
-    if (!window.confirm(`"${t.displayName}" adminı kimi daxil olub dəstək göstərəsiniz?\n60 dəqiqəlik sessiya — hər addım audit olunur.`)) return
     setError(null)
     setBusyId(t.id)
-    const { status, data } = await impersonateTenant(t.id)
+    const { status, data } = await getImpersonationTargets(t.id)
+    setBusyId(null)
+    if (status === 200 && Array.isArray(data)) {
+      if (data.length === 0) { setError('Daxil olmaq üçün uyğun hesab yoxdur'); return }
+      setImpersonateFor({ tenant: t, targets: data })
+    } else {
+      setError(ERRORS[errorCodeOf(data)] ?? 'Siyahı alınmadı')
+    }
+  }
+
+  async function borrowSeat(t: SuperTenant, target: ImpersonationTarget) {
+    const seat = target.role === 'Admin' ? 'admin' : 'menecer'
+    if (!window.confirm(
+      `"${t.displayName}" şirkətində ${target.fullName} (${seat}) kimi daxil olursunuz.
+` +
+      '60 dəqiqəlik sessiya — hər addım audit olunur, şirkət də bunu öz jurnalında görür.')) return
+    setError(null)
+    setBusyId(t.id)
+    const { status, data } = await impersonateTenant(t.id, target.id)
     setBusyId(null)
     if (status === 200 && data && !('error' in data)) {
       const r = data as ImpersonateResult
+      setImpersonateFor(null)
       startImpersonation(r.token, { tenantName: r.tenantName, adminName: r.adminName })
+      // Both seats land on /admin — the console reads the token's role and shows the manager the
+      // reduced version, which is exactly the screen a support call is about.
       window.location.href = '/admin'
     } else {
-      const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
-      setError(ERRORS[code] ?? 'Alınmadı')
+      setError(ERRORS[errorCodeOf(data)] ?? 'Alınmadı')
     }
   }
 
@@ -706,6 +736,45 @@ export function TenantsTab() {
       )}
 
       {/* Naming the admin. */}
+      {/* Whose session to borrow. It used to be nobody's choice: the button took the founding admin,
+          which answers an admin's question and none of a manager's. */}
+      {impersonateFor && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--blue)' }}>
+          <div className="card-title">
+            «{impersonateFor.tenant.displayName}» — kimin hesabı ilə daxil olursunuz?
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 12, lineHeight: 1.6 }}>
+            60 dəqiqəlik sessiya. Hər addım audit olunur və şirkət də bunu öz jurnalında görür.
+            Menecer seçsəniz onun gördüyü ekranı görəcəksiniz — filial məhdudiyyəti ilə birlikdə.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {impersonateFor.targets.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                className="btn"
+                disabled={busyId === impersonateFor.tenant.id}
+                onClick={() => void borrowSeat(impersonateFor.tenant, x)}
+                style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '10px 12px' }}
+              >
+                <span style={{ fontWeight: 700 }}>{x.fullName}</span>
+                <span className={`badge ${x.role === 'Admin' ? 'b-present' : 'b-sick'}`} style={{ marginLeft: 8 }}>
+                  {x.role === 'Admin' ? 'Admin' : 'Menecer'}
+                </span>
+                {x.role === 'Manager' && (
+                  <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+                    {x.branches.length > 0 ? x.branches.join(', ') : 'filial təyin edilməyib'}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="btn btn-sm" style={{ marginTop: 12 }} onClick={() => setImpersonateFor(null)}>
+            Ləğv et
+          </button>
+        </div>
+      )}
+
       {adminFor && (
         <form className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }} onSubmit={submitAdmin}>
           <div className="card-title">«{adminFor.displayName}» — müştərinin adminini təyin et</div>

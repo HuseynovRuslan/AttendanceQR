@@ -1072,12 +1072,37 @@ export interface ImpersonateResult {
   tenantSlug: string
   tenantName: string
   adminName: string
+  /** Which seat was borrowed — the banner says "manager" rather than implying admin. */
+  role: 'Admin' | 'Manager'
   expiresInMinutes: number
 }
 
-/** POST /api/super/tenants/{id}/impersonate — mint a short-lived session as this company's admin. */
-export function impersonateTenant(id: string) {
-  return apiRequest<ImpersonateResult | { error: string }>(`/api/super/tenants/${id}/impersonate`, { method: 'POST' })
+/** Someone inside a company whose session the console may borrow. Admins and managers only —
+ *  a borrowed worker session could create attendance, which support must never be able to do. */
+export interface ImpersonationTarget {
+  id: string
+  fullName: string
+  role: 'Admin' | 'Manager'
+  /** The branches a manager would see. Empty for an admin (they see everything) and for a manager
+   *  with nothing assigned yet — which is itself worth seeing before borrowing them. */
+  branches: string[]
+}
+
+export function getImpersonationTargets(id: string) {
+  return apiRequest<ImpersonationTarget[] | { error: string }>(
+    `/api/super/tenants/${id}/impersonation-targets`,
+  )
+}
+
+/** POST /api/super/tenants/{id}/impersonate — mint a short-lived session inside this company.
+ *  Without employeeId it borrows the founding admin, as the button did before targets could be
+ *  chosen. */
+export function impersonateTenant(id: string, employeeId?: string) {
+  const qs = employeeId ? `?employeeId=${encodeURIComponent(employeeId)}` : ''
+  return apiRequest<ImpersonateResult | { error: string }>(
+    `/api/super/tenants/${id}/impersonate${qs}`,
+    { method: 'POST' },
+  )
 }
 
 export interface SuperFeature {
