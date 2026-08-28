@@ -158,6 +158,10 @@ public class AttendanceController : ControllerBase
                 photoRequired = !e.PhotoExempt,
                 // Gates the field/mobile check-in surfaces in the app (menu row, home self-report).
                 canFieldCheckIn = e.CanFieldCheckIn,
+                // Gates the account switcher. The server refuses to adopt a shared handset without
+                // this anyway, but offering a button that always ends in a refusal at a QR poster is
+                // its own kind of broken — the employee cannot tell a permission from a bug.
+                canShareDevice = e.CanShareDevice,
                 // The app blocks on the consent screen until this is accepted.
                 consentRequired = e.ConsentAcceptedAtUtc == null,
                 // Whether there is a profile picture, and when it last changed — NOT a URL. Minting a

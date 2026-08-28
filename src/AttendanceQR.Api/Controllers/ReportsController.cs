@@ -43,6 +43,33 @@ public class ReportsController : ControllerBase
         return Ok(report);
     }
 
+    /// <summary>
+    /// The CALLER's own figures — the three tiles and the absence banner on their profile screen.
+    ///
+    /// That screen used to call <c>summary</c>, which scopes by ROLE: an employee gets themselves, a
+    /// manager gets their branches, an admin gets the company. So on their own profile card an admin
+    /// was shown the whole company's totals as if they were personal — 947 days worked, 7,893 hours,
+    /// and a banner reading "601 days absent this month", which is not a number a person can have.
+    ///
+    /// It is not only nonsense, it is the wrong shape of nonsense: the banner tells the reader to go
+    /// and ask their manager to correct an absence that was never theirs.
+    ///
+    /// Passing Employee explicitly is the whole fix. The scope switch already has the right branch —
+    /// "Employee: only themselves, whatever locationId was passed" — this endpoint just refuses to let
+    /// the caller's role choose a wider one.
+    /// </summary>
+    [HttpGet("my-summary")]
+    public async Task<IActionResult> MySummary([FromQuery] DateOnly from, [FromQuery] DateOnly to)
+    {
+        var (access, report) = await _reports.GetSummaryAsync(
+            from, to, null, User.EmployeeId(), EmployeeRole.Employee, HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        return Ok(report);
+    }
+
     // One employee's day-by-day breakdown — the profile summary tiles expand into these days.
     [HttpGet("employee-days")]
     public async Task<IActionResult> EmployeeDays(

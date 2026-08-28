@@ -7,6 +7,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { COMPANY_TZ, fmtFullDateTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import {
   bulkResetPin,
+  bulkShareDevice,
   type BulkPinResult,
   deleteEmployee,
   getAdminLocations,
@@ -564,6 +565,45 @@ export function EmployeesPage() {
   // existed for bulk already; adding one person could only ever produce a link.
   const [activateWithPin, setActivateWithPin] = useState(true)
 
+  const [sharing, setSharing] = useState(false)
+
+  /**
+   * Grant or withdraw the shared-phone permission across the VISIBLE list — whatever the branch
+   * filter and search have narrowed it to. Acting on the filtered set is this page's idiom, and it is
+   * the shape the work actually has: a whole brigade at a branch, not people picked one at a time.
+   *
+   * Withdrawal is offered beside it deliberately. A permission that can only be switched on is a
+   * ratchet, and the day a brigade stops sharing a phone there has to be a way back that is no harder
+   * than the way in.
+   */
+  async function setShareDevice(targets: AdminEmployee[], allowed: boolean) {
+    const affected = targets.filter((t) => (t.canShareDevice === true) !== allowed)
+    if (affected.length === 0) return
+    if (!window.confirm(
+      allowed
+        ? `${affected.length} nəfərə ORTAQ TELEFON icazəsi verilsin?
+
+` +
+          'Onların hesabı briqadanın ortaq telefonunda saxlanıla biləcək. Bu, həmin işçilər üçün ' +
+          '«bir telefon, bir işçi» qorumasını ləğv edir — telefonu olmayanlar üçün nəzərdə tutulub.'
+        : `${affected.length} nəfərdən ortaq telefon icazəsi alınsın?
+
+` +
+          'Artıq bağlanmış telefonlar işləməyə davam edir — onları ayırmaq üçün Cihazlar səhifəsindəki ' +
+          '«Ortaq telefonlar» bölməsindən istifadə edin.',
+    )) return
+
+    setSharing(true)
+    const { status } = await bulkShareDevice(affected.map((t) => t.id), allowed)
+    setSharing(false)
+    if (status === 200) {
+      await refresh()
+      setOk(allowed ? `${affected.length} nəfərə icazə verildi` : `${affected.length} nəfərdən icazə alındı`)
+    } else {
+      setError('Dəyişmədi')
+    }
+  }
+
   const [pinList, setPinList] = useState<BulkPinResult | null>(null)
   const [issuing, setIssuing] = useState(false)
   const [pinCopied, setPinCopied] = useState(false)
@@ -786,6 +826,39 @@ export function EmployeesPage() {
           <div style={{ marginLeft: 'auto' }}>
             <button className="btn btn-sm" disabled={issuing} onClick={() => void issuePins(pendingPin)}>
               {issuing ? 'Verilir…' : 'Yeni PIN siyahısı ver'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Shared-phone permission over the visible list. It sits here rather than on each card because
+          of the arithmetic: around 260 workers own no phone, and a checkbox per person is an
+          afternoon nobody finishes — a permission too tedious to grant properly gets granted
+          carelessly instead, or the rule gets turned off. Filter to a branch, then act. */}
+      {visible.length > 0 && (
+        <div
+          className="card"
+          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 16px', marginBottom: 12 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 22 }}>📱</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>
+                Ortaq telefon icazəsi — görünən {visible.length} nəfərdən{' '}
+                {visible.filter((r) => r.canShareDevice === true).length}-də var
+              </div>
+              <div className="muted" style={{ fontSize: 12 }}>
+                Telefonu olmayanlar üçün: hesabı briqadanın telefonunda saxlanıla bilər. Filialı seçib
+                bütün briqadaya bir dəfəyə verin.
+              </div>
+            </div>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button className="btn btn-sm" disabled={sharing} onClick={() => void setShareDevice(visible, true)}>
+              {sharing ? '…' : 'Görünənlərə ver'}
+            </button>
+            <button className="btn btn-sm" disabled={sharing} onClick={() => void setShareDevice(visible, false)}>
+              Geri al
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import { getSummary, type AttendanceReport } from './admin'
+import { type AttendanceReport } from './admin'
 
 /** POST /api/attendance/reason — attach a late-arrival ("late") or early-departure ("early") reason to
  * the caller's own record. Skippable, so failures are non-fatal. */
@@ -91,6 +91,9 @@ export interface MyProfile {
   /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). Gates the
    *  menu row + the home self-report; off by default so a plain office worker never sees any of it. */
   canFieldCheckIn?: boolean
+  /** May this person take part in a shared brigade phone? Gates the account switcher: without it the
+   *  server refuses to adopt the handset, so the button could only ever fail at the poster. */
+  canShareDevice?: boolean
   /** Whether a profile picture is set. Deliberately not a URL — see getMyAvatar. */
   hasAvatar?: boolean
   /** When it last changed; the client's cached copy is stale when this differs. */
@@ -192,8 +195,16 @@ export function submitMissedCheckout(recordId: string, checkOutAtUtc: string, re
 /** GET /api/reports/summary — aggregated totals for this employee over a date range. Employee-role
  * JWTs are forced to their own records server-side regardless of any other param, so this is the
  * same endpoint the admin reports page uses, just naturally self-scoped. */
+/**
+ * The signed-in person's OWN figures for the profile screen.
+ *
+ * Deliberately not getSummary(), which scopes by role: an admin calling it got the whole company's
+ * totals rendered as their personal card — 947 days, 7,893 hours, and a banner saying 601 days absent
+ * this month, which told them to ask their manager to fix an absence that was never theirs.
+ */
 export function getMySummary(from: string, to: string) {
-  return getSummary(from, to)
+  const q = new URLSearchParams({ from, to })
+  return apiRequest<AttendanceReport | { error: string }>(`/api/reports/my-summary?${q}`)
 }
 
 export type { AttendanceReport }

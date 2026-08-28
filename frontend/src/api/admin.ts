@@ -307,6 +307,15 @@ export function recheckFaces() {
   })
 }
 
+/** Grant or withdraw the shared-phone permission for many people at once — around 260 workers own no
+ *  phone, and a permission too tedious to grant properly gets granted carelessly or turned off. */
+export function bulkShareDevice(employeeIds: string[], allowed: boolean) {
+  return apiRequest<{ changed: number; total: number } | { error: string }>(
+    '/api/admin/employees/bulk-share-device',
+    { method: 'POST', body: { employeeIds, allowed } },
+  )
+}
+
 export function getSummary(from: string, to: string, locationId?: string) {
   const q = new URLSearchParams({ from, to })
   if (locationId) q.set('locationId', locationId)

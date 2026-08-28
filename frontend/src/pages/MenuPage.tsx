@@ -78,6 +78,9 @@ export function MenuPage() {
   // Months without a ballot have no vote screen worth opening, so the row isn't offered at all.
   const [hasBallot, setHasBallot] = useState(false)
   const [switching, setSwitching] = useState(false)
+  // Who may hold several accounts on one handset. Either the company granted it, or this phone is
+  // already carrying more than one — the second keeps an existing brigade phone working.
+  const canSwitch = profile?.canShareDevice === true || profiles.length > 1
   const [changingPin, setChangingPin] = useState(false)
   const [pickingAvatar, setPickingAvatar] = useState(false)
   // Bumped after the picture changes, purely to make <Avatar> re-read the cache it renders from.
@@ -154,16 +157,26 @@ export function MenuPage() {
 
         {/* The name is the switcher. Who you are and how to become somebody else are the same
             question, and on a crew phone this is tapped thirty times in the ten minutes before a
-            shift — a row buried among nine others is not that. */}
+            shift — a row buried among nine others is not that.
+
+            It is only a switcher for people the company put in a shared-phone arrangement. Everyone
+            else gets their name as plain text: the server refuses to adopt a shared handset without
+            the permission, so leaving the button there would end every time in a refusal at a QR
+            poster, where an employee cannot tell a permission from a broken app.
+
+            A phone that already carries several accounts keeps it regardless. Taking the switcher
+            away from a brigade already working this way would strand everybody saved on it — the same
+            reason the server checks at adoption rather than on every scan. */}
         <button
           type="button"
-          onClick={() => setSwitching(true)}
-          className="mt-4 flex w-full items-center gap-2 rounded-2xl text-left transition active:bg-slate-50"
+          onClick={() => canSwitch && setSwitching(true)}
+          disabled={!canSwitch}
+          className="mt-4 flex w-full items-center gap-2 rounded-2xl text-left transition active:bg-slate-50 disabled:active:bg-transparent"
         >
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-lg font-bold">{profile?.fullName ?? '…'}</span>
-              <IconChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+              {canSwitch && <IconChevronDown className="h-4 w-4 shrink-0 text-slate-400" />}
             </span>
             {subtitle && <span className="block truncate text-sm text-slate-500">{subtitle}</span>}
             {profile?.birthDate && (

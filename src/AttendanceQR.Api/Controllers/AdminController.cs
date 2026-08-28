@@ -1245,6 +1245,50 @@ public class AdminController : ControllerBase
         return Ok(new { tempPin = pin });
     }
 
+    /// <summary>
+    /// Grant or withdraw the shared-phone permission for many people at once.
+    ///
+    /// It exists because of the arithmetic: around 260 workers own no phone, and setting a checkbox on
+    /// each of their cards is an afternoon of clicking that nobody would finish. A permission that is
+    /// too tedious to grant properly gets granted carelessly instead — or the rule gets turned off.
+    ///
+    /// Withdrawal is here too, and not as an afterthought. A permission that can only be switched on
+    /// is a ratchet: the day a brigade stops sharing a phone, or one is lost, there has to be a way
+    /// back that is no harder than the way in.
+    ///
+    /// Nobody is signed out and no binding is touched. This changes what may be adopted NEXT; a
+    /// handset already carrying these people keeps working until its bindings are revoked, which is
+    /// the shared-devices screen's job. Splitting it that way is deliberate — revoking a permission
+    /// should never be the thing that strands somebody at a poster mid-morning.
+    /// </summary>
+    [HttpPost("bulk-share-device")]
+    public async Task<IActionResult> BulkShareDevice([FromBody] BulkShareDeviceRequest request)
+    {
+        var ids = (request.EmployeeIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+            return BadRequest(new { error = "NoEmployees" });
+        // The same ceiling as the bulk PIN reissue: a whole company at once is a legitimate first-day
+        // action, beyond that it is a mistake or a script.
+        if (ids.Count > 300)
+            return BadRequest(new { error = "TooMany" });
+
+        var ct = HttpContext.RequestAborted;
+        var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+
+        var changed = 0;
+        foreach (var e in employees)
+        {
+            if (e.CanShareDevice == request.Allowed) continue;
+            e.CanShareDevice = request.Allowed;
+            changed++;
+        }
+
+        if (changed > 0)
+            await _db.SaveChangesAsync(ct);
+
+        return Ok(new { changed, total = employees.Count, allowed = request.Allowed });
+    }
+
     // POST /api/admin/employees/bulk-reset-pin — issue a fresh temporary PIN to many people at once
     // and return the whole list, in plaintext, exactly once.
     //
