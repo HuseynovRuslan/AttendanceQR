@@ -23,7 +23,7 @@ import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime } from '../../lib/format'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
-import { ASSET_TYPE_LABEL, getAssets, type Asset } from '../../api/assets'
+import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
 
@@ -41,7 +41,7 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
-  const [assets, setAssets] = useState<Asset[]>([])
+  const [equipment, setEquipment] = useState<EquipmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -77,13 +77,13 @@ export function EmployeeProfilePage() {
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
     const today = now.toISOString().slice(0, 10)
 
-    const [empRes, attRes, devRes, sumRes, daysRes, assetRes] = await Promise.all([
+    const [empRes, attRes, devRes, sumRes, daysRes, equipRes] = await Promise.all([
       getEmployees(),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
       getEmployeeDays(id, monthStart, today),
-      getAssets({ employeeId: id }),
+      getEquipmentByEmployee(id),
     ])
     if (daysRes.status === 200 && Array.isArray(daysRes.data)) setMonthDays(daysRes.data)
 
@@ -97,7 +97,7 @@ export function EmployeeProfilePage() {
     const recs = attRes.status === 200 && Array.isArray(attRes.data) ? attRes.data : []
     setRecords(recs)
     if (devRes.status === 200 && Array.isArray(devRes.data)) setDevices(devRes.data.filter((d) => d.employeeId === id))
-    if (assetRes.status === 200 && Array.isArray(assetRes.data)) setAssets(assetRes.data)
+    if (equipRes.status === 200 && Array.isArray(equipRes.data)) setEquipment(equipRes.data)
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
       setSummary(sumRes.data.rows.find((r) => r.employeeId === id) ?? null)
 
@@ -430,29 +430,31 @@ export function EmployeeProfilePage() {
         )}
       </div>
 
-      {/* Equipment the company has handed to this person. Read-only here: assigning and taking back
-          happen in the register, where the whole list is in view. */}
+      {/* This person's line in the IT equipment register. Read-only here — the register is edited
+          in one place, where the whole list is in view. Shows nothing unless the register's name was
+          linked to this staff record. */}
       <div className="card card-pad">
         <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span>Təhkim olunmuş avadanlıq</span>
-          <Link to="/admin/assets" className="btn btn-sm"><IconLaptop /> Kompüter inventarizasiyası</Link>
+          <span>Kompüter avadanlığı</span>
+          <Link to="/admin/equipment" className="btn btn-sm"><IconLaptop /> Kompüter inventarizasiyası</Link>
         </div>
-        {assets.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Təhkim olunmuş avadanlıq yoxdur.</p>
+        {equipment.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>
+            İnventarizasiya siyahısında bu işçiyə bağlı sətir yoxdur.
+          </p>
         ) : (
           <div className="tbl-wrap">
             <table>
               <thead>
-                <tr><th>İnventar N</th><th>Avadanlıq</th><th>Növ</th><th>Seriya N</th><th>Təhkim tarixi</th></tr>
+                <tr><th>Avadanlıq</th><th>Sistem bloku</th><th>Monitor</th><th>Digər avadanlıq</th></tr>
               </thead>
               <tbody>
-                {assets.map((a) => (
-                  <tr key={a.id}>
-                    <td style={{ fontWeight: 700 }}>{a.inventoryNumber}</td>
-                    <td>{a.name}</td>
-                    <td className="muted">{ASSET_TYPE_LABEL[a.type]}</td>
-                    <td className="muted">{a.serialNumber ?? '—'}</td>
-                    <td className="mono">{a.assignedAtUtc ? fmtDate(a.assignedAtUtc.slice(0, 10)) : '—'}</td>
+                {equipment.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ whiteSpace: 'pre-line', minWidth: 200 }}>{r.equipment ?? '—'}</td>
+                    <td style={{ whiteSpace: 'pre-line' }} className="muted">{r.systemUnit ?? '—'}</td>
+                    <td style={{ whiteSpace: 'pre-line' }} className="muted">{r.monitor ?? '—'}</td>
+                    <td style={{ whiteSpace: 'pre-line' }} className="muted">{r.otherEquipment ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

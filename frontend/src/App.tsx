@@ -52,7 +52,7 @@ const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployees
 const ManagerLeavesPage = lazy(() => import('./pages/manager/ManagerLeavesPage').then(m => ({ default: m.ManagerLeavesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
-const AssetsPage = lazy(() => import('./pages/admin/AssetsPage').then(m => ({ default: m.AssetsPage })))
+const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
 const SchedulesPage = lazy(() => import('./pages/admin/SchedulesPage').then(m => ({ default: m.SchedulesPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
@@ -334,10 +334,10 @@ function AppRoutes() {
         />
         {/* Equipment register — Admin only: it carries purchase prices and spans every branch. */}
         <Route
-          path="assets"
+          path="equipment"
           element={
             <AdminOnly>
-              <AssetsPage />
+              <EquipmentPage />
             </AdminOnly>
           }
         />

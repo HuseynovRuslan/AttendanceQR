@@ -1035,13 +1035,6 @@ public class AdminController : ControllerBase
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
 
-        // Equipment is Restrict too, but unlike attendance history it must never be wiped along with
-        // the account: the laptop still exists and someone is holding it. Refuse until it is handed
-        // back — force or not, deleting the employee is not what makes the device come back.
-        var assignedAssets = await _db.Assets.CountAsync(a => a.AssignedEmployeeId == id);
-        if (assignedAssets > 0)
-            return Conflict(new { error = "EmployeeHasAssets", assets = assignedAssets });
-
         // Attendance/summary/device-change FKs are Restrict — refuse to delete an employee with
         // history (it would fail at the DB anyway) unless the caller explicitly opts into a
         // force delete (e.g. wiping a test account), which purges that history first.
