@@ -84,6 +84,24 @@ const KIT_ICON: Record<KitKind, typeof IconDesktop> = {
   other: IconBriefcase,
 }
 
+/**
+ * A stable tone for a person's avatar, chosen from their name.
+ *
+ * Every avatar on the board was the same amber, which read as a design choice and was not one: the
+ * amber is `.unlinked`, and every row in the register is unlinked, so the wall showed one colour
+ * eighty times. Giving each person a tone of their own makes a card findable by shape rather than by
+ * reading it — you learn where "yours" sits.
+ *
+ * Amber is deliberately NOT in the set. It means "needs attention" everywhere else on this screen,
+ * and a decorative amber avatar beside a real amber warning teaches people to ignore the warning.
+ */
+const TONES = 5
+function tone(name: string): number {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
+  return h % TONES
+}
+
 /** Two letters for the avatar. Azerbaijani casing, so «i» becomes «İ» and not «I». */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -742,15 +760,15 @@ export function EquipmentPage() {
                     onClick={() => setOpenId(row.id)}
                   >
                     <span className="eq-card-head">
-                      <span className="eq-av">{initials(row.fullName)}</span>
+                      <span className={`eq-av t${tone(row.fullName)}`}>{initials(row.fullName)}</span>
                       <span className="eq-id">
                         <span className="eq-nm">{row.fullName}</span>
                         <Who position={row.position} area={groups.length > 1 && !g.merged ? null : row.area} />
                       </span>
-                      <span className="eq-no">{row.rowNo}</span>
+                      <span className="eq-no">№{row.rowNo}</span>
                     </span>
+                    <span className="eq-card-rule" />
                     <KitChips row={row} />
-                    {!row.employeeId && <span className="tag eq-flag">işçi siyahısında yoxdur</span>}
                   </button>
                 ))}
               </div>

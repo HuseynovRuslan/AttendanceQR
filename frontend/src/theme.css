@@ -668,62 +668,64 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .eq-view button.active{background:var(--c900);color:#fff}
 .eq-view svg{width:14px;height:14px}
 
-.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:14px}
-.eq-card{position:relative;display:flex;flex-direction:column;gap:12px;text-align:left;width:100%;
-  background:var(--white);border:1px solid var(--c100);border-radius:var(--r-lg);box-shadow:var(--sh-sm);
-  padding:16px 18px;cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .15s}
-.eq-card:hover{box-shadow:var(--sh);border-color:var(--c200);transform:translateY(-1px)}
+.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(302px,1fr));gap:14px}
+/* Wider columns than before: at 268px a five-across grid squeezed the card horizontally while the
+   chips wrapped onto three lines inside it — narrow and sparse at the same time. */
+.eq-card{position:relative;display:flex;flex-direction:column;text-align:left;width:100%;
+  background:var(--white);border:1px solid var(--c100);border-radius:14px;
+  /* Two shadows: a tight one that seats the card on the page, and a wide, very faint one that gives
+     it air. A single hard shadow reads as a box; this reads as a surface. */
+  box-shadow:0 1px 2px rgba(16,24,40,.05),0 10px 26px -8px rgba(16,24,40,.05);
+  padding:15px 17px 16px;cursor:pointer;overflow:hidden;
+  transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
+.eq-card:hover{transform:translateY(-3px);border-color:#C7D7F0;
+  box-shadow:0 2px 4px rgba(16,24,40,.05),0 16px 34px -10px rgba(37,99,235,.16)}
 .eq-card:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
-.eq-card-head{display:flex;align-items:flex-start;gap:11px;min-width:0}
-.eq-av{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
-  background:var(--leaf-bg);color:var(--leaf-d);font-size:13px;font-weight:800;letter-spacing:.02em}
-.eq-card.unlinked .eq-av{background:var(--amber-bg);color:var(--amber)}
+/* "Not in the staff list" was a filled amber chip at the foot of EVERY card — eighty of them, one
+   warning repeated until it stopped being one. It is a hairline down the edge now: still visible at
+   a glance across the grid, without eighty labels to read. */
+.eq-card.unlinked::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}
+.eq-card.unlinked{padding-left:19px}
+
+.eq-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.eq-av{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  font-size:13px;font-weight:800;letter-spacing:.02em}
+/* One tone per person, from their name. Muted on purpose — an avatar is a landmark, not a highlight. */
+.eq-av.t0{background:#EEF2FF;color:#4338CA}
+.eq-av.t1{background:#ECFDF5;color:#047857}
+.eq-av.t2{background:#FFF1F2;color:#BE123C}
+.eq-av.t3{background:#F0FDFA;color:#0F766E}
+.eq-av.t4{background:#F5F3FF;color:#6D28D9}
+
 .eq-id{min-width:0;flex:1}
-/* Both of these ran out of the card, and it was one mistake made twice.
-   They were set to one line with `text-overflow:ellipsis` — which does NOTHING on an inline box, and
-   both are <span>s here, because the card is a <button> and a <div> inside one is invalid DOM. So
-   `white-space:nowrap` took hold, the ellipsis did not, and the text simply kept going past the
-   border. It shows up on the job title first because that is the long field: the register writes
-   titles like «Baş mütəxəssis — informasiya texnologiyaları şöbəsi», and the name column is
-   «Soyadı, adı, atasının adı» in full.
-   Clamped to two lines rather than cut at one: a title clipped after four words loses exactly the
-   half that tells two of them apart. `overflow-wrap:anywhere` covers the single unbroken run — an
-   e-mail-shaped title, a model number — that no amount of wrapping would otherwise fit. */
 .eq-nm,.eq-pos{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
   overflow:hidden;white-space:normal;overflow-wrap:anywhere}
-.eq-nm{font-size:14px;font-weight:700;color:var(--c900);line-height:1.3}
-.eq-pos{font-size:12px;color:var(--c500);margin-top:2px;line-height:1.4}
-/* İşlədiyi ərazi. It shared the title's line, separated by a "·" — and a middle dot sitting inside
-   two lines of wrapped text is not a boundary anyone reads, so the job and the place ran together.
-   Given its own shape instead of its own punctuation: a pin and a tint, which is also what the area
-   is elsewhere on this screen — a thing you filter by, not a continuation of the job title. */
-.eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:7px;
+.eq-nm{font-size:14.5px;font-weight:700;color:var(--c900);line-height:1.35;letter-spacing:-.005em}
+/* The title sat directly under the name with nothing between them; they read as one wrapped line. */
+.eq-pos{font-size:12px;color:var(--c500);margin-top:5px;line-height:1.45}
+.eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:8px;
   padding:2px 8px 2px 6px;border-radius:6px;background:var(--c50);border:1px solid var(--c100);
   color:var(--c600);font-size:11px;font-weight:700;line-height:1.5}
-/* Neutral, deliberately. Colour on this card already means one thing — the kit chips use it to
-   encode the KIND of equipment (blue desktop, purple laptop, teal monitor). A tinted area tag would
-   be a fourth colour saying something else entirely, on the same card. The pin carries the meaning. */
 .eq-area svg{width:11px;height:11px;flex:none;color:var(--c400)}
-/* Blockified as a flex item, so here the ellipsis actually applies — the thing that silently failed
-   on the inline spans above. One line: a site name is short, and a wrapped tag stops looking like one. */
 .eq-area-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* The "Sıra №" — the key a re-import matches on, so it stays visible, but it is the least
-   interesting thing on the card and is set accordingly. */
 .eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);font-variant-numeric:tabular-nums}
 
+/* A rule between who they are and what they hold — the card had no internal structure at all, so
+   the two ran together as one column of text. */
+.eq-card-rule{display:block;height:1px;background:var(--c100);margin:14px -17px 13px}
+.eq-card.unlinked .eq-card-rule{margin-left:-19px}
+
 .eq-kit{display:flex;flex-wrap:wrap;gap:6px}
-.eq-empty-kit{display:block}
-.eq-kit-chip{display:inline-flex;align-items:center;gap:5px;border-radius:8px;padding:4px 9px;
-  background:var(--c50);border:1px solid var(--c100);font-size:11.5px;font-weight:600;color:var(--c600);white-space:nowrap}
-.eq-kit-chip svg{width:13px;height:13px;flex:none;color:var(--c400)}
-.eq-kit-chip.k-desktop{background:var(--blue-bg);border-color:transparent;color:#1D4ED8}
-.eq-kit-chip.k-desktop svg{color:#1D4ED8}
-.eq-kit-chip.k-laptop{background:var(--purple-bg);border-color:transparent;color:#6D28D9}
-.eq-kit-chip.k-laptop svg{color:#6D28D9}
-.eq-kit-chip.k-monitor{background:var(--teal-bg);border-color:transparent;color:var(--teal)}
-.eq-kit-chip.k-monitor svg{color:var(--teal)}
-.eq-empty-kit{font-size:12px;color:var(--c400);font-style:italic}
-.eq-flag{align-self:flex-start;background:var(--amber-bg);color:var(--amber)}
+.eq-empty-kit{display:block;font-size:12px;color:var(--c400);font-style:italic}
+/* One neutral chip, not a different pastel per kind.
+   Colour was carrying the kind — blue desktop, purple laptop, teal monitor — which works on the five
+   tiles at the top of the page, where they sit apart and colour is how you find one again. Three of
+   them inside a card, on eighty cards, is not a code any more: it is confetti, and it made a company
+   asset register look like a wall of sticky notes. The icon still says which kind it is; the chip
+   just stops shouting about it. */
+.eq-kit-chip{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;
+  background:#F1F5F9;border:1px solid #E2E8F0;font-size:11.5px;font-weight:600;color:#334155;white-space:nowrap}
+.eq-kit-chip svg{width:13px;height:13px;flex:none;color:#64748B}
 
 .eq-none{grid-column:1/-1;text-align:center;padding:44px 20px;color:var(--c400);
   background:var(--white);border:1px dashed var(--c200);border-radius:var(--r-lg)}
@@ -737,6 +739,10 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 @keyframes eq-fade{from{opacity:0}to{opacity:1}}
 @keyframes eq-slide{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
 @media(prefers-reduced-motion:reduce){.eq-backdrop,.eq-drawer{animation:none}}
+/* Still used, but only in the panel — one label on the person you are actually looking at, which is
+   where a warning belongs. The cards carry the same fact as a hairline down the edge. */
+.eq-flag{align-self:flex-start;background:var(--amber-bg);color:var(--amber)}
+.eq-drawer-head .eq-av{background:var(--c100);color:var(--c600)}
 .eq-drawer-head{padding:20px 22px 16px;border-bottom:1px solid var(--c100);display:flex;gap:12px;align-items:flex-start}
 /* The panel is where the full record lives, so nothing is clamped here — the two-line limit exists
    to keep cards the same height in a grid, and there is no grid in a drawer. */
@@ -810,6 +816,8 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   .eq-group-kit-i,.eq-group-kit-i svg{color:#000!important}
   .eq-grid{grid-template-columns:repeat(2,1fr);gap:8px}
   .eq-card{break-inside:avoid;box-shadow:none;border-color:#BBB;padding:10px 12px;transform:none}
+  .eq-card.unlinked::before{background:#666}
+  .eq-card-rule{margin:8px -12px}
   .eq-kit-chip{background:transparent!important;border:1px solid #BBB!important;color:#000!important}
   .eq-kit-chip svg{color:#000!important}
   .eq-av{background:#EEE!important;color:#000!important}
