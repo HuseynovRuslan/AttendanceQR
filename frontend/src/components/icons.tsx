@@ -261,3 +261,10 @@ export const IconPencil = (p: SVGProps<SVGSVGElement>) => (
     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
   </svg>
 )
+
+export const IconLaptop = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M2 20h20" />
+  </svg>
+)

@@ -22,7 +22,8 @@ import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime } from '../../lib/format'
-import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
+import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
+import { ASSET_TYPE_LABEL, getAssets, type Asset } from '../../api/assets'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
 
@@ -40,6 +41,7 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
+  const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -75,12 +77,13 @@ export function EmployeeProfilePage() {
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
     const today = now.toISOString().slice(0, 10)
 
-    const [empRes, attRes, devRes, sumRes, daysRes] = await Promise.all([
+    const [empRes, attRes, devRes, sumRes, daysRes, assetRes] = await Promise.all([
       getEmployees(),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
       getEmployeeDays(id, monthStart, today),
+      getAssets({ employeeId: id }),
     ])
     if (daysRes.status === 200 && Array.isArray(daysRes.data)) setMonthDays(daysRes.data)
 
@@ -94,6 +97,7 @@ export function EmployeeProfilePage() {
     const recs = attRes.status === 200 && Array.isArray(attRes.data) ? attRes.data : []
     setRecords(recs)
     if (devRes.status === 200 && Array.isArray(devRes.data)) setDevices(devRes.data.filter((d) => d.employeeId === id))
+    if (assetRes.status === 200 && Array.isArray(assetRes.data)) setAssets(assetRes.data)
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
       setSummary(sumRes.data.rows.find((r) => r.employeeId === id) ?? null)
 
@@ -419,6 +423,37 @@ export function EmployeeProfilePage() {
                       </td>
                     </tr>
                   )
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Equipment the company has handed to this person. Read-only here: assigning and taking back
+          happen in the register, where the whole list is in view. */}
+      <div className="card card-pad">
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Təhkim olunmuş texnika</span>
+          <Link to="/admin/assets" className="btn btn-sm"><IconLaptop /> Texnika</Link>
+        </div>
+        {assets.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>Təhkim olunmuş avadanlıq yoxdur.</p>
+        ) : (
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr><th>İnventar N</th><th>Avadanlıq</th><th>Növ</th><th>Seriya N</th><th>Təhkim tarixi</th></tr>
+              </thead>
+              <tbody>
+                {assets.map((a) => (
+                  <tr key={a.id}>
+                    <td style={{ fontWeight: 700 }}>{a.inventoryNumber}</td>
+                    <td>{a.name}</td>
+                    <td className="muted">{ASSET_TYPE_LABEL[a.type]}</td>
+                    <td className="muted">{a.serialNumber ?? '—'}</td>
+                    <td className="mono">{a.assignedAtUtc ? fmtDate(a.assignedAtUtc.slice(0, 10)) : '—'}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>

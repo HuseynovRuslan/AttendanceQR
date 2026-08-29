@@ -49,6 +49,12 @@ employee with `WorkCycleDays` set ignores the mask entirely — see `AttendanceC
 `.IsScheduledWorkingDay`, the one place this is decided, and `WorkCycle.Apply`, the one place it is
 written. Holidays (`NonWorkingDay`) still apply on top.
 
+**Equipment outlives the account.** An employee still holding something from the equipment register
+(`/admin/assets`) cannot be deleted — not even with `force`, which happily wipes attendance history.
+The laptop is real and someone has it; deleting the row is not what brings it back. Hand it back
+first. For the same reason `Asset.Status` and `Asset.AssignedEmployeeId` only ever move together —
+a row that says "assigned" and names nobody answers "who has it" wrongly rather than not at all.
+
 **A value in `.env` alone reaches nothing.** Compose only passes variables named in the service's
 `environment:` block. Add it in both places.
 
