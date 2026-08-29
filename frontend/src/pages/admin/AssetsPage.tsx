@@ -523,7 +523,7 @@ export function AssetsPage() {
 
       <div className="muted" style={{ fontSize: 12, marginTop: 12 }}>
         Üzərində avadanlıq olan işçi silinə bilmir — əvvəlcə avadanlıq geri alınmalıdır. Belədə heç bir
-        texnika sahibsiz qalmır.
+        avadanlıq sahibsiz qalmır.
       </div>
     </div>
   )

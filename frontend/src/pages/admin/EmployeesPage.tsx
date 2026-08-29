@@ -74,7 +74,7 @@ const ERRORS: Record<string, string> = {
   NeedEmailOrPhone: 'Telefon nömrəsi və ya email lazımdır',
   LocationNotFound: 'Lokasiya tapılmadı',
   EmployeeHasHistory: 'Bu işçinin davamiyyət tarixçəsi var — silmək olmaz, əvəzinə deaktiv edin',
-  EmployeeHasAssets: 'Bu işçinin üzərində texnika var — əvvəlcə Texnika bölməsindən avadanlığı geri alın',
+  EmployeeHasAssets: 'Bu işçinin üzərində avadanlıq var — əvvəlcə «Kompüter inventarizasiyası» bölməsindən geri alın',
   CannotDeleteSelf: 'Öz hesabınızı silə bilməzsiniz',
   CannotDeactivateSelf: 'Öz hesabınızı deaktiv edə bilməzsiniz — girişiniz bağlanardı',
   CannotChangeOwnRole: 'Öz rolunuzu dəyişə bilməzsiniz — panelə girişinizi itirə bilərsiniz',

@@ -433,9 +433,9 @@ export function EmployeeProfilePage() {
       {/* Equipment the company has handed to this person. Read-only here: assigning and taking back
           happen in the register, where the whole list is in view. */}
       <div className="card card-pad">
-        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Təhkim olunmuş texnika</span>
-          <Link to="/admin/assets" className="btn btn-sm"><IconLaptop /> Texnika</Link>
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>Təhkim olunmuş avadanlıq</span>
+          <Link to="/admin/assets" className="btn btn-sm"><IconLaptop /> Kompüter inventarizasiyası</Link>
         </div>
         {assets.length === 0 ? (
           <p className="muted" style={{ fontSize: 13 }}>Təhkim olunmuş avadanlıq yoxdur.</p>
