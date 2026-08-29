@@ -109,6 +109,7 @@ export function ReportsPage() {
                 <th className="num">İş günləri</th>
                 <th className="num">Qayıb</th>
                 <th className="num">Məzuniyyət</th>
+                <th className="num">Ezamiyyət</th>
                 <th className="num">İcazə</th>
                 <th className="num">Ümumi saat</th>
                 <th className="num">Overtime</th>
@@ -122,6 +123,7 @@ export function ReportsPage() {
                   <td data-label="İş günləri" className="num mono">{r.workDays}</td>
                   <td data-label="Qayıb" className="num mono">{r.absentDays}</td>
                   <td data-label="Məzuniyyət" className="num mono">{r.leaveDays}</td>
+                  <td data-label="Ezamiyyət" className="num mono">{r.tripDays}</td>
                   <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
                   <td data-label="Ümumi saat" className="num mono">{fmtHM(r.totalWorkedHours)}</td>
                   <td data-label="Overtime" className="num mono">{fmtHM(r.overtimeHours)}</td>
@@ -142,6 +144,7 @@ export function ReportsPage() {
                   <td className="num mono">{report.totals.workDays}</td>
                   <td className="num mono">{report.totals.absentDays}</td>
                   <td className="num mono">{report.totals.leaveDays}</td>
+                  <td className="num mono">{report.totals.tripDays}</td>
                   <td className="num mono">{report.totals.permissionDays}</td>
                   <td className="num mono">{fmtHM(report.totals.totalWorkedHours)}</td>
                   <td className="num mono">{fmtHM(report.totals.overtimeHours)}</td>

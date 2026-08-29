@@ -61,6 +61,8 @@ export interface EmployeeReportRow {
   totalWorkedHours: number
   overtimeHours: number
   leaveDays: number
+  /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
+  tripDays: number
   permissionDays: number
 }
 
@@ -72,6 +74,8 @@ export interface ReportTotals {
   totalWorkedHours: number
   overtimeHours: number
   leaveDays: number
+  /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
+  tripDays: number
   permissionDays: number
 }
 
@@ -381,6 +385,8 @@ export interface PayrollRow {
   workDays: number
   absentDays: number
   leaveDays: number
+  /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
+  tripDays: number
   permissionDays: number
   overtimeHours: number
   perDay: number
@@ -1435,6 +1441,8 @@ export interface TabelRow {
   workedDays: number
   absentDays: number
   leaveDays: number
+  /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
+  tripDays: number
   workedHours: number
 }
 

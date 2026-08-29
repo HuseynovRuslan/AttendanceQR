@@ -177,4 +177,60 @@ public class MySummaryScopeTests
 
         Assert.Equal(7, report!.Rows.Count); // 5 staff + manager + admin
     }
+
+    [Fact]
+    public async Task Ezamiyyet_is_counted_apart_from_annual_leave()
+    {
+        // Both are stored as OnLeave — a business trip is "approved, not an unexcused absence", the
+        // same as a holiday — so every report summed them into one column. They are opposite facts
+        // about a person: on leave they were not working, on a trip they were working somewhere with
+        // no QR poster. A driver away for a month read as a month of annual holiday, on their own
+        // profile card and in front of whoever signs the timesheet.
+        using var h = new Harness(staff: 1);
+        var who = h.StaffIds[0];
+
+        // Three of the seven days are a work trip; the summaries say only OnLeave, as they do in
+        // production — the type lives in LeaveRecords.
+        foreach (var s in h.Db.DailySummaries.Where(x => x.EmployeeId == who).ToList())
+            s.Status = DailySummaryStatus.OnLeave;
+        h.Db.LeaveRecords.Add(new LeaveRecord
+        {
+            TenantId = TenantId, EmployeeId = who,
+            FromDate = From, ToDate = From.AddDays(2),
+            Type = LeaveType.BusinessTrip, CreatedByEmployeeId = h.AdminId,
+        });
+        h.Db.SaveChanges();
+
+        var (_, report) = await h.MineAsync(who);
+        var row = Assert.Single(report!.Rows);
+
+        Assert.Equal(3, row.TripDays);
+        Assert.Equal(4, row.LeaveDays);
+        // And the totals split the same way, or the footer would contradict the row above it.
+        Assert.Equal(3, report.Totals.TripDays);
+        Assert.Equal(4, report.Totals.LeaveDays);
+    }
+
+    [Fact]
+    public async Task A_day_with_no_trip_record_stays_ordinary_leave()
+    {
+        // The other direction: nothing that was already correct moves into the new column.
+        using var h = new Harness(staff: 1);
+        var who = h.StaffIds[0];
+
+        foreach (var s in h.Db.DailySummaries.Where(x => x.EmployeeId == who).ToList())
+            s.Status = DailySummaryStatus.OnLeave;
+        h.Db.LeaveRecords.Add(new LeaveRecord
+        {
+            TenantId = TenantId, EmployeeId = who, FromDate = From, ToDate = To,
+            Type = LeaveType.Vacation, CreatedByEmployeeId = h.AdminId,
+        });
+        h.Db.SaveChanges();
+
+        var (_, report) = await h.MineAsync(who);
+        var row = Assert.Single(report!.Rows);
+
+        Assert.Equal(0, row.TripDays);
+        Assert.Equal(7, row.LeaveDays);
+    }
 }
