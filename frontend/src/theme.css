@@ -687,7 +687,13 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .eq-card.unlinked::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}
 .eq-card.unlinked{padding-left:19px}
 
-.eq-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0}
+/* `flex:1` is what lines the chips up.
+   Cards in a grid row are already the same height, so the ragged part was WHERE inside them the kit
+   began: a one-line job title started its chips higher than a two-line one, and a card with a single
+   chip left a pool of white at the foot. Letting the head absorb the slack pushes the rule and the
+   chips to the bottom of every card, so they read as a footer band across the row — and the leftover
+   space collects in one place instead of a different place on each card. */
+.eq-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}
 .eq-av{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
   font-size:13px;font-weight:800;letter-spacing:.02em}
 /* One tone per person, from their name. Muted on purpose — an avatar is a landmark, not a highlight. */
@@ -702,7 +708,9 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   overflow:hidden;white-space:normal;overflow-wrap:anywhere}
 .eq-nm{font-size:14.5px;font-weight:700;color:var(--c900);line-height:1.35;letter-spacing:-.005em}
 /* The title sat directly under the name with nothing between them; they read as one wrapped line. */
-.eq-pos{font-size:12px;color:var(--c500);margin-top:5px;line-height:1.45}
+/* Two lines' worth of room whether the title needs one or two — "Direktor" and "Qarabağ üzrə
+   planlaşdırma və memarlıq şöbəsinin müdiri" then leave the card at the same place. */
+.eq-pos{font-size:12px;color:var(--c500);margin-top:5px;line-height:1.45;min-height:2.9em}
 .eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:8px;
   padding:2px 8px 2px 6px;border-radius:6px;background:var(--c50);border:1px solid var(--c100);
   color:var(--c600);font-size:11px;font-weight:700;line-height:1.5}
@@ -715,7 +723,16 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .eq-card-rule{display:block;height:1px;background:var(--c100);margin:14px -17px 13px}
 .eq-card.unlinked .eq-card-rule{margin-left:-19px}
 
-.eq-kit{display:flex;flex-wrap:wrap;gap:6px}
+/* The right-hand reserve keeps the last chip clear of the hover arrow. */
+.eq-kit{display:flex;flex-wrap:wrap;gap:6px;padding-right:20px}
+/* An affordance, not a label: it appears only on the card under the cursor, so it never becomes the
+   eightieth copy of the same thing. (A "yeniləndi 2 gün əvvəl" line would have been exactly that —
+   an import stamps every row with the same instant, so all eighty cards would carry one date.) */
+.eq-card::after{content:'→';position:absolute;right:15px;bottom:14px;
+  font-size:15px;line-height:1;color:var(--c400);opacity:0;transform:translateX(-4px);
+  transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+.eq-card:hover::after{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.eq-card::after{transition:none}}
 .eq-empty-kit{display:block;font-size:12px;color:var(--c400);font-style:italic}
 /* One neutral chip, not a different pastel per kind.
    Colour was carrying the kind — blue desktop, purple laptop, teal monitor — which works on the five
@@ -746,7 +763,9 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .eq-drawer-head{padding:20px 22px 16px;border-bottom:1px solid var(--c100);display:flex;gap:12px;align-items:flex-start}
 /* The panel is where the full record lives, so nothing is clamped here — the two-line limit exists
    to keep cards the same height in a grid, and there is no grid in a drawer. */
-.eq-drawer-head .eq-nm,.eq-drawer-head .eq-pos{display:block;-webkit-line-clamp:unset;line-clamp:unset}
+/* min-height too: the two reserved lines exist to line the CARDS up in a grid, and there is no grid
+   here — in the panel they would just be a hole under a one-line job title. */
+.eq-drawer-head .eq-nm,.eq-drawer-head .eq-pos{display:block;-webkit-line-clamp:unset;line-clamp:unset;min-height:0}
 .eq-drawer-head .eq-nm{font-size:17px;line-height:1.35}
 .eq-drawer-head .eq-pos{font-size:13px}
 .eq-drawer-body{flex:1;overflow-y:auto;padding:18px 22px 24px}
@@ -821,5 +840,5 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   .eq-kit-chip{background:transparent!important;border:1px solid #BBB!important;color:#000!important}
   .eq-kit-chip svg{color:#000!important}
   .eq-av{background:#EEE!important;color:#000!important}
-  .eq-nm,.eq-pos{-webkit-line-clamp:unset;line-clamp:unset;display:block}
+  .eq-nm,.eq-pos{-webkit-line-clamp:unset;line-clamp:unset;display:block;min-height:0}
 }

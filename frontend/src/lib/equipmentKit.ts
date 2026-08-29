@@ -154,9 +154,21 @@ export function readKit(row: KitSource): KitItem[] {
   return ORDER.filter((k) => counts.has(k)).map((kind) => ({ kind, count: counts.get(kind)! }))
 }
 
-/** "2 monitor" when the register wrote a number, otherwise just "Monitor". */
+/**
+ * The chip's text: the kind, always, plus "×N" only where N is more than one.
+ *
+ * It used to be "2 monitor" when a number was written and "Monitor" when it was not, which put two
+ * differently-shaped strings side by side on the same card — one starting with a digit, one with a
+ * capital — and read as carelessness rather than as the distinction it is.
+ *
+ * Always leading with the kind fixes the shape without inventing anything. "Monitor (1)" would have
+ * been the tidier-looking answer and is the one thing this module must not do: where the register
+ * never wrote a number, the 1 would be ours. A written 1 and an unwritten count both render as plain
+ * "Monitor" — they mean the same thing to a reader, and the register's own words are one click away.
+ */
 export function kitLabel(item: KitItem): string {
-  return item.count === null ? KIT_LABEL[item.kind] : `${item.count} ${KIT_LABEL[item.kind].toLowerCase()}`
+  const name = KIT_LABEL[item.kind]
+  return item.count !== null && item.count > 1 ? `${name} ×${item.count}` : name
 }
 
 /** Does this line hold anything of that kind? Backs the filter chips. */

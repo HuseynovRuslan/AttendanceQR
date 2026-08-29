@@ -65,8 +65,17 @@ describe('numbers are only ever quoted, never inferred', () => {
     expect(kitLabel(kit[1]!)).toBe('Monitor')
   })
 
-  it('labels a written count', () => {
-    expect(kitLabel({ kind: 'monitor', count: 2 })).toBe('2 monitor')
+  it('leads with the kind, so chips on one card have one shape', () => {
+    expect(kitLabel({ kind: 'monitor', count: 2 })).toBe('Monitor ×2')
+    expect(kitLabel({ kind: 'desktop', count: 3 })).toBe('Sistem bloku ×3')
+  })
+
+  it('never writes a 1 — written or not', () => {
+    // "Monitor (1)" is the tidier-looking label and the one thing this must not print where the
+    // register wrote no number. A written 1 renders the same way, because to a reader it says the
+    // same thing, and the register's own words are one click away in the panel.
+    expect(kitLabel({ kind: 'monitor', count: 1 })).toBe('Monitor')
+    expect(kitLabel({ kind: 'monitor', count: null })).toBe('Monitor')
   })
 
   it('refuses a count that is obviously not one', () => {
