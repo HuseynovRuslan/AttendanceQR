@@ -11,6 +11,10 @@ import {
   type ImportResult,
 } from '../../api/equipment'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
+// Not toLocaleDateString('az'): that renders 2026-08-29 where the rest of the app writes 29.08.2026,
+// and it reads the VIEWER'S timezone. A date-only rendering of an instant taken in the device's zone
+// shows the wrong day either side of midnight — the bug this project has already been bitten by.
+import { fmtDateOfInstant } from '../../lib/format'
 import { countKit, groupByArea, hasKind, KIT_LABEL, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
 import {
   IconAlert,
@@ -147,6 +151,10 @@ function KitChips({ row }: { row: EquipmentRecord }) {
  * lines fill two of them — so the panel was half placeholder, and "yazılmayıb" three times over is
  * three things to read and discard before reaching the one fact you opened the panel for. Same call
  * the dashboard made about zeroes.
+ *
+ * Monospaced, because these are specifications — "i5 11-ci nəsil / 8 GB / SSD 480 GB" is a list of
+ * values with structure worth preserving, and a spec read as a paragraph is a spec nobody checks.
+ * The register's summary sentence is NOT one of these; see Summary below.
  */
 function Spec({ title, value }: { title: string; value: string | null }) {
   const written = value?.trim()
@@ -157,6 +165,25 @@ function Spec({ title, value }: { title: string; value: string | null }) {
       <div className="eq-spec-v">{written}</div>
     </div>
   )
+}
+
+/**
+ * The register's "Avadanlıq" column — its own sentence about what this person has.
+ *
+ * It is a SUMMARY of the three columns after it, so in a panel that already shows the chips and then
+ * each detail block, printing it as a fourth co-equal box said the same three facts a third time,
+ * in the loudest position on the panel. And it is prose, so setting it in the spec blocks' monospace
+ * made a sentence read like a config file.
+ *
+ * It is not dropped, because it can name something the detail columns have no place for. It is
+ * demoted: a quiet caption under the chips when there are details to summarise, and a proper block
+ * when it is the only thing written — which is the difference between a summary and the record.
+ */
+function Summary({ text, alone }: { text: string | null; alone: boolean }) {
+  const written = text?.trim()
+  if (!written) return null
+  if (alone) return <Spec title="Avadanlıq" value={written} />
+  return <p className="eq-summary">{written}</p>
 }
 
 export function EquipmentPage() {
@@ -639,7 +666,7 @@ export function EquipmentPage() {
       <div className="eq-print" aria-hidden="true">
         <div className="eq-print-h">
           <h1>Kompüter inventarizasiyası</h1>
-          <span>{new Date().toLocaleDateString('az')}</span>
+          <span>{fmtDateOfInstant(new Date().toISOString())}</span>
         </div>
         <div className="eq-print-tot">
           <b>{rows.length}</b> nəfər · <b>{byArea.length}</b> ərazi
@@ -813,13 +840,15 @@ export function EquipmentPage() {
 
             <div className="eq-drawer-body">
               <KitChips row={shown} />
-              <div style={{ height: 18 }} />
-              <Spec title="Avadanlıq" value={shown.equipment} />
+              <Summary
+                text={shown.equipment}
+                alone={!shown.systemUnit?.trim() && !shown.monitor?.trim() && !shown.otherEquipment?.trim()}
+              />
               <Spec title="Sistem bloku" value={shown.systemUnit} />
               <Spec title="Monitor" value={shown.monitor} />
               <Spec title="Digər avadanlıq" value={shown.otherEquipment} />
-              <div className="muted" style={{ fontSize: 11, marginTop: 18 }}>
-                Sıra № {shown.rowNo} · yeniləndi {new Date(shown.updatedAtUtc).toLocaleDateString('az')}
+              <div className="muted eq-drawer-meta">
+                Sıra № {shown.rowNo} · yeniləndi {fmtDateOfInstant(shown.updatedAtUtc)}
               </div>
             </div>
 

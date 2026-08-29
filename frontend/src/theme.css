@@ -744,10 +744,18 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .eq-drawer-head .eq-nm{font-size:17px;line-height:1.35}
 .eq-drawer-head .eq-pos{font-size:13px}
 .eq-drawer-body{flex:1;overflow-y:auto;padding:18px 22px 24px}
+.eq-drawer-body .eq-kit{margin-bottom:4px}
 .eq-drawer-foot{padding:14px 22px;border-top:1px solid var(--c100);display:flex;gap:8px;background:var(--c50)}
 .eq-close{flex:none;border:none;background:transparent;color:var(--c400);cursor:pointer;padding:4px;border-radius:8px}
 .eq-close:hover{background:var(--c100);color:var(--c700)}
 
+/* The register's own sentence about this person, under the chips.
+   Prose, not monospace, and no box: it is a summary of the blocks below it, and printing it as a
+   fourth co-equal block said the same three facts a third time in the loudest spot on the panel. */
+.eq-summary{margin:12px 0 20px;font-size:13px;line-height:1.65;color:var(--c600)}
+.eq-summary::before{content:'';display:block;width:26px;height:2px;background:var(--c100);
+  border-radius:2px;margin-bottom:9px}
+.eq-drawer-meta{font-size:11px;margin-top:20px;padding-top:12px;border-top:1px solid var(--c100)}
 .eq-spec+.eq-spec{margin-top:18px}
 .eq-spec-t{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c400);margin-bottom:6px}
 /* The prose, verbatim and monospaced: newlines in the register separate a second machine from the
