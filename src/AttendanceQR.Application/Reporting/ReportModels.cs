@@ -19,6 +19,12 @@ public sealed record EmployeeReportRow(
     double TotalWorkedHours,
     double OvertimeHours,
     int LeaveDays,
+    // Ezamiyyət, counted apart. Both are stored as OnLeave — a business trip is
+    // "approved, not an unexcused absence", the same as a holiday — but they are
+    // opposite facts about a person: on leave they were not working, on a trip they
+    // were working somewhere with no poster. Summed together, a driver away for a
+    // month read as a month of annual leave on every report.
+    int TripDays,
     int PermissionDays);
 
 /// <summary>Column totals across all rows.</summary>
@@ -30,6 +36,12 @@ public sealed record ReportTotals(
     double TotalWorkedHours,
     double OvertimeHours,
     int LeaveDays,
+    // Ezamiyyət, counted apart. Both are stored as OnLeave — a business trip is
+    // "approved, not an unexcused absence", the same as a holiday — but they are
+    // opposite facts about a person: on leave they were not working, on a trip they
+    // were working somewhere with no poster. Summed together, a driver away for a
+    // month read as a month of annual leave on every report.
+    int TripDays,
     int PermissionDays);
 
 /// <summary>The full report payload, shared by the JSON and Excel endpoints.</summary>

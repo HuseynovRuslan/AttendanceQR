@@ -572,10 +572,24 @@ public sealed class ReportQueryService : IReportQueryService
                 // they were working that day, and this report is history.
                 LocationName = locationNames.GetValueOrDefault(r.LocationId, string.Empty),
                 r.Status,
+                // Carried so an Ezamiyyət day can be told from an annual-leave one below; both arrive
+                // here as OnLeave and the status alone cannot separate them.
+                r.Date,
                 r.WorkedMinutes,
                 r.OvertimeMinutes,
             })
             .ToList();
+
+        // Which of those OnLeave days were Ezamiyyət. DailySummary stores only the status, so the
+        // type comes from LeaveRecords — the same source and the same shape as the tabel's
+        // LeaveCodeFor and the profile's LeaveTypeFor, rather than threading a field through the
+        // shared DayRow that the persisted path cannot fill.
+        var tripDays = await _db.LeaveRecords
+            .Where(l => l.Type == LeaveType.BusinessTrip && l.FromDate <= to && l.ToDate >= from)
+            .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate })
+            .ToListAsync(ct);
+        bool OnTrip(Guid employeeId, DateOnly date) =>
+            tripDays.Any(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date);
 
         var grouped = rows
             .GroupBy(x => new { x.EmployeeId, x.FullName })
@@ -589,7 +603,8 @@ public sealed class ReportQueryService : IReportQueryService
                 IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete),
                 TotalWorkedHours: Math.Round(g.Sum(x => x.WorkedMinutes) / 60.0, 2),
                 OvertimeHours: Math.Round(g.Sum(x => x.OvertimeMinutes) / 60.0, 2),
-                LeaveDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave),
+                LeaveDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && !OnTrip(x.EmployeeId, x.Date)),
+                TripDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && OnTrip(x.EmployeeId, x.Date)),
                 PermissionDays: g.Count(x => x.Status == DailySummaryStatus.Permission)))
             .OrderBy(r => r.EmployeeName)
             .ToList();
@@ -602,6 +617,7 @@ public sealed class ReportQueryService : IReportQueryService
             TotalWorkedHours: Math.Round(grouped.Sum(r => r.TotalWorkedHours), 2),
             OvertimeHours: Math.Round(grouped.Sum(r => r.OvertimeHours), 2),
             LeaveDays: grouped.Sum(r => r.LeaveDays),
+            TripDays: grouped.Sum(r => r.TripDays),
             PermissionDays: grouped.Sum(r => r.PermissionDays));
 
         return (ReportAccess.Allowed, new AttendanceReport(from, to, label, grouped, totals));

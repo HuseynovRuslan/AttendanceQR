@@ -389,6 +389,12 @@ export function EmployeeProfilePage() {
               <Stat label="Qayıb" value={summary.absentDays} metric="absent" open={openMetric} onOpen={setOpenMetric} />
               <Stat label="Natamam" value={summary.incompleteDays} metric="incomplete" open={openMetric} onOpen={setOpenMetric} />
               <Stat label="Məzuniyyət/İcazə" value={summary.leaveDays + summary.permissionDays} metric="leave" open={openMetric} onOpen={setOpenMetric} />
+              {/* Apart from leave: on Ezamiyyət the person WAS working, away from a poster.
+                  Folded into the leave figure, a driver on a month-long route read as a month
+                  of annual holiday on their own card. Hidden at zero — most people never have one. */}
+              {summary.tripDays > 0 && (
+                <Stat label="Ezamiyyət" value={summary.tripDays} metric="trip" open={openMetric} onOpen={setOpenMetric} />
+              )}
             </div>
             {openMetric && <MetricBreakdown metric={openMetric} days={monthDays} onClose={() => setOpenMetric(null)} />}
           </>
@@ -569,7 +575,7 @@ function Stat({ label, value, metric, open, onOpen }: {
 
 const METRIC_LABEL: Record<string, string> = {
   workDays: 'İş günləri', hours: 'İş saatları', late: 'Gecikmələr',
-  absent: 'Qayıb günləri', incomplete: 'Natamam günlər', leave: 'Məzuniyyət / İcazə',
+  absent: 'Qayıb günləri', incomplete: 'Natamam günlər', leave: 'Məzuniyyət / İcazə', trip: 'Ezamiyyət',
 }
 function daysForMetric(days: EmployeeDay[], metric: string): EmployeeDay[] {
   switch (metric) {
