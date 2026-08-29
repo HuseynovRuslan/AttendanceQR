@@ -619,10 +619,24 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
    Clamped to two lines rather than cut at one: a title clipped after four words loses exactly the
    half that tells two of them apart. `overflow-wrap:anywhere` covers the single unbroken run — an
    e-mail-shaped title, a model number — that no amount of wrapping would otherwise fit. */
-.eq-nm,.eq-meta{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
+.eq-nm,.eq-pos{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
   overflow:hidden;white-space:normal;overflow-wrap:anywhere}
 .eq-nm{font-size:14px;font-weight:700;color:var(--c900);line-height:1.3}
-.eq-meta{font-size:12px;color:var(--c500);margin-top:2px;line-height:1.4}
+.eq-pos{font-size:12px;color:var(--c500);margin-top:2px;line-height:1.4}
+/* İşlədiyi ərazi. It shared the title's line, separated by a "·" — and a middle dot sitting inside
+   two lines of wrapped text is not a boundary anyone reads, so the job and the place ran together.
+   Given its own shape instead of its own punctuation: a pin and a tint, which is also what the area
+   is elsewhere on this screen — a thing you filter by, not a continuation of the job title. */
+.eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:7px;
+  padding:2px 8px 2px 6px;border-radius:6px;background:var(--c50);border:1px solid var(--c100);
+  color:var(--c600);font-size:11px;font-weight:700;line-height:1.5}
+/* Neutral, deliberately. Colour on this card already means one thing — the kit chips use it to
+   encode the KIND of equipment (blue desktop, purple laptop, teal monitor). A tinted area tag would
+   be a fourth colour saying something else entirely, on the same card. The pin carries the meaning. */
+.eq-area svg{width:11px;height:11px;flex:none;color:var(--c400)}
+/* Blockified as a flex item, so here the ellipsis actually applies — the thing that silently failed
+   on the inline spans above. One line: a site name is short, and a wrapped tag stops looking like one. */
+.eq-area-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* The "Sıra №" — the key a re-import matches on, so it stays visible, but it is the least
    interesting thing on the card and is set accordingly. */
 .eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);font-variant-numeric:tabular-nums}
@@ -656,8 +670,9 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .eq-drawer-head{padding:20px 22px 16px;border-bottom:1px solid var(--c100);display:flex;gap:12px;align-items:flex-start}
 /* The panel is where the full record lives, so nothing is clamped here — the two-line limit exists
    to keep cards the same height in a grid, and there is no grid in a drawer. */
-.eq-drawer-head .eq-nm,.eq-drawer-head .eq-meta{display:block;-webkit-line-clamp:unset;line-clamp:unset}
+.eq-drawer-head .eq-nm,.eq-drawer-head .eq-pos{display:block;-webkit-line-clamp:unset;line-clamp:unset}
 .eq-drawer-head .eq-nm{font-size:17px;line-height:1.35}
+.eq-drawer-head .eq-pos{font-size:13px}
 .eq-drawer-body{flex:1;overflow-y:auto;padding:18px 22px 24px}
 .eq-drawer-foot{padding:14px 22px;border-top:1px solid var(--c100);display:flex;gap:8px;background:var(--c50)}
 .eq-close{flex:none;border:none;background:transparent;color:var(--c400);cursor:pointer;padding:4px;border-radius:8px}

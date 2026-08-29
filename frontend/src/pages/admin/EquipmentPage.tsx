@@ -21,6 +21,7 @@ import {
   IconDownload,
   IconGrid,
   IconLaptop,
+  IconMapPin,
   IconMonitor,
   IconPower,
   IconPrinter,
@@ -95,6 +96,33 @@ function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   const picked = parts.length >= 2 ? [parts[0]!, parts[1]!] : parts.slice(0, 1)
   return picked.map((p) => p.charAt(0).toLocaleUpperCase('az')).join('')
+}
+
+/**
+ * Vəzifə and işlədiyi ərazi — two facts, kept apart.
+ *
+ * They used to be one line joined by "·". Once the line wrapped, a middle dot sitting somewhere
+ * inside two lines of text stopped reading as a boundary at all, and the job title and the place ran
+ * into each other. The blank-title case was worse: `[null, area].join()` put the AREA in the title's
+ * position, where it simply read as the person's job.
+ *
+ * So they are given different shapes rather than a separator. The title is text; the place is a
+ * tagged line with a pin on it — which is also what it is elsewhere on this screen, a thing you
+ * filter by. There is no separator left to lose in a wrap.
+ */
+function Who({ position, area }: { position: string | null; area: string | null }) {
+  const place = area?.trim()
+  return (
+    <>
+      <span className="eq-pos">{position?.trim() || 'vəzifə yazılmayıb'}</span>
+      {place && (
+        <span className="eq-area">
+          <IconMapPin />
+          <span className="eq-area-t">{place}</span>
+        </span>
+      )}
+    </>
+  )
 }
 
 /** Keeps the newlines the register uses to list a second machine under the first. */
@@ -543,9 +571,7 @@ export function EquipmentPage() {
                 <span className="eq-av">{initials(row.fullName)}</span>
                 <span className="eq-id">
                   <span className="eq-nm">{row.fullName}</span>
-                  <span className="eq-meta">
-                    {[row.position, row.area].filter(Boolean).join(' · ') || 'vəzifə yazılmayıb'}
-                  </span>
+                  <Who position={row.position} area={row.area} />
                 </span>
                 <span className="eq-no">{row.rowNo}</span>
               </span>
@@ -623,9 +649,7 @@ export function EquipmentPage() {
               <span className="eq-av">{initials(shown.fullName)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="eq-nm">{shown.fullName}</div>
-                <div className="eq-meta">
-                  {[shown.position, shown.area].filter(Boolean).join(' · ') || 'vəzifə yazılmayıb'}
-                </div>
+                <Who position={shown.position} area={shown.area} />
                 {shown.employeeId ? (
                   <Link to={`/admin/employees/${shown.employeeId}`} className="btn btn-sm" style={{ marginTop: 10 }}>
                     <IconUser /> İşçi profili
