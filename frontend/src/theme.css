@@ -643,13 +643,22 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 
 /* ── Cards, gathered by site ──────────────────────────────────────────────────────────────────── */
 .eq-groups{display:flex;flex-direction:column;gap:26px}
-.eq-group-h{display:flex;align-items:center;gap:9px;margin:0 0 11px;
+.eq-group-h{display:flex;align-items:center;gap:9px;margin:0 0 11px;flex-wrap:wrap;
   font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c500)}
-.eq-group-h::after{content:'';flex:1;height:1px;background:var(--c100)}
-.eq-group-n{order:3;flex:none;background:var(--c100);color:var(--c600);border-radius:999px;
-  padding:1px 8px;font-size:11px;font-weight:700;letter-spacing:0}
+.eq-group-t{flex:none}
+.eq-group-n{flex:none;background:var(--c100);color:var(--c600);border-radius:999px;
+  padding:1px 8px;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none}
+/* What this site holds, beside its name. The rule fills whatever is left, so the counts sit against
+   the heading rather than floating in the middle of the line. */
+.eq-group-kit{display:inline-flex;align-items:center;gap:11px;letter-spacing:0;text-transform:none}
+.eq-group-kit-i{display:inline-flex;align-items:center;gap:3px;
+  font-size:12px;font-weight:700;color:var(--c600);font-variant-numeric:tabular-nums}
+.eq-group-kit-i svg{width:13px;height:13px;color:var(--c400)}
+.eq-group-kit-i.k-desktop svg{color:#1D4ED8}
+.eq-group-kit-i.k-laptop svg{color:#6D28D9}
+.eq-group-kit-i.k-monitor svg{color:var(--teal)}
+.eq-group-h::after{content:'';flex:1;height:1px;background:var(--c100);order:9}
 
-.eq-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* Segmented control — two states of one thing, so they share a border rather than being two buttons. */
 .eq-view{display:inline-flex;border:1px solid var(--c200);border-radius:10px;overflow:hidden;background:var(--white)}
 .eq-view button{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
@@ -754,20 +763,43 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 
 
 /* ── Print ─────────────────────────────────────────────────────────────────────────────────────
-   The register gets asked for on paper. Everything that only works with a cursor comes off: the
-   sidebar and top bar, the search, the filter tiles, the row menu. What is left is the thing itself
-   — sites as headings, a card per person — in ink-on-white, with cards kept whole across a page
-   break, because a person's kit split over two sheets is the one way this document fails at its job. */
+   Two documents, not one. "İcmal" is the page a director files: totals, a table by site, and the
+   exceptions. "Tam siyahı" is the card wall on paper. Printing the wall as the only option meant
+   eight to ten sheets for a question answered by one.
+   Either way everything that only works with a cursor comes off — sidebar, top bar, search, tiles,
+   the row menu — and cards are kept whole across a page break, because a person's kit split over two
+   sheets is the one way this document fails at its job. */
+.eq-print{display:none}
+
 @media print{
   .sidebar,.topbar,.eq-head-top,.eq-tiles,.eq-head-foot,.eq-more,.eq-view,
   .eq-backdrop,.eq-drawer,.eq-flag{display:none!important}
   .main{margin-left:0}
   .content{padding:0}
   body,.main{background:#fff}
-  .eq-head{border:0;box-shadow:none;padding:0;margin:0 0 10px}
+  .eq-head{display:none}
+
+  /* The overview */
+  .eq-print-summary .eq-print{display:block}
+  .eq-print-summary .eq-groups,.eq-print-summary .tbl-wrap{display:none}
+  .eq-print-h{display:flex;align-items:baseline;justify-content:space-between;
+    border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px}
+  .eq-print-h h1{font-size:16px;font-weight:800;margin:0;letter-spacing:.01em}
+  .eq-print-h span{font-size:11px}
+  .eq-print-tot{font-size:12px;margin-bottom:14px;line-height:1.7}
+  .eq-print-tbl{width:100%;border-collapse:collapse;font-size:11px}
+  .eq-print-tbl th,.eq-print-tbl td{border:1px solid #999;padding:4px 7px;text-align:right}
+  .eq-print-tbl th:first-child,.eq-print-tbl td:first-child{text-align:left}
+  .eq-print-tbl thead th{background:#EEE;font-weight:700}
+  .eq-print-tbl tfoot td{font-weight:800;background:#F5F5F5}
+  .eq-print-tbl td{font-variant-numeric:tabular-nums}
+  .eq-print-note{font-size:10px;margin-top:10px;line-height:1.5}
+
+  /* The full list */
+  .eq-print-full .eq-print{display:none}
   .eq-groups{gap:16px}
-  .eq-group{break-inside:auto}
   .eq-group-h{color:#000;margin-bottom:8px}
+  .eq-group-kit-i,.eq-group-kit-i svg{color:#000!important}
   .eq-grid{grid-template-columns:repeat(2,1fr);gap:8px}
   .eq-card{break-inside:avoid;box-shadow:none;border-color:#BBB;padding:10px 12px;transform:none}
   .eq-kit-chip{background:transparent!important;border:1px solid #BBB!important;color:#000!important}

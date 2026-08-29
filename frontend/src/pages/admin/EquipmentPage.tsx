@@ -11,7 +11,7 @@ import {
   type ImportResult,
 } from '../../api/equipment'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
-import { countKit, hasKind, KIT_LABEL, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
+import { countKit, groupByArea, hasKind, KIT_LABEL, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
 import {
   IconAlert,
   IconBriefcase,
@@ -171,6 +171,8 @@ export function EquipmentPage() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'cards' | 'table'>('cards')
   const [menu, setMenu] = useState(false)
+  /** Which shape to print. Two different documents: an overview somebody files, and the full list. */
+  const [printing, setPrinting] = useState<'summary' | 'full' | null>(null)
   const [filter, setFilter] = useState<KitKind | 'all' | 'unlinked'>('all')
   const [area, setArea] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
@@ -206,6 +208,14 @@ export function EquipmentPage() {
       if (r.status === 200 && Array.isArray(r.data)) setEmployees(r.data)
     })
   }, [])
+
+  // The print class has to be on the DOM before the print dialog reads the page, and a state update
+  // has not flushed by the time an onClick returns — so the dialog is opened from an effect.
+  useEffect(() => {
+    if (!printing) return
+    const t = setTimeout(() => { window.print(); setPrinting(null) }, 60)
+    return () => clearTimeout(t)
+  }, [printing])
 
   // Esc closes the panel. A drawer that only shuts via its own × is a drawer people leave open.
   useEffect(() => {
@@ -248,28 +258,22 @@ export function EquipmentPage() {
     })
   }, [rows, filter, area, search])
 
-  /**
-   * The cards, gathered under the place they work.
-   *
-   * A flat wall of 80 identical cards is a list you scroll rather than a picture you read, and the
-   * register's own organising fact is the site — «Mərkəz ofis», «Bərpa işləri». The area filter
-   * already existed, but a filter asks you to pick one place before it shows you anything; a heading
-   * shows you all of them at once. Rows with no site given go last, under their own heading, rather
-   * than being scattered through the others.
-   */
-  const groups = useMemo(() => {
-    const NO_AREA = 'Ərazi yazılmayıb'
-    const by = new Map<string, EquipmentRecord[]>()
+  /** The cards, gathered under the site they belong to — biggest first, long tail folded. */
+  const groups = useMemo(() => groupByArea(visible), [visible])
+
+  /** Every site in the register, with what it holds. The print summary's table — not the display
+   *  groups, because a report on paper lists every site rather than folding the small ones away. */
+  const byArea = useMemo(() => {
+    const map = new Map<string, EquipmentRecord[]>()
     for (const r of visible) {
-      const key = r.area?.trim() || NO_AREA
-      const list = by.get(key)
+      const key = r.area?.trim() || 'Ərazi yazılmayıb'
+      const list = map.get(key)
       if (list) list.push(r)
-      else by.set(key, [r])
+      else map.set(key, [r])
     }
-    return [...by.entries()]
-      .map(([area, rows]) => ({ area, rows }))
-      .sort((a, b) =>
-        a.area === NO_AREA ? 1 : b.area === NO_AREA ? -1 : a.area.localeCompare(b.area, 'az'))
+    return [...map.entries()]
+      .map(([area, rows]) => ({ area, rows, kit: countKit(rows) }))
+      .sort((a, b) => b.rows.length - a.rows.length || a.area.localeCompare(b.area, 'az'))
   }, [visible])
 
   // The panel reads from `rows`, not from a copy taken when it opened — otherwise a save leaves the
@@ -371,7 +375,7 @@ export function EquipmentPage() {
   }
 
   return (
-    <div>
+    <div className={printing === 'full' ? 'eq-print-full' : 'eq-print-summary'}>
       <div className="card card-pad eq-head">
         <div className="eq-head-top">
           <div className="eq-head-count">
@@ -404,7 +408,8 @@ export function EquipmentPage() {
                   <button disabled={busy} onClick={() => { setMenu(false); fileInput.current?.click() }}>
                     Excel-dən idxal
                   </button>
-                  <button onClick={() => { setMenu(false); window.print() }}>Çap et</button>
+                  <button onClick={() => { setMenu(false); setPrinting('summary') }}>Çap et — icmal</button>
+                  <button onClick={() => { setMenu(false); setPrinting('full') }}>Çap et — tam siyahı</button>
                 </div>
               </>
             )}
@@ -626,6 +631,56 @@ export function EquipmentPage() {
         </form>
       )}
 
+      {/*
+        The one-page overview — screen-hidden, print-only.
+        The card wall is the screen's document; on paper it is eight to ten sheets nobody files. What
+        a director keeps is a page: what the company holds, where it sits, and the exceptions.
+      */}
+      <div className="eq-print" aria-hidden="true">
+        <div className="eq-print-h">
+          <h1>Kompüter inventarizasiyası</h1>
+          <span>{new Date().toLocaleDateString('az')}</span>
+        </div>
+        <div className="eq-print-tot">
+          <b>{rows.length}</b> nəfər · <b>{byArea.length}</b> ərazi
+          {totals.map((t) => (
+            <span key={t.kind}> · <b>{t.devices}</b> {KIT_LABEL[t.kind].toLocaleLowerCase('az')}</span>
+          ))}
+        </div>
+        <table className="eq-print-tbl">
+          <thead>
+            <tr>
+              <th>Ərazi</th>
+              <th>Nəfər</th>
+              {totals.map((t) => <th key={t.kind}>{KIT_LABEL[t.kind]}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {byArea.map((a) => (
+              <tr key={a.area}>
+                <td>{a.area}</td>
+                <td>{a.rows.length}</td>
+                {totals.map((t) => {
+                  const n = a.kit.find((k) => k.kind === t.kind)?.devices ?? 0
+                  return <td key={t.kind}>{n || '—'}</td>
+                })}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Cəmi</td>
+              <td>{visible.length}</td>
+              {totals.map((t) => <td key={t.kind}>{t.devices}</td>)}
+            </tr>
+          </tfoot>
+        </table>
+        <p className="eq-print-note">
+          Saylar reyestrin mətnindən oxunur; say yazılmayıbsa 1 götürülür — faktiki miqdar bundan az deyil.
+          {unlinked > 0 && ` ${unlinked} qeyd işçi siyahısı ilə bağlanmayıb.`}
+        </p>
+      </div>
+
       {view === 'cards' ? (
         <div className="eq-groups">
           {groups.map((g) => (
@@ -634,8 +689,21 @@ export function EquipmentPage() {
                   everything is a label, not a structure. */}
               {groups.length > 1 && (
                 <h2 className="eq-group-h">
-                  <span>{g.area}</span>
-                  <span className="eq-group-n">{g.rows.length}</span>
+                  <span className="eq-group-t">{g.area}</span>
+                  <span className="eq-group-n">{g.rows.length} nəfər</span>
+                  {/* What THIS site holds. The band at the top is the company's total; the question
+                      anyone asks next is where it sits, and that answer belonged in the heading
+                      rather than behind picking the site out of a dropdown. */}
+                  <span className="eq-group-kit">
+                    {countKit(g.rows).map((t) => {
+                      const Icon = KIT_ICON[t.kind]
+                      return (
+                        <span key={t.kind} className={`eq-group-kit-i k-${t.kind}`} title={KIT_LABEL[t.kind]}>
+                          <Icon />{t.devices}
+                        </span>
+                      )
+                    })}
+                  </span>
                 </h2>
               )}
               <div className="eq-grid">
@@ -650,7 +718,7 @@ export function EquipmentPage() {
                       <span className="eq-av">{initials(row.fullName)}</span>
                       <span className="eq-id">
                         <span className="eq-nm">{row.fullName}</span>
-                        <Who position={row.position} area={groups.length > 1 ? null : row.area} />
+                        <Who position={row.position} area={groups.length > 1 && !g.merged ? null : row.area} />
                       </span>
                       <span className="eq-no">{row.rowNo}</span>
                     </span>

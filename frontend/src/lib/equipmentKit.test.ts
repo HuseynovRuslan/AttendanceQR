@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countKit, hasKind, kitLabel, readKit, type KitSource } from './equipmentKit'
+import { countKit, groupByArea, hasKind, kitLabel, readKit, type KitSource } from './equipmentKit'
 
 /**
  * The chips on an equipment card are read out of prose somebody typed into a spreadsheet, so the
@@ -161,5 +161,55 @@ describe('the headline totals', () => {
 
   it('counts nothing for an empty register', () => {
     expect(countKit([])).toEqual([])
+  })
+})
+
+describe('gathering the register by site', () => {
+  const at = (area: string | null, n: number) => Array.from({ length: n }, () => ({ area }))
+
+  it('puts the biggest site first, not the alphabet', () => {
+    // The reason this exists: 23 sites for 80 people means the alphabet would open the page with
+    // whichever one-person site starts with an A, and bury the main office in the middle.
+    const groups = groupByArea([...at('Zəhmət', 9), ...at('Ambulator', 3), ...at('Mərkəz', 12)])
+
+    expect(groups.map((g) => g.area)).toEqual(['Mərkəz', 'Zəhmət', 'Ambulator'])
+  })
+
+  it('gathers the long tail of one- and two-person sites', () => {
+    const groups = groupByArea([
+      ...at('Mərkəz', 12), ...at('Bərpa', 8),
+      ...at('A', 1), ...at('B', 2), ...at('C', 1),
+    ])
+
+    expect(groups.map((g) => g.area)).toEqual(['Mərkəz', 'Bərpa', 'Digər ərazilər'])
+    expect(groups[2]!.rows).toHaveLength(4)
+    // Those cards have to name their own site — the heading no longer does it for them.
+    expect(groups[2]!.merged).toBe(true)
+    expect(groups[0]!.merged).toBe(false)
+  })
+
+  it('leaves a small site alone when there is nothing to gather it with', () => {
+    // Folding a single two-person site into "Digər ərazilər" only renames it, and spends a real
+    // heading to gain nothing.
+    const groups = groupByArea([...at('Mərkəz', 12), ...at('Bərpa', 2)])
+
+    expect(groups.map((g) => g.area)).toEqual(['Mərkəz', 'Bərpa'])
+  })
+
+  it('treats a blank site as tail rather than as a place', () => {
+    const groups = groupByArea([...at('Mərkəz', 12), ...at(null, 9), ...at('A', 1), ...at('B', 1)])
+
+    expect(groups.map((g) => g.area)).toEqual(['Mərkəz', 'Digər ərazilər'])
+    expect(groups[1]!.rows).toHaveLength(11)
+  })
+
+  it('breaks ties by name so the order does not wander', () => {
+    const groups = groupByArea([...at('Bərpa', 5), ...at('Anbar', 5)])
+
+    expect(groups.map((g) => g.area)).toEqual(['Anbar', 'Bərpa'])
+  })
+
+  it('copes with an empty register', () => {
+    expect(groupByArea([])).toEqual([])
   })
 })

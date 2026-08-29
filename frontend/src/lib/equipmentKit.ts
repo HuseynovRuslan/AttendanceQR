@@ -195,3 +195,59 @@ export function countKit(rows: KitSource[]): KitTotals[] {
 
   return ORDER.filter((k) => acc.has(k)).map((kind) => ({ kind, ...acc.get(kind)! }))
 }
+
+// --- Gathering the register by site ---------------------------------------------------------------
+
+export interface AreaGroup<T> {
+  area: string
+  rows: T[]
+  /** True for the "Digər ərazilər" bucket — those cards still have to name their own site. */
+  merged: boolean
+}
+
+/** Sites smaller than this are gathered together rather than each getting a heading of its own. */
+const SMALL_AREA = 3
+
+/** Enough small sites to be worth gathering. Folding one two-person site into "Digər ərazilər" only
+ *  renames it, and loses a real heading to gain nothing. */
+const MIN_TO_MERGE = 3
+
+const NO_AREA = 'Ərazi yazılmayıb'
+const OTHER_AREAS = 'Digər ərazilər'
+
+/**
+ * The register's rows, gathered under the site they belong to.
+ *
+ * Sorted by SIZE, not by name. The alphabet is meaningless here and actively unhelpful: at 80 people
+ * across 23 sites the first heading on the page would be whichever one-person site happens to start
+ * with an A, and the main office would be somewhere in the middle. Biggest first is the order anyone
+ * reading for an overview wants, and the long tail belongs at the bottom.
+ *
+ * And there IS a long tail — 23 sites for 80 people is three and a half people each. Left alone that
+ * produces 23 headings over two cards apiece, which is not structure, it is confetti. Sites below
+ * SMALL_AREA are gathered into one "Digər ərazilər" group at the end, and only when there are enough
+ * of them for the gathering to be worth anything.
+ *
+ * Ties break alphabetically so the order is stable between renders and between people's screens.
+ */
+export function groupByArea<T extends { area: string | null }>(rows: T[]): AreaGroup<T>[] {
+  const by = new Map<string, T[]>()
+  for (const r of rows) {
+    const key = r.area?.trim() || NO_AREA
+    const list = by.get(key)
+    if (list) list.push(r)
+    else by.set(key, [r])
+  }
+
+  const all = [...by.entries()].map(([area, rows]) => ({ area, rows, merged: false }))
+  const bySize = (a: AreaGroup<T>, b: AreaGroup<T>) =>
+    b.rows.length - a.rows.length || a.area.localeCompare(b.area, 'az')
+
+  // "Ərazi yazılmayıb" is not a place, so it joins the tail however big it is.
+  const small = all.filter((g) => g.rows.length < SMALL_AREA || g.area === NO_AREA)
+  if (small.length < MIN_TO_MERGE) return all.sort(bySize)
+
+  const big = all.filter((g) => !small.includes(g)).sort(bySize)
+  const tail = small.sort(bySize).flatMap((g) => g.rows)
+  return [...big, { area: OTHER_AREAS, rows: tail, merged: true }]
+}
