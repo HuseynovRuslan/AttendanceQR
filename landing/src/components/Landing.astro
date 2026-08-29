@@ -3,6 +3,7 @@ import type { Lang } from '../i18n/ui'
 import { PRICING } from '../data/site'
 import Hero from './Hero.astro'
 import Trust from './Trust.astro'
+import Problem from './Problem.astro'
 import HowItWorks from './HowItWorks.astro'
 import PhoneDemo from './PhoneDemo.astro'
 import Features from './Features.astro'
@@ -22,6 +23,7 @@ const { lang } = Astro.props as { lang: Lang }
 
 <Hero lang={lang} />
 <Trust lang={lang} />
+<Problem lang={lang} />
 <Dashboard lang={lang} />
 <HowItWorks lang={lang} />
 <PhoneDemo lang={lang} />

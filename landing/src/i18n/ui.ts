@@ -58,6 +58,23 @@ export const ui = {
     'hero.s2l': 'əlavə avadanlıq xərci',
     'hero.s3n': 'Canlı',
     'hero.s3l': 'kim işdədir — anlıq',
+    'hero.assure.a': 'Ayrıca cihaz almadan',
+    'hero.assure.b': 'Həmin gün işə düşür',
+    'hero.assure.c': 'Telefondan işləyir',
+
+    'prob.eyebrow': 'Problem',
+    'prob.title': 'Köhnə üsulla davamiyyət vaxt aparır və saxtaya açıqdır',
+    'prob.sub':
+      'Kağız jurnal, bahalı terminal və “söz”lə uçot — hər filialda ayrıca dərd, hər ay yenidən.',
+    'prob.p1t': 'Başqasının yerinə giriş',
+    'prob.p1d':
+      'Bir nəfər bütün briqadanı “gəldi” yaza bilir. Kim həqiqətən gəldi — bilinmir, maaş isə bu qeydə bağlıdır.',
+    'prob.p2t': 'Bahalı avadanlıq, hər filialda',
+    'prob.p2d':
+      'Turniket və barmaq izi terminalı hər obyekt üçün ayrıca alınır, quraşdırılır və sıradan çıxır.',
+    'prob.p3t': 'Əl ilə uçot, gec görünüş',
+    'prob.p3d':
+      'Kağız jurnal və Excel tabel saatlar aparır; kim işdə, kim yox — yalnız günün sonunda bilinir.',
     'scan.live': 'CANLI',
     'scan.feed': 'Son qeydiyyatlar',
     'scan.status': 'Qeyd olundu',
@@ -258,6 +275,7 @@ export const ui = {
 
     'cta.title': 'Davamiyyəti bu gün rəqəmsallaşdırın',
     'cta.sub': 'Filialı və işçiləri əlavə edin, QR posteri asın — həmin gün işə düşür.',
+    'cta.assure': 'Mövcud telefonlarla işləyir — ayrıca avadanlıq almadan. İlk quraşdırmada kömək edirik.',
     'cta.btn1': 'Əlaqə saxlayın',
     'cta.login': 'Daxil ol',
 
@@ -350,6 +368,23 @@ export const ui = {
     'hero.s2l': 'затрат на оборудование',
     'hero.s3n': 'Онлайн',
     'hero.s3l': 'кто на месте — сразу',
+    'hero.assure.a': 'Без отдельных устройств',
+    'hero.assure.b': 'Заработает в тот же день',
+    'hero.assure.c': 'Работает с телефона',
+
+    'prob.eyebrow': 'Проблема',
+    'prob.title': 'Старый способ учёта отнимает время и открыт для подлога',
+    'prob.sub':
+      'Бумажный журнал, дорогие терминалы и учёт «со слов» — отдельная головная боль на каждом филиале, каждый месяц.',
+    'prob.p1t': 'Отметка за другого',
+    'prob.p1d':
+      'Один человек может отметить всю бригаду. Кто пришёл на самом деле — неизвестно, а от этой записи зависит зарплата.',
+    'prob.p2t': 'Дорогое оборудование, на каждом филиале',
+    'prob.p2d':
+      'Турникеты и сканеры отпечатков покупаются, монтируются и ломаются отдельно для каждого объекта.',
+    'prob.p3t': 'Ручной учёт, запоздалая картина',
+    'prob.p3d':
+      'Бумажный журнал и Excel-табель отнимают часы; кто на месте, а кого нет — видно только к концу дня.',
     'scan.live': 'В ЭФИРЕ',
     'scan.feed': 'Последние отметки',
     'scan.status': 'Отмечен',
@@ -550,6 +585,7 @@ export const ui = {
 
     'cta.title': 'Оцифруйте посещаемость уже сегодня',
     'cta.sub': 'Добавьте филиалы и сотрудников, повесьте QR-постер — заработает в тот же день.',
+    'cta.assure': 'Работает на обычных телефонах — без отдельного оборудования. Поможем с первой настройкой.',
     'cta.btn1': 'Связаться',
     'cta.login': 'Войти',
 
@@ -641,6 +677,23 @@ export const ui = {
     'hero.s2l': 'spent on hardware',
     'hero.s3n': 'Live',
     'hero.s3l': "who's on site — right now",
+    'hero.assure.a': 'No extra hardware',
+    'hero.assure.b': 'Live the same day',
+    'hero.assure.c': 'Works from a phone',
+
+    'prob.eyebrow': 'The problem',
+    'prob.title': 'The old way to track attendance is slow and easy to fake',
+    'prob.sub':
+      'Paper logs, expensive terminals and attendance “on trust” — a separate headache at every site, every month.',
+    'prob.p1t': 'Checking in for someone else',
+    'prob.p1d':
+      'One person can mark a whole crew as present. Who actually showed up is anyone’s guess — and pay depends on that record.',
+    'prob.p2t': 'Costly hardware, at every site',
+    'prob.p2d':
+      'Turnstiles and fingerprint terminals are bought, mounted and break down separately for each location.',
+    'prob.p3t': 'Manual records, a late picture',
+    'prob.p3d':
+      'Paper logs and Excel timesheets eat hours; who is in and who is out only becomes clear at the end of the day.',
     'scan.live': 'LIVE',
     'scan.feed': 'Recent check-ins',
     'scan.status': 'Recorded',
@@ -843,6 +896,7 @@ export const ui = {
 
     'cta.title': 'Digitise attendance today',
     'cta.sub': 'Add your sites and employees, put up the QR poster — it works the same day.',
+    'cta.assure': 'Runs on the phones people already have — no separate hardware. We help with the first setup.',
     'cta.btn1': 'Contact us',
     'cta.login': 'Log in',
 
