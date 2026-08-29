@@ -609,10 +609,20 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   background:var(--leaf-bg);color:var(--leaf-d);font-size:13px;font-weight:800;letter-spacing:.02em}
 .eq-card.unlinked .eq-av{background:var(--amber-bg);color:var(--amber)}
 .eq-id{min-width:0;flex:1}
-.eq-nm{font-size:14px;font-weight:700;color:var(--c900);line-height:1.3;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.eq-meta{font-size:12px;color:var(--c500);margin-top:2px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Both of these ran out of the card, and it was one mistake made twice.
+   They were set to one line with `text-overflow:ellipsis` — which does NOTHING on an inline box, and
+   both are <span>s here, because the card is a <button> and a <div> inside one is invalid DOM. So
+   `white-space:nowrap` took hold, the ellipsis did not, and the text simply kept going past the
+   border. It shows up on the job title first because that is the long field: the register writes
+   titles like «Baş mütəxəssis — informasiya texnologiyaları şöbəsi», and the name column is
+   «Soyadı, adı, atasının adı» in full.
+   Clamped to two lines rather than cut at one: a title clipped after four words loses exactly the
+   half that tells two of them apart. `overflow-wrap:anywhere` covers the single unbroken run — an
+   e-mail-shaped title, a model number — that no amount of wrapping would otherwise fit. */
+.eq-nm,.eq-meta{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
+  overflow:hidden;white-space:normal;overflow-wrap:anywhere}
+.eq-nm{font-size:14px;font-weight:700;color:var(--c900);line-height:1.3}
+.eq-meta{font-size:12px;color:var(--c500);margin-top:2px;line-height:1.4}
 /* The "Sıra №" — the key a re-import matches on, so it stays visible, but it is the least
    interesting thing on the card and is set accordingly. */
 .eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);font-variant-numeric:tabular-nums}
@@ -644,7 +654,10 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 @keyframes eq-slide{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
 @media(prefers-reduced-motion:reduce){.eq-backdrop,.eq-drawer{animation:none}}
 .eq-drawer-head{padding:20px 22px 16px;border-bottom:1px solid var(--c100);display:flex;gap:12px;align-items:flex-start}
-.eq-drawer-head .eq-nm{white-space:normal;font-size:17px}
+/* The panel is where the full record lives, so nothing is clamped here — the two-line limit exists
+   to keep cards the same height in a grid, and there is no grid in a drawer. */
+.eq-drawer-head .eq-nm,.eq-drawer-head .eq-meta{display:block;-webkit-line-clamp:unset;line-clamp:unset}
+.eq-drawer-head .eq-nm{font-size:17px;line-height:1.35}
 .eq-drawer-body{flex:1;overflow-y:auto;padding:18px 22px 24px}
 .eq-drawer-foot{padding:14px 22px;border-top:1px solid var(--c100);display:flex;gap:8px;background:var(--c50)}
 .eq-close{flex:none;border:none;background:transparent;color:var(--c400);cursor:pointer;padding:4px;border-radius:8px}
