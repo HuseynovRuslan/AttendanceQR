@@ -579,3 +579,86 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .ra-item.danger svg{color:var(--clay)}
 .ra-item.danger:hover:not(:disabled){background:var(--clay-bg)}
 .ra-sep{height:1px;background:var(--c100);margin:6px 4px}
+
+/* ── Equipment register: people, not rows ───────────────────────────────────────────────────────
+   The register is imported from a spreadsheet and the table view still mirrors it column for column,
+   because that view's job is to be diffed against the file after a re-import. But that is a
+   reconciliation tool, and it was also the only way to READ the register — nine columns, four of
+   them paragraphs of prose, which is a spreadsheet with a login.
+   The default is now a card per person: who they are, and what they hold as chips. The prose is one
+   click away in the panel, unabridged, because the prose is the actual record. */
+
+.eq-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* Segmented control — two states of one thing, so they share a border rather than being two buttons. */
+.eq-view{display:inline-flex;border:1px solid var(--c200);border-radius:10px;overflow:hidden;background:var(--white)}
+.eq-view button{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
+  padding:8px 12px;font-size:12px;font-weight:700;color:var(--c500);cursor:pointer;transition:background .15s,color .15s}
+.eq-view button+button{border-left:1px solid var(--c200)}
+.eq-view button:hover{background:var(--c50);color:var(--c700)}
+.eq-view button.active{background:var(--c900);color:#fff}
+.eq-view svg{width:14px;height:14px}
+
+.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:14px}
+.eq-card{position:relative;display:flex;flex-direction:column;gap:12px;text-align:left;width:100%;
+  background:var(--white);border:1px solid var(--c100);border-radius:var(--r-lg);box-shadow:var(--sh-sm);
+  padding:16px 18px;cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .15s}
+.eq-card:hover{box-shadow:var(--sh);border-color:var(--c200);transform:translateY(-1px)}
+.eq-card:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+.eq-card-head{display:flex;align-items:flex-start;gap:11px;min-width:0}
+.eq-av{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:var(--leaf-bg);color:var(--leaf-d);font-size:13px;font-weight:800;letter-spacing:.02em}
+.eq-card.unlinked .eq-av{background:var(--amber-bg);color:var(--amber)}
+.eq-id{min-width:0;flex:1}
+.eq-nm{font-size:14px;font-weight:700;color:var(--c900);line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eq-meta{font-size:12px;color:var(--c500);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The "Sıra №" — the key a re-import matches on, so it stays visible, but it is the least
+   interesting thing on the card and is set accordingly. */
+.eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);font-variant-numeric:tabular-nums}
+
+.eq-kit{display:flex;flex-wrap:wrap;gap:6px}
+.eq-empty-kit{display:block}
+.eq-kit-chip{display:inline-flex;align-items:center;gap:5px;border-radius:8px;padding:4px 9px;
+  background:var(--c50);border:1px solid var(--c100);font-size:11.5px;font-weight:600;color:var(--c600);white-space:nowrap}
+.eq-kit-chip svg{width:13px;height:13px;flex:none;color:var(--c400)}
+.eq-kit-chip.k-desktop{background:var(--blue-bg);border-color:transparent;color:#1D4ED8}
+.eq-kit-chip.k-desktop svg{color:#1D4ED8}
+.eq-kit-chip.k-laptop{background:var(--purple-bg);border-color:transparent;color:#6D28D9}
+.eq-kit-chip.k-laptop svg{color:#6D28D9}
+.eq-kit-chip.k-monitor{background:var(--teal-bg);border-color:transparent;color:var(--teal)}
+.eq-kit-chip.k-monitor svg{color:var(--teal)}
+.eq-empty-kit{font-size:12px;color:var(--c400);font-style:italic}
+.eq-flag{align-self:flex-start;background:var(--amber-bg);color:var(--amber)}
+
+.eq-none{grid-column:1/-1;text-align:center;padding:44px 20px;color:var(--c400);
+  background:var(--white);border:1px dashed var(--c200);border-radius:var(--r-lg)}
+
+/* ── The detail panel ─────────────────────────────────────────────────────────────────────────
+   A right-hand drawer rather than a modal: the list stays visible behind it, so clicking through
+   six people to find who has the spare monitor never loses your place in the grid. */
+.eq-backdrop{position:fixed;inset:0;background:rgba(24,25,26,.42);z-index:40;animation:eq-fade .16s ease-out}
+.eq-drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);z-index:41;background:var(--white);
+  box-shadow:-8px 0 32px rgba(0,0,0,.16);display:flex;flex-direction:column;animation:eq-slide .2s ease-out}
+@keyframes eq-fade{from{opacity:0}to{opacity:1}}
+@keyframes eq-slide{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.eq-backdrop,.eq-drawer{animation:none}}
+.eq-drawer-head{padding:20px 22px 16px;border-bottom:1px solid var(--c100);display:flex;gap:12px;align-items:flex-start}
+.eq-drawer-head .eq-nm{white-space:normal;font-size:17px}
+.eq-drawer-body{flex:1;overflow-y:auto;padding:18px 22px 24px}
+.eq-drawer-foot{padding:14px 22px;border-top:1px solid var(--c100);display:flex;gap:8px;background:var(--c50)}
+.eq-close{flex:none;border:none;background:transparent;color:var(--c400);cursor:pointer;padding:4px;border-radius:8px}
+.eq-close:hover{background:var(--c100);color:var(--c700)}
+
+.eq-spec+.eq-spec{margin-top:18px}
+.eq-spec-t{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c400);margin-bottom:6px}
+/* The prose, verbatim and monospaced: newlines in the register separate a second machine from the
+   first, and a spec read as a paragraph is a spec nobody checks. */
+.eq-spec-v{font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--c800);
+  white-space:pre-line;background:var(--c50);border:1px solid var(--c100);border-radius:10px;padding:10px 12px}
+.eq-spec-v.none{font-family:'Manrope',sans-serif;color:var(--c400);background:transparent;border-style:dashed}
+
+@media(max-width:600px){
+  .eq-grid{grid-template-columns:1fr}
+  .eq-drawer{width:100vw}
+}

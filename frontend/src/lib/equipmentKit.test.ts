@@ -1,0 +1,129 @@
+import { describe, expect, it } from 'vitest'
+import { hasKind, kitLabel, readKit, type KitSource } from './equipmentKit'
+
+/**
+ * The chips on an equipment card are read out of prose somebody typed into a spreadsheet, so the
+ * question these tests answer is not "does it parse" but "when it is unsure, does it stay quiet".
+ *
+ * A wrong KIND is a cosmetic mistake — the card shows the real text one click away. A wrong COUNT is
+ * not: it is a number an admin would repeat when ordering. So every case below that involves a digit
+ * exists to check we do not invent one.
+ */
+
+const EMPTY: KitSource = { equipment: null, systemUnit: null, monitor: null, otherEquipment: null }
+const row = (p: Partial<KitSource>): KitSource => ({ ...EMPTY, ...p })
+
+describe('what a line holds', () => {
+  it('reads the register\'s own sentence', () => {
+    // The example from the entity's own documentation.
+    const kit = readKit(row({ equipment: '1 ədəd masaüstü ofis kompüteri, 2 ədəd monitor HP 27"' }))
+
+    expect(kit).toEqual([
+      { kind: 'desktop', count: 1 },
+      { kind: 'monitor', count: 2 },
+    ])
+  })
+
+  it('puts the machine before its accessories', () => {
+    const kit = readKit(row({ equipment: '1 ədəd monitor, 1 ədəd printer, 1 ədəd noutbuk' }))
+
+    expect(kit.map((k) => k.kind)).toEqual(['laptop', 'monitor', 'printer'])
+  })
+
+  it('separates lines as well as commas', () => {
+    const kit = readKit(row({ otherEquipment: 'Printer Canon\nSkaner HP' }))
+
+    expect(kit.map((k) => k.kind)).toEqual(['printer', 'scanner'])
+  })
+
+  it('adds up two fragments of the same kind', () => {
+    const kit = readKit(row({ equipment: '2 ədəd monitor Dell', otherEquipment: '1 ədəd monitor HP' }))
+
+    expect(kit).toEqual([{ kind: 'monitor', count: 3 }])
+  })
+})
+
+describe('numbers are only ever quoted, never inferred', () => {
+  it('does not read a screen size as a quantity', () => {
+    // "monitor HP 27" is one monitor of 27 inches. This is the mistake that would put "27 monitor"
+    // on a card, and it is the reason the digit search is anchored rather than free.
+    expect(readKit(row({ equipment: 'monitor HP 27"' }))).toEqual([{ kind: 'monitor', count: null }])
+  })
+
+  it('does not read a specification as a quantity', () => {
+    expect(readKit(row({ equipment: 'kompüter i5 11-ci nəsil' }))).toEqual([{ kind: 'desktop', count: null }])
+  })
+
+  it('says the kind without a number when none is written', () => {
+    const kit = readKit(row({ equipment: 'masaüstü kompüter, monitor' }))
+
+    expect(kit).toEqual([
+      { kind: 'desktop', count: null },
+      { kind: 'monitor', count: null },
+    ])
+    expect(kitLabel(kit[0]!)).toBe('Sistem bloku')
+    expect(kitLabel(kit[1]!)).toBe('Monitor')
+  })
+
+  it('labels a written count', () => {
+    expect(kitLabel({ kind: 'monitor', count: 2 })).toBe('2 monitor')
+  })
+
+  it('refuses a count that is obviously not one', () => {
+    // A four-digit run is a model number that happened to sit before a unit word.
+    expect(readKit(row({ equipment: '2024 ədəd monitor' }))).toEqual([{ kind: 'monitor', count: null }])
+  })
+})
+
+describe('the specification columns prove presence, not quantity', () => {
+  it('counts nothing from a multi-line spec', () => {
+    // "one line per machine" is a convention in the source file, not a rule anyone is held to — the
+    // day somebody wraps a single spec across two lines, counting lines would report two computers.
+    const kit = readKit(row({ systemUnit: 'i5 11-ci nəsil\n16 GB RAM\n512 SSD' }))
+
+    expect(kit).toEqual([{ kind: 'desktop', count: null }])
+  })
+
+  it('still shows the kind when only the spec column is filled', () => {
+    expect(readKit(row({ monitor: 'HP P27h' }))).toEqual([{ kind: 'monitor', count: null }])
+  })
+
+  it('keeps a count the prose gave it', () => {
+    // Both columns describe the same monitors; the spec column must not erase the written number.
+    const kit = readKit(row({ equipment: '2 ədəd monitor', monitor: 'HP P27h' }))
+
+    expect(kit).toEqual([{ kind: 'monitor', count: 2 }])
+  })
+})
+
+describe('Azerbaijani text', () => {
+  it('matches a word that starts with İ', () => {
+    // 'İ'.toLowerCase() is 'i' + U+0307, which matches no literal in the keyword table. The backend
+    // importer lost an entire column to exactly this; here it would silently drop the chip.
+    expect(hasKind(row({ equipment: 'İki ədəd MONİTOR' }), 'monitor')).toBe(true)
+  })
+
+  it('is not confused by capitals or Russian', () => {
+    expect(hasKind(row({ equipment: 'НОУТБУК Dell' }), 'laptop')).toBe(true)
+    expect(hasKind(row({ equipment: 'NOUTBUK' }), 'laptop')).toBe(true)
+  })
+
+  it('calls a laptop a laptop even when the word "kompüter" is next to it', () => {
+    expect(readKit(row({ equipment: 'noutbuk kompüteri' }))).toEqual([{ kind: 'laptop', count: null }])
+  })
+})
+
+describe('the edges of the register', () => {
+  it('shows nothing for a line with no equipment at all', () => {
+    expect(readKit(EMPTY)).toEqual([])
+  })
+
+  it('shows something for a line describing kit we have no word for', () => {
+    // An empty chip row would read as "nothing issued to this person", which is a different fact.
+    expect(readKit(row({ equipment: 'Plansetli qurğu' }))).toEqual([{ kind: 'other', count: null }])
+  })
+
+  it('ignores whitespace-only cells', () => {
+    expect(readKit(row({ equipment: '   ', systemUnit: '\n' }))).toEqual([])
+  })
+})

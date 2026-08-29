@@ -1,0 +1,165 @@
+/**
+ * Reads the equipment register's prose and says what kind of kit a line describes.
+ *
+ * The register is a spreadsheet maintained by hand, so what a person holds is written in words —
+ * "1 ədəd masaüstü ofis kompüteri, 2 ədəd monitor HP 27\"" — and there are no inventory numbers to
+ * key off. The card view needs something skimmable above that prose: a person's card shows chips,
+ * and the full text is one click away.
+ *
+ * Everything here is DERIVED AT DISPLAY TIME and nothing is stored. That is the whole safety
+ * argument: a wrong chip is a wrong hint on a card that shows the real text underneath it, whereas a
+ * wrong number written into the database would quietly become the number somebody orders against.
+ *
+ * The rule that follows from that: **a count is shown only when the register actually wrote one.**
+ * We never infer "2" from two lines of specification or from a plural. When no number is written the
+ * chip says "Monitor", not "1 monitor" — the honest reading of "he has monitors, we don't know how
+ * many" is the kind, without a number.
+ */
+
+export type KitKind = 'desktop' | 'laptop' | 'monitor' | 'printer' | 'scanner' | 'ups' | 'other'
+
+export interface KitItem {
+  kind: KitKind
+  /** How many, when the register says so in words. Null means "present, count not written". */
+  count: number | null
+}
+
+/** The columns a line's kit can be described in. */
+export interface KitSource {
+  equipment: string | null
+  systemUnit: string | null
+  monitor: string | null
+  otherEquipment: string | null
+}
+
+export const KIT_LABEL: Record<KitKind, string> = {
+  desktop: 'Sistem bloku',
+  laptop: 'Noutbuk',
+  monitor: 'Monitor',
+  printer: 'Printer',
+  scanner: 'Skaner',
+  ups: 'UPS',
+  other: 'Digər avadanlıq',
+}
+
+/** Display order — the big machine first, accessories after, "other" last. */
+const ORDER: KitKind[] = ['desktop', 'laptop', 'monitor', 'printer', 'scanner', 'ups', 'other']
+
+/**
+ * Lowercase, Azerbaijani-safe.
+ *
+ * `'İ'.toLowerCase()` is NOT 'i' — it is 'i' followed by U+0307 COMBINING DOT ABOVE, which matches
+ * none of the literals below. The backend's sheet importer carries the same guard for the same
+ * reason (EquipmentSheet.NormalizeHeader); getting it wrong there lost a whole column silently, and
+ * here it would lose every chip on a line that happens to start with İ.
+ */
+function az(text: string): string {
+  return text.replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase().replace(/̇/g, '')
+}
+
+/**
+ * Which kind a fragment describes. Order matters: "noutbuk" is checked before the desktop words so
+ * that a line reading "noutbuk kompüteri" is a laptop, not a desktop.
+ */
+const KINDS: [KitKind, string[]][] = [
+  ['laptop', ['noutbuk', 'notbuk', 'notebook', 'laptop', 'ноутбук']],
+  ['monitor', ['monitor', 'ekran', 'монитор']],
+  ['printer', ['printer', 'çap qurğu', 'mfp', 'çoxfunksiyalı', 'принтер']],
+  ['scanner', ['skaner', 'scanner', 'сканер']],
+  ['ups', ['ups', 'nəfəsalma', 'qoruyucu blok', 'ибп']],
+  ['desktop', ['masaüstü', 'sistem blok', 'sistem bloku', 'monoblok', 'stasionar', 'kompüter', 'komputer', 'компьютер']],
+]
+
+function kindOf(fragment: string): KitKind | null {
+  const s = az(fragment)
+  for (const [kind, words] of KINDS) if (words.some((w) => s.includes(az(w)))) return kind
+  return null
+}
+
+/**
+ * The count written in a fragment, or null.
+ *
+ * Only two shapes are accepted, both of which are somebody explicitly writing a quantity:
+ * "2 ədəd monitor" and a bare leading "2 monitor". A number anywhere else in the text is a model or
+ * a size — "monitor HP 27\"" is not 27 monitors, and "i5 11-ci nəsil" is not 11 machines — so an
+ * unanchored digit search is exactly the wrong thing to do here.
+ */
+function countIn(fragment: string): number | null {
+  const s = az(fragment).trim()
+
+  // `\d+`, not `\d{1,3}` — a bounded run lets the engine start mid-number and read "2024 ədəd"
+  // as 024. Take the whole run and let clamp judge it; that is the one place the limit belongs.
+  const withUnit = s.match(/(\d+)\s*(?:ədəd|eded|dənə|dene|əd\.|ed\.|шт)/)
+  if (withUnit) return clamp(withUnit[1]!)
+
+  const leading = s.match(/^(\d+)\s+\D/)
+  if (leading) return clamp(leading[1]!)
+
+  return null
+}
+
+/** A register line describes one desk, not a warehouse; a three-digit count is a parse, not a fact. */
+function clamp(digits: string): number | null {
+  const n = Number(digits)
+  return n >= 1 && n <= 99 ? n : null
+}
+
+/** Splits a cell into the separate things it lists. */
+function fragments(text: string | null): string[] {
+  if (!text) return []
+  return text
+    .split(/[\n;,]+/)
+    .map((f) => f.trim())
+    .filter(Boolean)
+}
+
+/**
+ * What this register line holds, as chips.
+ *
+ * Counts come only from the prose columns ("Avadanlıq", "Digər avadanlıq") where quantities are
+ * actually written. The dedicated "Sistem bloku" and "Monitor" columns establish PRESENCE only:
+ * their content is a specification, and the entity comment's "one line per machine" is a convention
+ * nobody is bound by, so counting their lines would invent a number on the day someone wraps a spec.
+ */
+export function readKit(row: KitSource): KitItem[] {
+  const counts = new Map<KitKind, number | null>()
+
+  const add = (kind: KitKind, count: number | null) => {
+    if (!counts.has(kind)) {
+      counts.set(kind, count)
+      return
+    }
+    const existing = counts.get(kind)!
+    // Two fragments of the same kind: sum what is written, and let a written number win over a
+    // fragment that carried none rather than dragging the pair back to "unknown".
+    counts.set(kind, existing === null && count === null ? null : (existing ?? 0) + (count ?? 0))
+  }
+
+  for (const source of [row.equipment, row.otherEquipment]) {
+    for (const fragment of fragments(source)) {
+      const kind = kindOf(fragment)
+      if (kind) add(kind, countIn(fragment))
+    }
+  }
+
+  // Presence from the spec columns. `add` leaves an already-counted kind alone when it passes null.
+  if (row.systemUnit?.trim()) add('desktop', null)
+  if (row.monitor?.trim()) add('monitor', null)
+
+  // A line that lists something none of the keywords know still has to show as holding something —
+  // an empty card would read as "nothing issued", which is a different fact entirely.
+  if (counts.size === 0 && fragments(row.equipment).concat(fragments(row.otherEquipment)).length > 0)
+    add('other', null)
+
+  return ORDER.filter((k) => counts.has(k)).map((kind) => ({ kind, count: counts.get(kind)! }))
+}
+
+/** "2 monitor" when the register wrote a number, otherwise just "Monitor". */
+export function kitLabel(item: KitItem): string {
+  return item.count === null ? KIT_LABEL[item.kind] : `${item.count} ${KIT_LABEL[item.kind].toLowerCase()}`
+}
+
+/** Does this line hold anything of that kind? Backs the filter chips. */
+export function hasKind(row: KitSource, kind: KitKind): boolean {
+  return readKit(row).some((i) => i.kind === kind)
+}

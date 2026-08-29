@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   createEquipment,
   deleteEquipment,
@@ -12,18 +13,38 @@ import {
   type ImportResult,
 } from '../../api/equipment'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
-import { IconCheck, IconDownload, IconX } from '../../components/icons'
+import { hasKind, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
+import {
+  IconBriefcase,
+  IconCheck,
+  IconDesktop,
+  IconDownload,
+  IconGrid,
+  IconLaptop,
+  IconMonitor,
+  IconPower,
+  IconPrinter,
+  IconScanner,
+  IconTable,
+  IconUser,
+  IconX,
+} from '../../components/icons'
 
 /**
- * The IT equipment register.
+ * The IT equipment register — who holds what.
  *
- * The table is the company's own spreadsheet, column for column: Sıra № · Soyadı, adı, atasının adı ·
- * Vəzifəsi · İşlədiyi ərazi · Avadanlıq · Sistem bloku · Monitor · Digər avadanlıq. That is deliberate
- * — the list is maintained in Excel and compared against it, so a screen with a different shape would
- * be something to reconcile rather than something to read.
+ * It opens as a card per person, because the question anyone actually arrives with is about a
+ * person: what has this one got, who has a spare monitor, what does a leaver have to hand back.
  *
- * The equipment columns hold several lines each; they are rendered with the newlines intact, because
- * "i5 11-ci nəsil / 16 GB" and the second machine under it are two facts, not one sentence.
+ * The register is imported from "İT AVADANLIQLARININ SİYAHISI" and the table view still mirrors that
+ * file column for column. That view has a real job — being compared against the file after a
+ * re-import — but it was also the ONLY way to read the register, which made a nine-column
+ * spreadsheet, four of whose columns are paragraphs of prose, the everyday screen. Two jobs, two
+ * views; the reconciliation one is a click away instead of the front door.
+ *
+ * The chips on a card are DERIVED from that prose and never stored (see lib/equipmentKit), and they
+ * quote a count only where the register wrote one — a number on this screen is a number somebody
+ * will order against.
  */
 
 const ERRORS: Record<string, string> = {
@@ -49,10 +70,68 @@ const EMPTY_FORM: EquipmentInput = {
   employeeId: null,
 }
 
+const KIT_ICON: Record<KitKind, typeof IconDesktop> = {
+  desktop: IconDesktop,
+  laptop: IconLaptop,
+  monitor: IconMonitor,
+  printer: IconPrinter,
+  scanner: IconScanner,
+  ups: IconPower,
+  other: IconBriefcase,
+}
+
+/** Filter chips. `unlinked` is not a kind of kit — it is the register's staleness against the staff list. */
+const FILTERS: { key: KitKind | 'all' | 'unlinked'; label: string }[] = [
+  { key: 'all', label: 'Hamısı' },
+  { key: 'desktop', label: 'Sistem bloku' },
+  { key: 'laptop', label: 'Noutbuk' },
+  { key: 'monitor', label: 'Monitor' },
+  { key: 'printer', label: 'Printer' },
+  { key: 'unlinked', label: 'Bağlanmayıb' },
+]
+
+/** Two letters for the avatar. Azerbaijani casing, so «i» becomes «İ» and not «I». */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  const picked = parts.length >= 2 ? [parts[0]!, parts[1]!] : parts.slice(0, 1)
+  return picked.map((p) => p.charAt(0).toLocaleUpperCase('az')).join('')
+}
+
 /** Keeps the newlines the register uses to list a second machine under the first. */
 function Lines({ text }: { text: string | null }) {
   if (!text) return <span className="muted">—</span>
   return <span style={{ whiteSpace: 'pre-line' }}>{text}</span>
+}
+
+function KitChips({ row }: { row: EquipmentRecord }) {
+  const kit = readKit(row)
+  // Spans, not divs: this renders inside the card's <button>, which may only hold phrasing
+  // content. The layout comes from CSS either way.
+  if (kit.length === 0) return <span className="eq-empty-kit">Avadanlıq yazılmayıb</span>
+  return (
+    <span className="eq-kit">
+      {kit.map((item) => {
+        const Icon = KIT_ICON[item.kind]
+        return (
+          <span key={item.kind} className={`eq-kit-chip k-${item.kind}`}>
+            <Icon />
+            {kitLabel(item)}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+/** One block of the detail panel: a heading, and the register's own words underneath it. */
+function Spec({ title, value }: { title: string; value: string | null }) {
+  const written = value?.trim()
+  return (
+    <div className="eq-spec">
+      <div className="eq-spec-t">{title}</div>
+      <div className={`eq-spec-v${written ? '' : ' none'}`}>{written || 'yazılmayıb'}</div>
+    </div>
+  )
 }
 
 export function EquipmentPage() {
@@ -67,6 +146,10 @@ export function EquipmentPage() {
 
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
+  const [view, setView] = useState<'cards' | 'table'>('cards')
+  const [filter, setFilter] = useState<KitKind | 'all' | 'unlinked'>('all')
+  const [area, setArea] = useState('')
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -94,10 +177,38 @@ export function EquipmentPage() {
     })
   }, [])
 
+  // Esc closes the panel. A drawer that only shuts via its own × is a drawer people leave open.
+  useEffect(() => {
+    if (!openId) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenId(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openId])
+
   const employeeOptions = useMemo(
     () => [...employees].sort((a, b) => a.fullName.localeCompare(b.fullName, 'az')),
     [employees],
   )
+
+  const areas = useMemo(
+    () => [...new Set(rows.map((r) => r.area?.trim()).filter((a): a is string => !!a))]
+      .sort((a, b) => a.localeCompare(b, 'az')),
+    [rows],
+  )
+
+  const visible = useMemo(
+    () => rows.filter((r) => {
+      if (area && r.area?.trim() !== area) return false
+      if (filter === 'all') return true
+      if (filter === 'unlinked') return !r.employeeId
+      return hasKind(r, filter)
+    }),
+    [rows, filter, area],
+  )
+
+  // The panel reads from `rows`, not from a copy taken when it opened — otherwise a save leaves the
+  // old text sitting on screen next to a "yeniləndi" message.
+  const shown = openId ? rows.find((r) => r.id === openId) ?? null : null
 
   function set<K extends keyof EquipmentInput>(key: K, value: EquipmentInput[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -112,6 +223,7 @@ export function EquipmentPage() {
     setForm(EMPTY_FORM)
     setEditingId(null)
     setShowForm(true)
+    setOpenId(null)
     setMsg(null)
     setErr(null)
     setImported(null)
@@ -131,9 +243,13 @@ export function EquipmentPage() {
     })
     setEditingId(row.id)
     setShowForm(true)
+    // The form is at the top of the page; from a card near the bottom it would otherwise open
+    // off-screen and read as "the Redaktə button does nothing".
+    setOpenId(null)
     setMsg(null)
     setErr(null)
     setImported(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function submit(e: React.FormEvent) {
@@ -153,12 +269,13 @@ export function EquipmentPage() {
   }
 
   async function remove(row: EquipmentRecord) {
-    if (!window.confirm(`${row.rowNo}. «${row.fullName}» sətri silinsin?`)) return
+    if (!window.confirm(`«${row.fullName}» qeydi silinsin?`)) return
     setBusy(true)
     setErr(null)
     const { status, data } = await deleteEquipment(row.id)
     setBusy(false)
     if (status === 200) {
+      setOpenId(null)
       setMsg(`«${row.fullName}» silindi`)
       void load()
     } else {
@@ -191,9 +308,9 @@ export function EquipmentPage() {
     <div>
       <div className="stat-grid">
         <div className="stat-card blue">
-          <div className="stat-lbl">Sətir</div>
+          <div className="stat-lbl">Nəfər</div>
           <div className="stat-val">{summary?.total ?? '—'}</div>
-          <div className="stat-sub">siyahıdakı işçi sayı</div>
+          <div className="stat-sub">siyahıdakı adam sayı</div>
         </div>
         <div className="stat-card leaf">
           <div className="stat-lbl">İşçi ilə bağlı</div>
@@ -218,7 +335,7 @@ export function EquipmentPage() {
       </div>
 
       <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="eq-toolbar">
           <input
             className="inp"
             style={{ flex: '1 1 260px', minWidth: 200 }}
@@ -226,7 +343,15 @@ export function EquipmentPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <button className="btn btn-primary" onClick={openNew}>Yeni sətir</button>
+          <div className="eq-view" role="group" aria-label="Görünüş">
+            <button type="button" className={view === 'cards' ? 'active' : ''} onClick={() => setView('cards')}>
+              <IconGrid /> Kart
+            </button>
+            <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}>
+              <IconTable /> Cədvəl
+            </button>
+          </div>
+          <button className="btn btn-primary" onClick={openNew}>Yeni qeyd</button>
           <button className="btn" disabled={busy} onClick={() => fileInput.current?.click()}>
             <IconDownload /> Excel-dən idxal
           </button>
@@ -238,7 +363,37 @@ export function EquipmentPage() {
             onChange={(e) => void onFile(e)}
           />
         </div>
-        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+
+        <div className="divider" />
+
+        <div className="chip-row" style={{ marginBottom: 0 }}>
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              className={`chip${filter === f.key ? ' active' : ''}`}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
+          {areas.length > 1 && (
+            <select
+              className="inp"
+              style={{ width: 'auto', minWidth: 150, padding: '6px 10px', fontSize: 12 }}
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+            >
+              <option value="">Bütün ərazilər</option>
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          )}
+          <span className="muted" style={{ fontSize: 12, marginLeft: 'auto', alignSelf: 'center' }}>
+            {visible.length} / {rows.length}
+          </span>
+        </div>
+
+        <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
           İdxal «Sıra №» üzrə işləyir: eyni faylı yenidən yükləsəniz sətirlər təzələnir, təkrarlanmır.
           Faylda olmayan sətirlər silinmir.
         </div>
@@ -269,7 +424,7 @@ export function EquipmentPage() {
       {showForm && (
         <form onSubmit={submit} className="card card-pad" style={{ marginBottom: 16, maxWidth: 860 }}>
           <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 14 }}>
-            {editingId ? 'Sətri redaktə et' : 'Yeni sətir'}
+            {editingId ? 'Qeydi redaktə et' : 'Yeni qeyd'}
           </div>
 
           <div className="form-row cols2">
@@ -375,57 +530,132 @@ export function EquipmentPage() {
         </form>
       )}
 
-      <div className="tbl-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: 60 }}>Sıra №</th>
-              <th>Soyadı, adı, atasının adı</th>
-              <th>Vəzifəsi</th>
-              <th>İşlədiyi ərazi</th>
-              <th>Avadanlıq</th>
-              <th>Sistem bloku</th>
-              <th>Monitor</th>
-              <th>Digər avadanlıq</th>
-              <th style={{ textAlign: 'right' }}>Əməliyyat</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td className="num" style={{ fontWeight: 700 }}>{row.rowNo}</td>
-                <td style={{ fontWeight: 600, minWidth: 180 }}>
-                  {row.fullName}
-                  {!row.employeeId && (
-                    <div className="muted" style={{ fontSize: 11 }}>işçi siyahısında yoxdur</div>
-                  )}
-                </td>
-                <td className="muted" style={{ minWidth: 150 }}>{row.position ?? '—'}</td>
-                <td className="muted" style={{ minWidth: 130 }}>{row.area ?? '—'}</td>
-                <td style={{ minWidth: 220 }}><Lines text={row.equipment} /></td>
-                <td style={{ minWidth: 200 }}><Lines text={row.systemUnit} /></td>
-                <td style={{ minWidth: 130 }}><Lines text={row.monitor} /></td>
-                <td style={{ minWidth: 180 }}><Lines text={row.otherEquipment} /></td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button className="btn btn-sm" onClick={() => openEdit(row)}>Redaktə</button>
-                    <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => void remove(row)}>Sil</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {loaded && rows.length === 0 && (
+      {view === 'cards' ? (
+        <div className="eq-grid">
+          {visible.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              className={`eq-card${row.employeeId ? '' : ' unlinked'}`}
+              onClick={() => setOpenId(row.id)}
+            >
+              <span className="eq-card-head">
+                <span className="eq-av">{initials(row.fullName)}</span>
+                <span className="eq-id">
+                  <span className="eq-nm">{row.fullName}</span>
+                  <span className="eq-meta">
+                    {[row.position, row.area].filter(Boolean).join(' · ') || 'vəzifə yazılmayıb'}
+                  </span>
+                </span>
+                <span className="eq-no">{row.rowNo}</span>
+              </span>
+              <KitChips row={row} />
+              {!row.employeeId && <span className="tag eq-flag">işçi siyahısında yoxdur</span>}
+            </button>
+          ))}
+          {loaded && visible.length === 0 && (
+            <div className="eq-none">
+              {rows.length === 0
+                ? (q ? 'Bu şərtlərə uyğun qeyd tapılmadı.' : 'Siyahı boşdur — «Excel-dən idxal» ilə mövcud faylı yükləyin.')
+                : 'Bu süzgəcə uyğun qeyd yoxdur.'}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="tbl-wrap">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  {q
-                    ? 'Bu şərtlərə uyğun sətir tapılmadı.'
-                    : 'Siyahı boşdur — «Excel-dən idxal» ilə mövcud faylı yükləyin.'}
-                </td>
+                <th style={{ width: 60 }}>Sıra №</th>
+                <th>Soyadı, adı, atasının adı</th>
+                <th>Vəzifəsi</th>
+                <th>İşlədiyi ərazi</th>
+                <th>Avadanlıq</th>
+                <th>Sistem bloku</th>
+                <th>Monitor</th>
+                <th>Digər avadanlıq</th>
+                <th style={{ textAlign: 'right' }}>Əməliyyat</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {visible.map((row) => (
+                <tr key={row.id}>
+                  <td className="num" style={{ fontWeight: 700 }}>{row.rowNo}</td>
+                  <td style={{ fontWeight: 600, minWidth: 180 }}>
+                    {row.fullName}
+                    {!row.employeeId && (
+                      <div className="muted" style={{ fontSize: 11 }}>işçi siyahısında yoxdur</div>
+                    )}
+                  </td>
+                  <td className="muted" style={{ minWidth: 150 }}>{row.position ?? '—'}</td>
+                  <td className="muted" style={{ minWidth: 130 }}>{row.area ?? '—'}</td>
+                  <td style={{ minWidth: 220 }}><Lines text={row.equipment} /></td>
+                  <td style={{ minWidth: 200 }}><Lines text={row.systemUnit} /></td>
+                  <td style={{ minWidth: 130 }}><Lines text={row.monitor} /></td>
+                  <td style={{ minWidth: 180 }}><Lines text={row.otherEquipment} /></td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button className="btn btn-sm" onClick={() => openEdit(row)}>Redaktə</button>
+                      <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => void remove(row)}>Sil</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {loaded && visible.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                    {rows.length === 0
+                      ? (q ? 'Bu şərtlərə uyğun sətir tapılmadı.' : 'Siyahı boşdur — «Excel-dən idxal» ilə mövcud faylı yükləyin.')
+                      : 'Bu süzgəcə uyğun sətir yoxdur.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {shown && (
+        <>
+          <div className="eq-backdrop" onClick={() => setOpenId(null)} />
+          <aside className="eq-drawer" role="dialog" aria-label={shown.fullName}>
+            <div className="eq-drawer-head">
+              <span className="eq-av">{initials(shown.fullName)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="eq-nm">{shown.fullName}</div>
+                <div className="eq-meta">
+                  {[shown.position, shown.area].filter(Boolean).join(' · ') || 'vəzifə yazılmayıb'}
+                </div>
+                {shown.employeeId ? (
+                  <Link to={`/admin/employees/${shown.employeeId}`} className="btn btn-sm" style={{ marginTop: 10 }}>
+                    <IconUser /> İşçi profili
+                  </Link>
+                ) : (
+                  <span className="tag eq-flag" style={{ marginTop: 10 }}>işçi siyahısında yoxdur</span>
+                )}
+              </div>
+              <button className="eq-close" onClick={() => setOpenId(null)} aria-label="Bağla"><IconX /></button>
+            </div>
+
+            <div className="eq-drawer-body">
+              <KitChips row={shown} />
+              <div style={{ height: 18 }} />
+              <Spec title="Avadanlıq" value={shown.equipment} />
+              <Spec title="Sistem bloku" value={shown.systemUnit} />
+              <Spec title="Monitor" value={shown.monitor} />
+              <Spec title="Digər avadanlıq" value={shown.otherEquipment} />
+              <div className="muted" style={{ fontSize: 11, marginTop: 18 }}>
+                Sıra № {shown.rowNo} · yeniləndi {new Date(shown.updatedAtUtc).toLocaleDateString('az')}
+              </div>
+            </div>
+
+            <div className="eq-drawer-foot">
+              <button className="btn btn-primary" onClick={() => openEdit(shown)}>Redaktə</button>
+              <button className="btn btn-danger" disabled={busy} onClick={() => void remove(shown)}>Sil</button>
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   )
 }
