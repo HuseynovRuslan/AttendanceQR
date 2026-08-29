@@ -21,14 +21,6 @@ export interface EquipmentRecord {
   updatedAtUtc: string
 }
 
-export interface EquipmentSummary {
-  total: number
-  linked: number
-  unlinked: number
-  areas: number
-  withDesktop: number
-}
-
 /** rowNo is optional on create — null appends to the end of the list. */
 export interface EquipmentInput {
   rowNo: number | null
@@ -55,9 +47,12 @@ export function getEquipment(q?: string) {
   return apiRequest<EquipmentRecord[]>(`/api/admin/equipment${suffix}`)
 }
 
-export function getEquipmentSummary() {
-  return apiRequest<EquipmentSummary>('/api/admin/equipment/summary')
-}
+/* There is no getEquipmentSummary here any more. The screen counts the register itself — the same
+   parser that draws the chips on the cards — so a headline number and the card under it can never
+   disagree. The server's GET /api/admin/equipment/summary is now called by nobody; it counts
+   different things (linked/unlinked rows, "has a system unit") and should either be deleted or be
+   given a caller, but a live endpoint whose numbers nothing shows is the kind of thing somebody
+   later "fixes" for an afternoon. */
 
 export function getEquipmentByEmployee(employeeId: string) {
   return apiRequest<EquipmentRecord[]>(`/api/admin/equipment/by-employee/${employeeId}`)

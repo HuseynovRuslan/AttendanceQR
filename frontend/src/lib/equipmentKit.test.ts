@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasKind, kitLabel, readKit, type KitSource } from './equipmentKit'
+import { countKit, hasKind, kitLabel, readKit, type KitSource } from './equipmentKit'
 
 /**
  * The chips on an equipment card are read out of prose somebody typed into a spreadsheet, so the
@@ -125,5 +125,41 @@ describe('the edges of the register', () => {
 
   it('ignores whitespace-only cells', () => {
     expect(readKit(row({ equipment: '   ', systemUnit: '\n' }))).toEqual([])
+  })
+})
+
+describe('the headline totals', () => {
+  const rows = [
+    row({ equipment: '1 ədəd masaüstü kompüter, 2 ədəd monitor' }),
+    row({ equipment: 'masaüstü kompüter, monitor' }),   // no numbers written
+    row({ otherEquipment: 'Printer Canon' }),
+    row({}),                                            // nothing issued
+  ]
+
+  it('counts rows and devices separately', () => {
+    const totals = countKit(rows)
+    const by = (k: string) => totals.find((t) => t.kind === k)
+
+    // Two lines mention a monitor; one of them says there are two of them.
+    expect(by('monitor')).toEqual({ kind: 'monitor', people: 2, devices: 3 })
+    expect(by('desktop')).toEqual({ kind: 'desktop', people: 2, devices: 2 })
+    expect(by('printer')).toEqual({ kind: 'printer', people: 1, devices: 1 })
+  })
+
+  it('treats an unnumbered mention as one, so the total is a floor', () => {
+    // This is the whole licence for a device count on a screen that refuses to print "1 monitor" on
+    // a card: a mention is at least one, so the sum is a minimum and is labelled as one. It must
+    // never round the other way.
+    expect(countKit([row({ equipment: 'monitor' })])[0]!.devices).toBe(1)
+  })
+
+  it('leaves out kinds nobody holds', () => {
+    // Zeros hidden — the same call the dashboard made. A tile reading 0 is a tile you read and
+    // discard, every time.
+    expect(countKit(rows).map((t) => t.kind)).toEqual(['desktop', 'monitor', 'printer'])
+  })
+
+  it('counts nothing for an empty register', () => {
+    expect(countKit([])).toEqual([])
   })
 })

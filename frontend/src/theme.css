@@ -588,11 +588,72 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
    The default is now a card per person: who they are, and what they hold as chips. The prose is one
    click away in the panel, unabridged, because the prose is the actual record. */
 
+/* ── The header band: what the company holds, and the filter, in one control ────────────────────
+   It replaced two rows that named the same categories — five stat tiles counting them and a row of
+   chips filtering by them — plus a permanent paragraph about how the Excel import matches rows.
+   Merging them removed a row of chrome and made space for the number that was missing entirely: the
+   old tiles counted PEOPLE and row-hygiene ("İşçi ilə bağlı 42"), so how much kit the company
+   actually owns appeared nowhere on a screen whose whole subject is equipment. */
+.eq-head{margin-bottom:18px;padding:16px 18px}
+.eq-head-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.eq-head-count{font-size:13px;color:var(--c500);white-space:nowrap}
+.eq-head-count b{color:var(--c900);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.eq-dot{color:var(--c200);margin:0 2px}
+.eq-search{flex:1 1 240px;min-width:180px}
+.eq-head-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px}
+.eq-head-foot .muted{flex:1 1 320px;min-width:220px;line-height:1.5}
+.eq-area-pick{width:auto;min-width:150px;padding:6px 10px;font-size:12px}
+.eq-count{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* One tile per kind of kit. Scrolls sideways on a narrow screen rather than reflowing into a block
+   that pushes the register itself below the fold. */
+.eq-tiles{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.eq-tile{flex:0 0 auto;min-width:118px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:11px 14px 10px;border:1px solid var(--c100);border-radius:12px;background:var(--white);
+  cursor:pointer;text-align:left;transition:border-color .15s,background .15s,box-shadow .15s}
+.eq-tile:hover{border-color:var(--c200);box-shadow:var(--sh-sm)}
+.eq-tile.active{background:var(--c900);border-color:var(--c900)}
+.eq-tile-ic{display:block;height:16px;margin-bottom:3px;color:var(--c400)}
+.eq-tile-ic svg{width:16px;height:16px}
+.eq-tile-n{font-size:22px;font-weight:800;color:var(--c900);line-height:1.15;font-variant-numeric:tabular-nums}
+.eq-tile-l{font-size:12px;font-weight:700;color:var(--c700)}
+.eq-tile-s{font-size:10.5px;color:var(--c400)}
+.eq-tile.active .eq-tile-n,.eq-tile.active .eq-tile-l{color:#fff}
+.eq-tile.active .eq-tile-s,.eq-tile.active .eq-tile-ic{color:rgba(255,255,255,.6)}
+/* Same colour language as the chips on the cards — blue desktop, purple laptop, teal monitor — so a
+   tile and the chips it selects are recognisably the same thing. */
+.eq-tile.k-desktop .eq-tile-ic{color:#1D4ED8}
+.eq-tile.k-laptop .eq-tile-ic{color:#6D28D9}
+.eq-tile.k-monitor .eq-tile-ic{color:var(--teal)}
+.eq-tile.warn .eq-tile-ic{color:var(--amber)}
+.eq-tile.warn .eq-tile-n{color:var(--amber)}
+.eq-tile.warn.active{background:var(--amber);border-color:var(--amber)}
+.eq-tile.warn.active .eq-tile-n{color:#fff}
+
+/* The "⋯" menu — adding a row, importing a file and printing are monthly jobs on a daily screen. */
+.eq-more{position:relative;flex:none}
+.eq-more-btn{padding:8px 10px}
+.eq-more-back{position:fixed;inset:0;z-index:24}
+.eq-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:25;min-width:170px;
+  background:var(--white);border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh);padding:5px}
+.eq-more-menu button{display:block;width:100%;text-align:left;border:none;background:transparent;
+  padding:9px 11px;border-radius:8px;font-size:13px;font-weight:600;color:var(--c700);cursor:pointer}
+.eq-more-menu button:hover:not(:disabled){background:var(--c50);color:var(--c900)}
+.eq-more-menu button:disabled{color:var(--c400);cursor:default}
+
+/* ── Cards, gathered by site ──────────────────────────────────────────────────────────────────── */
+.eq-groups{display:flex;flex-direction:column;gap:26px}
+.eq-group-h{display:flex;align-items:center;gap:9px;margin:0 0 11px;
+  font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c500)}
+.eq-group-h::after{content:'';flex:1;height:1px;background:var(--c100)}
+.eq-group-n{order:3;flex:none;background:var(--c100);color:var(--c600);border-radius:999px;
+  padding:1px 8px;font-size:11px;font-weight:700;letter-spacing:0}
+
 .eq-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* Segmented control — two states of one thing, so they share a border rather than being two buttons. */
 .eq-view{display:inline-flex;border:1px solid var(--c200);border-radius:10px;overflow:hidden;background:var(--white)}
 .eq-view button{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
-  padding:8px 12px;font-size:12px;font-weight:700;color:var(--c500);cursor:pointer;transition:background .15s,color .15s}
+  padding:9px 11px;font-size:12px;font-weight:700;color:var(--c500);cursor:pointer;transition:background .15s,color .15s}
 .eq-view button+button{border-left:1px solid var(--c200)}
 .eq-view button:hover{background:var(--c50);color:var(--c700)}
 .eq-view button.active{background:var(--c900);color:#fff}
@@ -689,4 +750,28 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 @media(max-width:600px){
   .eq-grid{grid-template-columns:1fr}
   .eq-drawer{width:100vw}
+}
+
+
+/* ── Print ─────────────────────────────────────────────────────────────────────────────────────
+   The register gets asked for on paper. Everything that only works with a cursor comes off: the
+   sidebar and top bar, the search, the filter tiles, the row menu. What is left is the thing itself
+   — sites as headings, a card per person — in ink-on-white, with cards kept whole across a page
+   break, because a person's kit split over two sheets is the one way this document fails at its job. */
+@media print{
+  .sidebar,.topbar,.eq-head-top,.eq-tiles,.eq-head-foot,.eq-more,.eq-view,
+  .eq-backdrop,.eq-drawer,.eq-flag{display:none!important}
+  .main{margin-left:0}
+  .content{padding:0}
+  body,.main{background:#fff}
+  .eq-head{border:0;box-shadow:none;padding:0;margin:0 0 10px}
+  .eq-groups{gap:16px}
+  .eq-group{break-inside:auto}
+  .eq-group-h{color:#000;margin-bottom:8px}
+  .eq-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .eq-card{break-inside:avoid;box-shadow:none;border-color:#BBB;padding:10px 12px;transform:none}
+  .eq-kit-chip{background:transparent!important;border:1px solid #BBB!important;color:#000!important}
+  .eq-kit-chip svg{color:#000!important}
+  .eq-av{background:#EEE!important;color:#000!important}
+  .eq-nm,.eq-pos{-webkit-line-clamp:unset;line-clamp:unset;display:block}
 }

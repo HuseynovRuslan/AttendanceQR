@@ -4,21 +4,20 @@ import {
   createEquipment,
   deleteEquipment,
   getEquipment,
-  getEquipmentSummary,
   importEquipment,
   updateEquipment,
   type EquipmentInput,
   type EquipmentRecord,
-  type EquipmentSummary,
   type ImportResult,
 } from '../../api/equipment'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
-import { hasKind, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
+import { countKit, hasKind, KIT_LABEL, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
 import {
+  IconAlert,
   IconBriefcase,
   IconCheck,
   IconDesktop,
-  IconDownload,
+  IconDots,
   IconGrid,
   IconLaptop,
   IconMapPin,
@@ -81,16 +80,6 @@ const KIT_ICON: Record<KitKind, typeof IconDesktop> = {
   other: IconBriefcase,
 }
 
-/** Filter chips. `unlinked` is not a kind of kit — it is the register's staleness against the staff list. */
-const FILTERS: { key: KitKind | 'all' | 'unlinked'; label: string }[] = [
-  { key: 'all', label: 'Hamısı' },
-  { key: 'desktop', label: 'Sistem bloku' },
-  { key: 'laptop', label: 'Noutbuk' },
-  { key: 'monitor', label: 'Monitor' },
-  { key: 'printer', label: 'Printer' },
-  { key: 'unlinked', label: 'Bağlanmayıb' },
-]
-
 /** Two letters for the avatar. Azerbaijani casing, so «i» becomes «İ» and not «I». */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -151,20 +140,27 @@ function KitChips({ row }: { row: EquipmentRecord }) {
   )
 }
 
-/** One block of the detail panel: a heading, and the register's own words underneath it. */
+/**
+ * One block of the detail panel: a heading, and the register's own words underneath it.
+ *
+ * Renders nothing when the column is empty. All four blocks used to show unconditionally, and most
+ * lines fill two of them — so the panel was half placeholder, and "yazılmayıb" three times over is
+ * three things to read and discard before reaching the one fact you opened the panel for. Same call
+ * the dashboard made about zeroes.
+ */
 function Spec({ title, value }: { title: string; value: string | null }) {
   const written = value?.trim()
+  if (!written) return null
   return (
     <div className="eq-spec">
       <div className="eq-spec-t">{title}</div>
-      <div className={`eq-spec-v${written ? '' : ' none'}`}>{written || 'yazılmayıb'}</div>
+      <div className="eq-spec-v">{written}</div>
     </div>
   )
 }
 
 export function EquipmentPage() {
   const [rows, setRows] = useState<EquipmentRecord[]>([])
-  const [summary, setSummary] = useState<EquipmentSummary | null>(null)
   const [employees, setEmployees] = useState<AdminEmployee[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -173,8 +169,8 @@ export function EquipmentPage() {
   const [imported, setImported] = useState<ImportResult | null>(null)
 
   const [search, setSearch] = useState('')
-  const [q, setQ] = useState('')
   const [view, setView] = useState<'cards' | 'table'>('cards')
+  const [menu, setMenu] = useState(false)
   const [filter, setFilter] = useState<KitKind | 'all' | 'unlinked'>('all')
   const [area, setArea] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
@@ -185,19 +181,25 @@ export function EquipmentPage() {
 
   const fileInput = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), 300)
-    return () => clearTimeout(t)
-  }, [search])
-
+  /**
+   * The whole register, once — search and every filter are applied here rather than on the server.
+   *
+   * It used to send the search term as `q` and re-fetch on every pause in typing. That has to change
+   * for the headline band to mean anything: totals computed from a filtered list would fall as you
+   * typed, so "55 sistem bloku" would silently become "3 sistem bloku" and still look like the
+   * company's holding. The band must count the register, not the search.
+   *
+   * Affordable because the page has no pagination and never had: it already loaded every row. This
+   * is one fetch instead of one per keystroke-pause, and the search is now instant. The server keeps
+   * its `q` support for other callers.
+   */
   async function load() {
-    const [list, stats] = await Promise.all([getEquipment(q), getEquipmentSummary()])
+    const list = await getEquipment()
     if (list.status === 200 && Array.isArray(list.data)) setRows(list.data)
-    if (stats.status === 200 && stats.data) setSummary(stats.data)
     setLoaded(true)
   }
 
-  useEffect(() => { void load() }, [q])
+  useEffect(() => { void load() }, [])
 
   useEffect(() => {
     void getEmployees().then((r) => {
@@ -224,15 +226,51 @@ export function EquipmentPage() {
     [rows],
   )
 
-  const visible = useMemo(
-    () => rows.filter((r) => {
+  /** What the company holds, counted over the WHOLE register — never over what is on screen. */
+  const totals = useMemo(() => countKit(rows), [rows])
+  const unlinked = useMemo(() => rows.filter((r) => !r.employeeId).length, [rows])
+
+  const visible = useMemo(() => {
+    // Same columns the server's `q` searched, so moving the search here changed where it runs and
+    // nothing about what it finds.
+    const needle = search.trim().toLocaleLowerCase('az')
+    const matches = (r: EquipmentRecord) =>
+      !needle
+      || [r.fullName, r.position, r.area, r.equipment, r.systemUnit, r.monitor, r.otherEquipment]
+        .some((v) => v?.toLocaleLowerCase('az').includes(needle))
+
+    return rows.filter((r) => {
+      if (!matches(r)) return false
       if (area && r.area?.trim() !== area) return false
       if (filter === 'all') return true
       if (filter === 'unlinked') return !r.employeeId
       return hasKind(r, filter)
-    }),
-    [rows, filter, area],
-  )
+    })
+  }, [rows, filter, area, search])
+
+  /**
+   * The cards, gathered under the place they work.
+   *
+   * A flat wall of 80 identical cards is a list you scroll rather than a picture you read, and the
+   * register's own organising fact is the site — «Mərkəz ofis», «Bərpa işləri». The area filter
+   * already existed, but a filter asks you to pick one place before it shows you anything; a heading
+   * shows you all of them at once. Rows with no site given go last, under their own heading, rather
+   * than being scattered through the others.
+   */
+  const groups = useMemo(() => {
+    const NO_AREA = 'Ərazi yazılmayıb'
+    const by = new Map<string, EquipmentRecord[]>()
+    for (const r of visible) {
+      const key = r.area?.trim() || NO_AREA
+      const list = by.get(key)
+      if (list) list.push(r)
+      else by.set(key, [r])
+    }
+    return [...by.entries()]
+      .map(([area, rows]) => ({ area, rows }))
+      .sort((a, b) =>
+        a.area === NO_AREA ? 1 : b.area === NO_AREA ? -1 : a.area.localeCompare(b.area, 'az'))
+  }, [visible])
 
   // The panel reads from `rows`, not from a copy taken when it opened — otherwise a save leaves the
   // old text sitting on screen next to a "yeniləndi" message.
@@ -334,55 +372,43 @@ export function EquipmentPage() {
 
   return (
     <div>
-      <div className="stat-grid">
-        <div className="stat-card blue">
-          <div className="stat-lbl">Nəfər</div>
-          <div className="stat-val">{summary?.total ?? '—'}</div>
-          <div className="stat-sub">siyahıdakı adam sayı</div>
-        </div>
-        <div className="stat-card leaf">
-          <div className="stat-lbl">İşçi ilə bağlı</div>
-          <div className="stat-val">{summary?.linked ?? '—'}</div>
-          <div className="stat-sub">profilində də görünür</div>
-        </div>
-        <div className="stat-card amber">
-          <div className="stat-lbl">Bağlanmayıb</div>
-          <div className="stat-val">{summary?.unlinked ?? '—'}</div>
-          <div className="stat-sub">adı işçi siyahısında yoxdur</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-lbl">Sistem bloku</div>
-          <div className="stat-val">{summary?.withDesktop ?? '—'}</div>
-          <div className="stat-sub">masaüstü kompüteri olan</div>
-        </div>
-        <div className="stat-card purple">
-          <div className="stat-lbl">Ərazi</div>
-          <div className="stat-val">{summary?.areas ?? '—'}</div>
-          <div className="stat-sub">ofis və sahə sayı</div>
-        </div>
-      </div>
-
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div className="eq-toolbar">
+      <div className="card card-pad eq-head">
+        <div className="eq-head-top">
+          <div className="eq-head-count">
+            <b>{rows.length}</b> nəfər
+            {areas.length > 0 && <> <span className="eq-dot">·</span> <b>{areas.length}</b> ərazi</>}
+          </div>
           <input
-            className="inp"
-            style={{ flex: '1 1 260px', minWidth: 200 }}
+            className="inp eq-search"
             placeholder="Ad, vəzifə, ərazi, avadanlıq, «RTX 4090»…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <div className="eq-view" role="group" aria-label="Görünüş">
-            <button type="button" className={view === 'cards' ? 'active' : ''} onClick={() => setView('cards')}>
-              <IconGrid /> Kart
-            </button>
-            <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}>
-              <IconTable /> Cədvəl
-            </button>
+            <button type="button" className={view === 'cards' ? 'active' : ''} onClick={() => setView('cards')}
+              title="Kart görünüşü"><IconGrid /></button>
+            <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}
+              title="Cədvəl görünüşü — fayl ilə tutuşdurmaq üçün"><IconTable /></button>
           </div>
-          <button className="btn btn-primary" onClick={openNew}>Yeni qeyd</button>
-          <button className="btn" disabled={busy} onClick={() => fileInput.current?.click()}>
-            <IconDownload /> Excel-dən idxal
-          </button>
+          {/* Editing the register is a once-a-month job and printing it is a once-a-quarter one;
+              reading it is daily. The three of them used to sit across the top with equal weight. */}
+          <div className="eq-more">
+            <button className="btn eq-more-btn" onClick={() => setMenu((m) => !m)} aria-label="Digər əməliyyatlar">
+              <IconDots />
+            </button>
+            {menu && (
+              <>
+                <div className="eq-more-back" onClick={() => setMenu(false)} />
+                <div className="eq-more-menu">
+                  <button onClick={() => { setMenu(false); openNew() }}>Yeni qeyd</button>
+                  <button disabled={busy} onClick={() => { setMenu(false); fileInput.current?.click() }}>
+                    Excel-dən idxal
+                  </button>
+                  <button onClick={() => { setMenu(false); window.print() }}>Çap et</button>
+                </div>
+              </>
+            )}
+          </div>
           <input
             ref={fileInput}
             type="file"
@@ -392,23 +418,62 @@ export function EquipmentPage() {
           />
         </div>
 
-        <div className="divider" />
-
-        <div className="chip-row" style={{ marginBottom: 0 }}>
-          {FILTERS.map((f) => (
+        {/*
+          What the company holds — and the filter, in the same control.
+          The two used to be separate rows naming the same categories, one counting and one filtering.
+          They are one row now, which removes a row of chrome and puts the number that was missing
+          altogether — how much kit there IS, rather than how many rows are tidy — at the top of the
+          screen where somebody looking for it would start.
+        */}
+        <div className="eq-tiles" role="group" aria-label="Avadanlıq üzrə süzgəc">
+          <button
+            type="button"
+            className={`eq-tile${filter === 'all' ? ' active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            <span className="eq-tile-n">{rows.length}</span>
+            <span className="eq-tile-l">Hamısı</span>
+            <span className="eq-tile-s">bütün qeydlər</span>
+          </button>
+          {totals.map((t) => {
+            const Icon = KIT_ICON[t.kind]
+            return (
+              <button
+                key={t.kind}
+                type="button"
+                className={`eq-tile k-${t.kind}${filter === t.kind ? ' active' : ''}`}
+                onClick={() => setFilter(filter === t.kind ? 'all' : t.kind)}
+              >
+                <span className="eq-tile-ic"><Icon /></span>
+                <span className="eq-tile-n">{t.devices}</span>
+                <span className="eq-tile-l">{KIT_LABEL[t.kind]}</span>
+                <span className="eq-tile-s">{t.people} nəfərdə</span>
+              </button>
+            )
+          })}
+          {unlinked > 0 && (
             <button
-              key={f.key}
               type="button"
-              className={`chip${filter === f.key ? ' active' : ''}`}
-              onClick={() => setFilter(f.key)}
+              className={`eq-tile warn${filter === 'unlinked' ? ' active' : ''}`}
+              onClick={() => setFilter(filter === 'unlinked' ? 'all' : 'unlinked')}
             >
-              {f.label}
+              <span className="eq-tile-ic"><IconAlert /></span>
+              <span className="eq-tile-n">{unlinked}</span>
+              <span className="eq-tile-l">Bağlanmayıb</span>
+              <span className="eq-tile-s">işçi siyahısında yoxdur</span>
             </button>
-          ))}
+          )}
+        </div>
+
+        <div className="eq-head-foot">
+          {/* Said once, plainly. The alternative is a screen that either lies by rounding down or
+              prints "1 monitor" on a line that never claimed a number. */}
+          <span className="muted">
+            Saylar reyestrin mətnindən oxunur; say yazılmayıbsa 1 götürülür — faktiki miqdar bundan az deyil.
+          </span>
           {areas.length > 1 && (
             <select
-              className="inp"
-              style={{ width: 'auto', minWidth: 150, padding: '6px 10px', fontSize: 12 }}
+              className="inp eq-area-pick"
               value={area}
               onChange={(e) => setArea(e.target.value)}
             >
@@ -416,15 +481,11 @@ export function EquipmentPage() {
               {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
-          <span className="muted" style={{ fontSize: 12, marginLeft: 'auto', alignSelf: 'center' }}>
-            {visible.length} / {rows.length}
-          </span>
+          {visible.length !== rows.length && (
+            <span className="muted eq-count">{visible.length} / {rows.length}</span>
+          )}
         </div>
 
-        <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-          İdxal «Sıra №» üzrə işləyir: eyni faylı yenidən yükləsəniz sətirlər təzələnir, təkrarlanmır.
-          Faylda olmayan sətirlər silinmir.
-        </div>
         {msg && <div className="fb fb-ok" style={{ marginTop: 12 }}><IconCheck /><span>{msg}</span></div>}
         {err && <div className="fb fb-err" style={{ marginTop: 12 }}><IconX /><span>{err}</span></div>}
         {imported && (
@@ -433,6 +494,13 @@ export function EquipmentPage() {
             <span>
               <b>{imported.added}</b> yeni sətir əlavə edildi, <b>{imported.updated}</b> sətir yeniləndi.
               {' '}<b>{imported.linked}</b> ad işçi siyahısı ilə uyğunlaşdı.
+              {/* Where the explanation belongs: next to the numbers it explains, at the one moment
+                  somebody is looking at them. It used to sit above the whole screen, every day, for
+                  the sake of the once-a-month upload. */}
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                İdxal «Sıra №» üzrə işləyir — eyni faylı yenidən yükləsəniz sətirlər təzələnir,
+                təkrarlanmır. Faylda olmayan sətirlər silinmir.
+              </div>
               {imported.unmatched.length > 0 && (
                 <>
                   <div style={{ marginTop: 6 }}>
@@ -559,31 +627,45 @@ export function EquipmentPage() {
       )}
 
       {view === 'cards' ? (
-        <div className="eq-grid">
-          {visible.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              className={`eq-card${row.employeeId ? '' : ' unlinked'}`}
-              onClick={() => setOpenId(row.id)}
-            >
-              <span className="eq-card-head">
-                <span className="eq-av">{initials(row.fullName)}</span>
-                <span className="eq-id">
-                  <span className="eq-nm">{row.fullName}</span>
-                  <Who position={row.position} area={row.area} />
-                </span>
-                <span className="eq-no">{row.rowNo}</span>
-              </span>
-              <KitChips row={row} />
-              {!row.employeeId && <span className="tag eq-flag">işçi siyahısında yoxdur</span>}
-            </button>
+        <div className="eq-groups">
+          {groups.map((g) => (
+            <section key={g.area} className="eq-group">
+              {/* Headings only when there is more than one place to tell apart. A single heading over
+                  everything is a label, not a structure. */}
+              {groups.length > 1 && (
+                <h2 className="eq-group-h">
+                  <span>{g.area}</span>
+                  <span className="eq-group-n">{g.rows.length}</span>
+                </h2>
+              )}
+              <div className="eq-grid">
+                {g.rows.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className={`eq-card${row.employeeId ? '' : ' unlinked'}`}
+                    onClick={() => setOpenId(row.id)}
+                  >
+                    <span className="eq-card-head">
+                      <span className="eq-av">{initials(row.fullName)}</span>
+                      <span className="eq-id">
+                        <span className="eq-nm">{row.fullName}</span>
+                        <Who position={row.position} area={groups.length > 1 ? null : row.area} />
+                      </span>
+                      <span className="eq-no">{row.rowNo}</span>
+                    </span>
+                    <KitChips row={row} />
+                    {!row.employeeId && <span className="tag eq-flag">işçi siyahısında yoxdur</span>}
+                  </button>
+                ))}
+              </div>
+            </section>
           ))}
           {loaded && visible.length === 0 && (
             <div className="eq-none">
               {rows.length === 0
-                ? (q ? 'Bu şərtlərə uyğun qeyd tapılmadı.' : 'Siyahı boşdur — «Excel-dən idxal» ilə mövcud faylı yükləyin.')
-                : 'Bu süzgəcə uyğun qeyd yoxdur.'}
+                ? 'Siyahı boşdur — «⋯ → Excel-dən idxal» ilə mövcud faylı yükləyin.'
+                : 'Bu şərtlərə uyğun qeyd tapılmadı.'}
             </div>
           )}
         </div>
@@ -631,8 +713,8 @@ export function EquipmentPage() {
                 <tr>
                   <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                     {rows.length === 0
-                      ? (q ? 'Bu şərtlərə uyğun sətir tapılmadı.' : 'Siyahı boşdur — «Excel-dən idxal» ilə mövcud faylı yükləyin.')
-                      : 'Bu süzgəcə uyğun sətir yoxdur.'}
+                      ? 'Siyahı boşdur — «⋯ → Excel-dən idxal» ilə mövcud faylı yükləyin.'
+                      : 'Bu şərtlərə uyğun sətir tapılmadı.'}
                   </td>
                 </tr>
               )}

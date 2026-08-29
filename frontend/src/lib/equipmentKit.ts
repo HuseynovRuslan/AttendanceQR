@@ -163,3 +163,35 @@ export function kitLabel(item: KitItem): string {
 export function hasKind(row: KitSource, kind: KitKind): boolean {
   return readKit(row).some((i) => i.kind === kind)
 }
+
+/** What the whole register holds, per kind — the headline band. */
+export interface KitTotals {
+  kind: KitKind
+  /** How many register lines mention this kind. Exact: it is a count of rows, not of things. */
+  people: number
+  /**
+   * How many actual devices, AS A LOWER BOUND.
+   *
+   * A line that writes "2 ədəd monitor" contributes 2; a line that just says "monitor" contributes 1,
+   * because a mention without a number is still at least one device. So this is a floor, never an
+   * estimate — the register may describe more, it cannot describe fewer. The screen says "ən azı"
+   * next to it, and that wording is the reason this is allowed to exist at all: the same rule that
+   * forbids inventing "1 monitor" on a card permits summing minimums, as long as the sum is labelled
+   * as the minimum it is.
+   */
+  devices: number
+}
+
+export function countKit(rows: KitSource[]): KitTotals[] {
+  const acc = new Map<KitKind, { people: number; devices: number }>()
+
+  for (const row of rows)
+    for (const item of readKit(row)) {
+      const t = acc.get(item.kind) ?? { people: 0, devices: 0 }
+      t.people += 1
+      t.devices += item.count ?? 1
+      acc.set(item.kind, t)
+    }
+
+  return ORDER.filter((k) => acc.has(k)).map((kind) => ({ kind, ...acc.get(kind)! }))
+}
