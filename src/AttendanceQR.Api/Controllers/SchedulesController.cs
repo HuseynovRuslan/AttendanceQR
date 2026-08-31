@@ -94,6 +94,9 @@ public class SchedulesController : ControllerBase
             return BadRequest(new { error = locationError });
         if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+
+        if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
+            return BadRequest(new { error = dayHoursError });
         _db.Schedules.Add(schedule);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
@@ -118,6 +121,9 @@ public class SchedulesController : ControllerBase
             return BadRequest(new { error = locationError });
         if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+
+        if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
+            return BadRequest(new { error = dayHoursError });
 
         // Moving a shift to a branch strands anyone already on it who works somewhere else — their
         // hours would come from a shift their branch no longer offers. Refused with the count, the
@@ -197,5 +203,11 @@ public class SchedulesController : ControllerBase
         workCycleAnchor = s.WorkCycleAnchor,
         // Convenience for the UI so it can badge night schedules without re-deriving.
         isOvernight = s.ShiftEnd < s.ShiftStart,
+        // Days with their own hours, keyed by day number, so the form can round-trip them without
+        // parsing the stored string itself.
+        dayHours = AttendanceQR.Application.Reporting.DayHours.Parse(s.DayHours)
+            .ToDictionary(
+                kv => ((int)kv.Key).ToString(),
+                kv => new { start = kv.Value.Start.ToString(@"HH\:mm"), end = kv.Value.End.ToString(@"HH\:mm") }),
     };
 }

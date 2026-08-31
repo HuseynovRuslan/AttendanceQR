@@ -195,8 +195,12 @@ public class AttendanceController : ControllerBase
             var shift = EffectiveShift.Resolve(
                 profile.WorkStart, profile.WorkEnd, profile.WorkCycleDays, profile.WorkCycleOnDays,
                 profile.WorkCycleAnchor, sched, loc);
-            shiftStart = shift.Start.ToString("HH:mm");
-            shiftEnd = shift.End.ToString("HH:mm");
+            // Today's hours: the app prints these on the check-in card and times the check-out
+            // reminder against them, so on a day the crew starts later it must say so.
+            var todayHours = shift.HoursOn(DateOnly.FromDateTime(
+                TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone)));
+            shiftStart = todayHours.Start.ToString("HH:mm");
+            shiftEnd = todayHours.End.ToString("HH:mm");
         }
 
         // Check-ins this month whose photo showed no face. Told to the employee themselves, not only
@@ -656,7 +660,7 @@ public class AttendanceController : ControllerBase
             // additive — the branch only runs for an overnight shift (end earlier than start) scanned
             // before noon, so ordinary day shifts are completely unaffected.
             var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
-            if (shift.IsOvernight && nowLocal.Hour < 12)
+            if (shift.IsOvernightOn(today.AddDays(-1)) && nowLocal.Hour < 12)
             {
                 var yesterday = today.AddDays(-1);
                 var openNight = await _db.AttendanceRecords.FirstOrDefaultAsync(r =>
@@ -727,7 +731,7 @@ public class AttendanceController : ControllerBase
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
-            Status = DetermineStatus(shift.Start, shift.LateThresholdMinutes, nowUtc, _timeZone),
+            Status = DetermineStatus(shift.HoursOn(today).Start, shift.LateThresholdMinutes, nowUtc, _timeZone),
             WasOffline = wasOffline,
             SubmittedAtUtc = wasOffline ? submittedAtUtc : null,
             // The position their scan passed the geofence with — for the dashboard map.
@@ -882,7 +886,8 @@ public class AttendanceController : ControllerBase
             recordId = record.Id,
             checkOutAtUtc = nowUtc,
             // Tells the app to prompt for an early-departure reason (skippable).
-            earlyDeparture = IsEarlyDeparture(shift.End, shift.LateThresholdMinutes, nowUtc, _timeZone)
+            earlyDeparture = IsEarlyDeparture(
+                shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone)
         });
     }
 

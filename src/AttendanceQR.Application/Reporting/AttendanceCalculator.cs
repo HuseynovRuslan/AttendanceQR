@@ -204,9 +204,6 @@ public static class AttendanceCalculator
         AttendanceRecord? record, EffectiveShift shift, TimeZoneInfo timeZone,
         bool isWorkingDay, DailySummaryStatus noRecordStatus)
     {
-        var shiftStart = shift.Start;
-        var shiftEnd = shift.End;
-
         // No record → the employee never showed up (or it wasn't a working day / they were on
         // leave — whichever the caller determined via noRecordStatus).
         if (record is null || record.CheckInAtUtc is null)
@@ -215,6 +212,12 @@ public static class AttendanceCalculator
         // Checked in but never out.
         if (record.CheckOutAtUtc is null)
             return new DayComputation(DailySummaryStatus.Incomplete, 0, 0, 0);
+
+        // The hours THIS DAY was worked to, not the shift's ordinary ones: a crew whose weekend
+        // starts an hour later would otherwise be judged an hour late every Saturday and Sunday.
+        // Resolved from the record's own date, which is why it sits below the null checks — with no
+        // record there is no day to ask about, and nothing here is read.
+        var (shiftStart, shiftEnd) = shift.HoursOn(record.AttendanceDate);
 
         // Timezone: CheckInAtUtc is a UTC instant; ShiftStart/ShiftEnd are LOCAL wall-clock times.
         // Convert to local (Asia/Baku = UTC+4) before comparing, otherwise a 05:45Z check-in would

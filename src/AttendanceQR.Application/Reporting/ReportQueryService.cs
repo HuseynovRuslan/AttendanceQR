@@ -803,7 +803,7 @@ public sealed class ReportQueryService : IReportQueryService
         return computed
             .Select(d =>
             {
-                var status = BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal);
+                var status = BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal, day);
                 // A field check-in with no office record → "Sahədə". Checked before the status is read
                 // for anything else, because ComputeDayLiveAsync now scores such a day as worked, so
                 // it arrives here as OnTime/Incomplete rather than Absent/Pending.
@@ -861,7 +861,11 @@ public sealed class ReportQueryService : IReportQueryService
         var yesterday = await ComputeDayLiveAsync(day.AddDays(-1), withoutToday, ct);
         var stillOpen = yesterday
             .Where(d => d.Record?.CheckInAtUtc is not null && d.Record.CheckOutAtUtc is null)
-            .Where(d => d.Shift.IsOvernight && WithinOvernightWindow(d.Shift, nowLocal))
+            // Yesterday's date on both counts: the shift that is still running started then, and on a
+            // schedule with per-day hours it is yesterday's pair that says whether it crosses midnight
+            // and when it ends.
+            .Where(d => d.Shift.IsOvernightOn(day.AddDays(-1))
+                        && WithinOvernightWindow(d.Shift, nowLocal, day.AddDays(-1)))
             .ToDictionary(d => d.Employee.Id);
         if (stillOpen.Count == 0)
             return computed;
@@ -886,7 +890,7 @@ public sealed class ReportQueryService : IReportQueryService
     /// untouched — this is purely how the live board labels a not-yet-due worker.
     /// </summary>
     internal static string BoardDisplayStatus(
-        DailySummaryStatus computed, EffectiveShift shift, bool isToday, TimeOnly nowLocal)
+        DailySummaryStatus computed, EffectiveShift shift, bool isToday, TimeOnly nowLocal, DateOnly date)
     {
         if (!isToday || computed != DailySummaryStatus.Absent)
             return computed.ToString();
@@ -894,7 +898,9 @@ public sealed class ReportQueryService : IReportQueryService
         // Integer minutes rather than TimeOnly.AddMinutes so a grace that would spill past midnight
         // (a shift starting at 23:5x) is capped at end-of-day instead of wrapping to 00:1x and
         // flipping the comparison. "Due" = shift start + the shift's own late threshold.
-        var startMin = (int)shift.Start.ToTimeSpan().TotalMinutes;
+        // This day's start, not the shift's ordinary one — on a day the crew starts an hour later,
+        // "not due yet" has to move with them or the board calls them absent for that hour.
+        var startMin = (int)shift.HoursOn(date).Start.ToTimeSpan().TotalMinutes;
         var dueMin = Math.Min(startMin + shift.LateThresholdMinutes, 24 * 60 - 1);
         var nowMin = (int)nowLocal.ToTimeSpan().TotalMinutes;
 
@@ -907,9 +913,9 @@ public sealed class ReportQueryService : IReportQueryService
     /// carries over until 09:00, covering both the "still working" window and a late check-out, then
     /// stops so a forgotten check-out does not linger on the board into the evening.
     /// </summary>
-    internal static bool WithinOvernightWindow(EffectiveShift shift, TimeOnly nowLocal)
+    internal static bool WithinOvernightWindow(EffectiveShift shift, TimeOnly nowLocal, DateOnly startedOn)
     {
-        var cutoff = shift.End.AddHours(2);
+        var cutoff = shift.HoursOn(startedOn).End.AddHours(2);
         // End is a morning time for an overnight shift, so the window is simply [00:00, end+2h].
         return nowLocal <= cutoff;
     }

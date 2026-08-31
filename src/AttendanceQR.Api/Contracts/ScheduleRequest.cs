@@ -14,4 +14,11 @@ public record ScheduleRequest(
     // the same pattern are two shifts anchored a day apart ("Gecə A", "Gecə B") — see Schedule.
     int? WorkCycleDays = null,
     int? WorkCycleOnDays = null,
-    DateOnly? WorkCycleAnchor = null);
+    DateOnly? WorkCycleAnchor = null,
+    // Days whose hours differ from ShiftStart/ShiftEnd, keyed by day number (Sunday=0 … Saturday=6)
+    // with "HH:mm" strings: {"6": {"start": "09:00", "end": "18:00"}}. Absent days keep the shift's
+    // ordinary hours. Null or empty clears every override. See AttendanceQR.Application DayHours.
+    Dictionary<string, DayHoursRequest>? DayHours = null);
+
+/// <summary>One day's own hours, in the same "HH:mm" the shift itself uses.</summary>
+public record DayHoursRequest(string Start, string End);

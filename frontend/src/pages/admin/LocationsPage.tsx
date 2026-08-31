@@ -150,6 +150,9 @@ export function LocationsPage() {
       workCycleDays: null,
       workCycleOnDays: null,
       workCycleAnchor: null,
+      // A shift created from a branch's form is one pair of times; per-day hours are set on the
+      // Növbələr screen, where the whole week is in view.
+      dayHours: {},
     })
     if (status === 200 && data && !('error' in data) && 'id' in data) {
       const created = data as Schedule

@@ -195,6 +195,8 @@ export interface ManagerSchedule {
   workCycleOnDays: number | null
   workCycleAnchor: string | null
   isOvernight: boolean
+  /** Days whose hours differ, keyed by day number as a string ("0" = Sunday … "6" = Saturday). */
+  dayHours: Record<string, { start: string; end: string }>
 }
 
 export function getManagerSchedules() {

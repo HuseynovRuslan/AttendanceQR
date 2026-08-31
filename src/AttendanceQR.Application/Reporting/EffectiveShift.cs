@@ -31,10 +31,35 @@ public readonly record struct EffectiveShift(
     DateOnly? CycleAnchor,
     /// <summary>Name of the schedule this came from, or null when it came from the employee or the
     /// location. For display only — screens show "Gecə A" rather than a pair of times.</summary>
-    string? ScheduleName)
+    string? ScheduleName,
+    /// <summary>
+    /// Days whose hours differ from <see cref="Start"/>/<see cref="End"/> — see
+    /// <see cref="DayHours"/>. Only a schedule can carry them; a personal override or a location is
+    /// one pair of times and always was.
+    /// </summary>
+    string? DayHoursSpec = null)
 {
-    /// <summary>True when this shift crosses midnight (22:00–06:00), the convention used everywhere.</summary>
+    /// <summary>True when the shift's ORDINARY hours cross midnight (22:00–06:00). A day with its own
+    /// hours may differ — ask <see cref="IsOvernightOn"/> when a date is in hand.</summary>
     public bool IsOvernight => End < Start;
+
+    /// <summary>
+    /// The hours that apply on this particular date.
+    ///
+    /// Everything that judges a day — how late somebody was, when to remind them to check out,
+    /// whether they are still inside an overnight window — has to ask this rather than reading
+    /// Start/End, or a crew whose weekend starts an hour later is measured against the wrong clock
+    /// every Saturday and Sunday.
+    /// </summary>
+    public (TimeOnly Start, TimeOnly End) HoursOn(DateOnly date)
+        => DayHours.Parse(DayHoursSpec).TryGetValue(date.DayOfWeek, out var hours) ? hours : (Start, End);
+
+    /// <summary>Does the shift cross midnight on this date? A day with its own hours decides for itself.</summary>
+    public bool IsOvernightOn(DateOnly date)
+    {
+        var (start, end) = HoursOn(date);
+        return end < start;
+    }
 
     /// <summary>
     /// Whether the shift is scheduled to work on <paramref name="date"/>, before company holidays are
@@ -67,7 +92,7 @@ public readonly record struct EffectiveShift(
             return new EffectiveShift(
                 schedule.ShiftStart, schedule.ShiftEnd, schedule.LateThresholdMinutes,
                 schedule.WorkDaysMask, schedule.WorkCycleDays, schedule.WorkCycleOnDays,
-                schedule.WorkCycleAnchor, schedule.Name);
+                schedule.WorkCycleAnchor, schedule.Name, schedule.DayHours);
 
         return new EffectiveShift(
             employeeStart ?? location.ShiftStart,

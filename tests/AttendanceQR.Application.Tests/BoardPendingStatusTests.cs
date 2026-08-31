@@ -26,9 +26,12 @@ public class BoardPendingStatusTests
     private static EffectiveShift Day() =>
         EffectiveShift.Resolve(new TimeOnly(9, 0), new TimeOnly(18, 0), null, 1, null, null, Loc());
 
+    /// <summary>A Wednesday — these shifts have no per-day hours, so any weekday reads the same.</summary>
+    private static readonly DateOnly Day1 = new(2026, 9, 2);
+
     private static string Status(EffectiveShift shift, int hour, int minute, bool isToday = true) =>
         ReportQueryService.BoardDisplayStatus(
-            DailySummaryStatus.Absent, shift, isToday, new TimeOnly(hour, minute));
+            DailySummaryStatus.Absent, shift, isToday, new TimeOnly(hour, minute), Day1);
 
     [Theory]
     // Night shift 21:00–07:00 — pending all day until it is nearly due, then a real absence.
@@ -61,6 +64,6 @@ public class BoardPendingStatusTests
         // never touched — those are already unambiguous.
         var s = Day();
         foreach (var st in new[] { DailySummaryStatus.OnTime, DailySummaryStatus.DayOff, DailySummaryStatus.OnLeave, DailySummaryStatus.Incomplete })
-            Assert.Equal(st.ToString(), ReportQueryService.BoardDisplayStatus(st, s, true, new TimeOnly(6, 0)));
+            Assert.Equal(st.ToString(), ReportQueryService.BoardDisplayStatus(st, s, true, new TimeOnly(6, 0), Day1));
     }
 }

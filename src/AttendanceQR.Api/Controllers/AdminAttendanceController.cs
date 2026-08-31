@@ -118,7 +118,8 @@ public class AdminAttendanceController : ControllerBase
                 ? EffectiveShift.Resolve(null, null, null, 1, null, null, location)
                 : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location);
             record.Status = AttendanceController.DetermineStatus(
-                shift.Start, shift.LateThresholdMinutes, request.CheckInAtUtc.Value, _timeZone);
+                shift.HoursOn(record.AttendanceDate).Start, shift.LateThresholdMinutes,
+                request.CheckInAtUtc.Value, _timeZone);
         }
         if (request.CheckOutAtUtc is not null)
             record.CheckOutAtUtc = request.CheckOutAtUtc;
@@ -167,7 +168,8 @@ public class AdminAttendanceController : ControllerBase
             CheckOutAtUtc = request.CheckOutAtUtc,
             ManualByEmployeeId = requesterId, // created by hand, not a scan
             Status = AttendanceController.DetermineStatus(
-                EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location).Start,
+                EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location)
+                    .HoursOn(request.Date).Start,
                 location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
         };
         _db.AttendanceRecords.Add(record);

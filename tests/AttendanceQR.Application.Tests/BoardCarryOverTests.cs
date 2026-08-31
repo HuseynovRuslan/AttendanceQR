@@ -51,7 +51,7 @@ public class BoardCarryOverTests
     [InlineData(13, 0, false)] // afternoon — must never linger this far
     public void OvernightWindow_EndsAtShiftEndPlusTwoHours(int hour, int minute, bool expected)
     {
-        Assert.Equal(expected, ReportQueryService.WithinOvernightWindow(Night(), new TimeOnly(hour, minute)));
+        Assert.Equal(expected, ReportQueryService.WithinOvernightWindow(Night(), new TimeOnly(hour, minute), new DateOnly(2026, 9, 2)));
     }
 
     [Fact]

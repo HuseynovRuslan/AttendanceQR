@@ -139,8 +139,10 @@ public sealed class ReminderJob : BackgroundService
                         employee,
                         employee.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null,
                         location);
-                    var shiftStart = shift.Start;
-                    var shiftEnd = shift.End;
+                    // Today's hours. The comment above is the reason this matters: the nudge is timed
+                    // ten minutes before the end of the shift, and on a day the crew finishes to a
+                    // different clock the ordinary pair would fire at the wrong hour.
+                    var (shiftStart, shiftEnd) = shift.HoursOn(todayLocal);
                     var mine = byEmployee.GetValueOrDefault(employee.Id) ?? new List<AttendanceRecord>();
                     var todayRecord = mine.FirstOrDefault(r => r.AttendanceDate == todayUtc);
 

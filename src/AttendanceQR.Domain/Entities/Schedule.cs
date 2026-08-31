@@ -58,6 +58,18 @@ public class Schedule : ITenantScoped, IHasWorkCycle
     /// the same convention locations use.</summary>
     public TimeOnly ShiftEnd { get; set; }
 
+    /// <summary>
+    /// Days whose hours differ from <see cref="ShiftStart"/>/<see cref="ShiftEnd"/>, as
+    /// <c>6=09:00-18:00;0=09:00-18:00</c> (Sunday=0 … Saturday=6). Null when every day is the same,
+    /// which is most shifts.
+    ///
+    /// One start and one end could not describe a real crew: Heydər Əliyev Mərkəzi works 08:00–18:00
+    /// on weekdays and 09:00–18:00 at the weekend, and an employee holds one schedule, so there was
+    /// nowhere to put the second pair. Only the days that DIFFER are listed. See
+    /// AttendanceQR.Application DayHours for the format and why it is a column rather than a table.
+    /// </summary>
+    public string? DayHours { get; set; }
+
     public int LateThresholdMinutes { get; set; } = 15;
 
     /// <summary>Working-days bitmask, same layout as Location.WorkDaysMask (Sunday=0 … Saturday=6).

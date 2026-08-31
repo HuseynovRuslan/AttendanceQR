@@ -1404,6 +1404,12 @@ export interface Schedule {
   workCycleOnDays: number | null
   workCycleAnchor: string | null
   isOvernight: boolean
+  /**
+   * Days whose hours differ from shiftStart/shiftEnd, keyed by day number as a string
+   * ("0" = Sunday … "6" = Saturday — the same layout workDaysMask uses). Only the days that DIFFER
+   * appear; everything else follows the shift's own times.
+   */
+  dayHours: Record<string, { start: string; end: string }>
 }
 
 export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight' | 'locationName'>

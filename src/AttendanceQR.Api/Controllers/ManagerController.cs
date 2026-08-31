@@ -185,9 +185,24 @@ public class ManagerController : ControllerBase
                 workCycleOnDays = sc.WorkCycleOnDays,
                 workCycleAnchor = sc.WorkCycleAnchor,
                 isOvernight = sc.ShiftEnd < sc.ShiftStart,
+                // The raw column: DayHours.Parse cannot run inside the SQL projection, so it is
+                // turned into the map below, once the rows are in memory.
+                dayHoursSpec = sc.DayHours,
             })
             .ToListAsync(HttpContext.RequestAborted);
-        return Ok(rows);
+
+        // Sent back so the form can round-trip them. Without this the manager's edit screen loads a
+        // shift with no per-day hours, and saving it — changing nothing — quietly wipes the ones the
+        // admin set.
+        var shaped = rows.Select(r => new
+        {
+            r.id, r.name, r.shiftStart, r.shiftEnd, r.lateThresholdMinutes, r.workDaysMask,
+            r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor, r.isOvernight,
+            dayHours = DayHours.Parse(r.dayHoursSpec).ToDictionary(
+                kv => ((int)kv.Key).ToString(),
+                kv => new { start = kv.Value.Start.ToString(@"HH\:mm"), end = kv.Value.End.ToString(@"HH\:mm") }),
+        });
+        return Ok(shaped);
     }
 
     // POST /api/manager/schedules — a manager may define a shift. They are the person who knows what
@@ -211,6 +226,9 @@ public class ManagerController : ControllerBase
         };
         if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+
+        if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
+            return BadRequest(new { error = dayHoursError });
 
         _db.Schedules.Add(schedule);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
@@ -239,6 +257,9 @@ public class ManagerController : ControllerBase
         schedule.WorkDaysMask = request.WorkDaysMask;
         if (WorkCycle.Apply(schedule, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });
+
+        if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
+            return BadRequest(new { error = dayHoursError });
 
         await _db.SaveChangesAsync(ct);
         return Ok(new { id = schedule.Id });

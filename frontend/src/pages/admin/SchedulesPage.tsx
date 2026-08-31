@@ -62,6 +62,8 @@ type FormState = {
   lateThresholdMinutes: string
   workDaysMask: number
   cycle: WorkCycleValue
+  /** Days whose hours differ, keyed by .NET day number as a string ("0" = Sunday … "6" = Saturday). */
+  dayHours: Record<string, { start: string; end: string }>
 }
 
 const EMPTY: FormState = {
@@ -72,6 +74,7 @@ const EMPTY: FormState = {
   lateThresholdMinutes: '15',
   workDaysMask: 126,
   cycle: NO_CYCLE,
+  dayHours: {},
 }
 
 export function SchedulesPage() {
@@ -159,13 +162,30 @@ export function SchedulesPage() {
       cycle: s.workCycleDays
         ? { days: s.workCycleDays, onDays: s.workCycleOnDays ?? 1, anchor: s.workCycleAnchor ?? '' }
         : NO_CYCLE,
+      dayHours: { ...(s.dayHours ?? {}) },
     })
     setErr(null); setOk(null)
     setShowForm(true)
   }
 
   function toggleDay(bit: number) {
-    setForm((f) => ({ ...f, workDaysMask: f.workDaysMask ^ (1 << bit) }))
+    setForm((f) => {
+      const mask = f.workDaysMask ^ (1 << bit)
+      // Turning a day OFF drops its hours with it: an override on a day nobody works is invisible in
+      // the form and still in the column, waiting to surprise whoever turns the day back on.
+      const dayHours = { ...f.dayHours }
+      if ((mask & (1 << bit)) === 0) delete dayHours[String(bit)]
+      return { ...f, workDaysMask: mask, dayHours }
+    })
+  }
+
+  function setDayHours(key: string, hours: { start: string; end: string } | null) {
+    setForm((f) => {
+      const next = { ...f.dayHours }
+      if (hours) next[key] = hours
+      else delete next[key]
+      return { ...f, dayHours: next }
+    })
   }
 
   async function save() {
@@ -181,6 +201,9 @@ export function SchedulesPage() {
       workCycleDays: form.cycle.days,
       workCycleOnDays: form.cycle.days ? form.cycle.onDays : null,
       workCycleAnchor: form.cycle.days ? form.cycle.anchor || null : null,
+      // A rotation replaces the weekly calendar, so "this weekday is different" has nothing to attach
+      // to — the form hides the section then, and this makes sure a leftover cannot be saved either.
+      dayHours: form.cycle.days ? {} : form.dayHours,
     }
     const res = editingId ? await api.update(editingId, payload) : await api.create(payload)
     setSaving(false)
@@ -325,6 +348,61 @@ export function SchedulesPage() {
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Days that run to a different clock.
+              A shift held one start and one end, which cannot describe a crew that works 08:00–18:00
+              on weekdays and 09:00–18:00 at the weekend — and an employee holds one schedule, so
+              there was nowhere to put the second pair. Only the days that DIFFER are listed; every
+              other working day follows the times above.
+              Hidden under a rotation, which replaces the weekly calendar rather than layering on it. */}
+          {!form.cycle.days && (
+            <div style={{ marginBottom: 14 }}>
+              <label className="form-label">Fərqli saatlı günlər</label>
+              {Object.keys(form.dayHours).length === 0 && (
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  Hamısı yuxarıdakı saatla işləyir. Bir günün saatı fərqlidirsə, onu aşağıdan əlavə edin.
+                </div>
+              )}
+              {DAYS.map((label, i) => {
+                const key = String(BIT[i])
+                const hours = form.dayHours[key]
+                if (!hours) return null
+                return (
+                  <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                    <span className="chip active" style={{ cursor: 'default', minWidth: 46, textAlign: 'center' }}>{label}</span>
+                    <input
+                      className="inp" type="time" style={{ width: 120 }} value={hours.start}
+                      onChange={(e) => setDayHours(key, { ...hours, start: e.target.value })}
+                    />
+                    <span className="muted">–</span>
+                    <input
+                      className="inp" type="time" style={{ width: 120 }} value={hours.end}
+                      onChange={(e) => setDayHours(key, { ...hours, end: e.target.value })}
+                    />
+                    <button type="button" className="btn btn-sm" onClick={() => setDayHours(key, null)}>Sil</button>
+                  </div>
+                )
+              })}
+              {/* Only offers days the shift actually works — an override on a day off means nothing. */}
+              <select
+                className="inp"
+                style={{ width: 'auto', minWidth: 190, padding: '6px 10px', fontSize: 12, marginTop: 4 }}
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  setDayHours(e.target.value, { start: form.shiftStart, end: form.shiftEnd })
+                }}
+              >
+                <option value="">+ Fərqli saatlı gün əlavə et</option>
+                {DAYS.map((label, i) => {
+                  const key = String(BIT[i])
+                  const works = (form.workDaysMask & (1 << BIT[i])) !== 0
+                  if (!works || form.dayHours[key]) return null
+                  return <option key={key} value={key}>{label}</option>
+                })}
+              </select>
             </div>
           )}
 
