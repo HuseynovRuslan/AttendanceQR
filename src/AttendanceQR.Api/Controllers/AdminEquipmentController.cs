@@ -159,9 +159,13 @@ public class AdminEquipmentController : ControllerBase
     /// <summary>
     /// Reads the register spreadsheet and writes it into the table.
     ///
-    /// Rows are matched on "Sıra №", so re-uploading an edited file updates the lines it already has
-    /// instead of doubling the register — which is the whole point: the spreadsheet stays the working
-    /// document, and this screen stays a view of it that everyone can read.
+    /// Rows are matched on the PERSON, so re-uploading an edited file updates the lines it already
+    /// has instead of doubling the register — which is the whole point: the spreadsheet stays the
+    /// working document, and this screen stays a view of it that everyone can read.
+    ///
+    /// It matched on "Sıra №" until 2026-08-29, which quietly moved one person's equipment onto the
+    /// next person's row every time somebody inserted a line in the middle of the file. See the
+    /// comment on the match itself.
     ///
     /// Lines the file no longer contains are left alone rather than deleted. A partial file (one
     /// office's sheet, say) must not be able to wipe the rest of the register, and an admin who really
@@ -193,32 +197,53 @@ public class AdminEquipmentController : ControllerBase
 
         if (parsed.Count == 0) return Ok(new { added = 0, updated = 0, linked = 0, unmatched = Array.Empty<string>() });
 
-        // A name is matched to staff only when it is written identically (ignoring case, punctuation
-        // and repeated spaces). No fuzzy matching: the register writes surname first with a
-        // patronymic, the staff list often does not, and a near-miss would attach one person's laptops
-        // to another — a wrong link is worse than none, because nobody goes looking for it.
         var employees = await _db.Employees
             .Select(e => new { e.Id, e.FullName })
             .ToListAsync(ct);
-        var byName = new Dictionary<string, Guid>();
-        foreach (var e in employees)
-        {
-            var key = NormalizeName(e.FullName);
-            if (key.Length > 0) byName.TryAdd(key, e.Id);
-        }
 
-        var existing = await _db.EquipmentRecords.ToDictionaryAsync(r => r.RowNo, ct);
+        var existing = await _db.EquipmentRecords.ToListAsync(ct);
+        // A record is claimed once one file row has written to it, so a file that names the same
+        // person twice creates a second row instead of the two rows overwriting each other.
+        var claimed = new HashSet<Guid>();
+        var byNameAndRow = existing.ToLookup(r => (Name: PersonName.Key(r.FullName), r.RowNo));
+        var byName = existing.ToLookup(r => PersonName.Key(r.FullName));
+
         int added = 0, updated = 0, linked = 0;
         var unmatched = new List<string>();
 
         foreach (var p in parsed)
         {
-            var employeeId = byName.TryGetValue(NormalizeName(p.FullName), out var id) ? id : (Guid?)null;
+            var employeeId = PersonName.Resolve(p.FullName, employees, e => e.FullName, e => e.Id);
             if (employeeId is not null) linked++;
             else unmatched.Add(p.FullName);
 
-            if (existing.TryGetValue(p.RowNo, out var record))
+            var key = PersonName.Key(p.FullName);
+
+            // Which existing line is this?
+            //
+            // It used to be "the one with this Sıra №", and that is the one thing it must not be. The
+            // number is the line's POSITION in a spreadsheet somebody maintains by hand, and inserting
+            // a row in the middle — the ordinary way to add a new hire — renumbers everything below
+            // it. The import then walked down the file writing each person's name and kit onto the
+            // line above theirs, all the way to the bottom, and finished with `EmployeeId` untouched
+            // wherever the new name matched nobody: a row reading "Yeni İşçi", carrying Yeni İşçi's
+            // laptops, still linked to Məmmədov's staff account. Silent, and it would have shown up
+            // as one person's equipment appearing on another person's profile.
+            //
+            // The name is what identifies a line. The number is kept, but only as the order to show
+            // it in. Rows are matched on name AND number first, which settles two people who really
+            // do share a name; then on the name alone when it is unique in the table, which is what
+            // carries a person across a renumbering; and anything left is a new line. Two rows for
+            // one person is then the worst case, and a visible duplicate is a great deal better than
+            // a silent swap.
+            var record =
+                byNameAndRow[(key, p.RowNo)].FirstOrDefault(r => !claimed.Contains(r.Id))
+                ?? (byName[key].Count() == 1 ? byName[key].FirstOrDefault(r => !claimed.Contains(r.Id)) : null);
+
+            if (record is not null)
             {
+                claimed.Add(record.Id);
+                record.RowNo = p.RowNo;
                 record.FullName = p.FullName;
                 record.Position = p.Position;
                 record.Area = p.Area;
@@ -226,7 +251,9 @@ public class AdminEquipmentController : ControllerBase
                 record.SystemUnit = p.SystemUnit;
                 record.Monitor = p.Monitor;
                 record.OtherEquipment = p.OtherEquipment;
-                // Keep a link an admin made by hand when the import cannot find one itself.
+                // Keep a link an admin made by hand when the import cannot find one itself. Safe now
+                // in a way it was not before: the row is the same PERSON, so an inherited link can no
+                // longer belong to somebody else.
                 record.EmployeeId = employeeId ?? record.EmployeeId;
                 record.UpdatedAtUtc = DateTime.UtcNow;
                 updated++;
@@ -254,13 +281,6 @@ public class AdminEquipmentController : ControllerBase
     }
 
     // --- helpers -------------------------------------------------------------
-
-    /// <summary>Case- and spacing-insensitive form of a name, for exact matching only.</summary>
-    private static string NormalizeName(string? name)
-        => string.IsNullOrWhiteSpace(name)
-            ? string.Empty
-            : string.Join(' ', name.Split([' ', ',', '.', '\t'], StringSplitOptions.RemoveEmptyEntries))
-                .ToLowerInvariant();
 
     private async Task<int> NextRowNoAsync(CancellationToken ct)
         => await _db.EquipmentRecords.AnyAsync(ct)

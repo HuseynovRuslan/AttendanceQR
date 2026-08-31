@@ -24,8 +24,16 @@ public class EquipmentRecordConfiguration : IEntityTypeConfiguration<EquipmentRe
         builder.Property(r => r.Monitor).HasMaxLength(2000);
         builder.Property(r => r.OtherEquipment).HasMaxLength(2000);
 
-        // A re-import matches on this, so two lines cannot share a number.
-        builder.HasIndex(r => new { r.TenantId, r.RowNo }).IsUnique();
+        // NOT unique any more, and it cannot be.
+        //
+        // The number was the re-import's key, so uniqueness was the thing keeping it honest. The
+        // import matches on the person now (a renumbered file used to move one person's kit onto the
+        // next person's row), which leaves the number as the order to display in — and once it is
+        // only an ordering, the table has to be able to hold a repeat. Inserting a line mid-file
+        // renumbers everything below it, so mid-import two rows genuinely do want number 16 for a
+        // moment; and a line the file no longer contains keeps the number it had, which a new line
+        // may legitimately be given. Uniqueness here would turn both into a failed import.
+        builder.HasIndex(r => new { r.TenantId, r.RowNo });
 
         builder.HasIndex(r => r.EmployeeId);
 
