@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   bulkPermissionAsManager,
   createManagerEmployee,
@@ -369,8 +369,13 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
             {visible.map((e) => (
               <div className="mgr-item" key={e.id}>
                 <div className="mgr-main">
+                  {/* The way into the person's card. It was reachable by typing the URL and no other
+                      way — the admin roster has linked its names since it existed, and this one never
+                      did, so from a manager's side the profile simply did not appear to exist. */}
                   <div className="mgr-name">
-                    {e.fullName}{e.fatherName ? <span className="father"> {e.fatherName}</span> : ''}
+                    <Link to={`/admin/employees/${e.id}`} className="emp-link">
+                      {e.fullName}{e.fatherName ? <span className="father"> {e.fatherName}</span> : ''}
+                    </Link>
                   </div>
                   <div className="mgr-meta">
                     {e.position || '—'}<span className="dot">·</span>{e.locationName}
