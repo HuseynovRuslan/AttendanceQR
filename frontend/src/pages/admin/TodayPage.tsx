@@ -481,11 +481,12 @@ export function TodayPage() {
                   )}
                 </td>
                 <td data-label="Foto">
-                  {/* Şəkil düyməsi üz-uyğunluğu flaqlı olanda (uyğunsuz / çoxlu üz / üz yox) — VƏ ortaq
-                      telefon icazəsi olan işçidə həmişə. İkincisi qəsdəndir: onlarda «bir telefon, bir
-                      işçi» qoruması yoxdur, geriyə qalan yeganə nəzarət üzdür, baxılmayan nəzarət isə
-                      nəzarət deyil. Qalanlarda «uyğun» olanda foto R2-dən yüklənmir (gecikmə gedir). */}
-                  {mayViewPhotos && r.hasPhoto && r.recordId && (faceIsFlagged(r.faceMatchStatus) || r.sharedDevice) ? (
+                  {/* Şəkli olan HƏR sətirdə (sahibin qərarı, 2026-08-31). Əvvəl yalnız üz-uyğunsuzluğu
+                      flaqlı və ortaq telefonlu sətirlərdə göstərilirdi; səbəb R2-dən yüklənmə gecikməsi
+                      idi, o isə burada tətbiq olunmur — şəkil YALNIZ düyməyə basanda çəkilir, düymənin
+                      özü heç nə yükləmir. Yəni məhdudiyyət xərci azaltmırdı, sadəcə adminin baxa
+                      biləcəyi sətirləri azaldırdı. Menecerdə hələ də görünmür: `mayViewPhotos`. */}
+                  {mayViewPhotos && r.hasPhoto && r.recordId ? (
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.recordId}
