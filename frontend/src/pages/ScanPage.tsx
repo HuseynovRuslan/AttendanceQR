@@ -15,8 +15,9 @@ import { reportFailure, flushFailures } from '../lib/scanFailures'
 import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/feedback'
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
-import { enqueueScan, isServerUnavailable } from '../lib/offlineQueue'
+import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { decodeJwt } from '../lib/jwt'
+import { todayStr } from '../lib/att'
 import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
@@ -321,7 +322,38 @@ export function ScanPage() {
     void startCamera()
   }
 
+  /**
+   * The day, corrected by what is still sitting on this phone.
+   *
+   * Every fallback in loadTodayStatus lands on 'none' — a timeout, a non-200, a thrown fetch — which
+   * is right when the server genuinely has nothing, and wrong in the one case that matters: the
+   * employee checked in with no signal, so the check-in is in IndexedDB and the server has never
+   * heard of it. The screen then treated their CHECK-OUT as a check-in and asked for a selfie, which
+   * is what got reported.
+   *
+   * Only ever 'none' → 'in-progress'. It must NOT go on to 'completed', however many taps are
+   * queued: 'completed' stops the camera, so a queued check-out the server later declines — too soon
+   * after the check-in, wrong device — would leave somebody standing at the poster unable to scan at
+   * all. The rule is that a scan is never blocked by anything optional, and a guess about a reply
+   * that has not arrived is as optional as it gets. Guessing "at work" costs at most a selfie nobody
+   * needed; guessing "finished" costs a day's pay.
+   */
+  function withQueued(info: TodayInfo, queued: QueuedScan[]): TodayInfo {
+    if (info.kind !== 'none') return info
+    const today = todayStr()
+    const first = queued
+      .map((q) => q.clientTimestampUtc)
+      .filter((t) => t.slice(0, 10) === today)
+      .sort()[0]
+    return first ? { kind: 'in-progress', checkInAtUtc: first } : info
+  }
+
   async function loadTodayStatus() {
+    // Scoped to the signed-in account, exactly as the drain is: on a shared brigade phone the queue
+    // holds other people's taps, and reading them as this employee's would be the same
+    // misattribution the queue's own employeeId stamp exists to prevent.
+    const queued = await scansFor(decodeJwt(getToken() ?? '')?.sub ?? null).catch(() => [] as QueuedScan[])
+    const settle = (info: TodayInfo) => setToday(withQueued(info, queued))
     try {
       // Bounded: a request that never settles used to leave `today` on 'loading' forever, and the
       // whole scan flow waits on that — the screen simply never moved. Falling back to 'none' lets the
@@ -332,17 +364,17 @@ export function ScanPage() {
         delay(8000).then(() => null),
       ])
       if (!res) {
-        setToday({ kind: 'none' })
+        settle({ kind: 'none' })
         return
       }
       const { status, data } = res
       if (status !== 200) {
-        setToday({ kind: 'none' })
+        settle({ kind: 'none' })
         return
       }
-      setToday(recordToTodayInfo(data ?? undefined))
+      settle(recordToTodayInfo(data ?? undefined))
     } catch {
-      setToday({ kind: 'none' })
+      settle({ kind: 'none' })
     }
   }
 
