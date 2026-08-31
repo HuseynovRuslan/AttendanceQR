@@ -579,3 +579,266 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .ra-item.danger svg{color:var(--clay)}
 .ra-item.danger:hover:not(:disabled){background:var(--clay-bg)}
 .ra-sep{height:1px;background:var(--c100);margin:6px 4px}
+
+/* ── Equipment register: people, not rows ───────────────────────────────────────────────────────
+   The register is imported from a spreadsheet and the table view still mirrors it column for column,
+   because that view's job is to be diffed against the file after a re-import. But that is a
+   reconciliation tool, and it was also the only way to READ the register — nine columns, four of
+   them paragraphs of prose, which is a spreadsheet with a login.
+   The default is now a card per person: who they are, and what they hold as chips. The prose is one
+   click away in the panel, unabridged, because the prose is the actual record. */
+
+/* ── The header band: what the company holds, and the filter, in one control ────────────────────
+   It replaced two rows that named the same categories — five stat tiles counting them and a row of
+   chips filtering by them — plus a permanent paragraph about how the Excel import matches rows.
+   Merging them removed a row of chrome and made space for the number that was missing entirely: the
+   old tiles counted PEOPLE and row-hygiene ("İşçi ilə bağlı 42"), so how much kit the company
+   actually owns appeared nowhere on a screen whose whole subject is equipment. */
+.eq-head{margin-bottom:18px;padding:16px 18px}
+.eq-head-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.eq-head-count{font-size:13px;color:var(--c500);white-space:nowrap}
+.eq-head-count b{color:var(--c900);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.eq-dot{color:var(--c200);margin:0 2px}
+.eq-search{flex:1 1 240px;min-width:180px}
+.eq-head-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px}
+.eq-head-foot .muted{flex:1 1 320px;min-width:220px;line-height:1.5}
+.eq-area-pick{width:auto;min-width:150px;padding:6px 10px;font-size:12px}
+.eq-count{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* One tile per kind of kit. Scrolls sideways on a narrow screen rather than reflowing into a block
+   that pushes the register itself below the fold. */
+.eq-tiles{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.eq-tile{flex:0 0 auto;min-width:118px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:11px 14px 10px;border:1px solid var(--c100);border-radius:12px;background:var(--white);
+  cursor:pointer;text-align:left;transition:border-color .15s,background .15s,box-shadow .15s}
+.eq-tile:hover{border-color:var(--c200);box-shadow:var(--sh-sm)}
+.eq-tile.active{background:var(--c900);border-color:var(--c900)}
+.eq-tile-ic{display:block;height:16px;margin-bottom:3px;color:var(--c400)}
+.eq-tile-ic svg{width:16px;height:16px}
+.eq-tile-n{font-size:22px;font-weight:800;color:var(--c900);line-height:1.15;font-variant-numeric:tabular-nums}
+.eq-tile-l{font-size:12px;font-weight:700;color:var(--c700)}
+.eq-tile-s{font-size:10.5px;color:var(--c400)}
+.eq-tile.active .eq-tile-n,.eq-tile.active .eq-tile-l{color:#fff}
+.eq-tile.active .eq-tile-s,.eq-tile.active .eq-tile-ic{color:rgba(255,255,255,.6)}
+/* Same colour language as the chips on the cards — blue desktop, purple laptop, teal monitor — so a
+   tile and the chips it selects are recognisably the same thing. */
+.eq-tile.k-desktop .eq-tile-ic{color:#1D4ED8}
+.eq-tile.k-laptop .eq-tile-ic{color:#6D28D9}
+.eq-tile.k-monitor .eq-tile-ic{color:var(--teal)}
+.eq-tile.warn .eq-tile-ic{color:var(--amber)}
+.eq-tile.warn .eq-tile-n{color:var(--amber)}
+.eq-tile.warn.active{background:var(--amber);border-color:var(--amber)}
+.eq-tile.warn.active .eq-tile-n{color:#fff}
+
+/* The "⋯" menu — adding a row, importing a file and printing are monthly jobs on a daily screen. */
+.eq-more{position:relative;flex:none}
+.eq-more-btn{padding:8px 10px}
+.eq-more-back{position:fixed;inset:0;z-index:24}
+.eq-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:25;min-width:170px;
+  background:var(--white);border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh);padding:5px}
+.eq-more-menu button{display:block;width:100%;text-align:left;border:none;background:transparent;
+  padding:9px 11px;border-radius:8px;font-size:13px;font-weight:600;color:var(--c700);cursor:pointer}
+.eq-more-menu button:hover:not(:disabled){background:var(--c50);color:var(--c900)}
+.eq-more-menu button:disabled{color:var(--c400);cursor:default}
+
+/* ── Cards, gathered by site ──────────────────────────────────────────────────────────────────── */
+.eq-groups{display:flex;flex-direction:column;gap:26px}
+.eq-group-h{display:flex;align-items:center;gap:9px;margin:0 0 11px;flex-wrap:wrap;
+  font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c500)}
+.eq-group-t{flex:none}
+.eq-group-n{flex:none;background:var(--c100);color:var(--c600);border-radius:999px;
+  padding:1px 8px;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none}
+/* What this site holds, beside its name. The rule fills whatever is left, so the counts sit against
+   the heading rather than floating in the middle of the line. */
+.eq-group-kit{display:inline-flex;align-items:center;gap:11px;letter-spacing:0;text-transform:none}
+.eq-group-kit-i{display:inline-flex;align-items:center;gap:3px;
+  font-size:12px;font-weight:700;color:var(--c600);font-variant-numeric:tabular-nums}
+.eq-group-kit-i svg{width:13px;height:13px;color:var(--c400)}
+.eq-group-kit-i.k-desktop svg{color:#1D4ED8}
+.eq-group-kit-i.k-laptop svg{color:#6D28D9}
+.eq-group-kit-i.k-monitor svg{color:var(--teal)}
+.eq-group-h::after{content:'';flex:1;height:1px;background:var(--c100);order:9}
+
+/* Segmented control — two states of one thing, so they share a border rather than being two buttons. */
+.eq-view{display:inline-flex;border:1px solid var(--c200);border-radius:10px;overflow:hidden;background:var(--white)}
+.eq-view button{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
+  padding:9px 11px;font-size:12px;font-weight:700;color:var(--c500);cursor:pointer;transition:background .15s,color .15s}
+.eq-view button+button{border-left:1px solid var(--c200)}
+.eq-view button:hover{background:var(--c50);color:var(--c700)}
+.eq-view button.active{background:var(--c900);color:#fff}
+.eq-view svg{width:14px;height:14px}
+
+.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(302px,1fr));gap:14px}
+/* Wider columns than before: at 268px a five-across grid squeezed the card horizontally while the
+   chips wrapped onto three lines inside it — narrow and sparse at the same time. */
+.eq-card{position:relative;display:flex;flex-direction:column;text-align:left;width:100%;
+  background:var(--white);border:1px solid var(--c100);border-radius:14px;
+  /* Two shadows: a tight one that seats the card on the page, and a wide, very faint one that gives
+     it air. A single hard shadow reads as a box; this reads as a surface. */
+  box-shadow:0 1px 2px rgba(16,24,40,.05),0 10px 26px -8px rgba(16,24,40,.05);
+  padding:15px 17px 16px;cursor:pointer;overflow:hidden;
+  transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
+.eq-card:hover{transform:translateY(-3px);border-color:#C7D7F0;
+  box-shadow:0 2px 4px rgba(16,24,40,.05),0 16px 34px -10px rgba(37,99,235,.16)}
+.eq-card:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+/* "Not in the staff list" was a filled amber chip at the foot of EVERY card — eighty of them, one
+   warning repeated until it stopped being one. It is a hairline down the edge now: still visible at
+   a glance across the grid, without eighty labels to read. */
+.eq-card.unlinked::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}
+.eq-card.unlinked{padding-left:19px}
+
+/* `flex:1` is what lines the chips up.
+   Cards in a grid row are already the same height, so the ragged part was WHERE inside them the kit
+   began: a one-line job title started its chips higher than a two-line one, and a card with a single
+   chip left a pool of white at the foot. Letting the head absorb the slack pushes the rule and the
+   chips to the bottom of every card, so they read as a footer band across the row — and the leftover
+   space collects in one place instead of a different place on each card. */
+.eq-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}
+.eq-av{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  font-size:13px;font-weight:800;letter-spacing:.02em}
+/* One tone per person, from their name. Muted on purpose — an avatar is a landmark, not a highlight. */
+.eq-av.t0{background:#EEF2FF;color:#4338CA}
+.eq-av.t1{background:#ECFDF5;color:#047857}
+.eq-av.t2{background:#FFF1F2;color:#BE123C}
+.eq-av.t3{background:#F0FDFA;color:#0F766E}
+.eq-av.t4{background:#F5F3FF;color:#6D28D9}
+
+.eq-id{min-width:0;flex:1}
+.eq-nm,.eq-pos{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
+  overflow:hidden;white-space:normal;overflow-wrap:anywhere}
+.eq-nm{font-size:14.5px;font-weight:700;color:var(--c900);line-height:1.35;letter-spacing:-.005em}
+/* The title sat directly under the name with nothing between them; they read as one wrapped line. */
+/* Two lines' worth of room whether the title needs one or two — "Direktor" and "Qarabağ üzrə
+   planlaşdırma və memarlıq şöbəsinin müdiri" then leave the card at the same place. */
+.eq-pos{font-size:12px;color:var(--c500);margin-top:5px;line-height:1.45;min-height:2.9em}
+.eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:8px;
+  padding:2px 8px 2px 6px;border-radius:6px;background:var(--c50);border:1px solid var(--c100);
+  color:var(--c600);font-size:11px;font-weight:700;line-height:1.5}
+.eq-area svg{width:11px;height:11px;flex:none;color:var(--c400)}
+.eq-area-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);font-variant-numeric:tabular-nums}
+
+/* A rule between who they are and what they hold — the card had no internal structure at all, so
+   the two ran together as one column of text. */
+.eq-card-rule{display:block;height:1px;background:var(--c100);margin:14px -17px 13px}
+.eq-card.unlinked .eq-card-rule{margin-left:-19px}
+
+/* The right-hand reserve keeps the last chip clear of the hover arrow. */
+.eq-kit{display:flex;flex-wrap:wrap;gap:6px;padding-right:20px}
+/* An affordance, not a label: it appears only on the card under the cursor, so it never becomes the
+   eightieth copy of the same thing. (A "yeniləndi 2 gün əvvəl" line would have been exactly that —
+   an import stamps every row with the same instant, so all eighty cards would carry one date.) */
+.eq-card::after{content:'→';position:absolute;right:15px;bottom:14px;
+  font-size:15px;line-height:1;color:var(--c400);opacity:0;transform:translateX(-4px);
+  transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+.eq-card:hover::after{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.eq-card::after{transition:none}}
+.eq-empty-kit{display:block;font-size:12px;color:var(--c400);font-style:italic}
+/* One neutral chip, not a different pastel per kind.
+   Colour was carrying the kind — blue desktop, purple laptop, teal monitor — which works on the five
+   tiles at the top of the page, where they sit apart and colour is how you find one again. Three of
+   them inside a card, on eighty cards, is not a code any more: it is confetti, and it made a company
+   asset register look like a wall of sticky notes. The icon still says which kind it is; the chip
+   just stops shouting about it. */
+.eq-kit-chip{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;
+  background:#F1F5F9;border:1px solid #E2E8F0;font-size:11.5px;font-weight:600;color:#334155;white-space:nowrap}
+.eq-kit-chip svg{width:13px;height:13px;flex:none;color:#64748B}
+
+.eq-none{grid-column:1/-1;text-align:center;padding:44px 20px;color:var(--c400);
+  background:var(--white);border:1px dashed var(--c200);border-radius:var(--r-lg)}
+
+/* ── The detail panel ─────────────────────────────────────────────────────────────────────────
+   A right-hand drawer rather than a modal: the list stays visible behind it, so clicking through
+   six people to find who has the spare monitor never loses your place in the grid. */
+.eq-backdrop{position:fixed;inset:0;background:rgba(24,25,26,.42);z-index:40;animation:eq-fade .16s ease-out}
+.eq-drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);z-index:41;background:var(--white);
+  box-shadow:-8px 0 32px rgba(0,0,0,.16);display:flex;flex-direction:column;animation:eq-slide .2s ease-out}
+@keyframes eq-fade{from{opacity:0}to{opacity:1}}
+@keyframes eq-slide{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.eq-backdrop,.eq-drawer{animation:none}}
+/* Still used, but only in the panel — one label on the person you are actually looking at, which is
+   where a warning belongs. The cards carry the same fact as a hairline down the edge. */
+.eq-flag{align-self:flex-start;background:var(--amber-bg);color:var(--amber)}
+.eq-drawer-head .eq-av{background:var(--c100);color:var(--c600)}
+.eq-drawer-head{padding:20px 22px 16px;border-bottom:1px solid var(--c100);display:flex;gap:12px;align-items:flex-start}
+/* The panel is where the full record lives, so nothing is clamped here — the two-line limit exists
+   to keep cards the same height in a grid, and there is no grid in a drawer. */
+/* min-height too: the two reserved lines exist to line the CARDS up in a grid, and there is no grid
+   here — in the panel they would just be a hole under a one-line job title. */
+.eq-drawer-head .eq-nm,.eq-drawer-head .eq-pos{display:block;-webkit-line-clamp:unset;line-clamp:unset;min-height:0}
+.eq-drawer-head .eq-nm{font-size:17px;line-height:1.35}
+.eq-drawer-head .eq-pos{font-size:13px}
+.eq-drawer-body{flex:1;overflow-y:auto;padding:18px 22px 24px}
+.eq-drawer-body .eq-kit{margin-bottom:4px}
+.eq-drawer-foot{padding:14px 22px;border-top:1px solid var(--c100);display:flex;gap:8px;background:var(--c50)}
+.eq-close{flex:none;border:none;background:transparent;color:var(--c400);cursor:pointer;padding:4px;border-radius:8px}
+.eq-close:hover{background:var(--c100);color:var(--c700)}
+
+/* The register's own sentence about this person, under the chips.
+   Prose, not monospace, and no box: it is a summary of the blocks below it, and printing it as a
+   fourth co-equal block said the same three facts a third time in the loudest spot on the panel. */
+.eq-summary{margin:12px 0 20px;font-size:13px;line-height:1.65;color:var(--c600)}
+.eq-summary::before{content:'';display:block;width:26px;height:2px;background:var(--c100);
+  border-radius:2px;margin-bottom:9px}
+.eq-drawer-meta{font-size:11px;margin-top:20px;padding-top:12px;border-top:1px solid var(--c100)}
+.eq-spec+.eq-spec{margin-top:18px}
+.eq-spec-t{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c400);margin-bottom:6px}
+/* The prose, verbatim and monospaced: newlines in the register separate a second machine from the
+   first, and a spec read as a paragraph is a spec nobody checks. */
+.eq-spec-v{font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.7;color:var(--c800);
+  white-space:pre-line;background:var(--c50);border:1px solid var(--c100);border-radius:10px;padding:10px 12px}
+.eq-spec-v.none{font-family:'Manrope',sans-serif;color:var(--c400);background:transparent;border-style:dashed}
+
+@media(max-width:600px){
+  .eq-grid{grid-template-columns:1fr}
+  .eq-drawer{width:100vw}
+}
+
+
+/* ── Print ─────────────────────────────────────────────────────────────────────────────────────
+   Two documents, not one. "İcmal" is the page a director files: totals, a table by site, and the
+   exceptions. "Tam siyahı" is the card wall on paper. Printing the wall as the only option meant
+   eight to ten sheets for a question answered by one.
+   Either way everything that only works with a cursor comes off — sidebar, top bar, search, tiles,
+   the row menu — and cards are kept whole across a page break, because a person's kit split over two
+   sheets is the one way this document fails at its job. */
+.eq-print{display:none}
+
+@media print{
+  .sidebar,.topbar,.eq-head-top,.eq-tiles,.eq-head-foot,.eq-more,.eq-view,
+  .eq-backdrop,.eq-drawer,.eq-flag{display:none!important}
+  .main{margin-left:0}
+  .content{padding:0}
+  body,.main{background:#fff}
+  .eq-head{display:none}
+
+  /* The overview */
+  .eq-print-summary .eq-print{display:block}
+  .eq-print-summary .eq-groups,.eq-print-summary .tbl-wrap{display:none}
+  .eq-print-h{display:flex;align-items:baseline;justify-content:space-between;
+    border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:10px}
+  .eq-print-h h1{font-size:16px;font-weight:800;margin:0;letter-spacing:.01em}
+  .eq-print-h span{font-size:11px}
+  .eq-print-tot{font-size:12px;margin-bottom:14px;line-height:1.7}
+  .eq-print-tbl{width:100%;border-collapse:collapse;font-size:11px}
+  .eq-print-tbl th,.eq-print-tbl td{border:1px solid #999;padding:4px 7px;text-align:right}
+  .eq-print-tbl th:first-child,.eq-print-tbl td:first-child{text-align:left}
+  .eq-print-tbl thead th{background:#EEE;font-weight:700}
+  .eq-print-tbl tfoot td{font-weight:800;background:#F5F5F5}
+  .eq-print-tbl td{font-variant-numeric:tabular-nums}
+  .eq-print-note{font-size:10px;margin-top:10px;line-height:1.5}
+
+  /* The full list */
+  .eq-print-full .eq-print{display:none}
+  .eq-groups{gap:16px}
+  .eq-group-h{color:#000;margin-bottom:8px}
+  .eq-group-kit-i,.eq-group-kit-i svg{color:#000!important}
+  .eq-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .eq-card{break-inside:avoid;box-shadow:none;border-color:#BBB;padding:10px 12px;transform:none}
+  .eq-card.unlinked::before{background:#666}
+  .eq-card-rule{margin:8px -12px}
+  .eq-kit-chip{background:transparent!important;border:1px solid #BBB!important;color:#000!important}
+  .eq-kit-chip svg{color:#000!important}
+  .eq-av{background:#EEE!important;color:#000!important}
+  .eq-nm,.eq-pos{-webkit-line-clamp:unset;line-clamp:unset;display:block;min-height:0}
+}

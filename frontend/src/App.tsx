@@ -53,6 +53,7 @@ const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployees
 const ManagerLeavesPage = lazy(() => import('./pages/manager/ManagerLeavesPage').then(m => ({ default: m.ManagerLeavesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
+const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
 const SchedulesPage = lazy(() => import('./pages/admin/SchedulesPage').then(m => ({ default: m.SchedulesPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
@@ -345,6 +346,17 @@ function AppRoutes() {
           element={
               <PanelPage path="positions">
                 <PositionsPage />
+              </PanelPage>
+          }
+        />
+        {/* Equipment register — Admin only: it spans every office and site, and is not a branch
+            screen. Arrived from `staging` wrapped in <AdminOnly>, which main replaced with the
+            access table; see lib/panelAccess. */}
+        <Route
+          path="equipment"
+          element={
+              <PanelPage path="equipment">
+                <EquipmentPage />
               </PanelPage>
           }
         />

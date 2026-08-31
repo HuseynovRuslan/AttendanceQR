@@ -62,6 +62,10 @@ export const PANEL_PAGES: PanelPage[] = [
   { path: 'open-records', roles: BOTH },
   // Mass account creation, and account deletion by another name.
   { path: 'bulk-invite', roles: ADMIN },
+  // The IT equipment register. Company-wide by nature: its "İşlədiyi ərazi" is free text naming
+  // offices and sites that are not branches in the attendance system, so there is nothing here for
+  // LocationScopeRules to narrow — it could only be hidden, and hiding is not a boundary.
+  { path: 'equipment', roles: ADMIN },
   // The manager's own roster/leave screens. They exist because the shared ones were admin-only; once
   // those are role-branched these become redirects. Manager-only meanwhile, so an admin typing the
   // URL gets an explanation rather than a page of 403s.

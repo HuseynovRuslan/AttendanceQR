@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AttendanceQR.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260829112721_EquipmentRegister")]
+    partial class EquipmentRegister
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -351,12 +354,6 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ActivatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("AvatarPhotoKey")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("AvatarUpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateOnly?>("BirthDate")
                         .HasColumnType("date");
 
@@ -364,9 +361,6 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<bool>("CanFieldCheckIn")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("CanShareDevice")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime?>("ConsentAcceptedAtUtc")
@@ -582,7 +576,8 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.HasIndex("TenantId", "RowNo");
+                    b.HasIndex("TenantId", "RowNo")
+                        .IsUnique();
 
                     b.ToTable("EquipmentRecords", (string)null);
                 });
@@ -816,15 +811,6 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("GeofenceMovedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("GeofenceMovedByEmployeeId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("GeofenceMovedMeters")
-                        .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -1425,9 +1411,6 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
-
-                    b.Property<DateTime?>("TrialEndsAtUtc")
-                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

@@ -22,9 +22,10 @@ import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
-import { IconCamera, IconCheck, IconPhone, IconX } from '../../components/icons'
+import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
+import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
 
@@ -55,6 +56,7 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
+  const [equipment, setEquipment] = useState<EquipmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -93,12 +95,16 @@ export function EmployeeProfilePage() {
     // A manager loads ONE person from their own endpoint. The admin roster is not merely bigger — it
     // is unscoped and carries monthlySalary, so it must never be the thing a manager's screen fetches
     // and filters client-side.
-    const [empRes, attRes, devRes, sumRes, daysRes] = await Promise.all([
+    const [empRes, attRes, devRes, sumRes, daysRes, equipRes] = await Promise.all([
       isManager ? getManagerEmployee(id) : getEmployees(),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
       getEmployeeDays(id, monthStart, today),
+      // The equipment register is an Admin screen and its endpoint is [Authorize(Roles = "Admin")],
+      // so asking as a manager would be a 403 on every profile they open — for a section whose only
+      // control links to a page they cannot reach.
+      isManager ? Promise.resolve(null) : getEquipmentByEmployee(id),
     ])
     if (daysRes.status === 200 && Array.isArray(daysRes.data)) setMonthDays(daysRes.data)
 
@@ -122,6 +128,7 @@ export function EmployeeProfilePage() {
     const recs = attRes.status === 200 && Array.isArray(attRes.data) ? attRes.data : []
     setRecords(recs)
     if (devRes.status === 200 && Array.isArray(devRes.data)) setDevices(devRes.data.filter((d) => d.employeeId === id))
+    if (equipRes?.status === 200 && Array.isArray(equipRes.data)) setEquipment(equipRes.data)
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
       setSummary(sumRes.data.rows.find((r) => r.employeeId === id) ?? null)
 
@@ -516,6 +523,43 @@ export function EmployeeProfilePage() {
           </div>
         )}
       </div>
+
+      {/* This person's line in the IT equipment register. Read-only here — the register is edited
+          in one place, where the whole list is in view. Shows nothing unless the register's name was
+          linked to this staff record.
+          Admin only, like the register itself: a manager would get an empty card whose one button
+          leads somewhere they cannot open. */}
+      {!isManager && (
+      <div className="card card-pad">
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>Kompüter avadanlığı</span>
+          <Link to="/admin/equipment" className="btn btn-sm"><IconLaptop /> Kompüter inventarizasiyası</Link>
+        </div>
+        {equipment.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>
+            İnventarizasiya siyahısında bu işçiyə bağlı sətir yoxdur.
+          </p>
+        ) : (
+          <div className="tbl-wrap">
+            <table>
+              <thead>
+                <tr><th>Avadanlıq</th><th>Sistem bloku</th><th>Monitor</th><th>Digər avadanlıq</th></tr>
+              </thead>
+              <tbody>
+                {equipment.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ whiteSpace: 'pre-line', minWidth: 200 }}>{r.equipment ?? '—'}</td>
+                    <td style={{ whiteSpace: 'pre-line' }} className="muted">{r.systemUnit ?? '—'}</td>
+                    <td style={{ whiteSpace: 'pre-line' }} className="muted">{r.monitor ?? '—'}</td>
+                    <td style={{ whiteSpace: 'pre-line' }} className="muted">{r.otherEquipment ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
 
       {/* Devices */}
       <div className="card card-pad">

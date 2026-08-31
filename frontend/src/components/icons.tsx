@@ -268,3 +268,61 @@ export const IconPencil = (p: SVGProps<SVGSVGElement>) => (
     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
   </svg>
 )
+
+export const IconLaptop = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M2 20h20" />
+  </svg>
+)
+
+// --- The equipment register's kit glyphs ------------------------------------------------------
+// One per KitKind in lib/equipmentKit, so a card's chips are distinguishable at a glance without
+// reading them. Drawn at the same weight as the rest; "other" reuses IconBriefcase.
+
+export const IconDesktop = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <path d="M9 7h6M9 11h3" />
+    <circle cx="12" cy="17" r="1" />
+  </svg>
+)
+
+export const IconMonitor = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="4" width="20" height="13" rx="2" />
+    <path d="M8 21h8M12 17v4" />
+  </svg>
+)
+
+export const IconPrinter = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M7 8V3h10v5" />
+    <rect x="3" y="8" width="18" height="8" rx="2" />
+    <path d="M7 14h10v7H7z" />
+  </svg>
+)
+
+export const IconScanner = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="7" rx="2" />
+    <path d="M3 15h18M7 19h10" />
+  </svg>
+)
+
+export const IconPower = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M12 3v9" />
+    <path d="M18.4 6.6a9 9 0 1 1-12.8 0" />
+  </svg>
+)
+
+/** Card-view toggle, next to IconTable. */
+export const IconGrid = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </svg>
+)

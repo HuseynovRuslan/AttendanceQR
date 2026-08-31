@@ -49,6 +49,16 @@ employee with `WorkCycleDays` set ignores the mask entirely — see `AttendanceC
 `.IsScheduledWorkingDay`, the one place this is decided, and `WorkCycle.Apply`, the one place it is
 written. Holidays (`NonWorkingDay`) still apply on top.
 
+**The equipment register mirrors the spreadsheet, not the devices.** `/admin/equipment` is one row
+per *person*, with the columns of "İT AVADANLIQLARININ SİYAHISI" — the file it is imported from has no
+inventory numbers and describes kit in prose ("1 ədəd masaüstü ofis kompüteri, 2 ədəd monitor HP 27"),
+so a row-per-device model would mean inventing identifiers and guessing counts out of free text. The
+import matches on "Sıra №", so re-uploading an edited file updates rows instead of doubling the
+register, and it links a name to a staff record only on an exact match: the register writes surname
+first with a patronymic and the staff list often does not, so a fuzzy match would hang one person's
+laptops on another — and nobody goes looking for a wrong link. Unlinked rows stay in the register; the
+admin links them by hand.
+
 **A value in `.env` alone reaches nothing.** Compose only passes variables named in the service's
 `environment:` block. Add it in both places.
 
