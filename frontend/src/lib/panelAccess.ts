@@ -53,9 +53,11 @@ export const PANEL_PAGES: PanelPage[] = [
   // The headline gap: a manager could not open one of their own people's cards at all. Served by
   // GET /api/manager/employees/{id}, which carries no salary and no role.
   { path: 'employees/:id', roles: BOTH },
-  // Same, and it matters more here: a 403 renders as "Qeyd yoxdur", and this is the register that
-  // decides whether a day counts as unexcused absence. Managers use my-leaves.
-  { path: 'leaves', roles: ADMIN },
+  // Open to a manager now that the page reads the register through their own endpoints — their
+  // branches, plain staff, and the leave rows that belong to them. It was ADMIN because a 403 here
+  // renders as "Qeyd yoxdur", a confident empty register rather than an error, and this is the
+  // register that decides whether a day counts as unexcused absence.
+  { path: 'leaves', roles: BOTH },
   { path: 'birthdays', roles: BOTH },
   { path: 'pin-resets', roles: BOTH },
   { path: 'device-changes', roles: BOTH },
@@ -70,6 +72,8 @@ export const PANEL_PAGES: PanelPage[] = [
   // those are role-branched these become redirects. Manager-only meanwhile, so an admin typing the
   // URL gets an explanation rather than a page of 403s.
   { path: 'my-employees', roles: MANAGER },
+  // Kept as a row because the route still exists — it redirects to the shared register above, so a
+  // manager who bookmarked it lands somewhere real instead of on the panel's catch-all.
   { path: 'my-leaves', roles: MANAGER },
 
   // ── Reports ────────────────────────────────────────────────────────────────────────────────────

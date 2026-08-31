@@ -135,10 +135,19 @@ public class AdminAttendanceController : ControllerBase
         return Ok(Project(record));
     }
 
-    // Admin-only by its own attribute now the class admits managers: this writes a day out of
-    // nothing, for anyone, which is a different power from correcting a record that already exists.
+    // Open to a manager, scoped exactly as the edit beside it is.
+    //
+    // It was Admin-only on the reasoning that writing a day out of nothing is a different power from
+    // correcting one that exists. True, but it left the manager stuck in the case that actually
+    // happens: somebody leaves their phone at home and never scans at all, so there is NO record to
+    // correct — and the person who knows they were at work is the manager who saw them. Refusing here
+    // did not prevent a wrong day being recorded; it only meant the right one could not be.
+    //
+    // The two limits that matter are unchanged and enforced below: their own branch, and plain staff
+    // only. A manager cannot write a day onto an admin or onto another manager, which is the 2026-08-08
+    // boundary — and writing attendance for the account that can reset PINs is not a smaller version
+    // of resetting one.
     [HttpPost]
-    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] AdminAttendanceCreateRequest request)
     {
         if (request.Date > DateOnly.FromDateTime(DateTime.UtcNow))
@@ -150,6 +159,10 @@ public class AdminAttendanceController : ControllerBase
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == request.EmployeeId);
         if (employee is null)
             return BadRequest(new { error = "EmployeeNotFound" });
+
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), request.EmployeeId, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == employee.LocationId);
         if (location is null)

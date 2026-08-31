@@ -50,7 +50,6 @@ const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').t
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
-const ManagerLeavesPage = lazy(() => import('./pages/manager/ManagerLeavesPage').then(m => ({ default: m.ManagerLeavesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
@@ -340,7 +339,10 @@ function AppRoutes() {
         <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
         {/* Manager write surface — the endpoints are Manager-only + location-scoped server-side. */}
         <Route path="my-employees" element={<PanelPage path="my-employees"><ManagerEmployeesPage /></PanelPage>} />
-        <Route path="my-leaves" element={<PanelPage path="my-leaves"><ManagerLeavesPage /></PanelPage>} />
+        {/* The narrow register is retired: the shared one now reads through the manager's own
+            endpoints, so there is one leave screen again. The route stays as a redirect because a
+            manager may have bookmarked it or have it open in a tab. */}
+        <Route path="my-leaves" element={<Navigate to="/admin/leaves" replace />} />
         <Route
           path="positions"
           element={

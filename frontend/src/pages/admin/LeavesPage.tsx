@@ -3,6 +3,10 @@ import { LeaveForm } from '../../components/LeaveForm'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { addLeave, deleteLeave, getLeaves, type LeaveRecord, type LeaveType } from '../../api/leaves'
 import { getEmployees, type AdminEmployee } from '../../api/admin'
+import { useAuth } from '../../auth/AuthContext'
+import {
+  createManagerLeave, deleteManagerLeave, getManagerEmployees, getManagerLeaves,
+} from '../../api/manager'
 import { IconTrash, IconX } from '../../components/icons'
 import { fmtDate } from '../../lib/format'
 
@@ -16,6 +20,8 @@ const TYPE_LABELS: Record<LeaveType, string> = {
 }
 
 export function LeavesPage() {
+  const { role } = useAuth()
+  const isManager = role === 'Manager'
   const [rows, setRows] = useState<LeaveRecord[]>([])
   const [employees, setEmployees] = useState<AdminEmployee[]>([])
   const [filterType, setFilterType] = useState<LeaveType | ''>('')
@@ -24,9 +30,19 @@ export function LeavesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function refresh() {
-    const [leavesRes, empsRes] = await Promise.all([getLeaves(), getEmployees()])
-    if (leavesRes.status === 200 && Array.isArray(leavesRes.data)) setRows(leavesRes.data)
-    if (empsRes.status === 200 && Array.isArray(empsRes.data)) setEmployees(empsRes.data)
+    // A manager reads the same register through their own endpoints, which return only their
+    // branches' people and only plain staff. The admin ones are not merely wider — the roster carries
+    // salary — so this is a branch, never a fetch-then-filter.
+    const [leavesRes, empsRes] = isManager
+      ? await Promise.all([getManagerLeaves(), getManagerEmployees()])
+      : await Promise.all([getLeaves(), getEmployees()])
+    // The manager rows are the same shape minus what a manager must not see — no salary on the
+    // person, no cross-branch record — which is the point, so the cast goes through `unknown` rather
+    // than pretending the two types overlap. Every field this screen reads is on both.
+    if (leavesRes.status === 200 && Array.isArray(leavesRes.data))
+      setRows(leavesRes.data as unknown as LeaveRecord[])
+    if (empsRes.status === 200 && Array.isArray(empsRes.data))
+      setEmployees(empsRes.data as unknown as AdminEmployee[])
   }
 
   useEffect(() => {
@@ -37,7 +53,7 @@ export function LeavesPage() {
     if (!window.confirm(`${l.employeeName} — ${TYPE_LABELS[l.type]} (${fmtDate(l.fromDate)}–${fmtDate(l.toDate)}) silinsin?`)) return
     setError(null)
     setDeletingId(l.id)
-    const { status } = await deleteLeave(l.id)
+    const { status } = isManager ? await deleteManagerLeave(l.id) : await deleteLeave(l.id)
     setDeletingId(null)
     if (status === 200) await refresh()
     else setError('Silinmədi')
@@ -69,13 +85,14 @@ export function LeavesPage() {
         busy={saving}
         onSubmit={async (input) => {
           setSaving(true)
-          const { status, data } = await addLeave({
+          const body = {
             employeeIds: input.employeeIds,
             fromDate: input.fromDate,
             toDate: input.toDate,
             type: input.type as LeaveType,
             note: input.note,
-          })
+          }
+          const { status, data } = isManager ? await createManagerLeave(body) : await addLeave(body)
           setSaving(false)
           await refresh()
           if (status === 200 && data && 'created' in data) return data

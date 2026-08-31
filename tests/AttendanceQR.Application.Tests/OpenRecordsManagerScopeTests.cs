@@ -351,22 +351,46 @@ public class OpenRecordsManagerScopeTests
 
     // --- what the widening did NOT hand over ------------------------------------------------------
 
-    [Theory]
-    [InlineData("Create")]
-    [InlineData("RecheckFaces")]
-    public void The_wider_powers_keep_their_own_admin_only_attribute(string action)
+    [Fact]
+    public void RecheckFaces_stays_admin_only()
     {
-        // The class now says "Admin,Manager", so these two are protected by nothing except the
-        // attribute on the method itself. Create writes a working day out of nothing for ANY employee
-        // — there is no existing record to scope against, so the checks above have nothing to check —
-        // and RecheckFaces spends a paid Rekognition call per record across the whole tenant. Drop
-        // either attribute and both quietly become manager powers with no other test failing.
-        var method = typeof(AdminAttendanceController).GetMethod(action, BindingFlags.Public | BindingFlags.Instance);
+        // The class says "Admin,Manager", so this is protected by nothing except the attribute on the
+        // method itself, and it is not a scoping question: one call spends a paid Rekognition request
+        // per record across the WHOLE tenant, which is not a branch-sized action however narrow the
+        // caller's branch is. Drop the attribute and it quietly becomes a manager power with no other
+        // test failing.
+        var method = typeof(AdminAttendanceController).GetMethod("RecheckFaces", BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(method);
+        Assert.Equal("Admin", method!.GetCustomAttribute<AuthorizeAttribute>()?.Roles);
+    }
 
-        var attr = method!.GetCustomAttribute<AuthorizeAttribute>();
-        Assert.NotNull(attr);
-        Assert.Equal("Admin", attr!.Roles);
+    [Fact]
+    public void Create_is_no_longer_admin_only_and_must_never_go_back_to_being_unguarded()
+    {
+        // It carried the attribute because "there is no existing record to scope against". True of the
+        // record, and it was the wrong thing to scope against: the anchor is the EMPLOYEE the day is
+        // being written onto, which exists whether or not a record does. So the attribute is gone and
+        // an explicit CanManageEmployeeAsync stands in its place — the three tests above are what hold
+        // it, and this one fails loudly if somebody removes the check without restoring the attribute.
+        var method = typeof(AdminAttendanceController).GetMethod("Create", BindingFlags.Public | BindingFlags.Instance);
+        Assert.NotNull(method);
+        Assert.Null(method!.GetCustomAttribute<AuthorizeAttribute>());
+
+        var body = File.ReadAllText(Path.Combine(SourceDir(), "src", "AttendanceQR.Api", "Controllers",
+            "AdminAttendanceController.cs"));
+        var create = body[body.IndexOf("public async Task<IActionResult> Create(")..];
+        create = create[..create.IndexOf("_db.AttendanceRecords.Add")];
+        Assert.Contains("CanManageEmployeeAsync", create);
+    }
+
+    /// <summary>Walks up from the test binary to the repository root.</summary>
+    private static string SourceDir()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir, "src")))
+            dir = Directory.GetParent(dir)?.FullName;
+        Assert.NotNull(dir);
+        return dir!;
     }
 
     [Fact]
@@ -375,5 +399,71 @@ public class OpenRecordsManagerScopeTests
         var attr = typeof(AdminAttendanceController).GetCustomAttribute<AuthorizeAttribute>();
         Assert.NotNull(attr);
         Assert.Equal("Admin,Manager", attr!.Roles);
+    }
+
+    // --- writing a day from nothing ----------------------------------------------------------
+
+    /// <summary>
+    /// Creating an attendance record where none exists.
+    ///
+    /// It was Admin-only, on the reasoning that writing a day out of nothing is a different power from
+    /// correcting one that already exists. Which is true, and still left the manager stuck in the case
+    /// that actually happens: somebody leaves their phone at home and never scans, so there is nothing
+    /// to correct — and the person who knows they were at work is the manager who saw them there.
+    /// </summary>
+    [Fact]
+    public async Task A_manager_can_record_a_day_for_their_own_worker_who_never_scanned()
+    {
+        using var h = new Fixture();
+        var day = new DateOnly(2026, 8, 20);
+
+        var result = await h.AsManager().Create(new AdminAttendanceCreateRequest(
+            h.MyWorkerId, day, At(day, 9), At(day, 18)));
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.True(h.Db.AttendanceRecords.AsNoTracking()
+            .Any(r => r.EmployeeId == h.MyWorkerId && r.AttendanceDate == day));
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_record_a_day_for_another_branch()
+    {
+        using var h = new Fixture();
+        var day = new DateOnly(2026, 8, 20);
+
+        var result = await h.AsManager().Create(new AdminAttendanceCreateRequest(
+            h.TheirWorkerId, day, At(day, 9), At(day, 18)));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        // Date-specific: the fixture already seeds this worker an open record on another day.
+        Assert.False(h.Db.AttendanceRecords.AsNoTracking()
+            .Any(r => r.EmployeeId == h.TheirWorkerId && r.AttendanceDate == day));
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_record_a_day_for_an_admin_at_their_own_branch()
+    {
+        // The 2026-08-08 boundary, and it holds here for the same reason it holds for a PIN reset:
+        // writing attendance onto the account that can reset PINs is not a smaller version of the
+        // thing that was forbidden.
+        using var h = new Fixture();
+        var day = new DateOnly(2026, 8, 20);
+
+        var result = await h.AsManager().Create(new AdminAttendanceCreateRequest(
+            h.SameBranchAdminId, day, At(day, 9), At(day, 18)));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.False(h.Db.AttendanceRecords.AsNoTracking()
+            .Any(r => r.EmployeeId == h.SameBranchAdminId && r.AttendanceDate == day));
+    }
+
+    [Fact]
+    public async Task An_admin_can_still_record_a_day_for_anyone()
+    {
+        using var h = new Fixture();
+        var day = new DateOnly(2026, 8, 20);
+
+        Assert.IsType<OkObjectResult>(await h.AsAdmin().Create(new AdminAttendanceCreateRequest(
+            h.TheirWorkerId, day, At(day, 9), At(day, 18))));
     }
 }
