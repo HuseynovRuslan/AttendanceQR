@@ -54,6 +54,9 @@ const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
 
 export function TodayPage() {
   const { role } = useAuth()
+  // Viewing a check-in selfie is Admin-only (owner's call, 2026-08-31) — the server refuses a
+  // manager outright, so these controls would be dead buttons rather than hidden powers.
+  const mayViewPhotos = role === 'Admin'
   const [assigningId, setAssigningId] = useState<string | null>(null)
   // Which absent row's reason menu is open, and where to float it. A pencil next to the Qayıb badge
   // opens a dropdown; it is position:fixed so the table's overflow never clips it.
@@ -263,9 +266,11 @@ export function TodayPage() {
         >
           ⚠ Üzü uyğun gəlməyənlər{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
         </span>
-        <span className={`chip${noPhotoOnly ? ' active' : ''}`} onClick={() => setNoPhotoOnly((v) => !v)}>
-          📷 Şəkilsizlər
-        </span>
+        {mayViewPhotos && (
+          <span className={`chip${noPhotoOnly ? ' active' : ''}`} onClick={() => setNoPhotoOnly((v) => !v)}>
+            📷 Şəkilsizlər
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -480,7 +485,7 @@ export function TodayPage() {
                       telefon icazəsi olan işçidə həmişə. İkincisi qəsdəndir: onlarda «bir telefon, bir
                       işçi» qoruması yoxdur, geriyə qalan yeganə nəzarət üzdür, baxılmayan nəzarət isə
                       nəzarət deyil. Qalanlarda «uyğun» olanda foto R2-dən yüklənmir (gecikmə gedir). */}
-                  {r.hasPhoto && r.recordId && (faceIsFlagged(r.faceMatchStatus) || r.sharedDevice) ? (
+                  {mayViewPhotos && r.hasPhoto && r.recordId && (faceIsFlagged(r.faceMatchStatus) || r.sharedDevice) ? (
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.recordId}

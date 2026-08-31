@@ -505,8 +505,11 @@ export function EmployeeProfilePage() {
                       <td className="mono" data-label="Müddət">{r.checkInAtUtc && r.checkOutAtUtc ? fmtDuration(r.checkInAtUtc, r.checkOutAtUtc) : '—'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                          {/* Şəkil yalnız üz-uyğunsuzluğu olan girişlərdə — normal girişdə foto lazım deyil. */}
-                          {r.checkInAtUtc && faceIsFlagged(r.faceMatchStatus) && (
+                          {/* Şəkil yalnız üz-uyğunsuzluğu olan girişlərdə — normal girişdə foto lazım
+                              deyil — VƏ yalnız admində: giriş şəkli biometrik məlumatdır, ona kimin
+                              baxa bildiyi filial deyil, şəxs sualıdır. Server onsuz da meneceri rədd
+                              edir; bu, ölü düymə qalmasın deyədir. */}
+                          {!isManager && r.checkInAtUtc && faceIsFlagged(r.faceMatchStatus) && (
                             <button className="btn btn-sm" disabled={photoBusyId === r.recordId} onClick={() => void viewRecordPhoto(r)}>
                               <IconCamera /> {photoBusyId === r.recordId ? '…' : 'Şəklə bax'}
                             </button>
