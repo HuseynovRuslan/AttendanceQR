@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { countToday, matchesLeaveCard } from './todayCounts'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
@@ -165,17 +166,11 @@ export function TodayPage() {
   // showing the day's real breakdown and stay usable as toggles.
   // present = checked in AND out ("Tamamlayıb"). incomplete = checked in, no check-out yet — reads as
   // "İşdə" (still at work) on today's board, or "Çıxış yoxdur" (forgot to check out) on a past date.
-  const counts = { present: 0, absent: 0, pending: 0, incomplete: 0, dayOff: 0, onLeave: 0, sick: 0, permission: 0 }
-  for (const r of locFiltered) {
-    if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') counts.present++
-    else if (r.status === 'Absent') counts.absent++
-    else if (r.status === 'Pending') counts.pending++
-    else if (r.status === 'DayOff') counts.dayOff++
-    // Sick gets its own card; the Məzuniyyət card is every other leave (Vacation/Unpaid/Rest).
-    else if (r.status === 'OnLeave') { if (r.leaveType === 'Sick') counts.sick++; else counts.onLeave++ }
-    else if (r.status === 'Permission') counts.permission++
-    else counts.incomplete++
-  }
+  // Bucketing lives in ./todayCounts, with tests. Every kind of leave arrives as one status
+  // (`OnLeave`) and is separable only by `leaveType`, so a screen that counts by status merges a
+  // work trip into the holidays — which is what this board did, and what the reports did before
+  // 3d6ac7e. Twice is enough for it to belong somewhere a test can see it.
+  const counts = countToday(locFiltered)
   const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
   const incompleteLabel = isToday ? 'İşdə' : 'Çıxış yoxdur'
   const incompleteOverride = isToday ? undefined : { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
@@ -183,11 +178,10 @@ export function TodayPage() {
   const q = search.trim().toLowerCase()
   const visible = locFiltered.filter((r) => {
     if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
-    // Sick / Məzuniyyət both come from OnLeave, split by leaveType — so their filters need the row.
-    if (statusFilter === 'sick') {
-      if (!(r.status === 'OnLeave' && r.leaveType === 'Sick')) return false
-    } else if (statusFilter === 'onLeave') {
-      if (!(r.status === 'OnLeave' && r.leaveType !== 'Sick')) return false
+    // Sick / Ezamiyyət / Məzuniyyət all come from OnLeave, split by leaveType — so their filters
+    // need the row, not just the status.
+    if (statusFilter === 'sick' || statusFilter === 'trip' || statusFilter === 'onLeave') {
+      if (!matchesLeaveCard(r, statusFilter)) return false
     } else if (statusFilter && !statusMatches(r.status, statusFilter)) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
     if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
@@ -335,6 +329,15 @@ export function TodayPage() {
             <div className="stat-lbl">Xəstəlik</div>
             <div className="stat-val">{counts.sick}</div>
             <div className="stat-sub">Xəstəlik məzuniyyətindədir</div>
+          </div>
+        )}
+        {/* Shown only when somebody is on one, like Xəstəlik — a permanent 0 is a tile you read and
+            discard every morning. The wording says the thing that matters about it: they are working. */}
+        {counts.trip > 0 && (
+          <div className="stat-card teal" style={cardStyle('trip')} onClick={() => toggleStatus('trip')}>
+            <div className="stat-lbl">Ezamiyyət</div>
+            <div className="stat-val">{counts.trip}</div>
+            <div className="stat-sub">İş səfərindədir — qayıb sayılmır</div>
           </div>
         )}
         <div className="stat-card amber" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>

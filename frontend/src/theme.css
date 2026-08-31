@@ -79,6 +79,8 @@ h1,h2,h3,h4{font-family:'Manrope',sans-serif;color:var(--c900)}
 .stat-card.clay::before{background:var(--clay)}
 .stat-card.blue::before{background:var(--blue)}
 .stat-card.purple::before{background:var(--purple)}
+/* Ezamiyyət — the same teal its badge already uses on the row below. */
+.stat-card.teal::before{background:var(--teal)}
 .stat-card.slate::before{background:var(--c400)}
 .stat-lbl{font-size:12px;font-weight:600;color:var(--c500)}
 .stat-val{font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:var(--c900);margin-top:6px;line-height:1.08;text-wrap:balance;font-variant-numeric:tabular-nums}
