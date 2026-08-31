@@ -3,12 +3,46 @@
 // the phone properly — which they cannot do if they learn about it at the same moment it is taken.
 // The examples are drawn inline rather than shipped as images, so there is nothing extra to load.
 
-/** Sleek biometric silhouette */
-function Person({ cx, cy, scale = 1, opacity = 1 }: { cx: number; cy: number; scale?: number; opacity?: number }) {
+/**
+ * A person, drawn rather than suggested.
+ *
+ * This was a circle on a dome — a pictogram, which is fine on a sign and useless here, because the
+ * whole job of these two frames is to show somebody what their own face should look like inside the
+ * oval. A shape that could equally be a user icon teaches nothing. So: a head with hair and ears, a
+ * neck, shoulders, and enough of a face to read as one at 80 pixels.
+ *
+ * Still inline SVG. A photograph would need a real person's consent, a licence, and a download on a
+ * phone that may be on one bar of signal at a gate at seven in the morning — and it would look like
+ * one specific stranger rather than like whoever is holding the phone.
+ *
+ * `turn` swings the head and shifts the features, which is what makes the "wrong" frame read as
+ * somebody looking away rather than as a smaller copy of the same picture.
+ */
+function Person({
+  cx, cy, scale = 1, opacity = 1, turn = 0,
+}: { cx: number; cy: number; scale?: number; opacity?: number; turn?: number }) {
   return (
-    <g transform={`translate(${cx} ${cy}) scale(${scale})`} opacity={opacity}>
-      <circle cx="0" cy="-14" r="11" fill="currentColor" />
-      <path d="M-20 22c0-11 9-19 20-19s20 8 20 19z" fill="currentColor" />
+    <g transform={`translate(${cx} ${cy}) scale(${scale})`} opacity={opacity} fill="currentColor">
+      {/* Shoulders and chest — cut off by the frame, as a real chest-up shot is. */}
+      <path d="M-26 40c0-13 11-23 26-23s26 10 26 23v6h-52z" />
+      {/* Neck. Starts ABOVE the chin (y=3) and is drawn before the head, so the jaw paints over it —
+          starting it below the chin left a gap and the head floated. */}
+      <path d="M-6 -2h12v22a6 6 0 0 1-12 0z" opacity="0.85" />
+      <g transform={`rotate(${turn})`}>
+        {/* Ears, drawn before the head so the head's edge overlaps them. */}
+        <ellipse cx="-12.5" cy="-4" rx="2.6" ry="4" opacity="0.9" />
+        <ellipse cx="12.5" cy="-4" rx="2.6" ry="4" opacity="0.9" />
+        {/* The head: taller than wide, with a jaw — not a circle. */}
+        <path d="M0-22c7.2 0 12 5.2 12 12.5 0 4-.6 7.6-2 10.6C8-.4 4.6 3 0 3S-8-.4-10 1.1c-1.4-3-2-6.6-2-10.6C-12-16.8-7.2-22 0-22Z" />
+        {/* Hair, sitting on the crown. */}
+        <path d="M-12.4-9.5c-.6-8 4.6-13.5 12.4-13.5s13 5.5 12.4 13.5c-1.2-4.4-3-6.6-5.4-7.4-2.6-.9-5.6.5-9 .5-2.8 0-5.4-.6-7.2 1.2-1.2 1.2-2.2 3.4-3.2 5.7Z" />
+        {/* Enough face to be a face. Cut out of the head so they read at any tint. */}
+        <g fill="#0B1120" opacity="0.55">
+          <ellipse cx="-4.6" cy="-8" rx="1.5" ry="1.9" />
+          <ellipse cx="4.6" cy="-8" rx="1.5" ry="1.9" />
+          <path d="M-4 -3.2c1.2 1.1 6.8 1.1 8 0" fill="none" stroke="#0B1120" strokeWidth="1.4" strokeLinecap="round" />
+        </g>
+      </g>
     </g>
   )
 }
@@ -68,12 +102,13 @@ function Example({ good }: { good: boolean }) {
           <g clipPath={`url(#${id})`}>
             {good ? (
               // Centred, filling the frame — what a phone held at face height produces.
-              <Person cx={60} cy={64} scale={1.35} />
+              <Person cx={60} cy={62} scale={1.45} />
             ) : (
               // Off to one side, small, with a colleague in the queue behind.
               <>
-                <Person cx={44} cy={72} scale={0.95} />
-                <Person cx={90} cy={66} scale={0.7} opacity={0.45} />
+                {/* Off to one side, turned away, and a colleague waiting in the queue behind. */}
+                <Person cx={46} cy={74} scale={0.9} turn={-14} />
+                <Person cx={88} cy={64} scale={0.62} opacity={0.4} turn={9} />
               </>
             )}
           </g>

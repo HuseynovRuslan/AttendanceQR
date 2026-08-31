@@ -15,8 +15,20 @@
   --sh-sm:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
 }
 
-body{font-family:'Manrope',sans-serif;color:var(--c700);-webkit-font-smoothing:antialiased}
-h1,h2,h3,h4{font-family:'Manrope',sans-serif;color:var(--c900)}
+/* The two bare-element rules live in @layer base, and it is not cosmetic which layer they are in.
+   This file is loaded GLOBALLY from main.tsx, so it reaches the employee screens as well as the admin
+   panel — and Tailwind v4 puts every utility inside @layer utilities, where unlayered CSS beats it
+   outright, whatever the specificity. Unlayered, `h1,h2,h3,h4{color:var(--c900)}` therefore won
+   against `text-white` on the dark screens, and every heading on the scan flow — «İndi şəkil
+   çəkiləcək», «Giriş qeydə alındı», and the camera-help headings somebody reads precisely when their
+   camera has failed — rendered in #18191A on near-black. Reported from a phone; invisible in review,
+   because the class is right there in the markup and looks like it should win.
+   In `base` the admin keeps these defaults (nothing there sets a text colour on a heading) and any
+   utility that asks for a different colour now gets it. */
+@layer base {
+  body{font-family:'Manrope',sans-serif;color:var(--c700);-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:'Manrope',sans-serif;color:var(--c900)}
+}
 .mono{font-family:'IBM Plex Mono',monospace;font-size:12px}
 
 /* Layout */
