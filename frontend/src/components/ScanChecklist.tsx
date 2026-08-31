@@ -24,7 +24,7 @@ const ROWS: { key: keyof ScanChecks; label: string; hint: string }[] = [
 
 function Indicator({ step }: { step: CheckStep }) {
   if (step === 'ok' || step === 'warn') {
-    const color = step === 'ok' ? 'bg-green-500' : 'bg-blue-500'
+    const color = step === 'ok' ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]'
     return (
       <span className={`check-pop grid h-8 w-8 place-items-center rounded-full ${color} text-white`}>
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -33,52 +33,54 @@ function Indicator({ step }: { step: CheckStep }) {
   }
   if (step === 'fail') {
     return (
-      <span className="check-pop grid h-8 w-8 place-items-center rounded-full bg-red-500 text-white">
+      <span className="check-pop grid h-8 w-8 place-items-center rounded-full bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.5)] text-white">
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
       </span>
     )
   }
   if (step === 'run') {
-    return <span className="spinner h-8 w-8 rounded-full border-[3px] border-white/20 border-t-white" />
+    return <span className="spinner h-8 w-8 rounded-full border-[3px] border-emerald-500/20 border-t-emerald-400" />
   }
-  return <span className="h-8 w-8 rounded-full border-[3px] border-white/10" />
+  return <span className="h-8 w-8 rounded-full border-[2px] border-white/10" />
 }
 
 export function ScanChecklist({ checks, waitingHint }: { checks: ScanChecks; waitingHint?: string | null }) {
   return (
-    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-slate-900 px-6">
-      <p className="text-lg font-semibold text-slate-200">Yoxlanılır…</p>
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-[#080C14]/95 px-6 backdrop-blur-2xl">
+      {/* Ambient background light */}
+      <div className="pointer-events-none absolute h-64 w-64 rounded-full bg-emerald-500/15 blur-3xl" />
 
-      <div className="w-full max-w-sm space-y-3">
+      <p className="text-xl font-extrabold tracking-tight text-white">Yoxlanılır…</p>
+
+      <div className="relative w-full max-w-sm space-y-3">
         {ROWS.map((row) => {
           const step = checks[row.key]
           const active = step !== 'idle'
           return (
             <div
               key={row.key}
-              className={`flex items-center gap-4 rounded-2xl border p-4 transition-all duration-500 ${
-                active ? 'border-slate-700 bg-slate-800 opacity-100' : 'border-slate-800 bg-slate-800/40 opacity-40'
+              className={`flex items-center gap-4 rounded-3xl border p-4 transition-all duration-500 backdrop-blur-xl ${
+                active
+                  ? 'border-white/15 bg-slate-900/80 shadow-lg'
+                  : 'border-white/[0.05] bg-white/[0.02] opacity-40'
               }`}
             >
               <span
-                className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
-                  step === 'ok' ? 'bg-green-500/15 text-green-400'
-                  : step === 'warn' ? 'bg-blue-500/15 text-blue-400'
-                  : step === 'fail' ? 'bg-red-500/15 text-red-400'
-                  : 'bg-slate-700/50 text-slate-400'
+                className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition-all ${
+                  step === 'ok' ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-400'
+                  : step === 'warn' ? 'border border-blue-500/30 bg-blue-500/15 text-blue-400'
+                  : step === 'fail' ? 'border border-rose-500/30 bg-rose-500/15 text-rose-400'
+                  : 'border border-white/10 bg-white/5 text-slate-400'
                 }`}
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: ICONS[row.key] }} />
               </span>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-white">{row.label}</div>
-                {/* A cold GPS fix can take the better part of a minute, and a row that simply sits
-                    there reads as a frozen app — which is when people give up and report that the
-                    scan does not work. The seconds are the difference between waiting and failing. */}
+                <div className="text-sm font-bold text-white">{row.label}</div>
                 {waitingHint && row.key === 'location' && checks.location === 'run' && (
-                  <div className="text-[12px] text-amber-300">{waitingHint}</div>
+                  <div className="text-xs font-semibold text-amber-300">{waitingHint}</div>
                 )}
-                <div className="text-xs text-slate-400">{row.hint}</div>
+                <div className="text-xs font-medium text-slate-400">{row.hint}</div>
               </div>
               <Indicator step={step} />
             </div>
