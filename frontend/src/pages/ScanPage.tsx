@@ -771,24 +771,40 @@ export function ScanPage() {
     pushGate === 'skip' && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-900 text-white">
-      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-        <span className="font-semibold">QR skan</span>
+    <div className="relative min-h-screen flex flex-col bg-[#080C14] text-white">
+      {/* Two soft lights behind everything — the whole screen is one dark surface, and without a
+          source in it the cards have nothing to be glass against. Fixed and pointer-transparent, so
+          they never sit between a finger and the scanner. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-40 -left-24 h-[26rem] w-[26rem] rounded-full bg-emerald-500/[0.10] blur-[100px]" />
+        <div className="absolute -bottom-48 -right-24 h-[28rem] w-[28rem] rounded-full bg-cyan-500/[0.08] blur-[110px]" />
+      </div>
+
+      <header className="relative z-10 flex items-center justify-between border-b border-white/[0.06] bg-white/[0.03] px-4 py-3 backdrop-blur-md">
+        <span className="inline-flex items-center gap-2 font-semibold tracking-tight">
+          {/* A live dot: the camera is the point of this screen, and the header is where it can say so
+              without taking any room. */}
+          <span className="relative grid h-2 w-2 place-items-center">
+            <span className="absolute h-2 w-2 rounded-full bg-emerald-400/60 motion-safe:animate-ping" />
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          </span>
+          QR skan
+        </span>
         <button
           onClick={() => navigate('/home')}
-          className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-300 transition hover:text-white"
+          className="rounded-full border border-white/10 bg-white/[0.06] px-3.5 py-1.5 text-sm font-semibold text-slate-300 transition active:scale-[0.97] hover:text-white"
         >
           Bağla
         </button>
       </header>
 
-      <main className="relative flex-1 flex flex-col items-center justify-center p-4 gap-5">
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center p-4 gap-5">
         {/* Notifications are asked for here, before the scanner — the scan is the only moment an
             employee opens the app, so it's the only moment this can be asked. An overlay rather than a
             branch, so the page underneath is untouched; it steps aside by itself where push cannot work
             (iOS Safari tab, previously refused) rather than blocking someone out of recording work. */}
         {pushGate === 'show' && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/95 p-4">
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#080C14]/95 p-4 backdrop-blur-sm">
             <PushGate onDone={() => setPushGate('skip')} />
           </div>
         )}
@@ -803,8 +819,8 @@ export function ScanPage() {
         <TodayBanner today={today} />
 
         {today.kind === 'completed' && (
-          <div className="w-full max-w-sm rounded-2xl p-6 text-center bg-green-500 text-white shadow-lg">
-            <div className="text-6xl font-bold mb-3">✓</div>
+          <div className="w-full max-w-sm rounded-3xl bg-gradient-to-b from-emerald-400 to-emerald-600 p-6 text-center text-white shadow-[0_24px_60px_-18px] shadow-emerald-900/50 ring-1 ring-emerald-300/40">
+            <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full bg-white/20 text-4xl font-black ring-1 ring-white/25">✓</div>
             <h2 className="text-xl font-bold">Bu gün tamamlandı</h2>
             <p className="mt-2 text-base opacity-90">
               {fmtTime(today.checkInAtUtc, '')} – {fmtTime(today.checkOutAtUtc, '')}
@@ -817,6 +833,7 @@ export function ScanPage() {
         {phase === 'intro' && (
           <PhotoIntro
             secondsLeft={introSecondsLeft}
+            totalSeconds={Math.round(INTRO_MS / 1000)}
             onReady={() => introSkipRef.current?.()}
             lastUnverified={profile?.lastCheckInUnverified === true}
           />
@@ -884,8 +901,18 @@ export function ScanPage() {
             The circle matches the centre crop frameToJpeg() takes, so what they see is what is kept. */}
         <div className={phase === 'photo' ? 'flex w-full max-w-sm flex-col items-center gap-3' : 'hidden'}>
           <div className="relative h-64 w-52">
+            {/* Corner marks around the oval. They do the job a caption would: this is a camera, and
+                the thing to line up is inside them. Purely decorative — the crop is the oval. */}
+            <svg aria-hidden viewBox="0 0 208 256" className="pointer-events-none absolute -inset-2 h-[calc(100%+1rem)] w-[calc(100%+1rem)] text-emerald-400/50">
+              <g stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round">
+                <path d="M2 30V10a8 8 0 0 1 8-8h20" />
+                <path d="M206 30V10a8 8 0 0 0-8-8h-20" />
+                <path d="M2 226v20a8 8 0 0 0 8 8h20" />
+                <path d="M206 226v20a8 8 0 0 1-8 8h-20" />
+              </g>
+            </svg>
             {/* Oval (face-shaped) frame so the employee lines their face up inside it. */}
-            <div className="h-full w-full overflow-hidden rounded-[50%] border-2 border-white/20 bg-black shadow-lg">
+            <div className="relative h-full w-full overflow-hidden rounded-[50%] border-2 border-emerald-400/30 bg-black shadow-[0_0_50px_-12px_rgba(16,185,129,0.5)]">
               <video
                 ref={selfieVideoRef}
                 className="h-full w-full object-cover"
@@ -895,6 +922,16 @@ export function ScanPage() {
                 muted
                 autoPlay
               />
+              {/* A line that travels down the face while the shot is being held. Inside the oval, so
+                  the frame's overflow clips it to the same shape — outside it, it swept as a rectangle
+                  across a circle. It is the one thing on screen saying the camera is doing something
+                  rather than merely open, which is what stops people moving away half a second early. */}
+              {photoLive && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent via-emerald-400/25 to-transparent motion-safe:animate-[scan_1.5s_ease-in-out_infinite]"
+                />
+              )}
             </div>
             {/* Drains only once real frames arrive, so the countdown never runs while the camera is
                 still warming up — the employee gets the full PHOTO_HOLD_MS to settle. */}
@@ -1041,11 +1078,22 @@ function CaptureRing({ progress }: { progress: number }) {
 function TodayBanner({ today }: { today: TodayInfo }) {
   if (today.kind === 'loading' || today.kind === 'completed') return null
   return (
-    <div className="w-full max-w-sm rounded-xl bg-slate-800 text-slate-100 px-4 py-3 text-center text-base">
+    <div className="inline-flex max-w-sm items-center gap-2.5 rounded-full border border-white/[0.08] bg-white/[0.05] px-4 py-2.5 text-[13px] font-medium text-slate-200 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+      {/* Amber before a check-in, emerald once they are at work — the state, in the one glance
+          somebody standing at a poster gives this line. */}
+      <span className="relative grid h-2 w-2 flex-none place-items-center">
+        <span
+          className={`absolute h-2 w-2 rounded-full motion-safe:animate-ping ${
+            today.kind === 'none' ? 'bg-amber-400/60' : 'bg-emerald-400/60'
+          }`}
+        />
+        <span className={`h-2 w-2 rounded-full ${today.kind === 'none' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+      </span>
       {today.kind === 'none' && 'Bu gün hələ giriş etməmisiniz'}
       {today.kind === 'in-progress' && (
         <>
-          Giriş: <b>{fmtTime(today.checkInAtUtc, '')}</b> — hələ çıxış etməmisiniz
+          Giriş <b className="tabular-nums text-white">{fmtTime(today.checkInAtUtc, '')}</b>
+          <span className="text-slate-500">·</span> hələ çıxış etməmisiniz
         </>
       )}
     </div>
@@ -1065,17 +1113,24 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
   // the obvious next tap is turning the reminder on, not dismissing it. Never blocks: skipping is
   // always one tap away, because a hard gate would lock out anyone on iOS Safari or who once refused.
   const [askingPush, setAskingPush] = useState(false)
+  // The colour stays saturated and stays the loudest thing on screen. This card is read in one
+  // glance by somebody at the front of a queue, and green-means-in / red-means-refused is the only
+  // part of it that has to survive being looked at for half a second in daylight. What is added is
+  // depth — a gradient, a rim of light, a real shadow — not translucency, which would have made a
+  // refusal and a success look alike at exactly the distance nobody can afford that.
   const tone = {
-    green: 'bg-green-500 text-white',
-    red: 'bg-red-500 text-white',
-    yellow: 'bg-yellow-400 text-slate-900',
+    green: 'bg-gradient-to-b from-emerald-400 to-emerald-600 text-white ring-emerald-300/40 shadow-emerald-900/50',
+    red: 'bg-gradient-to-b from-rose-400 to-rose-600 text-white ring-rose-300/40 shadow-rose-900/50',
+    yellow: 'bg-gradient-to-b from-amber-300 to-amber-500 text-slate-900 ring-amber-200/50 shadow-amber-900/40',
   }[card.tone]
   const icon = card.tone === 'green' ? '✓' : card.tone === 'yellow' ? '!' : '✕'
 
   return (
-    <div className={`w-full max-w-sm rounded-2xl p-6 text-center shadow-lg ${tone}`}>
-      <div className="text-6xl font-bold mb-3">{icon}</div>
-      <h2 className="text-xl font-bold">{card.title}</h2>
+    <div className={`w-full max-w-sm rounded-3xl p-6 text-center ring-1 shadow-[0_24px_60px_-18px] ${tone}`}>
+      <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full bg-white/20 text-4xl font-black ring-1 ring-white/25">
+        {icon}
+      </div>
+      <h2 className="text-xl font-extrabold tracking-tight">{card.title}</h2>
       {card.warn && (
         <p className="mt-2 inline-block rounded-full bg-white/25 px-3 py-1 text-sm font-bold">{card.warn}</p>
       )}
@@ -1085,7 +1140,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
       {/* The running cost of forgetting to check out — shown at the one moment the employee is
           certainly looking at the screen. No auto-close, no reason asked; just the number. */}
       {card.openDays ? (
-        <div className="mt-4 rounded-xl bg-black/25 px-4 py-3 text-left">
+        <div className="mt-4 rounded-2xl bg-black/25 px-4 py-3 text-left ring-1 ring-black/10">
           <div className="text-sm font-bold">⚠️ {card.openDays} gün çıxış etməmisiniz</div>
           <div className="mt-0.5 text-xs opacity-85">
             O günlər <b>0 saat</b> sayılıb. İş bitəndə çıxışı skan etməyi unutmayın.
@@ -1102,7 +1157,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
         <img
           src={card.photo}
           alt="Giriş şəkli"
-          className="mx-auto mt-4 h-20 w-20 rounded-full object-cover ring-2 ring-white/60"
+          className="mx-auto mt-4 h-20 w-20 rounded-full object-cover shadow-lg ring-2 ring-white/70"
         />
       )}
 
@@ -1115,7 +1170,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
         ) : (
           <button
             onClick={onClose}
-            className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
+            className="mt-6 w-full rounded-2xl bg-black/20 py-3.5 font-bold ring-1 ring-white/15 transition active:scale-[0.98] hover:bg-black/30"
           >
             Bağla
           </button>
@@ -1123,7 +1178,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
       ) : (
         <button
           onClick={onRetry}
-          className="mt-6 w-full bg-black/15 hover:bg-black/25 rounded-lg py-3 font-semibold transition"
+          className="mt-6 w-full rounded-2xl bg-black/20 py-3.5 font-bold ring-1 ring-white/15 transition active:scale-[0.98] hover:bg-black/30"
         >
           Yenidən skan et
         </button>
