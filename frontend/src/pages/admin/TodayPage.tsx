@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
@@ -222,6 +222,23 @@ export function TodayPage() {
     return true
   }), sortBy, sortDesc)
 
+  /**
+   * The list, cut into branches.
+   *
+   * 221 rows in one run is not a board, it is a scroll — and the branch column was the same word
+   * repeated forty times down the page while the reader looked for a name. Grouped, the word is said
+   * once as a heading and the column disappears; ungrouped (a single branch already picked) nothing
+   * changes, because there is nothing to say.
+   */
+  const grouped = !filterLoc
+  const byBranch = grouped
+    ? [...visible.reduce((m, r) => {
+        const list = m.get(r.locationName)
+        if (list) list.push(r); else m.set(r.locationName, [r])
+        return m
+      }, new Map<string, typeof visible>())].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'az'))
+    : [['', visible] as [string, typeof visible]]
+
   // Same column twice reverses it; a new column starts ascending, which is what every table does.
   const sort = (c: typeof sortBy) => {
     if (c === sortBy) setSortDesc((d) => !d)
@@ -417,14 +434,14 @@ export function TodayPage() {
         </div>
       )}
 
-      <div className="tbl-wrap tbl-cards">
+      <div className="tbl-wrap tbl-cards tbl-dense">
         <table>
           <thead>
             <tr>
               {/* Clicking a heading sorts by it; clicking it again reverses. The two columns that are
                   really categories — branch and job — also filter when their VALUE is clicked, below. */}
               <Th col="name" label="İşçi" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="location" label="Filial" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+              {!grouped && <Th col="location" label="Filial" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
               <Th col="position" label="Vəzifə" sortBy={sortBy} desc={sortDesc} onSort={sort} />
               <Th col="status" label="Status" sortBy={sortBy} desc={sortDesc} onSort={sort} />
               <Th col="in" label="Giriş" sortBy={sortBy} desc={sortDesc} onSort={sort} />
@@ -434,16 +451,31 @@ export function TodayPage() {
             </tr>
           </thead>
           <tbody>
-            {visible.map((r) => (
-              <tr key={r.employeeId}>
+            {byBranch.map(([branch, rows]) => (
+              <Fragment key={branch || 'all'}>
+                {grouped && (
+                  <tr className="tbl-group">
+                    <td colSpan={7}>
+                      <button
+                        className="tbl-filter"
+                        onClick={() => { const id = rows[0]?.locationId; if (id) setFilterLoc(id) }}
+                      >
+                        {branch}
+                      </button>
+                      <span className="tbl-group-n">{rows.length}</span>
+                    </td>
+                  </tr>
+                )}
+                {rows.map((r) => (
+                  <tr key={r.employeeId}>
                 <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                <td data-label="Filial">
-                  {/* The value is the filter. The branch picker above does the same thing, but a name
-                      already on screen is the shortest way to ask "just these". */}
-                  <button className="tbl-filter" onClick={() => setFilterLoc((v) => (v === r.locationId ? '' : r.locationId))}>
-                    {r.locationName}
-                  </button>
-                </td>
+                {!grouped && (
+                  <td data-label="Filial">
+                    <button className="tbl-filter" onClick={() => setFilterLoc((v) => (v === r.locationId ? '' : r.locationId))}>
+                      {r.locationName}
+                    </button>
+                  </td>
+                )}
                 <td data-label="Vəzifə">
                   {r.position
                     ? (
@@ -500,11 +532,12 @@ export function TodayPage() {
                       </>
                     )}
                   </span>
-                  {/* Who pinned this reason — for every assigned leave (Məzuniyyət, İcazə, …). */}
+                  {/* Who pinned this reason. It was a second line under the badge, which made every
+                      leave row twice the height of the ones around it — on a board of two hundred
+                      names, uneven rows are what stops the eye tracking down a column. It is a title
+                      on the badge now: still there for anyone who asks, no longer a layout event. */}
                   {r.leaveAssignedBy && (
-                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                      Təyin edən: {r.leaveAssignedBy}
-                    </div>
+                    <span className="tbl-by" title={`Təyin edən: ${r.leaveAssignedBy}`}>ⓘ</span>
                   )}
                   {/* This giriş-çıxış was entered/changed by hand, not scanned — attribute it. */}
                   {r.manualBy && (
@@ -571,7 +604,9 @@ export function TodayPage() {
                 <td data-label="Üz">
                   <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} />
                 </td>
-              </tr>
+                  </tr>
+                ))}
+              </Fragment>
             ))}
             {loadedOnce && visible.length === 0 && !error && (
               <tr>

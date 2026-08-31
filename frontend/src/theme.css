@@ -870,3 +870,21 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
    table nobody scans. */
 .tbl-filter{border:none;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
 .tbl-filter:hover{text-decoration:underline;color:var(--c900)}
+
+/* ── Today board: two hundred rows in one run ───────────────────────────────────────────────────
+   Branch headings mean the same word is not repeated forty times down a column somebody is scanning
+   for a name, and the column itself goes away while they are on. Rows are tighter than the shared
+   table default because this one is read by scrolling, not by studying: the default 11px padding is
+   right for a twelve-row list and is three screens of air on a hundred-and-fifty-row one. */
+.tbl-dense th,.tbl-dense td{padding:6px 12px!important}
+/* The heading has to stay while the list moves under it, or the columns become unlabelled halfway
+   down — which on this board means guessing which of two times is the check-out. */
+.tbl-dense thead th{position:sticky;top:0;z-index:2;background:var(--c50)}
+.tbl-group td{background:var(--sand);border-top:1px solid var(--c200);
+  font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--c600);
+  position:sticky;top:33px;z-index:1}
+.tbl-group .tbl-filter{font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit}
+.tbl-group-n{margin-left:8px;background:var(--c200);color:var(--c700);border-radius:999px;
+  padding:1px 7px;font-size:10px;letter-spacing:0}
+/* The "who assigned this" mark, inline so a leave row is the same height as every other row. */
+.tbl-by{margin-left:5px;color:var(--c400);cursor:help;font-size:11px}
