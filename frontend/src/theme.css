@@ -888,3 +888,20 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   padding:1px 7px;font-size:10px;letter-spacing:0}
 /* The "who assigned this" mark, inline so a leave row is the same height as every other row. */
 .tbl-by{margin-left:5px;color:var(--c400);cursor:help;font-size:11px}
+
+/* Compact status tiles for the today board. The shared .stat-card is three lines tall — a label, a
+   number and a sentence — which is right on a dashboard read once and wrong above a list of two
+   hundred names, where nine of them push the thing you came for below the fold. Same numbers, same
+   colours, same click-to-filter; one line. */
+.day-tiles{grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-bottom:14px}
+.day-tiles .stat-card{padding:9px 12px;display:flex;align-items:baseline;gap:8px;border-radius:12px}
+.day-tiles .stat-lbl{font-size:11px;font-weight:700;color:var(--c500);letter-spacing:0;text-transform:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-tiles .stat-val{font-size:19px;font-weight:800;margin-top:0;margin-left:auto;line-height:1}
+/* A reason given at the scan, kept on its own line but small enough not to change the row's rhythm. */
+.tbl-note{font-size:10.5px;color:var(--amber);font-weight:600;line-height:1.3}
+/* A row control that is not a button-shaped box. Eighty bordered buttons down one column read as a
+   toolbar; the icon alone reads as a row that has a photo. */
+.tbl-icon{border:none;background:none;padding:2px;color:var(--c400);cursor:pointer;line-height:0;border-radius:6px}
+.tbl-icon:hover:not(:disabled){color:var(--c900);background:var(--c100)}
+.tbl-icon:disabled{opacity:.5;cursor:default}

@@ -343,7 +343,7 @@ export function TodayPage() {
         </button>
       </div>
 
-      <div className="stat-grid">
+      <div className="stat-grid day-tiles">
         <div
           className={`stat-card ${isToday ? 'blue' : 'clay'}`}
           style={cardStyle('incomplete')}
@@ -351,12 +351,10 @@ export function TodayPage() {
         >
           <div className="stat-lbl">{incompleteLabel}</div>
           <div className="stat-val">{counts.incomplete}</div>
-          <div className="stat-sub">{isToday ? 'Hazırda işdədir, çıxışı yoxdur' : 'Gün bitib, çıxış qeydə alınmayıb'}</div>
         </div>
         <div className="stat-card clay" style={cardStyle('absent')} onClick={() => toggleStatus('absent')}>
           <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
           <div className="stat-val">{counts.absent}</div>
-          <div className="stat-sub">Heç giriş etməyib</div>
         </div>
         {/* Shown only when someone is actually pending — an empty card on a day with no night shift
             would be clutter. Neutral, next to Qayıb, so a not-yet-due worker never reads as a no-show. */}
@@ -364,29 +362,24 @@ export function TodayPage() {
           <div className="stat-card slate" style={cardStyle('pending')} onClick={() => toggleStatus('pending')}>
             <div className="stat-lbl">{STATUS_MAP.Pending.label}</div>
             <div className="stat-val">{counts.pending}</div>
-            <div className="stat-sub">Növbəsi hələ başlamayıb</div>
           </div>
         )}
         <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
           <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
           <div className="stat-val">{counts.present}</div>
-          <div className="stat-sub">Giriş və çıxış edib</div>
         </div>
         <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
           <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
           <div className="stat-val">{counts.dayOff}</div>
-          <div className="stat-sub">Bu gün iş günü deyil</div>
         </div>
         <div className="stat-card purple" style={cardStyle('onLeave')} onClick={() => toggleStatus('onLeave')}>
           <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
           <div className="stat-val">{counts.onLeave}</div>
-          <div className="stat-sub">Təsdiqlənmiş məzuniyyətdədir</div>
         </div>
         {counts.sick > 0 && (
           <div className="stat-card blue" style={cardStyle('sick')} onClick={() => toggleStatus('sick')}>
             <div className="stat-lbl">Xəstəlik</div>
             <div className="stat-val">{counts.sick}</div>
-            <div className="stat-sub">Xəstəlik məzuniyyətindədir</div>
           </div>
         )}
         {/* Shown only when somebody is on one, like Xəstəlik — a permanent 0 is a tile you read and
@@ -395,13 +388,11 @@ export function TodayPage() {
           <div className="stat-card teal" style={cardStyle('trip')} onClick={() => toggleStatus('trip')}>
             <div className="stat-lbl">Ezamiyyət</div>
             <div className="stat-val">{counts.trip}</div>
-            <div className="stat-sub">İş səfərindədir — qayıb sayılmır</div>
           </div>
         )}
         <div className="stat-card amber" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
           <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
           <div className="stat-val">{counts.permission}</div>
-          <div className="stat-sub">Təsdiqlənmiş icazəlidir</div>
         </div>
       </div>
       {statusFilter && (
@@ -486,7 +477,7 @@ export function TodayPage() {
                         {r.position}
                       </button>
                     )
-                    : <span className="muted">—</span>}
+                    : null}
                 </td>
                 <td data-label="Status">
                   {/* Pencil next to the badge on a Qayıb row (to pin a reason) or an assigned single-day
@@ -554,7 +545,7 @@ export function TodayPage() {
                   )}
                 </td>
                 <td className="mono" data-label="Giriş">
-                  {fmtTime(r.checkInAtUtc ?? r.fieldCheckInAtUtc)}
+                  {(r.checkInAtUtc ?? r.fieldCheckInAtUtc) ? fmtTime(r.checkInAtUtc ?? r.fieldCheckInAtUtc) : ''}
                   {r.status === 'Field' && (
                     <span className="tag" title="Sahə ziyarəti — GPS ilə" style={{ marginLeft: 6, background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }}>📍 sahə</span>
                   )}
@@ -574,9 +565,9 @@ export function TodayPage() {
                   )}
                 </td>
                 <td className="mono" data-label="Çıxış">
-                  {fmtTime(r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)}
+                  {(r.checkOutAtUtc ?? r.fieldCheckOutAtUtc) ? fmtTime(r.checkOutAtUtc ?? r.fieldCheckOutAtUtc) : ''}
                   {r.earlyDepartureReason && (
-                    <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
+                    <div className="tbl-note">
                       Tez: {r.earlyDepartureReason}
                     </div>
                   )}
@@ -589,7 +580,7 @@ export function TodayPage() {
                       biləcəyi sətirləri azaldırdı. Menecerdə hələ də görünmür: `mayViewPhotos`. */}
                   {mayViewPhotos && r.hasPhoto && r.recordId ? (
                     <button
-                      className="btn btn-sm"
+                      className="tbl-icon"
                       disabled={busyId === r.recordId}
                       onClick={() => void viewPhoto(r)}
                       title="Giriş şəklini gör"
@@ -597,12 +588,10 @@ export function TodayPage() {
                     >
                       {busyId === r.recordId ? '…' : <IconCamera />}
                     </button>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
+                  ) : null}
                 </td>
                 <td data-label="Üz">
-                  <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} />
+                  <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} compact />
                 </td>
                   </tr>
                 ))}
