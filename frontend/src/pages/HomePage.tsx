@@ -13,7 +13,8 @@ import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { AssistantFab } from '../components/AssistantFab'
-import { firstName, initials, todayState, todayStr, type TodayState } from '../lib/att'
+import { firstName, initials, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
+import { QUEUE_CHANGED, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { IconQr } from '../components/icons'
 
@@ -71,7 +72,29 @@ export function HomePage() {
     if (r.status === 200 && Array.isArray(r.data)) setFieldVisits(r.data)
   }
 
-  const today = todayState(records)
+  /**
+   * Scans still sitting on this phone, waiting for a signal.
+   *
+   * The day below is built from these as well as from the server, because a card that only knows
+   * what the server knows told people their offline check-in had not happened — and they scanned
+   * again, which the server later reads as a check-out. See withPendingScans.
+   */
+  const [queued, setQueued] = useState<QueuedScan[]>([])
+  useEffect(() => {
+    let alive = true
+    const refresh = () => { void scansFor(employeeId).then((q) => { if (alive) setQueued(q) }) }
+    refresh()
+    window.addEventListener(QUEUE_CHANGED, refresh)
+    // The drain runs on reconnect, and the queue emptying has to reach this screen too.
+    window.addEventListener('online', refresh)
+    return () => {
+      alive = false
+      window.removeEventListener(QUEUE_CHANGED, refresh)
+      window.removeEventListener('online', refresh)
+    }
+  }, [employeeId])
+
+  const today = withPendingScans(todayState(records), queued)
   const recent = records.slice(0, 3)
   // A worker with an open/assigned field visit has no QR poster to scan — don't bounce them to /scan.
   const hasActionableField = fieldVisits.some((v) => v.status === 'Assigned' || v.status === 'CheckedIn')
@@ -268,6 +291,13 @@ function ScanHero({ today, shiftEnd, onScan }: { today: TodayState; shiftEnd?: s
           Giriş {fmtTime(today.checkIn)}
           {overdue ? ' · çıxışı unutmayın!' : shiftEnd ? ` · Növbə bitir ${shiftEnd}` : ''}
         </div>
+        {/* Honest about where the record is. The card must not look identical to a synced day — the
+            admin's board will not show this person yet, and the employee should not be surprised. */}
+        {today.pending && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-bold">
+            📴 Göndərilməyi gözləyir
+          </div>
+        )}
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
           <IconQr className="h-5 w-5" /> Çıxış üçün skan et
         </span>
@@ -282,6 +312,11 @@ function ScanHero({ today, shiftEnd, onScan }: { today: TodayState; shiftEnd?: s
         {fmtTime(today.checkIn)} – {fmtTime(today.checkOut)}
       </div>
       <div className="mt-1 text-sm text-slate-600">{fmtDuration(today.checkIn, today.checkOut)} işlədiniz.</div>
+      {today.pending && (
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
+          📴 Göndərilməyi gözləyir
+        </div>
+      )}
     </div>
   )
 }

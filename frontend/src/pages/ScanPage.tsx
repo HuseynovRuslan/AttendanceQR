@@ -631,12 +631,23 @@ export function ScanPage() {
         successFeedback()
         setResult({
           tone: 'green',
-          // The thrown-fetch path is NOT only "no internet": a backend down behind the proxy answers
-          // 502 without CORS headers, which a browser surfaces as the same exception. The wording
-          // stays honest about that — the connection to the SERVER is what's gone, whoever's fault.
-          title: reason === 'server' ? 'Server müvəqqəti əlçatmazdır — yadda saxlanıldı' : 'Serverlə əlaqə müvəqqəti kəsilib — yadda saxlanıldı',
-          detail: 'Giriş cihazınızda saxlanıldı.',
-          note: 'Əlaqə bərpa olunanda avtomatik göndəriləcək. Tətbiqi bağlaya bilərsiniz.',
+          // Lead with what HAPPENED, not with what broke.
+          //
+          // It used to open «Serverlə əlaqə müvəqqəti kəsilib» — an accurate sentence about our
+          // infrastructure, printed in the largest text on a screen belonging to somebody who only
+          // wants to know whether they are marked present. They read a fault report and came to the
+          // office asking whether there was a problem. There isn't: the tap is saved and will be
+          // sent, which is the whole point of the queue, so that is the headline now.
+          //
+          // The cause stays on the card, at the bottom, in the quiet line — it is true, it matters
+          // when someone reports a bad day, and the distinction is real: a backend down behind a
+          // live proxy answers 502 without CORS headers, which the browser raises as the same
+          // exception as no signal at all.
+          title: 'Qeyd olundu ✓',
+          detail: 'Skan telefonunuzda saxlanıldı.',
+          note: reason === 'server'
+            ? 'İnternet qayıdanda özü göndəriləcək — heç nə itmir. Tətbiqi bağlaya bilərsiniz. (Server müvəqqəti əlçatmazdır.)'
+            : 'İnternet qayıdanda özü göndəriləcək — heç nə itmir. Tətbiqi bağlaya bilərsiniz. (Əlaqə kəsilib.)',
           final: true,
           photo: photoBase64 ?? undefined,
         })
