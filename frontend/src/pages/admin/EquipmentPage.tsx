@@ -15,7 +15,7 @@ import { getEmployees, type AdminEmployee } from '../../api/admin'
 // and it reads the VIEWER'S timezone. A date-only rendering of an instant taken in the device's zone
 // shows the wrong day either side of midnight — the bug this project has already been bitten by.
 import { fmtDateOfInstant } from '../../lib/format'
-import { countKit, groupByArea, hasKind, KIT_LABEL, kitLabel, readKit, type KitKind } from '../../lib/equipmentKit'
+import { countKit, groupByArea, hasKind, KIT_LABEL, kitLabel, ordinaryKinds, readKit, unlinkedIsExceptional, type KitKind } from '../../lib/equipmentKit'
 import {
   IconAlert,
   IconBriefcase,
@@ -73,6 +73,15 @@ const EMPTY_FORM: EquipmentInput = {
   otherEquipment: null,
   employeeId: null,
 }
+
+/**
+ * Nothing is quieted here.
+ *
+ * The card grid hides a common kind's NAME because eighty cards repeat it. The drawer is one person,
+ * opened deliberately to read what they have — and the table view exists to be checked line by line
+ * against the original spreadsheet. Both are places where the words are the content, not the noise.
+ */
+const SPELL_EVERYTHING_OUT: Set<KitKind> = new Set()
 
 const KIT_ICON: Record<KitKind, typeof IconDesktop> = {
   desktop: IconDesktop,
@@ -142,7 +151,11 @@ function Lines({ text }: { text: string | null }) {
   return <span style={{ whiteSpace: 'pre-line' }}>{text}</span>
 }
 
-function KitChips({ row }: { row: EquipmentRecord }) {
+/**
+ * @param ordinary  Kinds so common in this register that their name is background noise — see
+ *                  `ordinaryKinds`. They render as icon (and count) only, name in the tooltip.
+ */
+function KitChips({ row, ordinary }: { row: EquipmentRecord; ordinary: Set<KitKind> }) {
   const kit = readKit(row)
   // Spans, not divs: this renders inside the card's <button>, which may only hold phrasing
   // content. The layout comes from CSS either way.
@@ -151,10 +164,15 @@ function KitChips({ row }: { row: EquipmentRecord }) {
     <span className="eq-kit">
       {kit.map((item) => {
         const Icon = KIT_ICON[item.kind]
+        const quiet = ordinary.has(item.kind)
         return (
-          <span key={item.kind} className={`eq-kit-chip k-${item.kind}`}>
+          <span
+            key={item.kind}
+            className={`eq-kit-chip k-${item.kind}${quiet ? ' quiet' : ''}`}
+            title={quiet ? kitLabel(item) : undefined}
+          >
             <Icon />
-            {kitLabel(item)}
+            {quiet ? (item.count !== null && item.count > 1 ? `×${item.count}` : '') : kitLabel(item)}
           </span>
         )
       })}
@@ -284,6 +302,11 @@ export function EquipmentPage() {
   /** What the company holds, counted over the WHOLE register — never over what is on screen. */
   const totals = useMemo(() => countKit(rows), [rows])
   const unlinked = useMemo(() => rows.filter((r) => !r.employeeId).length, [rows])
+  // From the WHOLE register, not the filtered view — a chip that changes shape while you read it is
+  // worse than a chip that repeats.
+  const ordinary = useMemo(() => ordinaryKinds(rows), [rows])
+  // Amber is spent only when it means something. Every row unlinked = eighty warnings = none.
+  const warnUnlinked = unlinkedIsExceptional(unlinked, rows.length)
 
   const visible = useMemo(() => {
     // Same columns the server's `q` searched, so moving the search here changed where it runs and
@@ -507,7 +530,6 @@ export function EquipmentPage() {
           >
             <span className="eq-tile-n">{rows.length}</span>
             <span className="eq-tile-l">Hamısı</span>
-            <span className="eq-tile-s">bütün qeydlər</span>
           </button>
           {totals.map((t) => {
             const Icon = KIT_ICON[t.kind]
@@ -517,24 +539,24 @@ export function EquipmentPage() {
                 type="button"
                 className={`eq-tile k-${t.kind}${filter === t.kind ? ' active' : ''}`}
                 onClick={() => setFilter(filter === t.kind ? 'all' : t.kind)}
+                title={`ən azı ${t.devices} ədəd · ${t.people} nəfərdə`}
               >
                 <span className="eq-tile-ic"><Icon /></span>
                 <span className="eq-tile-n">{t.devices}</span>
                 <span className="eq-tile-l">{KIT_LABEL[t.kind]}</span>
-                <span className="eq-tile-s">{t.people} nəfərdə</span>
               </button>
             )
           })}
           {unlinked > 0 && (
             <button
               type="button"
-              className={`eq-tile warn${filter === 'unlinked' ? ' active' : ''}`}
+              className={`eq-tile${warnUnlinked ? ' warn' : ''}${filter === 'unlinked' ? ' active' : ''}`}
               onClick={() => setFilter(filter === 'unlinked' ? 'all' : 'unlinked')}
+              title="Bu qeydlər işçi siyahısındakı heç kimlə uyğunlaşmayıb"
             >
-              <span className="eq-tile-ic"><IconAlert /></span>
+              <span className="eq-tile-ic">{warnUnlinked ? <IconAlert /> : <IconUser />}</span>
               <span className="eq-tile-n">{unlinked}</span>
               <span className="eq-tile-l">Bağlanmayıb</span>
-              <span className="eq-tile-s">işçi siyahısında yoxdur</span>
             </button>
           )}
         </div>
@@ -780,7 +802,7 @@ export function EquipmentPage() {
                   <button
                     key={row.id}
                     type="button"
-                    className={`eq-card${row.employeeId ? '' : ' unlinked'}`}
+                    className={`eq-card${!row.employeeId && warnUnlinked ? ' unlinked' : ''}`}
                     onClick={() => setOpenId(row.id)}
                   >
                     <span className="eq-card-head">
@@ -792,7 +814,7 @@ export function EquipmentPage() {
                       <span className="eq-no">№{row.rowNo}</span>
                     </span>
                     <span className="eq-card-rule" />
-                    <KitChips row={row} />
+                    <KitChips row={row} ordinary={ordinary} />
                   </button>
                 ))}
               </div>
@@ -881,7 +903,7 @@ export function EquipmentPage() {
             </div>
 
             <div className="eq-drawer-body">
-              <KitChips row={shown} />
+              <KitChips row={shown} ordinary={SPELL_EVERYTHING_OUT} />
               <Summary
                 text={shown.equipment}
                 alone={!shown.systemUnit?.trim() && !shown.monitor?.trim() && !shown.otherEquipment?.trim()}

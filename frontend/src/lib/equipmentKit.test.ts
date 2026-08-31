@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countKit, groupByArea, hasKind, kitLabel, readKit, type KitSource } from './equipmentKit'
+import { countKit, groupByArea, hasKind, kitLabel, ordinaryKinds, readKit, unlinkedIsExceptional, type KitSource } from './equipmentKit'
 
 /**
  * The chips on an equipment card are read out of prose somebody typed into a spreadsheet, so the
@@ -220,5 +220,47 @@ describe('gathering the register by site', () => {
 
   it('copes with an empty register', () => {
     expect(groupByArea([])).toEqual([])
+  })
+})
+
+describe('ordinaryKinds', () => {
+  const many = (n: number, text: string) => Array.from({ length: n }, () => row({ equipment: text }))
+
+  it('a kind on more than half the cards stops spelling its name out', () => {
+    const reg = [...many(59, 'sistem bloku, monitor'), ...many(21, 'noutbuk')]
+    expect([...ordinaryKinds(reg)].sort()).toEqual(['desktop', 'monitor'])
+  })
+
+  it('the rare kind keeps its words — it is the one being looked for', () => {
+    const reg = [...many(59, 'sistem bloku, monitor'), ...many(5, 'skaner')]
+    expect(ordinaryKinds(reg).has('scanner')).toBe(false)
+  })
+
+  it('exactly half is not a majority — the words stay', () => {
+    const reg = [...many(40, 'noutbuk'), ...many(40, 'printer')]
+    expect(ordinaryKinds(reg).has('laptop')).toBe(false)
+  })
+
+  it('an empty register decides nothing', () => {
+    expect(ordinaryKinds([]).size).toBe(0)
+  })
+})
+
+describe('unlinkedIsExceptional', () => {
+  it('80 of 80 is not a warning, it is the state of the register', () => {
+    expect(unlinkedIsExceptional(80, 80)).toBe(false)
+  })
+
+  it('3 of 80 is a warning — that is the whole point of the colour', () => {
+    expect(unlinkedIsExceptional(3, 80)).toBe(true)
+  })
+
+  it('half is still worth flagging; more than half is not', () => {
+    expect(unlinkedIsExceptional(40, 80)).toBe(true)
+    expect(unlinkedIsExceptional(41, 80)).toBe(false)
+  })
+
+  it('nothing unlinked, nothing to say', () => {
+    expect(unlinkedIsExceptional(0, 80)).toBe(false)
   })
 })

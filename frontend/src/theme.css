@@ -894,3 +894,25 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .tbl-icon{border:none;background:none;padding:2px;color:var(--c400);cursor:pointer;line-height:0;border-radius:6px}
 .tbl-icon:hover:not(:disabled){color:var(--c900);background:var(--c100)}
 .tbl-icon:disabled{opacity:.5;cursor:default}
+
+/* ── İnventar: ekranın yuxarısı siyahını aşağı itələməsin ────────────────────────────────────────
+   Səkkiz lövhəcik dörd sətir hündürlükdə idi — ikon, rəqəm, ad, altında bir izah — və birlikdə
+   birinci ekranın yarısını tuturdular. Rəhbər bu səhifəni «kimdə nə var» sualı ilə açır; cavab
+   kartlardadır, lövhəciklərdə yox. Rəqəm, rəng, kliklə-süzgəc olduğu kimi qalır — sadəcə bir sətir.
+   Alt izah («57 nəfərdə») itmir: rəqəmin yanına, kiçik və sakit. */
+.eq-tiles{flex-wrap:wrap;overflow-x:visible}
+.eq-tile{min-width:0;flex:1 1 150px;flex-direction:row;align-items:center;gap:9px;padding:9px 12px;border-radius:12px}
+.eq-tile-ic{height:22px;width:22px;margin-bottom:0;flex:none}
+.eq-tile-ic svg{width:14px;height:14px}
+.eq-tile-l{margin-top:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.eq-tile-n{font-size:19px;margin-left:auto;flex:none}
+/* Sıra: ikon · ad · say. Rəqəm sağ kənarda dayansın deyə — göz sütun kimi aşağı enir. */
+.eq-tile-n{order:3}
+
+/* Adi olan susur, qeyri-adi olan danışır.
+   Səksən kartın əllidoqquzunda «Sistem bloku», əllidoqquzunda «Monitor» yazılırdı — o sözlər artıq
+   məlumat deyil, fon idi, və skaneri olan iki nəfər onun içində itirdi. Çoxluqda olan növ yalnız
+   ikonu ilə qalır (adı tooltip-də), nadir olan sözünü saxlayır. Kart da alçalır: iki-üç sətir çip
+   bir sətrə yığılır. */
+.eq-kit-chip.quiet{padding:4px 6px;gap:0;font-variant-numeric:tabular-nums}
+.eq-kit-chip.quiet:empty{padding:4px}

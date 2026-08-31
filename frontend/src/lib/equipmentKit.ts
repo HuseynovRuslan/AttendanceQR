@@ -263,3 +263,37 @@ export function groupByArea<T extends { area: string | null }>(rows: T[]): AreaG
   const tail = small.sort(bySize).flatMap((g) => g.rows)
   return [...big, { area: OTHER_AREAS, rows: tail, merged: true }]
 }
+
+/**
+ * The kinds so common in this register that writing their name on every card says nothing.
+ *
+ * A chip's job is to tell you what somebody has. When fifty-nine of eighty cards say «Sistem bloku»
+ * and fifty-nine say «Monitor», those words are not information any more — they are the background,
+ * and the two cards with a scanner are lost inside it. Above half, the icon alone carries it (the
+ * name stays in the tooltip); below half, the chip keeps its words, because that is the card
+ * somebody is looking for.
+ *
+ * Computed from the WHOLE register, never from the filtered view — otherwise a label would appear
+ * and disappear as you typed in the search box, and a chip that changes shape while you read it is
+ * worse than a chip that repeats.
+ */
+export function ordinaryKinds(rows: KitSource[]): Set<KitKind> {
+  const ordinary = new Set<KitKind>()
+  if (rows.length === 0) return ordinary
+  for (const t of countKit(rows))
+    if (t.people * 2 > rows.length) ordinary.add(t.kind)
+  return ordinary
+}
+
+/**
+ * Whether the amber "needs attention" treatment is honest.
+ *
+ * Every row in this register is unlinked, so the screen drew eighty amber stripes and an amber
+ * warning tile reading 80/80 — and a warning that is on everything is not a warning, it is the
+ * background colour. It taught the reader to skip exactly the mark that is supposed to stop them.
+ *
+ * The count is still shown either way; only the alarm is spent, and only when it is a real minority.
+ */
+export function unlinkedIsExceptional(unlinked: number, total: number): boolean {
+  return unlinked > 0 && unlinked * 2 <= total
+}
