@@ -771,16 +771,16 @@ export function ScanPage() {
     pushGate === 'skip' && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-[#080C14] text-white overflow-hidden selection:bg-emerald-500/30">
-      {/* Ambient background light glow */}
-      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-emerald-500/10 blur-[100px]" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-teal-500/5 blur-[120px]" />
+    <div className="relative min-h-screen flex flex-col bg-[#080C14] text-white overflow-hidden selection:bg-blue-500/30">
+      {/* QRLog Ambient background light glow */}
+      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-96 w-96 rounded-full bg-blue-600/15 blur-[110px]" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-80 w-80 rounded-full bg-indigo-600/10 blur-[130px]" />
 
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/[0.06] bg-[#080C14]/75 px-5 py-3.5 backdrop-blur-xl">
         <div className="flex items-center gap-2.5">
           <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-70" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500" />
           </span>
           <span className="text-sm font-bold tracking-tight text-white">QR Skan</span>
         </div>
@@ -813,15 +813,15 @@ export function ScanPage() {
         <TodayBanner today={today} />
 
         {today.kind === 'completed' && (
-          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-b from-emerald-950/80 to-slate-900/90 p-6 text-center text-white shadow-2xl backdrop-blur-2xl">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-500/20 text-2xl font-black text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-blue-500/30 bg-gradient-to-b from-blue-950/80 to-slate-900/90 p-6 text-center text-white shadow-2xl backdrop-blur-2xl">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-400/30 bg-blue-500/20 text-2xl font-black text-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.3)]">
               ✓
             </div>
             <h2 className="text-xl font-extrabold text-white">Bu gün tamamlandı</h2>
             <p className="mt-2 text-sm text-slate-300 font-medium">
               {fmtTime(today.checkInAtUtc, '')} – {fmtTime(today.checkOutAtUtc, '')}
               {' · '}
-              <span className="text-emerald-400 font-bold">{formatDuration(minutesBetween(today.checkInAtUtc, today.checkOutAtUtc))}</span>
+              <span className="text-blue-400 font-bold">{formatDuration(minutesBetween(today.checkInAtUtc, today.checkOutAtUtc))}</span>
             </p>
           </div>
         )}
@@ -899,7 +899,7 @@ export function ScanPage() {
         <div className={phase === 'photo' ? 'flex w-full max-w-sm flex-col items-center gap-4' : 'hidden'}>
           <div className="relative h-64 w-52">
             {/* Oval (face-shaped) frame so the employee lines their face up inside it. */}
-            <div className="h-full w-full overflow-hidden rounded-[50%] border-2 border-emerald-500/40 bg-black shadow-[0_0_35px_rgba(16,185,129,0.25)]">
+            <div className="h-full w-full overflow-hidden rounded-[50%] border-2 border-blue-500/40 bg-black shadow-[0_0_35px_rgba(37,99,235,0.3)]">
               <video
                 ref={selfieVideoRef}
                 className="h-full w-full object-cover"
@@ -919,11 +919,11 @@ export function ScanPage() {
             <div className="w-full text-center space-y-2">
               <p className="text-xl font-extrabold text-white">Ekrana baxın</p>
               <p className="text-xs font-medium text-slate-300">Üzünüzü ovalın mərkəzinə salın və tərpənməyin</p>
-              <p className="text-4xl font-black tabular-nums text-emerald-400">{secondsLeft}</p>
+              <p className="text-4xl font-black tabular-nums text-blue-400">{secondsLeft}</p>
               {/* Hazır olan dərhal çəksin — gözləməsin. Basmasa, sayğac özü çəkir. */}
               <button
                 onClick={() => captureNowRef.current?.()}
-                className="group relative mt-2 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 py-3.5 text-base font-extrabold text-white shadow-[0_4px_25px_rgba(16,185,129,0.35)] transition-all active:scale-[0.98] cursor-pointer"
+                className="group relative mt-2 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 py-3.5 text-base font-extrabold text-white shadow-[0_4px_25px_rgba(37,99,235,0.4)] transition-all active:scale-[0.98] cursor-pointer"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -1043,7 +1043,7 @@ function CaptureRing({ progress }: { progress: number }) {
       <path
         d={d}
         fill="none"
-        stroke="#10b981"
+        stroke="#3b82f6"
         strokeWidth="5"
         strokeLinecap="round"
         pathLength={1}

@@ -1,128 +1,81 @@
-// Shown after the QR is read and BEFORE the front camera opens. Two reasons it exists: seeing your
-// own face appear unannounced is unpleasant, and the photo is only useful if the person is holding
-// the phone properly — which they cannot do if they learn about it at the same moment it is taken.
-// The examples are drawn inline rather than shipped as images, so there is nothing extra to load.
+// Shown after the QR is read and BEFORE the front camera opens.
+// Explains the selfie requirement with real demonstration photos and clear visual guidance.
 
-/**
- * A person, drawn rather than suggested.
- *
- * This was a circle on a dome — a pictogram, which is fine on a sign and useless here, because the
- * whole job of these two frames is to show somebody what their own face should look like inside the
- * oval. A shape that could equally be a user icon teaches nothing. So: a head with hair and ears, a
- * neck, shoulders, and enough of a face to read as one at 80 pixels.
- *
- * Still inline SVG. A photograph would need a real person's consent, a licence, and a download on a
- * phone that may be on one bar of signal at a gate at seven in the morning — and it would look like
- * one specific stranger rather than like whoever is holding the phone.
- *
- * `turn` swings the head and shifts the features, which is what makes the "wrong" frame read as
- * somebody looking away rather than as a smaller copy of the same picture.
- */
-function Person({
-  cx, cy, scale = 1, opacity = 1, turn = 0,
-}: { cx: number; cy: number; scale?: number; opacity?: number; turn?: number }) {
-  return (
-    <g transform={`translate(${cx} ${cy}) scale(${scale})`} opacity={opacity} fill="currentColor">
-      {/* Shoulders and chest — cut off by the frame, as a real chest-up shot is. */}
-      <path d="M-26 40c0-13 11-23 26-23s26 10 26 23v6h-52z" />
-      {/* Neck. Starts ABOVE the chin (y=3) and is drawn before the head, so the jaw paints over it —
-          starting it below the chin left a gap and the head floated. */}
-      <path d="M-6 -2h12v22a6 6 0 0 1-12 0z" opacity="0.85" />
-      <g transform={`rotate(${turn})`}>
-        {/* Ears, drawn before the head so the head's edge overlaps them. */}
-        <ellipse cx="-12.5" cy="-4" rx="2.6" ry="4" opacity="0.9" />
-        <ellipse cx="12.5" cy="-4" rx="2.6" ry="4" opacity="0.9" />
-        {/* The head: taller than wide, with a jaw — not a circle. */}
-        <path d="M0-22c7.2 0 12 5.2 12 12.5 0 4-.6 7.6-2 10.6C8-.4 4.6 3 0 3S-8-.4-10 1.1c-1.4-3-2-6.6-2-10.6C-12-16.8-7.2-22 0-22Z" />
-        {/* Hair, sitting on the crown. */}
-        <path d="M-12.4-9.5c-.6-8 4.6-13.5 12.4-13.5s13 5.5 12.4 13.5c-1.2-4.4-3-6.6-5.4-7.4-2.6-.9-5.6.5-9 .5-2.8 0-5.4-.6-7.2 1.2-1.2 1.2-2.2 3.4-3.2 5.7Z" />
-        {/* Enough face to be a face. Cut out of the head so they read at any tint. */}
-        <g fill="#0B1120" opacity="0.55">
-          <ellipse cx="-4.6" cy="-8" rx="1.5" ry="1.9" />
-          <ellipse cx="4.6" cy="-8" rx="1.5" ry="1.9" />
-          <path d="M-4 -3.2c1.2 1.1 6.8 1.1 8 0" fill="none" stroke="#0B1120" strokeWidth="1.4" strokeLinecap="round" />
-        </g>
-      </g>
-    </g>
-  )
-}
-
-function Example({ good }: { good: boolean }) {
-  const id = good ? 'clip-ok-hud' : 'clip-bad-hud'
+function PhotoExample({
+  good,
+  src,
+  label,
+}: {
+  good: boolean
+  src: string
+  label: string
+}) {
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className={`relative flex h-24 w-24 items-center justify-center rounded-2xl border transition-all ${
+        className={`relative h-28 w-28 overflow-hidden rounded-2xl border transition-all ${
           good
-            ? 'border-emerald-500/40 bg-gradient-to-b from-emerald-500/10 to-emerald-500/[0.02] shadow-[0_0_15px_rgba(16,185,129,0.15)]'
-            : 'border-rose-500/35 bg-gradient-to-b from-rose-500/10 to-rose-500/[0.02] shadow-[0_0_15px_rgba(244,63,94,0.1)]'
+            ? 'border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.25)]'
+            : 'border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.15)]'
         }`}
       >
+        {/* Real demonstration photo */}
+        <img
+          src={src}
+          alt={label}
+          className="h-full w-full object-cover"
+          loading="eager"
+        />
+
         {/* HUD Corner Reticles */}
         <div
-          className={`pointer-events-none absolute -top-1 -left-1 h-2.5 w-2.5 border-t-2 border-l-2 ${
-            good ? 'border-emerald-400' : 'border-rose-400'
+          className={`pointer-events-none absolute top-1 left-1 h-3 w-3 border-t-2 border-l-2 ${
+            good ? 'border-blue-400' : 'border-rose-400'
           }`}
         />
         <div
-          className={`pointer-events-none absolute -top-1 -right-1 h-2.5 w-2.5 border-t-2 border-r-2 ${
-            good ? 'border-emerald-400' : 'border-rose-400'
+          className={`pointer-events-none absolute top-1 right-1 h-3 w-3 border-t-2 border-r-2 ${
+            good ? 'border-blue-400' : 'border-rose-400'
           }`}
         />
         <div
-          className={`pointer-events-none absolute -bottom-1 -left-1 h-2.5 w-2.5 border-b-2 border-l-2 ${
-            good ? 'border-emerald-400' : 'border-rose-400'
+          className={`pointer-events-none absolute bottom-1 left-1 h-3 w-3 border-b-2 border-l-2 ${
+            good ? 'border-blue-400' : 'border-rose-400'
           }`}
         />
         <div
-          className={`pointer-events-none absolute -bottom-1 -right-1 h-2.5 w-2.5 border-b-2 border-r-2 ${
-            good ? 'border-emerald-400' : 'border-rose-400'
+          className={`pointer-events-none absolute bottom-1 right-1 h-3 w-3 border-b-2 border-r-2 ${
+            good ? 'border-blue-400' : 'border-rose-400'
           }`}
         />
 
-        <svg viewBox="0 0 120 120" className={`h-20 w-20 ${good ? 'text-emerald-300' : 'text-rose-300/80'}`}>
-          <defs>
-            <clipPath id={id}>
-              <circle cx="60" cy="60" r="48" />
-            </clipPath>
-          </defs>
+        {/* Subtle Biometric Crosshair */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-25">
+          <div className={`h-10 w-10 rounded-full border border-dashed ${good ? 'border-blue-300' : 'border-rose-300'}`} />
+        </div>
 
-          {/* Biometric subtle crosshair / target ring */}
-          <circle
-            cx="60"
-            cy="60"
-            r="44"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeDasharray={good ? '4 4' : '2 4'}
-            opacity={0.3}
-          />
-
-          <g clipPath={`url(#${id})`}>
-            {good ? (
-              // Centred, filling the frame — what a phone held at face height produces.
-              <Person cx={60} cy={62} scale={1.45} />
-            ) : (
-              // Off to one side, small, with a colleague in the queue behind.
-              <>
-                {/* Off to one side, turned away, and a colleague waiting in the queue behind. */}
-                <Person cx={46} cy={74} scale={0.9} turn={-14} />
-                <Person cx={88} cy={64} scale={0.62} opacity={0.4} turn={9} />
-              </>
-            )}
-          </g>
-        </svg>
+        {/* The verdict, on the picture itself.
+            Green tick and red cross rather than the brand blue: this one pairing is understood
+            without being read, in any language and by anyone who has ever seen a form. The frame
+            keeps QRLog's blue; the badge is the only place a second colour earns its keep. */}
+        <span
+          className={`absolute -top-1.5 -right-1.5 grid h-7 w-7 place-items-center rounded-full text-sm font-black text-white ring-2 ring-[#0B111E] ${
+            good ? 'bg-emerald-500' : 'bg-rose-500'
+          }`}
+        >
+          {good ? '✓' : '✕'}
+        </span>
       </div>
 
+      {/* Sentence case, not small uppercase. «SƏHV» at 12px is a harder read than «Yanlış», and
+          Azerbaijani upper-casing is where ı/İ go wrong — this label has one job and no room to be
+          clever. */}
       <span
-        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide uppercase ${
-          good
-            ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-400'
-            : 'border border-rose-500/30 bg-rose-500/15 text-rose-400'
+        className={`rounded-full px-3.5 py-1 text-sm font-extrabold ${
+          good ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
         }`}
       >
-        {good ? '✓ Düzgün' : '✕ Səhv'}
+        {label}
       </span>
     </div>
   )
@@ -139,20 +92,20 @@ export function PhotoIntro({
   lastUnverified?: boolean
 }) {
   return (
-    <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-slate-900/90 p-6 text-center shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7),0_0_35px_rgba(16,185,129,0.06)] backdrop-blur-2xl">
-      {/* Subtle ambient light aura */}
-      <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-36 w-36 rounded-full bg-emerald-500/15 blur-3xl" />
+    <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-[#0B111E]/95 p-6 text-center shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8),0_0_35px_rgba(37,99,235,0.12)] backdrop-blur-2xl">
+      {/* QRLog Signature Ambient Blue Glow */}
+      <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-44 w-44 rounded-full bg-blue-600/20 blur-3xl" />
 
-      {/* Hero Biometric Emblem */}
-      <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/20 to-teal-500/5 shadow-[0_0_25px_rgba(16,185,129,0.2)]">
+      {/* Hero Biometric Emblem in QRLog Blue/White */}
+      <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-500/40 bg-gradient-to-b from-blue-600/30 to-blue-900/20 shadow-[0_0_25px_rgba(37,99,235,0.35)]">
         {/* Animated pulse ring */}
-        <span className="absolute -inset-1 rounded-2xl border border-emerald-400/20 animate-pulse" />
+        <span className="absolute -inset-1 rounded-2xl border border-blue-400/30 animate-pulse" />
         <svg
-          className="h-8 w-8 text-emerald-400"
+          className="h-8 w-8 text-blue-400"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth={1.75}
+          strokeWidth={1.8}
           strokeLinecap="round"
           strokeLinejoin="round"
         >
@@ -162,38 +115,46 @@ export function PhotoIntro({
         </svg>
       </div>
 
-      {/* Title & Subtitle with crystal white high contrast */}
+      {/* Crystal White Title & Subtitle */}
       <h2 className="mt-4 text-2xl font-extrabold tracking-tight text-white">İndi şəkil çəkiləcək</h2>
       <p className="mt-1.5 text-sm font-medium text-slate-300">Giriş qeydiyyatı üçün ön kamera açılacaq</p>
 
       {/* Warning if previous check-in lacked a clear face */}
       {lastUnverified && (
-        <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs font-medium text-amber-200 backdrop-blur-sm">
+        <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/15 p-3 text-left text-xs font-medium text-amber-200 backdrop-blur-sm">
           <span className="text-base shrink-0">⚠️</span>
           <span>Son girişinizin şəklində üz görünmürdü. Zəhmət olmasa, bu dəfə üzünüz aydın görünsün.</span>
         </div>
       )}
 
-      {/* Biometric HUD Comparison */}
+      {/* Real Photo Demonstration (Düzgün vs Səhv) */}
       <div className="mt-5 flex items-center justify-center gap-6">
-        <Example good />
-        <Example good={false} />
+        <PhotoExample
+          good
+          src="/brand/selfie-good.jpg"
+          label="Doğru"
+        />
+        <PhotoExample
+          good={false}
+          src="/brand/selfie-bad.jpg"
+          label="Yanlış"
+        />
       </div>
 
-      {/* Instruction Guidelines in clean unified glass micro-card */}
-      <div className="mt-5 space-y-2.5 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3.5 text-left">
+      {/* Instruction Guidelines in clean QRLog Blue glass card */}
+      <div className="mt-5 space-y-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3.5 text-left">
         <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <rect x="5" y="2" width="14" height="20" rx="2" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M12 18h.01" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
-          <span className="text-xs font-medium text-slate-200">Telefonu üzünüzə yaxın və düz tutun</span>
+          <span className="text-xs font-medium text-slate-200">Telefonu göz bərabərində və yaxın tutun</span>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <circle cx="12" cy="12" r="8" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 3" />
               <path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0" strokeLinecap="round" strokeLinejoin="round" />
@@ -203,7 +164,7 @@ export function PhotoIntro({
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
               <circle cx="10" cy="7" r="4" strokeLinecap="round" strokeLinejoin="round" />
@@ -213,12 +174,12 @@ export function PhotoIntro({
         </div>
       </div>
 
-      {/* Ultra-Premium CTA Button */}
+      {/* QRLog Signature Sapphire Blue CTA Button */}
       <button
         onClick={onReady}
-        className="group relative mt-5 flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 py-3.5 text-base font-extrabold text-white shadow-[0_4px_25px_rgba(16,185,129,0.35)] transition-all duration-200 hover:shadow-[0_6px_30px_rgba(16,185,129,0.5)] active:scale-[0.98] cursor-pointer"
+        className="group relative mt-5 flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 py-3.5 text-base font-extrabold text-white shadow-[0_4px_25px_rgba(37,99,235,0.4)] transition-all duration-200 hover:shadow-[0_6px_30px_rgba(37,99,235,0.6)] active:scale-[0.98] cursor-pointer"
       >
-        <span className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
+        <span className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent pointer-events-none" />
         <svg
           className="h-5 w-5 transition-transform duration-200 group-hover:scale-110"
           viewBox="0 0 24 24"
@@ -234,14 +195,14 @@ export function PhotoIntro({
         <span>Hazıram</span>
       </button>
 
-      {/* Sleek countdown timer pill */}
+      {/* Countdown timer pill in Electric Blue */}
       <div className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-slate-400">
         <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
         </span>
         <span>
-          <strong className="text-emerald-400 font-semibold">{secondsLeft} san</strong> sonra avtomatik başlayacaq
+          <strong className="text-blue-400 font-semibold">{secondsLeft} san</strong> sonra avtomatik başlayacaq
         </span>
       </div>
     </div>
