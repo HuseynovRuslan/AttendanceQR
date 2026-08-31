@@ -328,21 +328,37 @@ public class ManagerController : ControllerBase
             .Where(l => managed.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
 
+        // Everyone at the manager's branches, not just plain staff.
+        //
+        // It returned Role == Employee only, so a two-manager site showed each of them a roster their
+        // colleague was missing from — and the same filter fed the leave picker, which is why filing
+        // leave for another manager looked impossible when the endpoint had allowed it all along.
+        //
+        // Seeing is not acting, and the two boundaries stay apart: this is the SEE rule (their
+        // branches, any role), the same one the boards and the profile card already use. What a
+        // manager may CHANGE is still decided per write by ManageableEmployeeAsync — their branch AND
+        // plain staff — which is the 2026-08-08 line and is untouched here.
         var rows = await _db.Employees
-            .Where(e => (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee)
-                        || (includeSelf && e.Id == self))
+            .Where(e => managed.Contains(e.LocationId) || (includeSelf && e.Id == self))
             .OrderBy(e => e.FullName)
             .Select(e => new
             {
                 id = e.Id,
                 isSelf = e.Id == self,
+                // Whether this row may be acted on — the screen greys out what it cannot change, and
+                // the single-card endpoint answers the same question the same way.
+                manageable = e.Role == EmployeeRole.Employee && e.Id != self,
+                isColleague = e.Role != EmployeeRole.Employee && e.Id != self,
                 fullName = e.FullName,
                 firstName = e.FirstName,
                 lastName = e.LastName,
                 fatherName = e.FatherName,
                 position = e.Position,
-                phoneNumber = e.PhoneNumber,
-                email = e.Email,
+                // A colleague's phone and e-mail are half their login credentials, and the review
+                // caught exactly this on the single card in the morning. Widening the roster must not
+                // reopen it, so contact details ride only on rows this manager may act on.
+                phoneNumber = (e.Role == EmployeeRole.Employee || e.Id == self) ? e.PhoneNumber : null,
+                email = (e.Role == EmployeeRole.Employee || e.Id == self) ? e.Email : null,
                 locationId = e.LocationId,
                 birthDate = e.BirthDate,
                 birthYear = e.BirthYear,
@@ -366,7 +382,7 @@ public class ManagerController : ControllerBase
 
         return Ok(rows.Select(r => new
         {
-            r.id, r.isSelf, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
+            r.id, r.isSelf, r.manageable, r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn,
             // Was projected above and then dropped here, so the manager's screen counted zero however

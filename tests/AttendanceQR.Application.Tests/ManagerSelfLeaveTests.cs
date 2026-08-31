@@ -209,16 +209,31 @@ public class ManagerSelfLeaveTests
     }
 
     [Fact]
-    public async Task Employee_picker_offers_self_only_when_asked()
+    public async Task The_list_shows_the_whole_branch_and_marks_what_cannot_be_touched()
     {
-        // The ACCOUNT list is unchanged by the leave widening: still plain staff, plus self on request.
-        // It feeds edit and reset-pin, and it projects phone, email and birth date.
+        // `includeSelf` has quietly become redundant for the ordinary case, and that is the change
+        // rather than a bug: a manager stationed at a branch they oversee now appears in their own
+        // roster by the branch rule, whether or not the flag is set. It still does its one job for a
+        // manager who oversees a site they do not clock in at.
+        //
+        // Everyone at the branch is visible; only plain staff are actionable, and every row says
+        // which it is so the screen can grey out the rest instead of offering a button that 403s.
         using var h = new Harness();
-        var without = Assert.IsType<OkObjectResult>(await h.Controller.Employees(false));
-        Assert.Single(Assert.IsAssignableFrom<IEnumerable<object>>(without.Value));
 
-        var with = Assert.IsType<OkObjectResult>(await h.Controller.Employees(true));
-        Assert.Equal(2, Assert.IsAssignableFrom<IEnumerable<object>>(with.Value).Count());
+        var rows = Assert.IsAssignableFrom<IEnumerable<object>>(
+            Assert.IsType<OkObjectResult>(await h.Controller.Employees(false)).Value).ToList();
+        object? Row(Guid id) => rows.FirstOrDefault(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)! == id);
+        object? Field(object r, string n) => r.GetType().GetProperty(n)?.GetValue(r);
+
+        Assert.NotNull(Row(h.ManagerId));
+        Assert.NotNull(Row(h.PeerManagerId));
+        Assert.Equal(false, Field(Row(h.ManagerId)!, "manageable"));
+        Assert.Equal(false, Field(Row(h.PeerManagerId)!, "manageable"));
+
+        // And asking for self on top of that cannot duplicate the row.
+        var withSelf = Assert.IsAssignableFrom<IEnumerable<object>>(
+            Assert.IsType<OkObjectResult>(await h.Controller.Employees(true)).Value).Count();
+        Assert.Equal(rows.Count, withSelf);
     }
 
     [Fact]

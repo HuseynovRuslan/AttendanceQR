@@ -359,4 +359,73 @@ public class ManagerEmployeeCardTests
         var card = await h.CardAsync(h.StaffId);
         Assert.Equal("+994500000000", Value(card!, "phoneNumber"));
     }
+
+    // --- the roster the manager actually browses ------------------------------------
+
+    private static List<object> Roster(IActionResult result) =>
+        Assert.IsAssignableFrom<IEnumerable<object>>(Assert.IsType<OkObjectResult>(result).Value).ToList();
+
+    private static object? Row(List<object> rows, Guid id) =>
+        rows.FirstOrDefault(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)! == id);
+
+    [Fact]
+    public async Task The_roster_shows_colleagues_not_only_plain_staff()
+    {
+        // Reported: at a two-manager site each of them read a list their colleague was missing from.
+        // The same filter fed the leave picker, which is why filing leave for another manager looked
+        // impossible when the endpoint had allowed it the whole time.
+        using var h = new Harness();
+
+        var rows = Roster(await h.Controller.Employees(false));
+
+        Assert.NotNull(Row(rows, h.StaffId));
+        Assert.NotNull(Row(rows, h.PeerManagerId));
+        Assert.NotNull(Row(rows, h.SameBranchAdminId));
+    }
+
+    [Fact]
+    public async Task The_roster_still_stops_at_the_branch_and_at_the_tenant()
+    {
+        // Seeing widened by ROLE, not by place. Another branch is still another branch.
+        using var h = new Harness();
+
+        var rows = Roster(await h.Controller.Employees(false));
+
+        Assert.Null(Row(rows, h.OtherBranchStaffId));
+        Assert.Null(Row(rows, h.OtherTenantStaffId));
+    }
+
+    [Fact]
+    public async Task A_colleagues_phone_and_email_stay_off_the_roster()
+    {
+        // The hole the review caught on the single card in the morning, and widening the list is
+        // exactly how it would have been reopened: a phone number and an e-mail are half of a
+        // colleague's login, and this screen is a list somebody scrolls.
+        using var h = new Harness();
+
+        var rows = Roster(await h.Controller.Employees(false));
+
+        Assert.Null(Value(Row(rows, h.PeerManagerId)!, "phoneNumber"));
+        Assert.Null(Value(Row(rows, h.PeerManagerId)!, "email"));
+        Assert.Null(Value(Row(rows, h.SameBranchAdminId)!, "phoneNumber"));
+        // Their own staff are unaffected — this is the row a manager works with every day.
+        Assert.NotNull(Value(Row(rows, h.StaffId)!, "phoneNumber"));
+    }
+
+    [Fact]
+    public async Task Each_row_says_whether_it_can_be_acted_on()
+    {
+        // Seeing is not acting. The screen greys out what it cannot change, and the flag it reads is
+        // the same rule ManageableEmployeeAsync enforces on every write — so a row that looks
+        // editable and refuses, or the reverse, would be a bug visible here first.
+        using var h = new Harness();
+
+        var rows = Roster(await h.Controller.Employees(false));
+
+        Assert.Equal(true, Value(Row(rows, h.StaffId)!, "manageable"));
+        Assert.Equal(false, Value(Row(rows, h.PeerManagerId)!, "manageable"));
+        Assert.Equal(false, Value(Row(rows, h.SameBranchAdminId)!, "manageable"));
+        Assert.Equal(true, Value(Row(rows, h.PeerManagerId)!, "isColleague"));
+        Assert.Equal(false, Value(Row(rows, h.StaffId)!, "isColleague"));
+    }
 }

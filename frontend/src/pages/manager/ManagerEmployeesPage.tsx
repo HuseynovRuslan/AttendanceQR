@@ -163,6 +163,8 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           .toLowerCase()
           .includes(q))
     : rows
+  // Colleagues are visible and read-only; every bulk action stops at the rows a manager may change.
+  const grantable = visible.filter((r) => r.manageable !== false)
 
   return (
     <div>
@@ -178,7 +180,10 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           of their brigade owns no phone and which of their sites has no poster; making them ask an
           admin for every name is how a permission ends up either never granted or granted to
           everyone. The server narrows it to their branches' plain staff regardless. */}
-      {!editing && visible.length > 0 && (
+      {/* The bulk strip counts and targets only rows this manager may act on. The list now shows
+          colleagues too, and the server skips them — but a count that included them would report
+          "3 of 12" over a set of 9, and the button would say it changed more people than it did. */}
+      {!editing && grantable.length > 0 && (
         <div className="card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           {([
             {
@@ -186,29 +191,29 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               icon: '📱',
               title: 'Ortaq telefon icazəsi',
               hint: 'Telefonu olmayanlar üçün: hesabı briqadanın telefonunda saxlanıla bilər.',
-              count: visible.filter((r) => r.canShareDevice === true).length,
+              count: grantable.filter((r) => r.canShareDevice === true).length,
             },
             {
               key: 'FieldCheckIn' as const,
               icon: '📍',
               title: 'Sahə ziyarəti icazəsi',
               hint: 'QR plakatı olmayan obyektlər üçün: GPS + selfi ilə davamiyyət.',
-              count: visible.filter((r) => r.canFieldCheckIn === true).length,
+              count: grantable.filter((r) => r.canFieldCheckIn === true).length,
             },
           ]).map((p) => (
             <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 <span style={{ fontSize: 22 }}>{p.icon}</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700 }}>{p.title} — {visible.length} nəfərdən {p.count}-də var</div>
+                  <div style={{ fontWeight: 700 }}>{p.title} — {grantable.length} nəfərdən {p.count}-də var</div>
                   <div className="muted" style={{ fontSize: 12 }}>{p.hint}</div>
                 </div>
               </div>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <button className="btn btn-sm" disabled={busy} onClick={() => void grant(visible, p.key, true)}>
+                <button className="btn btn-sm" disabled={busy} onClick={() => void grant(grantable, p.key, true)}>
                   Hamısına ver
                 </button>
-                <button className="btn btn-sm" disabled={busy} onClick={() => void grant(visible, p.key, false)}>
+                <button className="btn btn-sm" disabled={busy} onClick={() => void grant(grantable, p.key, false)}>
                   Geri al
                 </button>
               </div>
@@ -386,7 +391,11 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
                     ? <span className="pill pill-ok">Aktiv</span>
                     : <span className="pill">Deaktiv</span>}
                   <div className="mgr-actions">
-                    <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
+                    {/* A colleague's row is visible and read-only. The server refuses the write
+                        either way — this is so the button is not there to be pressed. */}
+                    {e.manageable === false
+                      ? <span className="tag">həmkar</span>
+                      : <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>}
                   </div>
                 </div>
               </div>

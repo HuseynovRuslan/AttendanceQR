@@ -5,7 +5,7 @@ import { addLeave, deleteLeave, getLeaves, type LeaveRecord, type LeaveType } fr
 import { getEmployees, type AdminEmployee } from '../../api/admin'
 import { useAuth } from '../../auth/AuthContext'
 import {
-  createManagerLeave, deleteManagerLeave, getManagerEmployees, getManagerLeaves,
+  createManagerLeave, deleteManagerLeave, getLeaveSubjects, getManagerLeaves,
 } from '../../api/manager'
 import { IconTrash, IconX } from '../../components/icons'
 import { fmtDate } from '../../lib/format'
@@ -34,7 +34,11 @@ export function LeavesPage() {
     // branches' people and only plain staff. The admin ones are not merely wider — the roster carries
     // salary — so this is a branch, never a fetch-then-filter.
     const [leavesRes, empsRes] = isManager
-      ? await Promise.all([getManagerLeaves(), getManagerEmployees()])
+      // leave-subjects, NOT the roster: a manager may file leave for a colleague at their own
+      // branch — another manager, the admin who clocks in there — and the roster deliberately
+      // returns plain staff only. Using it here is why «menecer digər menecerə icazə yaza bilmir»
+      // was reported: the endpoint allowed it, the picker never listed them.
+      ? await Promise.all([getManagerLeaves(), getLeaveSubjects()])
       : await Promise.all([getLeaves(), getEmployees()])
     // The manager rows are the same shape minus what a manager must not see — no salary on the
     // person, no cross-branch record — which is the point, so the cast goes through `unknown` rather
@@ -81,7 +85,18 @@ export function LeavesPage() {
       {/* One form for both surfaces — see LeaveForm for why the employee field is a list and why the
           defaults are what they are. The admin posts to the admin endpoint; the server re-checks. */}
       <LeaveForm
-        people={employees.map((e) => ({ id: e.id, fullName: e.fullName, locationName: e.locationName }))}
+        // A leave subject carries no branch — a manager's list is one or two branches they already
+        // know — so the second line shows the job instead, and says «həmkar» for a name that is not
+        // ordinary staff, which is the one thing about that row worth flagging.
+        people={employees.map((e) => ({
+          id: e.id,
+          fullName: e.fullName,
+          locationName: isManager
+            ? [(e as unknown as { position?: string | null }).position,
+               (e as unknown as { isColleague?: boolean }).isColleague ? 'həmkar' : null]
+                .filter(Boolean).join(' · ') || null
+            : e.locationName,
+        }))}
         busy={saving}
         onSubmit={async (input) => {
           setSaving(true)

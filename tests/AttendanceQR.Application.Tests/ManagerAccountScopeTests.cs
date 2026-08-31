@@ -344,13 +344,25 @@ public class ManagerAccountScopeTests
     }
 
     [Fact]
-    public async Task Employee_list_contains_only_role_employee()
+    public async Task Employee_list_shows_the_branch_including_colleagues()
     {
+        // It used to assert plain staff ONLY, which is what the endpoint did — and what made a
+        // two-manager site read each manager a roster their colleague was missing from. Seeing is
+        // now the branch rule (any role); what may be CHANGED is still plain staff, and the row says
+        // which it is so the screen can grey the rest out.
         using var h = new Harness();
+
         var result = Assert.IsType<OkObjectResult>(await h.Controller.Employees());
-        var ids = ((System.Collections.IEnumerable)result.Value!).Cast<object>()
-            .Select(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)!)
-            .ToList();
-        Assert.Equal(new[] { h.SameBranchEmployeeId }, ids);
+        var rows = ((System.Collections.IEnumerable)result.Value!).Cast<object>().ToList();
+        object? Row(Guid id) => rows.FirstOrDefault(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)! == id);
+        object? Field(object r, string n) => r.GetType().GetProperty(n)?.GetValue(r);
+
+        Assert.NotNull(Row(h.SameBranchEmployeeId));
+        Assert.Equal(true, Field(Row(h.SameBranchEmployeeId)!, "manageable"));
+
+        // Anything else at the branch is visible and read-only; anything off it is still absent.
+        foreach (var r in rows)
+            if ((Guid)r.GetType().GetProperty("id")!.GetValue(r)! != h.SameBranchEmployeeId)
+                Assert.Equal(false, Field(r, "manageable"));
     }
 }

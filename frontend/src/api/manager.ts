@@ -13,6 +13,11 @@ export interface ManagerEmployee {
   id: string
   /** The manager's own row — only ever present when the caller asked for it (the leave form does). */
   isSelf?: boolean
+  /** May this manager CHANGE this row? Their branch AND plain staff — the same rule every write
+   *  re-checks server-side. A colleague's row is visible and read-only. */
+  manageable?: boolean
+  /** Not ordinary staff — another manager, or the admin who clocks in at this branch. */
+  isColleague?: boolean
   fullName: string
   firstName: string | null
   lastName: string | null
