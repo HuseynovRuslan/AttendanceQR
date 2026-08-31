@@ -1426,6 +1426,19 @@ export function updateSchedule(id: string, input: ScheduleInput) {
   return apiRequest<Schedule | { error: string }>(`/api/admin/schedules/${id}`, { method: 'PUT', body: input })
 }
 
+/**
+ * Put a list of employees on one shift, or clear it (scheduleId = null).
+ *
+ * A branch-pinned shift only reaches that branch's staff; anyone else in the list is skipped and
+ * counted rather than failing the call, so a filtered list carrying one outsider still works.
+ */
+export function bulkSchedule(employeeIds: string[], scheduleId: string | null) {
+  return apiRequest<{ changed: number; skipped: number; total: number } | { error: string }>(
+    '/api/admin/employees/bulk-schedule',
+    { method: 'POST', body: { employeeIds, scheduleId } },
+  )
+}
+
 export function deleteSchedule(id: string) {
   return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/schedules/${id}`, { method: 'DELETE' })
 }

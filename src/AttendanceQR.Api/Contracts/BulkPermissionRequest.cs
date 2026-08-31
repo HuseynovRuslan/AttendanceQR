@@ -22,3 +22,14 @@ public record BulkPermissionRequest(
     IReadOnlyList<Guid>? EmployeeIds,
     BulkPermission Permission,
     bool Allowed);
+
+/// <summary>
+/// Put a list of employees on one named shift — or take them all off it.
+/// </summary>
+/// <param name="ScheduleId">
+/// The shift, or null to clear it. Clearing returns each person to the older behaviour: their own
+/// WorkStart/WorkEnd if set, otherwise their branch's — see EffectiveShift.
+/// </param>
+public record BulkScheduleRequest(
+    IReadOnlyList<Guid>? EmployeeIds,
+    Guid? ScheduleId);

@@ -7,6 +7,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { COMPANY_TZ, fmtFullDateTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import {
   bulkResetPin,
+  bulkSchedule,
   bulkPermission,
   type BulkPermission,
   type BulkPinResult,
@@ -166,6 +167,8 @@ export function EmployeesPage() {
   const [rows, setRows] = useState<AdminEmployee[]>([])
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
+  /** The shift the bulk strip will apply; 'none' clears instead. */
+  const [bulkShift, setBulkShift] = useState('')
   const navigate = useNavigate()
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
   // "Bildirişsiz" — show only the people a reminder/announcement can NOT reach, so a manager can go
@@ -576,6 +579,47 @@ export function EmployeesPage() {
    * Withdrawal sits beside it deliberately. A permission that can only be switched on is a ratchet,
    * and the day a brigade stops sharing a phone there has to be a way back no harder than the way in.
    */
+  /**
+   * Put everyone currently on screen onto one shift.
+   *
+   * Deliberately "the visible ones" rather than a checkbox selection, exactly like the permission
+   * strip beside it: the filters above ARE the selection, and it is the branch filter that makes this
+   * safe to press — a crew is what a branch filter leaves on screen.
+   */
+  async function applyShift(targets: AdminEmployee[]) {
+    if (!bulkShift || targets.length === 0) return
+    const clearing = bulkShift === 'none'
+    const shift = schedules.find((s) => s.id === bulkShift)
+    if (!clearing && !shift) return
+
+    if (!window.confirm(
+      clearing
+        ? `${targets.length} nəfərin növbəsi ləğv olunsun?
+
+` +
+          'Onlar öz saatlarına, o da yoxdursa filialın saatına qayıdacaq.'
+        : `${targets.length} nəfər «${shift!.name}» növbəsinə keçirilsin?
+
+` +
+          `Saat: ${shift!.shiftStart}–${shift!.shiftEnd}. Növbənin saatı sonradan dəyişsə, ` +
+          'KEÇMİŞ günlər də yenidən hesablanır — hesabatlar növbədən oxunur.',
+    )) return
+
+    setSharing(true)
+    const { status, data } = await bulkSchedule(targets.map((t) => t.id), clearing ? null : bulkShift)
+    setSharing(false)
+    if (status === 200 && data && !('error' in data)) {
+      await refresh()
+      setBulkShift('')
+      setOk(
+        `${data.changed} nəfər dəyişdi` +
+        (data.skipped > 0 ? ` · ${data.skipped} nəfər buraxıldı (başqa filialın növbəsi)` : ''),
+      )
+    } else {
+      setError('Dəyişmədi')
+    }
+  }
+
   async function setPermission(targets: AdminEmployee[], permission: BulkPermission, allowed: boolean) {
     const has = (t: AdminEmployee) =>
       (permission === 'ShareDevice' ? t.canShareDevice : t.canFieldCheckIn) === true
@@ -883,6 +927,49 @@ ${back}`,
               </div>
             </div>
           ))}
+
+          {/* Assigning a shift stayed a per-person edit while shifts became the way hours are
+              described — and with per-day hours a shift is now the only way to say "08:00–18:00, but
+              09:00 at the weekend". A real crew is forty-six passes through the single form, whose
+              request blanks every field it is not handed. This writes ScheduleId and nothing else. */}
+          {schedules.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ fontSize: 22 }}>🕒</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>
+                    Növbə — görünən {visible.length} nəfər
+                  </div>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Seçilən növbə görünən hər kəsə tətbiq olunur. Başqa filialın növbəsi olanlar buraxılır.
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <select
+                  className="inp"
+                  style={{ width: 'auto', minWidth: 190, padding: '6px 10px', fontSize: 12 }}
+                  value={bulkShift}
+                  onChange={(e) => setBulkShift(e.target.value)}
+                >
+                  <option value="">Növbə seçin…</option>
+                  {schedules.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} · {s.shiftStart}–{s.shiftEnd}
+                    </option>
+                  ))}
+                  <option value="none">— Növbəni ləğv et —</option>
+                </select>
+                <button
+                  className="btn btn-sm"
+                  disabled={sharing || !bulkShift}
+                  onClick={() => void applyShift(visible)}
+                >
+                  {sharing ? '…' : 'Görünənlərə tətbiq et'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

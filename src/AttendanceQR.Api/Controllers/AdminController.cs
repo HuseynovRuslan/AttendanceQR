@@ -1299,6 +1299,61 @@ public class AdminController : ControllerBase
         return changed;
     }
 
+    // POST /api/admin/employees/bulk-schedule — put a list of people on one shift.
+    //
+    // Shifts became the way hours are described (85 people were moved onto named ones in a single
+    // production migration), and per-day hours have just made a shift the only way to say something
+    // like "08:00–18:00, but 09:00 at the weekend". Assigning one has stayed a per-person edit
+    // though, which for a real crew — forty-six at Heydər Əliyev Mərkəzi — is forty-six passes
+    // through a form whose request object null-defaults every field it is not given.
+    //
+    // Rows out of reach are SKIPPED rather than failing the call, the same as the bulk permission
+    // grant: a shift pinned to a branch may only go to that branch's staff, and a filtered list will
+    // sometimes carry somebody else. Refusing all of it would teach admins to stop using the button.
+    [HttpPost("bulk-schedule")]
+    public async Task<IActionResult> BulkSchedule([FromBody] BulkScheduleRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var ids = (request.EmployeeIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+            return BadRequest(new { error = "NoEmployees" });
+        if (ids.Count > 300)
+            return BadRequest(new { error = "TooMany" });
+
+        // Verified against the query-filtered set rather than trusted from the body: a shift id from
+        // another company would otherwise be a tenant leak.
+        Guid? scheduleLocationId = null;
+        if (request.ScheduleId is Guid sid)
+        {
+            var schedule = await _db.Schedules
+                .Where(s => s.Id == sid)
+                .Select(s => new { s.LocationId })
+                .FirstOrDefaultAsync(ct);
+            if (schedule is null)
+                return BadRequest(new { error = "ScheduleNotFound" });
+            scheduleLocationId = schedule.LocationId;
+        }
+
+        var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+        int changed = 0, skipped = 0;
+        foreach (var e in employees)
+        {
+            // The same branch rule the single edit uses, shared so the two can never drift.
+            if (request.ScheduleId is not null
+                && ScheduleAssignmentRule.Refusal(scheduleLocationId, e.LocationId) is not null)
+            {
+                skipped++;
+                continue;
+            }
+            if (e.ScheduleId == request.ScheduleId) continue;
+            e.ScheduleId = request.ScheduleId;
+            changed++;
+        }
+
+        if (changed > 0) await _db.SaveChangesAsync(ct);
+        return Ok(new { changed, skipped, total = employees.Count });
+    }
+
     // POST /api/admin/employees/bulk-reset-pin — issue a fresh temporary PIN to many people at once
     // and return the whole list, in plaintext, exactly once.
     //
