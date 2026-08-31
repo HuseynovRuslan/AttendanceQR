@@ -608,158 +608,147 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
    Merging them removed a row of chrome and made space for the number that was missing entirely: the
    old tiles counted PEOPLE and row-hygiene ("İşçi ilə bağlı 42"), so how much kit the company
    actually owns appeared nowhere on a screen whose whole subject is equipment. */
-.eq-head{margin-bottom:18px;padding:16px 18px}
-.eq-head-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.eq-head{margin-bottom:22px;padding:20px 22px;border-radius:18px;background:var(--white);border:1px solid var(--c100);box-shadow:0 1px 3px rgba(0,0,0,.03),0 8px 24px -4px rgba(0,0,0,.04)}
+.eq-head-top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
 .eq-head-count{font-size:13px;color:var(--c500);white-space:nowrap}
-.eq-head-count b{color:var(--c900);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
-.eq-dot{color:var(--c200);margin:0 2px}
-.eq-search{flex:1 1 240px;min-width:180px}
-.eq-head-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:12px}
-.eq-head-foot .muted{flex:1 1 320px;min-width:220px;line-height:1.5}
-.eq-area-pick{width:auto;min-width:150px;padding:6px 10px;font-size:12px}
-.eq-count{font-variant-numeric:tabular-nums;white-space:nowrap}
+.eq-head-count b{color:var(--c900);font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.eq-dot{color:var(--c200);margin:0 4px}
+.eq-search{flex:1 1 260px;min-width:200px;height:40px;border-radius:10px;border:1px solid var(--c200);background:var(--c50);padding:0 12px;font-size:13px;transition:all .18s ease}
+.eq-search:focus{background:#fff;border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.eq-head-foot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--c100);font-size:12px}
+.eq-head-foot .muted{flex:1 1 320px;min-width:220px;line-height:1.5;color:var(--c400)}
+.eq-area-pick{width:auto;min-width:160px;padding:7px 12px;font-size:12.5px;border-radius:8px;border:1px solid var(--c200);background:var(--white);font-weight:600;color:var(--c700)}
+.eq-count{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700;color:var(--c600)}
 
-/* One tile per kind of kit. Scrolls sideways on a narrow screen rather than reflowing into a block
-   that pushes the register itself below the fold. */
-.eq-tiles{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
-.eq-tile{flex:0 0 auto;min-width:118px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
-  padding:11px 14px 10px;border:1px solid var(--c100);border-radius:12px;background:var(--white);
-  cursor:pointer;text-align:left;transition:border-color .15s,background .15s,box-shadow .15s}
-.eq-tile:hover{border-color:var(--c200);box-shadow:var(--sh-sm)}
-.eq-tile.active{background:var(--c900);border-color:var(--c900)}
-.eq-tile-ic{display:block;height:16px;margin-bottom:3px;color:var(--c400)}
-.eq-tile-ic svg{width:16px;height:16px}
-.eq-tile-n{font-size:22px;font-weight:800;color:var(--c900);line-height:1.15;font-variant-numeric:tabular-nums}
-.eq-tile-l{font-size:12px;font-weight:700;color:var(--c700)}
-.eq-tile-s{font-size:10.5px;color:var(--c400)}
+/* One tile per kind of kit */
+.eq-tiles{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.eq-tile{flex:0 0 auto;min-width:124px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:12px 15px 11px;border:1px solid var(--c100);border-radius:14px;background:var(--white);
+  cursor:pointer;text-align:left;transition:all .18s cubic-bezier(0.16, 1, 0.3, 1)}
+.eq-tile:hover{border-color:#CBD5E1;box-shadow:0 4px 14px -2px rgba(0,0,0,.06);transform:translateY(-2px)}
+.eq-tile.active{background:var(--c900);border-color:var(--c900);box-shadow:0 6px 18px -3px rgba(15,23,42,.25)}
+.eq-tile-ic{display:inline-flex;align-items:center;justify-content:center;height:24px;width:24px;border-radius:7px;margin-bottom:4px;background:var(--c50);color:var(--c500)}
+.eq-tile-ic svg{width:15px;height:15px}
+.eq-tile-n{font-size:24px;font-weight:800;color:var(--c900);line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.eq-tile-l{font-size:12.5px;font-weight:700;color:var(--c700);margin-top:2px}
+.eq-tile-s{font-size:11px;color:var(--c400);margin-top:1px}
 .eq-tile.active .eq-tile-n,.eq-tile.active .eq-tile-l{color:#fff}
-.eq-tile.active .eq-tile-s,.eq-tile.active .eq-tile-ic{color:rgba(255,255,255,.6)}
-/* Same colour language as the chips on the cards — blue desktop, purple laptop, teal monitor — so a
-   tile and the chips it selects are recognisably the same thing. */
-.eq-tile.k-desktop .eq-tile-ic{color:#1D4ED8}
-.eq-tile.k-laptop .eq-tile-ic{color:#6D28D9}
-.eq-tile.k-monitor .eq-tile-ic{color:var(--teal)}
-.eq-tile.warn .eq-tile-ic{color:var(--amber)}
-.eq-tile.warn .eq-tile-n{color:var(--amber)}
-.eq-tile.warn.active{background:var(--amber);border-color:var(--amber)}
+.eq-tile.active .eq-tile-s{color:rgba(255,255,255,.65)}
+.eq-tile.active .eq-tile-ic{background:rgba(255,255,255,.15);color:#fff}
+
+/* Color themed tile icons */
+.eq-tile.k-desktop .eq-tile-ic{background:#EFF6FF;color:#2563EB}
+.eq-tile.k-laptop .eq-tile-ic{background:#EEF2FF;color:#4F46E5}
+.eq-tile.k-monitor .eq-tile-ic{background:#F0FDFA;color:#0D9488}
+.eq-tile.k-printer .eq-tile-ic{background:#FFFBEB;color:#D97706}
+.eq-tile.k-scanner .eq-tile-ic{background:#FAF5FF;color:#9333EA}
+.eq-tile.warn .eq-tile-ic{background:#FFF1F2;color:#E11D48}
+.eq-tile.warn .eq-tile-n{color:#E11D48}
+.eq-tile.warn.active{background:#BE123C;border-color:#BE123C}
 .eq-tile.warn.active .eq-tile-n{color:#fff}
 
-/* The "⋯" menu — adding a row, importing a file and printing are monthly jobs on a daily screen. */
+/* The "⋯" menu */
 .eq-more{position:relative;flex:none}
-.eq-more-btn{padding:8px 10px}
+.eq-more-btn{padding:8px 10px;border-radius:10px;border:1px solid var(--c200)}
 .eq-more-back{position:fixed;inset:0;z-index:24}
-.eq-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:25;min-width:170px;
-  background:var(--white);border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh);padding:5px}
+.eq-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:25;min-width:180px;
+  background:var(--white);border:1px solid var(--c100);border-radius:14px;box-shadow:0 10px 30px -5px rgba(0,0,0,.15);padding:6px}
 .eq-more-menu button{display:block;width:100%;text-align:left;border:none;background:transparent;
-  padding:9px 11px;border-radius:8px;font-size:13px;font-weight:600;color:var(--c700);cursor:pointer}
+  padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--c700);cursor:pointer;transition:all .15s}
 .eq-more-menu button:hover:not(:disabled){background:var(--c50);color:var(--c900)}
 .eq-more-menu button:disabled{color:var(--c400);cursor:default}
 
 /* ── Cards, gathered by site ──────────────────────────────────────────────────────────────────── */
-.eq-groups{display:flex;flex-direction:column;gap:26px}
-.eq-group-h{display:flex;align-items:center;gap:9px;margin:0 0 11px;flex-wrap:wrap;
-  font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--c500)}
-.eq-group-t{flex:none}
-.eq-group-n{flex:none;background:var(--c100);color:var(--c600);border-radius:999px;
-  padding:1px 8px;font-size:11px;font-weight:700;letter-spacing:0;text-transform:none}
-/* What this site holds, beside its name. The rule fills whatever is left, so the counts sit against
-   the heading rather than floating in the middle of the line. */
-.eq-group-kit{display:inline-flex;align-items:center;gap:11px;letter-spacing:0;text-transform:none}
-.eq-group-kit-i{display:inline-flex;align-items:center;gap:3px;
-  font-size:12px;font-weight:700;color:var(--c600);font-variant-numeric:tabular-nums}
+.eq-groups{display:flex;flex-direction:column;gap:28px}
+.eq-group-h{display:flex;align-items:center;gap:10px;margin:0 0 14px;flex-wrap:wrap;
+  font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--c900)}
+.eq-group-t{flex:none;font-weight:800;color:var(--c900)}
+.eq-group-n{flex:none;background:#EFF6FF;color:#1D4ED8;border:1px solid #DBEAFE;border-radius:999px;
+  padding:2px 10px;font-size:11.5px;font-weight:700;letter-spacing:0;text-transform:none}
+.eq-group-kit{display:inline-flex;align-items:center;gap:8px;letter-spacing:0;text-transform:none}
+.eq-group-kit-i{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:8px;
+  background:#F8FAFC;border:1px solid #E2E8F0;font-size:11.5px;font-weight:700;color:#334155;font-variant-numeric:tabular-nums}
 .eq-group-kit-i svg{width:13px;height:13px;color:var(--c400)}
-.eq-group-kit-i.k-desktop svg{color:#1D4ED8}
-.eq-group-kit-i.k-laptop svg{color:#6D28D9}
-.eq-group-kit-i.k-monitor svg{color:var(--teal)}
+.eq-group-kit-i.k-desktop{background:#EFF6FF;border-color:#DBEAFE;color:#1D4ED8}
+.eq-group-kit-i.k-desktop svg{color:#2563EB}
+.eq-group-kit-i.k-laptop{background:#EEF2FF;border-color:#E0E7FF;color:#3730A3}
+.eq-group-kit-i.k-laptop svg{color:#4F46E5}
+.eq-group-kit-i.k-monitor{background:#F0FDFA;border-color:#CCFBF1;color:#0F766E}
+.eq-group-kit-i.k-monitor svg{color:#0D9488}
 .eq-group-h::after{content:'';flex:1;height:1px;background:var(--c100);order:9}
 
-/* Segmented control — two states of one thing, so they share a border rather than being two buttons. */
+/* Segmented control */
 .eq-view{display:inline-flex;border:1px solid var(--c200);border-radius:10px;overflow:hidden;background:var(--white)}
 .eq-view button{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;
-  padding:9px 11px;font-size:12px;font-weight:700;color:var(--c500);cursor:pointer;transition:background .15s,color .15s}
+  padding:9px 12px;font-size:12px;font-weight:700;color:var(--c500);cursor:pointer;transition:background .15s,color .15s}
 .eq-view button+button{border-left:1px solid var(--c200)}
 .eq-view button:hover{background:var(--c50);color:var(--c700)}
 .eq-view button.active{background:var(--c900);color:#fff}
 .eq-view svg{width:14px;height:14px}
 
-.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(302px,1fr));gap:14px}
-/* Wider columns than before: at 268px a five-across grid squeezed the card horizontally while the
-   chips wrapped onto three lines inside it — narrow and sparse at the same time. */
+/* Grid & Cards */
+.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
 .eq-card{position:relative;display:flex;flex-direction:column;text-align:left;width:100%;
-  background:var(--white);border:1px solid var(--c100);border-radius:14px;
-  /* Two shadows: a tight one that seats the card on the page, and a wide, very faint one that gives
-     it air. A single hard shadow reads as a box; this reads as a surface. */
-  box-shadow:0 1px 2px rgba(16,24,40,.05),0 10px 26px -8px rgba(16,24,40,.05);
-  padding:15px 17px 16px;cursor:pointer;overflow:hidden;
-  transition:box-shadow .18s ease,border-color .18s ease,transform .18s ease}
-.eq-card:hover{transform:translateY(-3px);border-color:#C7D7F0;
-  box-shadow:0 2px 4px rgba(16,24,40,.05),0 16px 34px -10px rgba(37,99,235,.16)}
-.eq-card:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
-/* "Not in the staff list" was a filled amber chip at the foot of EVERY card — eighty of them, one
-   warning repeated until it stopped being one. It is a hairline down the edge now: still visible at
-   a glance across the grid, without eighty labels to read. */
-.eq-card.unlinked::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}
-.eq-card.unlinked{padding-left:19px}
+  background:var(--white);border:1px solid var(--c100);border-radius:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.03),0 6px 18px -2px rgba(0,0,0,.04);
+  padding:16px 18px 16px;cursor:pointer;overflow:hidden;
+  transition:all .18s cubic-bezier(0.16, 1, 0.3, 1)}
+.eq-card:hover{transform:translateY(-3px);border-color:#93C5FD;
+  box-shadow:0 4px 6px -1px rgba(0,0,0,.04),0 16px 32px -6px rgba(37,99,235,.14)}
+.eq-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.eq-card.unlinked{border-left:4px solid #F59E0B;padding-left:16px}
 
-/* `flex:1` is what lines the chips up.
-   Cards in a grid row are already the same height, so the ragged part was WHERE inside them the kit
-   began: a one-line job title started its chips higher than a two-line one, and a card with a single
-   chip left a pool of white at the foot. Letting the head absorb the slack pushes the rule and the
-   chips to the bottom of every card, so they read as a footer band across the row — and the leftover
-   space collects in one place instead of a different place on each card. */
 .eq-card-head{display:flex;align-items:flex-start;gap:12px;min-width:0;flex:1}
-.eq-av{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
-  font-size:13px;font-weight:800;letter-spacing:.02em}
-/* One tone per person, from their name. Muted on purpose — an avatar is a landmark, not a highlight. */
-.eq-av.t0{background:#EEF2FF;color:#4338CA}
-.eq-av.t1{background:#ECFDF5;color:#047857}
-.eq-av.t2{background:#FFF1F2;color:#BE123C}
-.eq-av.t3{background:#F0FDFA;color:#0F766E}
-.eq-av.t4{background:#F5F3FF;color:#6D28D9}
+.eq-av{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+  font-size:13.5px;font-weight:800;letter-spacing:.02em}
+.eq-av.t0{background:linear-gradient(135deg,#EEF2FF,#E0E7FF);color:#4338CA;border:1px solid #C7D2FE}
+.eq-av.t1{background:linear-gradient(135deg,#ECFDF5,#D1FAE5);color:#047857;border:1px solid #A7F3D0}
+.eq-av.t2{background:linear-gradient(135deg,#FFF1F2,#FFE4E6);color:#BE123C;border:1px solid #FECDD3}
+.eq-av.t3{background:linear-gradient(135deg,#F0FDFA,#CCFBF1);color:#0F766E;border:1px solid #99F6E4}
+.eq-av.t4{background:linear-gradient(135deg,#F5F3FF,#EDE9FE);color:#6D28D9;border:1px solid #DDD6FE}
 
 .eq-id{min-width:0;flex:1}
 .eq-nm,.eq-pos{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
   overflow:hidden;white-space:normal;overflow-wrap:anywhere}
-.eq-nm{font-size:14.5px;font-weight:700;color:var(--c900);line-height:1.35;letter-spacing:-.005em}
-/* The title sat directly under the name with nothing between them; they read as one wrapped line. */
-/* Two lines' worth of room whether the title needs one or two — "Direktor" and "Qarabağ üzrə
-   planlaşdırma və memarlıq şöbəsinin müdiri" then leave the card at the same place. */
-.eq-pos{font-size:12px;color:var(--c500);margin-top:5px;line-height:1.45;min-height:2.9em}
-.eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:8px;
+.eq-nm{font-size:15px;font-weight:700;color:var(--c900);line-height:1.35;letter-spacing:-.01em}
+.eq-pos{font-size:12px;color:var(--c500);margin-top:4px;line-height:1.45;min-height:2.9em}
+.eq-area{display:inline-flex;align-items:center;gap:4px;max-width:100%;margin-top:6px;
   padding:2px 8px 2px 6px;border-radius:6px;background:var(--c50);border:1px solid var(--c100);
   color:var(--c600);font-size:11px;font-weight:700;line-height:1.5}
 .eq-area svg{width:11px;height:11px;flex:none;color:var(--c400)}
 .eq-area-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);font-variant-numeric:tabular-nums}
+.eq-no{flex:none;font-size:11px;font-weight:700;color:var(--c400);background:var(--c50);border:1px solid var(--c100);border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums}
 
-/* A rule between who they are and what they hold — the card had no internal structure at all, so
-   the two ran together as one column of text. */
-.eq-card-rule{display:block;height:1px;background:var(--c100);margin:14px -17px 13px}
-.eq-card.unlinked .eq-card-rule{margin-left:-19px}
+.eq-card-rule{display:block;height:1px;background:var(--c100);margin:14px -18px 12px}
+.eq-card.unlinked .eq-card-rule{margin-left:-16px}
 
-/* The right-hand reserve keeps the last chip clear of the hover arrow. */
-.eq-kit{display:flex;flex-wrap:wrap;gap:6px;padding-right:20px}
-/* An affordance, not a label: it appears only on the card under the cursor, so it never becomes the
-   eightieth copy of the same thing. (A "yeniləndi 2 gün əvvəl" line would have been exactly that —
-   an import stamps every row with the same instant, so all eighty cards would carry one date.) */
-.eq-card::after{content:'→';position:absolute;right:15px;bottom:14px;
-  font-size:15px;line-height:1;color:var(--c400);opacity:0;transform:translateX(-4px);
-  transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+.eq-kit{display:flex;flex-wrap:wrap;gap:6px;padding-right:16px}
+.eq-card::after{content:'→';position:absolute;right:14px;bottom:13px;
+  font-size:15px;line-height:1;color:var(--blue);opacity:0;transform:translateX(-4px);
+  transition:opacity .18s ease,transform .18s ease;pointer-events:none;font-weight:700}
 .eq-card:hover::after{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.eq-card::after{transition:none}}
 .eq-empty-kit{display:block;font-size:12px;color:var(--c400);font-style:italic}
-/* One neutral chip, not a different pastel per kind.
-   Colour was carrying the kind — blue desktop, purple laptop, teal monitor — which works on the five
-   tiles at the top of the page, where they sit apart and colour is how you find one again. Three of
-   them inside a card, on eighty cards, is not a code any more: it is confetti, and it made a company
-   asset register look like a wall of sticky notes. The icon still says which kind it is; the chip
-   just stops shouting about it. */
-.eq-kit-chip{display:inline-flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;
-  background:#F1F5F9;border:1px solid #E2E8F0;font-size:11.5px;font-weight:600;color:#334155;white-space:nowrap}
-.eq-kit-chip svg{width:13px;height:13px;flex:none;color:#64748B}
 
-.eq-none{grid-column:1/-1;text-align:center;padding:44px 20px;color:var(--c400);
-  background:var(--white);border:1px dashed var(--c200);border-radius:var(--r-lg)}
+/* Color-coded kit chips */
+.eq-kit-chip{display:inline-flex;align-items:center;gap:5px;border-radius:8px;padding:4px 9px;
+  font-size:11.5px;font-weight:600;white-space:nowrap;transition:all .15s ease}
+.eq-kit-chip.k-desktop{background:#EFF6FF;border:1px solid #DBEAFE;color:#1E40AF}
+.eq-kit-chip.k-desktop svg{color:#2563EB}
+.eq-kit-chip.k-laptop{background:#EEF2FF;border:1px solid #E0E7FF;color:#3730A3}
+.eq-kit-chip.k-laptop svg{color:#4F46E5}
+.eq-kit-chip.k-monitor{background:#F0FDFA;border:1px solid #CCFBF1;color:#115E59}
+.eq-kit-chip.k-monitor svg{color:#0D9488}
+.eq-kit-chip.k-printer{background:#FFFBEB;border:1px solid #FEF3C7;color:#92400E}
+.eq-kit-chip.k-printer svg{color:#D97706}
+.eq-kit-chip.k-scanner{background:#FAF5FF;border:1px solid #F3E8FF;color:#6B21A8}
+.eq-kit-chip.k-scanner svg{color:#9333EA}
+.eq-kit-chip.k-ups,.eq-kit-chip.k-other{background:#F8FAFC;border:1px solid #E2E8F0;color:#334155}
+.eq-kit-chip.k-ups svg,.eq-kit-chip.k-other svg{color:#64748B}
+.eq-kit-chip svg{width:13px;height:13px;flex:none}
+
+.eq-none{grid-column:1/-1;text-align:center;padding:48px 20px;color:var(--c400);
+  background:var(--white);border:1px dashed var(--c200);border-radius:16px}
 
 /* ── The detail panel ─────────────────────────────────────────────────────────────────────────
    A right-hand drawer rather than a modal: the list stays visible behind it, so clicking through

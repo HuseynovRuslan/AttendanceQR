@@ -427,12 +427,36 @@ export function EquipmentPage() {
             <b>{rows.length}</b> nəfər
             {areas.length > 0 && <> <span className="eq-dot">·</span> <b>{areas.length}</b> ərazi</>}
           </div>
-          <input
-            className="inp eq-search"
-            placeholder="Ad, vəzifə, ərazi, avadanlıq, «RTX 4090»…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div style={{ position: 'relative', flex: '1 1 260px', display: 'flex', alignItems: 'center' }}>
+            <input
+              className="inp eq-search"
+              placeholder="Ad, vəzifə, ərazi, avadanlıq axtar…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: '100%' }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--c400)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: 4,
+                }}
+                title="Təmizlə"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <div className="eq-view" role="group" aria-label="Görünüş">
             <button type="button" className={view === 'cards' ? 'active' : ''} onClick={() => setView('cards')}
               title="Kart görünüşü"><IconGrid /></button>
