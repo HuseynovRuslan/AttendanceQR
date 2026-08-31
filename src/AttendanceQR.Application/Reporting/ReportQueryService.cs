@@ -97,7 +97,10 @@ public sealed class ReportQueryService : IReportQueryService
         int? WorkCycleDays, int WorkCycleOnDays, DateOnly? WorkCycleAnchor,
         // Carried so the board can show this person's selfie on every scan, not only a flagged one:
         // once their account may ride on a shared phone, the face is the control that remains.
-        bool CanShareDevice = false);
+        bool CanShareDevice = false,
+        // The job title, so the board can show it and be filtered by it — «bütün bağbanlar» is a
+        // question somebody asks of a morning, and the answer was one the screen could not give.
+        string? Position = null);
 
     /// <summary>One employee's computed day with everything it was computed from still attached — so
     /// the two callers can each project what they need (the board wants the record's photo/face/reason
@@ -162,7 +165,7 @@ public sealed class ReportQueryService : IReportQueryService
         var employees = await query
             .Select(e => new ScopedEmployee(
                 e.Id, e.FullName, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd,
-                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.CanShareDevice))
+                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.CanShareDevice, e.Position))
             .ToListAsync(ct);
         return (ReportAccess.Allowed, employees);
     }
@@ -818,7 +821,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Record?.LateArrivalReason, d.Record?.EarlyDepartureReason,
                     d.Record?.WasOffline ?? false,
                     d.Record?.CheckInLatitude, d.Record?.CheckInLongitude,
-                    d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId, d.ManualBy,
+                    d.Leave?.ToString(), d.LeaveAssignedBy, d.LeaveId,
+                    d.Employee.Position, d.ManualBy,
                     d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng,
                     d.Record?.ClosedByFieldVisitId != null,
                     d.Employee.CanShareDevice);

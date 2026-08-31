@@ -72,3 +72,43 @@ export function matchesLeaveCard(row: TodayLike, card: 'sick' | 'trip' | 'onLeav
   if (card === 'trip') return row.leaveType === 'BusinessTrip'
   return row.leaveType !== 'Sick' && row.leaveType !== 'BusinessTrip'
 }
+
+/**
+ * One ordering for the board.
+ *
+ * Azerbaijani collation on the text columns, so «Ə» and «İ» land where a reader expects rather than
+ * after Z. Missing times sort LAST in both directions — a person with no check-in is not "earliest",
+ * and burying them at the top of an ascending sort is how a board stops being read at all.
+ */
+/**
+ * One ordering for the board.
+ *
+ * Azerbaijani collation on the text columns, so «Ə» and «İ» land where a reader expects rather than
+ * after Z. Missing times sort LAST in both directions — a person with no check-in is not "earliest",
+ * and burying them at the top of an ascending sort is how a board stops being read at all.
+ */
+export type SortColumn = 'name' | 'location' | 'position' | 'status' | 'in' | 'out'
+
+export function sortRows<T extends {
+  employeeName: string; locationName: string; position?: string | null
+  status: string; checkInAtUtc?: string | null; checkOutAtUtc?: string | null
+}>(rows: T[], by: SortColumn, desc: boolean): T[] {
+  const dir = desc ? -1 : 1
+  const text = (a: string, b: string) => a.localeCompare(b, 'az') * dir
+  const time = (a?: string | null, b?: string | null) => {
+    if (!a && !b) return 0
+    if (!a) return 1          // absent rows to the bottom, whichever way the arrow points
+    if (!b) return -1
+    return (a < b ? -1 : a > b ? 1 : 0) * dir
+  }
+  return [...rows].sort((x, y) => {
+    switch (by) {
+      case 'location': return text(x.locationName, y.locationName) || text(x.employeeName, y.employeeName)
+      case 'position': return text(x.position ?? '', y.position ?? '') || text(x.employeeName, y.employeeName)
+      case 'status': return text(x.status, y.status) || text(x.employeeName, y.employeeName)
+      case 'in': return time(x.checkInAtUtc, y.checkInAtUtc) || text(x.employeeName, y.employeeName)
+      case 'out': return time(x.checkOutAtUtc, y.checkOutAtUtc) || text(x.employeeName, y.employeeName)
+      default: return text(x.employeeName, y.employeeName)
+    }
+  })
+}

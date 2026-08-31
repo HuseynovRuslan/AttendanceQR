@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
-import { countToday, matchesLeaveCard } from './todayCounts'
+import { countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
@@ -52,6 +52,24 @@ const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
   { type: 'BusinessTrip', label: 'Ezamiyyət', dot: 'var(--teal)' },
 ]
 
+/** A heading that sorts. The arrow only appears on the column actually in use. */
+function Th({ col, label, sortBy, desc, onSort }: {
+  col: SortColumn
+  label: string
+  sortBy: string
+  desc: boolean
+  onSort: (c: SortColumn) => void
+}) {
+  const active = sortBy === col
+  return (
+    <th>
+      <button className={`tbl-sort${active ? ' active' : ''}`} onClick={() => onSort(col)}>
+        {label}<span className="tbl-sort-a">{active ? (desc ? '↓' : '↑') : ''}</span>
+      </button>
+    </th>
+  )
+}
+
 export function TodayPage() {
   const { role } = useAuth()
   // Viewing a check-in selfie is Admin-only (owner's call, 2026-08-31) — the server refuses a
@@ -87,6 +105,17 @@ export function TodayPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get('status'))
   const [search, setSearch] = useState('')
   const [noPhotoOnly, setNoPhotoOnly] = useState(false)
+  /**
+   * Sorting and the two value filters the table itself offers.
+   *
+   * The board is read one way in the morning — "who is missing" — and the answer is almost never
+   * about the whole site. It is about the gardeners, or one branch, or everyone still marked absent.
+   * The cards above already filter by STATUS; a job title and a branch had no equivalent, and the
+   * data was on screen the whole time in a column nobody could press.
+   */
+  const [sortBy, setSortBy] = useState<SortColumn>('name')
+  const [sortDesc, setSortDesc] = useState(false)
+  const [filterPosition, setFilterPosition] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
   async function viewPhoto(row: DayAttendanceRow) {
@@ -179,7 +208,7 @@ export function TodayPage() {
   const incompleteOverride = isToday ? undefined : { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
 
   const q = search.trim().toLowerCase()
-  const visible = locFiltered.filter((r) => {
+  const visible = sortRows(locFiltered.filter((r) => {
     if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
     // Sick / Ezamiyyət / Məzuniyyət all come from OnLeave, split by leaveType — so their filters
     // need the row, not just the status.
@@ -187,10 +216,17 @@ export function TodayPage() {
       if (!matchesLeaveCard(r, statusFilter)) return false
     } else if (statusFilter && !statusMatches(r.status, statusFilter)) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
+    if (filterPosition && (r.position ?? '') !== filterPosition) return false
     if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
     if (q && !r.employeeName.toLowerCase().includes(q)) return false
     return true
-  })
+  }), sortBy, sortDesc)
+
+  // Same column twice reverses it; a new column starts ascending, which is what every table does.
+  const sort = (c: typeof sortBy) => {
+    if (c === sortBy) setSortDesc((d) => !d)
+    else { setSortBy(c); setSortDesc(false) }
+  }
 
   const toggleStatus = (k: string) => setStatusFilter((f) => (f === k ? null : k))
   const cardStyle = (k: string) =>
@@ -370,15 +406,29 @@ export function TodayPage() {
         </div>
       )}
 
+      {filterPosition && (
+        <div className="fb fb-info" style={{ marginBottom: 10 }}>
+          <span>
+            Yalnız <b>{filterPosition}</b> vəzifəsindəkilər — {visible.length} nəfər.
+          </span>
+          <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setFilterPosition(null)}>
+            Süzgəci ləğv et
+          </button>
+        </div>
+      )}
+
       <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
-              <th>İşçi</th>
-              <th>Filial</th>
-              <th>Status</th>
-              <th>Giriş</th>
-              <th>Çıxış</th>
+              {/* Clicking a heading sorts by it; clicking it again reverses. The two columns that are
+                  really categories — branch and job — also filter when their VALUE is clicked, below. */}
+              <Th col="name" label="İşçi" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+              <Th col="location" label="Filial" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+              <Th col="position" label="Vəzifə" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+              <Th col="status" label="Status" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+              <Th col="in" label="Giriş" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+              <Th col="out" label="Çıxış" sortBy={sortBy} desc={sortDesc} onSort={sort} />
               <th>Foto</th>
               <th>Üz</th>
             </tr>
@@ -387,7 +437,25 @@ export function TodayPage() {
             {visible.map((r) => (
               <tr key={r.employeeId}>
                 <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                <td data-label="Filial">{r.locationName}</td>
+                <td data-label="Filial">
+                  {/* The value is the filter. The branch picker above does the same thing, but a name
+                      already on screen is the shortest way to ask "just these". */}
+                  <button className="tbl-filter" onClick={() => setFilterLoc((v) => (v === r.locationId ? '' : r.locationId))}>
+                    {r.locationName}
+                  </button>
+                </td>
+                <td data-label="Vəzifə">
+                  {r.position
+                    ? (
+                      <button
+                        className="tbl-filter"
+                        onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
+                      >
+                        {r.position}
+                      </button>
+                    )
+                    : <span className="muted">—</span>}
+                </td>
                 <td data-label="Status">
                   {/* Pencil next to the badge on a Qayıb row (to pin a reason) or an assigned single-day
                       leave (to change it, or revert to Qayıb). Menu is fixed so the table can't clip it. */}
@@ -507,7 +575,7 @@ export function TodayPage() {
             ))}
             {loadedOnce && visible.length === 0 && !error && (
               <tr>
-                <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   Məlumat yoxdur
                 </td>
               </tr>

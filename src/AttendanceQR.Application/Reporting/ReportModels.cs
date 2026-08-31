@@ -135,6 +135,9 @@ public sealed record DayAttendanceRow(
     // The single-day leave's id, so the board can undo/change it in place (revert to Qayıb). Null for
     // a multi-day leave — those are managed in /admin/leaves, not wiped from one day's board.
     Guid? LeaveId = null,
+    // The employee's job title. On the board so a morning's «who is missing» can be narrowed to one
+    // trade — the gardeners, the machinists — rather than read across the whole site.
+    string? Position = null,
     // Name of the admin/manager who set THIS attendance record by hand (open-record close, time fix,
     // undo-checkout). Null for a real scan — lets the board flag a manually-entered day.
     string? ManualBy = null,

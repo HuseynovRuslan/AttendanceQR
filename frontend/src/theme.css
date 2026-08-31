@@ -856,3 +856,17 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   .eq-av{background:#EEE!important;color:#000!important}
   .eq-nm,.eq-pos{-webkit-line-clamp:unset;line-clamp:unset;display:block;min-height:0}
 }
+
+/* ── Today board: sortable headings and filter-by-value cells ───────────────────────────────────
+   The board is read one way in the morning — who is missing — and the answer is almost never about
+   the whole site: it is about the gardeners, or one branch. The data was already in the columns; it
+   just could not be pressed. */
+.tbl-sort{display:inline-flex;align-items:center;gap:4px;border:none;background:none;padding:0;
+  font:inherit;color:inherit;cursor:pointer;letter-spacing:inherit;text-transform:inherit}
+.tbl-sort:hover{color:var(--c900)}
+.tbl-sort.active{color:var(--c900)}
+.tbl-sort-a{font-size:11px;color:var(--leaf-d);width:9px;display:inline-block}
+/* A value that filters. Underlined on hover only — a table where every cell looks like a link is a
+   table nobody scans. */
+.tbl-filter{border:none;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.tbl-filter:hover{text-decoration:underline;color:var(--c900)}

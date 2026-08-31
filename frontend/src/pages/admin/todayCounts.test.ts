@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countToday, matchesLeaveCard, type TodayLike } from './todayCounts'
+import { countToday, matchesLeaveCard, sortRows, type TodayLike } from './todayCounts'
 
 /**
  * The board's cards, and the distinction that has now been got wrong twice.
@@ -90,5 +90,57 @@ describe('clicking a card shows exactly what it counted', () => {
   it('never matches a row that is not on leave at all', () => {
     expect(matchesLeaveCard(row('OnTime'), 'onLeave')).toBe(false)
     expect(matchesLeaveCard(row('Absent'), 'trip')).toBe(false)
+  })
+})
+
+describe('ordering the board', () => {
+  const row = (name: string, over: Partial<Parameters<typeof sortRows>[0][number]> = {}) => ({
+    employeeName: name, locationName: 'Mərkəz', position: null,
+    status: 'OnTime', checkInAtUtc: null, checkOutAtUtc: null, ...over,
+  })
+
+  it('sorts names the Azerbaijani way, not the ASCII way', () => {
+    // «Ə» sits after E in the alphabet, and after Z in a naive sort — which puts a large share of
+    // this company's staff at the bottom of every list.
+    const out = sortRows([row('Zeynalov'), row('Əliyev'), row('Abbasov')], 'name', false)
+
+    expect(out.map((r) => r.employeeName)).toEqual(['Abbasov', 'Əliyev', 'Zeynalov'])
+  })
+
+  it('reverses when asked', () => {
+    const out = sortRows([row('Abbasov'), row('Zeynalov')], 'name', true)
+
+    expect(out.map((r) => r.employeeName)).toEqual(['Zeynalov', 'Abbasov'])
+  })
+
+  it('keeps people with no check-in at the bottom in BOTH directions', () => {
+    // The one that matters. An absentee has no time, and "no time" is not "earliest" — sorting them
+    // to the top of an ascending list buries everybody who actually came, which is the opposite of
+    // what somebody sorting by arrival wants to see.
+    const rows = [row('Yox'), row('Səkkiz', { checkInAtUtc: '2026-08-31T08:00:00Z' })]
+
+    expect(sortRows(rows, 'in', false).map((r) => r.employeeName)).toEqual(['Səkkiz', 'Yox'])
+    expect(sortRows(rows, 'in', true).map((r) => r.employeeName)).toEqual(['Səkkiz', 'Yox'])
+  })
+
+  it('falls back to the name so equal rows never shuffle between renders', () => {
+    const rows = [row('Bəbirov', { position: 'Bağban' }), row('Abbasov', { position: 'Bağban' })]
+
+    expect(sortRows(rows, 'position', false).map((r) => r.employeeName)).toEqual(['Abbasov', 'Bəbirov'])
+  })
+
+  it('sorts a missing job title as empty rather than dropping the row', () => {
+    const out = sortRows([row('A', { position: 'Bağban' }), row('B')], 'position', false)
+
+    expect(out).toHaveLength(2)
+    expect(out[0]!.employeeName).toBe('B')
+  })
+
+  it('does not mutate what it was given', () => {
+    const rows = [row('Zeynalov'), row('Abbasov')]
+
+    sortRows(rows, 'name', false)
+
+    expect(rows[0]!.employeeName).toBe('Zeynalov')
   })
 })

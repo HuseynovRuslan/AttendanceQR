@@ -33,6 +33,8 @@ export interface DayAttendanceRow {
   leaveAssignedBy?: string | null
   /** The single-day leave's id — lets the board revert/change it in place. Null for multi-day leaves. */
   leaveId?: string | null
+  /** The employee's job title, so a morning's "who is missing" can be narrowed to one trade. */
+  position?: string | null
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null
