@@ -273,3 +273,32 @@ public sealed record TabelRow(
     double WorkedHours);
 
 public sealed record TabelLegendItem(string Code, string Label);
+
+/// <summary>
+/// One person whose arrivals disagree with the shift they are assigned to. See <see cref="ShiftFit"/>
+/// for why this exists and for the rule; this is only the shape it is reported in.
+/// </summary>
+/// <param name="ShiftLabel">"20:00–06:00" — the hours themselves, since the point is to compare them.</param>
+/// <param name="ScheduleName">The named shift, or null when the hours came from the location.</param>
+/// <param name="EarliestIn">The span of their actual arrivals, so the reader can see the real pattern
+/// rather than take the verdict on trust.</param>
+public sealed record ShiftMismatchRow(
+    Guid EmployeeId,
+    string FullName,
+    string Position,
+    string LocationName,
+    string ShiftLabel,
+    string? ScheduleName,
+    int Scans,
+    int OffScans,
+    int WorstGapHours,
+    TimeOnly EarliestIn,
+    TimeOnly LatestIn);
+
+/// <param name="Days">How far back the arrivals were read.</param>
+/// <param name="Checked">How many employees had enough scans to judge — the denominator, so an empty
+/// list reads as "nobody is misfiled" rather than "the report did not run".</param>
+public sealed record ShiftMismatchReport(
+    int Days,
+    int Checked,
+    IReadOnlyList<ShiftMismatchRow> Rows);

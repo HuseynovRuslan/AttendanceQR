@@ -47,6 +47,13 @@ public interface IReportQueryService
         DateOnly from, DateOnly to, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
     /// <summary>
+    /// People whose real arrival times disagree with the shift they are assigned to — see
+    /// <see cref="ShiftFit"/>. Same scope authority as every other report.
+    /// </summary>
+    Task<(ReportAccess Access, ShiftMismatchReport? Report)> GetShiftMismatchAsync(
+        int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
     /// Payroll for the period on the fixed-monthly-salary model: each employee's salary, minus a
     /// per-day share for every unexcused absence. Built on top of <see cref="GetSummaryAsync"/>, so it
     /// shares the same scope authority and day-counting.
@@ -1130,4 +1137,98 @@ public sealed class ReportQueryService : IReportQueryService
 
         return (ReportAccess.Allowed, report);
     }
+
+    public async Task<(ReportAccess Access, ShiftMismatchReport? Report)> GetShiftMismatchAsync(
+        int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        // Whose shift is wrong is a scheduling question about other people; an employee has no
+        // business with it, the same boundary the other reports draw.
+        if (role == EmployeeRole.Employee)
+            return (ReportAccess.Forbidden, null);
+
+        days = Math.Clamp(days, 7, 90);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var from = today.AddDays(-days);
+
+        // Manager scope: their branches, plain employees only — identical to the boards. Read BEFORE
+        // the employee query so the database does the narrowing rather than the loop below.
+        List<Guid>? managed = role == EmployeeRole.Manager
+            ? await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct)
+            : null;
+
+        var employees = await _db.Employees
+            .Where(e => e.IsActive)
+            .Where(e => managed == null || (managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee))
+            .Select(e => new
+            {
+                e.Id, e.FullName, e.Position, e.LocationId, e.ScheduleId,
+                e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+            })
+            .ToListAsync(ct);
+
+        var locations = await _db.Locations.ToDictionaryAsync(l => l.Id, ct);
+        var schedules = await _db.Schedules.ToDictionaryAsync(s => s.Id, ct);
+
+        var empIds = employees.Select(e => e.Id).ToHashSet();
+        var scans = await _db.AttendanceRecords
+            .Where(a => a.AttendanceDate >= from && a.CheckInAtUtc != null)
+            .Select(a => new { a.EmployeeId, a.AttendanceDate, a.CheckInAtUtc })
+            .ToListAsync(ct);
+
+        var byEmployee = scans
+            .Where(a => empIds.Contains(a.EmployeeId))
+            .GroupBy(a => a.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var rows = new List<ShiftMismatchRow>();
+        var judged = 0;
+
+        foreach (var e in employees)
+        {
+            if (!byEmployee.TryGetValue(e.Id, out var mine) || mine.Count < ShiftFit.MinScans) continue;
+            if (!locations.TryGetValue(e.LocationId, out var location)) continue;
+
+            var schedule = e.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null;
+            var shift = EffectiveShift.Resolve(
+                e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                schedule, location);
+
+            judged++;
+            var off = 0;
+            var worst = 0;
+            TimeOnly? earliest = null, latest = null;
+
+            foreach (var a in mine)
+            {
+                var local = TimeZoneInfo.ConvertTimeFromUtc(a.CheckInAtUtc!.Value, _timeZone);
+                var at = TimeOnly.FromDateTime(local);
+                // The hours that applied ON THAT DAY — a crew whose weekend starts later must not be
+                // flagged every Saturday for keeping to the shift it was actually given.
+                var expected = shift.HoursOn(DateOnly.FromDateTime(local)).Start;
+
+                if (ShiftFit.IsOff(at, expected)) off++;
+                worst = Math.Max(worst, ShiftFit.GapHours(at, expected));
+                if (earliest is null || at < earliest) earliest = at;
+                if (latest is null || at > latest) latest = at;
+            }
+
+            if (!ShiftFit.ShouldFlag(mine.Count, off)) continue;
+
+            var (start, end) = (shift.Start, shift.End);
+            rows.Add(new ShiftMismatchRow(
+                e.Id, e.FullName, e.Position ?? string.Empty,
+                location.Name,
+                $"{start.Hour:D2}:{start.Minute:D2}–{end.Hour:D2}:{end.Minute:D2}",
+                shift.ScheduleName,
+                mine.Count, off, worst,
+                earliest!.Value, latest!.Value));
+        }
+
+        // Worst first: the biggest gap is the one most likely to be a genuinely misfiled person, and
+        // the one costing whole days rather than minutes.
+        rows.Sort((a, b) => b.WorstGapHours.CompareTo(a.WorstGapHours));
+
+        return (ReportAccess.Allowed, new ShiftMismatchReport(days, judged, rows));
+    }
+
 }

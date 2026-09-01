@@ -65,6 +65,7 @@ const EmployeeProfilePage = lazy(() => import('./pages/admin/EmployeeProfilePage
 const DeviceChangesPage = lazy(() => import('./pages/admin/DeviceChangesPage').then(m => ({ default: m.DeviceChangesPage })))
 const PinResetsPage = lazy(() => import('./pages/admin/PinResetsPage').then(m => ({ default: m.PinResetsPage })))
 const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => ({ default: m.ProblemsPage })))
+const ShiftMismatchPage = lazy(() => import('./pages/admin/ShiftMismatchPage').then(m => ({ default: m.ShiftMismatchPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
@@ -388,6 +389,7 @@ function AppRoutes() {
             route is REMOVED, not just the nav link: a hidden link on a live route is not hidden. */}
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<PanelPage path="problems"><ProblemsPage /></PanelPage>} />
+        <Route path="shift-mismatch" element={<PanelPage path="shift-mismatch"><ShiftMismatchPage /></PanelPage>} />
         {/* Field visits board + assign — Admin + Manager (the endpoints gate on Admin,Manager). */}
         <Route path="field-visits" element={<PanelPage path="field-visits"><FieldVisitsAdminPage /></PanelPage>} />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}

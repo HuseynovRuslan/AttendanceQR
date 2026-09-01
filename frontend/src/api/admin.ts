@@ -1502,3 +1502,36 @@ export async function downloadTabelExcel(year: number, month: number, locationId
   a.remove()
   URL.revokeObjectURL(url)
 }
+
+// --- shift mismatch ---------------------------------------------------------
+// People whose real arrival times disagree with the shift they are assigned to. A wrong shift is
+// silent — see the backend's ShiftFit — so this is the screen that goes looking for it.
+
+export interface ShiftMismatchRow {
+  employeeId: string
+  fullName: string
+  position: string
+  locationName: string
+  /** "20:00–06:00" — the hours, because comparing them to the real ones is the whole point. */
+  shiftLabel: string
+  /** The named shift, or null when the hours came from the location. */
+  scheduleName: string | null
+  scans: number
+  offScans: number
+  worstGapHours: number
+  /** "HH:mm:ss" — the span of their actual arrivals. */
+  earliestIn: string
+  latestIn: string
+}
+
+export interface ShiftMismatchReport {
+  days: number
+  /** How many employees had enough scans to judge — so an empty list reads as "nobody", not "did not run". */
+  checked: number
+  rows: ShiftMismatchRow[]
+}
+
+/** GET /api/reports/shift-mismatch?days=… */
+export function getShiftMismatch(days = 21) {
+  return apiRequest<ShiftMismatchReport | { error: string }>(`/api/reports/shift-mismatch?days=${days}`)
+}

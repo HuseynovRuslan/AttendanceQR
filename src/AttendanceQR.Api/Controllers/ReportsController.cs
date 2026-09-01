@@ -313,4 +313,20 @@ public class ReportsController : ControllerBase
         return Ok(report);
     }
 
+
+    // GET /api/reports/shift-mismatch?days=21 — people whose real arrival times disagree with the
+    // shift they are on. Read-only and accusatory of nothing: a mismatch is a question about the
+    // SCHEDULE, not about the employee. See ShiftFit for why it exists.
+    [HttpGet("shift-mismatch")]
+    public async Task<IActionResult> ShiftMismatch([FromQuery] int days = 21)
+    {
+        var (access, report) = await _reports.GetShiftMismatchAsync(
+            days, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        return Ok(report);
+    }
+
 }
