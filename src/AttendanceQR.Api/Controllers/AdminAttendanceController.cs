@@ -29,14 +29,19 @@ public class AdminAttendanceController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IDailySummaryService _dailySummaryService;
     private readonly IFaceMatchQueue _faceQueue;
+    private readonly IPhotoStorageService _photoStorage;
+    private readonly ILogger<AdminAttendanceController> _logger;
     private readonly TimeZoneInfo _timeZone;
 
     public AdminAttendanceController(
-        AppDbContext db, IDailySummaryService dailySummaryService, IFaceMatchQueue faceQueue, AppOptions appOptions)
+        AppDbContext db, IDailySummaryService dailySummaryService, IFaceMatchQueue faceQueue,
+        IPhotoStorageService photoStorage, ILogger<AdminAttendanceController> logger, AppOptions appOptions)
     {
         _db = db;
         _dailySummaryService = dailySummaryService;
         _faceQueue = faceQueue;
+        _photoStorage = photoStorage;
+        _logger = logger;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
     }
 
@@ -224,6 +229,84 @@ public class AdminAttendanceController : ControllerBase
         }
 
         return Ok(Project(record));
+    }
+
+    /// <summary>
+    /// Removes a record entirely. Not "zero it out" — remove it.
+    ///
+    /// Needed for a shape the edit beside it cannot fix: a PHANTOM day. Somebody on a night shift that
+    /// the system did not know was a night shift scans twice in the morning; the first scan opens a
+    /// day that never existed and the second closes it, leaving a seven-minute record on a date the
+    /// person was asleep. That row is not merely wrong — it BLOCKS them, because a day with both a
+    /// check-in and a check-out makes the next scan `AlreadyCompleted`. Editing cannot help: any
+    /// times at all on that date keep the block. The row has to go.
+    ///
+    /// Deliberately not guarded by "only if it looks like a phantom". A rule that tried to recognise
+    /// one would be wrong about somebody's real short shift, and refusing to delete a record an admin
+    /// has looked at and judged false is how people end up editing the database by hand instead —
+    /// which is exactly what this endpoint exists to stop.
+    ///
+    /// What survives: the AuditLog row written below, carrying the times being removed, and the scan's
+    /// own audit trail. The check-in selfie does NOT survive — a face photo whose record no longer
+    /// exists is an orphan nobody can account for, and deleting an employee already purges theirs.
+    /// Storage is cleaned after the row is committed and a failure there is logged, not returned: the
+    /// record is gone either way, and the audit line carries the key so a leftover can still be found.
+    /// </summary>
+    [HttpDelete("{recordId:guid}")]
+    public async Task<IActionResult> Delete(Guid recordId)
+    {
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+
+        // Same boundary as the edit and the clear-checkout beside it: a manager reaches only their own
+        // branches' plain employees. Deletion is not a wider power than editing a day to zero, and the
+        // manager is who notices a phantom on their own board — but it is irreversible, so the scope
+        // check runs before anything is touched.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
+        var requesterId = User.EmployeeId();
+        var employeeId = record.EmployeeId;
+        var date = record.AttendanceDate;
+
+        // Written BEFORE the delete and with the times spelled out: once the row is gone this audit
+        // line is the only place that says what was removed, so "record {id}" alone would be useless
+        // to whoever later asks where a day went.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = employeeId,
+            EventType = AuditEventType.RecordEditedByAdmin,
+            Reason = $"Deleted by {requesterId}: {date:yyyy-MM-dd} "
+                   + $"{record.CheckInAtUtc:HH:mm}–{(record.CheckOutAtUtc is null ? "—" : record.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC"
+                   + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}"),
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+
+        var photoKey = record.CheckInPhotoKey;
+        _db.AttendanceRecords.Remove(record);
+        await _db.SaveChangesAsync();
+
+        if (photoKey is not null)
+        {
+            try
+            {
+                await _photoStorage.DeleteObjectsAsync(new[] { photoKey });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Record {RecordId} deleted, but its selfie {Key} could not be removed from storage",
+                    recordId, photoKey);
+            }
+        }
+
+        // The day has to be re-judged without it — otherwise the summary keeps the deleted row's
+        // hours and the board disagrees with the record it is built from.
+        await _dailySummaryService.GenerateForDateAsync(date, HttpContext.RequestAborted);
+
+        return Ok(new { deleted = recordId, employeeId, date });
     }
 
     // Re-queue a background face-match for every record that has a check-in photo — e.g. after the

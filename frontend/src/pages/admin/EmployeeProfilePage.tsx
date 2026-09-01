@@ -15,7 +15,7 @@ import {
   type DeviceBinding,
   type InviteResult,
 } from '../../api/admin'
-import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecord, adminClearCheckout } from '../../api/attendance'
+import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecord, adminClearCheckout, adminDeleteRecord } from '../../api/attendance'
 import type { AttendanceRecord, PhotoUrlResponse } from '../../api/attendance'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
@@ -263,6 +263,30 @@ export function EmployeeProfilePage() {
     setRecBusy(false)
     if (status === 200) void load()
     else setRecErr('Çıxış silinmədi')
+  }
+
+  /**
+   * Removes a whole day, not just its times.
+   *
+   * Only for a row that records nothing real — the classic one is a night worker's morning double
+   * scan, which opens a day they were asleep for and closes it seven minutes later. That row then
+   * refuses their next scan ("gün artıq bağlanıb"), and editing cannot clear it: any times on that
+   * date keep the refusal. The confirm spells out that it cannot be undone, because it cannot.
+   */
+  async function deleteRecord(r: AttendanceRecord) {
+    const when = `${fmtDate(r.attendanceDate)} ${fmtTime(r.checkInAtUtc)}${r.checkOutAtUtc ? `–${fmtTime(r.checkOutAtUtc)}` : ''}`
+    if (!window.confirm(
+      `${when} qeydi tamamilə silinsin?
+
+` +
+      'Geri qaytarmaq mümkün deyil. Giriş şəkli də silinir. ' +
+      'Yalnız heç bir işi əks etdirməyən səhv qeydlər üçün istifadə edin — ' +
+      'saatı düzəltmək lazımdırsa «Redaktə» edin.')) return
+    setRecBusy(true); setRecErr(null)
+    const { status } = await adminDeleteRecord(r.recordId)
+    setRecBusy(false)
+    if (status === 200) void load()
+    else setRecErr('Qeyd silinmədi')
   }
 
   async function viewRecordPhoto(r: AttendanceRecord) {
@@ -514,6 +538,10 @@ export function EmployeeProfilePage() {
                           )}
                           <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
                           {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
+                          {/* Last, and worded as the whole day: next to "Çıxışı sil" it must not read
+                              as another way of clearing a time. */}
+                          <button className="btn btn-sm btn-danger" disabled={recBusy}
+                                  onClick={() => void deleteRecord(r)}>Günü sil</button>
                         </div>
                       </td>
                     </tr>

@@ -141,7 +141,11 @@ public class OpenRecordsManagerScopeTests
         };
 
         public AdminAttendanceController As(Guid who, EmployeeRole role) =>
-            new(Db, new StubSummary(), new StubQueue(), new AppOptions { TimeZone = "Asia/Baku" })
+            // The photo store and logger arrived with the record-DELETE endpoint; neither is reached by
+            // anything this file exercises. See RecordDeleteScopeTests for the ones that do.
+            new(Db, new StubSummary(), new StubQueue(), new NoPhotos(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<AdminAttendanceController>.Instance,
+                new AppOptions { TimeZone = "Asia/Baku" })
             {
                 ControllerContext = new ControllerContext
                 {
@@ -167,6 +171,18 @@ public class OpenRecordsManagerScopeTests
         public int AuditRows() => Db.AuditLogs.AsNoTracking().Count();
 
         public void Dispose() => Db.Dispose();
+    }
+
+    private sealed class NoPhotos : AttendanceQR.Infrastructure.Services.IPhotoStorageService
+    {
+        public Task<string> UploadCheckInPhotoAsync(Guid e, Guid r, byte[] b, CancellationToken ct = default) => Task.FromResult("k");
+        public Task<string> UploadReferencePhotoAsync(Guid e, byte[] b, CancellationToken ct = default) => Task.FromResult("k");
+        public Task<string> UploadAvatarAsync(Guid e, byte[] b, CancellationToken ct = default) => Task.FromResult("k");
+        public Task<string> UploadFieldWorkPhotoAsync(Guid t, Guid v, byte[] b, CancellationToken ct = default) => Task.FromResult("k");
+        public Task<string> GetPresignedUrlAsync(string key, CancellationToken ct = default) => Task.FromResult("url");
+        public Task<byte[]> GetBytesAsync(string key, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
+        public Task DeleteByPrefixOlderThanAsync(string p, DateTime o, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> DeleteObjectsAsync(IReadOnlyCollection<string> keys, CancellationToken ct = default) => Task.FromResult(keys.Count);
     }
 
     private sealed class StubSummary : IDailySummaryService

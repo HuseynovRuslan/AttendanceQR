@@ -282,3 +282,18 @@ export function adminClearCheckout(recordId: string) {
     method: 'POST',
   })
 }
+
+/**
+ * DELETE /api/admin/attendance/{recordId} — remove a record entirely.
+ *
+ * For a PHANTOM day, which editing cannot fix: a night worker whose shift was not known to be a
+ * night shift scans twice in the morning, the first scan opens a day that never happened and the
+ * second closes it. That row then blocks every later scan with `AlreadyCompleted`, and any times at
+ * all on that date keep the block — so the row itself has to go. Irreversible; the selfie goes with
+ * it and an audit line records what was removed.
+ */
+export function adminDeleteRecord(recordId: string) {
+  return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/attendance/${recordId}`, {
+    method: 'DELETE',
+  })
+}
