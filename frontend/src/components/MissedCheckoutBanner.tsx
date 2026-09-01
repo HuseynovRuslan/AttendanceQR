@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getMissedCheckoutStatus, type MissedCheckoutStatusResp } from '../api/attendance'
+import { companyDate } from '../lib/att'
 import { fmtDayMonth } from '../lib/format'
 
 /**
@@ -20,7 +21,9 @@ export function MissedCheckoutBanner() {
 
   // Only for the day right after the miss (one day) — not forever on every open. Older un-closed days
   // are the admin's to close (/admin/open-records); the employee isn't nagged about them anymore.
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  // Company time, not UTC: `attendanceDate` is stamped in Asia/Baku, so a UTC date disagrees with it
+  // for the four hours after midnight and the banner silently stopped matching.
+  const yesterday = companyDate(new Date(Date.now() - 86_400_000))
   if (status.openDay.attendanceDate !== yesterday) return null
 
   return (

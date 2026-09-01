@@ -13,7 +13,7 @@ import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
 import { AssistantFab } from '../components/AssistantFab'
-import { firstName, initials, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
+import { firstName, initials, nightShiftState, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
 import { QUEUE_CHANGED, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { IconQr } from '../components/icons'
@@ -95,6 +95,9 @@ export function HomePage() {
   }, [employeeId])
 
   const today = withPendingScans(todayState(records), queued)
+  // A night worker's shift lives on YESTERDAY's row until noon. Without this the screen tells someone
+  // who has been at work since eight in the evening that they have not checked in — see nightShiftState.
+  const night = nightShiftState(records, profile?.shiftStart, profile?.shiftEnd)
   const recent = records.slice(0, 3)
   // A worker with an open/assigned field visit has no QR poster to scan — don't bounce them to /scan.
   const hasActionableField = fieldVisits.some((v) => v.status === 'Assigned' || v.status === 'CheckedIn')
@@ -209,12 +212,15 @@ export function HomePage() {
           install nudge is up, so the home never stacks two asks at once. */}
       {!installShown && <PushEnablePrompt />}
 
-      <MissedCheckoutBanner />
+      {/* Not while the night shift is still running: the "open day" the banner would complain about
+          IS the shift they are standing in, and telling them they forgot to check out of it — above a
+          card asking them to check out of it — is the screen arguing with itself. */}
+      {!night && <MissedCheckoutBanner />}
 
       {/* Only for a worker who actually has field work today — renders nothing for everyone else. */}
       <FieldVisitCards visits={fieldVisits} onChanged={reloadFieldVisits} canFieldCheckIn={profile?.canFieldCheckIn} />
 
-      <ScanHero today={today} shiftEnd={profile?.shiftEnd} onScan={() => navigate('/scan')} />
+      <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} onScan={() => navigate('/scan')} />
 
       <div>
         <div className="mb-2 flex items-center justify-between px-1">
@@ -260,8 +266,38 @@ function isOverdue(checkInIso: string, shiftEnd?: string | null): boolean {
  *  bottom bar. Context-aware: green "Giriş et" before check-in, blue "Çıxış et" while at work (red and
  *  insistent once the shift is over — a forgotten check-out reads as zero hours), a calm summary once
  *  the day is done. The whole card is the tap target. */
-function ScanHero({ today, shiftEnd, onScan }: { today: TodayState; shiftEnd?: string | null; onScan: () => void }) {
+function ScanHero({ today, night, shiftEnd, onScan }: {
+  today: TodayState
+  night: { kind: 'night'; checkIn: string } | null
+  shiftEnd?: string | null
+  onScan: () => void
+}) {
   const heroBtn = 'relative w-full overflow-hidden rounded-3xl p-6 text-left text-white shadow-lg transition active:scale-[.99]'
+
+  // Checked first: for these ten hours the person IS at work, and the row that says so is yesterday's.
+  // Only ever set when the server would in fact treat the next scan as that night's check-out.
+  if (night && today.kind === 'none') {
+    const over = isOverdue(night.checkIn, shiftEnd)
+    return (
+      <button
+        onClick={onScan}
+        className={`${heroBtn} ${over ? 'bg-gradient-to-br from-red-500 to-red-700 shadow-red-600/25' : 'bg-gradient-to-br from-indigo-600 to-violet-700 shadow-indigo-600/25'}`}
+      >
+        <IconQr className="pointer-events-none absolute -right-3 -top-3 h-24 w-24 opacity-15" />
+        <div className="text-xs font-bold uppercase tracking-wider opacity-85">
+          🌙 Gecə növbəsi{over ? ' · bitib' : ''}
+        </div>
+        <div className="mt-1 text-3xl font-extrabold">Çıxış et</div>
+        <div className="mt-1 text-sm opacity-90">
+          Dünən axşam {fmtTime(night.checkIn)}-də giriş etmisiniz
+          {over ? ' · çıxışı unutmayın!' : shiftEnd ? ` · Növbə bitir ${shiftEnd}` : ''}
+        </div>
+        <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
+          <IconQr className="h-5 w-5" /> Çıxış üçün skan et
+        </span>
+      </button>
+    )
+  }
 
   if (today.kind === 'none') {
     return (

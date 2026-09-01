@@ -1,10 +1,39 @@
 import type { AttendanceRecord } from '../api/attendance'
+import { COMPANY_TZ } from './format'
 
 // Attendance-domain helpers. The time/date formatters that used to live here moved to lib/format.ts,
 // where someone looking for a time formatter can actually find them.
 
+/**
+ * Today's date AS THE COMPANY COUNTS IT, not as UTC does.
+ *
+ * `attendanceDate` is stamped in company time by the backend, so a date derived from `toISOString()`
+ * disagrees with it for the four hours after midnight in Baku (UTC+4): at 01:00 the phone would look
+ * up yesterday's row and find the open night shift sitting where today's should be. Nobody noticed
+ * because day-shift staff are asleep then — the people awake at that hour are exactly the night
+ * workers this file now has to get right.
+ */
+export function companyDate(now: Date = new Date()): string {
+  // en-CA formats as YYYY-MM-DD, which is the shape the API uses.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: COMPANY_TZ }).format(now)
+}
+
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
+  return companyDate()
+}
+
+/** The hour 0–23 in company time. Same clock the server checks its noon pivot against. */
+function companyHour(now: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: COMPANY_TZ, hour: 'numeric', hour12: false })
+    .formatToParts(now)
+  // Some engines render midnight as "24"; the modulo makes both spellings mean the same hour.
+  return Number(parts.find((p) => p.type === 'hour')?.value ?? '0') % 24
+}
+
+function dayBefore(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
 }
 
 export function firstName(fullName: string | null | undefined): string {
@@ -81,4 +110,47 @@ export function withPendingScans(
   }
 
   return state
+}
+
+
+/**
+ * A night shift that began yesterday evening and has not been closed yet.
+ *
+ * The home screen only ever looked at TODAY's row. For a night worker there is no such row at six in
+ * the morning — their shift is still yesterday's — so the screen said «Giriş et · Hələ giriş
+ * etməmisiniz» to somebody who had been at work for ten hours and was about to leave. The backend
+ * was already right: a scan before noon on an overnight shift closes yesterday
+ * (`AttendanceController`, the `IsOvernightOn(today-1) && hour < 12` branch). Only the words were
+ * wrong, and the words are what decides whether the person taps.
+ *
+ * That mattered more than a wrong label usually does. Told they had not checked in, a night worker
+ * reasonably does nothing — and the shift stays open, which is scored as zero hours for the night
+ * they actually worked.
+ *
+ * The three conditions are the SERVER's, copied deliberately rather than approximated, so the card
+ * never promises a check-out the scan will not perform:
+ *   1. the shift really is overnight (it ends before it starts),
+ *   2. it is before noon in COMPANY time — the same pivot the server uses,
+ *   3. today has no row yet, and yesterday's is open.
+ *
+ * @param now  Injected so this is testable and so a phone left on the wrong timezone cannot change
+ *             the answer — every comparison is made in company time.
+ */
+export function nightShiftState(
+  records: AttendanceRecord[],
+  shiftStart: string | null | undefined,
+  shiftEnd: string | null | undefined,
+  now: Date = new Date(),
+): { kind: 'night'; checkIn: string } | null {
+  if (!shiftStart || !shiftEnd) return null
+  // "HH:mm" compares correctly as text, and this is the same test the server makes: End < Start.
+  if (!(shiftEnd < shiftStart)) return null
+  if (companyHour(now) >= 12) return null
+
+  const today = companyDate(now)
+  if (records.some((r) => r.attendanceDate === today && r.checkInAtUtc)) return null
+
+  const last = records.find((r) => r.attendanceDate === dayBefore(today))
+  if (!last?.checkInAtUtc || last.checkOutAtUtc) return null
+  return { kind: 'night', checkIn: last.checkInAtUtc }
 }
