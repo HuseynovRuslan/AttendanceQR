@@ -8,7 +8,7 @@ export interface DayAttendanceRow {
   employeeName: string
   locationId: string
   locationName: string
-  status: 'OnTime' | 'Late' | 'Absent' | 'Pending' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission' | 'Field'
+  status: 'OnTime' | 'Late' | 'Absent' | 'Pending' | 'Onboarding' | 'Incomplete' | 'DayOff' | 'OnLeave' | 'Permission' | 'Field'
   checkInAtUtc: string | null
   checkOutAtUtc: string | null
   // Photo audit: today's record id + whether it has a check-in selfie (optional — older backends omit).

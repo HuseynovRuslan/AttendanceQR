@@ -23,10 +23,10 @@ import { COMPANY_TZ, fmtTime } from '../../lib/format'
  * restated the same numbers a third time and nobody read them.
  */
 
-type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'trip'
+type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'trip'
 
 const BUCKET_LABEL: Record<Bucket, string> = {
-  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir',
+  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir', onboarding: 'Aktivləşdirməyib',
   sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə', rest: 'İstirahət',
   trip: 'Ezamiyyət',
 }
@@ -41,6 +41,7 @@ function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
     case 'absent': return r.status === 'Absent'
     case 'in': return r.status === 'Incomplete'
     case 'pending': return r.status === 'Pending'
+    case 'onboarding': return r.status === 'Onboarding'
     case 'permission': return r.status === 'Permission'
     case 'rest': return r.status === 'DayOff'
     case 'sick': return r.status === 'OnLeave' && r.leaveType === 'Sick'
@@ -175,11 +176,13 @@ export function DashboardPage() {
     return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 500)
   }, [rows])
 
-  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, dayOff: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
+  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, onboarding: 0, dayOff: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
   for (const r of rows) {
     if (r.status === 'OnTime' || r.status === 'Late') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'Pending') counts.pending++
+    // Tanınmasa «İşdə» qalığına yıxılardı — və 294 qurulmamış hesab «İndi iş başında» sayılardı.
+    else if (r.status === 'Onboarding') counts.onboarding++
     else if (r.status === 'DayOff') counts.dayOff++
     else if (r.status === 'Permission') counts.permission++
     else if (r.status === 'OnLeave') {
@@ -192,7 +195,9 @@ export function DashboardPage() {
   }
   const total = rows.length
   const onLeaveTotal = counts.sick + counts.vacation + counts.unpaid + counts.trip
-  const notExpected = counts.dayOff + onLeaveTotal + counts.permission
+  // Aktivləşdirməmişlər bu gün gözlənilənlərə DAXİL DEYİL — telefonları hələ paylanmayıb, iştirak
+  // faizinin məxrəcində olmaları faizi mənasız edərdi.
+  const notExpected = counts.dayOff + onLeaveTotal + counts.permission + counts.onboarding
   const expected = total - notExpected
   const attended = counts.present + counts.incomplete
   const overallRate = expected ? Math.round((attended / expected) * 100) : 0
@@ -345,6 +350,7 @@ export function DashboardPage() {
         <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
         <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
         {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Gözlənilir" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
+        {counts.onboarding > 0 && <Pill tone="slate" n={counts.onboarding} label="Aktivləşdirməyib" active={openBucket === 'onboarding'} onClick={() => openPill('onboarding')} />}
         {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
         {counts.vacation > 0 && <Pill tone="purple" n={counts.vacation} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}
         {counts.unpaid > 0 && <Pill tone="purple" n={counts.unpaid} label="Ödənişsiz" active={openBucket === 'unpaid'} onClick={() => openPill('unpaid')} />}

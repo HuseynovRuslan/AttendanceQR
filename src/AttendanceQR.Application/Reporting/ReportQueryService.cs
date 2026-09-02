@@ -378,9 +378,9 @@ public sealed class ReportQueryService : IReportQueryService
             // board shares that method and must keep showing these people, because "hasn't scanned
             // yet" is exactly what an admin needs to see today. The board reports presence; this
             // path feeds the summary, the tabel and the payroll, which decide money.
-            var onboarding = await StillOnboardingIdsAsync(employees, today, ct);
+            var isOnboarding = await OnboardingCheckerAsync(employees.Select(e => e.Id).ToList(), ct);
             rows.AddRange((await ComputeDayLiveAsync(today, employees, ct))
-                .Where(d => !onboarding.Contains(d.Employee.Id))
+                .Where(d => !isOnboarding(d.Employee.Id, today))
                 .Select(d => ToDayRow(d, today)));
         }
 
@@ -388,14 +388,14 @@ public sealed class ReportQueryService : IReportQueryService
     }
 
     /// <summary>
-    /// Which of these employees had not yet started on <paramref name="date"/> — see
-    /// <see cref="AttendanceCalculator.IsStillOnboarding"/> for the rule and why it exists.
+    /// Loads once, answers many: is this employee still being set up on that date? — see
+    /// <see cref="AttendanceCalculator.IsStillOnboarding"/> for the rule and why it exists. Returned
+    /// as a closure because the tabel asks the question per employee-day across a whole month, and
+    /// thirty per-date queries would be thirty times the same three lookups.
     /// </summary>
-    private async Task<HashSet<Guid>> StillOnboardingIdsAsync(
-        List<ScopedEmployee> employees, DateOnly date, CancellationToken ct)
+    private async Task<Func<Guid, DateOnly, bool>> OnboardingCheckerAsync(
+        IReadOnlyCollection<Guid> ids, CancellationToken ct)
     {
-        var ids = employees.Select(e => e.Id).ToList();
-
         var activated = await _db.Employees
             .Where(e => ids.Contains(e.Id))
             .Select(e => new { e.Id, e.ActivatedAtUtc })
@@ -414,18 +414,14 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(g => new { EmployeeId = g.Key, First = g.Min(v => v.VisitDate) })
             .ToDictionaryAsync(x => x.EmployeeId, x => x.First, ct);
 
-        var result = new HashSet<Guid>();
-        foreach (var e in employees)
+        return (employeeId, date) =>
         {
-            var a = firstScan.TryGetValue(e.Id, out var s1) ? s1 : (DateOnly?)null;
-            var b = firstField.TryGetValue(e.Id, out var s2) ? s2 : (DateOnly?)null;
+            var a = firstScan.TryGetValue(employeeId, out var s1) ? s1 : (DateOnly?)null;
+            var b = firstField.TryGetValue(employeeId, out var s2) ? s2 : (DateOnly?)null;
             var first = a is null ? b : b is null ? a : (a < b ? a : b);
-
-            if (AttendanceCalculator.IsStillOnboarding(
-                    date, activated.GetValueOrDefault(e.Id), first, _timeZone))
-                result.Add(e.Id);
-        }
-        return result;
+            return AttendanceCalculator.IsStillOnboarding(
+                date, activated.GetValueOrDefault(employeeId), first, _timeZone);
+        };
     }
 
     // The Azerbaijani T-13 codes the tabel prints. Kept here so the legend the UI shows and the codes
@@ -441,6 +437,9 @@ public sealed class ReportQueryService : IReportQueryService
     private const string CodeHoliday = "B";     // bayram / admin-declared non-working day
     private const string CodeWeekend = "H";     // həftələrarası istirahət — off per the work-day mask
     private const string CodeFuture = "";       // a day that has not happened yet this month
+    // İmport olunub, hələ ilk skanı yoxdur (bax IsStillOnboarding). Qayıb DEYİL: telefon hələ
+    // paylanmayıb — bu günlər tabeldə də, maaşda da heç kimin əleyhinə işləmir.
+    private const string CodeNotActivated = "–";
 
     private static readonly IReadOnlyList<TabelLegendItem> TabelLegend = new[]
     {
@@ -453,6 +452,7 @@ public sealed class ReportQueryService : IReportQueryService
         new TabelLegendItem(CodeBusinessTrip, "Ezamiyyət"),
         new TabelLegendItem(CodeHoliday, "Bayram / qeyri-iş günü"),
         new TabelLegendItem(CodeWeekend, "İstirahət günü"),
+        new TabelLegendItem(CodeNotActivated, "Aktivləşdirməyib (ilk skana qədər)"),
     };
 
     public async Task<(ReportAccess Access, TabelReport? Report)> GetTabelAsync(
@@ -479,6 +479,7 @@ public sealed class ReportQueryService : IReportQueryService
             return (ReportAccess.Forbidden, null);
 
         var employeeIds = employees.Select(e => e.Id).ToList();
+        var isOnboarding = await OnboardingCheckerAsync(employeeIds, ct);
         var meta = await _db.Employees
             .Where(e => employeeIds.Contains(e.Id))
             .Select(e => new { e.Id, e.Position, e.LocationId })
@@ -528,6 +529,17 @@ public sealed class ReportQueryService : IReportQueryService
                 if (date > today)
                 {
                     codes[day - 1] = CodeFuture;
+                    continue;
+                }
+
+                // Still being set up: the summary rows for these days were deliberately never written
+                // (or were removed), but the fallback below re-derives Q from the CALENDAR — "a work
+                // day with no record is absent" — so without this guard the tabel resurrects every
+                // absence the onboarding rule just cleared. Checked before both branches for the same
+                // reason, and it does not touch the absent counter.
+                if (isOnboarding(e.Id, date))
+                {
+                    codes[day - 1] = CodeNotActivated;
                     continue;
                 }
 
@@ -875,7 +887,7 @@ public sealed class ReportQueryService : IReportQueryService
         // morning 290 people were imported, the Qayıb tile read ~350 and the 67 genuinely missing
         // people were invisible inside the noise. The admin still sees every one of them — under an
         // honest name, on their own tile — and the Qayıb count means something again.
-        var onboardingIds = await StillOnboardingIdsAsync(employees, day, ct);
+        var isOnboarding = await OnboardingCheckerAsync(employees.Select(e => e.Id).ToList(), ct);
 
         // Field/mobile attendance rides along on LiveDay — ComputeDayLiveAsync loaded it once, and has
         // already counted such a day as worked so the reports and the payroll agree with this board.
@@ -890,7 +902,7 @@ public sealed class ReportQueryService : IReportQueryService
                     status = "Field";
                 // Only the Absent reading is overridden: a scan ends onboarding by definition, and
                 // Pending ("shift not started yet") is already neutral.
-                if (status == "Absent" && onboardingIds.Contains(d.Employee.Id))
+                if (status == "Absent" && isOnboarding(d.Employee.Id, day))
                     status = "Onboarding";
                 return new DayAttendanceRow(
                     d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
@@ -1200,13 +1212,26 @@ public sealed class ReportQueryService : IReportQueryService
         var daySpan = Math.Max(1, to.DayNumber - from.DayNumber + 1);
         var avgDailyOperations = Math.Round((totalCheckIns + totalCheckOuts) / (double)daySpan, 1);
 
+        // Still-onboarding headcount, TODAY only. It cannot come from `summaries` — LoadDayRowsAsync
+        // deliberately filters these people out of today's rows — so the roster is asked directly.
+        var onboardingCount = 0;
+        if (from <= todayLocal && todayLocal <= to)
+        {
+            var (rosterAccess, roster) = await ScopedEmployeesAsync(locationId, requesterId, role, ct);
+            if (rosterAccess == ReportAccess.Allowed)
+            {
+                var isOnboarding = await OnboardingCheckerAsync(roster.Select(e => e.Id).ToList(), ct);
+                onboardingCount = roster.Count(e => isOnboarding(e.Id, todayLocal));
+            }
+        }
+
         var report = new DashboardReport(
             from, to, label,
             totalCheckIns, totalCheckOuts, lateCount, absentCount, incompleteCount, stillAtWorkCount,
             dayOffCount, leaveCount, permissionCount,
             totalWorkedHours, overtimeHours, outsideRadiusCount, activeDeviceCount,
             checkInOutRatio, lateRate, outsideRadiusRate, avgDailyOperations,
-            trend, weekday, topLate);
+            trend, weekday, topLate, onboardingCount);
 
         return (ReportAccess.Allowed, report);
     }

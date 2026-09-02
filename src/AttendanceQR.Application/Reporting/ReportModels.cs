@@ -254,7 +254,11 @@ public sealed record DashboardReport(
     double AvgDailyOperations,
     IReadOnlyList<DailyTrendPoint> Trend,
     IReadOnlyList<WeekdayPoint> WeekdayBreakdown,
-    IReadOnlyList<TopLateRow> TopLate);
+    IReadOnlyList<TopLateRow> TopLate,
+    /// <summary>İmport olunub, hələ ilk skanı yoxdur — bu gün etibarilə. Qayıba daxil deyil:
+    /// LoadDayRowsAsync onları bugünkü sətirlərdən çıxarır, ona görə burada ayrıca sayılır ki,
+    /// panel 294 adamın harada olduğunu deyə bilsin. Sıfır olanda gizlədilir.</summary>
+    int OnboardingCount = 0);
 
 /// <summary>
 /// The monthly attendance timesheet ("Aylıq Tabel") — the grid an accountant reconciles at month end:
