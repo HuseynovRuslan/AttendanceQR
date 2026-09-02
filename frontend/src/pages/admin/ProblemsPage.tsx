@@ -221,9 +221,12 @@ export function ProblemsPage() {
           <details style={{ marginTop: 10 }}>
             <summary className="muted" style={{ fontSize: 12.5, cursor: 'pointer' }}>Nəzarətçi üçün təlimat (kopyalayıb göndərin)</summary>
             <pre style={{ fontSize: 12, background: 'var(--c50)', borderRadius: 8, padding: 10, whiteSpace: 'pre-wrap', marginTop: 6 }}>{
-`Android: Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan → «İcazə ver»
-iPhone: Ayarlar → Məxfilik → Yer Xidmətləri → AÇIQ → Safari Websites → «Tətbiqi istifadə edərkən» + Dəqiq Yer
-Vacib: icazə soruşulanda «Bir dəfə» YOX, «İcazə ver / İstifadə zamanı» seçin.
+`Android (Chrome): sayt açıq ikən ünvan sətrindəki kilid/ikon → İcazələr → «Sıfırla»,
+SONRA Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan → açıq olduğunu yoxlayın (hər iki qapı lazımdır).
+iPhone (Safari): səhifə açıq ikən «aA» düyməsi → Sayt Ayarları → Məkan → «Soruş» və ya «İcazə ver»
+(bu, Ayarlar tətbiqindən qat-qat qısadır). Ayarlar yolu da işləyir: Məxfilik → Yer Xidmətləri → Safari.
+Vacib: icazə soruşulanda «Bir dəfə» YOX — «İcazə ver / İstifadə zamanı» seçin.
+«Tətbiqi silib yenidən qur» MƏSLƏHƏT DEYİL — Android-də icazə Chrome ilə ortaqdır, heç nə dəyişmir.
 Sonda: tətbiqi tam bağlayıb açın, bir skan edin — alınırsa düzəldi.`
             }</pre>
           </details>
