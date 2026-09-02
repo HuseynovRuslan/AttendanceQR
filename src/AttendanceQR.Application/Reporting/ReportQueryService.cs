@@ -777,26 +777,16 @@ public sealed class ReportQueryService : IReportQueryService
         var rows = summary.Rows.Select(r =>
         {
             var salary = salaries.GetValueOrDefault(r.EmployeeId);
-            // The divisor is every day that was a working day for this employee in the period —
-            // present, absent, or excused (leave/permission). Only unexcused absences are deducted.
-            var scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays;
-
+            // The arithmetic lives in PayrollMath — tested, and with the trip-day story on it. It was
+            // inline here, and when Ezamiyyət was split out of LeaveDays the divisor silently lost
+            // those days: every trip inflated the per-day rate and over-charged any absence.
+            var scheduled = 0;
             decimal perDay = 0m, deduction = 0m, payable = 0m;
             if (salary is > 0m)
-            {
-                if (scheduled > 0)
-                {
-                    perDay = Math.Round(salary.Value / scheduled, 2, MidpointRounding.AwayFromZero);
-                    deduction = Math.Round(perDay * r.AbsentDays, 2, MidpointRounding.AwayFromZero);
-                    payable = salary.Value - deduction;
-                    if (payable < 0m) payable = 0m;
-                }
-                else
-                {
-                    // Salary set but no working day fell in the period (all day-off) — nothing to deduct.
-                    payable = salary.Value;
-                }
-            }
+                (scheduled, perDay, deduction, payable) = PayrollMath.Compute(
+                    salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays);
+            else
+                scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays;
 
             return new PayrollRow(
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,
