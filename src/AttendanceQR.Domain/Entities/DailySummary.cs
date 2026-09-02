@@ -39,4 +39,7 @@ public class DailySummary : ITenantScoped
 
     // Minutes worked past the shift end, only when positive; otherwise 0.
     public int OvertimeMinutes { get; set; }
+
+    /// <summary>Minutes the check-out fell short of the shift end — the mirror of OvertimeMinutes.</summary>
+    public int EarlyLeaveMinutes { get; set; }
 }

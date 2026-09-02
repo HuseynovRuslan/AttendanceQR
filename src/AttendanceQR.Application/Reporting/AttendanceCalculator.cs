@@ -8,7 +8,12 @@ public readonly record struct DayComputation(
     DailySummaryStatus Status,
     int WorkedMinutes,
     int LateMinutes,
-    int OvertimeMinutes);
+    int OvertimeMinutes,
+    // Minutes the check-out fell SHORT of the shift's end, mirror of OvertimeMinutes. Added
+    // 2026-09-02 at the owner's ask: staying late was being counted, leaving early was not — an
+    // asymmetry that rewarded one direction of the same clock. Hours-only, like overtime: neither
+    // is auto-converted to money. Zero on non-working days (no expected end to fall short of).
+    int EarlyLeaveMinutes = 0);
 
 /// <summary>
 /// The single place that turns a raw <see cref="AttendanceRecord"/> + a location's shift + the app
@@ -260,7 +265,10 @@ public static class AttendanceCalculator
 
         var overtime = checkOutMin - endMin;
         var overtimeMinutes = overtime > 0 ? overtime : 0;
+        // The same subtraction read the other way. Only on a working day: a non-working day has no
+        // expected end, so leaving "early" from a day nobody scheduled means nothing.
+        var earlyLeaveMinutes = isWorkingDay && overtime < 0 ? -overtime : 0;
 
-        return new DayComputation(status, workedMinutes, lateMinutes, overtimeMinutes);
+        return new DayComputation(status, workedMinutes, lateMinutes, overtimeMinutes, earlyLeaveMinutes);
     }
 }

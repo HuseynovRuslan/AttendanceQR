@@ -95,7 +95,8 @@ public sealed class ReportQueryService : IReportQueryService
         DailySummaryStatus Status,
         int WorkedMinutes,
         int OvertimeMinutes,
-        int LateMinutes);
+        int LateMinutes,
+        int EarlyLeaveMinutes = 0);
 
     /// <summary>An in-scope employee plus the fields the day computation needs.</summary>
     private sealed record ScopedEmployee(
@@ -326,7 +327,8 @@ public sealed class ReportQueryService : IReportQueryService
     private static DayRow ToDayRow(LiveDay d, DateOnly date) => new(
         d.Employee.Id, d.Employee.LocationId, date,
         d.Record?.CheckInAtUtc ?? d.FieldIn, d.Record?.CheckOutAtUtc ?? d.FieldOut,
-        d.Computed.Status, d.Computed.WorkedMinutes, d.Computed.OvertimeMinutes, d.Computed.LateMinutes);
+        d.Computed.Status, d.Computed.WorkedMinutes, d.Computed.OvertimeMinutes, d.Computed.LateMinutes,
+        d.Computed.EarlyLeaveMinutes);
 
     /// <summary>
     /// The computed rows for [from..to], scoped to the caller.
@@ -357,7 +359,7 @@ public sealed class ReportQueryService : IReportQueryService
             rows.AddRange(await scoped.Query
                 .Select(s => new DayRow(
                     s.EmployeeId, s.LocationId, s.SummaryDate, s.CheckInAtUtc, s.CheckOutAtUtc,
-                    s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes))
+                    s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes, s.EarlyLeaveMinutes))
                 .ToListAsync(ct));
         }
 
@@ -587,6 +589,7 @@ public sealed class ReportQueryService : IReportQueryService
                 r.Date,
                 r.WorkedMinutes,
                 r.OvertimeMinutes,
+                r.EarlyLeaveMinutes,
             })
             .ToList();
 
@@ -613,6 +616,7 @@ public sealed class ReportQueryService : IReportQueryService
                 IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete),
                 TotalWorkedHours: Math.Round(g.Sum(x => x.WorkedMinutes) / 60.0, 2),
                 OvertimeHours: Math.Round(g.Sum(x => x.OvertimeMinutes) / 60.0, 2),
+                EarlyLeaveHours: Math.Round(g.Sum(x => x.EarlyLeaveMinutes) / 60.0, 2),
                 LeaveDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && !OnTrip(x.EmployeeId, x.Date)),
                 TripDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && OnTrip(x.EmployeeId, x.Date)),
                 PermissionDays: g.Count(x => x.Status == DailySummaryStatus.Permission)))
@@ -626,6 +630,7 @@ public sealed class ReportQueryService : IReportQueryService
             IncompleteDays: grouped.Sum(r => r.IncompleteDays),
             TotalWorkedHours: Math.Round(grouped.Sum(r => r.TotalWorkedHours), 2),
             OvertimeHours: Math.Round(grouped.Sum(r => r.OvertimeHours), 2),
+            EarlyLeaveHours: Math.Round(grouped.Sum(r => r.EarlyLeaveHours), 2),
             LeaveDays: grouped.Sum(r => r.LeaveDays),
             TripDays: grouped.Sum(r => r.TripDays),
             PermissionDays: grouped.Sum(r => r.PermissionDays));
@@ -724,7 +729,7 @@ public sealed class ReportQueryService : IReportQueryService
             return new PayrollRow(
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,
                 scheduled, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.OvertimeHours,
-                perDay, deduction, payable);
+                perDay, deduction, payable, r.EarlyLeaveHours);
         })
         .OrderBy(r => r.EmployeeName)
         .ToList();

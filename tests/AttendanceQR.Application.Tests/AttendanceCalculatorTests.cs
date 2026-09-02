@@ -250,4 +250,65 @@ public class AttendanceCalculatorTests
     [InlineData(false, LeaveType.Vacation, DailySummaryStatus.OnLeave)]
     public void ResolveNoRecordStatus_priority(bool isWorkingDay, LeaveType? leave, DailySummaryStatus expected)
         => Assert.Equal(expected, AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leave));
+    // --- early leave (the mirror of overtime, added 2026-09-02) ---------------------------------
+    //
+    // Staying past shift end was counted (OvertimeMinutes); leaving before it was not — the same
+    // subtraction, one direction kept and the other thrown away. The owner asked for the mirror.
+    // Hours-only, like overtime: neither is auto-converted to money anywhere.
+
+    [Fact]
+    public void Leaving_before_shift_end_is_counted_as_early_leave()
+    {
+        // Shift to 18:00, out at 16:30 → 90 minutes short. And no overtime, obviously.
+        var c = Run(Record("2026-07-15 09:00", "2026-07-15 16:30"), Loc());
+        Assert.Equal(90, c.EarlyLeaveMinutes);
+        Assert.Equal(0, c.OvertimeMinutes);
+    }
+
+    [Fact]
+    public void Overtime_and_early_leave_never_both_fire()
+    {
+        // Out at 19:00 against an 18:00 end: an hour of overtime, zero early leave — one clock,
+        // one direction.
+        var c = Run(Record("2026-07-15 09:00", "2026-07-15 19:00"), Loc());
+        Assert.Equal(60, c.OvertimeMinutes);
+        Assert.Equal(0, c.EarlyLeaveMinutes);
+    }
+
+    [Fact]
+    public void Leaving_exactly_at_shift_end_is_neither()
+    {
+        var c = Run(Record("2026-07-15 09:00", "2026-07-15 18:00"), Loc());
+        Assert.Equal(0, c.OvertimeMinutes);
+        Assert.Equal(0, c.EarlyLeaveMinutes);
+    }
+
+    [Fact]
+    public void A_non_working_day_has_no_early_leave()
+    {
+        // Somebody who came in on their day off and left after two hours did not leave "early" —
+        // there was no expected end to fall short of. (Their overtime still counts, as before.)
+        var c = Run(Record("2026-07-15 09:00", "2026-07-15 11:00"), Loc(), isWorkingDay: false);
+        Assert.Equal(0, c.EarlyLeaveMinutes);
+    }
+
+    [Fact]
+    public void Night_shift_early_leave_crosses_midnight_correctly()
+    {
+        // 22:00–06:00 shift, out at 04:30 → 90 minutes early. The noon pivot must place 04:30
+        // AFTER 22:00 on the timeline, or this would read as leaving seventeen hours early.
+        var c = Run(Record("2026-07-15 22:00", "2026-07-16 04:30"), Night());
+        Assert.Equal(90, c.EarlyLeaveMinutes);
+        Assert.Equal(0, c.OvertimeMinutes);
+    }
+
+    [Fact]
+    public void An_open_day_has_no_early_leave_verdict()
+    {
+        // No check-out yet — nothing to measure against the end. The day is Incomplete, not "left
+        // eighteen hours early".
+        var c = Run(Record("2026-07-15 09:00"), Loc());
+        Assert.Equal(0, c.EarlyLeaveMinutes);
+    }
+
 }

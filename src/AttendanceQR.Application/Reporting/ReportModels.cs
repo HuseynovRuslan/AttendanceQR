@@ -25,7 +25,10 @@ public sealed record EmployeeReportRow(
     // were working somewhere with no poster. Summed together, a driver away for a
     // month read as a month of annual leave on every report.
     int TripDays,
-    int PermissionDays);
+    int PermissionDays,
+    // Hours the check-out fell short of shift end — the mirror of OvertimeHours. Hours-only, like
+    // overtime; never auto-converted to money. At the record's tail so positional callers compile.
+    double EarlyLeaveHours = 0);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(
@@ -42,7 +45,10 @@ public sealed record ReportTotals(
     // were working somewhere with no poster. Summed together, a driver away for a
     // month read as a month of annual leave on every report.
     int TripDays,
-    int PermissionDays);
+    int PermissionDays,
+    // Hours the check-out fell short of shift end — the mirror of OvertimeHours. Hours-only, like
+    // overtime; never auto-converted to money. At the record's tail so positional callers compile.
+    double EarlyLeaveHours = 0);
 
 /// <summary>The full report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record AttendanceReport(
@@ -85,7 +91,9 @@ public sealed record PayrollRow(
     double OvertimeHours,
     decimal PerDay,
     decimal Deduction,
-    decimal Payable);
+    decimal Payable,
+    // Mirror of OvertimeHours, same rule: displayed as hours, never money.
+    double EarlyLeaveHours = 0);
 
 /// <summary>The payroll report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record PayrollReport(

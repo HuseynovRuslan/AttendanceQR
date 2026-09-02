@@ -62,6 +62,7 @@ export interface EmployeeReportRow {
   incompleteDays: number
   totalWorkedHours: number
   overtimeHours: number
+  earlyLeaveHours: number
   leaveDays: number
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
@@ -75,6 +76,7 @@ export interface ReportTotals {
   incompleteDays: number
   totalWorkedHours: number
   overtimeHours: number
+  earlyLeaveHours: number
   leaveDays: number
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
@@ -391,6 +393,7 @@ export interface PayrollRow {
   tripDays: number
   permissionDays: number
   overtimeHours: number
+  earlyLeaveHours: number
   perDay: number
   deduction: number
   payable: number

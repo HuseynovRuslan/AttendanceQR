@@ -23,7 +23,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     private static readonly string[] Headers =
         {
             "Employee", "Location", "Work Days", "Absent Days", "Total Hours", "Overtime Hours",
-            "Leave Days", "Permission Days"
+            "Leave Days", "Permission Days", "Early Leave Hours"
         };
 
     public byte[] Build(AttendanceReport report)
@@ -63,6 +63,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(r, 6).Value = row.OvertimeHours;
             ws.Cell(r, 7).Value = row.LeaveDays;
             ws.Cell(r, 8).Value = row.PermissionDays;
+            ws.Cell(r, 9).Value = row.EarlyLeaveHours;
             for (var c = 1; c <= Headers.Length; c++)
                 ws.Cell(r, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             r++;
@@ -76,6 +77,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.Cell(r, 6).Value = report.Totals.OvertimeHours;
         ws.Cell(r, 7).Value = report.Totals.LeaveDays;
         ws.Cell(r, 8).Value = report.Totals.PermissionDays;
+        ws.Cell(r, 9).Value = report.Totals.EarlyLeaveHours;
         var totalRange = ws.Range(r, 1, r, Headers.Length);
         totalRange.Style.Font.Bold = true;
         totalRange.Style.Fill.BackgroundColor = XLColor.LightYellow;
@@ -92,7 +94,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     private static readonly string[] PayrollHeaders =
         {
             "İşçi", "Filial", "Aylıq maaş", "İş günü", "Gəlib", "Qayıb", "Məzuniyyət/İcazə",
-            "Əlavə saat", "Günlük", "Çıxılan", "Ödəniləcək"
+            "Əlavə saat", "Günlük", "Çıxılan", "Ödəniləcək", "Tez çıxma (saat)"
         };
     private const string Money = "#,##0.00";
 
@@ -137,6 +139,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(r, 6).Value = row.AbsentDays;
             ws.Cell(r, 7).Value = row.LeaveDays + row.PermissionDays;
             ws.Cell(r, 8).Value = row.OvertimeHours;
+            ws.Cell(r, 12).Value = row.EarlyLeaveHours;
             foreach (var col in new[] { 3, 9, 10, 11 })
                 ws.Cell(r, col).Style.NumberFormat.Format = Money;
             for (var c = 1; c <= PayrollHeaders.Length; c++)
