@@ -869,6 +869,14 @@ public sealed class ReportQueryService : IReportQueryService
 
         var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
+        // Who is still being set up (imported, no first scan yet — see IsStillOnboarding). Their
+        // "Absent" is relabelled "Onboarding" for the BOARD ONLY, the same way "Pending" and "Field"
+        // are board-only strings the stored enum never carries. Why it matters at this scale: the
+        // morning 290 people were imported, the Qayıb tile read ~350 and the 67 genuinely missing
+        // people were invisible inside the noise. The admin still sees every one of them — under an
+        // honest name, on their own tile — and the Qayıb count means something again.
+        var onboardingIds = await StillOnboardingIdsAsync(employees, day, ct);
+
         // Field/mobile attendance rides along on LiveDay — ComputeDayLiveAsync loaded it once, and has
         // already counted such a day as worked so the reports and the payroll agree with this board.
         return computed
@@ -880,6 +888,10 @@ public sealed class ReportQueryService : IReportQueryService
                 // it arrives here as OnTime/Incomplete rather than Absent/Pending.
                 if (d.FieldIn != null && d.Record?.CheckInAtUtc == null)
                     status = "Field";
+                // Only the Absent reading is overridden: a scan ends onboarding by definition, and
+                // Pending ("shift not started yet") is already neutral.
+                if (status == "Absent" && onboardingIds.Contains(d.Employee.Id))
+                    status = "Onboarding";
                 return new DayAttendanceRow(
                     d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
                     status,

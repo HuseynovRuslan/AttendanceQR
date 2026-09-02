@@ -28,6 +28,8 @@ function statusMatches(status: string, filter: string): boolean {
       return status === 'Absent'
     case 'pending':
       return status === 'Pending'
+    case 'onboarding':
+      return status === 'Onboarding'
     case 'dayOff':
       return status === 'DayOff'
     case 'onLeave':
@@ -35,7 +37,7 @@ function statusMatches(status: string, filter: string): boolean {
     case 'permission':
       return status === 'Permission'
     case 'incomplete':
-      return !['OnTime', 'Late', 'Field', 'Absent', 'Pending', 'DayOff', 'OnLeave', 'Permission'].includes(status)
+      return !['OnTime', 'Late', 'Field', 'Absent', 'Pending', 'Onboarding', 'DayOff', 'OnLeave', 'Permission'].includes(status)
     default:
       return true
   }
@@ -362,6 +364,15 @@ export function TodayPage() {
           <div className="stat-card slate" style={cardStyle('pending')} onClick={() => toggleStatus('pending')}>
             <div className="stat-lbl">{STATUS_MAP.Pending.label}</div>
             <div className="stat-val">{counts.pending}</div>
+          </div>
+        )}
+        {/* Yalnız biri belə olanda görünür, Xəstəlik kimi. Qayıbdan QƏSDƏN ayrıdır: import olunmuş,
+            telefonu hələ qurulmamış adam gəlməyən adam deyil — və 290-ı bir səhər Qayıb sayılanda
+            əsl 67 qayıb səs-küydə itmişdi. */}
+        {counts.onboarding > 0 && (
+          <div className="stat-card slate" style={cardStyle('onboarding')} onClick={() => toggleStatus('onboarding')}>
+            <div className="stat-lbl">{STATUS_MAP.Onboarding.label}</div>
+            <div className="stat-val">{counts.onboarding}</div>
           </div>
         )}
         <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>

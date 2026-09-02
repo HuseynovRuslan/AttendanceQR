@@ -25,6 +25,8 @@ export interface TodayCounts {
   present: number
   absent: number
   pending: number
+  /** İmport olunub, hələ ilk skanı yoxdur — lövhəyə-özəl «Hazırlanır». Qayıba QARIŞMIR. */
+  onboarding: number
   incomplete: number
   dayOff: number
   /** Məzuniyyət — holiday and unpaid/rest leave. NOT sick, NOT a work trip. */
@@ -36,7 +38,7 @@ export interface TodayCounts {
 }
 
 const EMPTY: TodayCounts = {
-  present: 0, absent: 0, pending: 0, incomplete: 0,
+  present: 0, absent: 0, pending: 0, onboarding: 0, incomplete: 0,
   dayOff: 0, onLeave: 0, sick: 0, trip: 0, permission: 0,
 }
 
@@ -46,6 +48,7 @@ export function countToday(rows: TodayLike[]): TodayCounts {
     if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') c.present++
     else if (r.status === 'Absent') c.absent++
     else if (r.status === 'Pending') c.pending++
+    else if (r.status === 'Onboarding') c.onboarding++
     else if (r.status === 'DayOff') c.dayOff++
     else if (r.status === 'OnLeave') {
       if (r.leaveType === 'Sick') c.sick++

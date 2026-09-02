@@ -16,6 +16,11 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   // 21:00 night worker at 10:00 is not a no-show, their shift is later. Set by the live board; the
   // stored DailySummaryStatus never carries it.
   Pending: { cls: 'b-pending', label: 'Gözlənilir', icon: 'clock' },
+  // Board-only, like Pending: imported but no first scan yet — the phone is still being handed over,
+  // permissions granted, the shift assigned. NOT the red Qayıb: 290 of these drowned the 67 real
+  // no-shows the morning a company onboarded. The stored DailySummaryStatus never carries it, and the
+  // payroll never sees such a day at all (DailySummaryService skips it).
+  Onboarding: { cls: 'b-pending', label: 'Hazırlanır', icon: 'clock' },
   // Checked in, no check-out yet. On a live "today" view this just means "still at work" — correct.
   // On a PAST day it means a check-out was never recorded (a real problem) — callers viewing a past
   // date should override this via StatusBadge's `override` prop (see TodayPage.tsx).

@@ -144,3 +144,19 @@ describe('ordering the board', () => {
     expect(rows[0]!.employeeName).toBe('Zeynalov')
   })
 })
+
+describe('Onboarding — lövhəyə-özəl «Hazırlanır» statusu', () => {
+  it('Qayıba qarışmır — bunun üçün yaranıb', () => {
+    // 290 import olunmuş adam bir səhər Qayıb sayılanda əsl 67 qayıb səs-küydə itmişdi.
+    const c = countToday([
+      { status: 'Onboarding' }, { status: 'Onboarding' }, { status: 'Absent' },
+    ])
+    expect(c.onboarding).toBe(2)
+    expect(c.absent).toBe(1)
+  })
+
+  it('«İşdə» qalığına da düşmür — tanınmayan status ora yıxılır, bu isə tanınır', () => {
+    const c = countToday([{ status: 'Onboarding' }])
+    expect(c.incomplete).toBe(0)
+  })
+})
