@@ -42,4 +42,8 @@ public class DailySummary : ITenantScoped
 
     /// <summary>Minutes the check-out fell short of the shift end — the mirror of OvertimeMinutes.</summary>
     public int EarlyLeaveMinutes { get; set; }
+
+    /// <summary>Minutes the check-in came before shift start. Separate from overtime on purpose —
+    /// see AttendanceCalculator.DayComputation.</summary>
+    public int EarlyArriveMinutes { get; set; }
 }

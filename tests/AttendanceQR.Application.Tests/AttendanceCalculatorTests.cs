@@ -311,4 +311,39 @@ public class AttendanceCalculatorTests
         Assert.Equal(0, c.EarlyLeaveMinutes);
     }
 
+    // --- early arrival (own column, NOT overtime — owner's decision 2026-09-02) ------------------
+
+    [Fact]
+    public void Arriving_before_shift_start_is_counted_separately_from_overtime()
+    {
+        // In at 06:44 for a 07:00 shift (the real Fəvvarələr Meydanı habit) — 16 minutes early,
+        // and NOT a minute of overtime: calling it overtime would reward ever-earlier scans.
+        var c = Run(Record("2026-07-15 06:44", "2026-07-15 17:00"), Loc("07:00", "17:00"));
+        Assert.Equal(16, c.EarlyArriveMinutes);
+        Assert.Equal(0, c.OvertimeMinutes);
+    }
+
+    [Fact]
+    public void Arriving_on_time_or_late_has_no_early_arrival()
+    {
+        Assert.Equal(0, Run(Record("2026-07-15 09:00", "2026-07-15 18:00"), Loc()).EarlyArriveMinutes);
+        Assert.Equal(0, Run(Record("2026-07-15 09:40", "2026-07-15 18:00"), Loc()).EarlyArriveMinutes);
+    }
+
+    [Fact]
+    public void A_non_working_day_has_no_early_arrival()
+    {
+        // No expected start to be early for — the same rule as early leave.
+        var c = Run(Record("2026-07-15 06:00", "2026-07-15 12:00"), Loc(), isWorkingDay: false);
+        Assert.Equal(0, c.EarlyArriveMinutes);
+    }
+
+    [Fact]
+    public void Night_shift_early_arrival_stays_on_the_pivoted_timeline()
+    {
+        // 21:33 in for a 22:00–06:00 shift → 27 minutes early, not "22 hours late".
+        var c = Run(Record("2026-07-15 21:33", "2026-07-16 06:00"), Night());
+        Assert.Equal(27, c.EarlyArriveMinutes);
+    }
+
 }

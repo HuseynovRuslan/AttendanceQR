@@ -13,7 +13,12 @@ public readonly record struct DayComputation(
     // 2026-09-02 at the owner's ask: staying late was being counted, leaving early was not — an
     // asymmetry that rewarded one direction of the same clock. Hours-only, like overtime: neither
     // is auto-converted to money. Zero on non-working days (no expected end to fall short of).
-    int EarlyLeaveMinutes = 0);
+    int EarlyLeaveMinutes = 0,
+    // Minutes the check-in came BEFORE the shift's start. Its own figure, deliberately NOT folded
+    // into OvertimeMinutes: arrival time is mostly bus logistics, and calling it overtime would
+    // teach 55 people who already scan ten minutes early that earlier scans are rewarded — about
+    // 240 phantom hours a month at one site alone. Owner's decision 2026-09-02: visible, separate.
+    int EarlyArriveMinutes = 0);
 
 /// <summary>
 /// The single place that turns a raw <see cref="AttendanceRecord"/> + a location's shift + the app
@@ -268,7 +273,10 @@ public static class AttendanceCalculator
         // The same subtraction read the other way. Only on a working day: a non-working day has no
         // expected end, so leaving "early" from a day nobody scheduled means nothing.
         var earlyLeaveMinutes = isWorkingDay && overtime < 0 ? -overtime : 0;
+        // And the start-side mirror: minutes in the door before the shift began. Same working-day
+        // guard — a non-working day has no expected start either.
+        var earlyArriveMinutes = isWorkingDay && minutesAfterStart < 0 ? -minutesAfterStart : 0;
 
-        return new DayComputation(status, workedMinutes, lateMinutes, overtimeMinutes, earlyLeaveMinutes);
+        return new DayComputation(status, workedMinutes, lateMinutes, overtimeMinutes, earlyLeaveMinutes, earlyArriveMinutes);
     }
 }

@@ -192,6 +192,7 @@ public sealed class DailySummaryService : IDailySummaryService
                 summary.LateMinutes = computed.LateMinutes;
                 summary.OvertimeMinutes = computed.OvertimeMinutes;
                 summary.EarlyLeaveMinutes = computed.EarlyLeaveMinutes;
+                summary.EarlyArriveMinutes = computed.EarlyArriveMinutes;
             }
             else
             {
@@ -222,6 +223,7 @@ public sealed class DailySummaryService : IDailySummaryService
             LateMinutes = c.LateMinutes,
             OvertimeMinutes = c.OvertimeMinutes,
             EarlyLeaveMinutes = c.EarlyLeaveMinutes,
+            EarlyArriveMinutes = c.EarlyArriveMinutes,
         };
     }
 }

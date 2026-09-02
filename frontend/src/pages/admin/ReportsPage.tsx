@@ -114,6 +114,7 @@ export function ReportsPage() {
                 <th className="num">Ümumi saat</th>
                 <th className="num">Əlavə iş</th>
                 <th className="num">Tez çıxma</th>
+                <th className="num">Tez gəlmə</th>
               </tr>
             </thead>
             <tbody>
@@ -129,11 +130,12 @@ export function ReportsPage() {
                   <td data-label="Ümumi saat" className="num mono">{fmtHM(r.totalWorkedHours)}</td>
                   <td data-label="Əlavə iş" className="num mono">{fmtHM(r.overtimeHours)}</td>
                   <td data-label="Tez çıxma" className="num mono">{fmtHM(r.earlyLeaveHours)}</td>
+                  <td data-label="Tez gəlmə" className="num mono">{fmtHM(r.earlyArriveHours)}</td>
                 </tr>
               ))}
               {report.rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                  <td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                     Bu aralıqda məlumat yoxdur
                   </td>
                 </tr>
@@ -151,6 +153,7 @@ export function ReportsPage() {
                   <td className="num mono">{fmtHM(report.totals.totalWorkedHours)}</td>
                   <td className="num mono">{fmtHM(report.totals.overtimeHours)}</td>
                   <td className="num mono">{fmtHM(report.totals.earlyLeaveHours)}</td>
+                  <td className="num mono">{fmtHM(report.totals.earlyArriveHours)}</td>
                 </tr>
               </tfoot>
             )}
