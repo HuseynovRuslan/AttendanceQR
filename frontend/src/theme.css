@@ -472,9 +472,11 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 @media(max-width:640px){.lux-hero{flex-direction:column;align-items:flex-start;padding:24px}.lux-hero-num{font-size:52px}}
 
 /* Bucket pills */
-.lux-pills{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px}
+/* Min en ən uzun etiketə görədir: «Aktivləşdirməyib» tək sözdür, qırıla bilmir — 120px-lik düymədə
+   kəsilirdi. 144px onu tam tutur; auto-fit telefonda onsuz da 2 sütuna düşür. */
+.lux-pills{display:grid;grid-template-columns:repeat(auto-fit,minmax(144px,1fr));gap:12px;margin-bottom:16px}
 .lux-pill{background:var(--white);border:1px solid var(--c100);border-radius:16px;box-shadow:var(--sh-sm);
-  padding:16px 18px;text-align:left;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s;
+  padding:16px 14px;text-align:left;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s;
   position:relative;overflow:hidden}
 .lux-pill::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px;background:var(--c200)}
 .lux-pill.blue::before{background:var(--blue)}.lux-pill.leaf::before{background:var(--leaf)}
@@ -485,7 +487,9 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .lux-pill.static{cursor:default}
 .lux-pill-n{display:block;font-family:'Manrope',sans-serif;font-weight:800;font-size:30px;color:var(--c900);
   line-height:1;font-variant-numeric:tabular-nums}
-.lux-pill-l{display:block;font-size:13px;font-weight:600;color:var(--c500);margin-top:5px}
+/* Gələcəkdə bundan da uzun bir etiket çıxsa: kəsilməkdənsə söz ortasından qırılsın — son çarə. */
+.lux-pill-l{display:block;font-size:13px;font-weight:600;color:var(--c500);margin-top:5px;
+  line-height:1.25;overflow-wrap:anywhere}
 
 /* Expanded bucket list */
 .lux-list{margin-bottom:16px;overflow:hidden}
