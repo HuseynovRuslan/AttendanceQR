@@ -1395,6 +1395,24 @@ function errorResult(status: number, data: ScanResponse | null): Card {
       }
     case 'NoDeviceBound':
       return { tone: 'red', title: 'Cihaz hesabınıza bağlı deyil', detail: 'Admin ilə əlaqə saxlayın.', final: true }
+    case 'SharedDeviceNotAllowed':
+      // Plain and specific: the worker is standing at the poster on someone else's phone. Tell them
+      // exactly what is wrong and exactly who fixes it — retrying is what they were doing 75 times.
+      return {
+        tone: 'red',
+        title: 'Bu telefonu işlətmək icazəniz yoxdur',
+        detail: 'Bu telefon başqa işçilərə bağlıdır.',
+        note: 'Rəhbərinizə deyin — sizə də icazə versinlər. Təkrar skan kömək etməyəcək.',
+        final: true,
+      }
+    case 'DeviceAccountLimit':
+      return {
+        tone: 'red',
+        title: 'Bu telefonda çox hesab var',
+        detail: 'Telefona icazə verilən sayda işçi artıq bağlıdır.',
+        note: 'Rəhbərinizə deyin. Təkrar skan kömək etməyəcək.',
+        final: true,
+      }
     case 'TokenExpired':
     case 'TokenReused':
       return { tone: 'yellow', title: 'QR kod köhnəlib', detail: 'Yenidən skan edin.' }

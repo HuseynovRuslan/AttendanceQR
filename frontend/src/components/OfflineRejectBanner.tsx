@@ -27,6 +27,8 @@ const CODE_TEXT: Record<string, string> = {
   EmployeeNotFoundOrInactive: 'hesab aktiv deyil',
   DeviceMismatch: 'cihaz tanınmadı',
   NoDeviceBound: 'cihaz bağlanmayıb',
+  SharedDeviceNotAllowed: 'bu telefonu işlətmək icazəniz yoxdur',
+  DeviceAccountLimit: 'bu telefonda çox hesab var',
   LocationInactive: 'lokasiya deaktivdir',
   OfflineTooOld: 'çox gec göndərilib',
 }

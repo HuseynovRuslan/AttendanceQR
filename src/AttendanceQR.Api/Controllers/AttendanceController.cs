@@ -985,11 +985,11 @@ public class AttendanceController : ControllerBase
         var revoked = employee.DeviceBindings.FirstOrDefault(d =>
             d.RevokedAtUtc != null && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
         if (revoked is not null)
-            return await RejectDeviceAsync(employee, ip);
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
 
         // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change.
         if (!_deviceOptions.AutoBind)
-            return await RejectDeviceAsync(employee, ip);
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
 
         // Private browsing hands out a fresh storage context per session — uncapped, it would mint a
         // binding on every scan. Hitting this limit means "talk to this employee", not "attack".
@@ -999,7 +999,7 @@ public class AttendanceController : ControllerBase
             && a.EventType == AuditEventType.DeviceAutoBound
             && a.CreatedAtUtc >= since);
         if (recentBinds >= _deviceOptions.MaxBindsPer30Days)
-            return await RejectDeviceAsync(employee, ip);
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
 
         // Somebody ELSE'S device. Adopting it is what turns a phone into a brigade's shared handset,
         // and it is the moment the "one phone, one employee" control is given up for this person — so
@@ -1024,9 +1024,9 @@ public class AttendanceController : ControllerBase
         var refusal = DeviceBindingRules.MayJoinDevice(
             employee.CanShareDevice, othersOnDevice, _deviceOptions.MaxAccountsPerDevice);
         if (refusal is DeviceBindingRules.ShareRefusal.NotAllowed)
-            return await RejectDeviceAsync(employee, ip, "SharedDeviceNotAllowed");
+            return await RejectDeviceAsync(employee, ip, "SharedDeviceNotAllowed", fingerprint);
         if (refusal is DeviceBindingRules.ShareRefusal.AccountLimit)
-            return await RejectDeviceAsync(employee, ip, "DeviceAccountLimit");
+            return await RejectDeviceAsync(employee, ip, "DeviceAccountLimit", fingerprint);
 
         var binding = DeviceBindingRules.Bind(
             employee.DeviceBindings.ToList(),
@@ -1063,13 +1063,33 @@ public class AttendanceController : ControllerBase
     /// next but tell the admin almost nothing; a shared-phone refusal has an exact, actionable fix
     /// ("give this person shared-device permission") which is lost if it arrives as DeviceMismatch.
     /// </param>
-    private async Task<IActionResult> RejectDeviceAsync(Employee employee, string? ip, string? overrideReason = null)
+    private async Task<IActionResult> RejectDeviceAsync(
+        Employee employee, string? ip, string? overrideReason = null, string? fingerprint = null)
     {
         // "No device at all" and "the wrong device" send the employee down different paths in the
         // app — the first is an admin problem, the second offers "this is my new phone".
         var reason = overrideReason
                      ?? (employee.DeviceBindings.Any(d => d.IsActive) ? "DeviceMismatch" : "NoDeviceBound");
-        await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, reason, ip);
+
+        // Record WHICH phone was refused, and whose it is. The audit used to carry only the reason, so
+        // "which device did they try?" had no answer — only the IP, which a mobile carrier shares
+        // across hundreds of subscribers. The names come from the OTHER accounts already bound to this
+        // handset, which for a SharedDeviceNotAllowed refusal is exactly what the admin needs: it is
+        // somebody's crew phone, and this tells them whose. Stored as "Reason|detail", the shape the
+        // Problems screen already splits on.
+        string? detail = null;
+        if (fingerprint is not null)
+        {
+            var owners = await _db.DeviceBindings
+                .Where(d => d.DeviceFingerprint == fingerprint && d.RevokedAtUtc == null && d.EmployeeId != employee.Id)
+                .Join(_db.Employees, d => d.EmployeeId, e => e.Id, (d, e) => e.FullName)
+                .Distinct().Take(3).ToListAsync();
+            detail = owners.Count == 0 ? "naməlum telefon" : $"{string.Join(", ", owners)} telefonu";
+        }
+
+        await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
+            detail is null ? reason : $"{reason}|{detail}", ip);
+        // The wire error stays the BARE code — the app matches on it, and the detail is for the admin.
         return StatusCode(StatusCodes.Status403Forbidden, new { error = reason });
     }
 

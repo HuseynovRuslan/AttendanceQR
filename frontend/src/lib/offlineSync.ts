@@ -15,6 +15,7 @@ import { decodeJwt } from './jwt'
 import { listProfiles } from './profiles'
 import { reportFailure } from './scanFailures'
 import { addReject } from './offlineRejects'
+import { isPermanentDeviceReject } from './scanReject'
 import { allScans, removeScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
 import { flushFailures } from './scanFailures'
 
@@ -144,8 +145,22 @@ async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
       // is dropped and the heartbeat tries again shortly.
       if (status >= 500) return false
 
-      // 401 and 403 are states of one ACCOUNT, not of the scan and not of the server: its PIN was
-      // reset, or it is still on a temporary PIN and refused everything but the "set your PIN"
+      const code = errorCode(data)
+
+      // A device-permission 403 is the ONE 403 that must not be kept. It is about the PHONE, not the
+      // account's PIN — "you may not use this shared handset", "this is not your device" — so it
+      // answers 403 identically on every retry, and keeping it let the 60-second heartbeat resend it
+      // for ever (75 times, Qafur Məmmədov Parkı, 02.09) while the worker's screen still said
+      // "göndərilməyi gözləyir". Drop it and tell them, exactly like any definitive refusal below.
+      if (isPermanentDeviceReject(status, code)) {
+        await removeScan(item.clientScanId)
+        reportFailure('OfflineRejected', undefined, item.clientTimestampUtc, reportAs)
+        addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
+        continue
+      }
+
+      // Every OTHER 401/403 is a state of one ACCOUNT, not of the scan and not of the server: its PIN
+      // was reset, or it is still on a temporary PIN and refused everything but the "set your PIN"
       // endpoint. Its queue keeps — a scan must never be thrown away for a condition that clears the
       // moment somebody picks a PIN — and the other accounts on this phone still get their turn.
       if (status === 401 || status === 403) return true
@@ -153,7 +168,6 @@ async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
       // A definitive 4xx (OutsideRadius, AlreadyCompleted, …) can never succeed on a retry, so the
       // item goes — but it is NOT a silent drop. The employee was shown a green "saved" card when
       // they tapped; without this they are simply absent that day and nobody knows why.
-      const code = errorCode(data)
       await removeScan(item.clientScanId)
       if (status >= 400 && !ALREADY_RECORDED.has(code ?? '')) {
         reportFailure('OfflineRejected', undefined, item.clientTimestampUtc, reportAs)
