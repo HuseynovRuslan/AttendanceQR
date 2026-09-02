@@ -524,7 +524,14 @@ public class AttendanceController : ControllerBase
         var detail = scanDay ?? (request.AccuracyMeters is > 0
             ? Math.Round(request.AccuracyMeters.Value).ToString()
             : null);
-        var reason = detail is null ? request.Reason : $"{request.Reason}|{detail}";
+
+        // Platform + browser permission state ride along too, '·'-joined inside the same detail slot.
+        // Only allow-listed values — this is a client-supplied string headed for an admin screen.
+        var platform = request.Platform is "ios" or "android" or "other" ? request.Platform : null;
+        var permState = request.PermissionState is "granted" or "denied" or "prompt" or "unknown"
+            ? request.PermissionState : null;
+        var tags = string.Join('·', new[] { detail, platform, permState }.Where(t => t is not null));
+        var reason = tags.Length == 0 ? request.Reason : $"{request.Reason}|{tags}";
 
         // Collapse a retrying phone into one incident — but on the FULL reason, so two different lost
         // DAYS stay two rows. A drain loop emits its reports in the same second, so deduping on the

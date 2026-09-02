@@ -329,4 +329,17 @@ public class ReportsController : ControllerBase
         return Ok(report);
     }
 
+    // GET /api/reports/stuck-devices — people whose phones refuse to scan (GPS/camera family) with no
+    // success since. Feeds the register at the top of the Problems screen; the fix is a phone-settings
+    // walk, so each row carries the phone number and platform for the supervisor.
+    [HttpGet("stuck-devices")]
+    public async Task<IActionResult> StuckDevices()
+    {
+        var (access, rows) = await _reports.GetStuckDevicesAsync(
+            User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+        return Ok(rows);
+    }
+
 }

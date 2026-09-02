@@ -45,16 +45,33 @@ export function getMyToday() {
  * instead of vanishing. */
 /** `scanAtUtc` is WHEN the scan was taken, for an offline report sent later — the audit row's own
  *  timestamp is the moment of reporting, so without it an admin cannot tell which day was lost. */
-export function reportScanFailure(
+/** Which OS and what the browser thinks of the geolocation permission, best-effort and never throwing. */
+async function failureTags(): Promise<{ platform: string; permissionState: string }> {
+  try {
+    const { platform, permissionState } = await import('../lib/geo')
+    return { platform: platform(), permissionState: await permissionState() }
+  } catch {
+    return { platform: 'other', permissionState: 'unknown' }
+  }
+}
+
+export async function reportScanFailure(
   reason: string,
   accuracyMeters?: number,
   scanAtUtc?: string,
   /** Send as a saved profile rather than the active session — see RequestOptions.token. */
   token?: string,
 ) {
+  // Platform + permission state collected HERE, not at the call sites: every failure report should
+  // carry them, and there are a dozen callers. 62 of 132 GPS-blocked people had phones that WORKED
+  // and then broke — without knowing the platform, the "iOS Bir dəfə icazə ver" theory was untestable.
+  const { platform, permissionState } = await failureTags()
   return apiRequest<void>('/api/attendance/scan-failure', {
     method: 'POST',
-    body: { reason, accuracyMeters: accuracyMeters ?? null, scanAtUtc: scanAtUtc ?? null },
+    body: {
+      reason, accuracyMeters: accuracyMeters ?? null, scanAtUtc: scanAtUtc ?? null,
+      platform, permissionState,
+    },
     ...(token ? { token } : {}),
   })
 }

@@ -13,4 +13,12 @@ namespace AttendanceQR.Api.Contracts;
 /// this an admin is told "a day went missing" and has no way to learn which day, which makes the
 /// report unactionable: the only remedy is a manual attendance entry, and that needs a date.
 /// </param>
-public record ScanFailureRequest(string Reason, double? AccuracyMeters = null, DateTime? ScanAtUtc = null);
+/// <param name="Platform">"ios" / "android" / "other" — which OS was standing in front of the
+/// failure. Added because 62 of 132 GPS-blocked people had WORKING phones that later broke, and the
+/// single most likely cause (iOS "Allow Once" expiring) could not be confirmed or refuted: the
+/// report never said which platform it came from.</param>
+/// <param name="PermissionState">navigator.permissions state at failure time — "granted" / "denied"
+/// / "prompt" / "unknown" (Safari answers unknown; that is itself a signal).</param>
+public record ScanFailureRequest(
+    string Reason, double? AccuracyMeters = null, DateTime? ScanAtUtc = null,
+    string? Platform = null, string? PermissionState = null);

@@ -1541,3 +1541,25 @@ export interface ShiftMismatchReport {
 export function getShiftMismatch(days = 21) {
   return apiRequest<ShiftMismatchReport | { error: string }>(`/api/reports/shift-mismatch?days=${days}`)
 }
+
+// --- stuck devices ----------------------------------------------------------
+// People whose phones refuse to scan (GPS/camera family) with no successful scan since. A stuck
+// phone loses a recorded day EVERY day until a human touches it — this list is who to visit.
+
+export interface StuckDeviceRow {
+  employeeId: string
+  fullName: string
+  locationName: string
+  phoneNumber: string | null
+  lastFailureAtUtc: string
+  failureCount30d: number
+  /** "GpsPermissionDenied, GpsTimeout" — bare codes, comma-joined. */
+  reasons: string
+  platform: 'ios' | 'android' | null
+  lastSuccessfulScanAtUtc: string | null
+}
+
+/** GET /api/reports/stuck-devices */
+export function getStuckDevices() {
+  return apiRequest<StuckDeviceRow[] | { error: string }>('/api/reports/stuck-devices')
+}

@@ -53,6 +53,10 @@ public interface IReportQueryService
     Task<(ReportAccess Access, ShiftMismatchReport? Report)> GetShiftMismatchAsync(
         int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
+    /// <summary>People whose phones are refusing to scan (GPS/camera family) with no success since.</summary>
+    Task<(ReportAccess Access, IReadOnlyList<StuckDeviceRow> Rows)> GetStuckDevicesAsync(
+        Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
     /// <summary>
     /// Payroll for the period on the fixed-monthly-salary model: each employee's salary, minus a
     /// per-day share for every unexcused absence. Built on top of <see cref="GetSummaryAsync"/>, so it
@@ -1327,6 +1331,86 @@ public sealed class ReportQueryService : IReportQueryService
         rows.Sort((a, b) => b.WorstGapHours.CompareTo(a.WorstGapHours));
 
         return (ReportAccess.Allowed, new ShiftMismatchReport(days, judged, rows));
+    }
+
+
+    public async Task<(ReportAccess Access, IReadOnlyList<StuckDeviceRow> Rows)> GetStuckDevicesAsync(
+        Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        // The register behind "kimdir, necə tapaq": measured on 02.09, twenty-odd people were still
+        // GPS-blocked and the only way to name them was a hand-written SQL. A stuck phone loses a
+        // recorded day EVERY day until a human touches it, so the list has to be a screen an admin
+        // opens, not a query an engineer runs.
+        if (role == EmployeeRole.Employee)
+            return (ReportAccess.Forbidden, []);
+
+        var (access, employees) = await ScopedEmployeesAsync(null, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, []);
+
+        var ids = employees.Select(e => e.Id).ToList();
+        var since = DateTime.UtcNow.AddDays(-30);
+
+        // Device-family failures only: things a phone setting fixes. OutsideRadius or a shared-device
+        // refusal are different problems with different screens.
+        var failures = await _db.AuditLogs
+            .Where(a => a.EmployeeId != null && ids.Contains(a.EmployeeId.Value)
+                        && a.CreatedAtUtc >= since && a.Reason != null
+                        && (a.Reason.StartsWith("Gps") || a.Reason.StartsWith("Camera")
+                            || a.Reason.StartsWith("ScannerLoadFailed")))
+            .Select(a => new { EmployeeId = a.EmployeeId!.Value, a.CreatedAtUtc, a.Reason })
+            .ToListAsync(ct);
+        if (failures.Count == 0)
+            return (ReportAccess.Allowed, []);
+
+        var byEmployee = failures.GroupBy(f => f.EmployeeId).ToDictionary(g => g.Key, g => g.ToList());
+        var affected = byEmployee.Keys.ToList();
+
+        var lastScans = await _db.AttendanceRecords
+            .Where(r => affected.Contains(r.EmployeeId) && r.CheckInAtUtc != null)
+            .GroupBy(r => r.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Last = g.Max(r => r.CheckInAtUtc) })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.Last, ct);
+
+        var phones = await _db.Employees
+            .Where(e => affected.Contains(e.Id))
+            .Select(e => new { e.Id, e.PhoneNumber })
+            .ToDictionaryAsync(x => x.Id, x => x.PhoneNumber, ct);
+
+        var locationNames = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        var nameById = employees.ToDictionary(e => e.Id, e => (e.FullName, e.LocationId));
+
+        var rows = new List<StuckDeviceRow>();
+        foreach (var (employeeId, evts) in byEmployee)
+        {
+            var lastFailure = evts.Max(e => e.CreatedAtUtc);
+            var lastScan = lastScans.TryGetValue(employeeId, out var l) ? l : null;
+
+            // Not stuck if they have scanned successfully SINCE the last failure — a one-off hiccup
+            // that resolved itself is exactly the row this list must not drown in.
+            if (lastScan is DateTime ok && ok > lastFailure)
+                continue;
+
+            var reasons = evts.Select(e => e.Reason!.Split('|')[0]).Distinct().OrderBy(r => r).ToList();
+            // Newest report that carried a platform tag, if any ("...|84·ios·denied" or "...|ios").
+            var platform = evts.OrderByDescending(e => e.CreatedAtUtc)
+                .Select(e => e.Reason!.Split('|').ElementAtOrDefault(1))
+                .Where(d => d != null)
+                .SelectMany(d => d!.Split('·'))
+                .FirstOrDefault(t => t is "ios" or "android");
+
+            var (fullName, locationId) = nameById.TryGetValue(employeeId, out var n) ? n : ("?", Guid.Empty);
+            rows.Add(new StuckDeviceRow(
+                employeeId, fullName,
+                locationNames.TryGetValue(locationId, out var ln) ? ln : "-",
+                phones.TryGetValue(employeeId, out var ph) ? ph : null,
+                lastFailure, evts.Count,
+                string.Join(", ", reasons),
+                platform,
+                lastScan));
+        }
+
+        return (ReportAccess.Allowed, rows.OrderByDescending(r => r.FailureCount30d).ToList());
     }
 
 }

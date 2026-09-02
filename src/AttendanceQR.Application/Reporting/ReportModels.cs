@@ -321,3 +321,22 @@ public sealed record ShiftMismatchReport(
     int Days,
     int Checked,
     IReadOnlyList<ShiftMismatchRow> Rows);
+
+/// <summary>
+/// One employee whose phone is refusing to scan — a device-family failure (GPS or camera) with no
+/// successful scan since. The register that turns "443 events" into a list of names a supervisor can
+/// walk with a phone-settings instruction. See GetStuckDevicesAsync.
+/// </summary>
+public sealed record StuckDeviceRow(
+    Guid EmployeeId,
+    string FullName,
+    string LocationName,
+    string? PhoneNumber,
+    DateTime LastFailureAtUtc,
+    int FailureCount30d,
+    /// <summary>Distinct bare failure codes, comma-joined — "GpsPermissionDenied, GpsTimeout".</summary>
+    string Reasons,
+    /// <summary>"ios" / "android" when the failure reports carried it; null on older rows.</summary>
+    string? Platform,
+    /// <summary>Their most recent successful check-in ever, or null if they have never scanned.</summary>
+    DateTime? LastSuccessfulScanAtUtc);

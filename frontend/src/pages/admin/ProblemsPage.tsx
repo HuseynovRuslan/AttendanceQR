@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { getProblems, type ProblemRow, type ProblemsReport } from '../../api/admin'
+import { getStuckDevices, getProblems, type ProblemRow, type ProblemsReport , type StuckDeviceRow } from '../../api/admin'
 import { ProblemsMap, parseRejectPoints } from './ProblemsMap'
 import { IconX } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
@@ -96,6 +96,7 @@ export function ProblemsPage() {
   const [from, setFrom] = useState(daysAgo(6))
   const [to, setTo] = useState(todayLocal())
   const [report, setReport] = useState<ProblemsReport | null>(null)
+  const [stuck, setStuck] = useState<StuckDeviceRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -103,6 +104,13 @@ export function ProblemsPage() {
     void load(from, to)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to])
+
+  // The stuck-device register is date-independent ("stuck NOW"), so it loads once, not per range.
+  useEffect(() => {
+    void getStuckDevices().then((r) => {
+      if (r.status === 200 && Array.isArray(r.data)) setStuck(r.data)
+    })
+  }, [])
 
   async function load(f: string, t: string) {
     setLoading(true)
@@ -173,6 +181,54 @@ export function ProblemsPage() {
           </div>
         </div>
       </div>
+
+      {/* Cihazı ilişənlər — telefonu skan etməkdən imtina edən və o vaxtdan bir dəfə də uğurlu skanı
+          olmayanlar. Hər sətir bir səfərlik təmirdir: nömrə + platforma + səbəb. Siyahı boşdursa
+          kart ümumiyyətlə görünmür — boş xəbərdarlıq oxunmayan xəbərdarlıqdır. */}
+      {stuck.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, padding: 16, borderLeft: '3px solid var(--amber)' }}>
+          <div style={{ fontWeight: 800, color: 'var(--c900)', marginBottom: 4 }}>
+            📵 Cihazı ilişənlər — {stuck.length} nəfər
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+            Telefonu skan etməyə imkan vermir (GPS/kamera) və son xətadan bəri bir dəfə də uğurlu skanı yoxdur.
+            Düzəlişi telefonun parametrlərindədir — nəzarətçiyə nömrəni və təlimatı göndərin.
+          </div>
+          <div className="tbl-wrap tbl-cards tbl-dense">
+            <table>
+              <thead><tr><th>İşçi</th><th>Filial</th><th>Nömrə</th><th>Telefon</th><th>Səbəb</th><th>Cəhd</th><th>Son uğurlu</th></tr></thead>
+              <tbody>
+                {stuck.map((r) => (
+                  <tr key={r.employeeId}>
+                    <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}>{r.fullName}</td>
+                    <td data-label="Filial">{r.locationName}</td>
+                    <td data-label="Nömrə" className="mono">{r.phoneNumber ?? '—'}</td>
+                    <td data-label="Telefon">{r.platform === 'ios' ? ' iPhone' : r.platform === 'android' ? '🤖 Android' : '—'}</td>
+                    <td data-label="Səbəb" style={{ fontSize: 12 }}>
+                      {r.reasons.split(', ').map((c) => meta(c).label).join(' · ')}
+                    </td>
+                    <td data-label="Cəhd" className="num mono">{r.failureCount30d}</td>
+                    <td data-label="Son uğurlu" className="mono" style={{ fontSize: 12 }}>
+                      {r.lastSuccessfulScanAtUtc
+                        ? new Date(r.lastSuccessfulScanAtUtc).toLocaleDateString('az-AZ', { day: '2-digit', month: '2-digit' })
+                        : 'heç vaxt'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <details style={{ marginTop: 10 }}>
+            <summary className="muted" style={{ fontSize: 12.5, cursor: 'pointer' }}>Nəzarətçi üçün təlimat (kopyalayıb göndərin)</summary>
+            <pre style={{ fontSize: 12, background: 'var(--c50)', borderRadius: 8, padding: 10, whiteSpace: 'pre-wrap', marginTop: 6 }}>{
+`Android: Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan → «İcazə ver»
+iPhone: Ayarlar → Məxfilik → Yer Xidmətləri → AÇIQ → Safari Websites → «Tətbiqi istifadə edərkən» + Dəqiq Yer
+Vacib: icazə soruşulanda «Bir dəfə» YOX, «İcazə ver / İstifadə zamanı» seçin.
+Sonda: tətbiqi tam bağlayıb açın, bir skan edin — alınırsa düzəldi.`
+            }</pre>
+          </details>
+        </div>
+      )}
 
       <div className="chip-row" style={{ marginBottom: 14 }}>
         <span className={`chip${from === todayLocal() ? ' active' : ''}`} onClick={() => setRange(1)}>Bu gün</span>
