@@ -309,6 +309,53 @@ public class AdminAttendanceController : ControllerBase
         return Ok(new { deleted = recordId, employeeId, date });
     }
 
+    /// <summary>
+    /// Rebuilds the stored daily summaries for a date range from the underlying records.
+    ///
+    /// Needed whenever a CONFIGURATION fix changes what a past day means: a night shift assigned to
+    /// someone who was on a day shift, a work-days mask corrected, a phantom record deleted — or the
+    /// onboarding rule that stopped an import being billed as absenteeism. The records were always
+    /// right; the rows derived from them were computed under the wrong assumptions, and until they
+    /// are rebuilt every report keeps repeating the old answer.
+    ///
+    /// Idempotent and additive-safe: it upserts each day and removes rows that should no longer
+    /// exist. It reads AttendanceRecords and never writes them, so nothing anybody scanned can be
+    /// lost here — the worst case is that it recomputes to the same numbers.
+    ///
+    /// TODAY is refused. Today is live everywhere else (the board and the reports compute it rather
+    /// than read it), and freezing a half-finished day into the table is how a morning's snapshot
+    /// used to get shown for the rest of the day.
+    ///
+    /// Admin-only and capped at 92 days: it walks the whole tenant per day.
+    /// </summary>
+    [HttpPost("recompute")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Recompute([FromQuery] DateOnly from, [FromQuery] DateOnly to)
+    {
+        if (to < from) (from, to) = (to, from);
+
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        if (to >= today) to = today.AddDays(-1);
+        if (to < from)
+            return BadRequest(new { error = "NothingToRecompute" });
+
+        if (to.DayNumber - from.DayNumber > 92)
+            return BadRequest(new { error = "RangeTooLong", maxDays = 92 });
+
+        var days = 0;
+        var employees = 0;
+        for (var d = from; d <= to; d = d.AddDays(1))
+        {
+            employees += await _dailySummaryService.GenerateForDateAsync(d, HttpContext.RequestAborted);
+            days++;
+        }
+
+        _logger.LogInformation("Recomputed {Days} days ({From}..{To}) by {Requester}",
+            days, from, to, User.EmployeeId());
+
+        return Ok(new { days, employees, from, to });
+    }
+
     // Re-queue a background face-match for every record that has a check-in photo — e.g. after the
     // references were corrected, to (re)score the history. Returns how many were queued.
     // Admin-only by its own attribute: a paid Rekognition call per record, tenant-wide.

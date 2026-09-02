@@ -112,6 +112,29 @@ public sealed class DailySummaryService : IDailySummaryService
             .Where(s => s.SummaryDate == date)
             .ToDictionaryAsync(s => s.EmployeeId, ct);
 
+        // The earliest attendance each employee has EVER recorded — office scan or field visit. It is
+        // what tells an onboarding apart from an absence: see AttendanceCalculator.IsStillOnboarding.
+        // One grouped query per run; nothing here is per-employee.
+        var firstScan = await _db.AttendanceRecords
+            .Where(r => r.CheckInAtUtc != null)
+            .GroupBy(r => r.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, First = g.Min(r => r.AttendanceDate) })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.First, ct);
+        var firstField = await _db.FieldVisits
+            .Where(v => v.CheckInAtUtc != null && v.Status != FieldVisitStatus.Cancelled)
+            .GroupBy(v => v.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, First = g.Min(v => v.VisitDate) })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.First, ct);
+
+        DateOnly? FirstAttendanceOf(Guid employeeId)
+        {
+            var a = firstScan.TryGetValue(employeeId, out var s1) ? s1 : (DateOnly?)null;
+            var b = firstField.TryGetValue(employeeId, out var s2) ? s2 : (DateOnly?)null;
+            if (a is null) return b;
+            if (b is null) return a;
+            return a < b ? a : b;
+        }
+
         foreach (var emp in employees)
         {
             if (!locations.TryGetValue(emp.LocationId, out var location))
@@ -123,6 +146,25 @@ public sealed class DailySummaryService : IDailySummaryService
             if (emp.ActivatedAtUtc is DateTime act
                 && DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(act, _timeZone)) > date)
                 continue;
+
+            // Activated, but not yet actually up and running: bulk import stamps ActivatedAtUtc the
+            // moment the spreadsheet is pasted, so without this every day between the import and the
+            // person's first working scan is written as Qayıb — and payroll deducts a day per Qayıb.
+            // 876 such days appeared in one company's first week. Skipped, not stored: the same
+            // treatment as a day before the account existed, because that is what it is.
+            if (AttendanceCalculator.IsStillOnboarding(
+                    date, emp.ActivatedAtUtc, FirstAttendanceOf(emp.Id), _timeZone))
+            {
+                // Not merely "don't write one" — REMOVE the row if a previous run already wrote it.
+                // This job upserts, so skipping alone would leave every Qayıb day already on the
+                // books exactly where it was, and re-running would change nothing. The 876 rows this
+                // rule exists to undo were written before the rule existed; clearing them is the
+                // whole point. Safe because a DailySummary is derived data — it is rebuilt from
+                // AttendanceRecords on demand, and this same method is what rebuilds it.
+                if (existing.TryGetValue(emp.Id, out var stale))
+                    _db.DailySummaries.Remove(stale);
+                continue;
+            }
 
             var shift = EffectiveShift.Resolve(
                 emp.WorkStart, emp.WorkEnd, emp.WorkCycleDays, emp.WorkCycleOnDays, emp.WorkCycleAnchor,

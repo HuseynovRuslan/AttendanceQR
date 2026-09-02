@@ -370,10 +370,62 @@ public sealed class ReportQueryService : IReportQueryService
             var (access, employees) = await ScopedEmployeesAsync(locationId, requesterId, role, ct);
             if (access == ReportAccess.Forbidden)
                 return (ReportAccess.Forbidden, [], "Forbidden");
-            rows.AddRange((await ComputeDayLiveAsync(today, employees, ct)).Select(d => ToDayRow(d, today)));
+
+            // Somebody still being set up is dropped from the REPORTS for today, exactly as the
+            // nightly job will drop them from the stored row tonight — otherwise a report covering
+            // today would count an onboarding day as Qayıb and then quietly stop counting it at
+            // midnight. Deliberately filtered HERE and not inside ComputeDayLiveAsync: the live
+            // board shares that method and must keep showing these people, because "hasn't scanned
+            // yet" is exactly what an admin needs to see today. The board reports presence; this
+            // path feeds the summary, the tabel and the payroll, which decide money.
+            var onboarding = await StillOnboardingIdsAsync(employees, today, ct);
+            rows.AddRange((await ComputeDayLiveAsync(today, employees, ct))
+                .Where(d => !onboarding.Contains(d.Employee.Id))
+                .Select(d => ToDayRow(d, today)));
         }
 
         return (ReportAccess.Allowed, rows, scoped.Label);
+    }
+
+    /// <summary>
+    /// Which of these employees had not yet started on <paramref name="date"/> — see
+    /// <see cref="AttendanceCalculator.IsStillOnboarding"/> for the rule and why it exists.
+    /// </summary>
+    private async Task<HashSet<Guid>> StillOnboardingIdsAsync(
+        List<ScopedEmployee> employees, DateOnly date, CancellationToken ct)
+    {
+        var ids = employees.Select(e => e.Id).ToList();
+
+        var activated = await _db.Employees
+            .Where(e => ids.Contains(e.Id))
+            .Select(e => new { e.Id, e.ActivatedAtUtc })
+            .ToDictionaryAsync(x => x.Id, x => x.ActivatedAtUtc, ct);
+
+        var firstScan = await _db.AttendanceRecords
+            .Where(r => ids.Contains(r.EmployeeId) && r.CheckInAtUtc != null)
+            .GroupBy(r => r.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, First = g.Min(r => r.AttendanceDate) })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.First, ct);
+
+        var firstField = await _db.FieldVisits
+            .Where(v => ids.Contains(v.EmployeeId) && v.CheckInAtUtc != null
+                        && v.Status != FieldVisitStatus.Cancelled)
+            .GroupBy(v => v.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, First = g.Min(v => v.VisitDate) })
+            .ToDictionaryAsync(x => x.EmployeeId, x => x.First, ct);
+
+        var result = new HashSet<Guid>();
+        foreach (var e in employees)
+        {
+            var a = firstScan.TryGetValue(e.Id, out var s1) ? s1 : (DateOnly?)null;
+            var b = firstField.TryGetValue(e.Id, out var s2) ? s2 : (DateOnly?)null;
+            var first = a is null ? b : b is null ? a : (a < b ? a : b);
+
+            if (AttendanceCalculator.IsStillOnboarding(
+                    date, activated.GetValueOrDefault(e.Id), first, _timeZone))
+                result.Add(e.Id);
+        }
+        return result;
     }
 
     // The Azerbaijani T-13 codes the tabel prints. Kept here so the legend the UI shows and the codes

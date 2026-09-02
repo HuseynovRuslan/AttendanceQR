@@ -73,6 +73,54 @@ public static class AttendanceCalculator
         => IsScheduledWorkingDay(
             employee.WorkCycleDays, employee.WorkCycleOnDays, employee.WorkCycleAnchor, workDaysMask, date);
 
+    /// <summary>
+    /// How long after an account is created attendance is not yet judged.
+    ///
+    /// Bulk import stamps <c>ActivatedAtUtc = now</c> — there is no activation link, the temporary PIN
+    /// IS the credential — so from the summary job's point of view two hundred people "started" the
+    /// instant the spreadsheet was pasted. They had not: the phone still had to be handed over, the
+    /// browser still had to be granted GPS and camera, the shift still had to be assigned. Every
+    /// working day in that gap was written as Qayıb, and payroll deducts a day's pay per Qayıb.
+    ///
+    /// Measured 2026-09-02 at Bakı Abadlıq Xidməti: 876 absent-days across 207 people in the first
+    /// SEVEN days — half of every scheduled day in the company. That is not attendance data. It is a
+    /// picture of an onboarding in progress, and it was about to be run through a payroll.
+    /// </summary>
+    public const int OnboardingGraceDays = 14;
+
+    /// <summary>
+    /// Is this employee still being set up on this date — so the day must not be judged at all?
+    ///
+    /// Two conditions, and BOTH are needed:
+    ///   • the date is inside the grace window that follows activation, and
+    ///   • the person had not yet recorded any attendance by then.
+    ///
+    /// The second is what makes this safe. The moment somebody's first scan lands, the excuse ends —
+    /// for that day and every day after it, because they have now demonstrably got a working phone.
+    /// Only the days BEFORE that first scan are forgiven, and only inside the window.
+    ///
+    /// And the window is what stops the other failure: without it, a person who never scans at all
+    /// would never be absent either, which turns "never set your phone up" into a way of never being
+    /// marked away. After <see cref="OnboardingGraceDays"/> every day counts, scan or no scan.
+    ///
+    /// Deliberately NOT "no attendance record on this date" — that is just absence. The question is
+    /// whether they had started AT ALL yet.
+    /// </summary>
+    /// <param name="firstAttendanceDate">The employee's earliest attendance of any kind (office scan
+    /// or field visit), or null when they have never recorded one.</param>
+    public static bool IsStillOnboarding(
+        DateOnly date, DateTime? activatedAtUtc, DateOnly? firstAttendanceDate, TimeZoneInfo timeZone,
+        int graceDays = OnboardingGraceDays)
+    {
+        if (activatedAtUtc is not DateTime activated) return false;
+
+        var activatedLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(activated, timeZone));
+        if (date > activatedLocal.AddDays(graceDays)) return false;   // window closed — judge normally
+
+        // Started already? Then this day is only forgiven if it precedes that start.
+        return firstAttendanceDate is not DateOnly started || date < started;
+    }
+
     /// <summary>One continuous stretch of presence — an office scan pair, or one field visit.</summary>
     public readonly record struct WorkSpan(DateTime StartUtc, DateTime EndUtc);
 
