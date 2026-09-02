@@ -17,6 +17,7 @@ import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { decodeJwt } from '../lib/jwt'
+import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
 import { todayStr } from '../lib/att'
 import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
@@ -101,6 +102,10 @@ export function ScanPage() {
   // photo and the check-in proceeds unaffected.
   const selfieVideoRef = useRef<HTMLVideoElement | null>(null)
   const busyRef = useRef(false)
+  // Camera-noise filter — see lib/qrShape.ts. The detector lives in a ref because it is per
+  // camera session, not per render; `foreignQr` is the one bit the UI needs.
+  const foreignRef = useRef(new ForeignQrDetector())
+  const [foreignQr, setForeignQr] = useState(false)
   // True while this page is mounted — so a start() that resolves AFTER the employee tapped "Bağla"
   // releases the camera instead of leaving it held (a held camera is what turns the next scan black).
   const mountedRef = useRef(true)
@@ -402,6 +407,10 @@ export function ScanPage() {
 
         try {
           const { Html5Qrcode } = await loadScanner()
+          // A fresh camera session starts with a clean slate — a hint earned aiming at last
+          // attempt's wrong code must not greet this one.
+          foreignRef.current.reset()
+          setForeignQr(false)
           const scanner = new Html5Qrcode(READER_ID, { verbose: false })
           scannerRef.current = scanner
           await scanner.start(
@@ -574,7 +583,19 @@ export function ScanPage() {
 
   async function onDecoded(text: string) {
     if (busyRef.current) return
+    // A decode that does not even have the token's shape never leaves the phone. No error, no
+    // stopped camera — the next frame is another chance, which is how a scanner should feel. It
+    // used to walk the worker through the whole selfie flow and then fail red on the server's
+    // «TokenMalformed» (Bibiheybət, 17 cəhd bir səhərdə). Only a STABLE read of the same foreign
+    // code earns a hint, and even then the camera keeps running — the right poster is usually a
+    // hand's width away.
+    if (!looksLikeQrToken(text)) {
+      if (foreignRef.current.seen(text)) setForeignQr(true)
+      return
+    }
     busyRef.current = true
+    foreignRef.current.reset()
+    setForeignQr(false)
     // Release the QR (back) camera FIRST — iOS Safari won't open the front camera while another is
     // active. Then show feedback and grab the selfie (check-in only; check-out never captures one).
     await stopCamera()
@@ -874,6 +895,13 @@ export function ScanPage() {
         {/* Camera container stays mounted so html5-qrcode can always find it. */}
         <div className={showCamera ? 'w-full max-w-sm' : 'hidden'}>
           <div id={READER_ID} className="w-full overflow-hidden rounded-3xl border border-white/10 bg-black shadow-2xl" />
+          {/* The same wrong code, frame after frame — they are aiming at a QR that is not ours.
+              A hint, not an error: the camera never stops. */}
+          {foreignQr && (
+            <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs font-medium text-amber-200">
+              Bu kod QRLog posterinin kodu deyil — divardakı davamiyyət posterini skan edin
+            </div>
+          )}
           <p className="text-center text-xs font-medium text-slate-300 mt-3">QR kodu kameraya tutun</p>
           {today.kind === 'none' && (
             <p className="text-center text-[11px] text-slate-500 mt-1">Girişdə şəkil çəkilir</p>
