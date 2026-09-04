@@ -267,13 +267,17 @@
 
 /* Map beside its own legend. The names came off the map because labels drawn on it collided into a
    pile the moment two sites sat near each other — in a city, most of them. */
-.hq-mapwrap { display: grid; grid-template-columns: 1fr 210px; gap: 14px; }
+.hq-mapwrap { display: grid; grid-template-columns: 1fr 210px; gap: 10px 14px; }
 @media (max-width: 780px) { .hq-mapwrap { grid-template-columns: 1fr; } }
 
 .hq-sitelist {
   list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
-  max-height: clamp(300px, 42vh, 460px); overflow-y: auto;
+  max-height: clamp(300px, 42vh, 460px); overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.16) transparent;
 }
+.hq-sitelist::-webkit-scrollbar { width: 6px; }
+.hq-sitelist::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 999px; }
+.hq-sitelist::-webkit-scrollbar-track { background: transparent; }
 .hq-site {
   display: flex; align-items: center; gap: 9px; cursor: pointer;
   padding: 9px 10px; border-radius: 10px; border: 1px solid transparent;
@@ -578,8 +582,12 @@
 
 /* The company filter. Branch counts on the pills because "which company has the most sites" is a
    question the board could not answer at all before, and it costs one number per pill. */
+/* .hq-mapwrap is a two-column grid (map | list). Without this the filter row takes the first cell
+   for itself, which pushes the map into the 210px list column and drops the list underneath —
+   exactly what it did on a desktop, where the two columns actually exist. */
 .hq-map-filters {
-  display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 7px; margin-bottom: 2px;
   overflow-x: auto; padding-bottom: 3px; scrollbar-width: none;
 }
 .hq-map-filters::-webkit-scrollbar { display: none; }
@@ -652,9 +660,13 @@
 
 /* The count the map cannot state on its own — it is the absence of markers, and absence draws
    nothing. */
+/* Sticky, because it is the answer to the question the list is sorted by. As a plain first row it
+   scrolled away the moment anyone looked past the busiest branch — i.e. immediately. */
 .hq-site-note {
+  position: sticky; top: 0; z-index: 1;
   padding: 8px 10px; margin-bottom: 4px; border-radius: 8px;
-  background: rgba(245, 158, 11, .1); color: #FBBF24;
+  background: rgba(60, 42, 12, .96); color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, .22);
   font-size: 11.5px; font-weight: 700;
 }
 
