@@ -512,6 +512,12 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate, l.Type })
             .ToListAsync(ct);
 
+        // Is there an approved leave covering this person on this day at all? Asked separately from
+        // the code below because an explicitly recorded leave has to BEAT the onboarding guard — see
+        // the loop. LeaveCodeFor cannot answer it: its fallback deliberately returns «M».
+        bool HasLeave(Guid employeeId, DateOnly date) =>
+            leaves.Any(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date);
+
         string LeaveCodeFor(Guid employeeId, DateOnly date)
         {
             var leave = leaves.FirstOrDefault(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date);
@@ -551,9 +557,27 @@ public sealed class ReportQueryService : IReportQueryService
                 // day with no record is absent" — so without this guard the tabel resurrects every
                 // absence the onboarding rule just cleared. Checked before both branches for the same
                 // reason, and it does not touch the absent counter.
-                if (isOnboarding(e.Id, date))
+                // A recorded leave BEATS the onboarding guard.
+                //
+                // Both say "do not judge this day", and when they disagree the tabel must print the
+                // one somebody asserted. «Aktivləşdirməyib» is an inference drawn from silence — this
+                // person has never scanned, so we cannot know; «Məzuniyyət» is a fact an admin
+                // entered. The guard ran first and swallowed it: a man on annual leave from 3 August
+                // to 6 September, activated on the 25th and therefore still inside the grace window,
+                // printed «–» on every cell of his holiday instead of «M». His employer had recorded
+                // the leave and the timesheet denied it.
+                if (isOnboarding(e.Id, date) && !HasLeave(e.Id, date))
                 {
                     codes[day - 1] = CodeNotActivated;
+                    continue;
+                }
+                if (isOnboarding(e.Id, date))
+                {
+                    // On leave and still onboarding: print the leave and count it as leave. Falls
+                    // through to no summary row (none was written for these days), which the branch
+                    // below would otherwise read from the calendar as absence.
+                    codes[day - 1] = LeaveCodeFor(e.Id, date);
+                    leave++;
                     continue;
                 }
 
