@@ -365,7 +365,11 @@ export function FieldVisitsAdminPage() {
       // the default view for ever — a discarded phantom, a test row somebody made — with nothing an
       // admin could do about them, because there is nothing left to do TO a cancelled visit. Still
       // one click away under their own «Ləğv» chip, so nothing is hidden, only moved out of the way.
-      if (statusFilter === 'all' ? v.status === 'Cancelled' : v.status !== statusFilter) return false
+      // Cancelled is out of every view, not just the default one: there is no chip left that asks
+      // for it, so leaving the row reachable by a stale filter value would be a screen nobody can
+      // navigate back from.
+      if (v.status === 'Cancelled') return false
+      if (statusFilter !== 'all' && v.status !== statusFilter) return false
       if (onlyFlagged && !isFlagged(v)) return false
       if (onlySelf && !v.selfReported) return false
       if (onlyPhoto && !v.hasWorkPhoto) return false
@@ -516,8 +520,11 @@ export function FieldVisitsAdminPage() {
     { key: 'Assigned', label: 'Tapşırılıb' },
     { key: 'CheckedIn', label: 'Ərazidə' },
     { key: 'Completed', label: 'Tamamlandı' },
-    { key: 'Cancelled', label: 'Ləğv' },
-  ]
+    // No «Ləğv» chip. A cancelled visit is one somebody threw away — a phantom, a mis-tap, a test
+    // row — and a board about today's work has no question it answers. The rows are NOT deleted:
+    // they keep their Cancelled status and the audit line naming who discarded them and why, so a
+    // dispute can still be settled. They are simply no longer somewhere to browse.
+    ]
 
   return (
     <div>
