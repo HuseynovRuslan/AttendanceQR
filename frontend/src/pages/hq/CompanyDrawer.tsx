@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { GroupCompany, GroupOverview, GroupSite } from '../../api/hq'
 import { viewTenant } from '../../api/admin'
 import { startImpersonation } from '../../api/client'
+import { HqDrawer } from './HqDrawer'
 import { fmt, timeOf } from './format'
-
-/** What the focus trap treats as reachable inside the panel. */
-const FOCUSABLE = 'a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])'
 
 interface CompanyDrawerProps {
   company: GroupCompany
@@ -44,39 +42,6 @@ interface CompanyDrawerProps {
 export function CompanyDrawer({ company, companyIndex, accent, sites, feed, onClose }: CompanyDrawerProps) {
   const [opening, setOpening] = useState(false)
   const [openError, setOpenError] = useState(false)
-  const panelRef = useRef<HTMLElement | null>(null)
-  const closeRef = useRef<HTMLButtonElement | null>(null)
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      // Keep Tab inside the panel. It carries aria-modal, which tells a screen reader the rest of the
-      // page is unavailable; letting focus walk out into a board the reader was just told is not
-      // there is the contradiction that turns that attribute into a lie.
-      if (e.key !== 'Tab' || !panelRef.current) return
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)
-      if (focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
-      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
-    }
-    window.addEventListener('keydown', onKey)
-
-    // Move focus in, and put it back on the way out — otherwise a keyboard reader is returned to the
-    // top of the document rather than to the card they opened.
-    const returnTo = document.activeElement as HTMLElement | null
-    closeRef.current?.focus()
-    // The board behind is a scrolling page; letting it scroll under a modal is how a reader loses
-    // the place they came back to.
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
-      returnTo?.focus?.()
-    }
-  }, [onClose])
 
   /** Mint a read-only session in this company and go to its panel — on THIS origin, the only place
    *  the token can be stored. Every mutating request in that session is refused server-side by
@@ -106,26 +71,15 @@ export function CompanyDrawer({ company, companyIndex, accent, sites, feed, onCl
   const observed = company.employees - company.notStarted
 
   return (
-    <div className="hq-drawer-root">
-      <div className="hq-drawer-backdrop" onClick={onClose} aria-hidden="true" />
-      <aside ref={panelRef} className="hq-drawer" role="dialog" aria-modal="true" aria-label={company.name}>
-        <div className="hq-drawer-bar" style={{ background: accent }} />
-
-        <div className="hq-drawer-head">
-          <div>
-            <h2 className="hq-drawer-title">{company.name}</h2>
-            <div className="hq-drawer-sub">
-              {company.locations} filial · {fmt.format(company.employees)} işçi
-              {company.notStarted > 0 && <> · {fmt.format(company.notStarted)} aktivləşdirməyib</>}
-            </div>
-          </div>
-          <button ref={closeRef} type="button" className="hq-drawer-close" onClick={onClose} aria-label="Bağla">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
+    <HqDrawer
+      title={company.name}
+      accent={accent}
+      onClose={onClose}
+      subtitle={<>
+        {company.locations} filial · {fmt.format(company.employees)} işçi
+        {company.notStarted > 0 && <> · {fmt.format(company.notStarted)} aktivləşdirməyib</>}
+      </>}
+      above={<>
         <div className="hq-drawer-action">
           <button
             type="button"
@@ -170,8 +124,9 @@ export function CompanyDrawer({ company, companyIndex, accent, sites, feed, onCl
             <div className="l">Filial</div>
           </div>
         </div>
-
-        <div className="hq-drawer-body">
+      </>}
+    >
+      <>
           <section className="hq-drawer-sec">
             <div className="hq-drawer-sec-title">Filiallar üzrə canlı vəziyyət ({companySites.length})</div>
             {companySites.length === 0 ? (
@@ -214,8 +169,7 @@ export function CompanyDrawer({ company, companyIndex, accent, sites, feed, onCl
               </div>
             )}
           </section>
-        </div>
-      </aside>
-    </div>
+      </>
+    </HqDrawer>
   )
 }

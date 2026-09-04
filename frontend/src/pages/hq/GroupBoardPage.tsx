@@ -6,6 +6,8 @@ import './hq.css'
 import { COMPANY_TZ } from '../../lib/format'
 import { clearToken, getImpersonation, exitImpersonation } from '../../api/client'
 import { CompanyDrawer } from './CompanyDrawer'
+import { NotStartedDrawer } from './NotStartedDrawer'
+import { BranchesDrawer } from './BranchesDrawer'
 import { fmt, timeOf } from './format'
 
 /**
@@ -148,6 +150,15 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   const [failed, setFailed] = useState<number | null>(null)
   const [feedQuery, setFeedQuery] = useState('')
   const [feedShown, setFeedShown] = useState(FEED_PAGE)
+  /**
+   * Which of the summary tiles is open, if any.
+   *
+   * Only two of the four are pressable, deliberately. A tile that looks pressable and then merely
+   * scrolls the page a little teaches the reader that nothing on this board responds — which costs
+   * the company cards, where a press does something real. «Şirkət» would only point at the cards
+   * directly below it, and a percentage has nowhere at all to go, so both stay plain.
+   */
+  const [tile, setTile] = useState<'notStarted' | 'branches' | null>(null)
   const newestRef = useRef<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   // The OPEN company's id, not a copy of its row. The board refreshes every 20 seconds; holding a
@@ -280,6 +291,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   // «656 işçi», the hero said «224 gəlib», and between them sat «68%» — while 224/656 is 34%. The
   // percentage was right and the reader had no way to know why.
   const observed = totals.employees - totals.notStarted
+  const emptySites = data.sites.filter((s) => s.onDuty === 0).length
 
   const hero = totals.onDuty > 0
     ? {
@@ -351,18 +363,38 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
             <div className="hq-hero-note">{hero.note}</div>
           </div>
           <div className="hq-stats">
-            <div className="hq-stat">
+            {/* Opens WHO has not started — the board's largest number and, until it did, the one with
+                nowhere to look. The tile shows the total; the count that matters is underneath it. */}
+            <button
+              type="button"
+              className="hq-stat is-pressable"
+              onClick={() => setTile('notStarted')}
+              aria-haspopup="dialog"
+              title="Tətbiqi açmayanların siyahısı"
+            >
               <div className="v hq-num">{fmt.format(employees)}</div>
               <div className="l">Ümumi işçi</div>
-            </div>
+              {totals.notStarted > 0 && (
+                <div className="hq-stat-sub">{fmt.format(totals.notStarted)} açmayıb →</div>
+              )}
+            </button>
             <div className="hq-stat">
               <div className="v hq-num">{totals.companies}</div>
               <div className="l">Şirkət</div>
             </div>
-            <div className="hq-stat">
+            {/* The map shows where the branches are; it cannot show which are EMPTY — a site with
+                nobody on it draws the smallest marker there is. This list puts those first. */}
+            <button
+              type="button"
+              className="hq-stat is-pressable"
+              onClick={() => setTile('branches')}
+              aria-haspopup="dialog"
+              title="Filiallar üzrə canlı vəziyyət"
+            >
               <div className="v hq-num">{totals.locations}</div>
               <div className="l">Filial</div>
-            </div>
+              {emptySites > 0 && <div className="hq-stat-sub">{fmt.format(emptySites)} boş →</div>}
+            </button>
             <div className="hq-stat">
               <div className="v hq-num">{totals.attendancePct}%</div>
               <div className="l">Bugünkü davamiyyət</div>
@@ -522,6 +554,17 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
       {/* The company detail comes to the board rather than the board being left behind. Resolved
           fresh each render: if the open company disappears from the payload (suspended, deleted),
           the panel closes itself instead of showing numbers for something no longer there. */}
+      {tile === 'notStarted' && (
+        <NotStartedDrawer accent={ACCENTS[0]} onClose={() => setTile(null)} />
+      )}
+      {tile === 'branches' && (
+        <BranchesDrawer
+          sites={data.sites}
+          companies={data.companies}
+          accentOf={accentOf}
+          onClose={() => setTile(null)}
+        />
+      )}
       {selectedIndex >= 0 && (
         <CompanyDrawer
           company={data.companies[selectedIndex]}

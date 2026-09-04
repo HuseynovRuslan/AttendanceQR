@@ -500,3 +500,58 @@
 
 /* «bu gün» — the feed's window, said once in the title so no row has to carry a date. */
 .hq-panel-title small { font-weight: 700; color: var(--fg-faint); }
+
+
+/* --- pressable summary tiles --------------------------------------------
+   Only the two that lead somewhere. A tile that looks pressable and then merely scrolls the page
+   teaches a reader that nothing here responds, which costs the company cards, where a press does
+   something real. */
+.hq-stat.is-pressable {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
+  transition: transform .2s ease, border-color .2s ease, background .2s ease;
+}
+.hq-stat.is-pressable:hover {
+  transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+}
+.hq-stat.is-pressable:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; }
+/* The number under the number: what is actually worth pressing for. */
+.hq-stat-sub {
+  margin-top: 6px; font-size: 11px; font-weight: 800; color: var(--fg-faint);
+  transition: color .2s ease;
+}
+.hq-stat.is-pressable:hover .hq-stat-sub { color: var(--live); }
+
+/* --- drawer tools (search + filter chips) -------------------------------- */
+.hq-drawer-tools { padding: 12px 22px 4px; }
+.hq-drawer-tools .hq-feed-search { margin: 0 0 10px; }
+.hq-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hq-chip {
+  padding: 6px 10px; border-radius: 999px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); color: var(--fg-dim);
+  font: inherit; font-size: 11.5px; font-weight: 700;
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
+}
+.hq-chip b { font-weight: 800; margin-left: 3px; }
+.hq-chip:hover { background: rgba(255, 255, 255, 0.08); color: var(--fg); }
+.hq-chip.is-on { background: rgba(255, 255, 255, 0.14); color: var(--fg); border-color: rgba(255, 255, 255, 0.26); }
+
+/* --- «tətbiqi açmayanlar» rows ------------------------------------------- */
+.hq-ns-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.hq-ns-main { flex: 1; min-width: 0; }
+/* Three states, three colours, because each one belongs to a different person to fix. */
+.hq-ns-tag {
+  flex-shrink: 0; padding: 3px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .02em;
+}
+.hq-ns-tag.is-nophone { background: rgba(248, 113, 113, .16); color: #FCA5A5; }
+.hq-ns-tag.is-nologin { background: rgba(245, 158, 11, .16); color: #FBBF24; }
+.hq-ns-tag.is-opened { background: rgba(56, 189, 248, .14); color: #7DD3FC; }
+
+@media (max-width: 600px) {
+  .hq-drawer-tools { padding-left: 16px; padding-right: 16px; }
+}

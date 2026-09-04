@@ -33,6 +33,90 @@ public partial class SuperAdminController
     /// </summary>
     private const int FeedSize = 2000;
 
+    // GET /api/super/hq/not-started — the people behind the board's largest unanswered number.
+    //
+    // 335 of 656 active staff have never once opened the app, 310 of them at a single company. The
+    // board states that figure and, until now, there was nowhere at all to see WHO they are — which
+    // makes it a number nobody can act on. Naming them is the first step of every question that
+    // follows: no phone, no PIN handed out, or no poster on the wall at their site.
+    //
+    // Its own endpoint rather than part of the board payload, because the board refreshes every 20
+    // seconds and this list changes about once a week: sending 335 rows on a loop to a screen that
+    // shows them only when asked is a waste of every refresh.
+    [HttpGet("hq/not-started")]
+    public async Task<IActionResult> NotStarted()
+    {
+        if (!IsSuperAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+
+        var ct = HttpContext.RequestAborted;
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(_appOptions.TimeZone);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone));
+
+        // Same definition as the board's denominator, and it MUST stay the same: a person here is a
+        // person excluded from the attendance percentage. Two definitions would mean the list and the
+        // figure it explains could disagree.
+        var everScanned = await _db.AttendanceRecords.IgnoreQueryFilters()
+            .Where(r => r.CheckInAtUtc != null).Select(r => r.EmployeeId).Distinct().ToListAsync(ct);
+        var everField = await _db.FieldVisits.IgnoreQueryFilters()
+            .Where(v => v.CheckInAtUtc != null).Select(v => v.EmployeeId).Distinct().ToListAsync(ct);
+        var observed = everScanned.Concat(everField).ToHashSet();
+
+        var tenantNames = await _db.Tenants.IgnoreQueryFilters()
+            .Select(t => new { t.Id, t.Name, t.DisplayName })
+            .ToDictionaryAsync(
+                t => t.Id,
+                t => string.IsNullOrWhiteSpace(t.DisplayName) ? t.Name : t.DisplayName,
+                ct);
+        var locationNames = await _db.Locations.IgnoreQueryFilters()
+            .Select(l => new { l.Id, l.Name })
+            .ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+
+        var rows = (await _db.Employees.IgnoreQueryFilters()
+                .Where(e => e.IsActive)
+                .Select(e => new
+                {
+                    e.Id, e.TenantId, e.FullName, e.Position, e.LocationId,
+                    e.PhoneNumber, e.MustChangePin, e.LastActiveAtUtc,
+                })
+                .ToListAsync(ct))
+            .Where(e => !observed.Contains(e.Id))
+            .Select(e => new
+            {
+                id = e.Id,
+                fullName = e.FullName,
+                company = tenantNames.GetValueOrDefault(e.TenantId, ""),
+                companyId = e.TenantId,
+                location = locationNames.GetValueOrDefault(e.LocationId, ""),
+                position = e.Position,
+                // The three fields that separate WHY, each belonging to a different person to fix.
+                // ActivatedAtUtc is deliberately NOT among them: the bulk import stamps it for
+                // everyone it creates, so it is true for all 335 of these people and separates
+                // nothing. Measured on production before this list was cut — 309 of 309 at one
+                // company were "activated", which would have made the whole panel one useless
+                // bucket.
+                //
+                // Has a number at all. Without one nothing technical helps; the company must supply
+                // it. (Two people, both at Green Garden.)
+                hasPhone = !string.IsNullOrWhiteSpace(e.PhoneNumber),
+                // Still on the temporary PIN from the import — handed an account and never logged in
+                // with it. 239 people at Bakı Abadlıq: a distribution problem, not a technical one.
+                neverLoggedIn = e.MustChangePin,
+                // Opened the app at least once (LastActiveAtUtc is app-open, not login). Somebody who
+                // got in, looked, and STILL never produced a scan is the interesting case: the
+                // account works, so what failed is the poster, the geofence or the camera. 70 people
+                // — and they are the ones worth phoning.
+                openedApp = e.LastActiveAtUtc != null,
+                daysSince = e.LastActiveAtUtc is DateTime a
+                    ? today.DayNumber - DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a, timeZone)).DayNumber
+                    : (int?)null,
+            })
+            .OrderBy(x => x.company).ThenBy(x => x.location).ThenBy(x => x.fullName)
+            .ToList();
+
+        return Ok(new { total = rows.Count, rows });
+    }
+
     // GET /api/super/hq — everything the group board shows, in one round trip. One call rather than
     // six because the board refreshes on a timer: six requests on a loop is six chances for the
     // screen to show half-old numbers mid-demo.

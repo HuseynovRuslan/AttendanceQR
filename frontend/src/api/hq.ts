@@ -55,3 +55,27 @@ export interface GroupOverview {
 export function getGroupOverview() {
   return apiRequest<GroupOverview>('/api/super/hq')
 }
+
+/** One person who has never once opened the app — see GET /api/super/hq/not-started. */
+export interface NotStartedRow {
+  id: string
+  fullName: string
+  company: string
+  companyId: string
+  location: string
+  position: string | null
+  /** No number on file at all: nothing technical will fix this one. */
+  hasPhone: boolean
+  /** Still on the import's temporary PIN — handed an account and never logged in with it. */
+  neverLoggedIn: boolean
+  /** Opened the app at least once. Opened-but-never-scanned is the poster/geofence case. */
+  openedApp: boolean
+  /** Days since they last opened the app, or null if they never have. */
+  daysSince: number | null
+}
+
+/** The people behind the board's «aktivləşdirməyib» figure. Fetched on demand, not with the board:
+ *  it changes about once a week and the board refreshes every twenty seconds. */
+export function getNotStarted() {
+  return apiRequest<{ total: number; rows: NotStartedRow[] }>('/api/super/hq/not-started')
+}
