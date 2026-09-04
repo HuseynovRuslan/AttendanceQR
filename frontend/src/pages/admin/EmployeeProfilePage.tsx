@@ -503,7 +503,12 @@ export function EmployeeProfilePage() {
               </thead>
               <tbody>
                 {recent.map((r) => (
-                  editRecId === r.recordId ? (
+                  // The edit row is matched on the record id — and a «səyyar» day HAS no record, so
+                  // its id is empty and every such row matched at once: opening the editor on one
+                  // opened it on all of them, showing the same times in each, and saving PUT to an
+                  // empty guid and answered «Qeyd dəyişmədi». The isFieldDay guard is what makes the
+                  // comparison meaningful; the key below stops React reusing rows for the same reason.
+                  !r.isFieldDay && editRecId === r.recordId ? (
                     <tr key={r.recordId}>
                       <td data-label="Tarix">{fmtDate(r.attendanceDate)}</td>
                       <td colSpan={3} data-label="Düzəliş">
@@ -521,9 +526,17 @@ export function EmployeeProfilePage() {
                       </td>
                     </tr>
                   ) : (
-                    <tr key={r.recordId}>
+                    <tr key={r.isFieldDay ? `f:${r.attendanceDate}` : r.recordId}>
                       <td data-label="Tarix">
                         {fmtDate(r.attendanceDate)}
+                        {/* No poster scan at all — the times come from a field visit, and there is no
+                            AttendanceRecord here to edit, close or delete. Said on the row, with
+                            where to go instead, because the buttons being absent explains nothing. */}
+                        {r.isFieldDay && (
+                          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--leaf-d)' }}>
+                            📍 Səyyar iş günü — «Sahə ziyarətləri»ndən redaktə olunur
+                          </div>
+                        )}
                         {r.manualByName && (
                           <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>Əl ilə daxil edilib · {r.manualByName}</div>
                         )}
@@ -537,20 +550,28 @@ export function EmployeeProfilePage() {
                       <td className="mono" data-label="Müddət">{r.checkInAtUtc && r.checkOutAtUtc ? fmtDuration(r.checkInAtUtc, r.checkOutAtUtc) : '—'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                          {/* Şəkli olan hər girişdə, yalnız admində: giriş şəkli biometrik məlumatdır, ona kimin
-                              baxa bildiyi filial deyil, şəxs sualıdır. Server onsuz da meneceri rədd
-                              edir; bu, ölü düymə qalmasın deyədir. */}
-                          {!isManager && r.checkInAtUtc && (
+                          {/* Menecer də baxa bilir (2026-09-04) — amma yalnız idarə etdiyi adamların:
+                              server `LocationScopeRules` ilə əhatəni yoxlayır. Səyyar gündə düymə
+                              yoxdur, çünki şəkil qeydə bağlıdır və belə gündə qeyd yoxdur. */}
+                          {r.checkInAtUtc && !r.isFieldDay && (
                             <button className="btn btn-sm" disabled={photoBusyId === r.recordId} onClick={() => void viewRecordPhoto(r)}>
                               <IconCamera /> {photoBusyId === r.recordId ? '…' : 'Şəklə bax'}
                             </button>
                           )}
-                          <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
-                          {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
-                          {/* Last, and worded as the whole day: next to "Çıxışı sil" it must not read
-                              as another way of clearing a time. */}
-                          <button className="btn btn-sm btn-danger" disabled={recBusy}
-                                  onClick={() => void deleteRecord(r)}>Günü sil</button>
+                          {/* Every control here addresses an AttendanceRecord by id. A field day has
+                              none — the id is empty — so these would 404 rather than do nothing
+                              visible, which is exactly what happened: a staff member typed the right
+                              times into the wrong screen and got «Qeyd dəyişmədi» four times. */}
+                          {!r.isFieldDay && (
+                            <>
+                              <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
+                              {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
+                              {/* Last, and worded as the whole day: next to "Çıxışı sil" it must not
+                                  read as another way of clearing a time. */}
+                              <button className="btn btn-sm btn-danger" disabled={recBusy}
+                                      onClick={() => void deleteRecord(r)}>Günü sil</button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
