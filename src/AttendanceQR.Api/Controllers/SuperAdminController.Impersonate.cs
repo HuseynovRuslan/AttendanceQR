@@ -79,6 +79,35 @@ public partial class SuperAdminController
         if (!await CanAsync(OperatorPermission.Impersonate, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
+        return await StartSessionAsync(id, employeeId, readOnly: false);
+    }
+
+    // POST /api/super/tenants/{id}/view — the same session, with the writes taken off it.
+    //
+    // For «Qrup rəhbəri»: the customer's group head reads any of his companies through the company's
+    // OWN admin screens — the today board, the reports, the tabel — and changes nothing. Reusing the
+    // real panel is the point; rebuilding read-only copies of thirty-four screens in the operator
+    // console would be a second implementation of every rule, drifting from the first.
+    //
+    // Gated only on being an operator, deliberately: reads are already open to every operator role,
+    // and this mints strictly LESS than the impersonation above. The teeth are in the token — see
+    // ViewOnlyBoundary, which refuses every mutating request the session makes.
+    [HttpPost("tenants/{id:guid}/view")]
+    public async Task<IActionResult> ViewTenant(Guid id, [FromQuery] Guid? employeeId = null)
+    {
+        if (!IsSuperAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+
+        return await StartSessionAsync(id, employeeId, readOnly: true);
+    }
+
+    /// <summary>
+    /// Mints a session inside one company. Every refusal below is shared by both doors on purpose: a
+    /// read-only session must not be able to reach a seat the impersonation door would have refused —
+    /// an inactive company, a plain employee's seat, an operator's own account.
+    /// </summary>
+    private async Task<IActionResult> StartSessionAsync(Guid id, Guid? employeeId, bool readOnly)
+    {
         var ct = HttpContext.RequestAborted;
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tenant is null)
@@ -142,7 +171,7 @@ public partial class SuperAdminController
                 return BadRequest(new { error = "NoImpersonableAdmin" });
         }
 
-        var token = _jwt.GenerateImpersonationToken(admin, actorId, ImpersonationMinutes);
+        var token = _jwt.GenerateImpersonationToken(admin, actorId, ImpersonationMinutes, readOnly);
 
         // The CUSTOMER's own audit gets a row as well as the operator console's. Everything the borrowed
         // session then does inside the tenant is recorded under the admin's own id (AuditLog has no
@@ -155,11 +184,11 @@ public partial class SuperAdminController
             TenantId = tenant.Id,
             EmployeeId = admin.Id,
             EventType = AuditEventType.ImpersonationStarted,
-            Reason = $"Operator {actorId} · {admin.Role}",
+            Reason = $"Operator {actorId} · {admin.Role}{(readOnly ? " · baxış rejimi" : "")}",
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
-        await AuditAsync("ImpersonationStarted", tenant.Id, tenant.Slug,
+        await AuditAsync(readOnly ? "ViewStarted" : "ImpersonationStarted", tenant.Id, tenant.Slug,
             $"{admin.FullName} ({admin.PhoneNumber}) · {admin.Role}", ct);
 
         return Ok(new
@@ -171,6 +200,7 @@ public partial class SuperAdminController
             // Which seat was borrowed, so the banner can say "manager" rather than implying admin.
             role = admin.Role.ToString(),
             expiresInMinutes = ImpersonationMinutes,
+            readOnly,
         });
     }
 }

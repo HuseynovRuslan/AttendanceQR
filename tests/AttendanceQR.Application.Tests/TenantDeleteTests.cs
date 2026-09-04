@@ -121,7 +121,7 @@ public class TenantDeleteTests
     private sealed class Jwt : IJwtService
     {
         public string GenerateToken(Employee employee) => "token";
-        public string GenerateImpersonationToken(Employee employee, Guid by, int minutes) => "imp";
+        public string GenerateImpersonationToken(Employee employee, Guid by, int minutes, bool readOnly = false) => "imp";
     }
 
     private static string ErrorOf(IActionResult result)

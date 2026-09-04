@@ -1175,6 +1175,17 @@ export function impersonateTenant(id: string, employeeId?: string) {
   )
 }
 
+/** POST /api/super/tenants/{id}/view — the same session with the writes taken off it.
+ *  For «Qrup rəhbəri»: read the company through its own admin screens, change nothing. The token
+ *  carries `ro` and the server refuses every mutating request it makes (ViewOnlyBoundary). */
+export function viewTenant(id: string, employeeId?: string) {
+  const qs = employeeId ? `?employeeId=${encodeURIComponent(employeeId)}` : ''
+  return apiRequest<ImpersonateResult | { error: string }>(
+    `/api/super/tenants/${id}/view${qs}`,
+    { method: 'POST' },
+  )
+}
+
 export interface SuperFeature {
   key: string
   label: string

@@ -24,7 +24,8 @@ public sealed class JwtService : IJwtService
     public string GenerateToken(Employee employee)
         => Write(BaseClaims(employee), DateTime.UtcNow.AddMinutes(_options.ExpiryMinutes));
 
-    public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes)
+    public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes,
+        bool readOnly = false)
     {
         var claims = BaseClaims(employee);
         // Marks this session as a support impersonation and by whom. Advisory — for the log and a client
@@ -39,6 +40,10 @@ public sealed class JwtService : IJwtService
         // up. Nothing is weakened: the customer's forced change lives on Employee.MustChangePin in the
         // database — which is what the server-side gate reads — so their own next login still faces it.
         claims.RemoveAll(c => c.Type == "mcp");
+        // Read-only session: ViewOnlyBoundary refuses every mutating request carrying this. Unlike the
+        // "imp" claim above, this one IS a security boundary, not advisory — it is the only thing
+        // standing between a viewer and 113 write endpoints.
+        if (readOnly) claims.Add(new Claim("ro", "1"));
         return Write(claims, DateTime.UtcNow.AddMinutes(expiryMinutes));
     }
 

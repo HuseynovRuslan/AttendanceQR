@@ -112,7 +112,7 @@ public class TenantHandoverTests
     private sealed class Jwt : IJwtService
     {
         public string GenerateToken(Employee employee) => "token";
-        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes) => "imp";
+        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes, bool readOnly = false) => "imp";
     }
 
     private static object? Prop(object value, string name)

@@ -13,6 +13,7 @@ import {
   revokeSuperUserSessions,
   getImpersonationTargets,
   impersonateTenant,
+  viewTenant,
   type ImpersonationTarget,
   setTenantAdmin,
   type SetTenantAdminResult,
@@ -536,6 +537,22 @@ export function TenantsTab() {
       startImpersonation(r.token, { tenantName: r.tenantName, adminName: r.adminName })
       // Both seats land on /admin — the console reads the token's role and shows the manager the
       // reduced version, which is exactly the screen a support call is about.
+      window.location.href = '/admin'
+    } else {
+      setError(ERRORS[errorCodeOf(data)] ?? 'Alınmadı')
+    }
+  }
+
+  /** «Bax» — open the company's own screens with a session that cannot write. The confirm is
+   *  deliberately calm: nothing here can go wrong, which is the whole difference from «Daxil ol». */
+  async function view(t: SuperTenant) {
+    setError(null)
+    setBusyId(t.id)
+    const { status, data } = await viewTenant(t.id)
+    setBusyId(null)
+    if (status === 200 && data && !('error' in data)) {
+      const r = data as ImpersonateResult
+      startImpersonation(r.token, { tenantName: r.tenantName, adminName: r.adminName })
       window.location.href = '/admin'
     } else {
       setError(ERRORS[errorCodeOf(data)] ?? 'Alınmadı')
@@ -1125,8 +1142,11 @@ export function TenantsTab() {
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {canManage || canImpersonate ? (
-                    <RowActions
+                  {/* No permission gate on the block itself: even an operator with NO permissions —
+                      «Qrup rəhbəri» — still has the read-only «Bax» entry, which is their only way in.
+                      Each individual action carries its own `hidden`, so nobody sees a door they
+                      cannot open. */}
+                  <RowActions
                       primary={{
                         // The verb changed with the job: this is how the operator gets inside to build
                         // a company, not only how they answer a support question about one.
@@ -1137,6 +1157,13 @@ export function TenantsTab() {
                         title: t.hasAdmin ? 'Admin kimi daxil ol (dəstək)' : 'İçəri keçib şirkəti qur',
                       }}
                       actions={[
+                        // Read-only entry. Shown to everyone (any operator may read), and it is the
+                        // ONLY way in for «Qrup rəhbəri», who has no impersonation permission.
+                        {
+                          label: 'Bax (yalnız oxu)',
+                          onClick: () => void view(t),
+                          hidden: !t.isActive || !t.hasAdmin,
+                        },
                         {
                           label: t.hasAdmin ? 'Admin əlavə et' : 'Admini təyin et',
                           onClick: () => openAdmin(t),
@@ -1161,11 +1188,8 @@ export function TenantsTab() {
                           hidden: !canManage || t.isActive,
                           title: 'Yalnız heç vaxt skan olunmamış şirkət silinə bilər',
                         },
-                      ]}
-                    />
-                  ) : (
-                    <span className="muted" style={{ fontSize: 12 }}>—</span>
-                  )}
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

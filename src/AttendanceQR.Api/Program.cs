@@ -649,6 +649,9 @@ app.UseTemporaryPinGate();
 // temp-PIN gate for the same reason: before authorization, so no controller runs for a refused call.
 // See ImpersonationBoundary for what a single stray check-in would do to the borrowed admin's face.
 app.UseImpersonationBoundary();
+// A «baxış rejimi» session reads a company and writes nothing. Placed beside the impersonation
+// boundary and before authorization for the same reason: one gate, ahead of every controller.
+app.UseViewOnlyBoundary();
 
 app.UseAuthorization();
 

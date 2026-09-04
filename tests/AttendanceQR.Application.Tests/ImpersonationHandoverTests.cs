@@ -118,7 +118,7 @@ public class ImpersonationHandoverTests
     private sealed class StubJwt : IJwtService
     {
         public string GenerateToken(Employee employee) => "token";
-        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes)
+        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes, bool readOnly = false)
             => $"imp-for:{employee.Id}";
     }
 
