@@ -366,8 +366,9 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
         <section className="hq-companies hq-reveal hq-d3">
           {data.companies.map((c, i) => (
             // A button, not an article: the card IS the way into that company. The group head reads
-            // the totals here and taps the one that needs a closer look — which opens the company's
-            // own panel in «baxış rejimi» (read-only), so no second set of screens has to exist.
+            // the totals here and taps the one that needs a closer look, which opens that company's
+            // panel over the board (CompanyDrawer) — the board itself is never left, and the full
+            // admin panel stays one further, deliberate click away inside it.
             <button
               type="button"
               className={`hq-co${selectedId === c.id ? ' is-active' : ''}`}

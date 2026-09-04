@@ -85,23 +85,25 @@
   display: block; width: 100%; text-align: left; cursor: pointer;
   color: inherit; font: inherit;
 }
-.hq-co:hover:not(:disabled) {
+.hq-co:hover {
   transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.28);
   box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
 }
-.hq-co:active:not(:disabled) { transform: translateY(-1px); }
+.hq-co:active { transform: translateY(-1px); }
 .hq-co:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* The card whose panel is open — so a reader glancing back from the drawer knows which one it is. */
-.hq-co.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 32px rgba(0, 0, 0, .5); }
-.hq-co:disabled { cursor: default; opacity: .7; }
 /* Says what the tap does. Faint until hover — the numbers are what the board is for. */
 .hq-co-go {
   margin-top: 14px; font-size: 12px; font-weight: 800; letter-spacing: .03em;
   color: var(--fg-faint); transition: color .2s ease;
 }
-.hq-co:hover:not(:disabled) .hq-co-go { color: var(--accent); }
+.hq-co:hover .hq-co-go { color: var(--accent); }
 /* The accent is the only place a company's identity lives — no logos to collect, no colour to argue
    about, and three cards stay distinguishable at a glance from the back of a room. */
+/* The card whose panel is open — so a reader glancing back from the panel knows which one it is.
+   Declared AFTER the hover rule and with a heavier selector, or hovering the open card unmarks it. */
+.hq-co.is-active, .hq-co.is-active:hover {
+  border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 32px rgba(0, 0, 0, .5);
+}
 .hq-co::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--accent); }
 .hq-co-name { font-size: 17px; font-weight: 800; }
 .hq-co-meta { font-size: 12px; color: var(--fg-dim); margin-top: 3px; }
@@ -139,19 +141,23 @@
 /* --- footer ------------------------------------------------------------- */
 .hq-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--fg-faint); padding-top: 4px; }
 
+/* Rendered OUTSIDE the .hq subtree — it is an early return, before the board's own wrapper exists.
+   So it cannot inherit the board's tokens: every colour here is written literally. It was
+   `color: var(--fg-dim)` with no fallback, an undefined variable on a near-black ground, which is
+   how a refusal ends up invisible. */
 .hq-gate {
   min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 16px; padding: 24px; text-align: center;
-  color: var(--fg-dim); font-family: 'Manrope', sans-serif; background: var(--ink, #070B16);
+  color: rgba(238, 242, 249, 0.72); font-family: 'Manrope', sans-serif; background: #070B16;
 }
 .hq-gate p { margin: 0; max-width: 34ch; line-height: 1.5; }
-.hq-gate b { color: var(--fg, #EEF2F9); }
+.hq-gate b { color: #EEF2F9; }
 /* A refusal a person can act on. Without it the board told an operator inside a company session that
    they were not allowed on their own board, and left them there. */
 .hq-gate-btn {
   padding: 11px 20px; border-radius: 12px; cursor: pointer;
   background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16);
-  color: var(--fg, #EEF2F9); font: inherit; font-size: 13.5px; font-weight: 800;
+  color: #EEF2F9; font: inherit; font-size: 13.5px; font-weight: 800;
   transition: background .18s ease, transform .18s ease;
 }
 .hq-gate-btn:hover { background: rgba(255, 255, 255, 0.16); transform: translateY(-1px); }
@@ -330,7 +336,10 @@
 
 .hq-drawer {
   position: relative; width: 100%; max-width: 480px;
-  height: 100vh; height: 100dvh;
+  /* max-, not fixed: on a viewport shorter than the chrome above the scroll area, a fixed 100dvh
+     with overflow:hidden clipped the KPI grid and left the body at zero height — the branch list and
+     the feed rendered but could not be reached at all. */
+  max-height: 100vh; max-height: 100dvh; height: 100dvh;
   background: rgba(14, 21, 38, 0.96);
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
   border-left: 1px solid var(--line);
@@ -347,6 +356,11 @@
 }
 
 .hq-drawer-bar { height: 4px; width: 100%; flex-shrink: 0; }
+/* The body is the only part that MUST survive a short viewport, so it keeps a floor and everything
+   above it is allowed to give way. `min-height: 0` is what lets a flex item shrink past its content
+   at all — without it the four blocks above hold a ~354px hard floor and push the body to nothing. */
+.hq-drawer-head, .hq-drawer-action, .hq-drawer-kpi { flex-shrink: 1; min-height: 0; }
+.hq-drawer-body { min-height: 120px; }
 .hq-drawer-head {
   padding: 20px 22px 16px; display: flex; align-items: flex-start; justify-content: space-between;
   gap: 16px; border-bottom: 1px solid var(--line);
@@ -393,6 +407,7 @@
 }
 .hq-drawer-body::-webkit-scrollbar { width: 6px; }
 .hq-drawer-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .16); border-radius: 999px; }
+.hq-drawer-sec { min-width: 0; }
 .hq-drawer-sec-title {
   font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
   color: var(--fg-dim); margin-bottom: 12px;
