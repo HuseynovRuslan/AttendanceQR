@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { voidFraudRecord } from '../api/attendance'
 import { IconX } from './icons'
 import { FaceFlagBadge } from './FaceFlagBadge'
 import { fmtTime } from '../lib/format'
@@ -15,6 +16,13 @@ interface PhotoCompareModalProps {
   /** Face-audit verdict for this check-in (optional). */
   faceMatchStatus?: string
   faceMatchScore?: number | null
+  /** The record behind these photographs. Present → the modal can act on it; absent → read-only. */
+  recordId?: string | null
+  /** Whether the viewer may take a disciplinary action here. Admin-only, decided by the caller —
+   *  a manager can already see the photos and must not be able to void a day from them. */
+  canAct?: boolean
+  /** Called after a successful void so the caller can refresh the board behind. */
+  onActed?: () => void
   onClose: () => void
 }
 
@@ -23,7 +31,45 @@ interface PhotoCompareModalProps {
  * check-in selfie (right). A manager compares them by eye — no automatic face matching. Shared by
  * the Today board and the employee profile — the two places a face-flagged row can be opened from.
  */
-export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTakenAtUtc, faceMatchStatus, faceMatchScore, onClose }: PhotoCompareModalProps) {
+export function PhotoCompareModal({
+  title, referenceUrl, checkInUrl, checkInTakenAtUtc, faceMatchStatus, faceMatchScore,
+  recordId, canAct = false, onActed, onClose,
+}: PhotoCompareModalProps) {
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  /**
+   * Void this scan as fraudulent.
+   *
+   * It does NOT delete: the row and this photograph stay, because this photograph is the entire
+   * evidence for an accusation against a named person, and destroying it while making the accusation
+   * leaves nothing to stand behind. The day reads Qayıb because every computation skips a voided
+   * record, and an admin who got the face wrong can undo it.
+   */
+  async function act(revokeDevice: boolean) {
+    if (!recordId) return
+    const question = revokeDevice
+      ? 'Bu giriş ləğv edilsin (Qayıb yazılsın), işçiyə bildiriş getsin VƏ cihaz bağlaması silinsin?\n\n' +
+        'Diqqət: ortaq briqada telefonunda bu, həmin telefondan istifadə edən BÜTÜN işçiləri çıxarır.'
+      : 'Bu giriş ləğv edilsin (Qayıb yazılsın) və işçiyə bildiriş getsin?\n\n' +
+        'Şəkil silinmir — sübut olaraq qalır, və qərar geri qaytarıla bilər.'
+    if (!window.confirm(question)) return
+
+    setBusy(true)
+    setFailed(false)
+    const { status, data } = await voidFraudRecord(recordId, { revokeDevice })
+    setBusy(false)
+    if (status === 200 && data && 'voided' in data) {
+      setDone(revokeDevice
+        ? `Giriş ləğv edildi · ${data.devicesRevoked} cihaz bağlaması silindi`
+        : 'Giriş ləğv edildi — həmin gün Qayıb sayılır')
+      onActed?.()
+      return
+    }
+    setFailed(true)
+  }
+
   // Close on Escape.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -87,6 +133,34 @@ export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTake
             alt="Giriş şəkli"
           />
         </div>
+
+        {/* The action panel appears only when the viewer may act AND there is a record to act on.
+            Shown for ANY check-in, not just a flagged one: the face audit misses as often as it
+            catches — a photograph of a screen can score a clean match — and the person looking at
+            the two pictures is the one who can actually tell. */}
+        {canAct && recordId && (
+          <div className="photo-audit-actions">
+            {done ? (
+              <div className="photo-audit-done">✓ {done}</div>
+            ) : (
+              <>
+                <div className="photo-audit-lead">
+                  Şəkil bu işçi deyilsə, girişi ləğv edin. <b>Şəkil silinmir</b> — sübut olaraq qalır
+                  və qərar geri qaytarıla bilər.
+                </div>
+                <div className="photo-audit-row">
+                  <button type="button" className="btn-fraud" disabled={busy} onClick={() => void act(false)}>
+                    {busy ? '…' : 'Girişi ləğv et (Qayıb yaz)'}
+                  </button>
+                  <button type="button" className="btn-fraud-device" disabled={busy} onClick={() => void act(true)}>
+                    Cihazı da sil
+                  </button>
+                </div>
+                {failed && <div className="photo-audit-fail">Alınmadı — yenidən cəhd edin.</div>}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -314,3 +314,28 @@ export function adminDeleteRecord(recordId: string) {
     method: 'DELETE',
   })
 }
+
+/**
+ * «Saxta giriş» — void one scan whose selfie is not the person.
+ *
+ * It VOIDS rather than deletes: the record and its photograph stay, because that photograph is the
+ * whole evidence for the action, and the day computes as Qayıb because everything that reads a day
+ * skips a voided record. Reversible with `unvoidRecord`.
+ */
+export function voidFraudRecord(
+  recordId: string,
+  opts: { reason?: string; revokeDevice?: boolean; notifyEmployee?: boolean } = {},
+) {
+  return apiRequest<{ voided: string; devicesRevoked: number; notified: number }>(
+    `/api/admin/attendance/${recordId}/void-fraud`,
+    { method: 'POST', body: {
+      reason: opts.reason ?? null,
+      revokeDevice: opts.revokeDevice ?? false,
+      notifyEmployee: opts.notifyEmployee ?? true,
+    } },
+  )
+}
+
+export function unvoidRecord(recordId: string) {
+  return apiRequest<{ unvoided: string }>(`/api/admin/attendance/${recordId}/unvoid`, { method: 'POST' })
+}

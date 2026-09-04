@@ -52,6 +52,28 @@ public class AttendanceRecord : ITenantScoped
 
     public DateTime? CheckInPhotoTakenAtUtc { get; set; }
 
+    /// <summary>
+    /// The scan happened and is not to be counted — an admin looked at the selfie and judged it fake.
+    ///
+    /// VOIDED, NOT DELETED, and the difference is the whole point. Deleting takes the photograph with
+    /// it (see AdminAttendanceController.Delete), and the photograph IS the evidence: a disciplinary
+    /// action whose proof has been erased is one nobody can stand behind a week later, least of all
+    /// if the employee disputes it. The row stays, the selfie stays, and the day computes as Qayıb
+    /// because everything that reads a day skips a voided record.
+    ///
+    /// Reversible for the same reason. An admin can be wrong about a face, and un-voiding restores
+    /// the day exactly — which nothing could do after a delete.
+    /// </summary>
+    public DateTime? VoidedAtUtc { get; set; }
+
+    /// <summary>Who voided it. Never the employee — this is an admin action, and the audit line is
+    /// the only thing that says whose judgement it was.</summary>
+    public Guid? VoidedByEmployeeId { get; set; }
+
+    /// <summary>Why, in the admin's words or the default reason. Shown to nobody automatically; it
+    /// exists for the conversation that follows.</summary>
+    public string? VoidReason { get; set; }
+
     // Face audit (AWS Rekognition): similarity of the check-in selfie vs the employee's reference
     // (0–100, null if not compared) and the resulting advisory status. Never affects the check-in
     // itself — only surfaces suspicious records for a manager to review.

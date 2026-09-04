@@ -56,7 +56,12 @@ public sealed class DailySummaryService : IDailySummaryService
             .Where(l => locationIds.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id, ct);
 
+        // A voided record is not a day. It stays in the table with its selfie — that photograph is
+        // the evidence behind the disciplinary action — but every computation of what a day WAS has
+        // to skip it, or the fraudulent scan keeps paying for itself. Filtered at the load, in both
+        // the nightly path and the live one, so the stored summary and today's board agree.
         var records = await _db.AttendanceRecords
+            .Where(r => r.VoidedAtUtc == null)
             .Where(r => r.AttendanceDate == date)
             .ToDictionaryAsync(r => r.EmployeeId, ct);
 

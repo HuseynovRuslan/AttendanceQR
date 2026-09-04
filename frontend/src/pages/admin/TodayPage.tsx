@@ -100,7 +100,7 @@ export function TodayPage() {
   const [flaggedOnly, setFlaggedOnly] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
-  const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
+  const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse; recordId: string | null } | null>(null)
   // A caller can deep-link a pre-applied status filter, e.g. the dashboard's "Bu gün gəlməyib" →
   // /admin/today?status=absent. Read once at mount.
   const [searchParams] = useSearchParams()
@@ -131,7 +131,7 @@ export function TodayPage() {
       setPhotoError('Şəkil yüklənmədi')
       return
     }
-    setModal({ title: row.employeeName, photo: data })
+    setModal({ title: row.employeeName, photo: data, recordId: row.recordId ?? null })
   }
 
   // Assign a reason to an absent employee straight from this board: a single-day leave for the date
@@ -639,6 +639,11 @@ export function TodayPage() {
           checkInTakenAtUtc={modal.photo.checkInPhotoTakenAtUtc}
           faceMatchStatus={modal.photo.faceMatchStatus}
           faceMatchScore={modal.photo.faceMatchScore}
+          recordId={modal.recordId}
+          // Same gate as opening the photo at all: Admin only. A manager compares faces and reports;
+          // ending a paid day is not theirs.
+          canAct={mayViewPhotos}
+          onActed={() => void load()}
           onClose={() => setModal(null)}
         />
       )}

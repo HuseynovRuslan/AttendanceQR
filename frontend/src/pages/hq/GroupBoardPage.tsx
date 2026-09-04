@@ -164,6 +164,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   /** The feed row being looked at — whose day, and in whose company's colour. */
   const [person, setPerson] = useState<{ id: string; accent: string } | null>(null)
   const [photo, setPhoto] = useState<HqPhoto | null>(null)
+  const [photoRecordId, setPhotoRecordId] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState<string | null>(null)
 
   /** Open the selfie behind one check-in. The URL is minted per press and expires — the object in
@@ -172,7 +173,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
     setPhotoBusy(recordId)
     const { status, data } = await getHqPhoto(recordId)
     setPhotoBusy(null)
-    if (status === 200 && data && 'title' in data) setPhoto(data)
+    if (status === 200 && data && 'title' in data) { setPhoto(data); setPhotoRecordId(recordId) }
   }
   const newestRef = useRef<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -627,7 +628,13 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
           checkInTakenAtUtc={photo.checkInTakenAtUtc}
           faceMatchStatus={photo.faceMatchStatus}
           faceMatchScore={photo.faceMatchScore}
-          onClose={() => setPhoto(null)}
+          recordId={photoRecordId}
+          // Deliberately NOT actionable from the group board. The void endpoint is a tenant-scoped
+          // admin action (LocationScopeRules), and the operator holds an operator token here — the
+          // server would refuse it, so an enabled button would be a lie. From this board the way to
+          // act is the company's own panel, which is one press away on its card.
+          canAct={false}
+          onClose={() => { setPhoto(null); setPhotoRecordId(null) }}
         />
       )}
       {person && (

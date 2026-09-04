@@ -232,6 +232,167 @@ public class AdminAttendanceController : ControllerBase
     }
 
     /// <summary>
+    /// «Saxta giriş» — the selfie is not this person, so the scan does not count.
+    ///
+    /// Someone photographed a face off a monitor and the face audit scored it 1%. The admin opens the
+    /// two photographs side by side, sees it, and needs one action that makes the day honest again.
+    ///
+    /// VOIDS, IT DOES NOT DELETE — the difference matters more here than anywhere else in this
+    /// controller. Delete beside it removes the row AND the selfie; here that selfie is the ENTIRE
+    /// evidence for a disciplinary action against a named person, and destroying it in the act of
+    /// taking the action leaves nothing to stand behind if they dispute it. The row stays, the
+    /// photograph stays, and the day reads Qayıb because every computation skips a voided record.
+    ///
+    /// Reversible for the same reason: an admin can be wrong about a face, and un-voiding restores
+    /// the day exactly. Nothing could do that after a delete.
+    ///
+    /// The warning to the employee is sent LAST and its failure is not fatal: the record of what
+    /// happened must not depend on whether a phone had a live push subscription.
+    /// </summary>
+    [HttpPost("{recordId:guid}/void-fraud")]
+    public async Task<IActionResult> VoidFraud(
+        Guid recordId,
+        [FromBody] VoidFraudRequest request,
+        [FromServices] IPushNotifier pushNotifier)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+
+        // Same boundary as every other write here: a manager reaches only their own branches' plain
+        // employees. This one docks a day's pay and sends an accusation, so the check runs first.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
+        if (record.VoidedAtUtc is not null)
+            return Conflict(new { error = "AlreadyVoided" });
+
+        var requesterId = User.EmployeeId();
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId, ct);
+        if (employee is null)
+            return NotFound(new { error = "EmployeeNotFound" });
+
+        record.VoidedAtUtc = DateTime.UtcNow;
+        record.VoidedByEmployeeId = requesterId;
+        record.VoidReason = string.IsNullOrWhiteSpace(request.Reason)
+            ? "Giriş şəkli saxtadır (üz yoxlaması uyğunsuzluğu)"
+            : request.Reason.Trim();
+
+        // Spelled out, because the row itself will read as an ordinary voided record a month from now
+        // and this line is what says who decided, when, on what evidence, and with what score.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = record.EmployeeId,
+            EventType = AuditEventType.RecordEditedByAdmin,
+            Reason = $"Voided as fraud by {requesterId}: {record.AttendanceDate:yyyy-MM-dd} "
+                   + $"{record.CheckInAtUtc:HH:mm} UTC, face {record.FaceMatchStatus}"
+                   + (record.FaceMatchScore is int sc ? $" {sc}%" : "")
+                   + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}")
+                   + $" — {record.VoidReason}",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+
+        // Killing the device is a SEPARATE decision from voiding the day, and the caller makes it.
+        // On a shared brigade phone it would lock out everyone who rides on that handset, so it is
+        // never implied by the void itself.
+        var revoked = 0;
+        if (request.RevokeDevice)
+        {
+            var devices = await _db.DeviceBindings
+                .Where(d => d.EmployeeId == employee.Id && d.IsActive)
+                .ToListAsync(ct);
+            foreach (var d in devices)
+            {
+                d.IsActive = false;
+                d.RevokedAtUtc = DateTime.UtcNow;
+            }
+            revoked = devices.Count;
+            if (revoked > 0)
+            {
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    EmployeeId = employee.Id,
+                    EventType = AuditEventType.DeviceBindingRevoked,
+                    Reason = $"Photo fraud, {revoked} device(s), by {requesterId}",
+                    IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        // The day has to be re-judged without the voided scan, or the summary keeps its hours and the
+        // board disagrees with the records it is built from. Today is deliberately refused by the
+        // summary job (today is computed live everywhere), so this is a no-op for a same-day void —
+        // which is correct: the live path already skips voided records.
+        await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
+
+        // Last, and best-effort. A phone with no live subscription must not make the void fail.
+        var reached = 0;
+        if (request.NotifyEmployee)
+        {
+            try
+            {
+                reached = await pushNotifier.NotifyEmployeesAsync(
+                    new[] { employee.Id },
+                    "⚠️ Giriş ləğv edildi",
+                    $"{record.AttendanceDate:dd.MM.yyyy} tarixli girişiniz ləğv edildi: giriş şəkli "
+                    + "yoxlamadan keçmədi. Sualınız varsa rəhbərinizlə danışın.",
+                    "/menu", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Fraud void {RecordId}: warning push failed", recordId);
+            }
+        }
+
+        return Ok(new
+        {
+            voided = recordId,
+            employeeId = employee.Id,
+            date = record.AttendanceDate,
+            devicesRevoked = revoked,
+            notified = reached,
+        });
+    }
+
+    /// <summary>Undo of the above. It exists because the judgement being undone is a judgement about
+    /// a photograph of a face, and people get those wrong.</summary>
+    [HttpPost("{recordId:guid}/unvoid")]
+    public async Task<IActionResult> Unvoid(Guid recordId)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+        if (record.VoidedAtUtc is null)
+            return Conflict(new { error = "NotVoided" });
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = record.EmployeeId,
+            EventType = AuditEventType.RecordEditedByAdmin,
+            Reason = $"Void reversed by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd}",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+
+        record.VoidedAtUtc = null;
+        record.VoidedByEmployeeId = null;
+        record.VoidReason = null;
+        await _db.SaveChangesAsync(ct);
+        await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
+
+        return Ok(new { unvoided = recordId, date = record.AttendanceDate });
+    }
+
+    /// <summary>
     /// Removes a record entirely. Not "zero it out" — remove it.
     ///
     /// Needed for a shape the edit beside it cannot fix: a PHANTOM day. Somebody on a night shift that
