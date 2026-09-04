@@ -17,7 +17,7 @@ public partial class SuperAdminController
     [HttpGet("billing")]
     public async Task<IActionResult> Billing([FromQuery] int? year, [FromQuery] int? month)
     {
-        if (!IsSuperAdmin)
+        if (!await CanAsync(OperatorPermission.ViewBusiness, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
 
         var ct = HttpContext.RequestAborted;

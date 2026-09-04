@@ -27,11 +27,14 @@ const LINKS: NavItem[] = [
   { to: '/', label: 'İcmal', Icon: IconHome, end: true },
   { to: '/tenants', label: 'Şirkətlər', Icon: IconClipboard, end: false },
   { to: '/health', label: 'Sağlamlıq', Icon: IconClock, end: false },
-  { to: '/billing', label: 'Ödənişlər', Icon: IconDownload, end: false },
-  { to: '/announcements', label: 'Qlobal elan', Icon: IconBell, end: false },
+  // Business sections — hidden from «Qrup rəhbəri», who is the CUSTOMER's group head and has no
+  // business seeing our plans, prices, invoices or the operator trail. The server gates these on
+  // the same permission; this only stops him being shown a door that answers 403.
+  { to: '/billing', label: 'Ödənişlər', Icon: IconDownload, end: false, perm: 'ViewBusiness' },
+  { to: '/announcements', label: 'Qlobal elan', Icon: IconBell, end: false, perm: 'Announce' },
   { to: '/users', label: 'İstifadəçilər', Icon: IconUsers, end: false },
   { to: '/team', label: 'Komanda', Icon: IconCheck, end: false, perm: 'ManageTeam' },
-  { to: '/audit', label: 'Audit', Icon: IconChart, end: false },
+  { to: '/audit', label: 'Audit', Icon: IconChart, end: false, perm: 'ViewBusiness' },
 ]
 
 const TITLES: Record<string, string> = {

@@ -5,12 +5,14 @@ const ROLE_LABEL: Record<string, string> = {
   Full: 'Tam səlahiyyət',
   Support: 'Dəstək',
   Billing: 'Faktura',
+  GroupHead: 'Qrup rəhbəri',
 }
 
 const ROLE_HELP: Record<string, string> = {
   Full: 'Hər şey — şirkət yaratmaq/söndürmək, plan/qiymət, faktura, istifadəçilər, impersonation, elan, komanda',
   Support: 'Oxumaq + istifadəçi köməyi (PIN sıfırla / aktiv et / sessiya) + impersonation. Şirkət/plan/faktura/elan YOX',
   Billing: 'Oxumaq + ödəniş qeyd etmək. Başqa heç nə',
+  GroupHead: 'Müştəri qrupunun rəhbəri: bütün şirkətlərin davamiyyətini görür. Plan/qiymət/faktura, audit, komanda, impersonation və istənilən dəyişiklik YOX',
 }
 
 const ERRORS: Record<string, string> = {

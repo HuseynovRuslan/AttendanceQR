@@ -23,6 +23,17 @@ public enum OperatorPermission
 
     /// <summary>Set other operators' roles.</summary>
     ManageTeam,
+
+    /// <summary>
+    /// READ the platform's own commercial data: plans, prices, invoices, the operator team, the
+    /// operator audit log.
+    ///
+    /// The only READ permission here, and it exists for one reason: every other read on /api/super is
+    /// open to any operator, which was correct while every operator worked for the platform. GroupHead
+    /// does not — they are the customer — so the business side needs a gate of its own. Attendance
+    /// reads (the HQ board, tenant dashboards, staff) stay open: that is their own data.
+    /// </summary>
+    ViewBusiness,
 }
 
 /// <summary>The single place that maps an operator role to its powers. One switch, so a new endpoint's
@@ -32,8 +43,10 @@ public static class OperatorAccess
     public static bool Allows(OperatorRoleType role, OperatorPermission perm) => role switch
     {
         OperatorRoleType.Full => true,
-        OperatorRoleType.Support => perm is OperatorPermission.ManageUsers or OperatorPermission.Impersonate,
-        OperatorRoleType.Billing => perm is OperatorPermission.Billing,
+        OperatorRoleType.Support => perm is OperatorPermission.ManageUsers or OperatorPermission.Impersonate
+                                        or OperatorPermission.ViewBusiness,
+        OperatorRoleType.Billing => perm is OperatorPermission.Billing or OperatorPermission.ViewBusiness,
+        // GroupHead: no mutation at all, and NOT ViewBusiness — the customer's own attendance only.
         _ => false,
     };
 

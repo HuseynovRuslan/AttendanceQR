@@ -1,3 +1,4 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Security;
@@ -16,7 +17,7 @@ public partial class SuperAdminController
     [HttpGet("audit")]
     public async Task<IActionResult> Audit([FromQuery] int take = 100, [FromQuery] Guid? tenantId = null)
     {
-        if (!IsSuperAdmin)
+        if (!await CanAsync(OperatorPermission.ViewBusiness, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
 
         var ct = HttpContext.RequestAborted;

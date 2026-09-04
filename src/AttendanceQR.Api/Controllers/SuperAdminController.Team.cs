@@ -15,7 +15,7 @@ public partial class SuperAdminController
     [HttpGet("team")]
     public async Task<IActionResult> Team()
     {
-        if (!IsSuperAdmin)
+        if (!await CanAsync(OperatorPermission.ViewBusiness, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
 
         var ct = HttpContext.RequestAborted;

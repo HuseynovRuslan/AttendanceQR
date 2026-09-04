@@ -14,6 +14,19 @@ public enum OperatorRoleType
 
     /// <summary>Read everything + record payments. Nothing else.</summary>
     Billing = 2,
+
+    /// <summary>
+    /// «Qrup rəhbəri» — the head of the CUSTOMER's group of companies, not an operator of this
+    /// platform. Sees every company's attendance on one screen (the HQ board is the thing they ask
+    /// for) and nothing else: no impersonation, no user management, no tenant changes, and — unlike
+    /// every other role — no sight of the platform's own commercial data (plans, prices, invoices,
+    /// the operator team, the operator audit log).
+    ///
+    /// It exists because the only cross-company view lived inside the OPERATOR console, so the only
+    /// way to answer "I want to see all my companies" was to hand a customer the keys to the
+    /// business: what each company pays, and the ability to act as anyone in any of them.
+    /// </summary>
+    GroupHead = 3,
 }
 
 /// <summary>
