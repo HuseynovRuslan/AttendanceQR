@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { Circle, CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { basemap } from '../../lib/basemap'
 import 'leaflet/dist/leaflet.css'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
@@ -54,12 +54,14 @@ function metresBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
  * four lines, and a street address would have been a worse answer anyway.
  */
 function nearestSite(sites: AdminLocation[], lat: number, lng: number) {
-  let best: { name: string; metres: number; inside: boolean } | null = null
+  // The SITE itself, not just its name: the map needs its coordinates and radius to draw it, and
+  // looking it back up by name would break the day two branches share one.
+  let best: { site: AdminLocation; name: string; metres: number; inside: boolean } | null = null
   for (const site of sites) {
     if (!Number.isFinite(site.latitude) || !Number.isFinite(site.longitude)) continue
     const metres = metresBetween(lat, lng, site.latitude, site.longitude)
     if (!best || metres < best.metres)
-      best = { name: site.name, metres, inside: metres <= site.radiusMeters }
+      best = { site, name: site.name, metres, inside: metres <= site.radiusMeters }
   }
   return best
 }
@@ -187,36 +189,91 @@ function FitPts({ pts }: { pts: [number, number][] }) {
   return null
 }
 
-function VisitMap({ v }: { v: BoardFieldVisit }) {
+/**
+ * Where the visit happened, with the company's own site on the same map.
+ *
+ * It drew the worker's dot alone. On a stretch of road with no name on the basemap that answers
+ * nothing — the panel underneath said «Qala Anbar ərazisindədir» while the map showed a green dot in
+ * a grid of streets, and the reader had to take the sentence on trust. Now the branch is drawn too,
+ * with its geofence and a line to the arrival, so the claim and its evidence are the same picture.
+ */
+function VisitMap({ v, sites = [] }: { v: BoardFieldVisit; sites?: AdminLocation[] }) {
   const marks: { at: [number, number]; label: string; color: string; always?: boolean }[] = []
+  const pts: [number, number][] = []
+
   // The place's own name on the pin rather than the word "Hədəf". Whoever opens this map is asking
-  // WHERE, and a blue dot labelled "target" answers nothing — least of all on a stretch of road that
-  // has no name on the basemap, which is exactly where these visits happen.
-  if (v.targetLatitude != null)
+  // WHERE, and a blue dot labelled "target" answers nothing.
+  if (v.targetLatitude != null) {
+    const at: [number, number] = [v.targetLatitude, v.targetLongitude!]
+    marks.push({ at, label: `🎯 ${v.targetLabel?.trim() || 'Hədəf'}`, color: '#1E70C8', always: true })
+    pts.push(at)
+  }
+  if (v.checkInLatitude != null) {
+    const at: [number, number] = [v.checkInLatitude, v.checkInLongitude!]
     marks.push({
-      at: [v.targetLatitude, v.targetLongitude!],
-      label: v.targetLabel?.trim() || 'Hədəf',
-      color: '#1E70C8',
+      at,
+      label: `📍 Giriş${v.checkInAtUtc ? ` · ${fmtTime(v.checkInAtUtc)}` : ''}`,
+      color: '#16a34a',
       always: true,
     })
-  if (v.checkInLatitude != null) marks.push({ at: [v.checkInLatitude, v.checkInLongitude!], label: 'Giriş', color: '#16a34a' })
-  if (v.checkOutLatitude != null) marks.push({ at: [v.checkOutLatitude, v.checkOutLongitude!], label: 'Çıxış', color: '#d97706' })
-  const centre: [number, number] = marks.length ? marks[0].at : BAKU
+    pts.push(at)
+  }
+  if (v.checkOutLatitude != null) {
+    const at: [number, number] = [v.checkOutLatitude, v.checkOutLongitude!]
+    // Hover only: on a visit that started and ended in the same yard this label lands on top of the
+    // arrival's, and two overlapping bubbles are less readable than one.
+    marks.push({ at, label: `🚪 Çıxış${v.checkOutAtUtc ? ` · ${fmtTime(v.checkOutAtUtc)}` : ''}`, color: '#d97706' })
+    pts.push(at)
+  }
+
+  // The company's own site, when one is close enough to be the place they meant. Beyond three
+  // kilometres it is not context, it is a second map in the corner of this one.
+  const near = v.checkInLatitude != null && v.checkInLongitude != null
+    ? nearestSite(sites, v.checkInLatitude, v.checkInLongitude)
+    : null
+  const branch = near && near.metres <= 3000 ? near.site : null
+  if (branch) pts.push([branch.latitude, branch.longitude])
+
+  const centre: [number, number] = pts.length ? pts[0] : BAKU
+
   return (
-    <div style={{ height: 300, width: '100%', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--c100)' }}>
+    <div style={{ height: 310, width: '100%', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--c100)' }}>
       <MapContainer center={centre} zoom={15} scrollWheelZoom style={{ height: '100%', width: '100%' }} attributionControl={false}>
         <TileLayer url={BASE.url} attribution={BASE.attribution}
                    subdomains={BASE.subdomains} maxZoom={BASE.maxZoom} />
-        <FitPts pts={marks.map((m) => m.at)} />
+        <FitPts pts={pts} />
+
         {v.targetLatitude != null && v.targetRadiusMeters != null && (
           <Circle center={[v.targetLatitude, v.targetLongitude!]} radius={v.targetRadiusMeters}
             pathOptions={{ color: '#1E70C8', fillColor: '#1E70C8', fillOpacity: 0.08, weight: 1.5 }} />
         )}
+
+        {branch && (
+          <>
+            <Circle
+              center={[branch.latitude, branch.longitude]}
+              radius={branch.radiusMeters}
+              pathOptions={{ color: '#64748B', fillColor: '#64748B', fillOpacity: 0.06, opacity: 0.5, weight: 1.2, dashArray: '4 5' }}
+            />
+            <CircleMarker
+              center={[branch.latitude, branch.longitude]}
+              radius={7}
+              pathOptions={{ color: '#475569', weight: 2, fillColor: '#94A3B8', fillOpacity: 0.9 }}
+            >
+              <Tooltip direction="bottom" permanent offset={[0, 8]}>🏢 {branch.name}</Tooltip>
+            </CircleMarker>
+            {v.checkInLatitude != null && (
+              <Polyline
+                positions={[[branch.latitude, branch.longitude], [v.checkInLatitude, v.checkInLongitude!]]}
+                pathOptions={{ color: '#0284c7', weight: 1.8, opacity: 0.55, dashArray: '4 6' }}
+              />
+            )}
+          </>
+        )}
+
         {marks.map((m, i) => (
-          <CircleMarker key={i} center={m.at} radius={8} pathOptions={{ color: '#fff', weight: 2, fillColor: m.color, fillOpacity: 0.95 }}>
-            {/* The place name stays on screen; arrival and departure appear on hover, so three
-                labels do not sit on top of each other at the same corner. */}
-            <Tooltip direction="top" permanent={m.always}>{m.label}</Tooltip>
+          <CircleMarker key={i} center={m.at} radius={8} pathOptions={{ color: '#fff', weight: 2.5, fillColor: m.color, fillOpacity: 0.95 }}>
+            <Tooltip direction="top" permanent={m.always} offset={[0, -8]}>{m.label}</Tooltip>
           </CircleMarker>
         ))}
       </MapContainer>
@@ -978,6 +1035,25 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
 }) {
   const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
   const far = isFarFromTarget(v)
+  const open = v.status === 'CheckedIn'
+
+  // Its own minute, because this panel is left open while somebody reads it and a counter that only
+  // moves on reopening is a counter nobody believes.
+  const [tick, setTick] = useState(() => Date.now())
+  useEffect(() => {
+    if (!open) return
+    const t = setInterval(() => setTick(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [open])
+
+  const mins = v.checkInAtUtc
+    ? Math.max(0, Math.floor(
+        ((v.checkOutAtUtc ? new Date(v.checkOutAtUtc).getTime() : tick) - new Date(v.checkInAtUtc).getTime()) / 60000))
+    : null
+  const nearHere = v.checkInLatitude != null && v.checkInLongitude != null
+    ? nearestSite(sites, v.checkInLatitude, v.checkInLongitude)
+    : null
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 }}>
       <div className="card card-pad" onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px,94vw)', maxHeight: '92vh', overflowY: 'auto' }}>
@@ -990,13 +1066,48 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
           <span className="badge" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
         </div>
 
+        {/* The two-second read. «Müddət» sat at the bottom of a timeline saying «—» while somebody
+            had been on site since 06:58; the one number a director wants was the one number missing. */}
+        {v.checkInAtUtc && (
+          <div style={{
+            background: open ? '#F0FDF4' : '#F8FAFC',
+            border: `1px solid ${open ? '#BBF7D0' : '#E2E8F0'}`,
+            borderRadius: 12, padding: '11px 13px', marginBottom: 14,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999,
+                background: open ? '#DCFCE7' : '#E2E8F0', color: open ? '#15803D' : '#475569',
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
+                {open ? 'HAZIRDA ƏRAZİDƏDİR' : 'ZİYARƏT BİTİB'}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: open ? '#B45309' : '#64748B' }}>
+                ⏱ {fmtTime(v.checkInAtUtc)}
+                {v.checkOutAtUtc ? ` → ${fmtTime(v.checkOutAtUtc)}` : '-dən bəri'}
+                {mins != null ? ` · ${fmtMins(mins)}` : ''}
+              </span>
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--c900)' }}>
+              📍 {targetText(v, sites).text}
+            </div>
+            {nearHere && (
+              <div style={{ fontSize: 12.5, color: 'var(--c600)', marginTop: 3 }}>
+                🏢 Şirkət obyekti: <b>{nearHere.name}</b>{' '}
+                {nearHere.inside ? '— ərazisindədir' : `— ${fmtDist(nearHere.metres)} aralıda`}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* «İş sübutu» sits ABOVE the map on purpose: the customer's question is "was the job done?",
             and presence (map, distance, timeline) is one screen further down. */}
         <WorkEvidence v={v} checklist={checklist} workPhoto={workPhoto} onOpenPhoto={onOpenPhoto} />
 
         {(v.targetLatitude != null || v.checkInLatitude != null) && (
           <>
-            <VisitMap v={v} />
+            <VisitMap v={v} sites={sites} />
             <div style={{ display: 'flex', gap: 14, margin: '8px 0 12px', fontSize: 12, flexWrap: 'wrap' }}>
               {v.targetLatitude != null && <span><span style={{ color: '#1E70C8' }}>●</span> Hədəf</span>}
               {v.checkInLatitude != null && <span><span style={{ color: '#16a34a' }}>●</span> Giriş</span>}
@@ -1012,7 +1123,19 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
               : `✅ Giriş hədəf ərazisində (${fmtDist(v.checkInDistanceMeters)})`}
           </div>
         ) : v.checkInAtUtc ? (
-          <div className="fb fb-info" style={{ marginBottom: 12 }}>Hədəf təyin edilməyib — məsafə yoxlanmayıb.</div>
+          // It read «Hədəf təyin edilməyib — məsafə yoxlanmayıb», in the box the product uses for
+          // problems, and a director took it for an error. Nothing failed: nobody assigned this
+          // visit a target, because the worker filed it themselves, so there is no target to measure
+          // against. That is the ordinary case and the whole point of the feature.
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 12,
+              background: '#F8FAFC', border: '1px solid var(--c100)', borderRadius: 10,
+              fontSize: 12.5, color: 'var(--c600)',
+            }}
+          >
+            🙋 <span><b>Sərbəst sahə qeydiyyatı</b> — işçi özü qeyd edib, təyin olunmuş hədəf yoxdur</span>
+          </div>
         ) : null}
 
         {/* "Which area is this?" — the director's question, answered against his own objects rather
@@ -1053,7 +1176,10 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
           <TimelineRow label="Tapşırılıb" value={v.selfReported ? 'özü qeyd etdi' : (v.assignedByName ?? '—')} />
           <TimelineRow label="Giriş" value={v.checkInAtUtc ? fmtTime(v.checkInAtUtc) : '—'} />
           <TimelineRow label="Çıxış" value={v.checkOutAtUtc ? fmtTime(v.checkOutAtUtc) : (v.status === 'CheckedIn' ? 'davam edir' : '—')} />
-          <TimelineRow label="Müddət" value={v.durationMinutes != null ? `${v.durationMinutes} dəq` : '—'} />
+          <TimelineRow
+            label="Müddət"
+            value={mins != null ? `${fmtMins(mins)}${open ? ' (davam edir)' : ''}` : '—'}
+          />
         </div>
 
         {v.note && <div className="muted" style={{ fontSize: 13, marginBottom: 12, fontStyle: 'italic' }}>Qeyd: {v.note}</div>}
