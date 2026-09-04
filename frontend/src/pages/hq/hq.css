@@ -722,3 +722,27 @@
   background: rgba(255, 255, 255, .08);
   transform: translateX(3px);
 }
+
+
+/* --- trend qrafiki ------------------------------------------------------- */
+.hq-trend { position: relative; width: 100%; }
+.hq-trend-svg { width: 100%; height: auto; display: block; user-select: none; }
+/* Follows the point rather than the pointer: a tooltip that tracks the mouse between two days is a
+   tooltip you cannot read while deciding which day it belongs to. */
+.hq-trend-tip {
+  position: absolute; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; z-index: 5;
+  padding: 8px 12px; border-radius: 10px; white-space: nowrap;
+  background: rgba(14, 21, 38, .96); backdrop-filter: blur(16px);
+  border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.hq-tip-day { font-size: 11px; color: var(--fg-dim); font-weight: 600; }
+.hq-tip-n { font-size: 13px; color: var(--fg); }
+.hq-tip-n b { font-size: 16px; color: #7CB342; font-family: 'IBM Plex Mono', monospace; margin-right: 3px; }
+.hq-tip-sun { font-size: 10px; font-weight: 800; letter-spacing: .05em; color: var(--fg-faint); text-transform: uppercase; }
+
+/* The one capability row worth stopping at, and only while it has something to say. */
+.hq-cap.is-warn { border-color: rgba(245, 158, 11, .35); color: #FBBF24; }
+.hq-cap.is-warn i { background: #F59E0B; }
+.hq-cap b { font-family: 'IBM Plex Mono', monospace; font-weight: 800; color: var(--fg); }
+.hq-cap.is-warn b { color: #FBBF24; }

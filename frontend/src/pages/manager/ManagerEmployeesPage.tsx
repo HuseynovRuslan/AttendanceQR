@@ -62,6 +62,13 @@ export function ManagerEmployeesPage() {
   // A branch can run to two hundred people; scrolling to find one is not a way to work. Matches the
   // same fields the admin roster searches, so the two screens behave alike.
   const [search, setSearch] = useState('')
+  // The branch, alongside the name search.
+  //
+  // A manager with more than one branch had only the name box, so «Görünənlərə ver» meant «give it to
+  // every branch I run» — and the only safe way to grant a permission to one park was to type each
+  // person's name in turn. Eleven people, eleven searches, for a two-click action. The admin roster
+  // has had this filter since it existed.
+  const [filterLoc, setFilterLoc] = useState('')
 
   /** Grant or withdraw a capability across this manager's whole list. The server narrows it to their
    *  branches' plain staff, so a name they may not act on is skipped rather than failing the call —
@@ -157,12 +164,13 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
   }
 
   const q = search.trim().toLowerCase()
-  const visible = q
-    ? rows.filter((r) =>
-        `${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.locationName ?? ''}`
-          .toLowerCase()
-          .includes(q))
-    : rows
+  const visible = rows.filter((r) => {
+    if (filterLoc && r.locationId !== filterLoc) return false
+    if (!q) return true
+    return `${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.locationName ?? ''}`
+      .toLowerCase()
+      .includes(q)
+  })
   // Colleagues are visible and read-only; every bulk action stops at the rows a manager may change.
   const grantable = visible.filter((r) => r.manageable !== false)
 
@@ -232,9 +240,25 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
             placeholder="Ad, nömrə, vəzifə üzrə axtar…"
             style={{ width: 'auto', minWidth: 240, padding: '8px 12px' }}
           />
-          {search && <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>}
+          {/* Only worth showing to somebody who actually runs more than one — for a single-branch
+              manager it is a control with one option and no purpose. */}
+          {locations.length > 1 && (
+            <select
+              className="inp"
+              value={filterLoc}
+              onChange={(e) => setFilterLoc(e.target.value)}
+              style={{ maxWidth: 220 }}
+              aria-label="Filial üzrə süz"
+            >
+              <option value="">Bütün filiallar</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          )}
+          {(search || filterLoc) && (
+            <button className="btn btn-sm" onClick={() => { setSearch(''); setFilterLoc('') }}>Təmizlə</button>
+          )}
           <span className="muted" style={{ fontSize: 13 }}>
-            {q ? `${visible.length} / ${rows.length}` : `${rows.length} işçi`}
+            {q || filterLoc ? `${visible.length} / ${rows.length}` : `${rows.length} işçi`}
           </span>
         </div>
       )}

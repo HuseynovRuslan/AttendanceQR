@@ -87,20 +87,55 @@ function useCountUp(target: number, duration = 900): number {
   return value
 }
 
-/** Fourteen days of group attendance as a filled area. Hand-drawn rather than pulled from a chart
- *  library: this needs two lines of SVG, and a dependency would have to be styled back down to this
- *  anyway. */
+/** Weekday names, index 0 = Sunday, as JS getDay() returns them. */
+const DAY_AZ = ['B', 'B.e', 'Ç.a', 'Ç', 'C.a', 'C', 'Ş']
+const MONTH_AZ = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'İyn', 'İyl', 'Avq', 'Sen', 'Okt', 'Noy', 'Dek']
+
+/**
+ * Read a 'YYYY-MM-DD' as a calendar date, not as an instant.
+ *
+ * `new Date('2026-09-04')` is parsed as UTC midnight and then read back in local time, so west of
+ * Greenwich it is the 3rd. These are company calendar days — the string means the day it spells.
+ */
+function calendarDay(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/**
+ * Fourteen days of group attendance.
+ *
+ * Hand-drawn rather than pulled from a chart library: this needs a few lines of SVG, and a
+ * dependency would have to be styled back down to this anyway.
+ *
+ * It was a bare green line — no scale, no dates, nothing to hover. A director could see that
+ * something dipped and had no way to learn which day or by how much, which makes the dip a worry
+ * rather than a fact. Now it carries a scale on the left, the day under each point, and the number
+ * on hover.
+ *
+ * ONE DELIBERATE DEPARTURE from the obvious: only SUNDAY is shaded, not Saturday.
+ * At these companies Saturday is a working day — the branches' WorkDaysMask is 126, which is
+ * Monday-to-Saturday — so shading it as "weekend" would explain a dip that is not there and hide the
+ * absence of one that is. And the tooltip says «bazar günü», a fact about the calendar, rather than
+ * «istirahət günü», a claim about a roster that varies by branch and by person.
+ */
 function TrendArea({ points }: { points: { date: string; present: number }[] }) {
-  const W = 720
-  const H = 190
-  const PAD = 14
+  const [hover, setHover] = useState<number | null>(null)
+
+  const W = 800
+  const H = 220
+  const PAD_L = 44
+  const PAD_R = 20
+  const PAD_T = 18
+  const PAD_B = 40
 
   if (points.length < 2) return <p style={{ color: 'var(--fg-faint)', fontSize: 13 }}>Məlumat toplanır…</p>
 
   const max = Math.max(1, ...points.map((p) => p.present))
-  const stepX = (W - PAD * 2) / (points.length - 1)
-  const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2.4)
-  const coords = points.map((p, i) => [PAD + i * stepX, y(p.present)] as const)
+  const plotH = H - PAD_T - PAD_B
+  const stepX = (W - PAD_L - PAD_R) / (points.length - 1)
+  const y = (v: number) => PAD_T + plotH - (v / max) * plotH
+  const coords = points.map((p, i) => [PAD_L + i * stepX, y(p.present)] as const)
 
   // Catmull-Rom style smoothing: a straight polyline reads as jagged noise at this size, and a
   // curve makes the shape of the fortnight legible at a glance.
@@ -112,24 +147,109 @@ function TrendArea({ points }: { points: { date: string; present: number }[] }) 
   }, '')
 
   const last = coords[coords.length - 1]
+  const hoveredCoord = hover !== null ? coords[hover] : null
+  const hoveredPoint = hover !== null ? points[hover] : null
+
+  // A scale in round numbers. Without one the line has a shape and no size — «bir az düşüb» is not
+  // something anyone can act on.
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: Math.round(max * f), y: y(max * f) }))
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
-      <defs>
-        <linearGradient id="hq-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#7CB342" stopOpacity="0.42" />
-          <stop offset="100%" stopColor="#7CB342" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[0.25, 0.5, 0.75, 1].map((f) => (
-        <line key={f} x1={PAD} x2={W - PAD} y1={y(max * f)} y2={y(max * f)} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-      ))}
-      <path d={`${line} L ${last[0]} ${H - PAD} L ${PAD} ${H - PAD} Z`} fill="url(#hq-fill)" />
-      <path d={line} fill="none" stroke="#7CB342" strokeWidth={2.5} strokeLinecap="round" />
-      {/* Only today's point is marked — the rest is context, this is where the eye should land. */}
-      <circle cx={last[0]} cy={last[1]} r={5} fill="#7CB342" />
-      <circle cx={last[0]} cy={last[1]} r={10} fill="#7CB342" opacity={0.22} />
-    </svg>
+    <div className="hq-trend" onMouseLeave={() => setHover(null)}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="hq-trend-svg"
+        onMouseMove={(e) => {
+          const box = e.currentTarget.getBoundingClientRect()
+          const x = ((e.clientX - box.left) / box.width) * W - PAD_L
+          const i = Math.round(x / stepX)
+          setHover(i >= 0 && i < points.length ? i : null)
+        }}
+      >
+        <defs>
+          <linearGradient id="hq-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#7CB342" stopOpacity="0.42" />
+            <stop offset="100%" stopColor="#7CB342" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Sundays, so a dip that is simply the rest day is not read as a problem. */}
+        {points.map((p, i) => (
+          calendarDay(p.date).getDay() === 0 ? (
+            <rect
+              key={`s-${p.date}`}
+              x={PAD_L + i * stepX - stepX / 2}
+              y={PAD_T}
+              width={stepX}
+              height={plotH}
+              fill="rgba(255,255,255,0.03)"
+            />
+          ) : null
+        ))}
+
+        {ticks.map((t) => (
+          <g key={t.v}>
+            <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+            <text x={PAD_L - 8} y={t.y + 3.5} textAnchor="end" fill="rgba(238,242,249,0.32)" fontSize={10} className="hq-num">
+              {t.v}
+            </text>
+          </g>
+        ))}
+
+        <path d={`${line} L ${last[0]} ${PAD_T + plotH} L ${coords[0][0]} ${PAD_T + plotH} Z`} fill="url(#hq-fill)" />
+        <path d={line} fill="none" stroke="#7CB342" strokeWidth={2.5} strokeLinecap="round" />
+
+        {/* The day under each point. Every other one on a narrow chart: fourteen labels at this width
+            overlap into a smear, and the shape is what the axis is for. */}
+        {points.map((p, i) => {
+          const d = calendarDay(p.date)
+          const isToday = i === points.length - 1
+          if (!isToday && i % 2 !== 0) return null
+          return (
+            <text
+              key={`x-${p.date}`}
+              x={PAD_L + i * stepX}
+              y={H - 12}
+              textAnchor="middle"
+              fill={isToday ? '#EEF2F9' : 'rgba(238,242,249,0.42)'}
+              fontSize={isToday ? 10.5 : 9.5}
+              fontWeight={isToday ? 800 : 600}
+              className="hq-num"
+            >
+              {isToday ? 'bu gün' : `${d.getDate()} ${DAY_AZ[d.getDay()]}`}
+            </text>
+          )
+        })}
+
+        {/* Only today's point is marked — the rest is context, this is where the eye should land. */}
+        <circle cx={last[0]} cy={last[1]} r={5} fill="#7CB342" />
+        <circle cx={last[0]} cy={last[1]} r={11} fill="#7CB342" opacity={0.22} />
+
+        {hoveredCoord && (
+          <g>
+            <line
+              x1={hoveredCoord[0]} x2={hoveredCoord[0]} y1={PAD_T} y2={PAD_T + plotH}
+              stroke="rgba(255,255,255,0.3)" strokeWidth={1.5} strokeDasharray="4 3"
+            />
+            <circle cx={hoveredCoord[0]} cy={hoveredCoord[1]} r={6} fill="#fff" stroke="#7CB342" strokeWidth={3} />
+          </g>
+        )}
+      </svg>
+
+      {hoveredPoint && hoveredCoord && (
+        <div
+          className="hq-trend-tip"
+          style={{ left: `${(hoveredCoord[0] / W) * 100}%`, top: `${(hoveredCoord[1] / H) * 100}%` }}
+        >
+          <div className="hq-tip-day">
+            {calendarDay(hoveredPoint.date).getDate()} {MONTH_AZ[calendarDay(hoveredPoint.date).getMonth()]}
+            {' · '}{DAY_AZ[calendarDay(hoveredPoint.date).getDay()]}
+          </div>
+          <div className="hq-tip-n"><b>{fmt.format(hoveredPoint.present)}</b> nəfər gəlib</div>
+          {calendarDay(hoveredPoint.date).getDay() === 0 && <div className="hq-tip-sun">bazar günü</div>}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -308,6 +428,13 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   // percentage was right and the reader had no way to know why.
   const observed = totals.employees - totals.notStarted
   const emptySites = data.sites.filter((s) => s.onDuty === 0).length
+  // Faces the audit could not match or could not find, among today's arrivals. Counted per PERSON,
+  // not per row: a check-in and its check-out are two rows about one photograph.
+  const suspectToday = new Set(
+    data.feed
+      .filter((f) => f.kind === 'in' && (f.faceMatchStatus === 'Mismatch' || f.faceMatchStatus === 'NoFace'))
+      .map((f) => f.employeeId),
+  ).size
 
   const hero = totals.onDuty > 0
     ? {
@@ -583,9 +710,27 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
 
         {/* The figures say the system is used; this says what is being used. Without it a director
             sees a chart, not a product. */}
+        {/* What the system DID, not what it has.
+            These were six feature names — «QR ilə giriş», «Üz yoxlaması» — which say nothing a
+            brochure would not. Every one of them now carries a figure from this same payload, so the
+            row states what actually happened rather than what is installed. Nothing here is typed in:
+            a number nobody can trace is worse than no number, and «1 şübhəli» would be a lie by
+            tomorrow morning. */}
         <section className="hq-caps hq-reveal hq-d6">
-          {['QR ilə giriş', 'GPS ərazi nəzarəti', 'Üz yoxlaması', 'Oflayn skan', 'Push bildiriş', 'Maaş hesabatı']
-            .map((cap) => <span className="hq-cap" key={cap}><i />{cap}</span>)}
+          <span className="hq-cap"><i /><b>{fmt.format(totals.totalScans)}</b> giriş qeydə alınıb</span>
+          <span className="hq-cap"><i /><b>{totals.locations}</b> filialda GPS nəzarəti</span>
+          {/* Only when there IS one. A permanent «0 şübhəli» trains the eye to skip the row, and this
+              is the one item on it worth looking at. */}
+          {suspectToday > 0 ? (
+            <span className="hq-cap is-warn">
+              <i />Üz yoxlaması — bu gün <b>{suspectToday}</b> şübhəli
+            </span>
+          ) : (
+            <span className="hq-cap"><i />Üz yoxlaması — bu gün təmiz</span>
+          )}
+          <span className="hq-cap"><i />Oflayn skan aktivdir</span>
+          <span className="hq-cap"><i /><b>{fmt.format(totals.employees - totals.notStarted)}</b> işçi sistemi işlədir</span>
+          <span className="hq-cap"><i />Avtomatik tabel</span>
         </section>
 
         <footer className="hq-foot">
