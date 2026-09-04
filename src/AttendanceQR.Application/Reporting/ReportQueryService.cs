@@ -692,6 +692,37 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(l => (LeaveType?)l.Type)
             .FirstOrDefault();
 
+        // Was this person scheduled to work on this date at all?
+        //
+        // AttendanceCalculator.IsScheduledWorkingDay is the ONE place that decides it — a rotation
+        // (WorkCycleDays) if they have one, otherwise their location's 7-day WorkDaysMask — and
+        // holidays (NonWorkingDay) apply on top of either. Asked here for exactly one purpose: to
+        // take the weekends and bayrams that fall INSIDE a leave back out of the payroll's divisor.
+        var reportEmployeeIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+        var scheduleOf = (await _db.Employees
+                .Where(e => reportEmployeeIds.Contains(e.Id))
+                .Select(e => new { e.Id, e.LocationId, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor })
+                .ToListAsync(ct))
+            .ToDictionary(e => e.Id);
+        var maskOf = await _db.Locations
+            .Select(l => new { l.Id, l.WorkDaysMask })
+            .ToDictionaryAsync(x => x.Id, x => x.WorkDaysMask, ct);
+        var holidays = await _db.NonWorkingDays
+            .Where(n => n.Date >= from && n.Date <= to)
+            .Select(n => new { n.Date, n.LocationId })
+            .ToListAsync(ct);
+
+        bool IsScheduledDay(Guid employeeId, DateOnly date)
+        {
+            if (!scheduleOf.TryGetValue(employeeId, out var e)) return true;   // unknown → assume it counted
+            // A holiday for the whole company, or for this person's location.
+            if (holidays.Any(h => h.Date == date && (h.LocationId == null || h.LocationId == e.LocationId)))
+                return false;
+            return AttendanceCalculator.IsScheduledWorkingDay(
+                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                maskOf.GetValueOrDefault(e.LocationId, 126), date);
+        }
+
         bool OnTrip(Guid employeeId, DateOnly date) =>
             LeaveTypeOn(employeeId, date) == LeaveType.BusinessTrip;
 
@@ -728,7 +759,14 @@ public sealed class ReportQueryService : IReportQueryService
                 // a permanent zero. It is also why RestDays is NOT part of LeaveDays and must never
                 // be added into it: a rest day is not leave, and folding it into the payroll's
                 // divisor would change what people are paid.
-                RestDays: g.Count(x => x.Status == DailySummaryStatus.DayOff && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Rest))))
+                RestDays: g.Count(x => x.Status == DailySummaryStatus.DayOff && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Rest)),
+                // Leave/permission/trip days that were not working days for this person. Only these
+                // three statuses can land on a non-working day: an approved leave overrides the
+                // day-off rule, while OnTime/Late/Incomplete/Absent are only ever assigned on days
+                // the person was scheduled.
+                OffDayLeaveDays: g.Count(x =>
+                    x.Status is DailySummaryStatus.OnLeave or DailySummaryStatus.Permission
+                    && !IsScheduledDay(x.EmployeeId, x.Date))))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 
@@ -747,7 +785,8 @@ public sealed class ReportQueryService : IReportQueryService
             VacationDays: grouped.Sum(r => r.VacationDays),
             SickDays: grouped.Sum(r => r.SickDays),
             UnpaidDays: grouped.Sum(r => r.UnpaidDays),
-            RestDays: grouped.Sum(r => r.RestDays));
+            RestDays: grouped.Sum(r => r.RestDays),
+            OffDayLeaveDays: grouped.Sum(r => r.OffDayLeaveDays));
 
         return (ReportAccess.Allowed, new AttendanceReport(from, to, label, grouped, totals));
     }
@@ -827,9 +866,10 @@ public sealed class ReportQueryService : IReportQueryService
             if (salary is > 0m)
                 (scheduled, perDay, deduction, payable) = PayrollMath.Compute(
                     salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays,
-                    r.UnpaidDays);
+                    r.UnpaidDays, r.OffDayLeaveDays);
             else
-                scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays;
+                scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays
+                            - r.OffDayLeaveDays;
 
             return new PayrollRow(
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,

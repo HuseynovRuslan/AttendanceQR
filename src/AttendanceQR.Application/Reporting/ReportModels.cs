@@ -51,7 +51,11 @@ public sealed record EmployeeReportRow(
     int VacationDays = 0,
     int SickDays = 0,
     int UnpaidDays = 0,
-    int RestDays = 0);
+    int RestDays = 0,
+    // Leave/permission/trip days that landed on a day this person was not scheduled to work. Not a
+    // figure anyone reads — it exists to be taken back OUT of the payroll divisor, which otherwise
+    // counts a Sunday inside a holiday as a working day. See PayrollMath.Compute.
+    int OffDayLeaveDays = 0);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(
@@ -87,7 +91,11 @@ public sealed record ReportTotals(
     int VacationDays = 0,
     int SickDays = 0,
     int UnpaidDays = 0,
-    int RestDays = 0);
+    int RestDays = 0,
+    // Leave/permission/trip days that landed on a day this person was not scheduled to work. Not a
+    // figure anyone reads — it exists to be taken back OUT of the payroll divisor, which otherwise
+    // counts a Sunday inside a holiday as a working day. See PayrollMath.Compute.
+    int OffDayLeaveDays = 0);
 
 /// <summary>The full report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record AttendanceReport(

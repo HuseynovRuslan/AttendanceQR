@@ -28,9 +28,22 @@ public static class PayrollMath
     /// convention used throughout these records.</param>
     public static (int Scheduled, decimal PerDay, decimal Deduction, decimal Payable) Compute(
         decimal salary, int workDays, int absentDays, int leaveDays, int permissionDays, int tripDays,
-        int unpaidDays = 0)
+        int unpaidDays = 0,
+        // Leave/permission/trip days that fell on a day this person was NOT scheduled to work — a
+        // weekend inside a fortnight's holiday, a bayram inside a business trip.
+        //
+        // They must come OUT of the divisor. An approved leave beats the day-off rule deliberately
+        // (a person on holiday over a Sunday reads as «Məzuniyyət», not «İstirahət» — that is pinned
+        // by tests and is right for the board and the tabel), so those Sundays arrive here inside
+        // leaveDays. Left in, they inflate the count of "working days in the period", which lowers
+        // the daily rate, which under-deducts every real absence the same person had. A fortnight's
+        // holiday added four phantom working days to a month.
+        //
+        // Subtracted rather than never-added, because leaveDays is also a REPORTED figure and must
+        // keep counting calendar days: «14 gün məzuniyyət» is 14 days, weekends included.
+        int offDayLeaveDays = 0)
     {
-        var scheduled = workDays + absentDays + leaveDays + permissionDays + tripDays;
+        var scheduled = workDays + absentDays + leaveDays + permissionDays + tripDays - offDayLeaveDays;
         if (scheduled <= 0)
             return (0, 0m, 0m, salary);   // salary set but no working day fell in the period
 

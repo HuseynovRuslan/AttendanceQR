@@ -119,6 +119,42 @@ public class LeaveBreakdownTests
     }
 
     [Fact]
+    public void A_weekend_inside_a_holiday_is_not_a_working_day()
+    {
+        // An approved leave beats the day-off rule on purpose: a person on holiday over a Sunday
+        // reads «Məzuniyyət», not «İstirahət». Right for the board and the tabel — and wrong for the
+        // divisor, where those Sundays arrived inside leaveDays and counted as working days.
+        //
+        // A fortnight's holiday over a Mon–Sat week carries 2 Sundays. 18 worked + 1 absent + 14
+        // leave = 33 by the old sum, but two of those were not working days: 31 is the truth.
+        // 1000 / 31 = 32.26 rather than 1000 / 33 = 30.30 — the absence was under-deducted by ~2 ₼.
+        var fixedUp = PayrollMath.Compute(
+            salary: 1000m, workDays: 18, absentDays: 1, leaveDays: 14, permissionDays: 0, tripDays: 0,
+            unpaidDays: 0, offDayLeaveDays: 2);
+        var inflated = PayrollMath.Compute(
+            salary: 1000m, workDays: 18, absentDays: 1, leaveDays: 14, permissionDays: 0, tripDays: 0);
+
+        Assert.Equal(31, fixedUp.Scheduled);
+        Assert.Equal(33, inflated.Scheduled);
+        Assert.True(fixedUp.PerDay > inflated.PerDay);
+        Assert.True(fixedUp.Deduction > inflated.Deduction);
+    }
+
+    [Fact]
+    public void Nobody_with_no_leave_is_affected_by_the_divisor_fix()
+    {
+        // The guard. offDayLeaveDays is zero for anyone whose leave never crossed a rest day, and
+        // for everyone with no leave at all — which is most people, most months. Their pay must be
+        // identical to before the change.
+        var pay = PayrollMath.Compute(
+            salary: 1000m, workDays: 20, absentDays: 2, leaveDays: 0, permissionDays: 0, tripDays: 0);
+
+        Assert.Equal(22, pay.Scheduled);
+        Assert.Equal(45.45m, pay.PerDay);
+        Assert.Equal(90.90m, pay.Deduction);
+    }
+
+    [Fact]
     public void A_rest_day_is_not_leave_and_is_not_in_the_total()
     {
         // İstirahət resolves to DayOff, never OnLeave, so it was never inside LeaveDays and must not
