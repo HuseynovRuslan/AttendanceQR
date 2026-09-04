@@ -415,8 +415,19 @@ public class FieldVisitController : ControllerBase
         // resolves them — no IgnoreQueryFilters (that is reserved for the super-admin surfaces).
         var names = await _db.Employees
             .Where(e => ids.Contains(e.Id))
-            .Select(e => new { e.Id, e.FullName, e.PhoneNumber })
+            .Select(e => new { e.Id, e.FullName, e.PhoneNumber, e.LocationId })
             .ToDictionaryAsync(e => e.Id, e => e, ct);
+
+        // The worker's own BRANCH, which this board did not carry at all.
+        //
+        // Its only «where» column is TargetLabel — free text the worker types — and on production that
+        // is «Obyektdeyem» for most of them: not a place, the sentence "I am at the site", in four
+        // spellings. So a manager running two parks opened the day's visits and every row read the
+        // same, with nothing on the screen able to tell Mərkəz from Dədə Qorqud. The branch is a fact
+        // the system already holds; it simply was not projected.
+        var branchOf = await _db.Locations
+            .Select(l => new { l.Id, l.Name })
+            .ToDictionaryAsync(x => x.Id, x => x.Name, ct);
 
         // One grouped query over the already-scoped visits — never a lookup per row: this board
         // re-polls every 30 seconds, so an N+1 here is 40 extra queries every half minute, all day.
@@ -443,6 +454,8 @@ public class FieldVisitController : ControllerBase
                 employeeId = v.EmployeeId,
                 employeeName = emp?.FullName ?? "(silinib)",
                 phone = emp?.PhoneNumber,
+                locationId = emp?.LocationId,
+                locationName = emp is null ? "" : branchOf.GetValueOrDefault(emp.LocationId, ""),
                 assignedByName = assigner,
                 selfReported = v.AssignedByEmployeeId == null,
                 status = v.Status.ToString(),

@@ -38,6 +38,10 @@ export interface BoardFieldVisit {
   employeeId: string
   employeeName: string
   phone: string | null
+  /** The worker's own branch. The board's «Hədəf» column is free text the worker typed and is not a
+   *  place — this is what actually separates one park from another. */
+  locationId: string | null
+  locationName: string
   assignedByName: string | null
   selfReported: boolean
   status: FieldVisitStatus

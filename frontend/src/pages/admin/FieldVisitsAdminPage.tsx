@@ -176,6 +176,10 @@ export function FieldVisitsAdminPage() {
   // filters
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
+  // The branch. Not a nicety: this board's only «where» column is the label the worker typed, and on
+  // production that is the same word for everyone («Obyektdeyem», in four spellings). Without this a
+  // manager running two parks cannot tell their own rows apart at all.
+  const [filterLoc, setFilterLoc] = useState('')
   const [onlyFlagged, setOnlyFlagged] = useState(false)
   const [onlySelf, setOnlySelf] = useState(false)
   const [onlyPhoto, setOnlyPhoto] = useState(false)
@@ -265,6 +269,15 @@ export function FieldVisitsAdminPage() {
     return { assigned, onsite, completed, minutes, flagged }
   }, [rows])
 
+  // Built from what is ON the board, not from the locations list: a manager sees only their own
+  // branches' visits, so the options are exactly the branches they can act on — and an Admin gets
+  // only the branches that actually have a visit that day rather than all twenty-one.
+  const branches = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const v of rows) if (v.locationId && v.locationName) seen.set(v.locationId, v.locationName)
+    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'az'))
+  }, [rows])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((v) => {
@@ -272,10 +285,11 @@ export function FieldVisitsAdminPage() {
       if (onlyFlagged && !isFlagged(v)) return false
       if (onlySelf && !v.selfReported) return false
       if (onlyPhoto && !v.hasWorkPhoto) return false
+      if (filterLoc && v.locationId !== filterLoc) return false
       if (q && !(v.employeeName.toLowerCase().includes(q) || (v.phone ?? '').toLowerCase().includes(q))) return false
       return true
     })
-  }, [rows, statusFilter, search, onlyFlagged, onlySelf, onlyPhoto])
+  }, [rows, statusFilter, search, onlyFlagged, onlySelf, onlyPhoto, filterLoc])
 
   async function useMyLocation() {
     const geo = await getPosition()
@@ -557,6 +571,18 @@ export function FieldVisitsAdminPage() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            {branches.length > 1 && (
+              <select
+                className="inp"
+                value={filterLoc}
+                onChange={(e) => setFilterLoc(e.target.value)}
+                style={{ maxWidth: 230 }}
+                aria-label="Filial üzrə süz"
+              >
+                <option value="">Bütün filiallar</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
             <input className="inp" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="İşçi adı ilə axtar…" style={{ maxWidth: 220 }} />
             <button className={`chip ${onlyFlagged ? 'active' : ''}`} onClick={() => setOnlyFlagged((f) => !f)}>⚠️ Yalnız diqqət</button>
             <button className={`chip ${onlySelf ? 'active' : ''}`} onClick={() => setOnlySelf((f) => !f)}>🙋 Özü qeyd etdi</button>
@@ -581,7 +607,7 @@ export function FieldVisitsAdminPage() {
           <table>
             <thead>
               <tr>
-                <th>İşçi</th><th>Status</th><th>Hədəf</th><th>Giriş → Çıxış</th><th>Tapşıran</th><th />
+                <th>İşçi</th><th>Status</th><th>Filial</th><th>Hədəf</th><th>Giriş → Çıxış</th><th>Tapşıran</th><th />
               </tr>
             </thead>
             <tbody>
@@ -601,6 +627,10 @@ export function FieldVisitsAdminPage() {
                     <td data-label="Status">
                       <span className="badge" style={{ background: st.bg, color: st.fg }}>{st.label}</span>
                       {stuck && <div className="tag" style={{ marginTop: 4, background: 'var(--clay-bg)', color: 'var(--clay)' }}>çıxış edilməyib</div>}
+                    </td>
+                    <td data-label="Filial" style={{ maxWidth: 160 }}>
+                      {/* The fact, next to the claim. «Hədəf» beside it is what the worker typed. */}
+                      {v.locationName || <span className="muted">—</span>}
                     </td>
                     <td data-label="Hədəf" style={{ maxWidth: 180 }}>
                       {v.targetLabel || <span className="muted">—</span>}
