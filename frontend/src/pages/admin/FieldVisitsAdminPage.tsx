@@ -269,14 +269,20 @@ export function FieldVisitsAdminPage() {
     return { assigned, onsite, completed, minutes, flagged }
   }, [rows])
 
-  // Built from what is ON the board, not from the locations list: a manager sees only their own
-  // branches' visits, so the options are exactly the branches they can act on — and an Admin gets
-  // only the branches that actually have a visit that day rather than all twenty-one.
-  const branches = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const v of rows) if (v.locationId && v.locationName) seen.set(v.locationId, v.locationName)
-    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'az'))
-  }, [rows])
+  // The caller's OWN branches, not the ones that happen to have a visit today.
+  //
+  // Built from the day's rows first, and that was wrong in the way that matters: a manager of two
+  // parks opened a day where only one of them had a visit, the list collapsed to one entry, and the
+  // control hid itself. He looked for it and reported it missing — correctly. A filter that appears
+  // and disappears with the data is worse than none, because its absence reads as "this cannot be
+  // done" rather than "there is nothing to filter today".
+  //
+  // `sites` comes from the same endpoint the branches screen uses, so a manager gets their branches
+  // and an admin gets all of them — the scope is decided server-side, in one place.
+  const branches = useMemo(
+    () => [...sites].map((l) => ({ id: l.id, name: l.name })).sort((a, b) => a.name.localeCompare(b.name, 'az')),
+    [sites],
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
