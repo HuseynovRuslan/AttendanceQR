@@ -48,7 +48,22 @@ export interface GroupOverview {
   sites: GroupSite[]
   trend: { date: string; present: number }[]
   // 'field-in' / 'field-out' — a «səyyar» visit to a site with no poster, GPS + selfie instead of a QR.
-  feed: { employeeId: string; fullName: string; companyId: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' | 'field-in' | 'field-out' }[]
+  feed: {
+    employeeId: string
+    fullName: string
+    companyId: string
+    company: string
+    location: string
+    atUtc: string
+    kind: 'in' | 'out' | 'field-in' | 'field-out'
+    /** The attendance record behind a poster CHECK-IN — the key to its selfie. Null for a check-out
+     *  (the selfie belongs to the arrival) and for field visits (their photo is on FieldVisit). */
+    recordId: string | null
+    hasPhoto: boolean
+    /** 'Match' | 'Mismatch' | 'NoFace' | 'NotChecked' — the face audit's verdict for the check-in. */
+    faceMatchStatus: string
+    faceMatchScore: number | null
+  }[]
 }
 
 /** Every company at once. 403 for anyone outside the super-admin allowlist. */
@@ -121,4 +136,18 @@ export interface PersonDay {
 
 export function getPersonDay(employeeId: string) {
   return apiRequest<PersonDay>(`/api/super/hq/person/${employeeId}`)
+}
+
+/** The two photographs behind one check-in, presigned and short-lived. */
+export interface HqPhoto {
+  title: string
+  referenceUrl: string | null
+  checkInUrl: string | null
+  checkInTakenAtUtc: string | null
+  faceMatchStatus?: string
+  faceMatchScore?: number | null
+}
+
+export function getHqPhoto(recordId: string) {
+  return apiRequest<HqPhoto>(`/api/super/hq/records/${recordId}/photo-url`)
 }

@@ -33,6 +33,60 @@ public partial class SuperAdminController
     /// </summary>
     private const int FeedSize = 2000;
 
+    // GET /api/super/hq/records/{recordId}/photo-url — the selfie behind one feed row.
+    //
+    // The tenant panels have had this since the photo audit shipped; the group board had the rows
+    // and not the faces, so the one screen that reads all five companies was the one place a
+    // suspicious check-in could not be looked at.
+    //
+    // Cross-tenant by design and gated exactly like the rest of this board. Two things are NOT
+    // relaxed for it: the URL is presigned and short-lived (the object itself stays private), and a
+    // record id is the only key — there is no listing endpoint, so this cannot be walked.
+    [HttpGet("hq/records/{recordId:guid}/photo-url")]
+    public async Task<IActionResult> HqPhotoUrl(Guid recordId)
+    {
+        if (!IsSuperAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+        if (_photoStorage is null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "StorageNotConfigured" });
+
+        var ct = HttpContext.RequestAborted;
+
+        var record = await _db.AttendanceRecords.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(r => r.Id == recordId, ct);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+
+        var employee = await _db.Employees.IgnoreQueryFilters()
+            .Where(e => e.Id == record.EmployeeId)
+            .Select(e => new { e.FullName, e.ReferencePhotoKey })
+            .FirstOrDefaultAsync(ct);
+
+        var checkInUrl = record.CheckInPhotoKey is null
+            ? null
+            : await _photoStorage.GetPresignedUrlAsync(record.CheckInPhotoKey, ct);
+        var referenceUrl = employee?.ReferencePhotoKey is null
+            ? null
+            : await _photoStorage.GetPresignedUrlAsync(employee.ReferencePhotoKey, ct);
+
+        // Baku time in the title. The reader is standing in Baku and the record is stored in UTC —
+        // the same four-hour trap that once had an admin "correcting" times to their own clock.
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(_appOptions.TimeZone);
+        var whenLocal = record.CheckInAtUtc is DateTime at
+            ? TimeZoneInfo.ConvertTimeFromUtc(at, timeZone).ToString("dd.MM.yyyy HH:mm")
+            : record.AttendanceDate.ToString("dd.MM.yyyy");
+
+        return Ok(new
+        {
+            title = $"{employee?.FullName ?? "İşçi"} — {whenLocal}",
+            referenceUrl,
+            checkInUrl,
+            checkInTakenAtUtc = record.CheckInPhotoTakenAtUtc ?? record.CheckInAtUtc,
+            faceMatchStatus = record.FaceMatchStatus.ToString(),
+            faceMatchScore = record.FaceMatchScore,
+        });
+    }
+
     // GET /api/super/hq/person/{employeeId} — one row of the live feed, opened.
     //
     // Written because of what the feed's place column contains for a «səyyar» visit. That column is
@@ -392,14 +446,40 @@ public partial class SuperAdminController
         bool IsToday(DateTime atUtc) => atUtc >= dayStartUtc && atUtc < dayEndUtc;
         var posterEvents = (await _db.AttendanceRecords.IgnoreQueryFilters()
                 .Where(r => r.AttendanceDate >= feedFrom && r.CheckInAtUtc != null)
-                .Select(r => new { r.TenantId, r.EmployeeId, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc })
+                .Select(r => new
+                {
+                    r.Id, r.TenantId, r.EmployeeId, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc,
+                    // Carried so a row on the group board can open the selfie behind it, and so a
+                    // face the system could not match is visible WITHOUT opening anything. On a
+                    // board read across five companies, a flag nobody has to click for is the only
+                    // one that gets noticed.
+                    r.CheckInPhotoKey, r.FaceMatchStatus, r.FaceMatchScore,
+                })
                 .ToListAsync(ct))
             .SelectMany(r => new[]
             {
-                new { r.TenantId, r.EmployeeId, Place = locationNames.GetValueOrDefault(r.LocationId, ""), At = r.CheckInAtUtc!.Value, Kind = "in" },
+                new
+                {
+                    r.TenantId, r.EmployeeId, Place = locationNames.GetValueOrDefault(r.LocationId, ""),
+                    At = r.CheckInAtUtc!.Value, Kind = "in",
+                    RecordId = (Guid?)r.Id,
+                    HasPhoto = r.CheckInPhotoKey != null,
+                    Face = r.FaceMatchStatus.ToString(),
+                    Score = r.FaceMatchScore,
+                },
                 r.CheckOutAtUtc is null
                     ? null
-                    : new { r.TenantId, r.EmployeeId, Place = locationNames.GetValueOrDefault(r.LocationId, ""), At = r.CheckOutAtUtc.Value, Kind = "out" },
+                    : new
+                    {
+                        r.TenantId, r.EmployeeId, Place = locationNames.GetValueOrDefault(r.LocationId, ""),
+                        At = r.CheckOutAtUtc.Value, Kind = "out",
+                        // The selfie belongs to the CHECK-IN. A check-out row must not offer it, or
+                        // the board would show a morning photograph beside an evening time.
+                        RecordId = (Guid?)null,
+                        HasPhoto = false,
+                        Face = r.FaceMatchStatus.ToString(),
+                        Score = r.FaceMatchScore,
+                    },
             })
             .Where(x => x is not null)
             .Select(x => x!);
@@ -414,10 +494,23 @@ public partial class SuperAdminController
                 .ToListAsync(ct))
             .SelectMany(v => new[]
             {
-                new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Ərazi", At = v.CheckInAtUtc!.Value, Kind = "field-in" },
+                new
+                {
+                    v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Ərazi",
+                    At = v.CheckInAtUtc!.Value, Kind = "field-in",
+                    // A field visit's selfie lives on FieldVisit, not AttendanceRecord, and the
+                    // compare view is built around a record id. Out of scope here rather than faked:
+                    // a camera button that opens nothing is worse than no button.
+                    RecordId = (Guid?)null, HasPhoto = false, Face = "NotChecked", Score = (int?)null,
+                },
                 v.CheckOutAtUtc is null
                     ? null
-                    : new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Ərazi", At = v.CheckOutAtUtc.Value, Kind = "field-out" },
+                    : new
+                    {
+                        v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Ərazi",
+                        At = v.CheckOutAtUtc.Value, Kind = "field-out",
+                        RecordId = (Guid?)null, HasPhoto = false, Face = "NotChecked", Score = (int?)null,
+                    },
             })
             .Where(x => x is not null)
             .Select(x => x!);
@@ -440,6 +533,10 @@ public partial class SuperAdminController
                 location = x.Place,
                 atUtc = x.At,
                 kind = x.Kind,
+                recordId = x.RecordId,
+                hasPhoto = x.HasPhoto,
+                faceMatchStatus = x.Face,
+                faceMatchScore = x.Score,
             })
             .ToList();
 

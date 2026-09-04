@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { getGroupOverview, type GroupOverview } from '../../api/hq'
+import { getGroupOverview, getHqPhoto, type GroupOverview, type HqPhoto } from '../../api/hq'
+import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { SiteMap } from './SiteMap'
 import 'leaflet/dist/leaflet.css'
 import './hq.css'
@@ -162,6 +163,17 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   const [tile, setTile] = useState<'notStarted' | 'branches' | null>(null)
   /** The feed row being looked at — whose day, and in whose company's colour. */
   const [person, setPerson] = useState<{ id: string; accent: string } | null>(null)
+  const [photo, setPhoto] = useState<HqPhoto | null>(null)
+  const [photoBusy, setPhotoBusy] = useState<string | null>(null)
+
+  /** Open the selfie behind one check-in. The URL is minted per press and expires — the object in
+   *  storage stays private, and nothing is fetched merely by the button existing. */
+  async function openPhoto(recordId: string) {
+    setPhotoBusy(recordId)
+    const { status, data } = await getHqPhoto(recordId)
+    setPhotoBusy(null)
+    if (status === 200 && data && 'title' in data) setPhoto(data)
+  }
   const newestRef = useRef<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   // The OPEN company's id, not a copy of its row. The board refreshes every 20 seconds; holding a
@@ -495,6 +507,24 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                   >
                     <span className="hq-feed-time hq-num">{timeOf(f.atUtc)}</span>
                     <span className="hq-feed-name">{f.fullName}</span>
+                    {f.hasPhoto && f.recordId && (
+                      // A <span role="button"> rather than a <button>: this row IS a button, and a
+                      // button inside a button is invalid HTML that browsers silently unnest —
+                      // which would put the camera outside the row it belongs to.
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="hq-feed-cam"
+                        title="Giriş şəklini gör"
+                        onClick={(e) => { e.stopPropagation(); void openPhoto(f.recordId!) }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return
+                          e.preventDefault(); e.stopPropagation(); void openPhoto(f.recordId!)
+                        }}
+                      >
+                        {photoBusy === f.recordId ? '…' : '📷'}
+                      </span>
+                    )}
                     <span
                       className="hq-feed-co"
                       style={{
@@ -508,6 +538,17 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                         no poster, on GPS and a selfie. Tagged rather than hidden: without the 📍 a
                         director reading the feed cannot tell the two apart, and the whole «səyyar»
                         route was invisible on this board until now. */}
+                    {/* A face the system could not match, stated WITHOUT anyone having to press
+                        anything. On a board read across five companies, the only flag that gets
+                        noticed is the one already on the screen. */}
+                    {(f.faceMatchStatus === 'Mismatch' || f.faceMatchStatus === 'NoFace') && f.kind === 'in' && (
+                      <span className="hq-feed-flag" title={
+                        f.faceMatchStatus === 'NoFace'
+                          ? 'Şəkildə üz tapılmadı'
+                          : `Üz uyğun gəlmədi${f.faceMatchScore != null ? ` (${f.faceMatchScore})` : ''}`}>
+                        ⚠️ {f.faceMatchStatus === 'NoFace' ? 'üzsüz' : 'şübhəli'}
+                      </span>
+                    )}
                     <span className={`hq-feed-kind ${f.kind.endsWith('in') ? 'hq-in' : 'hq-out'}`}>
                       {f.kind.startsWith('field') ? '📍 ' : ''}{f.kind.endsWith('in') ? 'GİRİŞ' : 'ÇIXIŞ'}
                     </span>
@@ -576,6 +617,17 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
           companies={data.companies}
           accentOf={accentOf}
           onClose={() => setTile(null)}
+        />
+      )}
+      {photo && (
+        <PhotoCompareModal
+          title={photo.title}
+          referenceUrl={photo.referenceUrl}
+          checkInUrl={photo.checkInUrl}
+          checkInTakenAtUtc={photo.checkInTakenAtUtc}
+          faceMatchStatus={photo.faceMatchStatus}
+          faceMatchScore={photo.faceMatchScore}
+          onClose={() => setPhoto(null)}
         />
       )}
       {person && (
