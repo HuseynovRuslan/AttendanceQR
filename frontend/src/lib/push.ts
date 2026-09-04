@@ -208,7 +208,8 @@ export function markPushGateShown(): void {
  *  show — a push banner disappears the moment it's swiped away). */
 export interface InboxItem {
   id: string
-  type: 'CheckInSoon' | 'CheckOutSoon' | 'MissedCheckOut'
+  /** 'PhotoWarning' is the one an admin sends by hand — see AdminAttendanceController. */
+  type: 'CheckInSoon' | 'CheckOutSoon' | 'MissedCheckOut' | 'PhotoWarning' 
   title: string
   body: string
   createdAtUtc: string

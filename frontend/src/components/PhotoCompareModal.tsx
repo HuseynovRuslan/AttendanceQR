@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { voidFraudRecord } from '../api/attendance'
+import { sendPhotoWarning, voidFraudRecord } from '../api/attendance'
 import { IconX } from './icons'
 import { FaceFlagBadge } from './FaceFlagBadge'
 import { fmtTime } from '../lib/format'
@@ -38,6 +38,36 @@ export function PhotoCompareModal({
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+
+  /**
+   * Say it without taking anything away.
+   *
+   * Offered ABOVE the void and worded as the ordinary choice, because it usually is: a face audit
+   * reads a cap, a low sun or a dark room as a mismatch, and taking a day's pay over a bad photograph
+   * is a far worse mistake than a message that turns out to have been unnecessary. The void stays one
+   * press further down for the case where the two photographs are plainly different people.
+   */
+  async function warn() {
+    if (!recordId) return
+    if (!window.confirm(
+      'İşçiyə bildiriş göndərilsin?\n\n' +
+      'Girişi silinmir, maaşına toxunulmur — sadəcə şəklin yoxlamadan keçmədiyini bilir. ' +
+      'Bir gün üçün yalnız bir dəfə göndərilir.')) return
+
+    setBusy(true)
+    setFailed(false)
+    const { status, data } = await sendPhotoWarning(recordId)
+    setBusy(false)
+    if (status === 200 && data && 'sent' in data) {
+      setDone(data.notified > 0
+        ? 'Bildiriş göndərildi — telefonuna çatdı'
+        : 'Bildiriş yazıldı — telefonunda tətbiq quraşdırılmayıb, tətbiqin bildirişlər bölməsində görəcək')
+      onActed?.()
+      return
+    }
+    if (status === 409) { setDone('Bu gün üçün onsuz da göndərilib'); return }
+    setFailed(true)
+  }
 
   /**
    * Void this scan as fraudulent.
@@ -145,12 +175,20 @@ export function PhotoCompareModal({
             ) : (
               <>
                 <div className="photo-audit-lead">
-                  Şəkil bu işçi deyilsə, girişi ləğv edin. <b>Şəkil silinmir</b> — sübut olaraq qalır
-                  və qərar geri qaytarıla bilər.
+                  Üz yoxlaması papağı, eynəyi, qaranlığı da «uyğunsuz» oxuyur — ona görə qərarı rəqəm
+                  yox, <b>iki şəklə baxan siz</b> verirsiniz.
                 </div>
+                {/* The mild action first and visually primary: it is the one that fits most of these
+                    photographs. The two destructive ones sit under it, quieter. */}
+                <div className="photo-audit-row">
+                  <button type="button" className="btn-warn" disabled={busy} onClick={() => void warn()}>
+                    {busy ? '…' : 'İşçiyə bildiriş göndər'}
+                  </button>
+                </div>
+                <div className="photo-audit-sep">və ya, şəkil açıq-aydın başqa adamdırsa:</div>
                 <div className="photo-audit-row">
                   <button type="button" className="btn-fraud" disabled={busy} onClick={() => void act(false)}>
-                    {busy ? '…' : 'Girişi ləğv et (Qayıb yaz)'}
+                    Girişi ləğv et (Qayıb yaz)
                   </button>
                   <button type="button" className="btn-fraud-device" disabled={busy} onClick={() => void act(true)}>
                     Cihazı da sil

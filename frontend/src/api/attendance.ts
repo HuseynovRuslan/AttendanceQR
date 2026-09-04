@@ -339,3 +339,19 @@ export function voidFraudRecord(
 export function unvoidRecord(recordId: string) {
   return apiRequest<{ unvoided: string }>(`/api/admin/attendance/${recordId}/unvoid`, { method: 'POST' })
 }
+
+/**
+ * Tell the employee their selfie did not pass, WITHOUT touching the day.
+ *
+ * The lighter of the two actions on a suspect photograph, and usually the right first one: most
+ * «Mismatch» readings are a cap, a low sun or a dark room, and docking a day's wage over a bad
+ * photograph is a worse mistake than a message that turns out to have been unnecessary. Lands in the
+ * employee's in-app inbox as well as on their phone. One per person per day — the database enforces
+ * it, so a second press answers AlreadyWarned rather than accusing them twice.
+ */
+export function sendPhotoWarning(recordId: string) {
+  return apiRequest<{ sent: boolean; notified: number }>(
+    `/api/admin/attendance/${recordId}/send-photo-warning`,
+    { method: 'POST' },
+  )
+}

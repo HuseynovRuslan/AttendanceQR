@@ -232,6 +232,99 @@ public class AdminAttendanceController : ControllerBase
     }
 
     /// <summary>
+    /// Say something without taking anything away.
+    ///
+    /// The lighter of the two actions on a suspect selfie, and the one that should usually come
+    /// first. The day stands, the pay stands — the employee simply learns that the photograph was
+    /// looked at and did not pass. Most «Mismatch» readings are a cap, a low sun or a dark room, and
+    /// docking a day's wage over a bad photograph is a far worse mistake than sending a message that
+    /// turns out to have been unnecessary.
+    ///
+    /// It lands in the employee's in-app inbox as well as on their phone: a push banner is gone the
+    /// moment it is swiped, and a warning nobody can re-read afterwards is not a warning. The
+    /// (EmployeeId, Type, RelatedDate) unique index means a second press cannot accuse the same
+    /// person twice for the same day — the guard is the database's, not the button's.
+    /// </summary>
+    [HttpPost("{recordId:guid}/send-photo-warning")]
+    public async Task<IActionResult> SendPhotoWarning(
+        Guid recordId,
+        [FromServices] IPushNotifier pushNotifier)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
+        if (record is null)
+            return NotFound(new { error = "RecordNotFound" });
+
+        // Same boundary as every other write here. Sending an accusation is not a smaller power than
+        // editing a day: it reaches the person directly.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(
+                _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
+        var already = await _db.EmployeeNotifications.AnyAsync(
+            n => n.EmployeeId == record.EmployeeId
+                 && n.Type == EmployeeNotificationType.PhotoWarning
+                 && n.RelatedDate == record.AttendanceDate, ct);
+        if (already)
+            return Conflict(new { error = "AlreadyWarned" });
+
+        const string title = "Giriş şəkli yoxlanıldı";
+        var body = $"{record.AttendanceDate:dd.MM.yyyy} tarixli girişinizdə çəkilən şəkil üz "
+                 + "yoxlamasından keçmədi. Bu dəfə girişiniz qüvvədədir. Zəhmət olmasa növbəti "
+                 + "skanda üzünüz aydın görünsün — papaq və eynəyi çıxarın, işıqlı yerdə çəkin.";
+
+        _db.EmployeeNotifications.Add(new EmployeeNotification
+        {
+            EmployeeId = record.EmployeeId,
+            Type = EmployeeNotificationType.PhotoWarning,
+            RelatedDate = record.AttendanceDate,
+            Title = title,
+            Body = body,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+
+        // Audited like the void beside it. A message sent to a named person about their honesty is
+        // not a smaller act than editing their day, and «kim göndərdi» is the first question asked
+        // when it is disputed.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = record.EmployeeId,
+            EventType = AuditEventType.RecordEditedByAdmin,
+            Reason = $"Photo warning sent by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd}, "
+                   + $"face {record.FaceMatchStatus}"
+                   + (record.FaceMatchScore is int sc ? $" {sc}%" : ""),
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Two admins pressed at once; the unique index caught the second. Not an error — the
+            // employee has the warning, which is what was asked for.
+            return Conflict(new { error = "AlreadyWarned" });
+        }
+
+        // Best-effort, and last: the inbox row is the record of what was said, so a phone with no
+        // live subscription must not turn this into a failure.
+        var reached = 0;
+        try
+        {
+            reached = await pushNotifier.NotifyEmployeesAsync(
+                new[] { record.EmployeeId }, title, body, "/notifications", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Photo warning {RecordId}: push failed", recordId);
+        }
+
+        return Ok(new { sent = true, notified = reached });
+    }
+
+    /// <summary>
     /// «Saxta giriş» — the selfie is not this person, so the scan does not count.
     ///
     /// Someone photographed a face off a monitor and the face audit scored it 1%. The admin opens the

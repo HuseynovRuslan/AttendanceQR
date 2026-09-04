@@ -9,6 +9,18 @@ public enum EmployeeNotificationType
     CheckOutSoon = 1,
     /// <summary>Shift is over and no check-out was ever recorded.</summary>
     MissedCheckOut = 2,
+
+    /// <summary>
+    /// The check-in selfie did not look like this person, and an admin decided to say so rather than
+    /// void the day.
+    ///
+    /// The only type here an admin sends by hand; the other three are the reminder job's. It belongs
+    /// in this table for the same two reasons the others do — a push banner is gone the moment it is
+    /// swiped, and the (EmployeeId, Type, RelatedDate) unique index is a duplicate guard. That guard
+    /// matters more for this one than for any reminder: it is an accusation, and pressing the button
+    /// twice must not accuse someone twice for the same day.
+    /// </summary>
+    PhotoWarning = 3,
 }
 
 /// <summary>

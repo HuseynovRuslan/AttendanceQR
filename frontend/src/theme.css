@@ -943,6 +943,20 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .photo-audit-lead { font-size: 12.5px; color: var(--c700); line-height: 1.5; margin-bottom: 10px; }
 .photo-audit-lead b { color: var(--c900); }
 .photo-audit-row { display: flex; gap: 8px; flex-wrap: wrap; }
+/* The mild action, and the primary one — most suspect photographs deserve a message, not a docked
+   day. Amber rather than red: it is a correction, not a punishment. */
+.btn-warn {
+  padding: 9px 16px; border-radius: 9px; cursor: pointer;
+  background: #F59E0B; color: #1c1917; border: none;
+  font: inherit; font-size: 13px; font-weight: 800;
+  transition: background .18s ease;
+}
+.btn-warn:hover:not(:disabled) { background: #D97706; }
+.btn-warn:disabled { opacity: .6; cursor: default; }
+/* Puts a beat between the message and the two actions that cost someone money. */
+.photo-audit-sep {
+  margin: 12px 0 8px; font-size: 11.5px; color: var(--c500); font-weight: 600;
+}
 .btn-fraud {
   padding: 9px 16px; border-radius: 9px; cursor: pointer;
   background: #DC2626; color: #fff; border: none;

@@ -11,7 +11,7 @@ import { fmtDate, fmtTime } from '../lib/format'
 // shift cannot say who was late — telling someone they were is simply wrong.
 // 'announcement' and 'reminder' join the feed so this tab is the one place everything the employee
 // was told actually lives — a push banner is gone the moment it's swiped away.
-type FeedType = 'checkin' | 'checkout' | 'announcement' | 'reminder'
+type FeedType = 'checkin' | 'checkout' | 'announcement' | 'reminder' | 'warning'
 interface FeedItem {
   id: string
   at: string
@@ -32,6 +32,9 @@ const META: Record<
   checkout: { title: 'Çıxış qeydə alındı', Icon: IconLogout, ring: 'bg-blue-100 text-blue-600' },
   announcement: { title: 'Elan', Icon: IconBell, ring: 'bg-amber-100 text-amber-600' },
   reminder: { title: 'Xatırlatma', Icon: IconClock, ring: 'bg-slate-100 text-slate-600' },
+  // A warning about the employee's own check-in must not look like «your shift ends soon». It is the
+  // one row in this feed the person is meant to stop at.
+  warning: { title: 'Xəbərdarlıq', Icon: IconBell, ring: 'bg-red-100 text-red-600' },
 }
 
 function buildFeed(records: AttendanceRecord[]): FeedItem[] {
@@ -76,7 +79,9 @@ export function NotificationsPage() {
             id: `r:${x.id}`,
             at: x.createdAtUtc,
             date: x.createdAtUtc.slice(0, 10),
-            type: 'reminder',
+            // The inbox carries reminders AND the photo warning an admin sent by hand; they are not
+            // the same kind of message and must not read the same.
+            type: x.type === 'PhotoWarning' ? 'warning' : 'reminder',
             title: x.title,
             body: x.body,
           })
