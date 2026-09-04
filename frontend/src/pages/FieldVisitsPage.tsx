@@ -15,7 +15,7 @@ import {
 import { FieldCheckoutSheet } from '../components/FieldCheckoutSheet'
 import { applyPendingTicks, writePendingTick } from '../lib/pendingTicks'
 import { getMyProfile } from '../api/attendance'
-import { getPosition } from '../lib/geo'
+import { getPosition, reverseGeocode } from '../lib/geo'
 import { fmtDayMonth, fmtDuration, fmtTime } from '../lib/format'
 import { todayStr } from '../lib/att'
 
@@ -476,6 +476,10 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
   // Taken ONCE, when the sheet opens, and reused for the check-in. Asking twice would mean two
   // permission moments and two chances for the answer to differ from the list they just chose from.
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
+  // Filled in only when the worker says the list does not contain where they are — see
+  // reverseGeocode, which sends their position off our servers and is therefore not run for a visit
+  // at one of the company's own branches.
+  const [addrBusy, setAddrBusy] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -572,7 +576,7 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !busy && ready) void submit() }}
-              placeholder="Məs. Nizami küç. 12"
+              placeholder={addrBusy ? 'Ünvan tapılır…' : 'Məs. Nizami küç. 12'}
               className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
           </>
@@ -581,7 +585,19 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
         {sites !== null && sites.length > 0 && (
           <button
             type="button"
-            onClick={() => { setOther((v) => !v); setPicked(null); setLabel('') }}
+            onClick={() => {
+              const next = !other
+              setOther(next); setPicked(null); setLabel('')
+              // Fill the address in for them. Only here, and only once: this is the branch where the
+              // list has no answer, so an address off the map is better than an empty box that
+              // history says gets «Obyektdeyem» typed into it.
+              if (next && pos) {
+                setAddrBusy(true)
+                void reverseGeocode(pos.lat, pos.lng)
+                  .then((a) => { if (a) setLabel(a) })
+                  .finally(() => setAddrBusy(false))
+              }
+            }}
             className="mt-3 w-full py-2 text-sm font-semibold text-violet-600"
           >
             {other ? '← Filiallardan seç' : 'Siyahıda yoxdur — başqa ünvan yazım'}

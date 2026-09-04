@@ -132,3 +132,74 @@ export async function getPosition(onCountdown?: (secondsLeft: number) => void): 
     return { ok: false, kind: code === 3 ? 'timeout' : 'unavailable' }
   }
 }
+
+
+/**
+ * Words people type instead of a place.
+ *
+ * Production holds «Obyektdeyem», «Obyektdəyəm», «Obyekt deyem» and «Obyektdeyem» — four spellings
+ * of "I am at the site", which answers the question "where" with the fact that they are somewhere.
+ * 17 of 118 visits carry one of these or nothing at all.
+ *
+ * Matching strips everything but letters, so spacing and punctuation cannot dodge it, and the list
+ * is of WHOLE labels rather than substrings: «Obyekt 4» is a real answer and must survive.
+ */
+const JUNK_LABELS = new Set([
+  'obyekt', 'obyektde', 'obyektdə', 'obyektdeyem', 'obyektdəyəm', 'obyekdeyem', 'obyekdəyəm',
+  'burdayam', 'buradayam', 'yerindeyem', 'yerindəyəm', 'yerdeyem', 'yerdəyəm',
+  'isdeyem', 'işdəyəm', 'isdəyəm', 'catdim', 'çatdım', 'geldim', 'gəldim',
+  'erazideyem', 'ərazidəyəm', 'sahedeyem', 'sahədəyəm',
+])
+
+export function isJunkTargetLabel(text: string | null | undefined): boolean {
+  if (!text) return true
+  const clean = text.toLocaleLowerCase('az').replace(/[^a-zəıöğşüçğ]/g, '')
+  return clean.length === 0 || JUNK_LABELS.has(clean)
+}
+
+/**
+ * A GPS point turned into an address a person would recognise.
+ *
+ * ⚠️ THIS SENDS THE EMPLOYEE'S EXACT POSITION TO A THIRD PARTY (openstreetmap.org). Everywhere else
+ * in this product their coordinates go only to our own server; map TILES come from outside, but a
+ * tile request does not carry where the person is standing and this does. It is therefore called in
+ * exactly one place — when the worker says the branch list does not contain where they are — and
+ * never for a visit at one of the company's own branches, where the branch name is the better answer
+ * anyway.
+ *
+ * Nominatim is free and needs no key, and asks in return that it not be queried systematically. At
+ * this volume (a handful of ad-hoc visits a day) that holds; it must never be moved onto the scan
+ * path, which runs hundreds of times a morning.
+ *
+ * Fails to null, quickly. A worker standing in the rain must not wait on somebody else's server:
+ * past the timeout they simply type it themselves, which is what they did before this existed.
+ */
+export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 3500)
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=az`,
+      { signal: abort.signal, headers: { Accept: 'application/json' } },
+    )
+    if (!res.ok) return null
+    const data = await res.json() as { address?: Record<string, string>; display_name?: string }
+    const a = data.address
+    if (!a) return data.display_name?.split(',').slice(0, 2).join(', ').trim() || null
+
+    // A settlement name is what people here actually say — «Pirşağı», «Maştağa», «Bilgəh» — and a
+    // street alone is ambiguous across a city with repeated street names.
+    const settlement = a.village || a.town || a.suburb || a.hamlet
+    const road = a.road || a.pedestrian
+    const district = a.city_district || a.district || a.county
+
+    if (settlement && road) return `${settlement}, ${road}`
+    if (settlement) return /qəs|qes/i.test(settlement) ? settlement : `${settlement} qəs.`
+    if (district && road) return `${district}, ${road}`
+    return district || road || data.display_name?.split(',').slice(0, 2).join(', ').trim() || null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}

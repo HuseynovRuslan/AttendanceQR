@@ -19,7 +19,7 @@ import {
   type AssignablePerson,
   type ChecklistItem,
 } from '../../api/fieldVisits'
-import { getPosition } from '../../lib/geo'
+import { getPosition, isJunkTargetLabel } from '../../lib/geo'
 import { fmtTime } from '../../lib/format'
 
 // Resolved once: the key does not change while the page is open.
@@ -106,14 +106,25 @@ function fmtDist(m: number): string {
  */
 function targetText(v: BoardFieldVisit, sites: AdminLocation[]): { text: string; inferred: boolean } {
   const raw = (v.targetLabel ?? '').trim()
-  const junk = !raw || /obyek|yerind[əe]y[əe]m|sahed[əe]y[əe]m/i.test(raw.replace(/\s+/g, ''))
 
-  if (junk && v.checkInLatitude != null && v.checkInLongitude != null) {
-    const near = nearestSite(sites, v.checkInLatitude, v.checkInLongitude)
-    if (near) return { text: near.name, inferred: true }
+  // Shared with the worker's own screen, so the two cannot drift about what counts as an answer.
+  if (isJunkTargetLabel(raw)) {
+    if (v.checkInLatitude != null && v.checkInLongitude != null) {
+      const near = nearestSite(sites, v.checkInLatitude, v.checkInLongitude)
+      // Only when it is plausibly THE place. A branch 6 km away is not where they were, and naming
+      // it would be worse than admitting we do not know.
+      if (near && near.metres <= 1500) {
+        return {
+          text: near.inside ? near.name : `${near.name} · ${fmtDist(near.metres)}`,
+          inferred: true,
+        }
+      }
+    }
+    // Coordinates exist, no branch near them: an honest description rather than a guess.
+    return { text: v.checkInLatitude != null ? 'Sərbəst sahə nöqtəsi' : '—', inferred: false }
   }
-  if (raw) return { text: raw.charAt(0).toLocaleUpperCase('az') + raw.slice(1), inferred: false }
-  return { text: '—', inferred: false }
+
+  return { text: raw.charAt(0).toLocaleUpperCase('az') + raw.slice(1), inferred: false }
 }
 
 function fmtMins(mins: number): string {
@@ -713,6 +724,14 @@ export function FieldVisitsAdminPage() {
                               <span className="tag" style={{ marginLeft: 5, fontSize: 10 }} title="İşçi yer adı yazmayıb — bu, girişin GPS nöqtəsinə ən yaxın filialdır">
                                 GPS
                               </span>
+                            )}
+                            {/* What they actually typed, kept rather than hidden: it is their own
+                                words on their own record, and «why does this say Qala Anbar» is a
+                                question the answer to is right here. */}
+                            {isJunkTargetLabel(v.targetLabel) && v.targetLabel && (
+                              <div className="muted" style={{ fontSize: 11, fontStyle: 'italic', fontWeight: 400 }}>
+                                işçi yazıb: «{v.targetLabel}»
+                              </div>
                             )}
                           </div>
                         )
