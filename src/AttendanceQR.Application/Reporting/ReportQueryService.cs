@@ -672,12 +672,35 @@ public sealed class ReportQueryService : IReportQueryService
         // type comes from LeaveRecords — the same source and the same shape as the tabel's
         // LeaveCodeFor and the profile's LeaveTypeFor, rather than threading a field through the
         // shared DayRow that the persisted path cannot fill.
-        var tripDays = await _db.LeaveRecords
-            .Where(l => l.Type == LeaveType.BusinessTrip && l.FromDate <= to && l.ToDate >= from)
-            .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate })
+        // Every leave in range, with its TYPE — not just the business trips.
+        //
+        // It used to load only Ezamiyyət, because that was the only distinction anyone had asked for.
+        // Everything else fell into one LeaveDays bucket read off DailySummary.Status == OnLeave,
+        // which is a status, not a type: «Məzuniyyət», «Xəstəlik», «Ödənişsiz» and «İstirahət» are
+        // all stored as OnLeave and became indistinguishable the moment they were counted. That is
+        // the trap this codebase has hit before — reading the label from the status.
+        var leaveSpans = await _db.LeaveRecords
+            .Where(l => l.FromDate <= to && l.ToDate >= from)
+            .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate, l.Type })
             .ToListAsync(ct);
+
+        // The type covering this person on this day, or null when nothing does. Same shape and same
+        // source as the tabel's LeaveCodeFor, so the T-13 grid and these totals cannot disagree about
+        // what a day was.
+        LeaveType? LeaveTypeOn(Guid employeeId, DateOnly date) => leaveSpans
+            .Where(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date)
+            .Select(l => (LeaveType?)l.Type)
+            .FirstOrDefault();
+
         bool OnTrip(Guid employeeId, DateOnly date) =>
-            tripDays.Any(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date);
+            LeaveTypeOn(employeeId, date) == LeaveType.BusinessTrip;
+
+        // One OnLeave day of a given type. A day the summary marked OnLeave but no LeaveRecord covers
+        // is counted nowhere here and still counted in LeaveDays — the total keeps its old meaning
+        // even when the detail cannot be recovered, so no day silently disappears from the payroll's
+        // divisor.
+        bool IsLeaveOfType(Guid employeeId, DateOnly date, LeaveType type) =>
+            LeaveTypeOn(employeeId, date) == type;
 
         var grouped = rows
             .GroupBy(x => new { x.EmployeeId, x.FullName })
@@ -695,7 +718,11 @@ public sealed class ReportQueryService : IReportQueryService
                 EarlyArriveHours: Math.Round(g.Sum(x => x.EarlyArriveMinutes) / 60.0, 2),
                 LeaveDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && !OnTrip(x.EmployeeId, x.Date)),
                 TripDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && OnTrip(x.EmployeeId, x.Date)),
-                PermissionDays: g.Count(x => x.Status == DailySummaryStatus.Permission)))
+                PermissionDays: g.Count(x => x.Status == DailySummaryStatus.Permission),
+                VacationDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Vacation)),
+                SickDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Sick)),
+                UnpaidDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Unpaid)),
+                RestDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Rest))))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 
@@ -710,7 +737,11 @@ public sealed class ReportQueryService : IReportQueryService
             EarlyArriveHours: Math.Round(grouped.Sum(r => r.EarlyArriveHours), 2),
             LeaveDays: grouped.Sum(r => r.LeaveDays),
             TripDays: grouped.Sum(r => r.TripDays),
-            PermissionDays: grouped.Sum(r => r.PermissionDays));
+            PermissionDays: grouped.Sum(r => r.PermissionDays),
+            VacationDays: grouped.Sum(r => r.VacationDays),
+            SickDays: grouped.Sum(r => r.SickDays),
+            UnpaidDays: grouped.Sum(r => r.UnpaidDays),
+            RestDays: grouped.Sum(r => r.RestDays));
 
         return (ReportAccess.Allowed, new AttendanceReport(from, to, label, grouped, totals));
     }
@@ -796,7 +827,8 @@ public sealed class ReportQueryService : IReportQueryService
             return new PayrollRow(
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,
                 scheduled, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.OvertimeHours,
-                perDay, deduction, payable, r.EarlyLeaveHours, r.EarlyArriveHours);
+                perDay, deduction, payable, r.EarlyLeaveHours, r.EarlyArriveHours,
+                r.VacationDays, r.SickDays, r.UnpaidDays, r.RestDays, r.TripDays);
         })
         .OrderBy(r => r.EmployeeName)
         .ToList();

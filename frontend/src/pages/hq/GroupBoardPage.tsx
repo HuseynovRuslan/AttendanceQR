@@ -450,7 +450,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
             <div className="hq-panel-title">
               Filiallar · hazırda iş gedən nöqtələr
             </div>
-            <SiteMap sites={data.sites} accentOf={accentOf} />
+            <SiteMap sites={data.sites} companies={data.companies} accentOf={accentOf} />
           </div>
 
           {/* The feed is what makes the screen read as live: rows arrive while you are looking at it. */}

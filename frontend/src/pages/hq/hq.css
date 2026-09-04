@@ -572,3 +572,88 @@
   height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
 }
 .hq-person-map .leaflet-container { background: #0B1220; }
+
+
+/* --- xəritə: rəqəmli nişanlar, süzgəc, popup ----------------------------- */
+
+/* The company filter. Branch counts on the pills because "which company has the most sites" is a
+   question the board could not answer at all before, and it costs one number per pill. */
+.hq-map-filters {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
+  overflow-x: auto; padding-bottom: 3px; scrollbar-width: none;
+}
+.hq-map-filters::-webkit-scrollbar { display: none; }
+.hq-map-filter {
+  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  background: var(--surface); border: 1px solid var(--line); color: var(--fg-dim);
+  font: inherit; font-size: 12px; font-weight: 700;
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
+}
+.hq-map-filter i { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.hq-map-filter b { font-weight: 800; color: var(--fg-faint); }
+.hq-map-filter:hover { background: rgba(255, 255, 255, .08); color: var(--fg); }
+.hq-map-filter.is-on {
+  background: rgba(255, 255, 255, .14); color: var(--fg);
+  border-color: var(--filter-accent, rgba(255, 255, 255, .3));
+}
+.hq-map-filter.is-on b { color: var(--fg); }
+
+/* Leaflet wraps a divIcon in its own box; strip it so only our bubble shows. */
+.hq-map-pin { background: none; border: none; }
+.hq-pin {
+  border-radius: 50%; display: grid; place-items: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .6); cursor: pointer;
+  transition: transform .2s ease;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1;
+}
+.hq-pin span { pointer-events: none; }
+.hq-pin:hover, .hq-pin.is-focused { transform: scale(1.15); }
+/* Work is happening here: the company's colour, filled, with a slow ring so the map reads as live
+   rather than as a screenshot. */
+.hq-pin.is-live {
+  background: var(--dot); border: 2px solid #fff; color: #070B16; font-weight: 800;
+  animation: hq-pin-pulse 2.8s ease-out infinite;
+}
+@keyframes hq-pin-pulse {
+  0%, 100% { box-shadow: 0 4px 16px rgba(0, 0, 0, .6), 0 0 0 0 rgba(255, 255, 255, .38); }
+  55% { box-shadow: 0 4px 16px rgba(0, 0, 0, .6), 0 0 0 9px rgba(255, 255, 255, 0); }
+}
+/* Nobody there. Still drawn, still numbered — an empty branch is a fact the board exists to show,
+   and a marker that disappears when it hits zero hides exactly the ones worth asking about. */
+.hq-pin.is-idle {
+  background: rgba(14, 21, 38, .88); border: 2px dashed rgba(238, 242, 249, .34);
+  color: var(--fg-faint); font-weight: 700;
+}
+/* A pulse on twenty markers is motion for its own sake on a screen someone watches all day. */
+@media (prefers-reduced-motion: reduce) { .hq-pin.is-live { animation: none; } }
+
+/* Leaflet's popup is a white bubble; on this board that reads as something broken. */
+.hq-pop .leaflet-popup-content-wrapper {
+  background: rgba(14, 21, 38, .96); backdrop-filter: blur(16px);
+  border: 1px solid var(--line); border-radius: 14px; color: var(--fg);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .65); padding: 2px;
+}
+.hq-pop .leaflet-popup-content { margin: 0; }
+.hq-pop .leaflet-popup-tip { background: rgba(14, 21, 38, .96); border: none; box-shadow: none; }
+.hq-pop-box { padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 168px; }
+.hq-pop-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 10.5px; }
+.hq-pop-co { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.hq-pop-state { font-weight: 800; }
+.hq-pop-state.is-live { color: var(--live); }
+.hq-pop-state.is-idle { color: #FBBF24; }
+.hq-pop-name { font-size: 14px; font-weight: 800; color: var(--fg); margin: 2px 0; }
+.hq-pop-count { font-size: 13px; color: var(--fg-dim); }
+.hq-pop-count b { font-size: 18px; color: var(--live); font-weight: 800; }
+.hq-pop-geo {
+  font-size: 10.5px; color: var(--fg-faint); margin-top: 5px; padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+
+/* The count the map cannot state on its own — it is the absence of markers, and absence draws
+   nothing. */
+.hq-site-note {
+  padding: 8px 10px; margin-bottom: 4px; border-radius: 8px;
+  background: rgba(245, 158, 11, .1); color: #FBBF24;
+  font-size: 11.5px; font-weight: 700;
+}

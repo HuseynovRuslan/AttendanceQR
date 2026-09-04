@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { Circle, MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
+import L from 'leaflet'
 import { basemap } from '../../lib/basemap'
 import type { Map as LeafletMap } from 'leaflet'
-import type { GroupSite } from '../../api/hq'
+import type { GroupCompany, GroupSite } from '../../api/hq'
 
 // Resolved once: the key does not change while the page is open. This console is dark, so a
 // keyless build gets light tiles inverted rather than a white slab under dark chrome.
@@ -11,8 +12,35 @@ const BASE = basemap('dark')
 /** Roughly 55 km. Sites inside this of each other count as one working area. */
 const CLUSTER_DEGREES = 0.5
 
+/**
+ * The marker IS the number.
+ *
+ * It was a circle sized by headcount, and sizing alone could not answer the question the map is
+ * asked: a director looking at a wall board wants "how many are at Ramana right now", and a slightly
+ * larger dot never says forty. Worse, at city zoom the sized circles overlapped into one pink smear
+ * across central Baku — the sites most worth reading were the least readable.
+ *
+ * So the count is printed inside, and the size is a coarse band rather than a continuous scale:
+ * three sizes are enough to rank a glance, and they stop a busy site from swallowing its neighbours.
+ * An empty branch keeps its place and states its zero in a dashed outline — «which of my branches has
+ * nobody on it» is half of what this map is for, and an invisible marker cannot answer it.
+ */
+function markerIcon(onDuty: number, colour: string, isFocused: boolean): L.DivIcon {
+  const size = onDuty >= 50 ? 40 : onDuty >= 10 ? 34 : 28
+  const state = onDuty === 0 ? 'is-idle' : 'is-live'
+  return L.divIcon({
+    className: 'hq-map-pin',
+    html:
+      `<div class="hq-pin ${state}${isFocused ? ' is-focused' : ''}" ` +
+      `style="--dot:${colour};width:${size}px;height:${size}px"><span>${onDuty}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  })
+}
+
 interface MapActions {
-  fitAll: () => void
+  fit: (subset: GroupSite[]) => void
   flyTo: (site: GroupSite) => void
 }
 
@@ -36,50 +64,66 @@ function defaultCluster(sites: GroupSite[]): GroupSite[] {
   return best.length > 1 ? best : sites
 }
 
-/** Sets the opening view once and hands the map's controls back up. Re-runs only when the set of
- *  sites changes — a map that re-frames itself every twenty seconds while someone is looking at it
- *  would be worse than useless. */
-function FitTo({ sites, register }: { sites: GroupSite[]; register: (fns: MapActions) => void }) {
+/**
+ * Sets the opening view and hands the map's controls back up.
+ *
+ * Re-runs only when the SET of sites changes — which now includes a company filter being applied, so
+ * picking a company reframes onto its branches. It must never re-run on the twenty-second refresh: a
+ * map that re-frames itself while someone is looking at it is worse than useless.
+ */
+function FitTo({ sites, cluster, register }: {
+  sites: GroupSite[]
+  cluster: boolean
+  register: (fns: MapActions) => void
+}) {
   const map = useMap()
   const key = sites.map((s) => s.id).join(',')
 
   useEffect(() => {
-    if (sites.length === 0) return
-
     const fit = (subset: GroupSite[]) => {
       if (subset.length === 0) return
-      if (subset.length === 1) { map.setView([subset[0].lat, subset[0].lng], 14); return }
+      if (subset.length === 1) { map.flyTo([subset[0].lat, subset[0].lng], 14, { duration: 0.7 }); return }
       map.fitBounds(subset.map((s) => [s.lat, s.lng] as [number, number]), { padding: [46, 46], maxZoom: 14 })
     }
 
-    fit(defaultCluster(sites))
-    register({
-      fitAll: () => fit(sites),
-      flyTo: (site) => map.flyTo([site.lat, site.lng], 15, { duration: 0.9 }),
-    })
+    register({ fit, flyTo: (site) => map.flyTo([site.lat, site.lng], 15, { duration: 0.9 }) })
+    if (sites.length === 0) return
+    // Filtered to one company: show ALL of that company's branches. Unfiltered: the densest cluster,
+    // or a single far-flung site would frame the whole country.
+    fit(cluster ? defaultCluster(sites) : sites)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+  }, [key, cluster])
 
   return null
 }
 
 /**
- * The group's sites on a live map, sized by how many people are working at each right now.
+ * The group's sites on a live map, each one stating how many people are working there right now.
  *
  * A director recognises their own city and their own sites instantly, and "our people are at these
- * places right now" lands in a way that "12 ərazi" never does.
+ * places right now" lands in a way that "21 filial" never does.
  *
  * Names live in the list beside the map rather than on it: labels drawn on the map collided into an
  * unreadable pile as soon as two sites sat near each other — which, in a city, is most of them.
  */
-export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i: number) => string }) {
+export function SiteMap({ sites, companies = [], accentOf }: {
+  sites: GroupSite[]
+  companies?: GroupCompany[]
+  accentOf: (i: number) => string
+}) {
   const [map, setMap] = useState<LeafletMap | null>(null)
   const [actions, setActions] = useState<MapActions | null>(null)
   const [focused, setFocused] = useState<string | null>(null)
+  const [onlyCompany, setOnlyCompany] = useState<number | null>(null)
   // The wheel is claimed only after a deliberate click on the map. Enabling it on hover would mean
   // scrolling past the board zooms the map instead of moving the page — the kind of thing that
   // happens exactly once, in front of the person you are demonstrating to.
   const [wheelArmed, setWheelArmed] = useState(false)
+
+  const shown = useMemo(
+    () => (onlyCompany === null ? sites : sites.filter((s) => s.companyIndex === onlyCompany)),
+    [sites, onlyCompany],
+  )
 
   const centre = useMemo<[number, number]>(() => {
     if (sites.length === 0) return [40.4093, 49.8671] // Baku, until the first site loads
@@ -89,21 +133,53 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
     return [lat, lng]
   }, [sites])
 
-  // Marker size carries the headcount. Square-root rather than linear: a site with forty people
-  // would otherwise draw a blob that swallows its neighbours.
-  const busiest = Math.max(1, ...sites.map((s) => s.onDuty))
-  const radiusOf = (onDuty: number) => 7 + Math.sqrt(onDuty / busiest) * 14
-
   function armWheel() {
     if (!map || wheelArmed) return
     map.scrollWheelZoom.enable()
     setWheelArmed(true)
   }
 
-  const ordered = [...sites].sort((a, b) => b.onDuty - a.onDuty)
+  function focus(s: GroupSite) {
+    setFocused(s.id)
+    // Central Baku holds most of the branches within a few hundred metres of each other, so at the
+    // opening zoom they sit on top of one another. Flying in on a press is what pulls them apart —
+    // the alternative is asking a director to pinch-zoom a wall screen.
+    actions?.flyTo(s)
+  }
+
+  const ordered = [...shown].sort((a, b) => b.onDuty - a.onDuty)
+  const emptyCount = shown.filter((s) => s.onDuty === 0).length
 
   return (
     <div className="hq-mapwrap">
+      {companies.length > 1 && (
+        <div className="hq-map-filters">
+          <button
+            type="button"
+            className={`hq-map-filter${onlyCompany === null ? ' is-on' : ''}`}
+            onClick={() => { setOnlyCompany(null); setFocused(null) }}
+          >
+            Hamısı <b>{sites.length}</b>
+          </button>
+          {companies.map((c, i) => {
+            const n = sites.filter((s) => s.companyIndex === i).length
+            if (n === 0) return null
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={`hq-map-filter${onlyCompany === i ? ' is-on' : ''}`}
+                style={{ ['--filter-accent' as string]: accentOf(i) }}
+                onClick={() => { setOnlyCompany(onlyCompany === i ? null : i); setFocused(null) }}
+              >
+                <i style={{ background: accentOf(i) }} />
+                {c.name} <b>{n}</b>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div className="hq-map" onClick={armWheel}>
         <MapContainer
           ref={setMap}
@@ -115,63 +191,66 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
           style={{ height: '100%', width: '100%', background: '#0B1020' }}
         >
           <TileLayer
-          url={BASE.url}
-          attribution={BASE.attribution}
-          subdomains={BASE.subdomains}
-          maxZoom={BASE.maxZoom}
-          // Only when standing in with light tiles; the real dark_all needs no help.
-          className={BASE.needsDarkFilter ? 'tiles-dark' : undefined}
-        />
-          <FitTo sites={sites} register={setActions} />
-          {sites.map((s) => {
+            url={BASE.url}
+            attribution={BASE.attribution}
+            subdomains={BASE.subdomains}
+            maxZoom={BASE.maxZoom}
+            // Only when standing in with light tiles; the real dark_all needs no help.
+            className={BASE.needsDarkFilter ? 'tiles-dark' : undefined}
+          />
+          <FitTo sites={shown} cluster={onlyCompany === null} register={setActions} />
+          {shown.map((s) => {
             const colour = accentOf(s.companyIndex < 0 ? 0 : s.companyIndex)
             const live = s.onDuty > 0
             const isFocused = focused === s.id
+            const company = companies[s.companyIndex]?.name ?? ''
             return (
               // Fragment, not a wrapper element: react-leaflet renders children into the map
               // container, and a stray div there sits on top of the map and swallows clicks.
               <Fragment key={s.id}>
-                {/* The geofence, to scale — but ONLY for the site being looked at.
-                    Drawn for every site it stopped being information and became a stain: these are
-                    real-world radii (500 m for a park, 2,000 m for one site) and at group zoom the
-                    circles of central Baku merge into one pink blob that hides the markers it was
-                    meant to explain. On focus it teaches the same thing about the one site the
-                    reader is actually asking about. */}
-                {isFocused && (
+                {/* The geofence, to scale — for the site being looked at, or for a whole company once
+                    one is filtered to.
+                    Drawn for EVERY site at once it stopped being information and became a stain:
+                    these are real-world radii (500 m for a park, 2,000 m for one site) and at group
+                    zoom the circles of central Baku merge into a single smear that hides the markers
+                    they were meant to explain. Narrowed to one company there are few enough to read,
+                    and that is exactly when someone is asking about coverage. */}
+                {(isFocused || onlyCompany !== null) && (
                   <Circle
                     center={[s.lat, s.lng]}
                     radius={s.radiusMeters}
                     pathOptions={{
                       color: colour,
                       fillColor: colour,
-                      fillOpacity: 0.08,
-                      opacity: 0.7,
+                      fillOpacity: isFocused ? 0.09 : 0.04,
+                      opacity: isFocused ? 0.7 : 0.3,
                       weight: 1,
                       dashArray: '4 5',
                     }}
                   />
                 )}
-                <CircleMarker
-                  center={[s.lat, s.lng]}
-                  radius={radiusOf(s.onDuty) + (isFocused ? 4 : 0)}
-                  pathOptions={{
-                    color: colour,
-                    fillColor: colour,
-                    // A site with nobody on it stays visible but recedes — the eye should go to
-                    // where work is actually happening.
-                    fillOpacity: live ? 0.5 : 0.12,
-                    opacity: live ? 0.95 : 0.35,
-                    weight: isFocused ? 3 : 2,
-                    className: live ? 'hq-marker-live' : undefined,
-                  }}
-                  eventHandlers={{ click: () => { setFocused(s.id); actions?.flyTo(s) } }}
+                <Marker
+                  position={[s.lat, s.lng]}
+                  icon={markerIcon(s.onDuty, colour, isFocused)}
+                  eventHandlers={{ click: () => focus(s) }}
                 >
-                  <Tooltip direction="top" offset={[0, -6]} opacity={1} className="hq-tip">
-                    <b>{s.name}</b>
-                    <br />
-                    {s.onDuty > 0 ? `${s.onDuty} nəfər iş başında` : 'hazırda boş'}
-                  </Tooltip>
-                </CircleMarker>
+                  <Popup className="hq-pop" closeButton={false}>
+                    <div className="hq-pop-box">
+                      <div className="hq-pop-top">
+                        <span className="hq-pop-co" style={{ color: colour }}>{company}</span>
+                        <span className={`hq-pop-state ${live ? 'is-live' : 'is-idle'}`}>
+                          {live ? 'iş gedir' : 'hazırda boş'}
+                        </span>
+                      </div>
+                      <div className="hq-pop-name">{s.name}</div>
+                      <div className="hq-pop-count hq-num">
+                        <b>{s.onDuty}</b>
+                        {s.staff > 0 && <small> / {s.staff} nəfər heyət</small>}
+                      </div>
+                      <div className="hq-pop-geo">GPS nəzarət zonası · {s.radiusMeters} m</div>
+                    </div>
+                  </Popup>
+                </Marker>
               </Fragment>
             )
           })}
@@ -185,13 +264,13 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
           <button
             type="button"
             className="hq-map-ctl-wide"
-            onClick={() => { setFocused(null); actions?.fitAll() }}
+            onClick={() => { setFocused(null); actions?.fit(onlyCompany === null ? sites : shown) }}
           >
             Hamısı
           </button>
         </div>
 
-        {!wheelArmed && sites.length > 0 && (
+        {!wheelArmed && shown.length > 0 && (
           <div className="hq-map-hint">Yaxınlaşdırmaq üçün xəritəyə klikləyin</div>
         )}
       </div>
@@ -199,11 +278,14 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
       {/* Names, readable, ordered by where the work is. Clicking one flies the map to it — the single
           most useful thing to be able to do while someone is watching. */}
       <ul className="hq-sitelist">
+        {emptyCount > 0 && (
+          <li className="hq-site-note">{emptyCount} filialda hazırda heç kim yoxdur</li>
+        )}
         {ordered.map((s) => (
           <li
             key={s.id}
             className={`hq-site${focused === s.id ? ' is-focused' : ''}${s.onDuty === 0 ? ' is-idle' : ''}`}
-            onClick={() => { setFocused(s.id); actions?.flyTo(s) }}
+            onClick={() => focus(s)}
           >
             <i style={{ background: accentOf(s.companyIndex < 0 ? 0 : s.companyIndex) }} />
             <span className="hq-site-name">{s.name}</span>

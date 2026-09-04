@@ -31,7 +31,20 @@ public sealed record EmployeeReportRow(
     double EarlyLeaveHours = 0,
     // Hours in the door BEFORE shift start. Separate from overtime on purpose — see
     // AttendanceCalculator.DayComputation for why folding it in would mint phantom hours.
-    double EarlyArriveHours = 0);
+    double EarlyArriveHours = 0,
+    // The leave breakdown, added 2026-09-04 because the export put «Məzuniyyət», «Xəstəlik»,
+    // «Ödənişsiz» and «İstirahət» in ONE column headed «Məzuniyyət/İcazə». Those are four different
+    // entitlements: annual leave comes off a yearly balance, sick needs a certificate, unpaid is not
+    // paid at all, and a rest day is neither. Production held 495 days of annual leave, 415 of rest,
+    // 31 of sick and 23 unpaid — all reported as one number that read as annual leave.
+    //
+    // LeaveDays deliberately KEEPS its old meaning (every non-trip leave day) and stays where it is:
+    // PayrollMath's divisor is built from it, and redefining a figure the payroll divides by is how
+    // a reporting fix becomes a pay bug. These four are additive detail, and they sum to LeaveDays.
+    int VacationDays = 0,
+    int SickDays = 0,
+    int UnpaidDays = 0,
+    int RestDays = 0);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(
@@ -54,7 +67,20 @@ public sealed record ReportTotals(
     double EarlyLeaveHours = 0,
     // Hours in the door BEFORE shift start. Separate from overtime on purpose — see
     // AttendanceCalculator.DayComputation for why folding it in would mint phantom hours.
-    double EarlyArriveHours = 0);
+    double EarlyArriveHours = 0,
+    // The leave breakdown, added 2026-09-04 because the export put «Məzuniyyət», «Xəstəlik»,
+    // «Ödənişsiz» and «İstirahət» in ONE column headed «Məzuniyyət/İcazə». Those are four different
+    // entitlements: annual leave comes off a yearly balance, sick needs a certificate, unpaid is not
+    // paid at all, and a rest day is neither. Production held 495 days of annual leave, 415 of rest,
+    // 31 of sick and 23 unpaid — all reported as one number that read as annual leave.
+    //
+    // LeaveDays deliberately KEEPS its old meaning (every non-trip leave day) and stays where it is:
+    // PayrollMath's divisor is built from it, and redefining a figure the payroll divides by is how
+    // a reporting fix becomes a pay bug. These four are additive detail, and they sum to LeaveDays.
+    int VacationDays = 0,
+    int SickDays = 0,
+    int UnpaidDays = 0,
+    int RestDays = 0);
 
 /// <summary>The full report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record AttendanceReport(
@@ -100,7 +126,18 @@ public sealed record PayrollRow(
     decimal Payable,
     // Mirror of OvertimeHours, same rule: displayed as hours, never money.
     double EarlyLeaveHours = 0,
-    double EarlyArriveHours = 0);
+    double EarlyArriveHours = 0,
+    // The same breakdown as EmployeeReportRow, carried through to the sheet the accountant actually
+    // receives. LeaveDays above stays the total and stays the payroll divisor's input.
+    int VacationDays = 0,
+    int SickDays = 0,
+    int UnpaidDays = 0,
+    int RestDays = 0,
+    // Ezamiyyət. NOT derivable from the others: LeaveDays already excludes trips, so the difference
+    // between it and the four types above is not a trip count — it is days a summary marked OnLeave
+    // that no surviving LeaveRecord covers (a record deleted after the night job ran). Carried
+    // explicitly rather than computed, or the sheet would print that residue under «Ezamiyyət».
+    int TripDays = 0);
 
 /// <summary>The payroll report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record PayrollReport(

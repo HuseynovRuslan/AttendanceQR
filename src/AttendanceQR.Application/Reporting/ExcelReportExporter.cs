@@ -20,25 +20,35 @@ public sealed class ExcelReportExporter : IExcelReportExporter
 {
     // No "Late Count": every employee keeps their own hours, so a location-wide shift cannot say who
     // was late. AttendanceReport still carries the figure — only the sheet omits it.
+    // Azerbaijani, like every other thing a person in this product reads. This sheet was the last
+    // English surface left, and it is a file that gets printed and handed to somebody.
+    //
+    // Leave is FIVE columns, not one. It was «Leave Days» — a single number in which «Məzuniyyət»,
+    // «Xəstəlik», «Ödənişsiz» and «İstirahət» were indistinguishable, and the reader could only read
+    // it as annual leave. On production that one column was hiding 495 days of annual leave, 415 of
+    // rest, 31 of sick and 23 unpaid. They are four different entitlements — sick needs a medical
+    // certificate and comes from a different budget; unpaid is not paid at all — and an accountant
+    // cannot recover one from the other after the fact.
     private static readonly string[] Headers =
         {
-            "Employee", "Location", "Work Days", "Absent Days", "Total Hours", "Overtime Hours",
-            "Leave Days", "Permission Days", "Early Leave Hours", "Early Arrive Hours"
+            "İşçi", "Filial", "İş günü", "Qayıb", "İşlənmiş saat", "Əlavə saat",
+            "Məzuniyyət", "Xəstəlik", "Ödənişsiz", "İstirahət", "Ezamiyyət", "İcazə",
+            "Tez çıxma (saat)", "Tez gəlmə (saat)"
         };
 
     public byte[] Build(AttendanceReport report)
     {
         using var workbook = new XLWorkbook();
-        var ws = workbook.Worksheets.Add("Attendance");
+        var ws = workbook.Worksheets.Add("Davamiyyət");
 
         // Title block.
         var title = ws.Range(1, 1, 1, Headers.Length).Merge();
-        title.Value = "Attendance Report";
+        title.Value = "Davamiyyət hesabatı";
         title.Style.Font.Bold = true;
         title.Style.Font.FontSize = 14;
 
-        ws.Cell(2, 1).Value = $"Scope: {report.ScopeLabel}";
-        ws.Cell(3, 1).Value = $"Period: {report.From:yyyy-MM-dd} — {report.To:yyyy-MM-dd}";
+        ws.Cell(2, 1).Value = $"Əhatə: {report.ScopeLabel}";
+        ws.Cell(3, 1).Value = $"Dövr: {report.From:dd.MM.yyyy} — {report.To:dd.MM.yyyy}";
 
         // Header row.
         const int headerRow = 5;
@@ -61,25 +71,33 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(r, 4).Value = row.AbsentDays;
             ws.Cell(r, 5).Value = row.TotalWorkedHours;
             ws.Cell(r, 6).Value = row.OvertimeHours;
-            ws.Cell(r, 7).Value = row.LeaveDays;
-            ws.Cell(r, 8).Value = row.PermissionDays;
-            ws.Cell(r, 9).Value = row.EarlyLeaveHours;
-            ws.Cell(r, 10).Value = row.EarlyArriveHours;
+            ws.Cell(r, 7).Value = row.VacationDays;
+            ws.Cell(r, 8).Value = row.SickDays;
+            ws.Cell(r, 9).Value = row.UnpaidDays;
+            ws.Cell(r, 10).Value = row.RestDays;
+            ws.Cell(r, 11).Value = row.TripDays;
+            ws.Cell(r, 12).Value = row.PermissionDays;
+            ws.Cell(r, 13).Value = row.EarlyLeaveHours;
+            ws.Cell(r, 14).Value = row.EarlyArriveHours;
             for (var c = 1; c <= Headers.Length; c++)
                 ws.Cell(r, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             r++;
         }
 
         // Totals row.
-        ws.Cell(r, 1).Value = "TOTAL";
+        ws.Cell(r, 1).Value = "CƏMİ";
         ws.Cell(r, 3).Value = report.Totals.WorkDays;
         ws.Cell(r, 4).Value = report.Totals.AbsentDays;
         ws.Cell(r, 5).Value = report.Totals.TotalWorkedHours;
         ws.Cell(r, 6).Value = report.Totals.OvertimeHours;
-        ws.Cell(r, 7).Value = report.Totals.LeaveDays;
-        ws.Cell(r, 8).Value = report.Totals.PermissionDays;
-        ws.Cell(r, 9).Value = report.Totals.EarlyLeaveHours;
-        ws.Cell(r, 10).Value = report.Totals.EarlyArriveHours;
+        ws.Cell(r, 7).Value = report.Totals.VacationDays;
+        ws.Cell(r, 8).Value = report.Totals.SickDays;
+        ws.Cell(r, 9).Value = report.Totals.UnpaidDays;
+        ws.Cell(r, 10).Value = report.Totals.RestDays;
+        ws.Cell(r, 11).Value = report.Totals.TripDays;
+        ws.Cell(r, 12).Value = report.Totals.PermissionDays;
+        ws.Cell(r, 13).Value = report.Totals.EarlyLeaveHours;
+        ws.Cell(r, 14).Value = report.Totals.EarlyArriveHours;
         var totalRange = ws.Range(r, 1, r, Headers.Length);
         totalRange.Style.Font.Bold = true;
         totalRange.Style.Fill.BackgroundColor = XLColor.LightYellow;
@@ -95,7 +113,11 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     // Azerbaijani + AZN — this sheet goes straight to the accountant, so it speaks their language.
     private static readonly string[] PayrollHeaders =
         {
-            "İşçi", "Filial", "Aylıq maaş", "İş günü", "Gəlib", "Qayıb", "Məzuniyyət/İcazə",
+            "İşçi", "Filial", "Aylıq maaş", "İş günü", "Gəlib", "Qayıb",
+            // «Məzuniyyət/İcazə» was one column holding four entitlements plus permission hours.
+            // This sheet goes to an accountant, who has to treat sick and unpaid differently from
+            // annual leave and cannot un-add them once they are summed.
+            "Məzuniyyət", "Xəstəlik", "Ödənişsiz", "İstirahət", "Ezamiyyət", "İcazə",
             "Əlavə saat", "Günlük", "Çıxılan", "Ödəniləcək", "Tez çıxma (saat)", "Tez gəlmə (saat)"
         };
     private const string Money = "#,##0.00";
@@ -132,18 +154,23 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             if (row.MonthlySalary is { } salary)
             {
                 ws.Cell(r, 3).Value = salary;
-                ws.Cell(r, 9).Value = row.PerDay;
-                ws.Cell(r, 10).Value = row.Deduction;
-                ws.Cell(r, 11).Value = row.Payable;
+                ws.Cell(r, 14).Value = row.PerDay;
+                ws.Cell(r, 15).Value = row.Deduction;
+                ws.Cell(r, 16).Value = row.Payable;
             }
             ws.Cell(r, 4).Value = row.ScheduledDays;
             ws.Cell(r, 5).Value = row.WorkDays;
             ws.Cell(r, 6).Value = row.AbsentDays;
-            ws.Cell(r, 7).Value = row.LeaveDays + row.PermissionDays;
-            ws.Cell(r, 8).Value = row.OvertimeHours;
-            ws.Cell(r, 12).Value = row.EarlyLeaveHours;
-            ws.Cell(r, 13).Value = row.EarlyArriveHours;
-            foreach (var col in new[] { 3, 9, 10, 11 })
+            ws.Cell(r, 7).Value = row.VacationDays;
+            ws.Cell(r, 8).Value = row.SickDays;
+            ws.Cell(r, 9).Value = row.UnpaidDays;
+            ws.Cell(r, 10).Value = row.RestDays;
+            ws.Cell(r, 11).Value = row.TripDays;
+            ws.Cell(r, 12).Value = row.PermissionDays;
+            ws.Cell(r, 13).Value = row.OvertimeHours;
+            ws.Cell(r, 17).Value = row.EarlyLeaveHours;
+            ws.Cell(r, 18).Value = row.EarlyArriveHours;
+            foreach (var col in new[] { 3, 14, 15, 16 })
                 ws.Cell(r, col).Style.NumberFormat.Format = Money;
             for (var c = 1; c <= PayrollHeaders.Length; c++)
                 ws.Cell(r, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
@@ -152,9 +179,9 @@ public sealed class ExcelReportExporter : IExcelReportExporter
 
         ws.Cell(r, 1).Value = "CƏMİ";
         ws.Cell(r, 3).Value = report.TotalMonthlySalary;
-        ws.Cell(r, 10).Value = report.TotalDeduction;
-        ws.Cell(r, 11).Value = report.TotalPayable;
-        foreach (var col in new[] { 3, 10, 11 })
+        ws.Cell(r, 15).Value = report.TotalDeduction;
+        ws.Cell(r, 16).Value = report.TotalPayable;
+        foreach (var col in new[] { 3, 15, 16 })
             ws.Cell(r, col).Style.NumberFormat.Format = Money;
         var totalRange = ws.Range(r, 1, r, PayrollHeaders.Length);
         totalRange.Style.Font.Bold = true;

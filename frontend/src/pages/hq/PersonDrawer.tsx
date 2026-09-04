@@ -1,11 +1,15 @@
 import { Fragment, useEffect, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip } from 'react-leaflet'
+import { basemap } from '../../lib/basemap'
 import { getPersonDay, type PersonDay } from '../../api/hq'
 import { HqDrawer } from './HqDrawer'
 import { timeOf } from './format'
 
-const TILES = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const ATTR = '&copy; OpenStreetMap &copy; CARTO'
+// Through the shared helper, NOT a hand-written CARTO URL. CARTO began requiring a key in August 2026
+// and answers unauthenticated requests with a 200 and a tile reading "API KEY REQUIRED" — no error,
+// no log line, just a watermark across the customer's map. Writing the URL here bypassed the key AND
+// the OpenStreetMap fallback that exists for exactly this.
+const BASE = basemap('dark')
 
 function fmtDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
@@ -85,7 +89,13 @@ export function PersonDrawer({ employeeId, accent, onClose }: {
           <div className="hq-drawer-sec-title">Harada olub</div>
           <div className="hq-person-map">
             <MapContainer center={centre} zoom={14} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
-              <TileLayer url={TILES} attribution={ATTR} />
+              <TileLayer
+                url={BASE.url}
+                attribution={BASE.attribution}
+                subdomains={BASE.subdomains}
+                maxZoom={BASE.maxZoom}
+                className={BASE.needsDarkFilter ? 'tiles-dark' : undefined}
+              />
               {data.branchLat != null && data.branchLng != null && (
                 <Circle
                   center={[data.branchLat, data.branchLng]}
