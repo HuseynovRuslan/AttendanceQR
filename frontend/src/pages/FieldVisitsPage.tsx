@@ -15,7 +15,7 @@ import {
 import { FieldCheckoutSheet } from '../components/FieldCheckoutSheet'
 import { applyPendingTicks, writePendingTick } from '../lib/pendingTicks'
 import { getMyProfile } from '../api/attendance'
-import { getPosition, reverseGeocode } from '../lib/geo'
+import { getPosition, isJunkTargetLabel, reverseGeocode } from '../lib/geo'
 import { fmtDayMonth, fmtDuration, fmtTime } from '../lib/format'
 import { todayStr } from '../lib/att'
 
@@ -29,6 +29,13 @@ const GEO_MSG: Record<string, string> = {
 type Msg = { kind: 'err' | 'ok'; text: string }
 
 const fmtMeters = (d: number) => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`)
+
+/** Close enough that the branch IS the answer: 500 m covers a park and its car park, and is far
+ *  short of the next branch in central Baku. */
+const AT_BRANCH_METRES = 500
+/** Beyond this, they are somewhere the branch list does not contain, so the street address is
+ *  fetched without waiting for them to ask for it. */
+const FAR_FROM_BRANCH_METRES = 1500
 
 const titleOf = (v: MyFieldVisit) => v.targetLabel || (v.selfReported ? 'Sərbəst ziyarət' : 'Sahə ziyarəti')
 
@@ -453,33 +460,27 @@ function Spinner({ label }: { label: string }) {
 
 /** Self-report a visit — one optional label, then GPS check-in. Replaces the old window.prompt. */
 /**
- * Filing your own visit.
+ * Filing your own visit — one tap, when the answer is obvious.
  *
- * It used to be one autofocused text box labelled «Ünvan / obyekt». The keyboard opened and people
- * typed a sentence: production holds «Obyektdeyem», «Obyektdəyəm», «Obyekt deyem» and «Obyektdeyem»
- * — four spellings of «I am at the site», which is not a place — and two spellings each of one
- * office and one café. The admin board's only «where» column was built on that, so a manager running
- * two parks opened the day and every row read the same.
+ * It began as a single autofocused text box, which is where «Obyektdeyem» came from, in four
+ * spellings. Then it became a list of branches. This is the last step: when the phone says the
+ * worker is thirty metres from Green Garden, the app should not make a cleaner in the rain read a
+ * list and choose — it should say so and let her confirm.
  *
- * Now the branches come first, nearest at the top, because the worker is STANDING at one of them and
- * the phone already knows which. Typing is still possible — «Başqa ünvan» — for the genuinely ad-hoc
- * site the list cannot contain, which is what this feature was built for in the first place. It is
- * simply no longer the path of least resistance.
+ * So the nearest branch is PRE-SELECTED inside 500 m, the button carries its name rather than the
+ * word «Ərazidəyəm», and everything else — the other branches, the places she goes often, the free
+ * text — is folded away behind one link. Nothing is removed; it is ordered by how often it is right.
  */
 function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
   const [sites, setSites] = useState<FieldSite[] | null>(null)
   const [recent, setRecent] = useState<string[]>([])
   const [picked, setPicked] = useState<string | null>(null)
-  const [other, setOther] = useState(false)
+  const [showOther, setShowOther] = useState(false)
+  const [showAll, setShowAll] = useState(false)
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  // Taken ONCE, when the sheet opens, and reused for the check-in. Asking twice would mean two
-  // permission moments and two chances for the answer to differ from the list they just chose from.
   const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
-  // Filled in only when the worker says the list does not contain where they are — see
-  // reverseGeocode, which sends their position off our servers and is therefore not run for a visit
-  // at one of the company's own branches.
   const [addrBusy, setAddrBusy] = useState(false)
 
   useEffect(() => {
@@ -491,11 +492,26 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
       setPos(coords)
       const { status, data } = await getFieldSites(coords?.lat, coords?.lng)
       if (!alive) return
-      if (status === 200 && data && 'sites' in data) {
-        setSites(data.sites)
-        setRecent(data.recent)
-      } else {
-        setSites([])
+      if (!(status === 200 && data && 'sites' in data)) { setSites([]); return }
+
+      setSites(data.sites)
+      // The server already drops one-off labels and the «Obyektdeyem» family; this is the same rule
+      // applied on the way in, so an older build of the API cannot put one back on screen.
+      setRecent((data.recent ?? []).filter((r) => r.trim().length > 0 && !isJunkTargetLabel(r)))
+
+      const nearest = data.sites[0]
+      if (nearest?.distanceMeters != null && nearest.distanceMeters <= AT_BRANCH_METRES) {
+        // Thirty metres from her own park IS the answer. Choosing it for her is the difference
+        // between one tap and reading a list in the rain.
+        setPicked(nearest.id)
+      } else if (coords && (!nearest || (nearest.distanceMeters ?? Infinity) > FAR_FROM_BRANCH_METRES)) {
+        // Far from everything: she is at an ad-hoc site, so fetch the street address now rather than
+        // making her discover the «başqa ünvan» link first. See reverseGeocode — this is the ONE
+        // place the app sends a position off our servers.
+        setAddrBusy(true)
+        void reverseGeocode(coords.lat, coords.lng)
+          .then((a) => { if (alive && a) setLabel(a) })
+          .finally(() => { if (alive) setAddrBusy(false) })
       }
     })()
     return () => { alive = false }
@@ -505,18 +521,12 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
     setBusy(true)
     setErr(null)
     try {
-      // The position from the list step when we have it; otherwise ask now — a failure here is the
-      // one thing that must stop the visit, because a field check-in with no coordinates is a claim
-      // with nothing behind it.
       let coords = pos
       if (!coords) {
         const geo = await getPosition()
         if (!geo.ok) { setErr(GEO_MSG[geo.kind] ?? 'GPS alınmadı'); return }
         coords = { lat: geo.coords.latitude, lng: geo.coords.longitude }
       }
-
-      // A branch chip sets `picked`; a «tez-tez» chip writes straight into `label`, because it IS a
-      // label — there is no branch behind it to look up.
       const chosen = picked ? sites?.find((x) => x.id === picked)?.name ?? null : null
       const res = await startFieldVisit({
         latitude: coords.lat,
@@ -534,122 +544,186 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
     }
   }
 
-  // A branch, a remembered place, or something typed — any of the three is an answer.
+  const nearest = sites?.[0] ?? null
+  const atNearest = nearest?.distanceMeters != null && nearest.distanceMeters <= AT_BRANCH_METRES
+  const chosenSite = picked ? sites?.find((x) => x.id === picked) ?? null : null
   const ready = picked !== null || label.trim().length > 0
+
+  // The button says WHERE, not just "here". «Ərazidəyəm» left the worker confirming something they
+  // could not see. The name is appended without a case ending on purpose: «Green Garden-dəyəm» and
+  // «Qala Anbar-dayam» need different vowels, and getting that wrong on somebody's own workplace
+  // reads worse than not trying.
+  const confirmText = chosenSite ? `${chosenSite.name} · Təsdiq et`
+    : label.trim() ? `${label.trim()} · Təsdiq et`
+      : 'Ərazidəyəm'
 
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
-      <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 shadow-2xl">
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-200" />
-        <div className="text-lg font-bold">Haradasınız?</div>
+        <div className="text-xl font-extrabold text-slate-900">Haradasınız?</div>
         <div className="mt-1 text-sm text-slate-500">
-          QR lazım deyil — yeriniz və vaxt yazılacaq.
+          {atNearest ? 'Yeriniz təyin olundu — təsdiq edin.' : 'Yerinizi seçin və ya yazın.'}
         </div>
 
-        {sites === null && <div className="mt-4"><Spinner label="Yaxınlıqdakılar axtarılır…" /></div>}
-
-        {sites !== null && sites.length > 0 && !other && (
-          <div className="mt-4 flex flex-col gap-2">
-            {sites.slice(0, 6).map((sIt) => (
-              <button
-                key={sIt.id}
-                type="button"
-                onClick={() => { setPicked(sIt.id); setLabel('') }}
-                className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
-                  picked === sIt.id
-                    ? 'border-violet-500 bg-violet-50 font-bold text-violet-900'
-                    : 'border-slate-200 bg-white font-semibold text-slate-800'
-                }`}
-              >
-                <span className="min-w-0 truncate">{sIt.name}</span>
-                {/* The distance is the reason the top one is usually right, so it is shown rather
-                    than merely used for sorting. */}
-                {sIt.distanceMeters != null && (
-                  <span className="ml-3 shrink-0 text-xs font-semibold text-slate-400">
-                    {sIt.distanceMeters >= 1000
-                      ? `${(sIt.distanceMeters / 1000).toFixed(1)} km`
-                      : `${sIt.distanceMeters} m`}
-                  </span>
-                )}
-              </button>
-            ))}
+        {sites === null && (
+          <div className="mt-5 flex items-center justify-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-6 text-slate-500">
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-violet-600 border-t-transparent" />
+            <span className="text-sm font-semibold">Ən yaxın filial axtarılır…</span>
           </div>
         )}
 
-        {sites !== null && (other || sites.length === 0) && (
-          <>
-            <label className="mt-4 block text-sm font-semibold text-slate-600">Ünvan / obyekt</label>
+        {sites !== null && !showOther && nearest && (
+          <div className="mt-4 flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => { setPicked(nearest.id); setLabel('') }}
+              className={`flex flex-col rounded-2xl border-2 p-4 text-left transition ${
+                picked === nearest.id ? 'border-emerald-500 bg-emerald-50/70' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className={`text-[11px] font-bold uppercase tracking-wider ${
+                  picked === nearest.id ? 'text-emerald-700' : 'text-slate-500'
+                }`}>
+                  {atNearest ? 'Hazırda buradasınız' : 'Ən yaxın filial'}
+                </span>
+                {nearest.distanceMeters != null && (
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-extrabold ${
+                    picked === nearest.id ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {nearest.distanceMeters >= 1000
+                      ? `${(nearest.distanceMeters / 1000).toFixed(1)} km`
+                      : `${nearest.distanceMeters} m`}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1.5 text-lg font-extrabold text-slate-900">{nearest.name}</div>
+              {picked === nearest.id && (
+                <div className="mt-1 text-xs font-semibold text-emerald-700">✓ seçildi</div>
+              )}
+            </button>
+
+            {sites.length > 1 && (
+              showAll ? (
+                <div className="flex flex-col gap-2">
+                  {sites.slice(1, 6).map((sIt) => (
+                    <button
+                      key={sIt.id}
+                      type="button"
+                      onClick={() => { setPicked(sIt.id); setLabel('') }}
+                      className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition ${
+                        picked === sIt.id
+                          ? 'border-violet-500 bg-violet-50 font-bold text-violet-900'
+                          : 'border-slate-200 bg-white font-medium text-slate-700'
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">{sIt.name}</span>
+                      {sIt.distanceMeters != null && (
+                        <span className="shrink-0 text-xs text-slate-400">
+                          {sIt.distanceMeters >= 1000
+                            ? `${(sIt.distanceMeters / 1000).toFixed(1)} km`
+                            : `${sIt.distanceMeters} m`}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                // Folded away, because the nearest branch is the answer nearly every time and a list
+                // of six is six chances to tap the wrong one.
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="py-2 text-center text-xs font-bold text-slate-500"
+                >
+                  Digər filiallar ({sites.length - 1}) ↓
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        {sites !== null && showOther && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Kənar ünvan və ya obyekt
+              </label>
+              {addrBusy && <span className="text-xs font-semibold text-violet-600">ünvan tapılır…</span>}
+            </div>
             <input
               autoFocus
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !busy && ready) void submit() }}
-              placeholder={addrBusy ? 'Ünvan tapılır…' : 'Məs. Nizami küç. 12'}
-              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+              placeholder={addrBusy ? 'GPS ünvanı tapılır…' : 'Məs. Nizami küç. 12 / Anbar'}
+              className="mt-1.5 w-full rounded-2xl border border-slate-200 px-4 py-3.5 text-sm font-semibold focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
-          </>
+            {/* Only here, where they are already answering "somewhere else": on the branch screen
+                these were a second list competing with the one that is usually right. */}
+            {recent.length > 0 && (
+              <div className="mt-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Tez-tez getdiyiniz yerlər
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {recent.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => { setPicked(null); setLabel(label === r ? '' : r) }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                        label === r
+                          ? 'border-violet-500 bg-violet-50 text-violet-900'
+                          : 'border-slate-200 bg-white text-slate-700'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Places this person keeps returning to that are not branches. Under the branches, because
-            a branch is the commoner answer and the nearest one is usually right — but above the
-            typing, because typing is what produced three spellings of one federation. */}
-        {sites !== null && !other && recent.length > 0 && (
-          <>
-            <div className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-400">
-              Tez-tez getdiyiniz yerlər
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {recent.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => { setPicked(null); setLabel(label === r ? '' : r) }}
-                  className={`rounded-full border px-3.5 py-2 text-sm transition ${
-                    label === r
-                      ? 'border-violet-500 bg-violet-50 font-bold text-violet-900'
-                      : 'border-slate-200 bg-white font-semibold text-slate-700'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {sites !== null && sites.length > 0 && (
+        {sites !== null && (
           <button
             type="button"
             onClick={() => {
-              const next = !other
-              setOther(next); setPicked(null); setLabel('')
-              // Fill the address in for them. Only here, and only once: this is the branch where the
-              // list has no answer, so an address off the map is better than an empty box that
-              // history says gets «Obyektdeyem» typed into it.
-              if (next && pos) {
-                setAddrBusy(true)
-                void reverseGeocode(pos.lat, pos.lng)
-                  .then((a) => { if (a) setLabel(a) })
-                  .finally(() => setAddrBusy(false))
+              const next = !showOther
+              setShowOther(next)
+              if (next) {
+                setPicked(null)
+                if (pos && !label) {
+                  setAddrBusy(true)
+                  void reverseGeocode(pos.lat, pos.lng)
+                    .then((a) => { if (a) setLabel(a) })
+                    .finally(() => setAddrBusy(false))
+                }
+              } else {
+                setLabel('')
+                if (nearest && atNearest) setPicked(nearest.id)
               }
             }}
-            className="mt-3 w-full py-2 text-sm font-semibold text-violet-600"
+            className="mt-3 w-full py-2 text-center text-xs font-bold text-violet-600"
           >
-            {other ? '← Filiallardan seç' : 'Siyahıda yoxdur — başqa ünvan yazım'}
+            {showOther ? '← Filiallara qayıt' : 'Filialda deyiləm — başqa ünvan →'}
           </button>
         )}
 
-        {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+        {err && <div className="mt-3 text-sm font-semibold text-red-600">{err}</div>}
 
         <button
           disabled={busy || !ready}
           onClick={() => void submit()}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 py-3 font-bold text-white transition active:scale-[.99] disabled:opacity-50"
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 py-4 font-bold text-white transition active:scale-[.99] disabled:opacity-50"
         >
-          {busy ? <Spinner label="Qeyd olunur…" /> : <><IconMapPin className="h-5 w-5" /> Ərazidəyəm</>}
+          {busy ? <Spinner label="Qeyd olunur…" /> : <><IconMapPin className="h-5 w-5" /><span className="truncate">{confirmText}</span></>}
         </button>
-        <button onClick={onClose} disabled={busy} className="mt-2 w-full py-2 font-semibold text-slate-500 disabled:opacity-60">
+        <button onClick={onClose} disabled={busy} className="mt-2 w-full py-2.5 text-sm font-semibold text-slate-500 disabled:opacity-60">
           Ləğv et
         </button>
       </div>

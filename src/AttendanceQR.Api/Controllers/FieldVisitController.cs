@@ -182,6 +182,11 @@ public class FieldVisitController : ControllerBase
             // Most-used first, and the group's own most common spelling as the label — offering the
             // typo back would make it permanent.
             .Select(g => new { Label = g.GroupBy(x => x).OrderByDescending(x => x.Count()).First().Key, Count = g.Count() })
+            // Used at least TWICE. «Tez-tez getdiyiniz yerlər» means places you go often, and a
+            // one-off is by definition not one — which is also what quietly removes «Ass», «Aaa»,
+            // «Bag» and every other single typo without a rule about word length that would drop a
+            // real short name like «Bağ».
+            .Where(x => x.Count >= 2)
             .OrderByDescending(x => x.Count)
             .ThenBy(x => x.Label)
             .Take(RecentPlaceCount)
