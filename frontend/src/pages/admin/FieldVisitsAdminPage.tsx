@@ -361,7 +361,11 @@ export function FieldVisitsAdminPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((v) => {
-      if (statusFilter !== 'all' && v.status !== statusFilter) return false
+      // «Hamısı» means everything that HAPPENED, and a cancelled visit did not. They used to sit in
+      // the default view for ever — a discarded phantom, a test row somebody made — with nothing an
+      // admin could do about them, because there is nothing left to do TO a cancelled visit. Still
+      // one click away under their own «Ləğv» chip, so nothing is hidden, only moved out of the way.
+      if (statusFilter === 'all' ? v.status === 'Cancelled' : v.status !== statusFilter) return false
       if (onlyFlagged && !isFlagged(v)) return false
       if (onlySelf && !v.selfReported) return false
       if (onlyPhoto && !v.hasWorkPhoto) return false
@@ -419,11 +423,9 @@ export function FieldVisitsAdminPage() {
       ? Math.round((new Date(v.checkOutAtUtc).getTime() - new Date(v.checkInAtUtc).getTime()) / 60000)
       : null
     if (!window.confirm(
-      `«${v.employeeName}» — ${date} tarixli ziyarət silinsin?
-
-` +
-      (mins !== null ? `Müddət: ${mins} dəqiqə.
-` : '') +
+      `«${v.employeeName}» — ${date} tarixli ziyarət silinsin?\n\n` +
+      (mins !== null ? `Müddət: ${mins} dəqiqə.\n`
+        : v.status === 'CheckedIn' ? 'Bu ziyarət HƏLƏ AÇIQDIR — işçi çıxış etməyib.\n' : '') +
       'Ziyarət «Ləğv olundu» kimi işarələnir (silinmir, iz qalır) və həmin gün yenidən hesablanır.')) return
 
     const { status } = await discardFieldVisit(v.id, 'kabus ziyarət')
@@ -817,7 +819,11 @@ export function FieldVisitsAdminPage() {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn btn-sm" onClick={() => void openDetail(v)}>Təfərrüat</button>
                         {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
-                        {v.status === 'Completed' && <button className="btn btn-sm" onClick={() => void discard(v)}>Sil</button>}
+                        {/* Any visit that is not already cancelled — the server has always allowed
+                            this and only the button was narrower, which left an OPEN one (a test
+                            row, a mis-tap) with no way out at all: «Sil» wanted Completed and
+                            «Çıxışı bağla» only appears once the day has passed. */}
+                        {v.status !== 'Cancelled' && <button className="btn btn-sm" onClick={() => void discard(v)}>Sil</button>}
                         {stuck && <button className="btn btn-sm btn-danger" onClick={() => void forceCheckout(v)}>Çıxışı bağla</button>}
                       </div>
                     </td>
