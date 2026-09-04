@@ -47,6 +47,8 @@ export interface DayAttendanceRow {
   /** Field/mobile attendance ([[field-visit-mobile-attendance]]): today's field check-in/out + where.
    *  When status is "Field", the worker checked in from an ad-hoc site (no office scan). */
   fieldCheckInAtUtc?: string | null
+  /** The field visit behind that arrival — lets a board row open the visit itself. */
+  fieldVisitId?: string | null
   fieldCheckOutAtUtc?: string | null
   fieldCheckInLatitude?: number | null
   fieldCheckInLongitude?: number | null

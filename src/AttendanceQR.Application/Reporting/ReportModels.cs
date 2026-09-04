@@ -174,7 +174,11 @@ public sealed record DayAttendanceRow(
     // necessarily come from a device only they hold. The board shows the selfie for every one of
     // their scans rather than only for a face-flagged row: the face IS the remaining control once
     // one-phone-one-employee has been given up, and a control nobody looks at is not a control.
-    bool SharedDevice = false);
+    bool SharedDevice = false,
+    // The field visit behind FieldCheckInAtUtc, when there is one. On the board it makes the «ərazi»
+    // row a way IN: one click opens that visit — where it was, how far from the target, the selfies
+    // and the checklist — instead of a label saying a visit happened somewhere.
+    Guid? FieldVisitId = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { basemap } from '../../lib/basemap'
 import 'leaflet/dist/leaflet.css'
@@ -159,6 +160,12 @@ function VisitMap({ v }: { v: BoardFieldVisit }) {
 type StatusFilter = 'all' | 'Assigned' | 'CheckedIn' | 'Completed' | 'Cancelled'
 
 export function FieldVisitsAdminPage() {
+  // ?v=<visitId> — arrived here from a row on the dashboard's live feed, which knows the visit but
+  // not the day it belongs to. Opening the card is the whole point of that click, so it must survive
+  // the page's own load rather than being lost to it.
+  const [params, setParams] = useSearchParams()
+  const wantedVisit = params.get('v')
+  const openedRef = useRef<string | null>(null)
   const [date, setDate] = useState(todayStr)
   const [rows, setRows] = useState<BoardFieldVisit[]>([])
   const [people, setPeople] = useState<AssignablePerson[]>([])
@@ -329,6 +336,22 @@ export function FieldVisitsAdminPage() {
       setDetailWorkPhoto(status === 200 && data ? { url: data.url } : { url: null })
     }
   }
+
+  // Open the visit the URL asked for, once its row has actually loaded. Guarded by openedRef so the
+  // card is opened ONCE — rows refresh, and re-opening on every refresh would fight the close button.
+  // If the visit is not in this day's rows (the feed row was yesterday's), nothing opens rather than
+  // something wrong opening.
+  useEffect(() => {
+    if (!wantedVisit || openedRef.current === wantedVisit) return
+    const v = rows.find((r) => r.id === wantedVisit)
+    if (!v) return
+    openedRef.current = wantedVisit
+    void openDetail(v)
+    // Drop the parameter so a reload, or closing and reopening the card, behaves like a normal visit
+    // to this page.
+    params.delete('v')
+    setParams(params, { replace: true })
+  }, [wantedVisit, rows])
 
   function shiftDay(delta: number) {
     // Local-component math — see todayStr; toISOString() would skew the date by the Baku offset.

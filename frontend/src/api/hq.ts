@@ -48,7 +48,7 @@ export interface GroupOverview {
   sites: GroupSite[]
   trend: { date: string; present: number }[]
   // 'field-in' / 'field-out' — a «səyyar» visit to a site with no poster, GPS + selfie instead of a QR.
-  feed: { fullName: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' | 'field-in' | 'field-out' }[]
+  feed: { fullName: string; companyId: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' | 'field-in' | 'field-out' }[]
 }
 
 /** Every company at once. 403 for anyone outside the super-admin allowlist. */

@@ -920,3 +920,10 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
    bir sətrə yığılır. */
 .eq-kit-chip.quiet{padding:4px 6px;gap:0;font-variant-numeric:tabular-nums}
 .eq-kit-chip.quiet:empty{padding:4px}
+
+
+/* An «ərazi» row in the dashboard feed opens that visit. Dotted rather than underlined: in a list of
+   a hundred rows a solid underline reads as decoration, and the rows that are NOT links must stay
+   visibly ordinary. */
+.lux-feed-link { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+.lux-feed-link:hover { color: var(--leaf-d); border-bottom-style: solid; }

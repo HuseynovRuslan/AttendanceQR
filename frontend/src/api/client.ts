@@ -30,6 +30,12 @@ export function clearToken(): void {
 // account. Kept in localStorage (not memory) so a reload — which the token swap forces — keeps it.
 const IMPERSONATION_BACKUP_KEY = 'attendanceqr.jwt.super'
 const IMPERSONATION_INFO_KEY = 'attendanceqr.impersonation'
+// Where the session was started from, so leaving it puts the operator back where they were rather
+// than somewhere that used to be the only possibility. It WAS only ever started from the operator
+// console's companies list, so "exit" hard-coded /tenants — then a company card on the group board
+// at app.qrlog.az started one too, and on that host /tenants is not a route at all: exiting would
+// have dropped the group head onto nothing. Recorded rather than assumed.
+const IMPERSONATION_RETURN_KEY = 'attendanceqr.impersonation.from'
 
 export interface ImpersonationInfo {
   tenantName: string
@@ -41,7 +47,13 @@ export function startImpersonation(token: string, info: ImpersonationInfo): void
   const current = getToken()
   if (current) localStorage.setItem(IMPERSONATION_BACKUP_KEY, current)
   localStorage.setItem(IMPERSONATION_INFO_KEY, JSON.stringify(info))
+  localStorage.setItem(IMPERSONATION_RETURN_KEY, window.location.pathname)
   setToken(token)
+}
+
+/** The path the session was started from — where "Çıx" should land. */
+export function impersonationReturnPath(): string {
+  return localStorage.getItem(IMPERSONATION_RETURN_KEY) || '/tenants'
 }
 
 /** The banner info while impersonating, or null when not. Requires BOTH the stash and the info, so a
@@ -61,6 +73,7 @@ export function exitImpersonation(): void {
   const backup = localStorage.getItem(IMPERSONATION_BACKUP_KEY)
   localStorage.removeItem(IMPERSONATION_BACKUP_KEY)
   localStorage.removeItem(IMPERSONATION_INFO_KEY)
+  localStorage.removeItem(IMPERSONATION_RETURN_KEY)
   if (backup) setToken(backup)
   else clearToken()
 }

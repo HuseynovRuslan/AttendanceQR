@@ -4,22 +4,55 @@ import { SiteMap } from './SiteMap'
 import 'leaflet/dist/leaflet.css'
 import './hq.css'
 import { COMPANY_TZ } from '../../lib/format'
-import { viewTenant } from '../../api/admin'
-import { startImpersonation } from '../../api/client'
+import { clearToken, getImpersonation, exitImpersonation } from '../../api/client'
+import { CompanyDrawer } from './CompanyDrawer'
+import { fmt, timeOf } from './format'
+
+/**
+ * The Baku clock, isolated in its own component ON PURPOSE.
+ *
+ * It ticks every second, and a second's tick used to re-render the entire board with it. That was
+ * free while the feed held fourteen rows. It stopped being free the day the feed became the whole
+ * day's register: at ~750 events that is thousands of nodes reconciled every second, next to a
+ * Leaflet map and an SVG trend — the board went from live to sluggish, and on a phone it locked up.
+ *
+ * A component that owns its own state re-renders only itself. The clock is the only thing on this
+ * screen that changes every second, so it is the only thing that should redraw every second.
+ */
+function BakuClock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <span className="hq-clock hq-num">
+      {now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })}
+    </span>
+  )
+}
 
 /** Refresh cadence. Fast enough that a figure visibly moves while someone watches, slow enough that
  *  the board is not hammering the API all day on a wall screen. */
 const REFRESH_MS = 20_000
 
+/**
+ * Feed rows put in the DOM at once.
+ *
+ * The payload carries the whole day — the director asked for everyone, and «everyone» is right: a
+ * board that shows the last fourteen events cannot answer "did Elnur come in". But everyone in the
+ * DOM is a different thing from everyone in the data. At ~750 events, rendering them all made the
+ * board sluggish and locked it up on a phone.
+ *
+ * So the data stays whole and the SCREEN is windowed: the newest rows, a box to search the rest by
+ * name, company or site, and a button for more. Searching is also the better answer to "find one
+ * person" than a list of 750 rows they would have to scroll.
+ */
+const FEED_PAGE = 60
+
 /** One accent per company, assigned in creation order. Colours rather than logos: there are no logo
  *  files, and three flat accents stay legible from the back of a room where crests do not. */
 const ACCENTS = ['#7CB342', '#38BDF8', '#F59E0B', '#A78BFA', '#F472B6']
-
-const fmt = new Intl.NumberFormat('az-AZ')
-
-function timeOf(iso: string): string {
-  return new Date(iso).toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', timeZone: COMPANY_TZ })
-}
 
 /** Counts from the previous value to the new one. The movement is the point: it is what tells a
  *  viewer the number is live rather than a screenshot. */
@@ -112,28 +145,16 @@ function TrendArea({ points }: { points: { date: string; present: number }[] }) 
 export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [data, setData] = useState<GroupOverview | null>(null)
   const [denied, setDenied] = useState(false)
-  const [clock, setClock] = useState(() => new Date())
+  const [failed, setFailed] = useState<number | null>(null)
+  const [feedQuery, setFeedQuery] = useState('')
+  const [feedShown, setFeedShown] = useState(FEED_PAGE)
   const newestRef = useRef<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [opening, setOpening] = useState<string | null>(null)
-
-  /**
-   * Open one company's OWN admin panel from its card, read-only.
-   *
-   * The board answers "which company needs a look"; the answer to "why" lives in that company's
-   * screens — the today board, the reports, the tabel. Rather than rebuilding those thirty-four
-   * screens read-only inside this console, the card mints a «baxış rejimi» session: the real panel,
-   * with every mutating request refused server-side (ViewOnlyBoundary).
-   */
-  async function openCompany(c: { id: string; name: string }) {
-    setOpening(c.id)
-    const { status, data } = await viewTenant(c.id)
-    setOpening(null)
-    if (status === 200 && data && !('error' in data)) {
-      startImpersonation(data.token, { tenantName: data.tenantName, adminName: data.adminName })
-      window.location.href = '/admin'
-    }
-  }
+  // The OPEN company's id, not a copy of its row. The board refreshes every 20 seconds; holding a
+  // snapshot would freeze the panel's numbers the moment it opened — on a live board, the one place
+  // someone is looking closely would be the one place the figures stopped moving. Resolved against
+  // the current payload on every render instead, so the panel counts up with the board behind it.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // A demo should not begin with someone hunting for F11 — and fullscreen also takes the address bar
   // away, which otherwise shows one company's subdomain above a screen about all three.
@@ -154,12 +175,17 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
       const { status, data } = await getGroupOverview()
       if (!alive) return
       if (status === 403) { setDenied(true); return }
-      if (status === 200 && data && 'totals' in data) setData(data)
+      if (status === 200 && data && 'totals' in data) { setData(data); setFailed(null); return }
+      // ANY other answer — 401 on an expired token, a network drop, a 500 — used to fall through to
+      // nothing, and the board sat on «Yüklənir…» forever. A spinner that never resolves is the
+      // worst of the three outcomes: the reader cannot tell a slow morning from a broken session,
+      // and there is nothing on the screen to act on. Only say it once the board has NEVER loaded;
+      // a live board that has data already should keep showing it through a blip.
+      if (!data || !('totals' in data)) setFailed(status)
     }
     void load()
     const poll = setInterval(() => void load(), REFRESH_MS)
-    const tick = setInterval(() => setClock(new Date()), 1000)
-    return () => { alive = false; clearInterval(poll); clearInterval(tick) }
+    return () => { alive = false; clearInterval(poll) }
   }, [])
 
   const totals = data?.totals
@@ -169,9 +195,54 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   const scans = Math.round(useCountUp(totals?.totalScans ?? 0))
 
   if (denied) {
+    // A 403 here has two very different causes, and telling them apart is the difference between a
+    // dead end and a working screen. Someone genuinely not on the allowlist needs the sentence. But
+    // an operator who is INSIDE a company session is refused for a different reason — the token is a
+    // tenant token, not their own — and until this branch existed the board simply told them they
+    // were not allowed on their own board, with no way back. That is exactly what happened to the
+    // group head at 09:56 today.
+    const inside = getImpersonation()
+    if (inside) {
+      return (
+        <div className="hq-gate">
+          <p><b>{inside.tenantName}</b> şirkətinin seansındasınız — qrup lövhəsi bu seansda açılmır.</p>
+          <button
+            type="button"
+            className="hq-gate-btn"
+            onClick={() => { exitImpersonation(); window.location.reload() }}
+          >
+            Seansdan çıx və lövhəyə qayıt
+          </button>
+        </div>
+      )
+    }
     return <div className="hq-gate">Bu səhifəyə giriş yalnız qrup administratoru üçündür.</div>
   }
   if (!data || !totals) {
+    if (failed !== null) {
+      // 401 is its own thing: the token expired (a view session's token is short-lived), and the one
+      // action that fixes it is signing in again — not waiting, not reloading.
+      const expired = failed === 401
+      return (
+        <div className="hq-gate">
+          <p>
+            {expired
+              ? 'Seansın vaxtı bitib — məlumat gəlmir.'
+              : `Məlumat gəlmədi (${failed || 'şəbəkə'}).`}
+          </p>
+          <button
+            type="button"
+            className="hq-gate-btn"
+            onClick={() => {
+              if (expired) { exitImpersonation(); clearToken() }
+              window.location.href = expired ? '/login' : '/hq'
+            }}
+          >
+            {expired ? 'Yenidən giriş et' : 'Yenidən yüklə'}
+          </button>
+        </div>
+      )
+    }
     return <div className="hq-gate">Yüklənir…</div>
   }
 
@@ -181,6 +252,19 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   newestRef.current = topKey
 
   const accentOf = (i: number) => ACCENTS[i % ACCENTS.length]
+  // -1 when nothing is open OR the open company has gone from the payload. `sites` carry the same
+  // index (companyIndex), so this is also what keeps the panel's branch list correct.
+  const selectedIndex = selectedId ? data.companies.findIndex((c) => c.id === selectedId) : -1
+
+  // Searched over the WHOLE day, not over the rows that happen to be on screen — otherwise the box
+  // would only search what the reader could already see, which is no help at all.
+  const q = feedQuery.trim().toLocaleLowerCase('az-AZ')
+  const feed = q
+    ? data.feed.filter((f) =>
+        f.fullName.toLocaleLowerCase('az-AZ').includes(q) ||
+        f.company.toLocaleLowerCase('az-AZ').includes(q) ||
+        f.location.toLocaleLowerCase('az-AZ').includes(q))
+    : data.feed
 
   // This week against the one before it, straight out of the fortnight already on screen. Directors
   // read the arrow first and decide from it whether the number is worth reading.
@@ -229,9 +313,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
           </div>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <span className="hq-live"><i />CANLI</span>
-            <span className="hq-clock hq-num">
-              {clock.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })}
-            </span>
+            <BakuClock />
             <button
               type="button"
               className="hq-fs"
@@ -288,12 +370,12 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
             // own panel in «baxış rejimi» (read-only), so no second set of screens has to exist.
             <button
               type="button"
-              className="hq-co"
+              className={`hq-co${selectedId === c.id ? ' is-active' : ''}`}
               key={c.id}
               style={{ ['--accent' as string]: accentOf(i) }}
-              onClick={() => void openCompany(c)}
-              disabled={opening === c.id}
-              title={`${c.name} — panelini aç (yalnız oxu)`}
+              onClick={() => setSelectedId(c.id)}
+              title={`${c.name} — ətraflı`}
+              aria-haspopup="dialog"
             >
               <div className="hq-co-name">{c.name}</div>
               <div className="hq-co-meta">
@@ -311,7 +393,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
               <div className="hq-bar">
                 <i style={{ width: `${Math.min(100, c.attendancePct)}%` }} />
               </div>
-              <div className="hq-co-go">{opening === c.id ? 'açılır…' : 'panelə bax →'}</div>
+              <div className="hq-co-go">ətraflı →</div>
             </button>
           ))}
         </section>
@@ -328,13 +410,29 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
 
           {/* The feed is what makes the screen read as live: rows arrive while you are looking at it. */}
           <div className="hq-panel">
-            <div className="hq-panel-title">Canlı hərəkət</div>
+            <div className="hq-panel-head">
+              <div className="hq-panel-title">Canlı hərəkət</div>
+              <span className="hq-panel-count hq-num">{fmt.format(data.feed.length)}</span>
+            </div>
+            <input
+              className="hq-feed-search"
+              type="search"
+              value={feedQuery}
+              onChange={(e) => { setFeedQuery(e.target.value); setFeedShown(FEED_PAGE) }}
+              placeholder="Ad, şirkət və ya filial üzrə axtar…"
+              aria-label="Canlı hərəkətdə axtar"
+            />
             <div className="hq-feed">
               {data.feed.length === 0 && (
                 <p style={{ color: 'var(--fg-faint)', fontSize: 13 }}>Bu gün hələ skan olmayıb.</p>
               )}
-              {data.feed.map((f, i) => {
-                const companyIndex = data.companies.findIndex((c) => c.name === f.company)
+              {data.feed.length > 0 && feed.length === 0 && (
+                <p style={{ color: 'var(--fg-faint)', fontSize: 13 }}>«{feedQuery}» üzrə nəticə yoxdur.</p>
+              )}
+              {feed.slice(0, feedShown).map((f, i) => {
+                // By id: two tenants may share a display name, and the accent is how a reader tells
+                // the companies apart on this board.
+                const companyIndex = data.companies.findIndex((c) => c.id === f.companyId)
                 return (
                   <div
                     className={`hq-feed-row${i === 0 && isFresh ? ' is-new' : ''}`}
@@ -361,6 +459,16 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                   </div>
                 )
               })}
+              {feed.length > feedShown && (
+                <button
+                  type="button"
+                  className="hq-feed-more"
+                  onClick={() => setFeedShown((n) => n + FEED_PAGE)}
+                >
+                  daha {fmt.format(Math.min(FEED_PAGE, feed.length - feedShown))} göstər
+                  <small> · {fmt.format(feed.length - feedShown)} qalıb</small>
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -400,6 +508,20 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
           <span>Hər {REFRESH_MS / 1000} saniyədə avtomatik yenilənir</span>
         </footer>
       </div>
+
+      {/* The company detail comes to the board rather than the board being left behind. Resolved
+          fresh each render: if the open company disappears from the payload (suspended, deleted),
+          the panel closes itself instead of showing numbers for something no longer there. */}
+      {selectedIndex >= 0 && (
+        <CompanyDrawer
+          company={data.companies[selectedIndex]}
+          companyIndex={selectedIndex}
+          accent={accentOf(selectedIndex)}
+          sites={data.sites}
+          feed={data.feed}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </div>
   )
 }

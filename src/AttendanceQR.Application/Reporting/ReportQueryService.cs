@@ -127,7 +127,10 @@ public sealed class ReportQueryService : IReportQueryService
         // Deliberately kept OUT of Record: the board tells a field day apart precisely by the absence
         // of an office record, and Record also carries scan-only things (photo, face match, id).
         DateTime? FieldIn = null, DateTime? FieldOut = null,
-        double? FieldLat = null, double? FieldLng = null);
+        double? FieldLat = null, double? FieldLng = null,
+        // The visit behind that arrival, so a row on a board can open the visit itself — its map,
+        // its selfies, its checklist — rather than only saying that one happened.
+        Guid? FieldVisitId = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -213,7 +216,7 @@ public sealed class ReportQueryService : IReportQueryService
         var fieldRaw = await _db.FieldVisits
             .Where(v => v.VisitDate == date && employeeIds.Contains(v.EmployeeId)
                         && v.Status != FieldVisitStatus.Cancelled && v.CheckInAtUtc != null)
-            .Select(v => new { v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc, v.CheckInLatitude, v.CheckInLongitude })
+            .Select(v => new { v.Id, v.EmployeeId, v.CheckInAtUtc, v.CheckOutAtUtc, v.CheckInLatitude, v.CheckInLongitude })
             .ToListAsync(ct);
         var fieldByEmployee = fieldRaw
             .GroupBy(v => v.EmployeeId)
@@ -221,6 +224,8 @@ public sealed class ReportQueryService : IReportQueryService
             {
                 var first = g.OrderBy(x => x.CheckInAtUtc).First();
                 return (
+                    // The EARLIEST visit of the day — the same one In/Lat/Lng describe.
+                    Id: first.Id,
                     In: first.CheckInAtUtc,
                     Out: g.All(x => x.CheckOutAtUtc != null) ? g.Max(x => x.CheckOutAtUtc) : (DateTime?)null,
                     Lat: first.CheckInLatitude,
@@ -321,7 +326,7 @@ public sealed class ReportQueryService : IReportQueryService
 
             var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;
             rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy,
-                fv.In, fv.Out, fv.Lat, fv.Lng));
+                fv.In, fv.Out, fv.Lat, fv.Lng, fv.Id));
         }
 
         return rows;
@@ -911,7 +916,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Employee.Position, d.ManualBy,
                     d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng,
                     d.Record?.ClosedByFieldVisitId != null,
-                    d.Employee.CanShareDevice);
+                    d.Employee.CanShareDevice,
+                    d.FieldVisitId);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

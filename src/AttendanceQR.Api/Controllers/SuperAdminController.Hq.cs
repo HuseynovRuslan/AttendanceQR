@@ -218,10 +218,10 @@ public partial class SuperAdminController
                 .ToListAsync(ct))
             .SelectMany(v => new[]
             {
-                new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Səyyar", At = v.CheckInAtUtc!.Value, Kind = "field-in" },
+                new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Ərazi", At = v.CheckInAtUtc!.Value, Kind = "field-in" },
                 v.CheckOutAtUtc is null
                     ? null
-                    : new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Səyyar", At = v.CheckOutAtUtc.Value, Kind = "field-out" },
+                    : new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Ərazi", At = v.CheckOutAtUtc.Value, Kind = "field-out" },
             })
             .Where(x => x is not null)
             .Select(x => x!);
@@ -232,6 +232,10 @@ public partial class SuperAdminController
             .Select(x => new
             {
                 fullName = names.GetValueOrDefault(x.EmployeeId, "—"),
+                // The id as well as the name: the company panel filters this feed to one company, and
+                // matching on a display name would put two identically-named tenants' scans into each
+                // other's lists. Nothing stops two companies sharing a name.
+                companyId = x.TenantId,
                 company = tenantNames.GetValueOrDefault(x.TenantId, ""),
                 location = x.Place,
                 atUtc = x.At,

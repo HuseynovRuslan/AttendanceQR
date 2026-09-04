@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   getAdminLocations, getDashboard, getPendingDeviceChanges, getProblems, getToday,
   type AdminLocation, type DashboardReport, type DayAttendanceRow,
@@ -166,7 +166,7 @@ export function DashboardPage() {
   )
 
   const activity = useMemo(() => {
-    const ev: { id: string; empId: string; name: string; loc: string; type: 'in' | 'out'; field?: boolean; at: string }[] = []
+    const ev: { id: string; empId: string; name: string; loc: string; type: 'in' | 'out'; visitId?: string | null; at: string }[] = []
     for (const r of rows) {
       if (r.checkInAtUtc) ev.push({ id: r.employeeId + 'i', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'in', at: r.checkInAtUtc })
       if (r.checkOutAtUtc) ev.push({ id: r.employeeId + 'o', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'out', at: r.checkOutAtUtc })
@@ -175,9 +175,9 @@ export function DashboardPage() {
       // Vaxt eyni olanda təkrarlamırıq — sahə çıxışı bəzən günün öz qeydini bağlayır
       // (ClosedByFieldVisit), onda hadisə artıq yuxarıda əlavə olunub.
       if (r.fieldCheckInAtUtc && r.fieldCheckInAtUtc !== r.checkInAtUtc)
-        ev.push({ id: r.employeeId + 'fi', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'in', field: true, at: r.fieldCheckInAtUtc })
+        ev.push({ id: r.employeeId + 'fi', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'in', visitId: r.fieldVisitId, at: r.fieldCheckInAtUtc })
       if (r.fieldCheckOutAtUtc && r.fieldCheckOutAtUtc !== r.checkOutAtUtc)
-        ev.push({ id: r.employeeId + 'fo', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'out', field: true, at: r.fieldCheckOutAtUtc })
+        ev.push({ id: r.employeeId + 'fo', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'out', visitId: r.fieldVisitId, at: r.fieldCheckOutAtUtc })
     }
     // The whole day, newest first — the panel scrolls (see .lux-feed), so every check-in and
     // check-out of today is here, not just the last handful. The cap is only a DOM backstop.
@@ -425,7 +425,13 @@ export function DashboardPage() {
                   <span className="lux-feed-dot" style={{ background: e.type === 'in' ? 'var(--leaf)' : 'var(--blue)' }} />
                   <span className="lux-feed-nm"><EmployeeLink id={e.empId} name={e.name} /></span>
                   <span className="muted lux-feed-a">
-                    {e.field ? '📍 ' : ''}{e.type === 'in' ? 'giriş' : 'çıxış'} · {e.field ? 'səyyar' : e.loc}
+                    {e.visitId ? '📍 ' : ''}{e.type === 'in' ? 'giriş' : 'çıxış'} ·{' '}
+                    {/* An ərazi row is a way IN, not a label: one click opens that visit — where it
+                        was, how far from the target, the selfies, the checklist. The visit is where
+                        the answer to "was he really there" lives, and it was two screens away. */}
+                    {e.visitId
+                      ? <Link className="lux-feed-link" to={`/admin/field-visits?v=${e.visitId}`} title="Ərazi ziyarətini aç">ərazi</Link>
+                      : e.loc}
                   </span>
                   <span className="mono lux-feed-t">{fmtTime(e.at)}</span>
                 </div>

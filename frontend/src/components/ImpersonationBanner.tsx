@@ -1,4 +1,4 @@
-import { getImpersonation, exitImpersonation } from '../api/client'
+import { getImpersonation, exitImpersonation, impersonationReturnPath } from '../api/client'
 
 // A fixed warning strip shown on EVERY screen while a super-admin is impersonating a tenant admin for
 // support. It exists so the operator can never forget whose account they are inside — and can leave in
@@ -8,10 +8,13 @@ export function ImpersonationBanner() {
   if (!info) return null
 
   function exit() {
+    // Read the return path BEFORE exiting — exitImpersonation clears it.
+    const back = impersonationReturnPath()
     exitImpersonation()
-    // Full reload back to the operator console's companies list with the operator's own token restored.
-    // Impersonation is only ever started from that console (admin.qrlog.az), so this is its home.
-    window.location.href = '/tenants'
+    // Full reload, back to the screen the session was started from, with the operator's own token
+    // restored. This used to be hard-coded to the operator console's /tenants, which is not a route
+    // on every host a session can now begin on.
+    window.location.href = back
   }
 
   return (
