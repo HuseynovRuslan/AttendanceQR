@@ -91,6 +91,31 @@ function fmtDist(m: number): string {
  * The figure itself is always shown. It is the warning that is rationed.
  */
 /** Closed visits, as hours and minutes rather than a bare minute count nobody reads as time. */
+/**
+ * What to print in «Hədəf», given that the worker typed it.
+ *
+ * Most of them typed «Obyektdeyem» — «I am at the site», in four spellings — which is not a place
+ * and tells a reader nothing. Where the text is that kind of non-answer, the nearest branch to their
+ * ACTUAL check-in coordinates is a better one: it comes from where they stood, not from what they
+ * wrote.
+ *
+ * But it is an inference, and it is shown as one. Substituting a branch name silently would state,
+ * in the company's own timesheet, that somebody was at a place the system merely guessed — and a
+ * worker who typed «Obyektdeyem» from five kilometres away would be printed as if they had been at
+ * the branch. The «GPS» tag beside it is the whole difference.
+ */
+function targetText(v: BoardFieldVisit, sites: AdminLocation[]): { text: string; inferred: boolean } {
+  const raw = (v.targetLabel ?? '').trim()
+  const junk = !raw || /obyek|yerind[əe]y[əe]m|sahed[əe]y[əe]m/i.test(raw.replace(/\s+/g, ''))
+
+  if (junk && v.checkInLatitude != null && v.checkInLongitude != null) {
+    const near = nearestSite(sites, v.checkInLatitude, v.checkInLongitude)
+    if (near) return { text: near.name, inferred: true }
+  }
+  if (raw) return { text: raw.charAt(0).toLocaleUpperCase('az') + raw.slice(1), inferred: false }
+  return { text: '—', inferred: false }
+}
+
 function fmtMins(mins: number): string {
   const h = Math.floor(mins / 60)
   return h > 0 ? `${h} s ${mins % 60} dəq` : `${mins} dəq`
@@ -678,10 +703,26 @@ export function FieldVisitsAdminPage() {
                       {/* The fact, next to the claim. «Hədəf» beside it is what the worker typed. */}
                       {v.locationName || <span className="muted">—</span>}
                     </td>
-                    <td data-label="Hədəf" style={{ maxWidth: 180 }}>
-                      {v.targetLabel || <span className="muted">—</span>}
+                    <td data-label="Hədəf" style={{ maxWidth: 190 }}>
+                      {(() => {
+                        const t = targetText(v, sites)
+                        return (
+                          <div style={{ fontWeight: 600 }}>
+                            {t.text}
+                            {t.inferred && (
+                              <span className="tag" style={{ marginLeft: 5, fontSize: 10 }} title="İşçi yer adı yazmayıb — bu, girişin GPS nöqtəsinə ən yaxın filialdır">
+                                GPS
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      {/* On its own line: it used to sit flush against the text and the two read as
+                          one word — «Obyektdeyem🗺️ Xəritə». */}
                       {(v.targetLatitude != null || v.checkInLatitude != null) && (
-                        <button className="btn-link" onClick={() => void openDetail(v)}>🗺️ Xəritə</button>
+                        <div style={{ marginTop: 3 }}>
+                          <button className="btn-link" style={{ fontSize: 11 }} onClick={() => void openDetail(v)}>🗺️ Xəritədə bax</button>
+                        </div>
                       )}
                       {v.checklistTotal > 0 && (
                         <div>

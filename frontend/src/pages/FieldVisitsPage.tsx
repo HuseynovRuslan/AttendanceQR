@@ -5,6 +5,8 @@ import { IconCheck, IconClock, IconLogout, IconMapPin, IconRefresh } from '../co
 import {
   getMyFieldVisits,
   startFieldVisit,
+  getFieldSites,
+  type FieldSite,
   checkInFieldVisit,
   setChecklistItem,
   type ChecklistItem,
@@ -450,33 +452,69 @@ function Spinner({ label }: { label: string }) {
 }
 
 /** Self-report a visit — one optional label, then GPS check-in. Replaces the old window.prompt. */
+/**
+ * Filing your own visit.
+ *
+ * It used to be one autofocused text box labelled «Ünvan / obyekt». The keyboard opened and people
+ * typed a sentence: production holds «Obyektdeyem», «Obyektdəyəm», «Obyekt deyem» and «Obyektdeyem»
+ * — four spellings of «I am at the site», which is not a place — and two spellings each of one
+ * office and one café. The admin board's only «where» column was built on that, so a manager running
+ * two parks opened the day and every row read the same.
+ *
+ * Now the branches come first, nearest at the top, because the worker is STANDING at one of them and
+ * the phone already knows which. Typing is still possible — «Başqa ünvan» — for the genuinely ad-hoc
+ * site the list cannot contain, which is what this feature was built for in the first place. It is
+ * simply no longer the path of least resistance.
+ */
 function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  const [sites, setSites] = useState<FieldSite[] | null>(null)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [other, setOther] = useState(false)
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Taken ONCE, when the sheet opens, and reused for the check-in. Asking twice would mean two
+  // permission moments and two chances for the answer to differ from the list they just chose from.
+  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      const geo = await getPosition()
+      const coords = geo.ok ? { lat: geo.coords.latitude, lng: geo.coords.longitude } : null
+      if (!alive) return
+      setPos(coords)
+      const { status, data } = await getFieldSites(coords?.lat, coords?.lng)
+      if (!alive) return
+      setSites(status === 200 && Array.isArray(data) ? data : [])
+    })()
+    return () => { alive = false }
+  }, [])
 
   async function submit() {
     setBusy(true)
     setErr(null)
     try {
-      const geo = await getPosition()
-      if (!geo.ok) {
-        setErr(GEO_MSG[geo.kind] ?? 'GPS alınmadı')
-        return
+      // The position from the list step when we have it; otherwise ask now — a failure here is the
+      // one thing that must stop the visit, because a field check-in with no coordinates is a claim
+      // with nothing behind it.
+      let coords = pos
+      if (!coords) {
+        const geo = await getPosition()
+        if (!geo.ok) { setErr(GEO_MSG[geo.kind] ?? 'GPS alınmadı'); return }
+        coords = { lat: geo.coords.latitude, lng: geo.coords.longitude }
       }
+
+      const chosen = picked ? sites?.find((x) => x.id === picked)?.name ?? null : null
       const res = await startFieldVisit({
-        latitude: geo.coords.latitude,
-        longitude: geo.coords.longitude,
+        latitude: coords.lat,
+        longitude: coords.lng,
         photoBase64: null,
-        targetLabel: label.trim() || null,
+        targetLabel: chosen ?? (label.trim() || null),
       })
-      if (res.status === 200) {
-        await onDone()
-      } else if (res.status === 403) {
-        setErr('Sizə səyyar giriş icazəsi verilməyib')
-      } else {
-        setErr('Alınmadı — yenidən cəhd edin')
-      }
+      if (res.status === 200) await onDone()
+      else if (res.status === 403) setErr('Sizə səyyar giriş icazəsi verilməyib')
+      else setErr('Alınmadı — yenidən cəhd edin')
     } catch {
       setErr('Alınmadı — yenidən cəhd edin')
     } finally {
@@ -484,33 +522,80 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
     }
   }
 
+  const ready = picked !== null || (other && label.trim().length > 0)
+
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
-      <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white p-5 pb-8 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-5 pb-8 shadow-2xl">
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-slate-200" />
-        <div className="text-lg font-bold">Yeni sahə ziyarəti</div>
+        <div className="text-lg font-bold">Haradasınız?</div>
         <div className="mt-1 text-sm text-slate-500">
-          Olduğunuz yeri qeyd edin — QR lazım deyil. Yeriniz və vaxt yazılacaq.
+          QR lazım deyil — yeriniz və vaxt yazılacaq.
         </div>
-        <label className="mt-4 block text-sm font-semibold text-slate-600">Ünvan / obyekt (istəyə bağlı)</label>
-        <input
-          autoFocus
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !busy) void submit()
-          }}
-          placeholder="Məs. Nizami küç. 12 / Anbar"
-          className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
-        />
+
+        {sites === null && <div className="mt-4"><Spinner label="Yaxınlıqdakılar axtarılır…" /></div>}
+
+        {sites !== null && sites.length > 0 && !other && (
+          <div className="mt-4 flex flex-col gap-2">
+            {sites.slice(0, 6).map((sIt) => (
+              <button
+                key={sIt.id}
+                type="button"
+                onClick={() => setPicked(sIt.id)}
+                className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                  picked === sIt.id
+                    ? 'border-violet-500 bg-violet-50 font-bold text-violet-900'
+                    : 'border-slate-200 bg-white font-semibold text-slate-800'
+                }`}
+              >
+                <span className="min-w-0 truncate">{sIt.name}</span>
+                {/* The distance is the reason the top one is usually right, so it is shown rather
+                    than merely used for sorting. */}
+                {sIt.distanceMeters != null && (
+                  <span className="ml-3 shrink-0 text-xs font-semibold text-slate-400">
+                    {sIt.distanceMeters >= 1000
+                      ? `${(sIt.distanceMeters / 1000).toFixed(1)} km`
+                      : `${sIt.distanceMeters} m`}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {sites !== null && (other || sites.length === 0) && (
+          <>
+            <label className="mt-4 block text-sm font-semibold text-slate-600">Ünvan / obyekt</label>
+            <input
+              autoFocus
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !busy && ready) void submit() }}
+              placeholder="Məs. Nizami küç. 12"
+              className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+            />
+          </>
+        )}
+
+        {sites !== null && sites.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { setOther((v) => !v); setPicked(null); setLabel('') }}
+            className="mt-3 w-full py-2 text-sm font-semibold text-violet-600"
+          >
+            {other ? '← Filiallardan seç' : 'Siyahıda yoxdur — başqa ünvan yazım'}
+          </button>
+        )}
+
         {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+
         <button
-          disabled={busy}
+          disabled={busy || !ready}
           onClick={() => void submit()}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 py-3 font-bold text-white transition active:scale-[.99] disabled:opacity-60"
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 py-3 font-bold text-white transition active:scale-[.99] disabled:opacity-50"
         >
-          {busy ? <Spinner label="Yer təyin olunur…" /> : <><IconMapPin className="h-5 w-5" /> Ərazidəyəm</>}
+          {busy ? <Spinner label="Qeyd olunur…" /> : <><IconMapPin className="h-5 w-5" /> Ərazidəyəm</>}
         </button>
         <button onClick={onClose} disabled={busy} className="mt-2 w-full py-2 font-semibold text-slate-500 disabled:opacity-60">
           Ləğv et

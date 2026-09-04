@@ -119,6 +119,63 @@ public class FieldVisitController : ControllerBase
     /// </summary>
     private const int CarryOverHours = 16;
 
+    /// <summary>
+    /// GET /api/field-visits/sites — the company's branches, nearest first, for the worker to pick from.
+    ///
+    /// The self-report sheet asked «Ünvan / obyekt» with an autofocused text box, so the keyboard
+    /// opened and people typed whatever came to mind. Production shows what that produces:
+    /// «Obyektdeyem», «Obyektdəyəm», «Obyekt deyem», «Obyektdeyem» — four spellings of a sentence
+    /// that is not a place at all — plus «Nərimanov ofisi» / «Nerimanov» and «Konqresin parkındakı
+    /// kafe» / «Kongres parkindaki kafe» for one office and one café. A board built on that cannot
+    /// tell two parks apart, which is exactly what a manager reported.
+    ///
+    /// A list fixes it at the source, and sorting by distance makes the right answer the first one:
+    /// the worker is STANDING at the place, and the phone already knows where that is.
+    ///
+    /// Gated on the same flag as self-reporting itself — a branch list is not secret, but there is no
+    /// reason for anyone who cannot file a visit to fetch it.
+    /// </summary>
+    [HttpGet("sites")]
+    public async Task<IActionResult> Sites([FromQuery] double? lat, [FromQuery] double? lng)
+    {
+        var ct = HttpContext.RequestAborted;
+        var me = Me;
+
+        if (!await _db.Employees.AnyAsync(e => e.Id == me && e.CanFieldCheckIn, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "FieldCheckInNotAllowed" });
+
+        var sites = await _db.Locations
+            .Where(l => l.IsActive)
+            .Select(l => new { l.Id, l.Name, l.Latitude, l.Longitude })
+            .ToListAsync(ct);
+
+        var ordered = lat is double la && lng is double lo
+            ? sites
+                .Select(x => new { x.Id, x.Name, Distance = (int?)Math.Round(MetresBetween(la, lo, x.Latitude, x.Longitude)) })
+                .OrderBy(x => x.Distance)
+                .ToList()
+            : sites
+                .Select(x => new { x.Id, x.Name, Distance = (int?)null })
+                .OrderBy(x => x.Name)
+                .ToList();
+
+        return Ok(ordered.Select(x => new { id = x.Id, name = x.Name, distanceMeters = x.Distance }));
+    }
+
+    /// <summary>Great-circle metres. Same formula as the client's, so a distance shown on the phone
+    /// and one stored on the visit cannot disagree.</summary>
+    private static double MetresBetween(double aLat, double aLng, double bLat, double bLng)
+    {
+        const double r = 6371000;
+        var p1 = aLat * Math.PI / 180;
+        var p2 = bLat * Math.PI / 180;
+        var dp = (bLat - aLat) * Math.PI / 180;
+        var dl = (bLng - aLng) * Math.PI / 180;
+        var h = Math.Sin(dp / 2) * Math.Sin(dp / 2)
+              + Math.Cos(p1) * Math.Cos(p2) * Math.Sin(dl / 2) * Math.Sin(dl / 2);
+        return 2 * r * Math.Asin(Math.Min(1, Math.Sqrt(h)));
+    }
+
     // POST /api/field-visits/start — worker self-reports an ad-hoc visit: created + checked in at once.
     [HttpPost("start")]
     public async Task<IActionResult> Start([FromBody] StartFieldVisitRequest req)

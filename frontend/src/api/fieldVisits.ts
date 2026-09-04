@@ -167,3 +167,16 @@ export function discardFieldVisit(id: string, reason?: string) {
     { method: 'POST', body: { reason: reason?.trim() || null } },
   )
 }
+
+/** A branch offered to the worker when they file their own visit, nearest first. */
+export interface FieldSite {
+  id: string
+  name: string
+  /** Metres from where they are standing, when the position was known. */
+  distanceMeters: number | null
+}
+
+export function getFieldSites(lat?: number, lng?: number) {
+  const q = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
+  return apiRequest<FieldSite[]>(`/api/field-visits/sites${q}`)
+}
