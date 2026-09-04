@@ -461,13 +461,22 @@ public class AttendanceController : ControllerBase
     // and the employee's reference selfie, to be eyeballed side by side. Photos never pass through the
     // DB or this API; the browser loads them straight from object storage.
     //
-    // ADMIN ONLY (owner's call, 2026-08-31). It was open to a manager too, narrowed to their own
-    // branch — and branch scope is the wrong axis for this one thing. A check-in selfie is a
-    // photograph of somebody's face taken at work: biometric data, of which the company is the named
-    // controller in its own privacy notice. Who may look at it is a question about the PERSON
-    // looking, not about which site they run, and the fewer people that is the better. A manager
-    // keeps everything they need to run a day — who came, when, from where, whether the face matched
-    // — they simply no longer open the photograph itself.
+    // A MANAGER MAY LOOK AGAIN, within their own branches (owner's call, 2026-09-04). It was opened
+    // to managers, closed to Admin-only on 2026-08-31, and is now open again — the reasoning on each
+    // side is worth keeping, because it is a judgement and not a fact.
+    //
+    // Against: a check-in selfie is a photograph of somebody's face taken at work — biometric data,
+    // of which the company is the named controller in its own privacy notice. Who may look at it is
+    // arguably a question about the PERSON looking, not about which site they run.
+    //
+    // For, and what decided it: the manager is who NOTICES. They stand at the site, they know which
+    // of their people is on which shift, and an admin two offices away opening photographs for a
+    // company of 514 is not a control anyone actually performs. Routing every suspect photograph
+    // through one person did not make the data safer; it made the check not happen.
+    //
+    // The boundary is now the scope, and it is a real one: LocationScopeRules below means a manager
+    // reaches the faces of the people they manage and nobody else's. Acting on what they see is
+    // still not theirs — voiding a day and sending a warning stay Admin-only.
     //
     // Enforced here rather than by hiding the button: the URL is guessable from a record id, and a
     // hidden control is not a boundary.
@@ -479,9 +488,8 @@ public class AttendanceController : ControllerBase
 
         var ct = HttpContext.RequestAborted;
 
-        if (role != EmployeeRole.Admin)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
-
+        // No role gate: the scope check below IS the gate. An employee reaching another employee's
+        // record fails it, a manager reaching outside their branches fails it, and an admin passes.
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });

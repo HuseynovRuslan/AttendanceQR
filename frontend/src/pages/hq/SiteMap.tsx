@@ -25,13 +25,14 @@ const CLUSTER_DEGREES = 0.5
  * An empty branch keeps its place and states its zero in a dashed outline — «which of my branches has
  * nobody on it» is half of what this map is for, and an invisible marker cannot answer it.
  */
-function markerIcon(onDuty: number, colour: string, isFocused: boolean): L.DivIcon {
+function markerIcon(onDuty: number, colour: string, isFocused: boolean, isHovered: boolean): L.DivIcon {
   const size = onDuty >= 50 ? 40 : onDuty >= 10 ? 34 : 28
   const state = onDuty === 0 ? 'is-idle' : 'is-live'
+  const lift = `${isFocused ? ' is-focused' : ''}${isHovered ? ' is-hovered' : ''}`
   return L.divIcon({
     className: 'hq-map-pin',
     html:
-      `<div class="hq-pin ${state}${isFocused ? ' is-focused' : ''}" ` +
+      `<div class="hq-pin ${state}${lift}" ` +
       `style="--dot:${colour};width:${size}px;height:${size}px"><span>${onDuty}</span></div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -115,6 +116,10 @@ export function SiteMap({ sites, companies = [], accentOf }: {
   const [actions, setActions] = useState<MapActions | null>(null)
   const [focused, setFocused] = useState<string | null>(null)
   const [onlyCompany, setOnlyCompany] = useState<number | null>(null)
+  const [hovered, setHovered] = useState<string | null>(null)
+  // «Yalnız boş filiallar» — the amber line is a question and this makes it answerable in one press
+  // instead of scrolling a list of twenty-one to find the three that matter.
+  const [emptyOnly, setEmptyOnly] = useState(false)
   // The wheel is claimed only after a deliberate click on the map. Enabling it on hover would mean
   // scrolling past the board zooms the map instead of moving the page — the kind of thing that
   // happens exactly once, in front of the person you are demonstrating to.
@@ -145,10 +150,16 @@ export function SiteMap({ sites, companies = [], accentOf }: {
     // opening zoom they sit on top of one another. Flying in on a press is what pulls them apart —
     // the alternative is asking a director to pinch-zoom a wall screen.
     actions?.flyTo(s)
+    // …and bring the list to the same branch. Pressing a dot and then hunting the name in a list of
+    // twenty-one is two jobs for one question.
+    requestAnimationFrame(() => {
+      document.getElementById(`hq-site-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
   }
 
   const ordered = [...shown].sort((a, b) => b.onDuty - a.onDuty)
   const emptyCount = shown.filter((s) => s.onDuty === 0).length
+  const listed = emptyOnly ? ordered.filter((s) => s.onDuty === 0) : ordered
 
   return (
     <div className="hq-mapwrap">
@@ -231,8 +242,17 @@ export function SiteMap({ sites, companies = [], accentOf }: {
                 )}
                 <Marker
                   position={[s.lat, s.lng]}
-                  icon={markerIcon(s.onDuty, colour, isFocused)}
-                  eventHandlers={{ click: () => focus(s) }}
+                  icon={markerIcon(s.onDuty, colour, isFocused, hovered === s.id)}
+                  // Busiest on top. Leaflet stacks markers by latitude, which is arbitrary here and
+                  // had the consequence that the branch with 67 people sat UNDER two dots reading 7
+                  // and 1 — the one number worth seeing was the one hidden. Ranking by headcount puts
+                  // the important dot in front; whatever is being pointed at beats both.
+                  zIndexOffset={isFocused || hovered === s.id ? 10000 : s.onDuty * 10}
+                  eventHandlers={{
+                    click: () => focus(s),
+                    mouseover: () => setHovered(s.id),
+                    mouseout: () => setHovered(null),
+                  }}
                 >
                   <Popup className="hq-pop" closeButton={false}>
                     <div className="hq-pop-box">
@@ -279,13 +299,26 @@ export function SiteMap({ sites, companies = [], accentOf }: {
           most useful thing to be able to do while someone is watching. */}
       <ul className="hq-sitelist">
         {emptyCount > 0 && (
-          <li className="hq-site-note">{emptyCount} filialda hazırda heç kim yoxdur</li>
-        )}
-        {ordered.map((s) => (
+          // Pressable, because it states a fact and the obvious next question is «which ones». The
+          // answer was at the bottom of a list of twenty-one, sorted so that the empty ones come
+          // last — the reader had to scroll past everything that was fine to reach what was not.
           <li
+            className={`hq-site-note${emptyOnly ? ' is-on' : ''}`}
+            onClick={() => setEmptyOnly((v) => !v)}
+            title={emptyOnly ? 'Bütün filiallara qayıt' : 'Yalnız boşları göstər'}
+          >
+            <span>{emptyCount} filialda hazırda heç kim yoxdur</span>
+            <b>{emptyOnly ? 'hamısı ✕' : 'bax →'}</b>
+          </li>
+        )}
+        {listed.map((s) => (
+          <li
+            id={`hq-site-${s.id}`}
             key={s.id}
-            className={`hq-site${focused === s.id ? ' is-focused' : ''}${s.onDuty === 0 ? ' is-idle' : ''}`}
+            className={`hq-site${focused === s.id ? ' is-focused' : ''}${hovered === s.id ? ' is-hovered' : ''}${s.onDuty === 0 ? ' is-idle' : ''}`}
             onClick={() => focus(s)}
+            onMouseEnter={() => setHovered(s.id)}
+            onMouseLeave={() => setHovered(null)}
           >
             <i style={{ background: accentOf(s.companyIndex < 0 ? 0 : s.companyIndex) }} />
             <span className="hq-site-name">{s.name}</span>

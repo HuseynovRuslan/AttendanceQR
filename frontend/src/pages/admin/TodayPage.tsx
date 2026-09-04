@@ -75,9 +75,13 @@ function Th({ col, label, sortBy, desc, onSort }: {
 
 export function TodayPage() {
   const { role } = useAuth()
-  // Viewing a check-in selfie is Admin-only (owner's call, 2026-08-31) — the server refuses a
-  // manager outright, so these controls would be dead buttons rather than hidden powers.
-  const mayViewPhotos = role === 'Admin'
+  // A manager may look at the selfies of the people they manage again (owner's call, 2026-09-04):
+  // they are who stands at the site and notices, and routing every suspect photograph through one
+  // admin did not make the data safer, it made the check not happen. The server scopes it to their
+  // own branches; ACTING on what they see — voiding a day, sending a warning — stays Admin-only, so
+  // canAct below is deliberately narrower than this.
+  const mayViewPhotos = role === 'Admin' || role === 'Manager'
+  const mayAct = role === 'Admin'
   const [assigningId, setAssigningId] = useState<string | null>(null)
   // Which absent row's reason menu is open, and where to float it. A pencil next to the Qayıb badge
   // opens a dropdown; it is position:fixed so the table's overflow never clips it.
@@ -647,7 +651,7 @@ export function TodayPage() {
           // the button would render and the server would refuse it (ViewOnlyBoundary blocks every
           // POST): a control that looks armed and does nothing, on the one action in this product
           // that must not be pressed twice in confusion.
-          canAct={mayViewPhotos && !getImpersonation()?.readOnly}
+          canAct={mayAct && !getImpersonation()?.readOnly}
           onActed={() => void load()}
           onClose={() => setModal(null)}
         />

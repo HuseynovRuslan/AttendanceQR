@@ -42,27 +42,34 @@ public class PhotoVisibilityTests
     }
 
     [Fact]
-    public void The_check_in_selfie_is_refused_to_anyone_who_is_not_an_admin()
+    public void The_selfie_is_gated_by_SCOPE_and_the_gate_is_never_absent()
     {
-        var body = Method(
-            Source("src/AttendanceQR.Api/Controllers/AttendanceController.cs"),
-            "public async Task<IActionResult> PhotoUrl(Guid recordId)");
-
-        Assert.Contains("role != EmployeeRole.Admin", body);
-        Assert.Contains("Status403Forbidden", body);
-    }
-
-    [Fact]
-    public void And_the_branch_check_is_still_there_underneath_it()
-    {
-        // The role gate is a ceiling, not a replacement. An admin is still read through the same
-        // location rule as everything else, so a future per-branch admin does not quietly gain the
-        // whole company's photographs.
+        // The rule changed on 2026-09-04: a manager may look again, at the people they manage.
+        //
+        // What is pinned is not WHICH roles pass — that is a judgement the owner has now reversed
+        // twice — but that a gate exists at all. The scope check is now the only one, so its absence
+        // would silently open every company's faces to every authenticated caller, and this test is
+        // what would fail first.
         var body = Method(
             Source("src/AttendanceQR.Api/Controllers/AttendanceController.cs"),
             "public async Task<IActionResult> PhotoUrl(Guid recordId)");
 
         Assert.Contains("CanAccessEmployeeAsync", body);
+        Assert.Contains("Status403Forbidden", body);
+    }
+
+    [Fact]
+    public void An_employee_cannot_open_anyone_elses_selfie()
+    {
+        // The narrowest thing the scope rule must still do, and the one nobody would notice breaking
+        // until it had: a plain employee reaching another person's record id.
+        var body = Method(
+            Source("src/AttendanceQR.Api/Controllers/AttendanceController.cs"),
+            "public async Task<IActionResult> PhotoUrl(Guid recordId)");
+
+        // The check is passed the CALLER's id and role — not the record's — which is what makes it
+        // answer "may this person see that person" rather than "does this record exist".
+        Assert.Contains("CanAccessEmployeeAsync(_db, requesterId, role, record.EmployeeId", body);
     }
 
     [Fact]
