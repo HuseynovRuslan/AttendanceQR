@@ -193,7 +193,7 @@ export function CompanyDrawer({ company, companyIndex, accent, sites, feed, onCl
           </section>
 
           <section className="hq-drawer-sec">
-            <div className="hq-drawer-sec-title">Şirkətin canlı hərəkəti ({companyFeed.length})</div>
+            <div className="hq-drawer-sec-title">Şirkətin bugünkü hərəkəti ({companyFeed.length})</div>
             {companyFeed.length === 0 ? (
               <p className="hq-drawer-empty">Bu gün bu şirkət üzrə hələ skan qeydə alınmayıb.</p>
             ) : (

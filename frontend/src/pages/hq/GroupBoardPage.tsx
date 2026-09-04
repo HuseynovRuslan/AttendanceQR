@@ -412,7 +412,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
           {/* The feed is what makes the screen read as live: rows arrive while you are looking at it. */}
           <div className="hq-panel">
             <div className="hq-panel-head">
-              <div className="hq-panel-title">Canlı hərəkət</div>
+              <div className="hq-panel-title">Canlı hərəkət <small>· bu gün</small></div>
               <span className="hq-panel-count hq-num">{fmt.format(data.feed.length)}</span>
             </div>
             <input

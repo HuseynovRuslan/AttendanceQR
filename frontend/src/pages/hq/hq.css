@@ -474,3 +474,6 @@
 }
 .hq-feed-more small { font-weight: 600; color: var(--fg-faint); }
 .hq-feed-more:hover { background: rgba(255, 255, 255, 0.07); color: var(--fg); }
+
+/* «bu gün» — the feed's window, said once in the title so no row has to carry a date. */
+.hq-panel-title small { font-weight: 700; color: var(--fg-faint); }

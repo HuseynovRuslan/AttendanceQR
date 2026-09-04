@@ -193,7 +193,19 @@ public partial class SuperAdminController
 
         // The feed is what makes the board look alive: rows arrive while someone is watching it.
         // Check-outs count as events too — a board that only ever shows arrivals goes still by noon.
+        // The feed is TODAY'S. It is read as a running account of the day, so yesterday's rows sitting
+        // among this morning's are not extra information — they are wrong information: a 22:49 «ÇIXIŞ»
+        // above a 13:57 «GİRİŞ» reads as a broken record until you notice they are different days.
+        //
+        // But the RECORDS still have to be fetched from yesterday, and the filter is on the event's
+        // own clock rather than on the record's date. A night worker checks in at 22:00 and out at
+        // 06:00; that record is dated yesterday, while the check-out happened this morning and belongs
+        // on this morning's board. Filtering by AttendanceDate would drop it; filtering by when the
+        // event actually happened keeps it and leaves yesterday's check-in behind, which is right.
         var feedFrom = today.AddDays(-1);
+        var dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(today.ToDateTime(TimeOnly.MinValue), timeZone);
+        var dayEndUtc = dayStartUtc.AddDays(1);
+        bool IsToday(DateTime atUtc) => atUtc >= dayStartUtc && atUtc < dayEndUtc;
         var posterEvents = (await _db.AttendanceRecords.IgnoreQueryFilters()
                 .Where(r => r.AttendanceDate >= feedFrom && r.CheckInAtUtc != null)
                 .Select(r => new { r.TenantId, r.EmployeeId, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc })
@@ -227,6 +239,7 @@ public partial class SuperAdminController
             .Select(x => x!);
 
         var feed = posterEvents.Concat(fieldEvents)
+            .Where(x => IsToday(x.At))
             .OrderByDescending(x => x.At)
             .Take(FeedSize)
             .Select(x => new
