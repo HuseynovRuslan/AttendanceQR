@@ -40,7 +40,10 @@ export function PhotoCompareModal({ title, referenceUrl, checkInUrl, checkInTake
         position: 'fixed',
         inset: 0,
         background: 'rgba(0,0,0,.6)',
-        zIndex: 50,
+        // Above everything the app can put on screen except the impersonation warning (99999):
+        // this is a modal, and it was 50 — under the HQ drawers (9999) and under Leaflet's own
+        // panes, which is how a map ended up painted across a photograph.
+        zIndex: 10000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

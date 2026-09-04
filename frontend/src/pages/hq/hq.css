@@ -178,6 +178,11 @@
 /* --- map ---------------------------------------------------------------- */
 .hq-map {
   position: relative;
+  /* Leaflet gives its own panes z-index 400-1000, and without a stacking context here those numbers
+     compete with the whole page: the map's tiles and its +/− controls painted straight over the
+     photo-compare modal. `isolation: isolate` traps them inside this box — the same fix the admin
+     maps already carry as `.lux-map`. */
+  z-index: 0; isolation: isolate;
   height: clamp(300px, 42vh, 460px); border-radius: 16px; overflow: hidden;
   border: 1px solid var(--line); background: #0B1020;
 }
@@ -574,6 +579,9 @@
 /* The map inside a person's panel: where they actually stood, as against what they typed. */
 .hq-person-map {
   height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  /* Same reason as .hq-map — this one sits inside a drawer, where an escaping Leaflet pane would
+     paint over the drawer's own header and close button. */
+  position: relative; z-index: 0; isolation: isolate;
 }
 .hq-person-map .leaflet-container { background: #0B1220; }
 
