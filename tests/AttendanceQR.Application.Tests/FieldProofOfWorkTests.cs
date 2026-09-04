@@ -77,7 +77,8 @@ public class FieldProofOfWorkTests
                 new Claim("sub", callerId.ToString()),
                 new Claim("role", role.ToString()),
             }, "test");
-            return new FieldVisitController(Db, Photo, new StubPush(), new AppOptions { TimeZone = "Asia/Baku" })
+            return new FieldVisitController(Db, Photo, new StubPush(), new AppOptions { TimeZone = "Asia/Baku" },
+                new StubSummaries(), FieldTestLog.Logger)
             {
                 ControllerContext = new ControllerContext
                 {

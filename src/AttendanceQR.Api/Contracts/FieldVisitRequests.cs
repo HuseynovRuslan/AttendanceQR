@@ -56,3 +56,11 @@ public record SetChecklistItemRequest(bool IsDone);
 /// <summary>İŞ ŞƏKLİ upload — a JPEG data URL of the WORK, taken with the rear camera and sent AFTER
 /// the check-out is already recorded, so a failed upload can never cost the worker their departure.</summary>
 public record WorkPhotoRequest(string PhotoBase64);
+
+/// <summary>
+/// Closing a visit the worker never checked out of.
+/// </summary>
+/// <param name="AtUtc">When they actually left, when the admin knows it. Null → now, which is the
+/// old unconditional behaviour and is only right for a visit being closed the same day: a visit left
+/// open on the 1st and closed on the 4th would otherwise record three days of work.</param>
+public record ForceCheckOutRequest(DateTime? AtUtc = null);

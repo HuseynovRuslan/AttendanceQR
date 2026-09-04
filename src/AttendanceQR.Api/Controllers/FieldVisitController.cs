@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -27,13 +28,19 @@ public class FieldVisitController : ControllerBase
     private readonly IPhotoStorageService _photoStorage;
     private readonly IPushNotifier _notifier;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IDailySummaryService _summaries;
+    private readonly ILogger<FieldVisitController> _logger;
 
-    public FieldVisitController(AppDbContext db, IPhotoStorageService photoStorage, IPushNotifier notifier, AppOptions options)
+    public FieldVisitController(
+        AppDbContext db, IPhotoStorageService photoStorage, IPushNotifier notifier, AppOptions options,
+        IDailySummaryService summaries, ILogger<FieldVisitController> logger)
     {
         _db = db;
         _photoStorage = photoStorage;
         _notifier = notifier;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+        _summaries = summaries;
+        _logger = logger;
     }
 
     /// <summary>Caps on a manager-typed checklist. Applied by trimming, never by rejecting.</summary>
@@ -61,8 +68,38 @@ public class FieldVisitController : ControllerBase
         var today = TodayLocal();
         var me = Me;
 
+        // Today's visits — AND yesterday's, if one is still open.
+        //
+        // This list decided what the worker's screen showed, and «today» stopped being true at
+        // midnight for anyone whose shift crosses it. A café worker on a 16:00–00:00 shift checked in
+        // at 15:29, worked, and pressed «Sahədən çıxdım» at 00:36 — by then her open visit belonged to
+        // «yesterday» and had vanished from her screen, so the app had nothing to close. She pressed
+        // «Sahədəyəm» again and checked straight out: a twelve-second visit dated today, while the
+        // real nine-hour visit stayed open forever and her day was recorded as QAYIB. Twice.
+        //
+        // Two guards, and both are needed:
+        //   • before noon — the same pivot the overnight attendance calculation uses. A shift that
+        //     crossed midnight is finished by then; anything still open at noon is a forgotten
+        //     check-out and belongs to the admin's force-checkout, not to a worker pressing a button
+        //     a day late.
+        //   • within CarryOverHours of the check-in — so a day worker who forgot to check out
+        //     yesterday morning is NOT shown a live visit today, where closing it would record
+        //     twenty-five hours. The window is generous enough for a long night and far too short
+        //     for a forgotten day.
+        var yesterday = today.AddDays(-1);
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        var carryOver = nowLocal.Hour < 12;
+
         var visits = await _db.FieldVisits
-            .Where(v => v.EmployeeId == me && v.VisitDate == today && v.Status != FieldVisitStatus.Cancelled)
+            .Where(v => v.EmployeeId == me
+                        && v.Status != FieldVisitStatus.Cancelled
+                        && (v.VisitDate == today
+                            || (carryOver
+                                && v.VisitDate == yesterday
+                                && v.Status == FieldVisitStatus.CheckedIn
+                                && v.CheckInAtUtc != null
+                                && v.CheckInAtUtc > nowUtc.AddHours(-CarryOverHours))))
             .OrderBy(v => v.Status).ThenByDescending(v => v.CreatedAtUtc)
             .ToListAsync(ct);
 
@@ -73,6 +110,14 @@ public class FieldVisitController : ControllerBase
 
         return Ok(visits.Select(v => Project(v, assigners, checklists.GetValueOrDefault(v.Id))));
     }
+
+    /// <summary>
+    /// How long after its check-in a still-open visit can be carried into the next morning.
+    ///
+    /// Long enough for the longest real night (a 16:00 start finishing at 02:00 is ten hours) and far
+    /// short of a forgotten day-shift visit seen the following morning, which would be twenty-five.
+    /// </summary>
+    private const int CarryOverHours = 16;
 
     // POST /api/field-visits/start — worker self-reports an ad-hoc visit: created + checked in at once.
     [HttpPost("start")]
@@ -467,7 +512,7 @@ public class FieldVisitController : ControllerBase
     // departure time, so the checkout is stamped "now" (no GPS) and flagged — a cleanup, not a record.
     [HttpPost("{id:guid}/force-checkout")]
     [Authorize(Roles = "Admin,Manager")]
-    public async Task<IActionResult> ForceCheckOut(Guid id)
+    public async Task<IActionResult> ForceCheckOut(Guid id, [FromBody] ForceCheckOutRequest? request = null)
     {
         var ct = HttpContext.RequestAborted;
         var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id, ct);
@@ -478,8 +523,20 @@ public class FieldVisitController : ControllerBase
         if (visit.Status != FieldVisitStatus.CheckedIn)
             return BadRequest(new { error = "NotCheckedIn" });
 
+        // «Now» is the fallback, not the rule. This endpoint stamped the current time unconditionally,
+        // on the reasoning that an admin does not know when the worker left — usually true, and
+        // exactly wrong in the case that made this matter: a visit left open on 1 September, closed on
+        // the 4th, would have recorded three days of work. The admin often DOES know the time (the
+        // worker told them, or a phantom visit records the minute they tried to check out), and when
+        // they do they must be able to say it.
+        var leftAt = request?.AtUtc ?? DateTime.UtcNow;
+        if (visit.CheckInAtUtc is DateTime ci && leftAt <= ci)
+            return BadRequest(new { error = "BeforeCheckIn" });
+        if (leftAt > DateTime.UtcNow.AddMinutes(5))
+            return BadRequest(new { error = "InFuture" });
+
         visit.Status = FieldVisitStatus.Completed;
-        visit.CheckOutAtUtc = DateTime.UtcNow;
+        visit.CheckOutAtUtc = leftAt;
         // No CheckOutLatitude/Longitude — the admin isn't on site; distance stays unmeasured.
         await _db.SaveChangesAsync(ct);
 
@@ -488,6 +545,13 @@ public class FieldVisitController : ControllerBase
         var closedDay = false;
         try { closedDay = await TryCloseOpenAttendanceAsync(visit, ct); }
         catch { /* the visit is closed; the day can still be closed by hand */ }
+
+        // Rebuild that day's stored summary. Without it the correction is invisible: a PAST day is
+        // read from DailySummaries, not computed, so a visit fixed today would still report the
+        // Qayıb the broken visit produced. Today is refused by the job by design (today is computed
+        // live everywhere), which is why this is safe to call unconditionally.
+        try { await _summaries.GenerateForDateAsync(visit.VisitDate, ct); }
+        catch (Exception ex) { _logger.LogError(ex, "Field visit {Id} closed, summary rebuild failed", visit.Id); }
 
         return Ok(new { id = visit.Id, status = visit.Status.ToString(), closedAttendanceDay = closedDay });
     }

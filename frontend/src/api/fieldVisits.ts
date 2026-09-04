@@ -125,8 +125,17 @@ export function cancelFieldVisit(id: string) {
   return apiRequest<{ id: string; status: string }>(`/api/field-visits/${id}/cancel`, { method: 'POST' })
 }
 /** Admin closes a visit the worker never checked out of (stuck CheckedIn). Checkout is stamped now. */
-export function forceCheckOutFieldVisit(id: string) {
-  return apiRequest<{ id: string; status: string }>(`/api/field-visits/${id}/force-checkout`, { method: 'POST' })
+/**
+ * Close a visit the worker never checked out of.
+ *
+ * @param atUtc when they ACTUALLY left, if the admin knows it. Omitted → now, which is only right for
+ *   a visit closed the same day: one left open on the 1st and closed on the 4th records three days.
+ */
+export function forceCheckOutFieldVisit(id: string, atUtc?: string) {
+  return apiRequest<{ id: string; status: string }>(
+    `/api/field-visits/${id}/force-checkout`,
+    { method: 'POST', body: { atUtc: atUtc ?? null } },
+  )
 }
 // getFieldVisitPhotos is GONE with its endpoint: it minted presigned SELFIE urls for the field board.
 // The only field photo an admin can now open is the work photo below, which resolves WorkPhotoKey and

@@ -59,7 +59,7 @@ public class FieldCheckOutClosesTheDayTests
             Db.SaveChanges();
 
             AsWorker = new FieldVisitController(Db, new StubPhoto(), new StubPush(),
-                new AppOptions { TimeZone = "Asia/Baku" })
+                new AppOptions { TimeZone = "Asia/Baku" }, new StubSummaries(), FieldTestLog.Logger)
             {
                 ControllerContext = new ControllerContext
                 {

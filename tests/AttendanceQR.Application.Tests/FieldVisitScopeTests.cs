@@ -76,7 +76,8 @@ public class FieldVisitScopeTests
                 new Claim("sub", callerId.ToString()),
                 new Claim("role", role.ToString()),
             }, "test");
-            return new FieldVisitController(Db, new StubPhoto(), new StubPush(), new AppOptions { TimeZone = "Asia/Baku" })
+            return new FieldVisitController(Db, new StubPhoto(), new StubPush(), new AppOptions { TimeZone = "Asia/Baku" },
+                new StubSummaries(), FieldTestLog.Logger)
             {
                 ControllerContext = new ControllerContext
                 {

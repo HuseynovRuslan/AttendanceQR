@@ -312,10 +312,39 @@ export function FieldVisitsAdminPage() {
   }
 
   async function forceCheckout(v: BoardFieldVisit) {
-    if (!window.confirm(`«${v.employeeName}» çıxış etməyib. Ziyarəti indi bağlamaq istəyirsiniz?`)) return
-    const { status } = await forceCheckOutFieldVisit(v.id)
-    if (status === 200) { setDetail(null); await load() }
-    else setError('Bağlanmadı')
+    // Ask for the departure TIME, not just for confirmation.
+    //
+    // It used to stamp «now» unconditionally, which is right for a visit closed the same evening and
+    // badly wrong for an older one: a café worker's 1 September visit closed on the 4th would have
+    // recorded three days of work. The admin usually knows the hour — the worker told them, or a
+    // phantom visit records the minute they tried to check out — and now they can say it.
+    const local = prompt(
+      `«${v.employeeName}» çıxış etməyib.
+
+` +
+      `Getdiyi saatı yazın (GG.AA.İİİİ SS:DD).
+` +
+      `Boş buraxsanız İNDİKİ vaxt yazılacaq — bu, yalnız elə bu gün bağlanan ziyarət üçün doğrudur.`,
+      '',
+    )
+    if (local === null) return
+
+    let atUtc: string | undefined
+    if (local.trim()) {
+      // dd.MM.yyyy HH:mm, read as Baku time — the admin types the clock they and the worker share.
+      const m = local.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})$/)
+      if (!m) { setError('Vaxt formatı: GG.AA.İİİİ SS:DD'); return }
+      const [, dd, mm, yyyy, hh, mi] = m
+      // Baku is UTC+4 year-round (no DST since 2016), which is what COMPANY_TZ encodes elsewhere.
+      atUtc = new Date(Date.UTC(+yyyy, +mm - 1, +dd, +hh - 4, +mi)).toISOString()
+    }
+
+    const { status, data } = await forceCheckOutFieldVisit(v.id, atUtc)
+    if (status === 200) { setDetail(null); await load(); return }
+    const code = (data as { error?: string } | null)?.error
+    setError(code === 'BeforeCheckIn' ? 'Yazdığınız vaxt girişdən əvvəldir'
+      : code === 'InFuture' ? 'Yazdığınız vaxt gələcəkdədir'
+      : 'Bağlanmadı')
   }
 
   async function openDetail(v: BoardFieldVisit) {
