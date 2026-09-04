@@ -17,7 +17,17 @@ public sealed record AttendanceRecordDto(
     // True when the check-out came from this employee's own field check-out (they went home from the
     // site) rather than a poster scan. Not the same thing as ManualByName — see
     // AttendanceRecord.ClosedByFieldVisitId for why the two are kept apart.
-    bool ClosedByFieldVisit = false);
+    bool ClosedByFieldVisit = false,
+    /// <summary>
+    /// This day has no poster scan at all — the times come from a «səyyar» field visit.
+    ///
+    /// It exists because the day was INVISIBLE to the person who worked it. This list reads
+    /// AttendanceRecords, a field day writes only a FieldVisit, and so a driver who checked in at a
+    /// site with no poster, worked nine hours and checked out saw his own history skip the date
+    /// entirely — while the payroll counted every minute of it. He assumed he had not been recorded
+    /// and came to ask. The label is what tells him which kind of day it was.
+    /// </summary>
+    bool IsFieldDay = false);
 
 /// <summary>Outcome of a resource-level access check for another employee's records.</summary>
 public enum AttendanceAccess

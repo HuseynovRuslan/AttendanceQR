@@ -25,6 +25,8 @@ export interface AttendanceRecord {
   /** The check-out came from this employee's own field check-out — they went home from the site
    *  rather than back past the poster. NOT a manual entry: it carries their GPS and selfie. */
   closedByFieldVisit?: boolean
+  /** No poster scan on this date — the times come from a field visit. recordId is empty for these. */
+  isFieldDay?: boolean
 }
 
 /** GET /api/attendance/me — this employee's full check-in/out history, newest first. Self-scoped

@@ -86,7 +86,7 @@ export function StatsPage() {
         ) : (
           <div className="flex flex-col gap-2">
             {records.map((r) => (
-              <HistoryRow key={r.recordId} r={r} />
+              <HistoryRow key={r.recordId === '00000000-0000-0000-0000-000000000000' ? r.attendanceDate : r.recordId} r={r} />
             ))}
           </div>
         )}

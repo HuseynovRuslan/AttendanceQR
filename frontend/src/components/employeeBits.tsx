@@ -17,9 +17,17 @@ export function HistoryRow({ r }: { r: AttendanceRecord }) {
             Əl ilə daxil edilib · {r.manualByName}
           </div>
         )}
+        {/* No poster scan at all — the whole day came from a «səyyar» visit. Said plainly, because
+            until now such a day did not appear in this list AT ALL: the person worked it, the payroll
+            counted it, and their own screen skipped the date. */}
+        {r.isFieldDay && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+            📍 Səyyar iş günü — QR olmadan qeydə alınıb
+          </div>
+        )}
         {r.closedByFieldVisit && (
           <div className="mt-1 inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
-            📍 Ɗrazi çıxışı ilə bağlandı
+            📍 Ərazi çıxışı ilə bağlandı
           </div>
         )}
       </div>
