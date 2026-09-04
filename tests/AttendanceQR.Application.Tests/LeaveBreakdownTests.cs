@@ -29,9 +29,10 @@ public class LeaveBreakdownTests
     [Fact]
     public void The_four_types_sum_to_the_total_they_came_from()
     {
-        // The whole point of the split: detail that adds back up to the number it replaced.
-        var r = Row(leave: 12, vacation: 5, sick: 3, unpaid: 1, rest: 3);
-        Assert.Equal(r.LeaveDays, r.VacationDays + r.SickDays + r.UnpaidDays + r.RestDays);
+        // The whole point of the split: detail that adds back up to the number it replaced. THREE of
+        // them — İstirahət is a DayOff, not leave, and lives beside the total rather than inside it.
+        var r = Row(leave: 9, vacation: 5, sick: 3, unpaid: 1, rest: 3);
+        Assert.Equal(r.LeaveDays, r.VacationDays + r.SickDays + r.UnpaidDays);
     }
 
     [Fact]
@@ -42,7 +43,7 @@ public class LeaveBreakdownTests
         var r = Row(leave: 4, trip: 20, vacation: 4);
         Assert.Equal(4, r.LeaveDays);
         Assert.Equal(20, r.TripDays);
-        Assert.Equal(r.LeaveDays, r.VacationDays + r.SickDays + r.UnpaidDays + r.RestDays);
+        Assert.Equal(r.LeaveDays, r.VacationDays + r.SickDays + r.UnpaidDays);
     }
 
     [Fact]
@@ -72,6 +73,65 @@ public class LeaveBreakdownTests
     }
 
     [Fact]
+    public void Unpaid_leave_is_not_paid()
+    {
+        // «Ödənişsiz məzuniyyət» means unpaid, and it was being paid at full salary: PayrollMath had
+        // no parameter for it, so the day sat in the divisor and was never deducted. Production held
+        // 23 such days at one company, every one of them paid.
+        //
+        // 18 worked + 5 unpaid = 23 scheduled; 1000 / 23 = 43.48 a day; five unpaid days cost 217.40.
+        var pay = PayrollMath.Compute(
+            salary: 1000m, workDays: 18, absentDays: 0, leaveDays: 5, permissionDays: 0, tripDays: 0,
+            unpaidDays: 5);
+
+        Assert.Equal(23, pay.Scheduled);
+        Assert.Equal(43.48m, pay.PerDay);
+        Assert.Equal(217.40m, pay.Deduction);
+        Assert.Equal(782.60m, pay.Payable);
+    }
+
+    [Fact]
+    public void Unpaid_days_stay_in_the_divisor_they_are_deducted_from()
+    {
+        // The subtle half. An unpaid day is still a SCHEDULED day — taking it out of the divisor
+        // would raise the per-day rate and so overcharge every OTHER absence the same person had.
+        // Deduct it, do not un-schedule it.
+        var with5 = PayrollMath.Compute(1000m, workDays: 18, absentDays: 0, leaveDays: 5,
+            permissionDays: 0, tripDays: 0, unpaidDays: 5);
+        var withNone = PayrollMath.Compute(1000m, workDays: 18, absentDays: 0, leaveDays: 5,
+            permissionDays: 0, tripDays: 0);
+
+        Assert.Equal(withNone.Scheduled, with5.Scheduled);   // same divisor
+        Assert.Equal(withNone.PerDay, with5.PerDay);         // same daily rate
+        Assert.True(with5.Deduction > withNone.Deduction);   // only the deduction differs
+    }
+
+    [Fact]
+    public void Paid_leave_is_still_paid()
+    {
+        // The guard on the change above: annual leave and sick leave must NOT be deducted. Only the
+        // type whose name says «ödənişsiz».
+        var pay = PayrollMath.Compute(
+            salary: 1000m, workDays: 18, absentDays: 0, leaveDays: 5, permissionDays: 2, tripDays: 0);
+
+        Assert.Equal(0m, pay.Deduction);
+        Assert.Equal(1000m, pay.Payable);
+    }
+
+    [Fact]
+    public void A_rest_day_is_not_leave_and_is_not_in_the_total()
+    {
+        // İstirahət resolves to DayOff, never OnLeave, so it was never inside LeaveDays and must not
+        // be added to it — LeaveDays feeds the payroll divisor. The first cut of the breakdown
+        // counted Rest against OnLeave, an unsatisfiable pair that would have exported a permanent
+        // zero; this pins that Rest lives beside the total rather than inside it.
+        var r = Row(leave: 6, vacation: 4, sick: 2, rest: 9);
+        Assert.Equal(6, r.LeaveDays);
+        Assert.Equal(6, r.VacationDays + r.SickDays + r.UnpaidDays);
+        Assert.Equal(9, r.RestDays);
+    }
+
+    [Fact]
     public void A_leave_day_no_record_covers_stays_in_the_total_and_in_no_bucket()
     {
         // A summary row written by the night job says OnLeave; the LeaveRecord behind it was deleted
@@ -81,7 +141,7 @@ public class LeaveBreakdownTests
         // hidden, which is the right way round.
         var r = Row(leave: 10, vacation: 4, sick: 2);
         Assert.Equal(10, r.LeaveDays);
-        Assert.Equal(6, r.VacationDays + r.SickDays + r.UnpaidDays + r.RestDays);
-        Assert.True(r.LeaveDays > r.VacationDays + r.SickDays + r.UnpaidDays + r.RestDays);
+        Assert.Equal(6, r.VacationDays + r.SickDays + r.UnpaidDays);
+        Assert.True(r.LeaveDays > r.VacationDays + r.SickDays + r.UnpaidDays);
     }
 }

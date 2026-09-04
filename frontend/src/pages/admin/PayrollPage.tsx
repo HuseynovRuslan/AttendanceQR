@@ -103,7 +103,9 @@ export function PayrollPage() {
           </button>
         </div>
         <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 10, marginBottom: 0 }}>
-          Ödəniləcək = Aylıq maaş − (gündəlik × icazəsiz qayıb). Məzuniyyət və icazə çıxılmır. Overtime
+          Ödəniləcək = Aylıq maaş − (gündəlik × [icazəsiz qayıb + ödənişsiz məzuniyyət]). Məzuniyyət,
+          xəstəlik və icazə çıxılmır; ÖDƏNİŞSİZ məzuniyyət çıxılır — adı bunu deyir və əvvəl səhvən
+          tam maaşla ödənilirdi. Overtime
           saatları ayrıca göstərilir, avtomatik pula çevrilmir.
         </p>
       </div>
@@ -135,7 +137,12 @@ export function PayrollPage() {
                 <th className="num">İş günü</th>
                 <th className="num">Gəlib</th>
                 <th className="num">Qayıb</th>
-                <th className="num">Məz./İcazə</th>
+                {/* One cell used to carry vacation + sick + unpaid + permission under a label naming
+                    two of them. The accountant's sheet now names each; the screen has to match it. */}
+                <th className="num">Məzuniyyət</th>
+                <th className="num">Xəstəlik</th>
+                <th className="num">Ödənişsiz</th>
+                <th className="num">İcazə</th>
                 <th className="num">Çıxılan</th>
                 <th className="num">Ödəniləcək</th>
               </tr>
@@ -153,7 +160,10 @@ export function PayrollPage() {
                   <td data-label="Qayıb" className="num mono" style={{ color: r.absentDays > 0 ? 'var(--clay)' : undefined }}>
                     {r.absentDays}
                   </td>
-                  <td data-label="Məz./İcazə" className="num mono">{r.leaveDays + r.permissionDays}</td>
+                  <td data-label="Məzuniyyət" className="num mono">{r.vacationDays ?? r.leaveDays}</td>
+                  <td data-label="Xəstəlik" className="num mono">{r.sickDays ?? 0}</td>
+                  <td data-label="Ödənişsiz" className="num mono">{r.unpaidDays ?? 0}</td>
+                  <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
                   <td data-label="Çıxılan" className="num mono" style={{ color: r.deduction > 0 ? 'var(--clay)' : undefined }}>
                     {r.monthlySalary == null ? '—' : azn(r.deduction)}
                   </td>

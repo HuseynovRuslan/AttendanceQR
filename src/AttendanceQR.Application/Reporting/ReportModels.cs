@@ -40,7 +40,14 @@ public sealed record EmployeeReportRow(
     //
     // LeaveDays deliberately KEEPS its old meaning (every non-trip leave day) and stays where it is:
     // PayrollMath's divisor is built from it, and redefining a figure the payroll divides by is how
-    // a reporting fix becomes a pay bug. These four are additive detail, and they sum to LeaveDays.
+    // a reporting fix becomes a pay bug.
+    //
+    // Three of these four sum to LeaveDays; İSTİRAHƏT DOES NOT. A rest day resolves to DayOff rather
+    // than OnLeave (AttendanceCalculator.ResolveNoRecordStatus), so it was never inside LeaveDays and
+    // must never be added to it — it is a day off, not an entitlement, and putting it in the payroll
+    // divisor would change what people are paid. It is reported beside them because the register the
+    // accountant reads should say which days were rest, and because 415 of production's leave-shaped
+    // days are exactly that.
     int VacationDays = 0,
     int SickDays = 0,
     int UnpaidDays = 0,

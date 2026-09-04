@@ -108,7 +108,12 @@ export function ReportsPage() {
                 <th>Filial</th>
                 <th className="num">İş günləri</th>
                 <th className="num">Qayıb</th>
+                {/* Split, because this column WAS «Məzuniyyət» and held sick and unpaid leave too —
+                    and now that the Excel file names them, a screen that still shows one number
+                    would disagree with the file exported from it. */}
                 <th className="num">Məzuniyyət</th>
+                <th className="num">Xəstəlik</th>
+                <th className="num">Ödənişsiz</th>
                 <th className="num">Ezamiyyət</th>
                 <th className="num">İcazə</th>
                 <th className="num">Ümumi saat</th>
@@ -124,7 +129,9 @@ export function ReportsPage() {
                   <td data-label="Filial">{r.locationName}</td>
                   <td data-label="İş günləri" className="num mono">{r.workDays}</td>
                   <td data-label="Qayıb" className="num mono">{r.absentDays}</td>
-                  <td data-label="Məzuniyyət" className="num mono">{r.leaveDays}</td>
+                  <td data-label="Məzuniyyət" className="num mono">{r.vacationDays ?? r.leaveDays}</td>
+                  <td data-label="Xəstəlik" className="num mono">{r.sickDays ?? 0}</td>
+                  <td data-label="Ödənişsiz" className="num mono">{r.unpaidDays ?? 0}</td>
                   <td data-label="Ezamiyyət" className="num mono">{r.tripDays}</td>
                   <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
                   <td data-label="Ümumi saat" className="num mono">{fmtHM(r.totalWorkedHours)}</td>

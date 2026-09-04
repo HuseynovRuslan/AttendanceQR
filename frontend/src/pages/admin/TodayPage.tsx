@@ -254,12 +254,24 @@ export function TodayPage() {
       : { cursor: 'pointer' }
 
   async function exportXlsx() {
-    const label = (st: string) =>
-      st === 'Incomplete' ? incompleteLabel : (STATUS_MAP as Record<string, { label: string }>)[st]?.label ?? st
+    // The exported Status must say EXACTLY what the badge beside it says.
+    //
+    // It did not. The file was built from `STATUS_MAP[r.status]`, and the backend stores Məzuniyyət,
+    // Xəstəlik and Ezamiyyət under one status — OnLeave — so every one of them printed «Məzuniyyət».
+    // On screen the same row already read correctly, because the badge passes leaveVisual(leaveType).
+    // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
+    // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
+    // leave. The type is already on the row and was simply never read here.
+    const label = (r: DayAttendanceRow) =>
+      r.status === 'Incomplete'
+        ? incompleteLabel
+        : r.status === 'OnLeave'
+          ? leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
+          : (STATUS_MAP as Record<string, { label: string }>)[r.status]?.label ?? r.status
     const rows = visible.map((r) => ({
       name: r.employeeName,
       location: r.locationName,
-      status: label(r.status),
+      status: label(r),
       checkIn: fmtTime(r.checkInAtUtc) + (r.lateArrivalReason ? ` (gec: ${r.lateArrivalReason})` : ''),
       checkOut: fmtTime(r.checkOutAtUtc) + (r.earlyDepartureReason ? ` (tez: ${r.earlyDepartureReason})` : ''),
       photo: r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',

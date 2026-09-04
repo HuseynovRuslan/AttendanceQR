@@ -67,6 +67,12 @@ export interface EmployeeReportRow {
   earlyLeaveHours: number
   earlyArriveHours: number
   leaveDays: number
+  /** The breakdown behind leaveDays. Vacation + sick + unpaid = leaveDays; restDays is separate —
+   *  a rest day is DayOff, never OnLeave, so it was never inside the total. */
+  vacationDays?: number
+  sickDays?: number
+  unpaidDays?: number
+  restDays?: number
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
   permissionDays: number
@@ -82,6 +88,12 @@ export interface ReportTotals {
   earlyLeaveHours: number
   earlyArriveHours: number
   leaveDays: number
+  /** The breakdown behind leaveDays. Vacation + sick + unpaid = leaveDays; restDays is separate —
+   *  a rest day is DayOff, never OnLeave, so it was never inside the total. */
+  vacationDays?: number
+  sickDays?: number
+  unpaidDays?: number
+  restDays?: number
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
   permissionDays: number
@@ -393,6 +405,12 @@ export interface PayrollRow {
   workDays: number
   absentDays: number
   leaveDays: number
+  /** The breakdown behind leaveDays. Vacation + sick + unpaid = leaveDays; restDays is separate —
+   *  a rest day is DayOff, never OnLeave, so it was never inside the total. */
+  vacationDays?: number
+  sickDays?: number
+  unpaidDays?: number
+  restDays?: number
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
   permissionDays: number
@@ -1481,6 +1499,12 @@ export interface TabelRow {
   workedDays: number
   absentDays: number
   leaveDays: number
+  /** The breakdown behind leaveDays. Vacation + sick + unpaid = leaveDays; restDays is separate —
+   *  a rest day is DayOff, never OnLeave, so it was never inside the total. */
+  vacationDays?: number
+  sickDays?: number
+  unpaidDays?: number
+  restDays?: number
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
   workedHours: number

@@ -418,7 +418,16 @@ export function EmployeeProfilePage() {
               <Stat label="Gecikmə" value={summary.lateCount} metric="late" open={openMetric} onOpen={setOpenMetric} />
               <Stat label="Qayıb" value={summary.absentDays} metric="absent" open={openMetric} onOpen={setOpenMetric} />
               <Stat label="Natamam" value={summary.incompleteDays} metric="incomplete" open={openMetric} onOpen={setOpenMetric} />
-              <Stat label="Məzuniyyət/İcazə" value={summary.leaveDays + summary.permissionDays} metric="leave" open={openMetric} onOpen={setOpenMetric} />
+              {/* «Məzuniyyət» alone now — sick has its own tile. The combined tile disagreed with the
+                  list that opens beneath it, which names each day by its real type. */}
+              <Stat label="Məzuniyyət" value={summary.vacationDays ?? summary.leaveDays} metric="leave" open={openMetric} onOpen={setOpenMetric} />
+              {(summary.sickDays ?? 0) > 0 && (
+                <Stat label="Xəstəlik" value={summary.sickDays ?? 0} metric="sick" open={openMetric} onOpen={setOpenMetric} />
+              )}
+              {(summary.unpaidDays ?? 0) > 0 && (
+                <Stat label="Ödənişsiz" value={summary.unpaidDays ?? 0} metric="unpaid" open={openMetric} onOpen={setOpenMetric} />
+              )}
+              <Stat label="İcazə" value={summary.permissionDays} metric="permission" open={openMetric} onOpen={setOpenMetric} />
               {/* Apart from leave: on Ezamiyyət the person WAS working, away from a poster.
                   Folded into the leave figure, a driver on a month-long route read as a month
                   of annual holiday on their own card. Hidden at zero — most people never have one. */}
@@ -648,16 +657,35 @@ function Stat({ label, value, metric, open, onOpen }: {
 
 const METRIC_LABEL: Record<string, string> = {
   workDays: 'İş günləri', hours: 'İş saatları', late: 'Gecikmələr',
-  absent: 'Qayıb günləri', incomplete: 'Natamam günlər', leave: 'Məzuniyyət / İcazə', trip: 'Ezamiyyət',
+  absent: 'Qayıb günləri', incomplete: 'Natamam günlər',
+  leave: 'Məzuniyyət', sick: 'Xəstəlik', unpaid: 'Ödənişsiz məzuniyyət',
+  permission: 'İcazə', trip: 'Ezamiyyət',
 }
+
+/**
+ * The days behind a tile.
+ *
+ * Two defects lived here. «Ezamiyyət» had a tile and NO case, so pressing it opened an empty list
+ * under a non-zero number — the screen contradicted itself. And «leave» matched every OnLeave day
+ * plus every Permission day, so the tile's figure and the list beneath it were counting different
+ * things the moment a person had both.
+ *
+ * Each metric now filters on the leave TYPE, the same field the badge reads, so a tile and its list
+ * can no longer disagree.
+ */
 function daysForMetric(days: EmployeeDay[], metric: string): EmployeeDay[] {
+  const ofType = (t: string) => days.filter((d) => d.status === 'OnLeave' && d.leaveType === t)
   switch (metric) {
     case 'workDays': return days.filter((d) => ['OnTime', 'Late', 'Incomplete'].includes(d.status))
     case 'hours': return days.filter((d) => d.workedMinutes > 0)
     case 'late': return days.filter((d) => d.status === 'Late')
     case 'absent': return days.filter((d) => d.status === 'Absent')
     case 'incomplete': return days.filter((d) => d.status === 'Incomplete')
-    case 'leave': return days.filter((d) => d.status === 'OnLeave' || d.status === 'Permission')
+    case 'leave': return ofType('Vacation')
+    case 'sick': return ofType('Sick')
+    case 'unpaid': return ofType('Unpaid')
+    case 'permission': return days.filter((d) => d.status === 'Permission')
+    case 'trip': return ofType('BusinessTrip')
     default: return []
   }
 }
@@ -668,7 +696,8 @@ function dayDetail(d: EmployeeDay, metric: string): string {
   if (metric === 'absent') return 'Giriş yoxdur'
   if (metric === 'incomplete') return `Giriş ${ci} · çıxış yoxdur`
   if (metric === 'hours') return `${ci}–${co} · ${(d.workedMinutes / 60).toFixed(1)} saat`
-  if (metric === 'leave') return leaveVisual(d.leaveType)?.label ?? (d.status === 'Permission' ? 'İcazə' : 'Məzuniyyət')
+  if (['leave', 'sick', 'unpaid', 'permission', 'trip'].includes(metric))
+    return leaveVisual(d.leaveType)?.label ?? (d.status === 'Permission' ? 'İcazə' : 'Məzuniyyət')
   return `${ci}–${co}`
 }
 /** The days behind one tile — click "Gecikmə" and see exactly which days, with times. */

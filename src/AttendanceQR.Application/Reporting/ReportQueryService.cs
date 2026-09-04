@@ -722,7 +722,13 @@ public sealed class ReportQueryService : IReportQueryService
                 VacationDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Vacation)),
                 SickDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Sick)),
                 UnpaidDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Unpaid)),
-                RestDays: g.Count(x => x.Status == DailySummaryStatus.OnLeave && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Rest))))
+                // İstirahət resolves to DayOff, NOT OnLeave — AttendanceCalculator.ResolveNoRecordStatus
+                // maps Rest => DayOff and every other type => OnLeave. Counting it against OnLeave
+                // (as the first cut of this column did) is an unsatisfiable conjunction that exports
+                // a permanent zero. It is also why RestDays is NOT part of LeaveDays and must never
+                // be added into it: a rest day is not leave, and folding it into the payroll's
+                // divisor would change what people are paid.
+                RestDays: g.Count(x => x.Status == DailySummaryStatus.DayOff && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Rest))))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 
@@ -820,7 +826,8 @@ public sealed class ReportQueryService : IReportQueryService
             decimal perDay = 0m, deduction = 0m, payable = 0m;
             if (salary is > 0m)
                 (scheduled, perDay, deduction, payable) = PayrollMath.Compute(
-                    salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays);
+                    salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays,
+                    r.UnpaidDays);
             else
                 scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays;
 
