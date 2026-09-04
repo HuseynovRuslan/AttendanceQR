@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -68,6 +69,49 @@ public class PushController : ControllerBase
             })
             .ToListAsync(HttpContext.RequestAborted);
         return Ok(rows);
+    }
+
+    /// <summary>
+    /// GET /api/push/pending-warning — the admin warning this employee has not acknowledged yet.
+    ///
+    /// Separate from the inbox above and read on every home load, because the inbox is a tab people
+    /// visit and this is a message that has to find them. Aydın's record is the argument: five
+    /// no-face photographs and a photograph of an actor over twelve scans, and nothing in the app
+    /// ever stopped him — the passive banner beside it counts only NoFace, only within the calendar
+    /// month, and had reset to zero two days before the worst one.
+    ///
+    /// Oldest first: if two were somehow sent, the earlier one is answered first.
+    /// </summary>
+    [HttpGet("pending-warning")]
+    public async Task<IActionResult> PendingWarning()
+    {
+        var employeeId = User.EmployeeId();
+        var row = await _db.EmployeeNotifications
+            .Where(n => n.EmployeeId == employeeId
+                        && n.Type == EmployeeNotificationType.PhotoWarning
+                        && n.AcknowledgedAtUtc == null)
+            .OrderBy(n => n.CreatedAtUtc)
+            .Select(n => new { id = n.Id, title = n.Title, body = n.Body, createdAtUtc = n.CreatedAtUtc })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        return Ok(row is null ? null : (object)row);
+    }
+
+    /// <summary>POST /api/push/warning/{id}/ack — «Anladım». Scoped to the caller's own rows, so one
+    /// employee cannot dismiss another's.</summary>
+    [HttpPost("warning/{id:guid}/ack")]
+    public async Task<IActionResult> AcknowledgeWarning(Guid id)
+    {
+        var employeeId = User.EmployeeId();
+        var row = await _db.EmployeeNotifications
+            .FirstOrDefaultAsync(n => n.Id == id && n.EmployeeId == employeeId,
+                                 HttpContext.RequestAborted);
+        if (row is null)
+            return NotFound(new { error = "NotFound" });
+
+        row.AcknowledgedAtUtc ??= DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        return Ok(new { acknowledged = true });
     }
 
     [HttpPost("subscribe")]

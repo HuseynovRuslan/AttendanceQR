@@ -39,6 +39,7 @@ export function PhotoCompareModal({
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+  const [message, setMessage] = useState('')
 
   /**
    * Say it without taking anything away.
@@ -50,14 +51,17 @@ export function PhotoCompareModal({
    */
   async function warn() {
     if (!recordId) return
+    const preview = message.trim()
     if (!window.confirm(
-      'İşçiyə bildiriş göndərilsin?\n\n' +
-      'Girişi silinmir, maaşına toxunulmur — sadəcə şəklin yoxlamadan keçmədiyini bilir. ' +
-      'Bir gün üçün yalnız bir dəfə göndərilir.')) return
+      (preview
+        ? `Bu mesaj işçiyə göndərilsin?\n\n«${preview}»\n\n`
+        : 'İşçiyə standart bildiriş göndərilsin?\n\n') +
+      'Girişi silinmir, maaşına toxunulmur. Bir gün üçün yalnız BİR dəfə göndərilir — ' +
+      'göndərildikdən sonra mətni dəyişmək olmur.')) return
 
     setBusy(true)
     setFailed(false)
-    const { status, data } = await sendPhotoWarning(recordId)
+    const { status, data } = await sendPhotoWarning(recordId, message)
     setBusy(false)
     if (status === 200 && data && 'sent' in data) {
       setDone(data.notified > 0
@@ -66,7 +70,15 @@ export function PhotoCompareModal({
       onActed?.()
       return
     }
-    if (status === 409) { setDone('Bu gün üçün onsuz da göndərilib'); return }
+    if (status === 409) {
+      // Say whether they OPENED it, not just that something was sent. That is the whole question an
+      // admin has when they press this a second time.
+      const d = data as { acknowledgedAtUtc?: string | null } | null
+      setDone(d?.acknowledgedAtUtc
+        ? 'Bu gün üçün göndərilib — işçi oxuyub ✓'
+        : 'Bu gün üçün göndərilib — işçi hələ oxumayıb')
+      return
+    }
     setFailed(true)
   }
 
@@ -191,10 +203,24 @@ export function PhotoCompareModal({
                 </div>
                 {/* The mild action first and visually primary: it is the one that fits most of these
                     photographs. The two destructive ones sit under it, quieter. */}
+                {/* Free text, because the sentence that fits depends entirely on the two pictures.
+                    «Papağı çıxar» and «bu, sən deyilsən» are not the same message, and only the
+                    person looking at them knows which one this is. Left empty it sends the neutral
+                    template. */}
+                <textarea
+                  className="photo-audit-msg"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Öz mesajınız — boş buraxsanız standart mətn gedir"
+                  aria-label="İşçiyə mesaj"
+                />
                 <div className="photo-audit-row">
                   <button type="button" className="btn-warn" disabled={busy} onClick={() => void warn()}>
-                    {busy ? '…' : 'İşçiyə bildiriş göndər'}
+                    {busy ? '…' : message.trim() ? 'Bu mesajı göndər' : 'Standart bildiriş göndər'}
                   </button>
+                  <span className="photo-audit-count">{message.length}/500</span>
                 </div>
                 <div className="photo-audit-sep">və ya, şəkil açıq-aydın başqa adamdırsa:</div>
                 <div className="photo-audit-row">

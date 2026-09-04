@@ -248,6 +248,7 @@ public class AdminAttendanceController : ControllerBase
     [HttpPost("{recordId:guid}/send-photo-warning")]
     public async Task<IActionResult> SendPhotoWarning(
         Guid recordId,
+        [FromBody] PhotoWarningRequest? request,
         [FromServices] IPushNotifier pushNotifier)
     {
         var ct = HttpContext.RequestAborted;
@@ -262,17 +263,34 @@ public class AdminAttendanceController : ControllerBase
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
-        var already = await _db.EmployeeNotifications.AnyAsync(
-            n => n.EmployeeId == record.EmployeeId
-                 && n.Type == EmployeeNotificationType.PhotoWarning
-                 && n.RelatedDate == record.AttendanceDate, ct);
-        if (already)
-            return Conflict(new { error = "AlreadyWarned" });
+        var already = await _db.EmployeeNotifications
+            .Where(n => n.EmployeeId == record.EmployeeId
+                        && n.Type == EmployeeNotificationType.PhotoWarning
+                        && n.RelatedDate == record.AttendanceDate)
+            .Select(n => new { n.CreatedAtUtc, n.AcknowledgedAtUtc })
+            .FirstOrDefaultAsync(ct);
+        if (already is not null)
+            // Not merely "already sent": whether they OPENED it. That is the fact an admin is
+            // actually after when they press the button a second time.
+            return Conflict(new
+            {
+                error = "AlreadyWarned",
+                sentAtUtc = already.CreatedAtUtc,
+                acknowledgedAtUtc = already.AcknowledgedAtUtc,
+            });
 
-        const string title = "Giriş şəkli yoxlanıldı";
-        var body = $"{record.AttendanceDate:dd.MM.yyyy} tarixli girişinizdə çəkilən şəkil üz "
-                 + "yoxlamasından keçmədi. Bu dəfə girişiniz qüvvədədir. Zəhmət olmasa növbəti "
-                 + "skanda üzünüz aydın görünsün — papaq və eynəyi çıxarın, işıqlı yerdə çəkin.";
+        // The admin's own words when they wrote any, the neutral template otherwise. Free text
+        // because the sentence that fits depends entirely on the two photographs and on the person —
+        // «papağı çıxar» and «bu, sən deyilsən» are not the same message, and only the person looking
+        // at them knows which one this is. Trimmed and capped; what it SAYS is the sender's to decide,
+        // and their name is on the audit line beside it.
+        var custom = request?.Message?.Trim();
+        var title = string.IsNullOrWhiteSpace(custom) ? "Giriş şəkli yoxlanıldı" : "Rəhbərlikdən mesaj";
+        var body = string.IsNullOrWhiteSpace(custom)
+            ? $"{record.AttendanceDate:dd.MM.yyyy} tarixli girişinizdə çəkilən şəkil üz "
+              + "yoxlamasından keçmədi. Bu dəfə girişiniz qüvvədədir. Zəhmət olmasa növbəti "
+              + "skanda üzünüz aydın görünsün — papaq və eynəyi çıxarın, işıqlı yerdə çəkin."
+            : custom.Length > 500 ? custom[..500] : custom;;
 
         _db.EmployeeNotifications.Add(new EmployeeNotification
         {
@@ -291,9 +309,13 @@ public class AdminAttendanceController : ControllerBase
         {
             EmployeeId = record.EmployeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
+            // The message text goes in the audit line, not just the fact that one was sent. A note
+            // to a named person about their honesty is the kind of thing that gets asked about later,
+            // and «bir mesaj göndərildi» answers nothing.
             Reason = $"Photo warning sent by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd}, "
                    + $"face {record.FaceMatchStatus}"
-                   + (record.FaceMatchScore is int sc ? $" {sc}%" : ""),
+                   + (record.FaceMatchScore is int sc ? $" {sc}%" : "")
+                   + $" — \"{body}\"",
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 

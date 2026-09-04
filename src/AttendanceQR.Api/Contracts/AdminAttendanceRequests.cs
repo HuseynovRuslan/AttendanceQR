@@ -19,3 +19,12 @@ public record AdminAttendanceCreateRequest(Guid EmployeeId, DateOnly Date, DateT
 /// </summary>
 /// <param name="Reason">In the admin's own words. Falls back to the face-mismatch wording.</param>
 public record VoidFraudRequest(string? Reason = null, bool RevokeDevice = false, bool NotifyEmployee = true);
+
+/// <summary>
+/// The photo warning's text, when the admin writes their own rather than sending the template.
+/// </summary>
+/// <param name="Message">Free text, capped at 500 characters. Null or blank → the neutral template
+/// («şəkil yoxlamadan keçmədi, növbəti dəfə papağı çıxarın»). Whatever is written here reaches the
+/// employee's phone and their in-app inbox verbatim, and is copied into the audit line with the
+/// sender's id beside it.</param>
+public record PhotoWarningRequest(string? Message = null);

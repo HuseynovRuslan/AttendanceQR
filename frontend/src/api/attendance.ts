@@ -349,9 +349,9 @@ export function unvoidRecord(recordId: string) {
  * employee's in-app inbox as well as on their phone. One per person per day — the database enforces
  * it, so a second press answers AlreadyWarned rather than accusing them twice.
  */
-export function sendPhotoWarning(recordId: string) {
+export function sendPhotoWarning(recordId: string, message?: string) {
   return apiRequest<{ sent: boolean; notified: number }>(
     `/api/admin/attendance/${recordId}/send-photo-warning`,
-    { method: 'POST' },
+    { method: 'POST', body: { message: message?.trim() || null } },
   )
 }

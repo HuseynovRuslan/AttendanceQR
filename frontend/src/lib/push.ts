@@ -255,3 +255,21 @@ export async function disablePush(): Promise<boolean> {
     return false
   }
 }
+
+
+/** An admin warning this employee has not pressed «Anladım» on yet. */
+export interface PendingWarning {
+  id: string
+  title: string
+  body: string
+  createdAtUtc: string
+}
+
+/** Read on every home load — the inbox is a tab people visit, this is a message that must find them. */
+export function getPendingWarning() {
+  return apiRequest<PendingWarning | null>('/api/push/pending-warning')
+}
+
+export function acknowledgeWarning(id: string) {
+  return apiRequest<{ acknowledged: boolean }>(`/api/push/warning/${id}/ack`, { method: 'POST' })
+}

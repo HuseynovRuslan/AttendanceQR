@@ -980,3 +980,14 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   font-size: 12.5px; color: var(--c700); line-height: 1.55;
 }
 .photo-audit-readonly b { color: var(--c900); }
+
+/* The admin's own words. Plain box, no flourish: what matters is that they read it back before
+   pressing, and the confirm quotes it to them again. */
+.photo-audit-msg {
+  width: 100%; margin-bottom: 10px; padding: 9px 11px; border-radius: 9px;
+  border: 1px solid var(--c200); background: var(--white); color: var(--c900);
+  font: inherit; font-size: 13px; line-height: 1.5; resize: vertical; min-height: 56px;
+}
+.photo-audit-msg:focus { outline: none; border-color: var(--c400); }
+.photo-audit-msg::placeholder { color: var(--c400); }
+.photo-audit-count { align-self: center; font-size: 11px; color: var(--c400); font-variant-numeric: tabular-nums; }

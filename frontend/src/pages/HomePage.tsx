@@ -17,6 +17,7 @@ import { firstName, initials, nightShiftState, todayState, todayStr, withPending
 import { QUEUE_CHANGED, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { IconQr } from '../components/icons'
+import { PhotoWarningGate } from '../components/PhotoWarningGate'
 
 /** First day of the current month as "yyyy-MM-dd", for the month-to-date summary query. */
 function firstOfMonthStr(): string {
@@ -142,6 +143,9 @@ export function HomePage() {
           every employee once, and an announcement people did not ask for is a door in the way of the
           one thing they opened the app to do. The assistant itself is unchanged — the blue button and
           the menu row are still there for anyone who wants it. */}
+      {/* Before everything, and over everything: it is the only thing on this screen somebody else
+          wrote to this person by hand, and the only one that has to be acknowledged. */}
+      <PhotoWarningGate />
       <InstallHint onShown={setInstallShown} />
       {/* First, because it is the only thing here that costs the employee a day's pay if unread. */}
       <OfflineRejectBanner />

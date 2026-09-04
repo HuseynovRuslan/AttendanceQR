@@ -53,4 +53,17 @@ public class EmployeeNotification : ITenantScoped
     public string Body { get; set; } = string.Empty;
 
     public DateTime CreatedAtUtc { get; set; }
+
+    /// <summary>
+    /// When the employee pressed «Anladım» on it. Null while unread.
+    ///
+    /// Only <see cref="EmployeeNotificationType.PhotoWarning"/> uses it, and it exists because of what
+    /// an admin actually needs to know: not «bir mesaj göndərildi» but «gördü». A reminder nobody
+    /// opened is a missed shift; a warning nobody opened is a conversation that never happened and a
+    /// second offence that could have been prevented.
+    ///
+    /// It is also what lets the home screen STOP showing it. A banner that never goes away stops
+    /// being read within a week — which is exactly what happened to the passive one beside it.
+    /// </summary>
+    public DateTime? AcknowledgedAtUtc { get; set; }
 }

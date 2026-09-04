@@ -206,10 +206,22 @@ public class AttendanceController : ControllerBase
         // Check-ins this month whose photo showed no face. Told to the employee themselves, not only
         // to an auditor: people correct a habit they can see a count of, long before anyone has to
         // raise it with them.
-        var monthStart = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1 - DateTime.UtcNow.Day);
+        // Two things were wrong with this count, and one employee's record showed both at once:
+        // twelve scans, five with no face and one that was a photograph of an actor on a monitor —
+        // and on the day the actor was scanned this figure read ZERO.
+        //
+        //   • It counted only NoFace. A picture of SOMEBODY ELSE is the graver case and was invisible
+        //     to the person doing it, who therefore had no reason to stop.
+        //   • It reset on the 1st. Five bad photographs in August became a clean slate on 1 September,
+        //     which is precisely when a habit needs to still be visible.
+        //
+        // A rolling 30 days, and both verdicts.
+        var windowStart = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-30);
         var unverified = await _db.AttendanceRecords
-            .CountAsync(r => r.EmployeeId == employeeId && r.AttendanceDate >= monthStart
-                             && r.FaceMatchStatus == FaceMatchStatus.NoFace, HttpContext.RequestAborted);
+            .CountAsync(r => r.EmployeeId == employeeId && r.AttendanceDate >= windowStart
+                             && (r.FaceMatchStatus == FaceMatchStatus.NoFace
+                                 || r.FaceMatchStatus == FaceMatchStatus.Mismatch),
+                        HttpContext.RequestAborted);
 
         // Whether the LAST check-in was one of them — the scan screen warns before the camera opens,
         // which is the only moment the warning can still change what they do.
