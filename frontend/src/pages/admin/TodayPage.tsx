@@ -3,6 +3,7 @@ import { countToday, matchesLeaveCard, sortRows, type SortColumn } from './today
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
+import { getImpersonation } from '../../api/client'
 import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
 import { useAuth } from '../../auth/AuthContext'
@@ -640,9 +641,13 @@ export function TodayPage() {
           faceMatchStatus={modal.photo.faceMatchStatus}
           faceMatchScore={modal.photo.faceMatchScore}
           recordId={modal.recordId}
-          // Same gate as opening the photo at all: Admin only. A manager compares faces and reports;
-          // ending a paid day is not theirs.
-          canAct={mayViewPhotos}
+          // Admin only — a manager compares faces and reports; ending a paid day is not theirs.
+          //
+          // AND not in a «baxış rejimi» session. A view session carries the borrowed admin's role, so
+          // the button would render and the server would refuse it (ViewOnlyBoundary blocks every
+          // POST): a control that looks armed and does nothing, on the one action in this product
+          // that must not be pressed twice in confusion.
+          canAct={mayViewPhotos && !getImpersonation()?.readOnly}
           onActed={() => void load()}
           onClose={() => setModal(null)}
         />
