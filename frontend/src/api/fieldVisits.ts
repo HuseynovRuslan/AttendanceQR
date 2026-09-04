@@ -176,7 +176,13 @@ export interface FieldSite {
   distanceMeters: number | null
 }
 
+/**
+ * What the worker can pick from: the company's branches, nearest first, and the places THEY keep
+ * going back to that are not branches — Azpetrol bazası, the rowing federation, ADNSU. Nobody is
+ * posted to those, so they will never be branches, and every visit used to mean typing the name
+ * again. That is where «Avar çəkmə federasiası / federasiyasi / federasiyası» came from.
+ */
 export function getFieldSites(lat?: number, lng?: number) {
   const q = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
-  return apiRequest<FieldSite[]>(`/api/field-visits/sites${q}`)
+  return apiRequest<{ sites: FieldSite[]; recent: string[] }>(`/api/field-visits/sites${q}`)
 }

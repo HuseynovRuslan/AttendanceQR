@@ -468,6 +468,7 @@ function Spinner({ label }: { label: string }) {
  */
 function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
   const [sites, setSites] = useState<FieldSite[] | null>(null)
+  const [recent, setRecent] = useState<string[]>([])
   const [picked, setPicked] = useState<string | null>(null)
   const [other, setOther] = useState(false)
   const [label, setLabel] = useState('')
@@ -490,7 +491,12 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
       setPos(coords)
       const { status, data } = await getFieldSites(coords?.lat, coords?.lng)
       if (!alive) return
-      setSites(status === 200 && Array.isArray(data) ? data : [])
+      if (status === 200 && data && 'sites' in data) {
+        setSites(data.sites)
+        setRecent(data.recent)
+      } else {
+        setSites([])
+      }
     })()
     return () => { alive = false }
   }, [])
@@ -509,6 +515,8 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
         coords = { lat: geo.coords.latitude, lng: geo.coords.longitude }
       }
 
+      // A branch chip sets `picked`; a «tez-tez» chip writes straight into `label`, because it IS a
+      // label — there is no branch behind it to look up.
       const chosen = picked ? sites?.find((x) => x.id === picked)?.name ?? null : null
       const res = await startFieldVisit({
         latitude: coords.lat,
@@ -526,7 +534,8 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
     }
   }
 
-  const ready = picked !== null || (other && label.trim().length > 0)
+  // A branch, a remembered place, or something typed — any of the three is an answer.
+  const ready = picked !== null || label.trim().length > 0
 
   return (
     <div className="fixed inset-0 z-50">
@@ -546,7 +555,7 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
               <button
                 key={sIt.id}
                 type="button"
-                onClick={() => setPicked(sIt.id)}
+                onClick={() => { setPicked(sIt.id); setLabel('') }}
                 className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
                   picked === sIt.id
                     ? 'border-violet-500 bg-violet-50 font-bold text-violet-900'
@@ -579,6 +588,33 @@ function SelfReportSheet({ onClose, onDone }: { onClose: () => void; onDone: () 
               placeholder={addrBusy ? 'Ünvan tapılır…' : 'Məs. Nizami küç. 12'}
               className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
+          </>
+        )}
+
+        {/* Places this person keeps returning to that are not branches. Under the branches, because
+            a branch is the commoner answer and the nearest one is usually right — but above the
+            typing, because typing is what produced three spellings of one federation. */}
+        {sites !== null && !other && recent.length > 0 && (
+          <>
+            <div className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+              Tez-tez getdiyiniz yerlər
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {recent.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => { setPicked(null); setLabel(label === r ? '' : r) }}
+                  className={`rounded-full border px-3.5 py-2 text-sm transition ${
+                    label === r
+                      ? 'border-violet-500 bg-violet-50 font-bold text-violet-900'
+                      : 'border-slate-200 bg-white font-semibold text-slate-700'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </>
         )}
 

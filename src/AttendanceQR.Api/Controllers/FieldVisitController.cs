@@ -159,8 +159,68 @@ public class FieldVisitController : ControllerBase
                 .OrderBy(x => x.Name)
                 .ToList();
 
-        return Ok(ordered.Select(x => new { id = x.Id, name = x.Name, distanceMeters = x.Distance }));
+        // Places this person keeps going back to that are NOT branches.
+        //
+        // The branch list fixed the common case, and the labels showed a second one it cannot reach:
+        // Azpetrol bazası five times, the rowing federation three, Bilgəh sanatoriyası three, ADNSU
+        // twice. Nobody is posted to any of them, so they will never be branches — and every visit
+        // meant typing the name again, which is where «Avar çəkmə federasiası / federasiyasi /
+        // federasiyası» came from. Typed once, chosen thereafter.
+        //
+        // Their OWN labels only: a cleaner has no business being offered the sites a driver visits,
+        // and a list of everyone's destinations would be both long and none of their business.
+        var since = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-RecentPlaceDays));
+        var branchNames = sites.Select(x => x.Name.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var recent = (await _db.FieldVisits
+                .Where(v => v.EmployeeId == me && v.VisitDate >= since && v.TargetLabel != null)
+                .Select(v => v.TargetLabel!)
+                .ToListAsync(ct))
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0 && !IsJunkLabel(x) && !branchNames.Contains(x))
+            .GroupBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+            // Most-used first, and the group's own most common spelling as the label — offering the
+            // typo back would make it permanent.
+            .Select(g => new { Label = g.GroupBy(x => x).OrderByDescending(x => x.Count()).First().Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Label)
+            .Take(RecentPlaceCount)
+            .Select(x => x.Label)
+            .ToList();
+
+        return Ok(new
+        {
+            sites = ordered.Select(x => new { id = x.Id, name = x.Name, distanceMeters = x.Distance }),
+            recent,
+        });
     }
+
+    /// <summary>How far back «tez-tez getdiyiniz yerlər» looks, and how many it offers. Two months is
+    /// long enough to carry a monthly round and short enough that a place somebody stopped visiting
+    /// drops off by itself; five is what fits on a phone above the fold.</summary>
+    private const int RecentPlaceDays = 60;
+    private const int RecentPlaceCount = 5;
+
+    /// <summary>
+    /// The words people type instead of a place — «Obyektdeyem» and its spellings.
+    ///
+    /// Mirrors isJunkTargetLabel in the client. Duplicated deliberately: this list must never offer
+    /// one of them back as a suggestion, which would make the very habit the branch picker was built
+    /// to end into a one-tap action.
+    /// </summary>
+    private static bool IsJunkLabel(string text)
+    {
+        var clean = new string(text.ToLowerInvariant().Where(char.IsLetter).ToArray());
+        return clean.Length == 0 || JunkLabels.Contains(clean);
+    }
+
+    private static readonly HashSet<string> JunkLabels = new(StringComparer.Ordinal)
+    {
+        "obyekt", "obyektde", "obyektdə", "obyektdeyem", "obyektdəyəm", "obyekdeyem", "obyekdəyəm",
+        "abyekt", "burdayam", "buradayam", "yerindeyem", "yerindəyəm", "yerdeyem", "yerdəyəm",
+        "isdeyem", "işdəyəm", "isdəyəm", "catdim", "çatdım", "geldim", "gəldim",
+        "erazideyem", "ərazidəyəm", "sahedeyem", "sahədəyəm",
+    };
 
     /// <summary>Great-circle metres. Same formula as the client's, so a distance shown on the phone
     /// and one stored on the visit cannot disagree.</summary>
