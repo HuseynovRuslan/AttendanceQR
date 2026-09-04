@@ -555,3 +555,20 @@
 @media (max-width: 600px) {
   .hq-drawer-tools { padding-left: 16px; padding-right: 16px; }
 }
+
+
+/* --- pressable feed rows -------------------------------------------------
+   Each row opens that person's day. It was a <div>; as a <button> it needs the browser's own
+   styling reset and its full width back, or the whole feed collapses into shrink-wrapped buttons. */
+.hq-feed-row {
+  width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; color: inherit; font: inherit;
+}
+.hq-feed-row:hover { background: rgba(255, 255, 255, 0.05); }
+.hq-feed-row:focus-visible { outline: 2px solid var(--live); outline-offset: -2px; }
+
+/* The map inside a person's panel: where they actually stood, as against what they typed. */
+.hq-person-map {
+  height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+}
+.hq-person-map .leaflet-container { background: #0B1220; }

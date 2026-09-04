@@ -8,6 +8,7 @@ import { clearToken, getImpersonation, exitImpersonation } from '../../api/clien
 import { CompanyDrawer } from './CompanyDrawer'
 import { NotStartedDrawer } from './NotStartedDrawer'
 import { BranchesDrawer } from './BranchesDrawer'
+import { PersonDrawer } from './PersonDrawer'
 import { fmt, timeOf } from './format'
 
 /**
@@ -159,6 +160,8 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
    * directly below it, and a percentage has nowhere at all to go, so both stay plain.
    */
   const [tile, setTile] = useState<'notStarted' | 'branches' | null>(null)
+  /** The feed row being looked at — whose day, and in whose company's colour. */
+  const [person, setPerson] = useState<{ id: string; accent: string } | null>(null)
   const newestRef = useRef<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   // The OPEN company's id, not a copy of its row. The board refreshes every 20 seconds; holding a
@@ -476,9 +479,19 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                 // the companies apart on this board.
                 const companyIndex = data.companies.findIndex((c) => c.id === f.companyId)
                 return (
-                  <div
+                  /* Pressable, because for a «səyyar» row the place column cannot be trusted: it is
+                     free text the worker typed, and it has already become four spellings of one
+                     thing. The press opens where they ACTUALLY were. */
+                  <button
+                    type="button"
                     className={`hq-feed-row${i === 0 && isFresh ? ' is-new' : ''}`}
                     key={`${f.fullName}-${f.atUtc}-${f.kind}`}
+                    onClick={() => setPerson({
+                      id: f.employeeId,
+                      accent: accentOf(companyIndex < 0 ? 0 : companyIndex),
+                    })}
+                    aria-haspopup="dialog"
+                    title={`${f.fullName} — harada olub`}
                   >
                     <span className="hq-feed-time hq-num">{timeOf(f.atUtc)}</span>
                     <span className="hq-feed-name">{f.fullName}</span>
@@ -498,7 +511,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                     <span className={`hq-feed-kind ${f.kind.endsWith('in') ? 'hq-in' : 'hq-out'}`}>
                       {f.kind.startsWith('field') ? '📍 ' : ''}{f.kind.endsWith('in') ? 'GİRİŞ' : 'ÇIXIŞ'}
                     </span>
-                  </div>
+                  </button>
                 )
               })}
               {feed.length > feedShown && (
@@ -564,6 +577,9 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
           accentOf={accentOf}
           onClose={() => setTile(null)}
         />
+      )}
+      {person && (
+        <PersonDrawer employeeId={person.id} accent={person.accent} onClose={() => setPerson(null)} />
       )}
       {selectedIndex >= 0 && (
         <CompanyDrawer

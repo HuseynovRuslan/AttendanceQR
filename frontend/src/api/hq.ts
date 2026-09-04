@@ -48,7 +48,7 @@ export interface GroupOverview {
   sites: GroupSite[]
   trend: { date: string; present: number }[]
   // 'field-in' / 'field-out' — a «səyyar» visit to a site with no poster, GPS + selfie instead of a QR.
-  feed: { fullName: string; companyId: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' | 'field-in' | 'field-out' }[]
+  feed: { employeeId: string; fullName: string; companyId: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' | 'field-in' | 'field-out' }[]
 }
 
 /** Every company at once. 403 for anyone outside the super-admin allowlist. */
@@ -78,4 +78,47 @@ export interface NotStartedRow {
  *  it changes about once a week and the board refreshes every twenty seconds. */
 export function getNotStarted() {
   return apiRequest<{ total: number; rows: NotStartedRow[] }>('/api/super/hq/not-started')
+}
+
+/** One person's last two days — what a live-feed row opens onto. */
+export interface PersonDay {
+  id: string
+  fullName: string
+  position: string | null
+  phone: string | null
+  company: string
+  branch: string
+  branchLat: number | null
+  branchLng: number | null
+  branchRadius: number | null
+  today: string
+  records: {
+    date: string
+    checkInAtUtc: string | null
+    checkOutAtUtc: string | null
+    lat: number | null
+    lng: number | null
+    wasOffline: boolean
+    manual: boolean
+  }[]
+  visits: {
+    id: string
+    date: string
+    /** What the worker typed. A claim, not a location — see PersonDrawer. */
+    label: string | null
+    checkInAtUtc: string | null
+    checkOutAtUtc: string | null
+    lat: number | null
+    lng: number | null
+    targetLat: number | null
+    targetLng: number | null
+    distanceMeters: number | null
+    note: string | null
+    hasPhoto: boolean
+    selfReported: boolean
+  }[]
+}
+
+export function getPersonDay(employeeId: string) {
+  return apiRequest<PersonDay>(`/api/super/hq/person/${employeeId}`)
 }

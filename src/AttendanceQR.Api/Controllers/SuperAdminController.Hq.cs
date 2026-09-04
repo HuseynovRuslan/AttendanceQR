@@ -33,6 +33,106 @@ public partial class SuperAdminController
     /// </summary>
     private const int FeedSize = 2000;
 
+    // GET /api/super/hq/person/{employeeId} — one row of the live feed, opened.
+    //
+    // Written because of what the feed's place column contains for a «səyyar» visit. That column is
+    // TargetLabel: free text the worker types. Measured on production it is already four spellings of
+    // one thing — «Obyekdeyem», «Obyektdəyəm», «Obyekt deyem», «Obyektdeyem» — which is not even a
+    // place, it is the sentence "I am at the site"; and «Nərimanov ofisi» / «Nerimanov»,
+    // «Konqresin parkındakı kafe» / «Kongres parkindaki kafe» are the same site twice. The same
+    // disease the job-title catalogue was created to cure.
+    //
+    // Worse: of ~70 visits only 4 carry a target coordinate, so for nearly all of them there is
+    // nothing to measure the arrival against. The one thing that IS recorded and cannot be typed is
+    // the check-in's own GPS. So the row opens to WHERE THEY ACTUALLY WERE, not to a better rendering
+    // of what they wrote — a fact instead of a claim.
+    //
+    // Cross-tenant like everything else on this board, and gated the same way.
+    [HttpGet("hq/person/{employeeId:guid}")]
+    public async Task<IActionResult> PersonDay(Guid employeeId)
+    {
+        if (!IsSuperAdmin)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
+
+        var ct = HttpContext.RequestAborted;
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(_appOptions.TimeZone);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone));
+
+        var employee = await _db.Employees.IgnoreQueryFilters()
+            .Where(e => e.Id == employeeId)
+            .Select(e => new { e.Id, e.TenantId, e.FullName, e.Position, e.LocationId, e.PhoneNumber })
+            .FirstOrDefaultAsync(ct);
+        if (employee is null)
+            return NotFound(new { error = "EmployeeNotFound" });
+
+        var tenant = await _db.Tenants.IgnoreQueryFilters()
+            .Where(t => t.Id == employee.TenantId)
+            .Select(t => new { t.Name, t.DisplayName })
+            .FirstOrDefaultAsync(ct);
+        var branch = await _db.Locations.IgnoreQueryFilters()
+            .Where(l => l.Id == employee.LocationId)
+            .Select(l => new { l.Name, l.Latitude, l.Longitude, l.RadiusMeters })
+            .FirstOrDefaultAsync(ct);
+
+        // Yesterday too: a night shift's check-in belongs to yesterday's record and its check-out to
+        // this morning, and the feed row the reader clicked may be either half of it.
+        var from = today.AddDays(-1);
+
+        var records = await _db.AttendanceRecords.IgnoreQueryFilters()
+            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate >= from)
+            .OrderByDescending(r => r.AttendanceDate)
+            .Select(r => new
+            {
+                date = r.AttendanceDate,
+                checkInAtUtc = r.CheckInAtUtc,
+                checkOutAtUtc = r.CheckOutAtUtc,
+                lat = r.CheckInLatitude,
+                lng = r.CheckInLongitude,
+                wasOffline = r.WasOffline,
+                manual = r.ManualByEmployeeId != null,
+            })
+            .ToListAsync(ct);
+
+        var visits = await _db.FieldVisits.IgnoreQueryFilters()
+            .Where(v => v.EmployeeId == employeeId && v.VisitDate >= from && v.CheckInAtUtc != null)
+            .OrderByDescending(v => v.CheckInAtUtc)
+            .Select(v => new
+            {
+                id = v.Id,
+                date = v.VisitDate,
+                // What they typed. Kept so the reader can see the claim beside the fact, not because
+                // it is trusted.
+                label = v.TargetLabel,
+                checkInAtUtc = v.CheckInAtUtc,
+                checkOutAtUtc = v.CheckOutAtUtc,
+                lat = v.CheckInLatitude,
+                lng = v.CheckInLongitude,
+                targetLat = v.TargetLatitude,
+                targetLng = v.TargetLongitude,
+                distanceMeters = v.CheckInDistanceMeters,
+                note = v.Note,
+                hasPhoto = v.CheckInPhotoKey != null,
+                selfReported = v.AssignedByEmployeeId == null,
+            })
+            .ToListAsync(ct);
+
+        return Ok(new
+        {
+            id = employee.Id,
+            fullName = employee.FullName,
+            position = employee.Position,
+            phone = employee.PhoneNumber,
+            company = tenant is null ? "" : string.IsNullOrWhiteSpace(tenant.DisplayName) ? tenant.Name : tenant.DisplayName,
+            branch = branch?.Name ?? "",
+            branchLat = branch?.Latitude,
+            branchLng = branch?.Longitude,
+            branchRadius = branch?.RadiusMeters,
+            today,
+            records,
+            visits,
+        });
+    }
+
     // GET /api/super/hq/not-started — the people behind the board's largest unanswered number.
     //
     // 335 of 656 active staff have never once opened the app, 310 of them at a single company. The
@@ -328,6 +428,9 @@ public partial class SuperAdminController
             .Take(FeedSize)
             .Select(x => new
             {
+                // The id as well as the name: a feed row opens to that person's day, and two people
+                // in five companies can share a name.
+                employeeId = x.EmployeeId,
                 fullName = names.GetValueOrDefault(x.EmployeeId, "—"),
                 // The id as well as the name: the company panel filters this feed to one company, and
                 // matching on a display name would put two identically-named tenants' scans into each
