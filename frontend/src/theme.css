@@ -973,3 +973,10 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .btn-fraud-device:hover:not(:disabled) { background: rgba(220, 38, 38, .08); }
 .photo-audit-done { font-size: 13px; font-weight: 700; color: var(--leaf-d); }
 .photo-audit-fail { margin-top: 8px; font-size: 12px; color: #B91C1C; font-weight: 600; }
+
+/* Not a warning — a note about the session the reader is in. Slate, not red: nothing is wrong. */
+.photo-audit-readonly {
+  background: rgba(30, 112, 200, .06); border-color: rgba(30, 112, 200, .22);
+  font-size: 12.5px; color: var(--c700); line-height: 1.55;
+}
+.photo-audit-readonly b { color: var(--c900); }

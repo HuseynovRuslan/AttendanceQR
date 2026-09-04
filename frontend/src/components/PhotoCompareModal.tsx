@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sendPhotoWarning, voidFraudRecord } from '../api/attendance'
+import { getImpersonation } from '../api/client'
 import { IconX } from './icons'
 import { FaceFlagBadge } from './FaceFlagBadge'
 import { fmtTime } from '../lib/format'
@@ -168,6 +169,16 @@ export function PhotoCompareModal({
             Shown for ANY check-in, not just a flagged one: the face audit misses as often as it
             catches — a photograph of a screen can score a clean match — and the person looking at
             the two pictures is the one who can actually tell. */}
+        {/* Read-only session: the controls cannot work here (ViewOnlyBoundary refuses every write),
+            and showing NOTHING taught the reader that the feature does not exist. It does — they are
+            simply in the wrong kind of session, and the way out is one sentence. */}
+        {!canAct && recordId && getImpersonation()?.readOnly && (
+          <div className="photo-audit-actions photo-audit-readonly">
+            <b>Yalnız oxu rejimindəsiniz</b> — burada tədbir görmək olmur.
+            Bildiriş göndərmək və ya girişi ləğv etmək üçün operator panelindən
+            «Şirkətlər → Daxil ol» ilə girin.
+          </div>
+        )}
         {canAct && recordId && (
           <div className="photo-audit-actions">
             {done ? (
