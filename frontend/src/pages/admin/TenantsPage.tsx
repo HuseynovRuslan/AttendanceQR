@@ -552,7 +552,7 @@ export function TenantsTab() {
     setBusyId(null)
     if (status === 200 && data && !('error' in data)) {
       const r = data as ImpersonateResult
-      startImpersonation(r.token, { tenantName: r.tenantName, adminName: r.adminName })
+      startImpersonation(r.token, { tenantName: r.tenantName, adminName: r.adminName, readOnly: true })
       window.location.href = '/admin'
     } else {
       setError(ERRORS[errorCodeOf(data)] ?? 'Alınmadı')

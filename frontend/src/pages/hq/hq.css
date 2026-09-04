@@ -66,7 +66,15 @@
 
 .hq-hero-label { font-size: 13px; color: var(--fg-dim); letter-spacing: 0.08em; text-transform: uppercase; }
 .hq-hero-value { font-size: clamp(58px, 9vw, 118px); font-weight: 800; line-height: 0.92; margin-top: 6px; }
-.hq-hero-unit { font-size: clamp(15px, 1.5vw, 20px); font-weight: 700; color: var(--fg-dim); margin-left: 10px; }
+/* The unit sits INSIDE a 118px number whose line-height is 0.92 — deliberately tight, so the figure
+   fills its box. A 15px word inheriting a 0.92 line-height gets a line box SHORTER than its own
+   glyphs, and the ascenders and descenders of «nəfər» collide with themselves: the word rendered
+   smudged, as if drawn twice. It needs its own line box, not the number's. */
+.hq-hero-unit {
+  font-size: clamp(15px, 1.5vw, 20px); font-weight: 700; color: var(--fg-dim); margin-left: 10px;
+  display: inline-block; line-height: 1.25; vertical-align: baseline; letter-spacing: 0;
+  font-family: 'Manrope', sans-serif;
+}
 .hq-hero-note { font-size: 14px; color: var(--fg-dim); margin-top: 12px; }
 
 .hq-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-content: center; }
@@ -91,12 +99,16 @@
 }
 .hq-co:active { transform: translateY(-1px); }
 .hq-co:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* Says what the tap does. Faint until hover — the numbers are what the board is for. */
+/* Says the card opens, without asking for a tap of its own.
+   It was a faint «ətraflı →» line in the bottom corner, which read as the only thing you could
+   press — a ~60x14px target inside a card that was already entirely pressable. A corner mark states
+   the affordance and leaves the whole card as the target. */
 .hq-co-go {
-  margin-top: 14px; font-size: 12px; font-weight: 800; letter-spacing: .03em;
-  color: var(--fg-faint); transition: color .2s ease;
+  position: absolute; top: 12px; right: 14px;
+  font-size: 15px; line-height: 1; color: var(--fg-faint);
+  transition: color .2s ease, transform .2s ease;
 }
-.hq-co:hover .hq-co-go { color: var(--accent); }
+.hq-co:hover .hq-co-go { color: var(--accent); transform: translate(1px, -1px); }
 /* The accent is the only place a company's identity lives — no logos to collect, no colour to argue
    about, and three cards stay distinguishable at a glance from the back of a room. */
 /* The card whose panel is open — so a reader glancing back from the panel knows which one it is.
@@ -296,6 +308,17 @@
    phone far more often than on the projector it was designed for. */
 @media (max-width: 640px) {
   .hq { padding: 12px; }
+  /* On a phone the top of this board was ~70% of the screen and only ONE of the five companies was
+     visible without scrolling. The companies ARE the board; the totals are context. So the hero
+     figure comes down from 9vw, the tiles pack two-up and lose a third of their padding, and the
+     first two or three cards come into view on open. */
+  .hq-hero { padding: 14px 16px; gap: 10px; }
+  .hq-hero-value { font-size: clamp(44px, 13vw, 62px); margin-top: 2px; }
+  .hq-hero-note { font-size: 12.5px; margin-top: 8px; }
+  .hq-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .hq-stat { padding: 10px 12px; }
+  .hq-stat .v { font-size: 20px; }
+  .hq-companies { gap: 10px; }
   .hq-panel { padding: 14px 12px; border-radius: 16px; }
   .hq-map { height: clamp(240px, 38vh, 320px); border-radius: 12px; }
   .hq-map-ctl { top: 8px; right: 8px; gap: 5px; }

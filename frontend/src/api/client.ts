@@ -40,6 +40,18 @@ const IMPERSONATION_RETURN_KEY = 'attendanceqr.impersonation.from'
 export interface ImpersonationInfo {
   tenantName: string
   adminName: string
+  /**
+   * A read-only «baxış» session rather than a support impersonation.
+   *
+   * The two look identical to the token machinery and are worlds apart to the person holding it. A
+   * support session ACTS AS that admin — the borrowed name is the important fact and the banner must
+   * shout it. A view session cannot change anything (ViewOnlyBoundary refuses every write), and the
+   * seat it borrows is an implementation detail: the server picks the company's oldest non-operator
+   * admin, so the group head — an admin of that very company — was told he was «baxırsınız as
+   * Dmitriy Qriqoryev», a colleague he has nothing to do with. Naming a stranger for a session that
+   * changes nothing is confusing, and it makes the loud support banner cry wolf.
+   */
+  readOnly?: boolean
 }
 
 /** Begin impersonating: stash the operator's own token, switch to the impersonation token. */

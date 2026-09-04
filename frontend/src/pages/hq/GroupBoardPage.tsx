@@ -274,17 +274,24 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
   const thisWeek = mean(data.trend.slice(half))
   const deltaPct = prevWeek === 0 ? 0 : Math.round(((thisWeek - prevWeek) / prevWeek) * 100)
 
+  // Everyone the system can see: total staff minus those who have never once opened the app. This is
+  // attendancePct's denominator, and it has to be ON SCREEN next to the percentage. It was not, and
+  // the board contradicted itself in the only way a director would certainly notice: the header said
+  // «656 işçi», the hero said «224 gəlib», and between them sat «68%» — while 224/656 is 34%. The
+  // percentage was right and the reader had no way to know why.
+  const observed = totals.employees - totals.notStarted
+
   const hero = totals.onDuty > 0
     ? {
         label: 'İndi iş başında',
         value: onDuty,
-        note: `Bu gün ${fmt.format(totals.present)} nəfər işə gəlib · davamiyyət ${totals.attendancePct}%`,
+        note: `Bu gün ${fmt.format(totals.present)} / ${fmt.format(observed)} nəfər işə gəlib — ${totals.attendancePct}% · ${fmt.format(totals.notStarted)} nəfər tətbiqi hələ açmayıb`,
       }
     : totals.present > 0
       ? {
           label: 'Bu gün işə gəldi',
           value: present,
-          note: `İş günü tamamlanıb · davamiyyət ${totals.attendancePct}%`,
+          note: `İş günü tamamlanıb · ${fmt.format(totals.present)} / ${fmt.format(observed)} — ${totals.attendancePct}%`,
         }
       : {
           label: 'Sistemdə qeydiyyatda',
@@ -384,17 +391,19 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                 {c.notStarted > 0 && <> · <span className="hq-co-idle">{fmt.format(c.notStarted)} aktivləşdirməyib</span></>}
               </div>
               <div className="hq-co-row">
-                {/* Out of the people who have actually started using the app, not out of everyone
-                    on the payroll — the same denominator the percentage beside it uses. */}
+                {/* Out of the people who have actually started using the app, not out of everyone on
+                    the payroll — the same denominator as the percentage beside it. Labelled «aktiv»
+                    because the line above says «80 işçi» and an unexplained 67 underneath reads as
+                    an error rather than as a different, narrower question. */}
                 <div className="hq-co-big hq-num">
-                  {fmt.format(c.onDuty)}<small>/ {fmt.format(c.employees - c.notStarted)}</small>
+                  {fmt.format(c.onDuty)}<small>/ {fmt.format(c.employees - c.notStarted)} aktiv</small>
                 </div>
                 <div className="hq-co-pct hq-num">{c.attendancePct}%</div>
               </div>
               <div className="hq-bar">
                 <i style={{ width: `${Math.min(100, c.attendancePct)}%` }} />
               </div>
-              <div className="hq-co-go">ətraflı →</div>
+              <div className="hq-co-go" aria-hidden="true">↗</div>
             </button>
           ))}
         </section>

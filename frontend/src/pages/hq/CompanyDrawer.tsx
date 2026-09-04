@@ -86,7 +86,7 @@ export function CompanyDrawer({ company, companyIndex, accent, sites, feed, onCl
     setOpenError(false)
     const { status, data } = await viewTenant(company.id)
     if (status === 200 && data && !('error' in data)) {
-      startImpersonation(data.token, { tenantName: data.tenantName, adminName: data.adminName })
+      startImpersonation(data.token, { tenantName: data.tenantName, adminName: data.adminName, readOnly: true })
       window.location.href = '/admin'
       return
     }
