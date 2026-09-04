@@ -111,7 +111,7 @@ export function PrintQrPage() {
     if (status === 200 && data && 'token' in data) {
       setQr(data)
     } else {
-      setError('Lokasiya tapılmadı')
+      setError('Filial tapılmadı')
     }
   }
 
@@ -367,7 +367,7 @@ export function PrintQrPage() {
     if (!locationId) return
     if (
       !window.confirm(
-        'Bu lokasiyanın BÜTÜN QR kodları (kiosk ekranı DAXİL) ləğv ediləcək və yeni kod yaradılacaq. Çap olunmuş köhnə posterlər artıq işləməyəcək. Davam edilsin?',
+        'Bu filialın BÜTÜN QR kodları (kiosk ekranı DAXİL) ləğv ediləcək və yeni kod yaradılacaq. Çap olunmuş köhnə posterlər artıq işləməyəcək. Davam edilsin?',
       )
     )
       return
@@ -387,7 +387,7 @@ export function PrintQrPage() {
   return (
     <div style={{ maxWidth: 620 }}>
       <button className="btn btn-sm" style={{ marginBottom: 16 }} onClick={() => navigate('/admin/locations')}>
-        ← Lokasiyalara qayıt
+        ← Filiallara qayıt
       </button>
 
       <div className="fb fb-info" style={{ marginBottom: 16 }}>

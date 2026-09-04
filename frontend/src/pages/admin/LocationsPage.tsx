@@ -54,7 +54,7 @@ const ERRORS: Record<string, string> = {
   ShiftStartInvalid: 'Növbə başlama vaxtı yanlışdır',
   ShiftEndInvalid: 'Növbə bitmə vaxtı yanlışdır',
   LocationInUse: 'Bu filial istifadə olunur — silinə bilməz',
-  LocationNotFound: 'Lokasiya tapılmadı',
+  LocationNotFound: 'Filial tapılmadı',
   WorkDaysMaskInvalid: 'İş günləri seçimi yanlışdır',
 }
 
@@ -231,7 +231,7 @@ export function LocationsPage() {
     setSaving(false)
 
     if (status === 200) {
-      setOk(editingId ? 'Yeniləndi' : 'Lokasiya əlavə olundu')
+      setOk(editingId ? 'Yeniləndi' : 'Filial əlavə olundu')
       closeForm()
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
@@ -242,7 +242,7 @@ export function LocationsPage() {
   }
 
   async function onDelete(l: AdminLocation) {
-    if (!window.confirm(`"${l.name}" lokasiyası silinsin?`)) return
+    if (!window.confirm(`"${l.name}" filialı silinsin?`)) return
     setError(null)
     setOk(null)
     setDeletingId(l.id)
@@ -266,7 +266,7 @@ export function LocationsPage() {
     const { status } = await setLocationActive(l.id, !l.isActive)
     setTogglingId(null)
     if (status === 200) {
-      setOk(l.isActive ? 'Lokasiya deaktiv edildi' : 'Lokasiya aktiv edildi')
+      setOk(l.isActive ? 'Filial deaktiv edildi' : 'Filial aktiv edildi')
       await refresh()
     } else {
       setError('Status dəyişmədi')
@@ -293,18 +293,18 @@ export function LocationsPage() {
       <div className="fb" style={{ marginBottom: 16, background: 'var(--c50, #f6f8f4)', color: 'var(--c500)' }}>
         <IconQr />
         <span>
-          <b>Kiosk</b> — lokasiyada fırlanan QR göstərən ekran (giriş tələb etmir). Cədvəldəki{' '}
+          <b>Kiosk</b> — filialda fırlanan QR göstərən ekran (giriş tələb etmir). Cədvəldəki{' '}
           <b>Kiosk</b> düyməsi ilə açıb tablet/monitorda tam ekran işlədin; işçilər öz telefonu ilə skan edir.
         </span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
-        <div className="card-title" style={{ marginBottom: 0 }}>Lokasiyalar</div>
+        <div className="card-title" style={{ marginBottom: 0 }}>Filiallar</div>
         {/* Adding a branch is 5 ₼ a month on the customer's bill, so it belongs to whoever pays it.
             A manager edits the branches they already have — which is the half they actually know. */}
         {!isManager && (
           <button className="btn btn-primary" onClick={showForm ? closeForm : startCreate}>
-            {showForm ? 'Ləğv et' : '＋ Lokasiya əlavə et'}
+            {showForm ? 'Ləğv et' : '＋ Filial əlavə et'}
           </button>
         )}
       </div>
@@ -313,7 +313,7 @@ export function LocationsPage() {
       <form onSubmit={onSubmit} className="card card-pad" style={{ marginBottom: 16, maxWidth: 760 }}>
         <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <IconMapPin />
-          {editingId ? 'Lokasiyanı redaktə et' : 'Yeni lokasiya'}
+          {editingId ? 'Filialı redaktə et' : 'Yeni filial'}
         </div>
 
         {error && (
@@ -487,7 +487,7 @@ export function LocationsPage() {
 
           <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
             Qrafik seçmək saatları doldurur; istəsəniz aşağıda dəyişə bilərsiniz. Qrafiki dəyişmək köhnə
-            lokasiyalara təsir etmir.
+            filiallara təsir etmir.
           </div>
         </div>
 
@@ -602,7 +602,7 @@ export function LocationsPage() {
                           icon: <IconQr />,
                           hidden: !l.isActive,
                           onClick: () => window.open(`/kiosk/${l.id}`, '_blank', 'noopener,noreferrer'),
-                          title: 'Bu lokasiyanın kiosk QR ekranını yeni tabda aç',
+                          title: 'Bu filialın kiosk QR ekranını yeni tabda aç',
                         },
                         {
                           label: copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala',
@@ -638,7 +638,7 @@ export function LocationsPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Hələ lokasiya yoxdur — «Lokasiya əlavə et» ilə başlayın
+                  Hələ filial yoxdur — «Filial əlavə et» ilə başlayın
                 </td>
               </tr>
             )}

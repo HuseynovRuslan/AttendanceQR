@@ -260,7 +260,7 @@ export function SchedulesPage() {
       {areas.length > 1 && (
         <div className="chip-row" style={{ marginBottom: 14 }}>
           <span className={`chip${!filterLoc ? ' active' : ''}`} onClick={() => setFilterLoc(null)}>
-            Bütün ərazilər
+            Bütün filiallar
           </span>
           {areas.map((a) => (
             <span key={a.id} className={`chip${filterLoc === a.id ? ' active' : ''}`} onClick={() => setFilterLoc(a.id)}>
@@ -478,7 +478,7 @@ export function SchedulesPage() {
                         <td colSpan={5} style={{ background: 'var(--c50)' }}>
                           {people.length === 0 ? (
                             <span className="muted" style={{ fontSize: 13 }}>
-                              Bu növbədə {filterLoc ? 'bu ərazidə ' : ''}işçi yoxdur.
+                              Bu növbədə {filterLoc ? 'bu filialda ' : ''}işçi yoxdur.
                             </span>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

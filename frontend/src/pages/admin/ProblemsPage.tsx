@@ -10,8 +10,8 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   DeviceMismatch: { label: 'Cihaz uyğun deyil', cls: 'bg-red-100 text-red-700', blocking: true },
   NoDeviceBound: { label: 'Cihaz bağlanmayıb', cls: 'bg-red-100 text-red-700', blocking: true },
   EmployeeNotFoundOrInactive: { label: 'Hesab aktiv deyil', cls: 'bg-red-100 text-red-700', blocking: true },
-  LocationNotFound: { label: 'Lokasiya tapılmadı', cls: 'bg-red-100 text-red-700', blocking: true },
-  LocationInactive: { label: 'Lokasiya deaktiv', cls: 'bg-red-100 text-red-700', blocking: true },
+  LocationNotFound: { label: 'Filial tapılmadı', cls: 'bg-red-100 text-red-700', blocking: true },
+  LocationInactive: { label: 'Filial deaktiv', cls: 'bg-red-100 text-red-700', blocking: true },
   OutsideRadius: { label: 'İş yerindən kənarda', cls: 'bg-amber-100 text-amber-700', blocking: true },
   TokenExpired: { label: 'QR köhnəlib', cls: 'bg-amber-100 text-amber-700' },
   TokenReused: { label: 'QR təkrar işlədilib', cls: 'bg-amber-100 text-amber-700' },
@@ -268,7 +268,7 @@ Sonda: tətbiqi tam bağlayıb açın, bir skan edin — alınırsa düzəldi.`
       {/* Sites with a cluster — the "this whole location has a problem" signal. */}
       {topLocations.length > 0 && (
         <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#fed7aa', background: '#fff7ed' }}>
-          <div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 6 }}>📍 Bu ərazilərdə çoxlu problem var</div>
+          <div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 6 }}>📍 Bu filiallarda çoxlu problem var</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {topLocations.map((l) => (
               <span key={l.name} className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold bg-amber-100 text-amber-800">
@@ -277,7 +277,7 @@ Sonda: tətbiqi tam bağlayıb açın, bir skan edin — alınırsa düzəldi.`
             ))}
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            Bir ərazidə təkrarlanan «İş yerindən kənarda» adətən geofence radiusunun və ya poster
+            Bir filialda təkrarlanan «İş yerindən kənarda» adətən geofence radiusunun və ya poster
             yerinin problemidir — işçinin deyil.
           </div>
         </div>
@@ -324,7 +324,7 @@ Sonda: tətbiqi tam bağlayıb açın, bir skan edin — alınırsa düzəldi.`
             <tr>
               <th>Vaxt</th>
               <th>İşçi</th>
-              <th>Ərazi</th>
+              <th>Filial</th>
               <th>Əməliyyat</th>
               <th>Səbəb</th>
             </tr>
@@ -334,7 +334,7 @@ Sonda: tətbiqi tam bağlayıb açın, bir skan edin — alınırsa düzəldi.`
               <tr key={`${r.atUtc}-${i}`}>
                 <td data-label="Vaxt" className="mono">{fmtDay(r.atUtc.slice(0, 10))} {fmtTime(r.atUtc)}</td>
                 <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                <td data-label="Ərazi">{r.locationName}</td>
+                <td data-label="Filial">{r.locationName}</td>
                 <td data-label="Əməliyyat">{ACTION_AZ[r.action] ?? r.action}</td>
                 <td>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${meta(r.reason).cls}`}>

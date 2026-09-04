@@ -42,7 +42,7 @@ import { IconCalendar, IconCheck, IconKey, IconPhone, IconRefresh, IconSend, Ico
 const ATTENDANCE_ERRORS: Record<string, string> = {
   NothingToUpdate: 'Heç nə dəyişmədi',
   RecordNotFound: 'Qeyd tapılmadı',
-  LocationNotFound: 'Lokasiya tapılmadı',
+  LocationNotFound: 'Filial tapılmadı',
   EmployeeNotFound: 'İşçi tapılmadı',
   CheckInInFuture: 'Giriş vaxtı gələcəkdə ola bilməz',
   CheckOutInFuture: 'Çıxış vaxtı gələcəkdə ola bilməz',
@@ -76,7 +76,7 @@ const ERRORS: Record<string, string> = {
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
   NeedEmailOrPhone: 'Telefon nömrəsi və ya email lazımdır',
-  LocationNotFound: 'Lokasiya tapılmadı',
+  LocationNotFound: 'Filial tapılmadı',
   EmployeeHasHistory: 'Bu işçinin davamiyyət tarixçəsi var — silmək olmaz, əvəzinə deaktiv edin',
   CannotDeleteSelf: 'Öz hesabınızı silə bilməzsiniz',
   CannotDeactivateSelf: 'Öz hesabınızı deaktiv edə bilməzsiniz — girişiniz bağlanardı',
@@ -1317,7 +1317,7 @@ ${back}`,
             <span>
               <span style={{ fontWeight: 700, fontSize: 13 }}>Giriş şəkli tələb olunmasın</span>
               <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
-                Bu işçidə skan zamanı kamera açılmır. Lokasiya və cihaz yoxlaması qüvvədə qalır.
+                Bu işçidə skan zamanı kamera açılmır. Yer və cihaz yoxlaması qüvvədə qalır.
               </span>
             </span>
           </label>

@@ -76,12 +76,24 @@
 
 /* --- company cards ------------------------------------------------------ */
 .hq-companies { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: clamp(12px, 1.4vw, 18px); }
+/* A <button> since the card opens that company's panel — so the browser's own button styling is
+   reset and the affordance is carried by the hover lift and the "panelə bax →" line. */
 .hq-co {
   position: relative; overflow: hidden;
   border: 1px solid var(--line); border-radius: 20px; padding: 20px 22px 22px;
   background: var(--surface); transition: transform .25s ease, border-color .25s ease;
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
 }
-.hq-co:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.2); }
+.hq-co:hover:not(:disabled) { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.2); }
+.hq-co:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.hq-co:disabled { cursor: default; opacity: .7; }
+/* Says what the tap does. Faint until hover — the numbers are what the board is for. */
+.hq-co-go {
+  margin-top: 14px; font-size: 12px; font-weight: 800; letter-spacing: .03em;
+  color: var(--fg-faint); transition: color .2s ease;
+}
+.hq-co:hover:not(:disabled) .hq-co-go { color: var(--accent); }
 /* The accent is the only place a company's identity lives — no logos to collect, no colour to argue
    about, and three cards stay distinguishable at a glance from the back of a room. */
 .hq-co::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--accent); }
@@ -101,7 +113,11 @@
 .hq-panel-title { font-size: 13px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--fg-dim); margin-bottom: 16px; }
 
 /* --- live feed ---------------------------------------------------------- */
-.hq-feed { display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow: hidden; }
+/* Scrolls now that the feed carries the whole day rather than the last fourteen events: the
+   director looking for one person scrolls to them instead of wondering where they went. */
+.hq-feed { display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; overscroll-behavior: contain; }
+.hq-feed::-webkit-scrollbar { width: 6px; }
+.hq-feed::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 999px; }
 .hq-feed-row { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 .hq-feed-row:last-child { border-bottom: none; }
 /* Only the newest row animates in, so the eye is drawn to the thing that actually just happened. */
@@ -242,4 +258,35 @@
 .leaflet-container img.leaflet-tile.tiles-dark,
 .leaflet-container .tiles-dark img.leaflet-tile {
   filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88);
+}
+
+
+/* --- mobil ---------------------------------------------------------------
+   The map panel overflowed its card on a phone: 22px of panel padding either side plus Leaflet's
+   own sizing pushed the tile surface past the rounded border, and the wide "Hamısı" control sat
+   half off-screen. Narrower panels, a shorter map and smaller controls — the board is read on a
+   phone far more often than on the projector it was designed for. */
+@media (max-width: 640px) {
+  .hq { padding: 12px; }
+  .hq-panel { padding: 14px 12px; border-radius: 16px; }
+  .hq-map { height: clamp(240px, 38vh, 320px); border-radius: 12px; }
+  .hq-map-ctl { top: 8px; right: 8px; gap: 5px; }
+  .hq-map-ctl button { width: 30px; height: 30px; font-size: 15px; }
+  .hq-map-ctl .hq-map-ctl-wide { padding: 0 8px; font-size: 11px; }
+  .hq-co { padding: 16px 16px 18px; }
+  /* Nothing on the board may push the page sideways. */
+  .hq, .hq-inner, .hq-panel, .hq-map { max-width: 100%; }
+  .hq-inner { overflow-x: hidden; }
+}
+
+/* Mounted inside the operator console. The dark ground STAYS — every surface on this board is a
+   white-alpha wash that only reads against it, and dropping it puts pale cards on the console's
+   light content column. What goes instead is the full-page framing: no 100vh, tighter padding, and
+   rounded corners so it reads as a panel in the column rather than a page that escaped its shell. */
+.hq-embedded {
+  min-height: 0;
+  padding: clamp(14px, 1.6vw, 22px);
+  border-radius: 18px;
+  border: 1px solid rgba(7, 11, 22, 0.5);
+  overflow: hidden;
 }

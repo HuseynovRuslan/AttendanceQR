@@ -110,7 +110,7 @@ export function BillingPage() {
             <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.6 }}>
               {data.employees} işçi × {azn(m.ratePerEmployee)} ₼ = {azn(m.employeeTotal)} ₼
               <br />
-              {data.locations} lokasiya × {azn(m.locationFee)} ₼ = {azn(m.locationTotal)} ₼
+              {data.locations} filial × {azn(m.locationFee)} ₼ = {azn(m.locationTotal)} ₼
             </div>
           )}
         </div>
@@ -119,7 +119,7 @@ export function BillingPage() {
           <div className="card-title">İstifadə</div>
           <Usage label="İşçi" used={data.employees} max={data.maxEmployees} />
           <div style={{ height: 12 }} />
-          <Usage label="Lokasiya" used={data.locations} max={data.maxLocations} />
+          <Usage label="Filial" used={data.locations} max={data.maxLocations} />
         </div>
       </div>
 
@@ -168,7 +168,7 @@ export function BillingPage() {
       </div>
 
       <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
-        Məbləğ hər ay aktiv işçi və lokasiya sayına görə hesablanır — işçi çıxsa, növbəti ay avtomatik
+        Məbləğ hər ay aktiv işçi və filial sayına görə hesablanır — işçi çıxsa, növbəti ay avtomatik
         azalır. Paket dəyişikliyi, ödəniş və hesab-faktura üçün bizimlə əlaqə saxlayın.
       </div>
     </div>

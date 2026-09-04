@@ -5,6 +5,8 @@ export interface GroupCompany {
   slug: string
   name: string
   employees: number
+  /** Imported, never once used the app — kept OUT of attendancePct's denominator. */
+  notStarted: number
   present: number
   onDuty: number
   locations: number
@@ -32,6 +34,7 @@ export interface GroupOverview {
   totals: {
     companies: number
     employees: number
+  notStarted: number
     present: number
     onDuty: number
     locations: number
@@ -44,7 +47,8 @@ export interface GroupOverview {
   companies: GroupCompany[]
   sites: GroupSite[]
   trend: { date: string; present: number }[]
-  feed: { fullName: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' }[]
+  // 'field-in' / 'field-out' — a «səyyar» visit to a site with no poster, GPS + selfie instead of a QR.
+  feed: { fullName: string; company: string; location: string; atUtc: string; kind: 'in' | 'out' | 'field-in' | 'field-out' }[]
 }
 
 /** Every company at once. 403 for anyone outside the super-admin allowlist. */

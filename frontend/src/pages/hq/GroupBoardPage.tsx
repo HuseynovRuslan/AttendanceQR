@@ -4,6 +4,8 @@ import { SiteMap } from './SiteMap'
 import 'leaflet/dist/leaflet.css'
 import './hq.css'
 import { COMPANY_TZ } from '../../lib/format'
+import { viewTenant } from '../../api/admin'
+import { startImpersonation } from '../../api/client'
 
 /** Refresh cadence. Fast enough that a figure visibly moves while someone watches, slow enough that
  *  the board is not hammering the API all day on a wall screen. */
@@ -101,12 +103,37 @@ function TrendArea({ points }: { points: { date: string; present: number }[] }) 
  * answers "how much is actually running on this system". Restricted to the super-admin allowlist,
  * because it is the only screen where the three companies appear together.
  */
-export function GroupBoardPage() {
+/**
+ * @param embedded — mounted as the operator console's İcmal rather than standing alone at /hq.
+ *   The console already carries the QRLog lockup in its sidebar and the page name in its topbar, so
+ *   the board drops its own brand plate there and keeps only what the shell does NOT say: the live
+ *   dot, the Baku clock and the fullscreen button.
+ */
+export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [data, setData] = useState<GroupOverview | null>(null)
   const [denied, setDenied] = useState(false)
   const [clock, setClock] = useState(() => new Date())
   const newestRef = useRef<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [opening, setOpening] = useState<string | null>(null)
+
+  /**
+   * Open one company's OWN admin panel from its card, read-only.
+   *
+   * The board answers "which company needs a look"; the answer to "why" lives in that company's
+   * screens — the today board, the reports, the tabel. Rather than rebuilding those thirty-four
+   * screens read-only inside this console, the card mints a «baxış rejimi» session: the real panel,
+   * with every mutating request refused server-side (ViewOnlyBoundary).
+   */
+  async function openCompany(c: { id: string; name: string }) {
+    setOpening(c.id)
+    const { status, data } = await viewTenant(c.id)
+    setOpening(null)
+    if (status === 200 && data && !('error' in data)) {
+      startImpersonation(data.token, { tenantName: data.tenantName, adminName: data.adminName })
+      window.location.href = '/admin'
+    }
+  }
 
   // A demo should not begin with someone hunting for F11 — and fullscreen also takes the address bar
   // away, which otherwise shows one company's subdomain above a screen about all three.
@@ -178,23 +205,25 @@ export function GroupBoardPage() {
       : {
           label: 'Sistemdə qeydiyyatda',
           value: employees,
-          note: `${totals.companies} şirkət · ${totals.locations} ərazi · bu gün hələ skan olmayıb`,
+          note: `${totals.companies} şirkət · ${totals.locations} filial · bu gün hələ skan olmayıb`,
         }
 
   return (
-    <div className="hq">
+    <div className={embedded ? 'hq hq-embedded' : 'hq'}>
       <div className="hq-inner">
         <header className="hq-head hq-reveal hq-d1">
           <div className="hq-brand">
             {/* The real lockup, on a white plate: the mark is dark navy and would vanish into a dark
                 board. With the brand carrying the name, the title beside it no longer has to shout —
                 it states what the screen is and hands the emphasis back to the logo. */}
-            <img className="hq-logo" src="/brand/qrlog-logo.png" alt="QRLog" />
-            <span className="hq-rule" aria-hidden="true" />
+            {!embedded && <>
+              <img className="hq-logo" src="/brand/qrlog-logo.png" alt="QRLog" />
+              <span className="hq-rule" aria-hidden="true" />
+            </>}
             <div>
               <div className="hq-title">Qrup idarəetmə paneli</div>
               <div className="hq-sub">
-                {totals.companies} şirkət · {totals.locations} ərazi · {fmt.format(totals.employees)} işçi
+                {totals.companies} şirkət · {totals.locations} filial · {fmt.format(totals.employees)} işçi
               </div>
             </div>
           </div>
@@ -243,7 +272,7 @@ export function GroupBoardPage() {
             </div>
             <div className="hq-stat">
               <div className="v hq-num">{totals.locations}</div>
-              <div className="l">Ərazi</div>
+              <div className="l">Filial</div>
             </div>
             <div className="hq-stat">
               <div className="v hq-num">{totals.attendancePct}%</div>
@@ -254,19 +283,36 @@ export function GroupBoardPage() {
 
         <section className="hq-companies hq-reveal hq-d3">
           {data.companies.map((c, i) => (
-            <article className="hq-co" key={c.id} style={{ ['--accent' as string]: accentOf(i) }}>
+            // A button, not an article: the card IS the way into that company. The group head reads
+            // the totals here and taps the one that needs a closer look — which opens the company's
+            // own panel in «baxış rejimi» (read-only), so no second set of screens has to exist.
+            <button
+              type="button"
+              className="hq-co"
+              key={c.id}
+              style={{ ['--accent' as string]: accentOf(i) }}
+              onClick={() => void openCompany(c)}
+              disabled={opening === c.id}
+              title={`${c.name} — panelini aç (yalnız oxu)`}
+            >
               <div className="hq-co-name">{c.name}</div>
-              <div className="hq-co-meta">{c.locations} ərazi · {fmt.format(c.employees)} işçi</div>
+              <div className="hq-co-meta">
+                {c.locations} filial · {fmt.format(c.employees)} işçi
+                {c.notStarted > 0 && <> · <span className="hq-co-idle">{fmt.format(c.notStarted)} aktivləşdirməyib</span></>}
+              </div>
               <div className="hq-co-row">
+                {/* Out of the people who have actually started using the app, not out of everyone
+                    on the payroll — the same denominator the percentage beside it uses. */}
                 <div className="hq-co-big hq-num">
-                  {fmt.format(c.onDuty)}<small>/ {fmt.format(c.employees)}</small>
+                  {fmt.format(c.onDuty)}<small>/ {fmt.format(c.employees - c.notStarted)}</small>
                 </div>
                 <div className="hq-co-pct hq-num">{c.attendancePct}%</div>
               </div>
               <div className="hq-bar">
                 <i style={{ width: `${Math.min(100, c.attendancePct)}%` }} />
               </div>
-            </article>
+              <div className="hq-co-go">{opening === c.id ? 'açılır…' : 'panelə bax →'}</div>
+            </button>
           ))}
         </section>
 
@@ -275,7 +321,7 @@ export function GroupBoardPage() {
               "our people are at these places right now" is the thing a table cannot say. */}
           <div className="hq-panel">
             <div className="hq-panel-title">
-              Ərazilər · hazırda iş gedən nöqtələr
+              Filiallar · hazırda iş gedən nöqtələr
             </div>
             <SiteMap sites={data.sites} accentOf={accentOf} />
           </div>
@@ -305,8 +351,12 @@ export function GroupBoardPage() {
                     >
                       {f.company}
                     </span>
-                    <span className={`hq-feed-kind ${f.kind === 'in' ? 'hq-in' : 'hq-out'}`}>
-                      {f.kind === 'in' ? 'GİRİŞ' : 'ÇIXIŞ'}
+                    {/* A field visit is an arrival like any other — it just happened at a site with
+                        no poster, on GPS and a selfie. Tagged rather than hidden: without the 📍 a
+                        director reading the feed cannot tell the two apart, and the whole «səyyar»
+                        route was invisible on this board until now. */}
+                    <span className={`hq-feed-kind ${f.kind.endsWith('in') ? 'hq-in' : 'hq-out'}`}>
+                      {f.kind.startsWith('field') ? '📍 ' : ''}{f.kind.endsWith('in') ? 'GİRİŞ' : 'ÇIXIŞ'}
                     </span>
                   </div>
                 )
@@ -329,7 +379,7 @@ export function GroupBoardPage() {
         {/* The figures say the system is used; this says what is being used. Without it a director
             sees a chart, not a product. */}
         <section className="hq-caps hq-reveal hq-d6">
-          {['QR ilə giriş', 'GPS ərazi nəzarəti', 'Üz yoxlaması', 'Oflayn skan', 'Push bildiriş', 'Maaş hesabatı', 'Ayın işçisi']
+          {['QR ilə giriş', 'GPS ərazi nəzarəti', 'Üz yoxlaması', 'Oflayn skan', 'Push bildiriş', 'Maaş hesabatı']
             .map((cap) => <span className="hq-cap" key={cap}><i />{cap}</span>)}
         </section>
 

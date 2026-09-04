@@ -19,9 +19,19 @@ public partial class SuperAdminController
     /// crushing the chart on a phone.</summary>
     private const int TrendDays = 14;
 
-    /// <summary>Scans in the live feed. Enough that something moves while you watch, few enough to
-    /// stay readable across the room.</summary>
-    private const int FeedSize = 14;
+    /// <summary>
+    /// Scans in the live feed.
+    ///
+    /// Was 14 — "enough that something moves while you watch". The owner asked for everyone: on a
+    /// board the group head reads, the feed is not decoration, it is the day's register, and a
+    /// director looking for one person should not have to guess whether they fell off the bottom.
+    /// The panel scrolls now, so the length costs layout nothing.
+    ///
+    /// Still capped, because this is one JSON payload on a 20-second refresh: a day where every one
+    /// of ~650 people checks in and out is ~1,300 rows, and the cap sits above that with room to
+    /// grow rather than being a number the board can silently hit.
+    /// </summary>
+    private const int FeedSize = 2000;
 
     // GET /api/super/hq — everything the group board shows, in one round trip. One call rather than
     // six because the board refreshes on a timer: six requests on a loop is six chances for the
@@ -67,6 +77,35 @@ public partial class SuperAdminController
             .Select(r => new { r.TenantId, r.AttendanceDate, r.EmployeeId })
             .ToListAsync(ct);
 
+        // Everyone who has EVER recorded attendance, by any route. This is the group board's
+        // denominator, and the reason it is not simply "active employees":
+        //
+        // 335 of the 656 active staff — more than half — have never scanned once. They were created
+        // by the bulk import, in one case 514 people in an afternoon, and they are waiting on a phone,
+        // a PIN or a poster at their site. Counting them as "did not come to work" put the group
+        // attendance at 33% on a screen the owner of five companies reads, which is not what is
+        // happening in those companies: it is the picture of a rollout that is half finished.
+        //
+        // AttendanceCalculator.IsStillOnboarding cannot answer this — it forgives the first fourteen
+        // days after activation and then judges normally, which is right for payroll (nobody escapes
+        // absence by never setting their phone up) and wrong here. The board is not paying anybody.
+        // It is stating what share of the people the system can actually SEE turned up today, and a
+        // person who has never once appeared in it is not evidence of anything.
+        //
+        // The moment somebody's first scan lands they join the denominator permanently — so this
+        // cannot become a way to keep a real absence off the board.
+        var everScanned = await _db.AttendanceRecords.IgnoreQueryFilters()
+            .Where(r => r.CheckInAtUtc != null)
+            .Select(r => r.EmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+        var everField = await _db.FieldVisits.IgnoreQueryFilters()
+            .Where(v => v.CheckInAtUtc != null)
+            .Select(v => v.EmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+        var observed = everScanned.Concat(everField).ToHashSet();
+
         var byTenant = employees.GroupBy(e => e.TenantId).ToDictionary(g => g.Key, g => g.ToList());
         var presentByTenant = todayRecords.GroupBy(r => r.TenantId)
             .ToDictionary(g => g.Key, g => g.Select(r => r.EmployeeId).Distinct().Count());
@@ -78,6 +117,7 @@ public partial class SuperAdminController
         {
             var staff = byTenant.GetValueOrDefault(t.Id, new());
             var present = presentByTenant.GetValueOrDefault(t.Id, 0);
+            var started = staff.Count(e => observed.Contains(e.Id));
             return new
             {
                 id = t.Id,
@@ -87,9 +127,13 @@ public partial class SuperAdminController
                 present,
                 onDuty = onDutyByTenant.GetValueOrDefault(t.Id, 0),
                 locations = locationCount.GetValueOrDefault(t.Id, 0),
-                // Share of the workforce that has turned up today. Deliberately plain: a director
-                // reads "94% came in" without being told what a scheduled work day is.
-                attendancePct = staff.Count == 0 ? 0 : (int)Math.Round(present * 100.0 / staff.Count),
+                // Imported but never once used the app. Shown rather than hidden: it is the number
+                // that says how far this company's rollout actually got, and it is the only honest
+                // way to leave them out of the percentage below.
+                notStarted = staff.Count - started,
+                // Share of the people the system can SEE who turned up today. Deliberately plain: a
+                // director reads "94% came in" without being told what a scheduled work day is.
+                attendancePct = started == 0 ? 0 : (int)Math.Round(present * 100.0 / started),
                 payroll = staff.Sum(e => e.MonthlySalary ?? 0m),
             };
         }).ToList();
@@ -150,26 +194,46 @@ public partial class SuperAdminController
         // The feed is what makes the board look alive: rows arrive while someone is watching it.
         // Check-outs count as events too — a board that only ever shows arrivals goes still by noon.
         var feedFrom = today.AddDays(-1);
-        var feed = (await _db.AttendanceRecords.IgnoreQueryFilters()
+        var posterEvents = (await _db.AttendanceRecords.IgnoreQueryFilters()
                 .Where(r => r.AttendanceDate >= feedFrom && r.CheckInAtUtc != null)
                 .Select(r => new { r.TenantId, r.EmployeeId, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc })
                 .ToListAsync(ct))
             .SelectMany(r => new[]
             {
-                new { r.TenantId, r.EmployeeId, r.LocationId, At = r.CheckInAtUtc!.Value, Kind = "in" },
+                new { r.TenantId, r.EmployeeId, Place = locationNames.GetValueOrDefault(r.LocationId, ""), At = r.CheckInAtUtc!.Value, Kind = "in" },
                 r.CheckOutAtUtc is null
                     ? null
-                    : new { r.TenantId, r.EmployeeId, r.LocationId, At = r.CheckOutAtUtc.Value, Kind = "out" },
+                    : new { r.TenantId, r.EmployeeId, Place = locationNames.GetValueOrDefault(r.LocationId, ""), At = r.CheckOutAtUtc.Value, Kind = "out" },
             })
             .Where(x => x is not null)
-            .Select(x => x!)
+            .Select(x => x!);
+
+        // Field visits belong in the same feed. A driver checking in at a site with no poster is
+        // doing exactly what this board is showing — turning up to work — and leaving them out made
+        // the whole «səyyar» route invisible on the one screen that claims to show the group live.
+        // Their place is the target label they were sent to, or the free label they typed.
+        var fieldEvents = (await _db.FieldVisits.IgnoreQueryFilters()
+                .Where(v => v.VisitDate >= feedFrom && v.CheckInAtUtc != null)
+                .Select(v => new { v.TenantId, v.EmployeeId, v.TargetLabel, v.CheckInAtUtc, v.CheckOutAtUtc })
+                .ToListAsync(ct))
+            .SelectMany(v => new[]
+            {
+                new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Səyyar", At = v.CheckInAtUtc!.Value, Kind = "field-in" },
+                v.CheckOutAtUtc is null
+                    ? null
+                    : new { v.TenantId, v.EmployeeId, Place = v.TargetLabel ?? "Səyyar", At = v.CheckOutAtUtc.Value, Kind = "field-out" },
+            })
+            .Where(x => x is not null)
+            .Select(x => x!);
+
+        var feed = posterEvents.Concat(fieldEvents)
             .OrderByDescending(x => x.At)
             .Take(FeedSize)
             .Select(x => new
             {
                 fullName = names.GetValueOrDefault(x.EmployeeId, "—"),
                 company = tenantNames.GetValueOrDefault(x.TenantId, ""),
-                location = locationNames.GetValueOrDefault(x.LocationId, ""),
+                location = x.Place,
                 atUtc = x.At,
                 kind = x.Kind,
             })
@@ -186,9 +250,13 @@ public partial class SuperAdminController
                 onDuty = companies.Sum(c => c.onDuty),
                 locations = companies.Sum(c => c.locations),
                 payroll = companies.Sum(c => c.payroll),
-                attendancePct = companies.Sum(c => c.employees) == 0
+                notStarted = companies.Sum(c => c.notStarted),
+                // Same denominator as each company's own figure: the group percentage has to be the
+                // group's, not an average of five percentages weighted by nothing.
+                attendancePct = companies.Sum(c => c.employees - c.notStarted) == 0
                     ? 0
-                    : (int)Math.Round(companies.Sum(c => c.present) * 100.0 / companies.Sum(c => c.employees)),
+                    : (int)Math.Round(companies.Sum(c => c.present) * 100.0
+                                      / companies.Sum(c => c.employees - c.notStarted)),
                 // Scans handled since the system went live — the number that says "this is in real
                 // use", which is the whole point of showing the board to someone who is being sold to.
                 totalScans = await _db.AttendanceRecords.IgnoreQueryFilters()

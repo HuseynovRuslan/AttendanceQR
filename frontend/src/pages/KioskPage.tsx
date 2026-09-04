@@ -85,7 +85,7 @@ export function KioskPage() {
       <Centered>
         <h1 className="text-3xl font-bold">Kiosk</h1>
         <p className="text-slate-400 mt-3">
-          URL-də lokasiya ID yoxdur. Nümunə: <code>/kiosk/&lt;locationId&gt;</code>
+          URL-də filial ID yoxdur. Nümunə: <code>/kiosk/&lt;locationId&gt;</code>
         </p>
       </Centered>
     )
@@ -95,7 +95,7 @@ export function KioskPage() {
     return (
       <Centered>
         <div className="text-5xl mb-3">⚠️</div>
-        <h1 className="text-3xl font-bold">Lokasiya tapılmadı</h1>
+        <h1 className="text-3xl font-bold">Filial tapılmadı</h1>
         <p className="text-slate-400 mt-3">Kiosk URL-ini yoxlayın.</p>
       </Centered>
     )

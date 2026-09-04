@@ -56,7 +56,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/shift-mismatch': { title: 'Növbə uyğunsuzluğu', sub: 'Faktiki iş saatı təyin olunmuş növbə ilə uyuşmayan işçilər' },
   '/admin/field-visits': { title: 'Sahə ziyarətləri', sub: 'Səyyar işçilər — tapşır, görülən işi və şəkli yoxla' },
   '/admin/open-records': { title: 'Çıxışı unudulan günlər', sub: 'Giriş edib çıxış etməyən günlər' },
-  '/admin/locations': { title: 'Lokasiyalar', sub: 'Filial əlavə et / redaktə et' },
+  '/admin/locations': { title: 'Filiallar', sub: 'Filial əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
   '/admin/leaves': { title: 'Məzuniyyət / İcazə', sub: 'Təsdiqlənmiş yoxluq qeydləri' },
   '/admin/employees': { title: 'İşçilər', sub: 'İşçilərin idarəsi və qeydiyyatı' },
@@ -82,7 +82,7 @@ export function AdminLayout() {
   // The team board is no longer allowlisted — it is tenant-scoped, so every admin and manager of the
   // company shares theirs and sees no other. The /api/tasks/access probe it used to need is gone.
   const meta = PAGE_META[location.pathname]
-    ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Lokasiya üçün sabit kod' }
+    ?? (location.pathname.endsWith('/print-qr') ? { title: 'Çap üçün QR', sub: 'Filial üçün sabit kod' }
       : location.pathname.startsWith('/admin/employees/') ? { title: 'İşçi profili', sub: 'İşçinin tam məlumatı və əməliyyatlar' }
       : { title: 'Panel', sub: '' })
 
@@ -189,7 +189,7 @@ export function AdminLayout() {
       links: [
         // A manager sees and edits the branches they manage — they are the one who knows where the
         // poster hangs and how wide the yard is. Creating and deleting stays with the admin.
-        { to: '/admin/locations', label: 'Lokasiyalar', Icon: IconBuilding },
+        { to: '/admin/locations', label: 'Filiallar', Icon: IconBuilding },
         ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
         // What the company pays for the product, and whether it is settled. Admin only — a manager
         // runs a branch, not the contract.

@@ -131,19 +131,26 @@ export function SiteMap({ sites, accentOf }: { sites: GroupSite[]; accentOf: (i:
               // Fragment, not a wrapper element: react-leaflet renders children into the map
               // container, and a stray div there sits on top of the map and swallows clicks.
               <Fragment key={s.id}>
-                {/* The geofence, to scale — the only place the GPS rule is shown rather than said. */}
-                <Circle
-                  center={[s.lat, s.lng]}
-                  radius={s.radiusMeters}
-                  pathOptions={{
-                    color: colour,
-                    fillColor: colour,
-                    fillOpacity: live ? 0.1 : 0.04,
-                    opacity: isFocused ? 0.75 : live ? 0.4 : 0.18,
-                    weight: 1,
-                    dashArray: '4 5',
-                  }}
-                />
+                {/* The geofence, to scale — but ONLY for the site being looked at.
+                    Drawn for every site it stopped being information and became a stain: these are
+                    real-world radii (500 m for a park, 2,000 m for one site) and at group zoom the
+                    circles of central Baku merge into one pink blob that hides the markers it was
+                    meant to explain. On focus it teaches the same thing about the one site the
+                    reader is actually asking about. */}
+                {isFocused && (
+                  <Circle
+                    center={[s.lat, s.lng]}
+                    radius={s.radiusMeters}
+                    pathOptions={{
+                      color: colour,
+                      fillColor: colour,
+                      fillOpacity: 0.08,
+                      opacity: 0.7,
+                      weight: 1,
+                      dashArray: '4 5',
+                    }}
+                  />
+                )}
                 <CircleMarker
                   center={[s.lat, s.lng]}
                   radius={radiusOf(s.onDuty) + (isFocused ? 4 : 0)}

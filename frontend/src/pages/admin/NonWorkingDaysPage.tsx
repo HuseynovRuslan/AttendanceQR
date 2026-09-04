@@ -6,7 +6,7 @@ import { fmtDate } from '../../lib/format'
 
 const ERRORS: Record<string, string> = {
   DescriptionRequired: 'Təsvir tələb olunur',
-  LocationNotFound: 'Lokasiya tapılmadı',
+  LocationNotFound: 'Filial tapılmadı',
 }
 
 export function NonWorkingDaysPage() {
@@ -67,7 +67,7 @@ export function NonWorkingDaysPage() {
       <div className="fb" style={{ marginBottom: 16, background: 'var(--c50, #f6f8f4)', color: 'var(--c500)' }}>
         <span>
           Bu siyahıdakı tarixlərdə heç kim <b>"Qayıb"</b> sayılmır — status <b>"İstirahət"</b> olur.
-          Lokasiya seçilməzsə (Hamısı), bütün lokasiyalara aiddir.
+          Filial seçilməzsə (Hamısı), bütün filiallara aiddir.
         </span>
       </div>
 
@@ -93,7 +93,7 @@ export function NonWorkingDaysPage() {
             <input className="inp" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
-            <label className="form-label">Lokasiya</label>
+            <label className="form-label">Filial</label>
             <select className="inp" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
               <option value="">Hamısı</option>
               {locations.map((l) => (
@@ -126,7 +126,7 @@ export function NonWorkingDaysPage() {
             <tr>
               <th>Tarix</th>
               <th>Təsvir</th>
-              <th>Lokasiya</th>
+              <th>Filial</th>
               <th style={{ textAlign: 'right' }}>Əməliyyat</th>
             </tr>
           </thead>
@@ -135,7 +135,7 @@ export function NonWorkingDaysPage() {
               <tr key={d.id}>
                 <td data-label="Tarix" className="mono">{fmtDate(d.date)}</td>
                 <td data-label="Təsvir">{d.description}</td>
-                <td data-label="Lokasiya">{d.locationName ?? 'Hamısı'}</td>
+                <td data-label="Filial">{d.locationName ?? 'Hamısı'}</td>
                 <td data-label="">
                   <button className="btn btn-danger btn-sm" disabled={deletingId === d.id} onClick={() => onDelete(d)}>
                     <IconTrash /> Sil

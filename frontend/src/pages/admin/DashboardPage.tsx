@@ -166,10 +166,18 @@ export function DashboardPage() {
   )
 
   const activity = useMemo(() => {
-    const ev: { id: string; empId: string; name: string; loc: string; type: 'in' | 'out'; at: string }[] = []
+    const ev: { id: string; empId: string; name: string; loc: string; type: 'in' | 'out'; field?: boolean; at: string }[] = []
     for (const r of rows) {
       if (r.checkInAtUtc) ev.push({ id: r.employeeId + 'i', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'in', at: r.checkInAtUtc })
       if (r.checkOutAtUtc) ev.push({ id: r.employeeId + 'o', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'out', at: r.checkOutAtUtc })
+      // Səyyar ziyarət — posteri olmayan sahəyə GPS + selfi ilə giriş. Lentdə görünmürdü: işçi bütün
+      // günü sahədə işləyirdi, «canlı hərəkət» isə onu heç vaxt göstərmirdi.
+      // Vaxt eyni olanda təkrarlamırıq — sahə çıxışı bəzən günün öz qeydini bağlayır
+      // (ClosedByFieldVisit), onda hadisə artıq yuxarıda əlavə olunub.
+      if (r.fieldCheckInAtUtc && r.fieldCheckInAtUtc !== r.checkInAtUtc)
+        ev.push({ id: r.employeeId + 'fi', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'in', field: true, at: r.fieldCheckInAtUtc })
+      if (r.fieldCheckOutAtUtc && r.fieldCheckOutAtUtc !== r.checkOutAtUtc)
+        ev.push({ id: r.employeeId + 'fo', empId: r.employeeId, name: r.employeeName, loc: r.locationName, type: 'out', field: true, at: r.fieldCheckOutAtUtc })
     }
     // The whole day, newest first — the panel scrolls (see .lux-feed), so every check-in and
     // check-out of today is here, not just the last handful. The cap is only a DOM backstop.
@@ -178,7 +186,9 @@ export function DashboardPage() {
 
   const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, onboarding: 0, dayOff: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
   for (const r of rows) {
-    if (r.status === 'OnTime' || r.status === 'Late') counts.present++
+    // 'Field' burada olmasa «Natamam»a yıxılırdı: bütün günü sahədə işləyən adam lövhədə qüsur kimi
+    // görünürdü. Bugünkü lövhə (todayCounts.ts) onu artıq işdə sayır — iki ekran razılaşmalıdır.
+    if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') counts.present++
     else if (r.status === 'Absent') counts.absent++
     else if (r.status === 'Pending') counts.pending++
     // Tanınmasa «İşdə» qalığına yıxılardı — və 294 qurulmamış hesab «İndi iş başında» sayılardı.
@@ -391,13 +401,13 @@ export function DashboardPage() {
       <section className="lux-grid lux-rise lux-d4">
         <div className="card lux-panel">
           <div className="lux-panel-h">
-            <span>Ərazilər</span>
+            <span>Filiallar</span>
             <span className="muted">nöqtənin böyüklüyü — hazırda işdə olanların sayı</span>
           </div>
           {sites.length > 0 || people.length > 0 ? (
             <DashboardMap sites={sites} people={people} />
           ) : (
-            <div className="muted" style={{ padding: 24 }}>Koordinatı olan aktiv ərazi yoxdur.</div>
+            <div className="muted" style={{ padding: 24 }}>Koordinatı olan aktiv filial yoxdur.</div>
           )}
         </div>
 
@@ -414,7 +424,9 @@ export function DashboardPage() {
                 <div key={e.id} className={`lux-feed-row${i === 0 ? ' is-new' : ''}`}>
                   <span className="lux-feed-dot" style={{ background: e.type === 'in' ? 'var(--leaf)' : 'var(--blue)' }} />
                   <span className="lux-feed-nm"><EmployeeLink id={e.empId} name={e.name} /></span>
-                  <span className="muted lux-feed-a">{e.type === 'in' ? 'giriş' : 'çıxış'} · {e.loc}</span>
+                  <span className="muted lux-feed-a">
+                    {e.field ? '📍 ' : ''}{e.type === 'in' ? 'giriş' : 'çıxış'} · {e.field ? 'səyyar' : e.loc}
+                  </span>
                   <span className="mono lux-feed-t">{fmtTime(e.at)}</span>
                 </div>
               ))}

@@ -191,7 +191,7 @@ export function BulkInvitePage() {
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ flex: '1 1 220px' }}>
-            <label className="form-label">Lokasiya</label>
+            <label className="form-label">Filial</label>
             <select className="inp" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>{l.name}</option>
