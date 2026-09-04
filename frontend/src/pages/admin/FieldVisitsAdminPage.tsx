@@ -79,6 +79,36 @@ const todayStr = () => {
 function fmtDist(m: number): string {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
 }
+/**
+ * How long an open visit has been running, and whether that is odd.
+ *
+ * The thresholds are measured, not chosen: across 96 closed visits the average is 3.2 hours and the
+ * longest is 19.3. EIGHT hours — the obvious round number, and the one first proposed — is exceeded
+ * by 13 of them, one in seven, so a warning there would fire on ordinary long days and be learned as
+ * noise within a week. Ten hours catches 5, fourteen catches the two that are almost certainly a
+ * forgotten check-out rather than a shift.
+ *
+ * The figure itself is always shown. It is the warning that is rationed.
+ */
+/** Closed visits, as hours and minutes rather than a bare minute count nobody reads as time. */
+function fmtMins(mins: number): string {
+  const h = Math.floor(mins / 60)
+  return h > 0 ? `${h} s ${mins % 60} dəq` : `${mins} dəq`
+}
+
+const LONG_VISIT_HOURS = 10
+const IMPLAUSIBLE_VISIT_HOURS = 14
+
+function openFor(checkInUtc: string, now: number): { text: string; level: 'ok' | 'long' | 'stuck' } {
+  const mins = Math.max(0, Math.floor((now - new Date(checkInUtc).getTime()) / 60000))
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return {
+    text: h > 0 ? `${h} s ${m} dəq` : `${m} dəq`,
+    level: h >= IMPLAUSIBLE_VISIT_HOURS ? 'stuck' : h >= LONG_VISIT_HOURS ? 'long' : 'ok',
+  }
+}
+
 /** A CheckedIn visit whose day has already passed = the worker forgot to check out. */
 function isStuck(v: BoardFieldVisit, date: string): boolean {
   return v.status === 'CheckedIn' && date < todayStr()
@@ -180,6 +210,14 @@ export function FieldVisitsAdminPage() {
   // production that is the same word for everyone («Obyektdeyem», in four spellings). Without this a
   // manager running two parks cannot tell their own rows apart at all.
   const [filterLoc, setFilterLoc] = useState('')
+  // Ticks on its own minute, independent of the 30-second board refresh: an «open for 4 s 15 dəq»
+  // badge that only moves when the whole table reloads reads as a frozen number, which is the one
+  // thing a duration must never look like.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
   const [onlyFlagged, setOnlyFlagged] = useState(false)
   const [onlySelf, setOnlySelf] = useState(false)
   const [onlyPhoto, setOnlyPhoto] = useState(false)
@@ -613,7 +651,7 @@ export function FieldVisitsAdminPage() {
           <table>
             <thead>
               <tr>
-                <th>İşçi</th><th>Status</th><th>Filial</th><th>Hədəf</th><th>Giriş → Çıxış</th><th>Tapşıran</th><th />
+                <th>İşçi</th><th>Status</th><th>Filial</th><th>Hədəf</th><th>Giriş → Çıxış</th><th>Müddət</th><th>Foto</th><th />
               </tr>
             </thead>
             <tbody>
@@ -627,7 +665,9 @@ export function FieldVisitsAdminPage() {
                       <EmployeeLink id={v.employeeId} name={v.employeeName} />
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
                         {v.phone && <a href={`tel:${v.phone}`} className="muted" style={{ fontSize: 11 }}>📞 {v.phone}</a>}
-                        {v.selfReported && <span className="tag">🙋 özü qeyd etdi</span>}
+                        {v.selfReported
+                          ? <span className="tag">🙋 özü qeyd etdi</span>
+                          : v.assignedByName && <span className="muted" style={{ fontSize: 11 }}>Tapşıran: {v.assignedByName}</span>}
                       </div>
                     </td>
                     <td data-label="Status">
@@ -682,7 +722,37 @@ export function FieldVisitsAdminPage() {
                         </>
                       ) : <span className="muted">—</span>}
                     </td>
-                    <td data-label="Tapşıran">{v.assignedByName ?? <span className="muted">—</span>}</td>
+                    {/* Was the «Tapşıran» column, and it was empty on every row: these workers all
+                        self-report, so it printed «—» down the whole table while the two things an
+                        admin actually looks for — how long someone has been out, and the photograph
+                        — were both behind a «Təfərrüat» click. When a visit IS assigned the name now
+                        sits under the worker's own, where it belongs. */}
+                    <td data-label="Müddət" style={{ whiteSpace: 'nowrap' }}>
+                      {v.status === 'CheckedIn' && v.checkInAtUtc ? (() => {
+                        const d = openFor(v.checkInAtUtc, now)
+                        return (
+                          <span
+                            className="tag"
+                            style={
+                              d.level === 'stuck' ? { background: 'var(--clay-bg)', color: 'var(--clay)', fontWeight: 700 }
+                                : d.level === 'long' ? { background: 'var(--amber-bg)', color: 'var(--amber)', fontWeight: 700 }
+                                  : undefined
+                            }
+                            title={d.level === 'stuck' ? 'Bu qədər uzun ziyarət demək olar ki, unudulmuş çıxışdır'
+                              : d.level === 'long' ? 'Adi gündən uzundur' : undefined}
+                          >
+                            {d.level === 'ok' ? '⏱ ' : '⚠️ '}{d.text}
+                          </span>
+                        )
+                      })() : v.durationMinutes != null ? (
+                        <span className="mono muted">{fmtMins(v.durationMinutes)}</span>
+                      ) : <span className="muted">—</span>}
+                    </td>
+                    <td data-label="Foto">
+                      {v.hasWorkPhoto
+                        ? <button className="btn btn-sm" onClick={() => void openDetail(v)}>📷 Bax</button>
+                        : <span className="muted">—</span>}
+                    </td>
                     <td data-label="">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn btn-sm" onClick={() => void openDetail(v)}>Təfərrüat</button>
