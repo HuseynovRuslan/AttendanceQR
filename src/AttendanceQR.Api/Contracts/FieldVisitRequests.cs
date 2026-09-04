@@ -64,3 +64,8 @@ public record WorkPhotoRequest(string PhotoBase64);
 /// old unconditional behaviour and is only right for a visit being closed the same day: a visit left
 /// open on the 1st and closed on the 4th would otherwise record three days of work.</param>
 public record ForceCheckOutRequest(DateTime? AtUtc = null);
+
+/// <summary>Discarding a completed visit that records no work.</summary>
+/// <param name="Reason">Free text for the audit line — «kabus», «səhv basılıb», whatever the admin
+/// would say if asked a month later. Optional.</param>
+public record DiscardVisitRequest(string? Reason = null);

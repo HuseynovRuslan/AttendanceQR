@@ -488,6 +488,65 @@ public class FieldVisitController : ControllerBase
         return Ok(people);
     }
 
+    /// <summary>
+    /// POST /api/field-visits/{id}/discard — a visit that happened but records no work.
+    ///
+    /// Cancel beside it only touches an ASSIGNED visit, on the reasoning that a started one is
+    /// evidence. That left no way at all to remove a COMPLETED visit that is not evidence of
+    /// anything, and the case that proved it was one the app itself created: a café worker pressed
+    /// «Sahədən çıxdım» after midnight, her real open visit had rolled into «yesterday» and vanished
+    /// from her screen, so the app opened a NEW visit and closed it twelve seconds later. Two of
+    /// those sat in her record looking like work.
+    ///
+    /// Not deleted — set to Cancelled, with who and why on the audit line. A row that vanishes is a
+    /// row nobody can ask about, and «why is there a gap on the 2nd» is exactly the question these
+    /// get asked.
+    ///
+    /// Deliberately NOT guarded by "only if it looks bogus". A rule that tried to recognise one would
+    /// be wrong about somebody's genuinely short visit, and refusing an admin who has looked at it
+    /// and judged it false is how people end up editing the database by hand — which is precisely
+    /// what this endpoint exists to stop.
+    /// </summary>
+    [HttpPost("{id:guid}/discard")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Discard(Guid id, [FromBody] DiscardVisitRequest? request = null)
+    {
+        var ct = HttpContext.RequestAborted;
+        var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id, ct);
+        if (visit is null)
+            return NotFound(new { error = "VisitNotFound" });
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+        if (visit.Status == FieldVisitStatus.Cancelled)
+            return BadRequest(new { error = "AlreadyCancelled" });
+
+        var minutes = visit.CheckInAtUtc is DateTime a && visit.CheckOutAtUtc is DateTime b
+            ? (int)Math.Round((b - a).TotalMinutes)
+            : (int?)null;
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = visit.EmployeeId,
+            EventType = AuditEventType.RecordEditedByAdmin,
+            Reason = $"Field visit discarded by {Me}: {visit.VisitDate:yyyy-MM-dd} "
+                   + $"{visit.CheckInAtUtc:HH:mm}–{(visit.CheckOutAtUtc is null ? "—" : visit.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC"
+                   + (minutes is int m ? $" ({m} dəq)" : "")
+                   + (string.IsNullOrWhiteSpace(request?.Reason) ? "" : $" — {request!.Reason!.Trim()}"),
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+
+        visit.Status = FieldVisitStatus.Cancelled;
+        await _db.SaveChangesAsync(ct);
+
+        // The day has to be re-judged without it, or the summary keeps counting a visit that is no
+        // longer there. Today is refused by the job by design and needs no rebuild — today is
+        // computed live everywhere.
+        try { await _summaries.GenerateForDateAsync(visit.VisitDate, ct); }
+        catch (Exception ex) { _logger.LogError(ex, "Visit {Id} discarded, summary rebuild failed", visit.Id); }
+
+        return Ok(new { id = visit.Id, status = visit.Status.ToString(), minutes });
+    }
+
     // POST /api/field-visits/{id}/cancel — call off an assignment the worker hasn't started.
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = "Admin,Manager")]

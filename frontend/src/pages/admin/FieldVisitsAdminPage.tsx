@@ -11,6 +11,7 @@ import {
   getAssignablePeople,
   assignFieldVisit,
   cancelFieldVisit,
+  discardFieldVisit,
   forceCheckOutFieldVisit,
   getFieldVisitChecklist,
   getFieldVisitWorkPhoto,
@@ -309,6 +310,31 @@ export function FieldVisitsAdminPage() {
     const { status } = await cancelFieldVisit(v.id)
     if (status === 200) { setDetail(null); await load() }
     else setError('Ləğv edilmədi')
+  }
+
+  /**
+   * Throw away a visit that records no work.
+   *
+   * Shown for a COMPLETED visit, which «Ləğv et» refuses — and that gap is how two twelve-second
+   * rows the app itself created ended up sitting in someone's record looking like work. The minutes
+   * are quoted back in the confirm, because a two-minute visit and a two-hour one look identical in
+   * a list and only one of them is safe to discard.
+   */
+  async function discard(v: BoardFieldVisit) {
+    const mins = v.checkInAtUtc && v.checkOutAtUtc
+      ? Math.round((new Date(v.checkOutAtUtc).getTime() - new Date(v.checkInAtUtc).getTime()) / 60000)
+      : null
+    if (!window.confirm(
+      `«${v.employeeName}» — ${date} tarixli ziyarət silinsin?
+
+` +
+      (mins !== null ? `Müddət: ${mins} dəqiqə.
+` : '') +
+      'Ziyarət «Ləğv olundu» kimi işarələnir (silinmir, iz qalır) və həmin gün yenidən hesablanır.')) return
+
+    const { status } = await discardFieldVisit(v.id, 'kabus ziyarət')
+    if (status === 200) { setDetail(null); await load() }
+    else setError('Silinmədi')
   }
 
   async function forceCheckout(v: BoardFieldVisit) {
@@ -625,6 +651,7 @@ export function FieldVisitsAdminPage() {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn btn-sm" onClick={() => void openDetail(v)}>Təfərrüat</button>
                         {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
+                        {v.status === 'Completed' && <button className="btn btn-sm" onClick={() => void discard(v)}>Sil</button>}
                         {stuck && <button className="btn btn-sm btn-danger" onClick={() => void forceCheckout(v)}>Çıxışı bağla</button>}
                       </div>
                     </td>
@@ -645,6 +672,7 @@ export function FieldVisitsAdminPage() {
           onOpenPhoto={setLightbox}
           onClose={() => setDetail(null)}
           onCancel={() => void cancel(detail)}
+          onDiscard={() => void discard(detail)}
           onForceCheckout={() => void forceCheckout(detail)}
           stuck={isStuck(detail, date)}
         />
@@ -756,7 +784,7 @@ function StatCard({ variant, label, value, sub, active, onClick }: {
   )
 }
 
-function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onForceCheckout, stuck }: {
+function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onDiscard, onForceCheckout, stuck }: {
   sites: AdminLocation[]
   v: BoardFieldVisit
   checklist: ChecklistItem[] | null
@@ -764,6 +792,8 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
   onOpenPhoto: (url: string) => void
   onClose: () => void
   onCancel: () => void
+  /** Present only for a completed visit — throwing away a record of work is Admin-only. */
+  onDiscard?: () => void
   onForceCheckout: () => void
   stuck: boolean
 }) {
@@ -854,6 +884,7 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {v.status === 'Assigned' && <button className="btn btn-sm" onClick={onCancel}>Ləğv et</button>}
+          {v.status === 'Completed' && onDiscard && <button className="btn btn-sm" onClick={onDiscard}>Sil</button>}
           {stuck && <button className="btn btn-sm btn-danger" onClick={onForceCheckout}>Çıxışı bağla</button>}
           <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Bağla</button>
         </div>

@@ -149,3 +149,17 @@ export function getFieldVisitChecklist(id: string) {
 export function getFieldVisitWorkPhoto(id: string) {
   return apiRequest<{ url: string | null; takenAtUtc: string | null }>(`/api/field-visits/${id}/work-photo`)
 }
+
+/**
+ * Discard a completed visit that records no work — a «kabus»: the twelve-second row the app itself
+ * created when a check-out landed after midnight and the real visit had rolled into yesterday.
+ *
+ * Cancelled, not deleted: a row that vanishes is a row nobody can ask about, and «why is there a gap
+ * on the 2nd» is exactly the question these get asked. The day is recomputed without it.
+ */
+export function discardFieldVisit(id: string, reason?: string) {
+  return apiRequest<{ id: string; status: string; minutes: number | null }>(
+    `/api/field-visits/${id}/discard`,
+    { method: 'POST', body: { reason: reason?.trim() || null } },
+  )
+}
