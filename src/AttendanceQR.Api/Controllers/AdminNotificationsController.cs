@@ -60,7 +60,15 @@ public class AdminNotificationsController : ControllerBase
         // 16 items on it had been doing.
         var overdueTasks = await _db.Tasks.CountAsync(t => !t.IsDone && t.DueDate != null && t.DueDate < todayLocal, ct);
 
-        return Ok(new { deviceChanges, pinResets, openRecords, overdueTasks });
+        // Today's check-ins whose selfie did not verify. At a branch with no poster that verdict IS the
+        // anchor, and a red pill on a row nobody opens holds nothing — the count on the shelf does.
+        var suspiciousToday = await _db.AttendanceRecords.CountAsync(r =>
+            r.AttendanceDate == todayLocal
+            && (r.FaceMatchStatus == FaceMatchStatus.Mismatch
+                || r.FaceMatchStatus == FaceMatchStatus.MultiFace
+                || r.FaceMatchStatus == FaceMatchStatus.NoFace), ct);
+
+        return Ok(new { deviceChanges, pinResets, openRecords, overdueTasks, suspiciousToday });
     }
 
     [HttpGet]

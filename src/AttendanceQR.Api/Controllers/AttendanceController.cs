@@ -172,9 +172,18 @@ public class AttendanceController : ControllerBase
                 avatarUpdatedAtUtc = e.AvatarUpdatedAtUtc,
                 e.LocationId, e.ScheduleId,
                 e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                // The branch's id as well as its name: the scan screen routes by PLACE, and "inside my
+                // branch" and "inside another one" must not be told apart by comparing names.
+                locationId = e.LocationId,
                 locationName = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.Name)
+                    .FirstOrDefault(),
+                // No poster at this branch: the scan screen goes straight to the selfie instead of
+                // opening the QR camera, and the home card says «Giriş et», not «skan et».
+                qrlessCheckIn = _db.Locations
+                    .Where(l => l.Id == e.LocationId)
+                    .Select(l => l.QrlessCheckIn)
                     .FirstOrDefault()
             })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
@@ -236,6 +245,8 @@ public class AttendanceController : ControllerBase
             profile.fullName, profile.email, profile.role, profile.position, profile.birthDate,
             profile.photoRequired, profile.consentRequired, profile.locationName,
             profile.canFieldCheckIn,
+            profile.qrlessCheckIn,
+            profile.locationId,
             shiftStart, shiftEnd,
             unverifiedCheckIns = unverified,
             lastCheckInUnverified = lastWasUnverified,
@@ -426,7 +437,7 @@ public class AttendanceController : ControllerBase
         // employees this same list. The tenant filter scopes it; it is never cross-company.
         var locations = await _db.Locations
             .Where(l => l.IsActive)
-            .Select(l => new { name = l.Name, latitude = l.Latitude, longitude = l.Longitude, radiusMeters = l.RadiusMeters })
+            .Select(l => new { id = l.Id, name = l.Name, latitude = l.Latitude, longitude = l.Longitude, radiusMeters = l.RadiusMeters })
             .ToListAsync(HttpContext.RequestAborted);
 
         return Ok(new
@@ -595,12 +606,39 @@ public class AttendanceController : ControllerBase
         // Identity comes from the authenticated JWT ("sub" claim), never from the body.
         var employeeId = User.EmployeeId();
 
-        // 1. QR token validity (signature/format/expiry — all server-side).
-        var validation = _qrTokenService.Validate(request.QrToken);
-        if (!validation.IsValid)
+        // 1. WHERE this scan is for. Normally the QR says: it is signed, it names the branch, and it
+        //    carries the version an admin bumps to revoke a poster. A branch with no poster
+        //    (Location.QrlessCheckIn) has nothing to scan, so the employee's OWN branch stands in.
+        //    Only their own — with no poster there is no walk to a fixed point, and letting the phone
+        //    name a branch would make the geofence whichever one the person happened to be nearest.
+        //    And only where the branch says so: an empty token anywhere else is still malformed,
+        //    exactly as before, so a poster can never be bypassed by sending nothing.
+        Guid scanLocationId;
+        int? tokenVersion = null;
+        var qrless = string.IsNullOrWhiteSpace(request.QrToken);
+        if (qrless)
         {
-            await WriteAuditAsync(employeeId, AuditEventType.CheckInRejected, validation.FailureReason, ip);
-            return BadRequest(new { error = validation.FailureReason });
+            var own = await _db.Employees
+                .Where(e => e.Id == employeeId && e.IsActive)
+                .Join(_db.Locations, e => e.LocationId, l => l.Id, (e, l) => new { l.Id, l.QrlessCheckIn })
+                .FirstOrDefaultAsync();
+            if (own is null || !own.QrlessCheckIn)
+            {
+                await WriteAuditAsync(employeeId, AuditEventType.CheckInRejected, "TokenMalformed", ip);
+                return BadRequest(new { error = "TokenMalformed" });
+            }
+            scanLocationId = own.Id;
+        }
+        else
+        {
+            var validation = _qrTokenService.Validate(request.QrToken!);
+            if (!validation.IsValid)
+            {
+                await WriteAuditAsync(employeeId, AuditEventType.CheckInRejected, validation.FailureReason, ip);
+                return BadRequest(new { error = validation.FailureReason });
+            }
+            scanLocationId = validation.LocationId!.Value;
+            tokenVersion = validation.Version;
         }
 
         // No per-token replay/nonce check: the QR is a STATIC printed poster meant to be scanned by
@@ -630,7 +668,7 @@ public class AttendanceController : ControllerBase
         // 4. Geofence — must be within the location's radius (token carries the LocationId).
         //    Checked BEFORE the device on purpose: an unrecognised device may only be adopted once we
         //    know the employee is standing at the location, so nobody can bind a phone from home.
-        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == validation.LocationId!.Value);
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == scanLocationId);
         if (location is null)
         {
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "LocationNotFound", ip);
@@ -643,7 +681,8 @@ public class AttendanceController : ControllerBase
         }
         // A version mismatch means this QR was revoked (admin "invalidated" it after this token was
         // issued — e.g. a printed poster after regeneration) — treat it the same as an expired code.
-        if (validation.Version != location.QrVersion)
+        // (A QR-less scan carries no version — there is no poster to have revoked.)
+        if (tokenVersion is int version && version != location.QrVersion)
         {
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "TokenExpired", ip);
             return BadRequest(new { error = "TokenExpired" });
@@ -752,7 +791,7 @@ public class AttendanceController : ControllerBase
             }
 
             return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
-                request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow);
+                request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
         }
 
         if (record.CheckOutAtUtc is null)
@@ -777,7 +816,8 @@ public class AttendanceController : ControllerBase
 
     private async Task<IActionResult> CheckInAsync(
         Employee employee, Location location, EffectiveShift shift, DateOnly today, DateTime nowUtc, string? ip, string? photoBase64,
-        double latitude, double longitude, Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null)
+        double latitude, double longitude, Guid? clientScanId = null, bool wasOffline = false, DateTime? submittedAtUtc = null,
+        bool qrless = false)
     {
         var record = new AttendanceRecord
         {
@@ -817,7 +857,21 @@ public class AttendanceController : ControllerBase
         // already committed — and a deploy or crash must never lose an accepted selfie.
         var photoAccepted = await TryQueueCheckInPhotoAsync(employee, record, photoBase64);
 
-        await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, null, ip);
+        // With no poster there was no walk to a fixed point, so the selfie is the only anchor left —
+        // and an anchor nobody sees does not hold. On a QR-less check-in the face is compared NOW and
+        // the verdict goes back to the screen the person is looking at. It is still not a gate: a
+        // mismatch is recorded and flagged red for the manager, through the same board flag and
+        // warning tools any other flag gets, because a hard block turns one bad photograph into a lost
+        // day of pay. The background worker re-runs the same comparison after the upload; one
+        // duplicate Rekognition call for the handful of people this applies to is the price of keeping
+        // a single code path for the stored verdict.
+        FaceMatchStatus? faceVerdict = null;
+        int? faceScore = null;
+        if (qrless)
+            (faceVerdict, faceScore) = await CompareFaceNowAsync(employee, record, photoAccepted ? photoBase64 : null);
+
+        // "Qrless" in the audit row is what distinguishes this check-in later — no poster was read.
+        await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, qrless ? "Qrless" : null, ip);
 
         // How many PAST days this employee left open (checked in, never out). Those days count as zero
         // hours, so the check-in card can show the running cost — the nudge that breaks the habit
@@ -837,8 +891,83 @@ public class AttendanceController : ControllerBase
             checkInAtUtc = nowUtc,
             // "Accepted for upload" — the actual R2 write happens out-of-band moments later.
             photoStored = photoAccepted,
-            openDays
+            openDays,
+            // QR-less only (null otherwise): the face verdict, so the screen can say it was checked.
+            faceMatch = faceVerdict?.ToString(),
+            faceScore
         });
+    }
+
+    /// <summary>
+    /// How long the request will wait on AWS for the face verdict. The phone gives up at 20 s and files
+    /// the tap as "saved offline" — for a check-in that is already committed — so a compare that runs
+    /// past this is worse than no compare: the verdict is decided later by the worker, exactly as it is
+    /// for a poster scan, and the screen says so instead of blaming the network.
+    /// </summary>
+    private static readonly TimeSpan FaceCheckBudget = TimeSpan.FromSeconds(6);
+
+    /// <summary>
+    /// The same comparison <see cref="FaceMatchWorker"/> makes, done inside the request. Never throws
+    /// and never decides anything: it writes the verdict onto the record and hands it back, and the
+    /// check-in above has already been committed whatever it says.
+    ///
+    /// Returns NotChecked when there was nothing to compare (feature off, photo refused by the queue),
+    /// and null when the answer is merely LATE — the budget ran out and the worker will write it.
+    /// </summary>
+    private async Task<(FaceMatchStatus? Status, int? Score)> CompareFaceNowAsync(
+        Employee employee, AttendanceRecord record, string? photoBase64)
+    {
+        if (!_faceMatch.Enabled || string.IsNullOrWhiteSpace(photoBase64))
+            return (FaceMatchStatus.NotChecked, null);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+        cts.CancelAfter(FaceCheckBudget);
+        var ct = cts.Token;
+        try
+        {
+            var bytes = DecodeImage(photoBase64);
+            if (bytes.Length is <= 0 or > 2 * 1024 * 1024)
+                return (FaceMatchStatus.NotChecked, null);
+
+            // No reference yet: the upload worker seeds one from this very photo — so this is the one
+            // moment to look at what it is seeding. Seventeen of the nineteen people this path is for
+            // have no reference at all, and a first selfie of the ceiling would have become the face
+            // every later morning is judged against: NoFace on every row, forever, with the fault
+            // pinned on the wrong photo. One detection call now, and an unfit photo is simply not
+            // promoted (PhotoUploadWorker reads the verdict); the next good one seeds instead.
+            if (string.IsNullOrEmpty(employee.ReferencePhotoKey))
+            {
+                var faces = await _faceMatch.DetectFaceCountAsync(bytes, ct);
+                record.FaceMatchStatus = faces switch
+                {
+                    0 => FaceMatchStatus.NoFace,
+                    1 => FaceMatchStatus.NoReference,
+                    _ => FaceMatchStatus.MultiFace,
+                };
+                await _db.SaveChangesAsync(ct);
+                return (record.FaceMatchStatus, null);
+            }
+
+            var reference = await _photoStorage.GetBytesAsync(employee.ReferencePhotoKey, ct);
+            var outcome = await _faceMatch.CompareAsync(reference, bytes, ct);
+            record.FaceMatchScore = outcome.Status is FaceMatchStatus.NoFace or FaceMatchStatus.Error
+                ? null
+                : outcome.Score;
+            record.FaceMatchStatus = outcome.Status;
+            await _db.SaveChangesAsync(ct);
+            return (outcome.Status, record.FaceMatchScore);
+        }
+        catch (OperationCanceledException)
+        {
+            // Out of budget (or the phone hung up). The record keeps NotChecked; the worker decides.
+            _logger.LogInformation("Face check in request: past budget for record {RecordId}, left to the worker", record.Id);
+            return (null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Face check in request: failed for record {RecordId}", record.Id);
+            return (FaceMatchStatus.Error, null);
+        }
     }
 
     // How many photos may sit in the durable queue at once before new ones are refused: ~180MB of

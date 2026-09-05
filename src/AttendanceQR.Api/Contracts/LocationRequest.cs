@@ -20,7 +20,13 @@ public record LocationRequest(
     string ShiftStart,
     string ShiftEnd,
     int LateThresholdMinutes,
-    int WorkDaysMask);
+    int WorkDaysMask,
+    // Nullable, and null means "leave it as it is" — NOT false. An admin editing a radius from a
+    // tab that loaded before this field existed posts no value for it, and a default of false would
+    // switch a branch's whole check-in method off with no log and no screen saying so: the next
+    // morning fourteen phones open a QR camera at a branch that has no poster. Same trap as
+    // EmployeeUpdateRequest, not repeated.
+    bool? QrlessCheckIn = null);
 
 /// <summary>Enable/disable a location without deleting it.</summary>
 public record SetActiveRequest(bool IsActive);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMyAttendance, getMyProfile, getMySummary, type AttendanceRecord, type MyProfile } from '../api/attendance'
+import { rememberQrless } from '../lib/qrless'
 import { getMyFieldVisits, type MyFieldVisit } from '../api/fieldVisits'
 import { useAuth } from '../auth/AuthContext'
 import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
@@ -54,7 +55,11 @@ export function HomePage() {
       getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] })),
     ])
     setFieldVisits(f.status === 200 && Array.isArray(f.data) ? f.data : [])
-    if (p.status === 200 && p.data && 'fullName' in p.data) setProfile(p.data)
+    if (p.status === 200 && p.data && 'fullName' in p.data) {
+      setProfile(p.data)
+      // The scan screen needs the branch fact even with no signal — kept on the phone, per person.
+      rememberQrless(employeeId, p.data.qrlessCheckIn === true)
+    }
     if (a.status === 200 && Array.isArray(a.data)) {
       setRecords([...a.data].sort((x, y) => (x.attendanceDate < y.attendanceDate ? 1 : -1)))
     }
@@ -224,7 +229,7 @@ export function HomePage() {
       {/* Only for a worker who actually has field work today — renders nothing for everyone else. */}
       <FieldVisitCards visits={fieldVisits} onChanged={reloadFieldVisits} canFieldCheckIn={profile?.canFieldCheckIn} />
 
-      <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} onScan={() => navigate('/scan')} />
+      <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} onScan={() => navigate('/scan')} />
 
       <div>
         <div className="mb-2 flex items-center justify-between px-1">
@@ -270,13 +275,19 @@ function isOverdue(checkInIso: string, shiftEnd?: string | null): boolean {
  *  bottom bar. Context-aware: green "Giriş et" before check-in, blue "Çıxış et" while at work (red and
  *  insistent once the shift is over — a forgotten check-out reads as zero hours), a calm summary once
  *  the day is done. The whole card is the tap target. */
-function ScanHero({ today, night, shiftEnd, onScan }: {
+function ScanHero({ today, night, shiftEnd, qrless, onScan }: {
   today: TodayState
   night: { kind: 'night'; checkIn: string } | null
   shiftEnd?: string | null
+  /** No poster at this branch — the same tap, but the words must not say "scan". */
+  qrless?: boolean
   onScan: () => void
 }) {
   const heroBtn = 'relative w-full overflow-hidden rounded-3xl p-6 text-left text-white shadow-lg transition active:scale-[.99]'
+  // The call to action, in the branch's own terms: at a poster it is a scan; without one it is a
+  // selfie and a position, and saying "skan" there sends somebody looking for a code that does not exist.
+  const cta = (scanWord: string, qrlessWord: string) =>
+    qrless ? <>📍 {qrlessWord}</> : <><IconQr className="h-5 w-5" /> {scanWord}</>
 
   // Checked first: for these ten hours the person IS at work, and the row that says so is yesterday's.
   // Only ever set when the server would in fact treat the next scan as that night's check-out.
@@ -297,7 +308,7 @@ function ScanHero({ today, night, shiftEnd, onScan }: {
           {over ? ' · çıxışı unutmayın!' : shiftEnd ? ` · Növbə bitir ${shiftEnd}` : ''}
         </div>
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
-          <IconQr className="h-5 w-5" /> Çıxış üçün skan et
+          {cta('Çıxış üçün skan et', 'Çıxış üçün toxunun')}
         </span>
       </button>
     )
@@ -311,7 +322,7 @@ function ScanHero({ today, night, shiftEnd, onScan }: {
         <div className="mt-1 text-3xl font-extrabold">Giriş et</div>
         <div className="mt-1 text-sm opacity-90">Hələ giriş etməmisiniz</div>
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
-          <IconQr className="h-5 w-5" /> Skan üçün toxunun
+          {cta('Skan üçün toxunun', 'Üz və GPS ilə giriş')}
         </span>
       </button>
     )
@@ -339,7 +350,7 @@ function ScanHero({ today, night, shiftEnd, onScan }: {
           </div>
         )}
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
-          <IconQr className="h-5 w-5" /> Çıxış üçün skan et
+          {cta('Çıxış üçün skan et', 'Çıxış üçün toxunun')}
         </span>
       </button>
     )

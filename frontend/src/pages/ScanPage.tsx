@@ -16,6 +16,7 @@ import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/f
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
+import { qrlessRoute, recallQrless, rememberQrless } from '../lib/qrless'
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
 import { todayStr } from '../lib/att'
@@ -45,6 +46,9 @@ type Card = {
   /** The check-in selfie, shown back to the employee — the capture is disclosed, not covert. */
   photo?: string
   showDeviceChangeLink?: boolean
+  /** What the retry button says. Defaults to «Yenidən skan et»; a QR-less check-in has no poster to
+   *  scan, and telling somebody to scan again sends them looking for one. */
+  retryLabel?: string
   /** Past days left open (checked in, never out). Shown as the running COST of forgetting to scan
    *  out — those days count as zero hours. Information only: nothing is auto-closed, nothing asked. */
   openDays?: number
@@ -146,12 +150,26 @@ export function ScanPage() {
   // screen can say «Nərimanov Ofis filialındasınız» — the sentence that tells somebody sent to
   // another site that scanning here is fine.
   const [atBranch, setAtBranch] = useState<string | null>(null)
+  // A QR-less branch, fence passed: the screen STOPS here and waits for a tap. Auto-navigate from home
+  // plus an intro that advances by itself plus an auto-captured selfie would otherwise record a
+  // check-in that nobody chose — open the app in the yard forty minutes early to read an announcement,
+  // and you have arrived. At a poster the deliberate act is aiming the camera; this button is its
+  // equivalent. `me` is carried with it because the profile state may not have rendered yet.
+  const [qrlessReady, setQrlessReady] = useState<{ me: MyProfile | null; branch: string | null } | null>(null)
+  // Neither the profile nor the phone's memory of it answered in time: the camera opens (the default
+  // every scan has ever had), and one line under it says why a person with no poster sees one.
+  const [branchUnknown, setBranchUnknown] = useState(false)
   // True once the front camera is actually producing frames, so the preview says "look at the
   // camera" rather than showing a black circle while it warms up.
   const [photoLive, setPhotoLive] = useState(false)
   // Set when the phone found no face in the selfie. The check-in still goes through — this only
   // offers a retake, because a camera that refuses to record attendance costs someone a day's pay.
   const [profile, setProfile] = useState<MyProfile | null>(null)
+  // The branch decides whether there is a poster to scan at all, so the pre-check must know the
+  // profile BEFORE it opens the QR camera — and the profile arrives on its own request. A promise
+  // rather than the state: runChecks starts the moment today's status is known, which can be before
+  // that request returns, and losing that race would open a QR camera at a branch that has no QR.
+  const profileReadyRef = useRef<Promise<MyProfile | null>>(Promise.resolve(null))
   const [noFacePhoto, setNoFacePhoto] = useState<string | null>(null)
   const [recheckMode, setRecheckMode] = useState<'ask' | 'final'>('ask')
   const recheckChoiceRef = useRef<((retake: boolean) => void) | null>(null)
@@ -187,9 +205,21 @@ export function ScanPage() {
     void loadTodayStatus()
     // Photo settings: whether this employee is exempt, and whether their last check-in showed no
     // face. Best-effort — a failure here must not delay or block the scan, so nothing awaits it.
-    void getMyProfile().then((r) => {
-      if (r.status === 200 && r.data && 'fullName' in r.data) setProfile(r.data)
-    })
+    profileReadyRef.current = getMyProfile()
+      .then((r) => {
+        const me = r.status === 200 && r.data && 'fullName' in r.data ? r.data : null
+        if (me) {
+          setProfile(me)
+          // The branch fact, kept on the phone for the next open with no signal.
+          rememberQrless(decodeJwt(getToken() ?? '')?.sub ?? null, me.qrlessCheckIn === true)
+        }
+        return me
+      })
+      // TOTAL — it can never reject. The pre-check awaits this before the camera, and a rejected
+      // promise there threw out of runChecks and left every offline phone at every poster branch
+      // with a black reader and no retry: the exact regression of the offline queue this app was
+      // built to prevent. A failed profile means "not known", never "not scannable".
+      .catch(() => null)
   }, [])
 
   // Decide the gate as soon as today's status is known: ask only before a check-IN, and only when the
@@ -240,6 +270,8 @@ export function ScanPage() {
     setResult(null)
     setRadiusFail(null)
     setAtBranch(null)
+    setQrlessReady(null)
+    setBranchUnknown(false)
     setPhase('scanning')
     scanDoneRef.current = false
     busyRef.current = false
@@ -307,6 +339,8 @@ export function ScanPage() {
     // there was a "scan anyway" link under it, and nobody pressed it — the sentence had already told
     // them scanning was not allowed, so they went home unrecorded. Now the nearest branch decides,
     // and when they are inside one the screen names it instead.
+    // The fence the phone is in, for the routing below — null when there is no branch list at all.
+    let hit: { id: string | null; name: string } | null = null
     if (branches.length > 0) {
       const ranked = branches
         .map((b) => ({
@@ -315,6 +349,7 @@ export function ScanPage() {
         }))
         .sort((a, b) => a.dist - b.dist)
       const inside = ranked.find((b) => b.dist <= b.radiusMeters)
+      hit = inside ? { id: inside.id ?? null, name: inside.name } : null
       if (!inside) {
         const nearest = ranked[0]
         setChecks((c) => ({ ...c, location: 'fail' }))
@@ -326,6 +361,26 @@ export function ScanPage() {
       setAtBranch(inside.name)
     }
     setChecks((c) => ({ ...c, location: 'ok', camera: 'run' }))
+
+    // No poster at this branch: there is nothing to point the camera at. The branch itself says so
+    // (profile.qrlessCheckIn), the fence has just passed, and from here the flow is the SAME one a
+    // decoded QR would enter — selfie, retake check, submit — with no token for the server to read.
+    //
+    // Three things this wait is NOT: unbounded (3 s, like the device check — a wedged profile request
+    // must not hold the camera shut for 640 people at 08:00), fatal (the promise cannot reject), or the
+    // only source (the phone remembers the fact from the last profile it saw, so a QR-less worker with
+    // no signal still gets the selfie path). And the route is decided by PLACE, the way the server
+    // decides it — see qrlessRoute — so a driver helping at a branch that HAS a poster gets the camera.
+    const myId = decodeJwt(getToken() ?? '')?.sub ?? null
+    const me = await Promise.race([profileReadyRef.current, delay(3000).then(() => null)])
+    const known = me ? me.qrlessCheckIn === true : recallQrless(myId)
+    if (known === null) setBranchUnknown(true)
+    if (qrlessRoute({ known, ownLocationId: me?.locationId, insideId: hit?.id }) === 'selfie') {
+      setChecks((c) => ({ ...c, camera: 'ok' }))
+      setVerifying(false)
+      setQrlessReady({ me, branch: hit?.name ?? null })
+      return
+    }
 
     // 3) Camera — the reader is now visible (phase 'scanning' + geo ready), so html5-qrcode attaches.
     await new Promise((r) => requestAnimationFrame(() => r(null)))
@@ -348,7 +403,13 @@ export function ScanPage() {
   function scanAnyway() {
     setRadiusFail(null)
     setChecks((c) => ({ ...c, location: 'ok', camera: 'ok' }))
-    void startCamera()
+    // The server is the final word on the fence either way; at a QR-less branch it is reached
+    // without a poster, so the escape hatch offers the same «Giriş et» button — still a tap.
+    const myId = decodeJwt(getToken() ?? '')?.sub ?? null
+    const known = profile ? profile.qrlessCheckIn === true : recallQrless(myId)
+    if (qrlessRoute({ known, ownLocationId: profile?.locationId, insideId: null }) === 'selfie')
+      setQrlessReady({ me: profile, branch: null })
+    else void startCamera()
   }
 
   /**
@@ -617,6 +678,17 @@ export function ScanPage() {
       if (foreignRef.current.seen(text)) setForeignQr(true)
       return
     }
+    await proceed(text)
+  }
+
+  /**
+   * Everything after the poster has been read — or, at a QR-less branch, in place of reading one.
+   * `token` is '' for QR-less: the server then uses the employee's own branch (Location.QrlessCheckIn).
+   * `me` is passed explicitly by the pre-check because it may run before the profile state has
+   * rendered; the decoded-QR path leaves it to the state it already has.
+   */
+  async function proceed(token: string, me: MyProfile | null = profile) {
+    setQrlessReady(null)
     busyRef.current = true
     foreignRef.current.reset()
     setForeignQr(false)
@@ -625,7 +697,7 @@ export function ScanPage() {
     await stopCamera()
     // An exempted employee never sees the camera: opening one and then throwing the frame away
     // would only teach everyone watching that the step is skippable.
-    const willPhotograph = today.kind === 'none' && profile?.photoRequired !== false
+    const willPhotograph = today.kind === 'none' && me?.photoRequired !== false
     if (willPhotograph) {
       setPhase('intro')
       await waitForIntro()
@@ -657,7 +729,7 @@ export function ScanPage() {
     }
 
     setPhase('processing')
-    await submitScan(text, photoBase64)
+    await submitScan(token, photoBase64)
     setPhase('done')
     // Keep the result on screen: mark done so reloading today's status doesn't restart the camera.
     scanDoneRef.current = true
@@ -665,6 +737,8 @@ export function ScanPage() {
   }
 
   async function submitScan(qrToken: string, photoBase64: string | null) {
+    // '' is the QR-less check-in — no poster was read, the server uses the employee's own branch.
+    const qrless = qrToken === ''
     // Warmed by the pre-flight check, so this normally returns a cached fix immediately. If the
     // employee revoked the permission between the two, fall back to the same instructions.
     const position = await getPosition()
@@ -765,13 +839,18 @@ export function ScanPage() {
 
       if (status === 200 && data?.action === 'CheckIn') {
         successFeedback()
+        const face = faceLine(data.faceMatch ?? (qrless ? 'Pending' : undefined))
         setResult({
           tone: 'green',
           title: 'Giriş qeydə alındı',
-          detail: `Saat ${fmtTime(data.checkInAtUtc, '')}`,
-          note: 'İş bitəndə çıxış üçün yenidən skan edin.',
-          // Just tell them they were late (vs their own hours, else the location's) — no reason asked.
-          warn: data.late ? 'Gecikdiniz' : undefined,
+          detail: `Saat ${fmtTime(data.checkInAtUtc, '')}${face.tick ? ` · ${face.tick}` : ''}`,
+          note: qrless
+            ? 'İş bitəndə çıxış üçün yenidən «Çıxış et»ə toxunun.'
+            : 'İş bitəndə çıxış üçün yenidən skan edin.',
+          // A face that did not verify outranks lateness: it is the rarer and the graver notice, and
+          // it is the one the manager will be looking at. Otherwise just tell them they were late (vs
+          // their own hours, else the location's) — no reason asked.
+          warn: face.warn ?? (data.late ? 'Gecikdiniz' : undefined),
           final: true,
           photo: photoBase64 ?? undefined,
           openDays: data.openDays,
@@ -800,7 +879,20 @@ export function ScanPage() {
       // A hard rejection (wrong device, inactive account) buzzes so it's felt; soft/yellow states
       // (QR expired, "too soon") stay silent — they aren't failures worth a jolt.
       if (card.tone === 'red') errorFeedback()
-      setResult(card)
+      setResult(
+        qrless && data?.error === 'TokenMalformed'
+          // The server no longer treats this branch as poster-less (the flag was switched off, or this
+          // phone's profile is stale). Named plainly, with the one person who can put it right — the
+          // raw code «TokenMalformed» would only tell them the app is broken.
+          ? {
+              tone: 'red',
+              title: 'Bu filialda üz ilə giriş bağlanıb',
+              detail: 'Filialın QR-siz giriş ayarı dəyişib.',
+              note: 'Rəhbərinizə deyin — ya poster asılmalı, ya da ayar geri açılmalıdır.',
+              final: true,
+            }
+          : qrless ? { ...card, retryLabel: 'Yenidən cəhd et' } : card,
+      )
     } catch {
       // No connection, or the 20s deadline fired — instead of failing, save the scan on the device
       // and sync it when the server is reachable again. GPS + selfie were already captured, so
@@ -813,7 +905,7 @@ export function ScanPage() {
   // Don't open the camera behind the notification gate — nothing should be filming while the employee
   // is looking at a permission prompt.
   const showCamera =
-    pushGate === 'skip' && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail
+    pushGate === 'skip' && today.kind !== 'loading' && today.kind !== 'completed' && geo.kind === 'ready' && phase === 'scanning' && !cameraError && !radiusFail && !qrlessReady
 
   return (
     <div className="relative min-h-screen flex flex-col bg-[#080C14] text-white overflow-hidden selection:bg-blue-500/30">
@@ -922,6 +1014,35 @@ export function ScanPage() {
         {showCamera && atBranch && (
           <div className="w-full max-w-sm rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center text-xs font-semibold text-emerald-200 backdrop-blur-md">
             📍 {atBranch} filialındasınız — skan edə bilərsiniz
+          </div>
+        )}
+
+        {/* No poster here — the one deliberate act a check-in needs is this button. */}
+        {qrlessReady && phase === 'scanning' && !result && (
+          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-b from-emerald-950/60 to-slate-900/90 p-6 text-center shadow-2xl backdrop-blur-2xl">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/20 text-2xl">
+              📍
+            </div>
+            <h2 className="text-lg font-extrabold text-white">
+              {qrlessReady.branch ? `${qrlessReady.branch} filialındasınız` : 'Filialınızın ərazisindəsiniz'}
+            </h2>
+            <p className="mt-2 text-xs font-medium text-slate-300 leading-relaxed">
+              Bu filialda QR posteri yoxdur.{' '}
+              {today.kind === 'none' ? 'Giriş selfi və GPS ilə qeydə alınır.' : 'Çıxış GPS ilə qeydə alınır.'}
+            </p>
+            <button
+              onClick={() => void proceed('', qrlessReady.me)}
+              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 py-3.5 text-base font-bold text-white shadow-lg shadow-emerald-500/25 transition active:scale-[0.98] cursor-pointer"
+            >
+              {today.kind === 'none' ? 'Giriş et' : 'Çıxış et'}
+            </button>
+          </div>
+        )}
+
+        {/* The camera opened because the branch fact never arrived — say so, once, under it. */}
+        {showCamera && branchUnknown && (
+          <div className="w-full max-w-sm rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs font-medium text-amber-200 backdrop-blur-md">
+            Filial məlumatı yüklənmədi. Posteriniz yoxdursa, internet qayıdanda yenidən cəhd edin.
           </div>
         )}
 
@@ -1240,7 +1361,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
           onClick={onRetry}
           className="mt-6 flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/25 transition active:scale-[0.98] cursor-pointer"
         >
-          Yenidən skan et
+          {card.retryLabel ?? 'Yenidən skan et'}
         </button>
       )}
 
@@ -1282,6 +1403,10 @@ interface ScanResponse {
   minutes?: number
   /** Past days this employee left open (checked in, never out) — each counts as zero hours. */
   openDays?: number
+  /** QR-less check-in only: the face verdict decided before this reply
+   *  (Ok · Mismatch · NoFace · MultiFace · NoReference · Error). Absent on a poster scan. */
+  faceMatch?: string
+  faceScore?: number | null
 }
 
 interface MeRecord {
@@ -1427,6 +1552,29 @@ async function workedDurationText(recordId: string): Promise<string | undefined>
  * second number is what makes an impossible reading legible: ±800 m next to "1276 m" explains
  * itself instantly, and points at the one thing the reader can change.
  */
+/**
+ * What the check-in card says about the face verdict a QR-less check-in returns. A verified face earns
+ * a quiet tick on the detail line; only the verdicts the person can act on get the warning pill. None
+ * of them changes the outcome — the check-in is already recorded — which is exactly why the words
+ * must be plain: «rəhbər görəcək» is the consequence, said to their face.
+ */
+function faceLine(verdict: string | undefined): { tick?: string; warn?: string } {
+  switch (verdict) {
+    case 'Ok': return { tick: 'Üz təsdiqləndi ✓' }
+    case 'Mismatch': return { warn: 'Üz etalonla uyğun gəlmədi — rəhbər görəcək' }
+    case 'NoFace': return { warn: 'Şəkildə üz görünmür' }
+    case 'MultiFace': return { warn: 'Şəkildə bir neçə üz var' }
+    // The upload worker seeds the reference from this very photo (one clear face was seen in it), so
+    // this is news, not a fault.
+    case 'NoReference': return { tick: 'İlk şəkliniz nümunə kimi yadda saxlanıldı' }
+    // The verdict ran out of its budget inside the request; the worker writes it moments later.
+    case 'Pending': return { tick: 'Üz sonra yoxlanacaq' }
+    // Nothing to compare — the photo was refused, or the face service is off.
+    case 'NotChecked': return { tick: 'Üz yoxlanılmadı' }
+    default: return {}
+  }
+}
+
 function locationCard(distance: number | null | undefined, accuracy?: number): Card {
   // Poor accuracy is the likelier story whenever the phone admits to a wide margin — and a margin
   // wider than the overshoot means the reading cannot decide the question at all.

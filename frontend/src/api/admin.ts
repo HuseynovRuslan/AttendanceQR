@@ -229,6 +229,8 @@ export interface AdminLocation {
   // Bitmask indexed by JS Date.getDay() (Sunday=0 ... Saturday=6): bit set = working day.
   // Default 126 = every day except Sunday.
   workDaysMask: number
+  /** No QR poster here: staff check in from the home screen with a selfie + GPS (see Location.QrlessCheckIn). */
+  qrlessCheckIn: boolean
 }
 
 /** Create/update payload — active state is managed separately via setLocationActive. */

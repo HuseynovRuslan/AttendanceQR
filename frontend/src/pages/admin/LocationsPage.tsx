@@ -27,6 +27,7 @@ type FormState = {
   shiftEnd: string
   lateThresholdMinutes: string
   workDaysMask: number
+  qrlessCheckIn: boolean
 }
 
 // Index = JS Date.getDay() / .NET DayOfWeek (Sunday=0 ... Saturday=6) — same convention as the
@@ -43,6 +44,7 @@ const EMPTY: FormState = {
   shiftEnd: '18:00',
   lateThresholdMinutes: '15',
   workDaysMask: DEFAULT_WORK_DAYS_MASK,
+  qrlessCheckIn: false,
 }
 
 const ERRORS: Record<string, string> = {
@@ -56,6 +58,7 @@ const ERRORS: Record<string, string> = {
   LocationInUse: 'Bu filial istifadə olunur — silinə bilməz',
   LocationNotFound: 'Filial tapılmadı',
   WorkDaysMaskInvalid: 'İş günləri seçimi yanlışdır',
+  FaceMatchDisabled: 'Üz tanıma bu serverdə söndürülüb — QR-siz giriş açıla bilməz (selfi yeganə lövbərdir)',
 }
 
 /** Why this branch will not delete, and what to do about it — the two causes have different answers.
@@ -204,6 +207,7 @@ export function LocationsPage() {
       shiftEnd: l.shiftEnd,
       lateThresholdMinutes: String(l.lateThresholdMinutes),
       workDaysMask: l.workDaysMask,
+      qrlessCheckIn: l.qrlessCheckIn,
     })
     setError(null)
     setOk(null)
@@ -224,6 +228,7 @@ export function LocationsPage() {
       shiftEnd: form.shiftEnd,
       lateThresholdMinutes: Number(form.lateThresholdMinutes),
       workDaysMask: form.workDaysMask,
+      qrlessCheckIn: form.qrlessCheckIn,
     }
     const { status, data } = editingId
       ? await updateLocation(editingId, payload)
@@ -530,6 +535,25 @@ export function LocationsPage() {
               )
             })}
           </div>
+        </div>
+
+        {/* The poster's absence is a fact about the PLACE, so it is set here and not on each person:
+            everyone posted to this branch checks in the same way, and a new hire inherits it. */}
+        <div className="form-row">
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={form.qrlessCheckIn}
+              onChange={(e) => setForm((f) => ({ ...f, qrlessCheckIn: e.target.checked }))}
+            />
+            QR posteri yoxdur — işçilər üz və GPS ilə giriş edir
+          </label>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Poster asmağa yer olmayan filial üçün (yol boyu ərazi, stadion ətrafı). Bu filialın işçiləri ana
+            ekranda «Giriş et»ə toxunur: selfi çəkilir, üz etalon şəkillə tutuşdurulur, GPS filialın radiusu ilə
+            yoxlanır və giriş adi qaydada qeydə alınır. Uyğunsuzluq girişi dayandırmır — lövhədə qırmızı
+            işarələnir.
+          </p>
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>

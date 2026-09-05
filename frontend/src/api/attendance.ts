@@ -87,11 +87,11 @@ export interface MyDeviceStatus {
   activeDeviceCount: number
   autoBindEnabled: boolean
   /** The employee's assigned location, for the pre-scan geofence check (null if none). */
-  location: { name: string; latitude: number; longitude: number; radiusMeters: number } | null
+  location: { id?: string; name: string; latitude: number; longitude: number; radiusMeters: number } | null
   /** Every active branch of the company — the scan accepts any of them, so the pre-check must too.
    *  Optional: a phone running a cached bundle against an older server simply falls back to the
    *  assigned branch above. */
-  locations?: { name: string; latitude: number; longitude: number; radiusMeters: number }[]
+  locations?: { id?: string; name: string; latitude: number; longitude: number; radiusMeters: number }[]
 }
 
 /** GET /api/attendance/me/device — is THIS browser bound to my account? Safari and the installed app
@@ -107,6 +107,8 @@ export interface MyProfile {
   role: string
   position: string | null
   locationName: string | null
+  /** The assigned branch's id — the scan screen routes by PLACE (inside MY branch vs another one). */
+  locationId?: string
   /** Full date of birth "yyyy-MM-dd" (null if unset) — for the home-screen birthday greeting. */
   birthDate?: string | null
   /** False when an admin has waived the check-in selfie for this employee. */
@@ -114,6 +116,10 @@ export interface MyProfile {
   /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). Gates the
    *  menu row + the home self-report; off by default so a plain office worker never sees any of it. */
   canFieldCheckIn?: boolean
+  /** This employee's branch has no QR poster: check-in is a selfie + GPS from the home screen, and the
+   *  scan screen must not open the QR camera. Decided by the branch (Location.QrlessCheckIn), so a new
+   *  hire assigned there is right without anybody ticking a box. */
+  qrlessCheckIn?: boolean
   /** May this person take part in a shared brigade phone? Gates the account switcher: without it the
    *  server refuses to adopt the handset, so the button could only ever fail at the poster. */
   canShareDevice?: boolean

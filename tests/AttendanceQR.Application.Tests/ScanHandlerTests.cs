@@ -48,7 +48,7 @@ public class ScanHandlerTests
         public Location Location { get; }
         private readonly IQrTokenService _qr;
 
-        public Harness(TimeOnly? shiftStart = null, TimeOnly? shiftEnd = null)
+        public Harness(TimeOnly? shiftStart = null, TimeOnly? shiftEnd = null, IFaceMatchService? face = null)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantId);
@@ -93,7 +93,7 @@ public class ScanHandlerTests
 
             Face = new StubFace();
             Controller = new AttendanceController(
-                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new PhotoUploadQueue(), Face,
+                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new PhotoUploadQueue(), face ?? Face,
                 new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),
@@ -171,6 +171,90 @@ public class ScanHandlerTests
 
         var result = await h.Controller.Scan(h.Scan(token: h.ValidToken(version: 1)));
         Assert.Equal("TokenExpired", Error(result));
+    }
+
+    // --- a branch with no poster (Location.QrlessCheckIn) -----------------------
+
+    [Fact]
+    public async Task At_a_QRless_branch_an_empty_token_checks_in_at_the_employees_own_fence()
+    {
+        using var h = new Harness();
+        h.Location.QrlessCheckIn = true;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(token: ""));
+
+        Assert.Equal("CheckIn", Action(result));
+        var record = await h.Db.AttendanceRecords.SingleAsync();
+        // The employee's OWN branch stands in for the poster — never one the phone picked.
+        Assert.Equal(h.LocationId, record.LocationId);
+    }
+
+    [Fact]
+    public async Task An_empty_token_at_a_branch_WITH_a_poster_is_still_malformed()
+    {
+        // The escape hatch belongs to the BRANCH, not the phone: sending nothing must not bypass a
+        // poster that exists. Otherwise every fence in the company could be scanned from anywhere
+        // inside it without ever walking to the code.
+        using var h = new Harness();
+
+        var result = await h.Controller.Scan(h.Scan(token: ""));
+
+        Assert.Equal("TokenMalformed", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task A_QRless_check_in_is_still_fenced_to_the_own_branch()
+    {
+        using var h = new Harness();
+        h.Location.QrlessCheckIn = true;
+        await h.Db.SaveChangesAsync();
+
+        // ~1.5 km north of the fence. No poster does not mean no fence.
+        var result = await h.Controller.Scan(h.Scan(token: "", lat: OfficeLat + 0.015));
+
+        Assert.Equal("OutsideRadius", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task A_QRless_check_in_compares_the_face_in_the_request_and_a_mismatch_flags_but_never_blocks()
+    {
+        // With no poster the selfie is the only anchor, so it is judged before the reply — and the
+        // reply says so. It is still not a gate: the record exists, red, for the manager.
+        var face = new MismatchFace();
+        using var h = new Harness(face: face);
+        h.Location.QrlessCheckIn = true;
+        var e = await h.Db.Employees.SingleAsync();
+        e.ReferencePhotoKey = "ref/k";
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(token: "") with { PhotoBase64 = TinyPhoto });
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.Equal("Mismatch", FaceMatch(result));
+        Assert.Equal(1, face.Compares);
+        var record = await h.Db.AttendanceRecords.SingleAsync();
+        Assert.Equal(FaceMatchStatus.Mismatch, record.FaceMatchStatus);
+    }
+
+    [Fact]
+    public async Task A_poster_scan_does_not_pay_for_a_face_comparison_inside_the_request()
+    {
+        // The in-request comparison is the QR-less path's alone. At a poster the walk to the code is
+        // the anchor, and the comparison stays in the background worker where it always was.
+        var face = new MismatchFace();
+        using var h = new Harness(face: face);
+        var e = await h.Db.Employees.SingleAsync();
+        e.ReferencePhotoKey = "ref/k";
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan() with { PhotoBase64 = TinyPhoto });
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.Null(FaceMatch(result));
+        Assert.Equal(0, face.Compares);
     }
 
     // --- idempotency: an offline replay must not double-count ----------------
@@ -333,6 +417,10 @@ public class ScanHandlerTests
     private static string? Action(IActionResult r) => Prop(r, "action")?.ToString();
     private static string? Error(IActionResult r) => Prop(r, "error")?.ToString();
     private static int StatusCode(IActionResult r) => r is ObjectResult o ? o.StatusCode ?? 200 : 200;
+    private static string? FaceMatch(IActionResult r) => Prop(r, "faceMatch")?.ToString();
+
+    // Any non-empty payload: the handler only base64-decodes it and bounds the length.
+    private static readonly string TinyPhoto = Convert.ToBase64String(new byte[] { 1, 2, 3 });
 
     // --- stubs: none are exercised by the scan path when no photo is sent ----
 
@@ -367,6 +455,19 @@ public class ScanHandlerTests
             Detections++;
             return Task.FromResult(-1);
         }
+    }
+
+    /// <summary>A live matcher that always says "somebody else" — and counts how often it was asked.</summary>
+    private sealed class MismatchFace : IFaceMatchService
+    {
+        public int Compares { get; private set; }
+        public bool Enabled => true;
+        public Task<FaceMatchOutcome> CompareAsync(byte[] r, byte[] c, CancellationToken ct = default)
+        {
+            Compares++;
+            return Task.FromResult(new FaceMatchOutcome(12, 1, FaceMatchStatus.Mismatch));
+        }
+        public Task<int> DetectFaceCountAsync(byte[] p, CancellationToken ct = default) => Task.FromResult(-1);
     }
 
     private sealed class StubQuery : IAttendanceQueryService

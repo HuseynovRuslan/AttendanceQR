@@ -38,12 +38,25 @@ public class AdminLocationsController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
+    private readonly IFaceMatchService _faceMatch;
+    private readonly ILogger<AdminLocationsController> _logger;
 
-    public AdminLocationsController(AppDbContext db, IQrTokenService qrTokenService)
+    public AdminLocationsController(AppDbContext db, IQrTokenService qrTokenService,
+        IFaceMatchService faceMatch, ILogger<AdminLocationsController> logger)
     {
         _db = db;
         _qrTokenService = qrTokenService;
+        _faceMatch = faceMatch;
+        _logger = logger;
     }
+
+    /// <summary>
+    /// A branch without a poster leans on the selfie as its only anchor. With the face service off
+    /// that anchor does not exist: the check-in would be GPS-only, no verdict, no flag, and nothing on
+    /// any screen saying so. Refused rather than allowed to fail silently.
+    /// </summary>
+    private IActionResult? RefuseQrlessWithoutFaceService(bool? wanted) =>
+        wanted == true && !_faceMatch.Enabled ? BadRequest(new { error = "FaceMatchDisabled" }) : null;
 
     [HttpGet]
     public async Task<IActionResult> List()
@@ -67,6 +80,8 @@ public class AdminLocationsController : ControllerBase
     {
         if (!TryValidate(request, out var start, out var end, out var error))
             return BadRequest(new { error });
+        if (RefuseQrlessWithoutFaceService(request.QrlessCheckIn) is { } refused)
+            return refused;
 
         var location = new Location
         {
@@ -77,7 +92,8 @@ public class AdminLocationsController : ControllerBase
             ShiftStart = start,
             ShiftEnd = end,
             LateThresholdMinutes = request.LateThresholdMinutes,
-            WorkDaysMask = request.WorkDaysMask
+            WorkDaysMask = request.WorkDaysMask,
+            QrlessCheckIn = request.QrlessCheckIn ?? false
         };
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
@@ -97,6 +113,8 @@ public class AdminLocationsController : ControllerBase
 
         if (!TryValidate(request, out var start, out var end, out var error))
             return BadRequest(new { error });
+        if (RefuseQrlessWithoutFaceService(request.QrlessCheckIn) is { } refused)
+            return refused;
 
         // Read the old fence BEFORE overwriting it — the distance is the whole point of the record,
         // and after the assignment below there is nothing left to measure against.
@@ -112,6 +130,13 @@ public class AdminLocationsController : ControllerBase
         location.ShiftEnd = end;
         location.LateThresholdMinutes = request.LateThresholdMinutes;
         location.WorkDaysMask = request.WorkDaysMask;
+        if (request.QrlessCheckIn is bool qrless && qrless != location.QrlessCheckIn)
+        {
+            // Loud either way: this flips how every person at the branch records their day.
+            _logger.LogWarning("Location {LocationId} ({Name}): QrlessCheckIn {From} -> {To}",
+                location.Id, location.Name, location.QrlessCheckIn, qrless);
+            location.QrlessCheckIn = qrless;
+        }
 
         if (fenceChanged)
         {
@@ -278,7 +303,8 @@ public class AdminLocationsController : ControllerBase
         shiftEnd = l.ShiftEnd.ToString("HH:mm"),
         lateThresholdMinutes = l.LateThresholdMinutes,
         isActive = l.IsActive,
-        workDaysMask = l.WorkDaysMask
+        workDaysMask = l.WorkDaysMask,
+        qrlessCheckIn = l.QrlessCheckIn
     };
 
     private static bool TryValidate(LocationRequest r, out TimeOnly start, out TimeOnly end, out string? error)

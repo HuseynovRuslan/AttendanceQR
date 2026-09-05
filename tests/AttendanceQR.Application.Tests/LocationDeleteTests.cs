@@ -7,6 +7,7 @@ using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -53,7 +54,9 @@ public class LocationDeleteTests
 
             Controller = new AdminLocationsController(
                 Db,
-                new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-for-location-delete", TtlSeconds = 60 })))
+                new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-for-location-delete", TtlSeconds = 60 })),
+                new OffFaceMatch(),
+                NullLogger<AdminLocationsController>.Instance)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             };

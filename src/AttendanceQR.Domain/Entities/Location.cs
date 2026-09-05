@@ -67,4 +67,22 @@ public class Location : ITenantScoped
     /// DailySummaryStatus.DayOff instead of Absent when nobody checked in.
     /// </summary>
     public int WorkDaysMask { get; set; } = 126;
+
+    /// <summary>
+    /// This branch has no QR poster — there is nowhere to hang one (a stretch of road, a stadium's
+    /// surroundings) — so its staff check in from the home screen with a selfie and GPS instead.
+    ///
+    /// A property of the BRANCH, deliberately not of the employee. The poster's absence is a fact
+    /// about the place: everyone posted there is in the same position, and a new hire assigned here
+    /// inherits it without anybody remembering to tick a box on their card. Nineteen people at two
+    /// such branches had spent five weeks invisible to the system — not because a per-person
+    /// permission was missing (it had been granted to all of them) but because nothing about the
+    /// place told the app there was no poster to scan.
+    ///
+    /// What it changes on a scan: the QR token may be empty, the employee's OWN branch stands in for
+    /// the one a poster would name, the geofence is that branch's, and the face is compared before
+    /// the reply rather than in the background — with no poster the selfie is the only anchor left.
+    /// It never loosens the fence and never lets the phone choose a different branch.
+    /// </summary>
+    public bool QrlessCheckIn { get; set; }
 }

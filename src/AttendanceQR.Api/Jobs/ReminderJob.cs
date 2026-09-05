@@ -159,7 +159,9 @@ public sealed class ReminderJob : BackgroundService
                         {
                             await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.CheckInSoon, todayLocal,
                                 "İş vaxtınız başlayır",
-                                $"{_push.CheckInReminderLeadMinutes} dəqiqəyə növbəniz başlayır. Gələndə QR kodu skan edib giriş etməyi unutmayın.",
+                                location.QrlessCheckIn
+                                    ? $"{_push.CheckInReminderLeadMinutes} dəqiqəyə növbəniz başlayır. Gələndə ana ekranda «Giriş et»ə toxunmağı unutmayın."
+                                    : $"{_push.CheckInReminderLeadMinutes} dəqiqəyə növbəniz başlayır. Gələndə QR kodu skan edib giriş etməyi unutmayın.",
                                 ct);
                         }
                     }
@@ -181,7 +183,9 @@ public sealed class ReminderJob : BackgroundService
                     {
                         await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.CheckOutSoon, openDay,
                             "İş vaxtınız bitir",
-                            $"{_push.CheckoutReminderLeadMinutes} dəqiqəyə növbəniz bitir. Çıxışı skan etməyi unutmayın — yoxsa bu gün 0 saat sayılacaq.",
+                            location.QrlessCheckIn
+                                ? $"{_push.CheckoutReminderLeadMinutes} dəqiqəyə növbəniz bitir. «Çıxış et»ə toxunmağı unutmayın — yoxsa bu gün 0 saat sayılacaq."
+                                : $"{_push.CheckoutReminderLeadMinutes} dəqiqəyə növbəniz bitir. Çıxışı skan etməyi unutmayın — yoxsa bu gün 0 saat sayılacaq.",
                             ct);
                     }
 

@@ -85,12 +85,17 @@ public sealed class FaceMatchWorker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "FaceMatchWorker: could not download photos for {RecordId}", recordId);
+            // A verdict already decided in the request (QR-less check-in) outranks a download blip.
+            if (FaceVerdicts.IsDecided(record.FaceMatchStatus))
+                return;
             record.FaceMatchStatus = FaceMatchStatus.Error;
             await db.SaveChangesAsync(ct);
             return;
         }
 
         var outcome = await face.CompareAsync(refBytes, chkBytes, ct);
+        if (outcome.Status == FaceMatchStatus.Error && FaceVerdicts.IsDecided(record.FaceMatchStatus))
+            return;
         record.FaceMatchScore = outcome.Status is FaceMatchStatus.NoFace or FaceMatchStatus.Error
             ? null
             : outcome.Score;

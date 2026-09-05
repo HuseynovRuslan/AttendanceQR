@@ -33,6 +33,8 @@ export interface SidebarBadges {
   openRecords: number
   /** Open team-board items past their date — the board is otherwise the only place they show. */
   overdueTasks: number
+  /** Today's check-ins whose selfie did not verify (Mismatch / MultiFace / NoFace). */
+  suspiciousToday?: number
 }
 
 /** GET /api/admin/notifications/badges */

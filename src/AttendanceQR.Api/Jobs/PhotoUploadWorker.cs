@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -176,7 +177,9 @@ public sealed class PhotoUploadWorker : BackgroundService
 
             record.CheckInPhotoKey = await storage.UploadCheckInPhotoAsync(employee.Id, record.Id, pending.Bytes, ct);
             record.CheckInPhotoTakenAtUtc = nowUtc;
-            if (!hadReference)
+            // A QR-less check-in has already looked at this photo (CompareFaceNowAsync): a frame with
+            // no face, or with a crowd in it, must not become the face everything after is judged by.
+            if (!hadReference && !FaceVerdicts.UnfitAsReference(record.FaceMatchStatus))
             {
                 employee.ReferencePhotoKey = await storage.UploadReferencePhotoAsync(employee.Id, pending.Bytes, ct);
                 employee.ReferencePhotoTakenAtUtc = nowUtc;
@@ -187,7 +190,9 @@ public sealed class PhotoUploadWorker : BackgroundService
             _queue.PendingDelta(-1);
             _queue.MarkUploaded();
 
-            if (hadReference)
+            // The worker is the retry path for a verdict not yet decided — never a second opinion on one
+            // that was (see FaceVerdicts): a QR-less check-in decided its face inside the request.
+            if (hadReference && !FaceVerdicts.IsDecided(record.FaceMatchStatus))
                 _faceQueue.Enqueue(tenantId, record.Id);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)

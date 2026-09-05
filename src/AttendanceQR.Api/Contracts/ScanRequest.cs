@@ -41,8 +41,15 @@ namespace AttendanceQR.Api.Contracts;
 /// True when this scan was captured with no connection and is now being synced. Switches the record's
 /// time to the phone's clock and marks it WasOffline for the admin to audit.
 /// </param>
+/// <param name="QrToken">
+/// The poster's signed token — or NOTHING, at a branch that has no poster. Nullable so that an empty
+/// or missing value binds instead of tripping the implicit [Required] MVC adds to a non-nullable
+/// string, which would 400 the QR-less check-in before the handler ever saw it. Whether an empty
+/// token is acceptable is the SERVER's call (Location.QrlessCheckIn), never the phone's: at a branch
+/// with a poster it is still refused as malformed.
+/// </param>
 public record ScanRequest(
-    string QrToken,
+    string? QrToken,
     string DeviceFingerprint,
     [Range(-90d, 90d)] double Latitude,
     [Range(-180d, 180d)] double Longitude,

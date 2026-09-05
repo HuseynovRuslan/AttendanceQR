@@ -104,6 +104,8 @@ export function AdminLayout() {
     '/admin/pin-resets': badges?.pinResets,
     '/admin/open-records': badges?.openRecords,
     '/admin/tasks': badges?.overdueTasks,
+    // A face that did not verify is a flag only if somebody sees it — the count sits on the row.
+    '/admin/today': badges?.suspiciousToday,
   }
 
   // Close the drawer on every navigation, and if the window is resized past the mobile

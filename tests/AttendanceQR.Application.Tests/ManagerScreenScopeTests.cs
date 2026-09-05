@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -173,7 +174,8 @@ public class ManagerScreenScopeTests
     // --- the branch list ------------------------------------------------------------------------
 
     private static AdminLocationsController Locations(Fixture f, Guid who, EmployeeRole role) =>
-        new(f.Db, new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-manager-scope", TtlSeconds = 60 })))
+        new(f.Db, new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-manager-scope", TtlSeconds = 60 })),
+            new OffFaceMatch(), NullLogger<AdminLocationsController>.Instance)
         { ControllerContext = f.As(who, role) };
 
     [Fact]
