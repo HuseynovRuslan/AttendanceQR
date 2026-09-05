@@ -17,8 +17,11 @@ const BASE = basemap()
  * kilometres away say someone scanned from home. None of that is legible in a list of names — it only
  * reads on a map.
  *
- * Only OutsideRadius rows carry coordinates (the scan sent a position; the server stored it on
- * rejection). Every other reason — GPS blocked, device, token — never had a position to plot.
+ * Two reasons carry coordinates. OutsideRadius is a REFUSED scan. OutsideFenceAllowed is one that
+ * was recorded anyway, because that branch has its fence switched off to be measured — and those are
+ * the points that answer "where do these people actually stand", which is the whole reason to take a
+ * wall down. They are drawn in a different colour: one is a complaint, the other is evidence.
+ * Every other reason — GPS blocked, device, token — never had a position to plot.
  */
 
 export interface RejectPoint {
@@ -27,21 +30,24 @@ export interface RejectPoint {
   distanceM: number
   name: string
   atUtc: string
+  /** False for a scan that was RECORDED from outside a switched-off fence — evidence, not a refusal. */
+  refused: boolean
 }
 
-/** Parse the "lat,lng,dist" the server stashed in an OutsideRadius row's detail. Returns null for a
- *  row without coordinates (an older rejection, from before capture existed). */
+/** Parse the "lat,lng,dist" the server stashed in the detail of the two reasons that carry a
+ *  position. Skips a row without coordinates (an older rejection, from before capture existed). */
 export function parseRejectPoints(rows: ProblemRow[]): RejectPoint[] {
   const out: RejectPoint[] = []
   for (const r of rows) {
-    if (r.reason !== 'OutsideRadius' || !r.detail) continue
+    const refused = r.reason === 'OutsideRadius'
+    if ((!refused && r.reason !== 'OutsideFenceAllowed') || !r.detail) continue
     const parts = r.detail.split(',')
     if (parts.length < 3) continue
     const lat = Number(parts[0])
     const lng = Number(parts[1])
     const dist = Number(parts[2])
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
-    out.push({ lat, lng, distanceM: dist, name: r.employeeName, atUtc: r.atUtc })
+    out.push({ lat, lng, distanceM: dist, name: r.employeeName, atUtc: r.atUtc, refused })
   }
   return out
 }
@@ -80,9 +86,11 @@ export function ProblemsMap({ rows, geofences }: { rows: ProblemRow[]; geofences
   return (
     <div className="card" style={{ marginBottom: 14, overflow: 'hidden' }}>
       <div className="card-pad" style={{ paddingBottom: 8 }}>
-        <div style={{ fontWeight: 700, color: 'var(--c900)' }}>🗺️ Rədlər xəritədə</div>
+        <div style={{ fontWeight: 700, color: 'var(--c900)' }}>🗺️ Skanlar xəritədə</div>
         <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-          Mavi dairə — icazə verilən ərazi. Qırmızı nöqtələr — «iş yerindən kənarda» rədd alınan yerlər.
+          Mavi dairə — icazə verilən ərazi. <b style={{ color: '#dc2626' }}>Qırmızı</b> nöqtələr — rədd
+          alınan yerlər. <b style={{ color: '#0284c7' }}>Mavi</b> nöqtələr — GPS divarı sönülü filialda
+          radiusdan kənarda <b>qeydə alınan</b> girişlər: radiusu bunlara baxa-baxa təyin edin.
           Nöqtələr bir tərəfə yığılıbsa mərkəz səhvdir; kənarda düzülübsə ərazi radiusdan böyükdür.
         </div>
         {points.length === 0 && (
@@ -126,11 +134,14 @@ export function ProblemsMap({ rows, geofences }: { rows: ProblemRow[]; geofences
               key={`${p.lat}-${p.lng}-${i}`}
               center={[p.lat, p.lng]}
               radius={6}
-              pathOptions={{ color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.85, weight: 1.5 }}
+              pathOptions={p.refused
+                ? { color: '#dc2626', fillColor: '#ef4444', fillOpacity: 0.85, weight: 1.5 }
+                : { color: '#0369a1', fillColor: '#0ea5e9', fillOpacity: 0.85, weight: 1.5 }}
             >
               <Tooltip>
                 <b>{p.name}</b><br />
                 {fmtTime(p.atUtc)} · {p.distanceM} m kənarda
+                {p.refused ? ' · rədd edildi' : ' · qeydə alındı'}
               </Tooltip>
             </CircleMarker>
           ))}

@@ -1179,6 +1179,7 @@ public sealed class ReportQueryService : IReportQueryService
             // device and token checks all run before we decide in vs out, so an evening OutsideRadius
             // logged as CheckInRejected was a check-OUT attempt mislabelled "Giriş".
             AuditEventType.CheckInRejected => "Scan",
+            AuditEventType.CheckInOutsideFence => "Scan",
             AuditEventType.CheckOutRejected => "CheckOut",
             _ => "Device"
         };
@@ -1193,9 +1194,13 @@ public sealed class ReportQueryService : IReportQueryService
         }
 
         var problems = dayLogs
+            // CheckInOutsideFence is not a problem — it is the measurement a branch with its fence
+            // switched off exists to produce. It rides this screen because this is where the map is,
+            // and the map is the only way to turn those points into the right radius.
             .Where(a => a.EventType is AuditEventType.CheckInRejected
                 or AuditEventType.CheckOutRejected
-                or AuditEventType.ScanBlockedOnDevice)
+                or AuditEventType.ScanBlockedOnDevice
+                or AuditEventType.CheckInOutsideFence)
             .Where(a => InScope(a.EmployeeId))
             .Select(a =>
             {
@@ -1221,7 +1226,7 @@ public sealed class ReportQueryService : IReportQueryService
         // needs those. The employee's assigned location is the site they scanned (they scan their own
         // poster), so its centre + radius is the boundary their rejected point fell outside.
         var geofences = problems
-            .Where(p => p.Reason == "OutsideRadius" && p.EmployeeId is Guid)
+            .Where(p => (p.Reason == "OutsideRadius" || p.Reason == "OutsideFenceAllowed") && p.EmployeeId is Guid)
             .Select(p => empById.TryGetValue(p.EmployeeId!.Value, out var e) ? e.LocationId : (Guid?)null)
             .Where(id => id.HasValue)
             .Distinct()

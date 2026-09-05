@@ -231,6 +231,8 @@ export interface AdminLocation {
   workDaysMask: number
   /** No QR poster here: staff check in from the home screen with a selfie + GPS (see Location.QrlessCheckIn). */
   qrlessCheckIn: boolean
+  /** False = the radius MEASURES instead of refusing: a scan from outside is recorded and mapped. */
+  requireGeofence: boolean
 }
 
 /** Create/update payload — active state is managed separately via setLocationActive. */

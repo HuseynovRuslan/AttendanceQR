@@ -45,5 +45,13 @@ public enum AuditEventType
     // A branch's geofence was moved — its centre, its radius, or both. The one edit in the product
     // that changes who is able to clock in from where, and the reason a manager correcting their own
     // site is safe to allow: it is written down, with the distance, every time.
-    LocationMoved = 16
+    LocationMoved = 16,
+
+    // A scan that fell OUTSIDE the branch's radius and was recorded anyway, because that branch has
+    // its geofence switched off (Location.RequireGeofence = false). Not a rejection and not a
+    // success worth burying: it is a MEASUREMENT. A site nobody has ever managed to clock in at has
+    // no position data to draw a circle from, so the wall comes down, the points are collected, and
+    // the radius is then set from what people actually did rather than from a guess on a map.
+    // The reason carries "lat,lng,dist" exactly like OutsideRadius, so the same screen can map it.
+    CheckInOutsideFence = 17
 }

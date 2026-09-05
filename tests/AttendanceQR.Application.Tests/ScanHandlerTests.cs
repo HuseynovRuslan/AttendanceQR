@@ -218,6 +218,57 @@ public class ScanHandlerTests
         Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
     }
 
+    // --- the fence as a switch (Location.RequireGeofence) -----------------------
+
+    [Fact]
+    public async Task With_the_fence_switched_off_a_scan_from_outside_is_RECORDED_and_its_position_written_down()
+    {
+        // A site nobody has ever clocked in at yields no positions to size a circle from, and the
+        // circle is what stops them producing any. So the wall comes down and the points are
+        // collected — but never silently: the distance goes to the audit, which the Problems map draws.
+        using var h = new Harness();
+        h.Location.RequireGeofence = false;
+        await h.Db.SaveChangesAsync();
+
+        // ~1.5 km north — far outside the 150 m radius.
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.015));
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.Equal(1, await h.Db.AttendanceRecords.CountAsync());
+
+        var seen = await h.Db.AuditLogs.SingleAsync(a => a.EventType == AuditEventType.CheckInOutsideFence);
+        Assert.StartsWith("OutsideFenceAllowed|", seen.Reason);
+    }
+
+    [Fact]
+    public async Task The_same_scan_is_still_refused_at_an_ordinary_branch()
+    {
+        // The guard on the change: the switch is per branch and defaults to fenced, so every other
+        // site behaves exactly as it did.
+        using var h = new Harness();
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.015));
+
+        Assert.Equal("OutsideRadius", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+        Assert.False(await h.Db.AuditLogs.AnyAsync(a => a.EventType == AuditEventType.CheckInOutsideFence));
+    }
+
+    [Fact]
+    public async Task A_scan_from_INSIDE_the_radius_is_never_written_as_a_measurement()
+    {
+        // Switching the fence off must not turn every ordinary check-in into a row on the Problems
+        // screen — only a scan that actually fell outside is evidence about the radius.
+        using var h = new Harness();
+        h.Location.RequireGeofence = false;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan());
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.False(await h.Db.AuditLogs.AnyAsync(a => a.EventType == AuditEventType.CheckInOutsideFence));
+    }
+
     [Fact]
     public async Task A_QRless_check_in_compares_the_face_in_the_request_and_a_mismatch_flags_but_never_blocks()
     {

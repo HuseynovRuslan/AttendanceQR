@@ -93,7 +93,8 @@ public class AdminLocationsController : ControllerBase
             ShiftEnd = end,
             LateThresholdMinutes = request.LateThresholdMinutes,
             WorkDaysMask = request.WorkDaysMask,
-            QrlessCheckIn = request.QrlessCheckIn ?? false
+            QrlessCheckIn = request.QrlessCheckIn ?? false,
+            RequireGeofence = request.RequireGeofence ?? true
         };
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
@@ -130,6 +131,13 @@ public class AdminLocationsController : ControllerBase
         location.ShiftEnd = end;
         location.LateThresholdMinutes = request.LateThresholdMinutes;
         location.WorkDaysMask = request.WorkDaysMask;
+        if (request.RequireGeofence is bool fence && fence != location.RequireGeofence)
+        {
+            // Louder than the flag above: with this off the branch has no location gate at all.
+            _logger.LogWarning("Location {LocationId} ({Name}): RequireGeofence {From} -> {To}",
+                location.Id, location.Name, location.RequireGeofence, fence);
+            location.RequireGeofence = fence;
+        }
         if (request.QrlessCheckIn is bool qrless && qrless != location.QrlessCheckIn)
         {
             // Loud either way: this flips how every person at the branch records their day.
@@ -304,7 +312,8 @@ public class AdminLocationsController : ControllerBase
         lateThresholdMinutes = l.LateThresholdMinutes,
         isActive = l.IsActive,
         workDaysMask = l.WorkDaysMask,
-        qrlessCheckIn = l.QrlessCheckIn
+        qrlessCheckIn = l.QrlessCheckIn,
+        requireGeofence = l.RequireGeofence
     };
 
     private static bool TryValidate(LocationRequest r, out TimeOnly start, out TimeOnly end, out string? error)

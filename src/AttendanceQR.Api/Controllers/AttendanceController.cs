@@ -690,7 +690,17 @@ public class AttendanceController : ControllerBase
 
         var distanceMeters = GeoCalculator.DistanceMeters(
             request.Latitude, request.Longitude, location.Latitude, location.Longitude);
-        if (distanceMeters > location.RadiusMeters)
+        if (distanceMeters > location.RadiusMeters && !location.RequireGeofence)
+        {
+            // The wall is down at this branch: record where they were and carry on. Written as its own
+            // audit event rather than swallowed, because the whole point of switching the fence off is
+            // to COLLECT these points and size the circle from them — an allowance nobody can see is
+            // just a hole. Same "lat,lng,dist" shape as the rejection below, so one map reads both.
+            var seen = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"OutsideFenceAllowed|{request.Latitude:F5},{request.Longitude:F5},{Math.Round(distanceMeters)}");
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInOutsideFence, seen, ip);
+        }
+        else if (distanceMeters > location.RadiusMeters)
         {
             // Record WHERE the scan came from, not just that it was outside. A repeated OutsideRadius
             // at one site is almost always the geofence, not the employee — the poster is beyond the

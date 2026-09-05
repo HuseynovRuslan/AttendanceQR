@@ -13,6 +13,9 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   LocationNotFound: { label: 'Filial tapılmadı', cls: 'bg-red-100 text-red-700', blocking: true },
   LocationInactive: { label: 'Filial deaktiv', cls: 'bg-red-100 text-red-700', blocking: true },
   OutsideRadius: { label: 'İş yerindən kənarda', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  // NOT blocking and not a failure: the branch has its fence switched off on purpose, the person was
+  // recorded, and this row exists so the position can be seen on the map and the radius set from it.
+  OutsideFenceAllowed: { label: 'Radiusdan kənar — qeydə alındı', cls: 'bg-sky-100 text-sky-700' },
   TokenExpired: { label: 'QR köhnəlib', cls: 'bg-amber-100 text-amber-700' },
   TokenReused: { label: 'QR təkrar işlədilib', cls: 'bg-amber-100 text-amber-700' },
   TokenMalformed: { label: 'Yanlış QR', cls: 'bg-amber-100 text-amber-700' },

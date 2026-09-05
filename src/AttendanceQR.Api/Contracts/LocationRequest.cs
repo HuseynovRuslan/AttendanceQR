@@ -26,7 +26,10 @@ public record LocationRequest(
     // switch a branch's whole check-in method off with no log and no screen saying so: the next
     // morning fourteen phones open a QR camera at a branch that has no poster. Same trap as
     // EmployeeUpdateRequest, not repeated.
-    bool? QrlessCheckIn = null);
+    bool? QrlessCheckIn = null,
+    // Nullable for the same reason as the field above: an update that does not mention the fence
+    // must never be read as "take the fence down".
+    bool? RequireGeofence = null);
 
 /// <summary>Enable/disable a location without deleting it.</summary>
 public record SetActiveRequest(bool IsActive);

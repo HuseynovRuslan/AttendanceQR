@@ -85,4 +85,23 @@ public class Location : ITenantScoped
     /// It never loosens the fence and never lets the phone choose a different branch.
     /// </summary>
     public bool QrlessCheckIn { get; set; }
+
+    /// <summary>
+    /// Does the radius REFUSE a scan from outside it, or merely measure it? True — the default and
+    /// every existing branch — is the fence as it has always been.
+    ///
+    /// Switched off for a site nobody has ever clocked in at. «Socar-1 (Aeroport yolu)» is the case
+    /// it was built for: fourteen staff, a 150 m circle dropped on a stretch of road, and four
+    /// check-ins in the system's whole history — so there is no position data to size a circle from
+    /// and no way to get any while the circle is what blocks people. With this off the scan is
+    /// recorded wherever it happens and the distance is written to the audit as
+    /// <see cref="AuditEventType.CheckInOutsideFence"/>, which the Problems screen maps. After a week
+    /// of real points the centre and radius are set from evidence, and the fence goes back up.
+    ///
+    /// It is deliberately a property of the BRANCH and deliberately NOT permanent: a site with the
+    /// wall down has no location gate at all, so at a branch that also has no poster
+    /// (<see cref="QrlessCheckIn"/>) the only remaining anchor is the selfie and its face match.
+    /// The admin form says so in those words.
+    /// </summary>
+    public bool RequireGeofence { get; set; } = true;
 }

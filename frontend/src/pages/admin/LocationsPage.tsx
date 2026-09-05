@@ -28,6 +28,7 @@ type FormState = {
   lateThresholdMinutes: string
   workDaysMask: number
   qrlessCheckIn: boolean
+  requireGeofence: boolean
 }
 
 // Index = JS Date.getDay() / .NET DayOfWeek (Sunday=0 ... Saturday=6) — same convention as the
@@ -45,6 +46,7 @@ const EMPTY: FormState = {
   lateThresholdMinutes: '15',
   workDaysMask: DEFAULT_WORK_DAYS_MASK,
   qrlessCheckIn: false,
+  requireGeofence: true,
 }
 
 const ERRORS: Record<string, string> = {
@@ -208,6 +210,7 @@ export function LocationsPage() {
       lateThresholdMinutes: String(l.lateThresholdMinutes),
       workDaysMask: l.workDaysMask,
       qrlessCheckIn: l.qrlessCheckIn,
+      requireGeofence: l.requireGeofence,
     })
     setError(null)
     setOk(null)
@@ -229,6 +232,7 @@ export function LocationsPage() {
       lateThresholdMinutes: Number(form.lateThresholdMinutes),
       workDaysMask: form.workDaysMask,
       qrlessCheckIn: form.qrlessCheckIn,
+      requireGeofence: form.requireGeofence,
     }
     const { status, data } = editingId
       ? await updateLocation(editingId, payload)
@@ -553,6 +557,30 @@ export function LocationsPage() {
             ekranda «Giriş et»ə toxunur: selfi çəkilir, üz etalon şəkillə tutuşdurulur, GPS filialın radiusu ilə
             yoxlanır və giriş adi qaydada qeydə alınır. Uyğunsuzluq girişi dayandırmır — lövhədə qırmızı
             işarələnir.
+          </p>
+        </div>
+
+        {/* The wall, and the reason to take it down: a site nobody has ever clocked in at gives you
+            no positions to size a circle from, and the circle is what stops them producing any. */}
+        <div className="form-row">
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!form.requireGeofence}
+              onChange={(e) => setForm((f) => ({ ...f, requireGeofence: !e.target.checked }))}
+            />
+            GPS divarını söndür — giriş rədd edilməsin, yalnız ölçülsün
+          </label>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Radiusdan kənarda olan giriş <b>rədd edilmir</b>, qeydə alınır və yeri «Problemlər»
+            xəritəsində göstərilir. Yeni və ya yeri dəqiq bilinməyən filial üçün: bir neçə gün
+            topla, işçilərin harada dayandığını xəritədə gör, radiusu ona görə düzəlt və divarı
+            geri qaldır.
+            {!form.requireGeofence && form.qrlessCheckIn && (
+              <><br /><b style={{ color: 'var(--danger, #b91c1c)' }}>Diqqət:</b> QR posteri də yoxdur,
+              GPS divarı da sönülüdür — bu filialda yerlə bağlı heç bir yoxlama qalmır, yeganə lövbər
+              selfi və üz tanımadır.</>
+            )}
           </p>
         </div>
 
