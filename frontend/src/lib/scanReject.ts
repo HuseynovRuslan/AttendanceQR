@@ -23,3 +23,24 @@ export const DEVICE_PERMANENT_CODES = new Set([
 export function isPermanentDeviceReject(status: number, code: string | undefined): boolean {
   return status === 403 && DEVICE_PERMANENT_CODES.has(code ?? '')
 }
+
+/**
+ * The same question for a rejection that is not about the phone at all: where the scan was taken.
+ *
+ * A queued scan carries the position it was captured with, frozen into the payload. So an
+ * OutsideRadius refusal can never be overcome by sending it again — the coordinates in the retry are
+ * byte-for-byte the ones that were just refused. The drainer nevertheless read its 403 as an
+ * ACCOUNT state ("the PIN was reset, it will clear") and kept the item, so the 60-second heartbeat
+ * resent one frozen tap for hours: 132 refusals from a single pair of coordinates at Bayıl yolu,
+ * 277 log rows from 58 real taps across the company.
+ *
+ * Two costs, and the second is the one the worker feels. The admin's Problems screen fills with
+ * phantom rejections that make a geofence look broken when one person tapped once; and the phone
+ * keeps promising «göndərilməyi gözləyir» for a scan that will never land, so nobody goes looking
+ * for the real problem until they are marked absent.
+ *
+ * Dropped and reported instead — exactly what the device codes above earned for the same reason.
+ */
+export function isPermanentQueuedReject(status: number, code: string | undefined): boolean {
+  return isPermanentDeviceReject(status, code) || (status === 403 && code === 'OutsideRadius')
+}

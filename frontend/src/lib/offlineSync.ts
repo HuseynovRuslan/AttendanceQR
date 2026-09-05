@@ -15,7 +15,7 @@ import { decodeJwt } from './jwt'
 import { listProfiles } from './profiles'
 import { reportFailure } from './scanFailures'
 import { addReject } from './offlineRejects'
-import { isPermanentDeviceReject } from './scanReject'
+import { isPermanentQueuedReject } from './scanReject'
 import { allScans, removeScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
 import { flushFailures } from './scanFailures'
 
@@ -147,12 +147,13 @@ async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
 
       const code = errorCode(data)
 
-      // A device-permission 403 is the ONE 403 that must not be kept. It is about the PHONE, not the
-      // account's PIN — "you may not use this shared handset", "this is not your device" — so it
-      // answers 403 identically on every retry, and keeping it let the 60-second heartbeat resend it
-      // for ever (75 times, Qafur Məmmədov Parkı, 02.09) while the worker's screen still said
-      // "göndərilməyi gözləyir". Drop it and tell them, exactly like any definitive refusal below.
-      if (isPermanentDeviceReject(status, code)) {
+      // Two 403s must not be kept, and for the same reason: nothing about resending can change the
+      // answer. A device-permission 403 is about the PHONE ("you may not use this shared handset"),
+      // and an OutsideRadius 403 is about WHERE THE TAP WAS TAKEN — the position is frozen in the
+      // payload, so the retry is byte-for-byte the request just refused. Keeping either let the
+      // 60-second heartbeat resend one tap for hours (75 times on a device code, 132 on a geofence
+      // one) while the worker's screen still said "göndərilməyi gözləyir". Drop and tell them.
+      if (isPermanentQueuedReject(status, code)) {
         await removeScan(item.clientScanId)
         reportFailure('OfflineRejected', undefined, item.clientTimestampUtc, reportAs)
         addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })

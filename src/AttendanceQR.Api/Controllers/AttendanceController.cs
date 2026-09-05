@@ -416,6 +416,19 @@ public class AttendanceController : ControllerBase
                 (e, l) => new { l.Name, l.Latitude, l.Longitude, l.RadiusMeters })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
+        // EVERY active branch of the company, not only the assigned one. The scan itself has always
+        // accepted any branch of the same company (the QR names the branch; the geofence is checked
+        // against THAT), but the pre-check compared the phone against the assigned branch alone — so
+        // somebody sent to help at another site opened the app and read «İş yerində deyilsiniz».
+        // There was a "scan anyway" link under it, and nobody pressed it: the sentence had already
+        // told them scanning was not allowed. Given the whole list, the phone can say which branch
+        // they are standing at instead. Nothing new is exposed — the field-visit picker already hands
+        // employees this same list. The tenant filter scopes it; it is never cross-company.
+        var locations = await _db.Locations
+            .Where(l => l.IsActive)
+            .Select(l => new { name = l.Name, latitude = l.Latitude, longitude = l.Longitude, radiusMeters = l.RadiusMeters })
+            .ToListAsync(HttpContext.RequestAborted);
+
         return Ok(new
         {
             bound = mine is { IsActive: true },
@@ -435,7 +448,8 @@ public class AttendanceController : ControllerBase
                     latitude = location.Latitude,
                     longitude = location.Longitude,
                     radiusMeters = location.RadiusMeters
-                }
+                },
+            locations
         });
     }
 

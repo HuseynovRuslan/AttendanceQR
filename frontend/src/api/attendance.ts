@@ -88,6 +88,10 @@ export interface MyDeviceStatus {
   autoBindEnabled: boolean
   /** The employee's assigned location, for the pre-scan geofence check (null if none). */
   location: { name: string; latitude: number; longitude: number; radiusMeters: number } | null
+  /** Every active branch of the company — the scan accepts any of them, so the pre-check must too.
+   *  Optional: a phone running a cached bundle against an older server simply falls back to the
+   *  assigned branch above. */
+  locations?: { name: string; latitude: number; longitude: number; radiusMeters: number }[]
 }
 
 /** GET /api/attendance/me/device — is THIS browser bound to my account? Safari and the installed app

@@ -142,6 +142,10 @@ export function ScanPage() {
   // Set when the geofence pre-check finds the employee outside their workplace radius — surfaced
   // before scanning (with a "scan anyway" escape, since the QR's own location is the final word).
   const [radiusFail, setRadiusFail] = useState<{ distance: number; name: string } | null>(null)
+  // Which company branch the phone is standing at, once the pre-check has found one. Named so the
+  // screen can say «Nərimanov Ofis filialındasınız» — the sentence that tells somebody sent to
+  // another site that scanning here is fine.
+  const [atBranch, setAtBranch] = useState<string | null>(null)
   // True once the front camera is actually producing frames, so the preview says "look at the
   // camera" rather than showing a black circle while it warms up.
   const [photoLive, setPhotoLive] = useState(false)
@@ -235,6 +239,7 @@ export function ScanPage() {
     setCameraError(null)
     setResult(null)
     setRadiusFail(null)
+    setAtBranch(null)
     setPhase('scanning')
     scanDoneRef.current = false
     busyRef.current = false
@@ -263,6 +268,13 @@ export function ScanPage() {
         : 'ok'
     const assignedLocation =
       dev && dev.status === 200 && dev.data && 'location' in dev.data ? dev.data.location : null
+    // Every branch the scan would accept. The server has always taken any branch of the same company
+    // (the QR names one, and the geofence is checked against THAT), so the pre-check must judge
+    // against all of them too — or it contradicts the server. Older servers send only `location`.
+    const branches =
+      dev && dev.status === 200 && dev.data && 'locations' in dev.data && dev.data.locations?.length
+        ? dev.data.locations
+        : assignedLocation ? [assignedLocation] : []
     setChecks((c) => ({ ...c, device: deviceStep }))
     if (deviceStep === 'fail') {
       await delay(400)
@@ -286,20 +298,32 @@ export function ScanPage() {
     setGeo({ kind: 'ready', accuracy })
     if (accuracy > POOR_ACCURACY_METERS) reportFailure('GpsInaccurate', accuracy)
 
-    // Geofence pre-check: is the employee within their assigned workplace radius? Caught here so they
-    // don't scan and get rejected. The scan still checks against the QR's own location server-side,
-    // so this is advisory — a "scan anyway" escape covers the rare case of a different valid location.
-    if (assignedLocation) {
-      const dist = Math.round(
-        distanceMeters(position.coords.latitude, position.coords.longitude, assignedLocation.latitude, assignedLocation.longitude),
-      )
-      if (dist > assignedLocation.radiusMeters) {
+    // Geofence pre-check: is the phone inside ANY company branch? Caught here so they don't scan and
+    // get rejected. The scan still checks against the QR's own location server-side, so this is
+    // advisory — a "scan anyway" escape stays for the case the phone's position is simply wrong.
+    //
+    // It used to compare against the ASSIGNED branch only. A worker sent to help at another site
+    // opened the app and read «İş yerində deyilsiniz» with a distance to a branch they were not at;
+    // there was a "scan anyway" link under it, and nobody pressed it — the sentence had already told
+    // them scanning was not allowed, so they went home unrecorded. Now the nearest branch decides,
+    // and when they are inside one the screen names it instead.
+    if (branches.length > 0) {
+      const ranked = branches
+        .map((b) => ({
+          ...b,
+          dist: Math.round(distanceMeters(position.coords.latitude, position.coords.longitude, b.latitude, b.longitude)),
+        }))
+        .sort((a, b) => a.dist - b.dist)
+      const inside = ranked.find((b) => b.dist <= b.radiusMeters)
+      if (!inside) {
+        const nearest = ranked[0]
         setChecks((c) => ({ ...c, location: 'fail' }))
         await delay(900)
         setVerifying(false)
-        setRadiusFail({ distance: dist, name: assignedLocation.name })
+        setRadiusFail({ distance: nearest.dist, name: nearest.name })
         return
       }
+      setAtBranch(inside.name)
     }
     setChecks((c) => ({ ...c, location: 'ok', camera: 'run' }))
 
@@ -772,7 +796,7 @@ export function ScanPage() {
         })
         return
       }
-      const card = errorResult(status, data)
+      const card = errorResult(status, data, coords.accuracy)
       // A hard rejection (wrong device, inactive account) buzzes so it's felt; soft/yellow states
       // (QR expired, "too soon") stay silent — they aren't failures worth a jolt.
       if (card.tone === 'red') errorFeedback()
@@ -864,10 +888,19 @@ export function ScanPage() {
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/20 text-2xl text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
               📍
             </div>
-            <h2 className="text-lg font-extrabold text-white">İş yerində deyilsiniz</h2>
+            <h2 className="text-lg font-extrabold text-white">Yeriniz təsdiqlənmədi</h2>
+            {/* Same rewrite as the post-scan card (locationCard), and for the same reason: this one
+                is shown BEFORE the QR is even read, so it is the first thing a worker standing at
+                their post is told. It states what was measured, not a verdict on them, and shows the
+                phone's own margin — which is usually the whole explanation. */}
             <p className="mt-2 text-xs font-medium text-slate-300 leading-relaxed">
-              {radiusFail.name} filialından təxminən <strong className="text-white font-bold">{radiusFail.distance} m</strong> uzaqsınız.
-              Yaxınlaşıb yenidən yoxlayın.
+              Ən yaxın filial <strong className="text-white font-bold">{radiusFail.name}</strong> — təxminən <strong className="text-white font-bold">{radiusFail.distance} m</strong> aralıda göründünüz
+              {geo.kind === 'ready' && <> · GPS dəqiqliyi ±{geo.accuracy} m</>}.
+            </p>
+            <p className="mt-2 text-xs font-medium text-slate-400 leading-relaxed">
+              {geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS
+                ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxıb 10–15 saniyə gözləyin.'
+                : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən yoxlayın.'}
             </p>
             <button
               onClick={() => void runChecks()}
@@ -881,6 +914,14 @@ export function ScanPage() {
             >
               Yenə də skan et
             </button>
+          </div>
+        )}
+
+        {/* The branch the phone is standing at. One line, and it answers the question people used
+            to walk away over: "am I allowed to scan here?" — yes, and here is where "here" is. */}
+        {showCamera && atBranch && (
+          <div className="w-full max-w-sm rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center text-xs font-semibold text-emerald-200 backdrop-blur-md">
+            📍 {atBranch} filialındasınız — skan edə bilərsiniz
           </div>
         )}
 
@@ -1372,19 +1413,55 @@ async function workedDurationText(recordId: string): Promise<string | undefined>
   }
 }
 
+/**
+ * What the app says when the geofence refused a scan.
+ *
+ * Its predecessor was one line — «İş yerində deyilsiniz», with a distance under it — and it was the
+ * app's worst sentence: a flat contradiction of what the reader could see out of their own eyes,
+ * with nothing to do about it. People came to the office to ask what was wrong with them. Measured
+ * over five weeks, they were often right to argue: of the taps refused this way, a ninth were
+ * inside the fence once the phone's own error margin is allowed for.
+ *
+ * So the card states the MEASUREMENT rather than a verdict on the person — "you appeared N m away",
+ * because that is all the server actually knows — and prints the phone's accuracy beside it. That
+ * second number is what makes an impossible reading legible: ±800 m next to "1276 m" explains
+ * itself instantly, and points at the one thing the reader can change.
+ */
+function locationCard(distance: number | null | undefined, accuracy?: number): Card {
+  // Poor accuracy is the likelier story whenever the phone admits to a wide margin — and a margin
+  // wider than the overshoot means the reading cannot decide the question at all.
+  const vague = accuracy != null && (accuracy > POOR_ACCURACY_METERS
+    || (distance != null && accuracy >= distance / 2))
+
+  const parts = [
+    distance != null ? `İş yerindən ~${distance} m göründünüz` : 'Radius xaricində göründünüz',
+    accuracy != null ? `GPS dəqiqliyi ±${Math.round(accuracy)} m` : null,
+  ].filter(Boolean)
+
+  return {
+    tone: 'red',
+    title: 'Yeriniz təsdiqlənmədi',
+    detail: parts.join(' · '),
+    note: vague
+      ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxın, 10–15 saniyə gözləyin, sonra yenidən cəhd edin.'
+      : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən cəhd edin. Yenə alınmasa, rəhbərinizə bildirin — filialın xəritədəki yeri düzəldilməlidir.',
+  }
+}
+
 // `final` marks the outcomes where scanning again cannot change anything — the day is already
 // recorded, or only an admin can unblock the employee. Everything else genuinely is worth retrying
 // (walk closer, re-aim at the poster), so those keep the retry button.
-function errorResult(status: number, data: ScanResponse | null): Card {
+function errorResult(status: number, data: ScanResponse | null, accuracy?: number): Card {
   const err = data?.error
   switch (err) {
     case 'OutsideRadius':
-      return {
-        tone: 'red',
-        title: 'İş yerində deyilsiniz',
-        detail: data?.distanceMeters != null ? `Məsafə: ${data.distanceMeters} m` : 'Radius xaricindəsiniz',
-        note: 'İş yerinə yaxınlaşıb yenidən cəhd edin.',
-      }
+      // It used to open «İş yerində deyilsiniz» — the app telling somebody standing at their post
+      // that they are not at work, with a distance they could see was absurd and no way to argue.
+      // That is the sentence people came to the office confused about. Two things are true at once
+      // and the card now says which: the phone may be wrong about WHERE IT IS, or they really are
+      // away. Leading with the accuracy is what makes a "1276 m" reading make sense to the person
+      // reading it, and it is the half they can actually do something about.
+      return locationCard(data?.distanceMeters, accuracy)
     case 'DeviceMismatch':
       return {
         tone: 'red',
