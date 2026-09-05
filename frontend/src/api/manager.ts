@@ -72,6 +72,10 @@ export interface ManagerEmployeeInput {
   /** Field/mobile check-in permission — see EmployeeUpdateRequest. Round-tripped so a manager edit
    *  preserves it (managers don't toggle it in their form, mirroring photoExempt). */
   canFieldCheckIn: boolean
+  /** Per-person check-in mode (null = follow the branch). Round-tripped for the same reason: a
+   *  manager's edit must not silently put somebody back on their branch's setting. */
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
   isActive: boolean
 }
 

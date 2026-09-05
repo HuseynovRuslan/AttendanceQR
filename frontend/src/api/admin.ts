@@ -573,6 +573,11 @@ export interface InvitePayload {
   canFieldCheckIn?: boolean
   /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
   canShareDevice?: boolean
+  // This ONE person's check-in mode, overriding their branch. NULL is a real value — "follow the
+  // branch" — which is why these are tri-state and not the boolean-with-a-false-default the fields
+  // above are: an omitted field here leaves the person on their branch, it does not revoke anything.
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
   // The named shift this employee is on. Set → it decides hours, days AND rotation, and the three
   // workCycle fields below are ignored server-side. Same null-default rule as photoExempt: omit it on
   // an edit and the assignment is dropped.
@@ -603,6 +608,9 @@ export interface AdminEmployee {
   canFieldCheckIn?: boolean
   /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
   canShareDevice?: boolean
+  /** Per-person check-in mode. null = follow the branch; true/false = a pinned exception. */
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
   /** The named shift they are on, if any, plus its name for display. */
   scheduleId?: string | null
   scheduleName?: string | null

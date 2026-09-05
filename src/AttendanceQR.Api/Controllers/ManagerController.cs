@@ -370,6 +370,8 @@ public class ManagerController : ControllerBase
                 workCycleAnchor = e.WorkCycleAnchor,
                 photoExempt = e.PhotoExempt,
                 canFieldCheckIn = e.CanFieldCheckIn,
+                qrlessCheckInOverride = e.QrlessCheckInOverride,
+                requireGeofenceOverride = e.RequireGeofenceOverride,
                 // Not settable through the per-employee edit — ManagerEmployeeRequest carries it but
                 // UpdateEmployee never assigns it — and granted only through the bulk action below,
                 // which narrows to this manager's own branches' plain staff. Projected because their
@@ -454,6 +456,8 @@ public class ManagerController : ControllerBase
             photoExempt = e.PhotoExempt,
             canFieldCheckIn = e.CanFieldCheckIn,
             canShareDevice = e.CanShareDevice,
+            qrlessCheckInOverride = e.QrlessCheckInOverride,
+            requireGeofenceOverride = e.RequireGeofenceOverride,
             isActive = e.IsActive,
             activated = e.ActivatedAtUtc != null,
             scheduleId = e.ScheduleId,
@@ -510,6 +514,8 @@ public class ManagerController : ControllerBase
             WorkEnd = ParseTimeOrNull(request.WorkEnd),
             PhotoExempt = request.PhotoExempt,
             CanFieldCheckIn = request.CanFieldCheckIn,
+            QrlessCheckInOverride = request.QrlessCheckInOverride,
+            RequireGeofenceOverride = request.RequireGeofenceOverride,
             IsActive = true,
             ActivatedAtUtc = DateTime.UtcNow,      // temp-PIN account — no activation link
             MustChangePin = true,
@@ -570,6 +576,10 @@ public class ManagerController : ControllerBase
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         employee.PhotoExempt = request.PhotoExempt;
         employee.CanFieldCheckIn = request.CanFieldCheckIn;
+        // Round-tripped, never defaulted: a manager's edit must not put somebody back on their
+        // branch's check-in mode by omission.
+        employee.QrlessCheckInOverride = request.QrlessCheckInOverride;
+        employee.RequireGeofenceOverride = request.RequireGeofenceOverride;
         employee.IsActive = request.IsActive;
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
             return BadRequest(new { error = cycleError });

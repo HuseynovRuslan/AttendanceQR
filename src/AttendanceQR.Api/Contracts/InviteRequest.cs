@@ -38,6 +38,12 @@ public record InviteRequest(
     // Whether this employee's account may be carried on a brigade's shared phone. Off unless asked
     // for — see Employee.CanShareDevice for why the default matters.
     bool CanShareDevice = false,
+    // Tri-state and NULLABLE, unlike the flags above: null is a real value here — "follow the
+    // branch" — so it cannot double as "the caller forgot to send it". A caller that omits these
+    // leaves the person following their branch, which is what everybody does; a caller that means to
+    // pin an exception says so explicitly.
+    bool? QrlessCheckInOverride = null,
+    bool? RequireGeofenceOverride = null,
     // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
     string? FirstName = null,
     string? LastName = null);
@@ -80,6 +86,12 @@ public record EmployeeUpdateRequest(
     // handset). Defaults to false — like every field here, a caller that omits it turns it OFF, which
     // for this one means the person can no longer clock in on the shared phone. Send it everywhere.
     bool CanShareDevice = false,
+    // Tri-state and NULLABLE, unlike the flags above: null is a real value here — "follow the
+    // branch" — so it cannot double as "the caller forgot to send it". An omitted field leaves the
+    // person on their branch's setting, which is where everybody sits; an exception is only ever
+    // pinned by an explicit true/false. See Employee.QrlessCheckInOverride.
+    bool? QrlessCheckInOverride = null,
+    bool? RequireGeofenceOverride = null,
     // The named shift ("növbə") this employee is on. Set → it decides their hours, working days AND
     // rotation, and the three WorkCycle fields below are ignored. Null → the per-employee fields.
     Guid? ScheduleId = null,

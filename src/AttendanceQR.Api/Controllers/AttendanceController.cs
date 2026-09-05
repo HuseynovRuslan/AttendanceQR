@@ -181,15 +181,17 @@ public class AttendanceController : ControllerBase
                     .FirstOrDefault(),
                 // No poster at this branch: the scan screen goes straight to the selfie instead of
                 // opening the QR camera, and the home card says «Giriş et», not «skan et».
-                qrlessCheckIn = _db.Locations
+                branchQrless = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.QrlessCheckIn)
                     .FirstOrDefault(),
+                e.QrlessCheckInOverride,
+                e.RequireGeofenceOverride,
                 // Whether the radius REFUSES or merely measures. The phone runs its own copy of the
                 // fence before the camera — so without this it goes on blocking people the server
                 // would happily record, and switching the wall off in the admin panel does nothing
                 // anybody can see. That is exactly what happened the first time it was switched on.
-                requireGeofence = _db.Locations
+                branchFenced = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.RequireGeofence)
                     .FirstOrDefault()
@@ -253,8 +255,10 @@ public class AttendanceController : ControllerBase
             profile.fullName, profile.email, profile.role, profile.position, profile.birthDate,
             profile.photoRequired, profile.consentRequired, profile.locationName,
             profile.canFieldCheckIn,
-            profile.qrlessCheckIn,
-            profile.requireGeofence,
+            // The phone is told the ANSWER, never the two halves — one rule, resolved once, so a
+            // screen can never disagree with the scan endpoint about who has a poster.
+            qrlessCheckIn = CheckInMode.IsQrless(profile.branchQrless, profile.QrlessCheckInOverride),
+            requireGeofence = CheckInMode.IsFenced(profile.branchFenced, profile.RequireGeofenceOverride),
             profile.locationId,
             shiftStart, shiftEnd,
             unverifiedCheckIns = unverified,
@@ -629,9 +633,11 @@ public class AttendanceController : ControllerBase
         {
             var own = await _db.Employees
                 .Where(e => e.Id == employeeId && e.IsActive)
-                .Join(_db.Locations, e => e.LocationId, l => l.Id, (e, l) => new { l.Id, l.QrlessCheckIn })
+                .Join(_db.Locations, e => e.LocationId, l => l.Id,
+                    (e, l) => new { l.Id, l.QrlessCheckIn, e.QrlessCheckInOverride })
                 .FirstOrDefaultAsync();
-            if (own is null || !own.QrlessCheckIn)
+            // The branch answers for everybody posted to it; this person may carry an exception.
+            if (own is null || !CheckInMode.IsQrless(own.QrlessCheckIn, own.QrlessCheckInOverride))
             {
                 await WriteAuditAsync(employeeId, AuditEventType.CheckInRejected, "TokenMalformed", ip);
                 return BadRequest(new { error = "TokenMalformed" });
@@ -699,7 +705,8 @@ public class AttendanceController : ControllerBase
 
         var distanceMeters = GeoCalculator.DistanceMeters(
             request.Latitude, request.Longitude, location.Latitude, location.Longitude);
-        if (distanceMeters > location.RadiusMeters && !location.RequireGeofence)
+        var fenced = CheckInMode.IsFenced(location.RequireGeofence, employee.RequireGeofenceOverride);
+        if (distanceMeters > location.RadiusMeters && !fenced)
         {
             // The wall is down at this branch: record where they were and carry on. Written as its own
             // audit event rather than swallowed, because the whole point of switching the fence off is

@@ -185,6 +185,8 @@ export function EmployeeProfilePage() {
           workEnd: emp.workEnd ?? null,
           photoExempt: emp.photoExempt === true,
           canFieldCheckIn: emp.canFieldCheckIn === true,
+          qrlessCheckInOverride: emp.qrlessCheckInOverride ?? null,
+          requireGeofenceOverride: emp.requireGeofenceOverride ?? null,
           scheduleId: emp.scheduleId ?? null,
           workCycleDays: emp.workCycleDays ?? null,
           workCycleOnDays: emp.workCycleOnDays ?? null,
@@ -210,6 +212,8 @@ export function EmployeeProfilePage() {
       photoExempt: emp.photoExempt === true,
       canFieldCheckIn: emp.canFieldCheckIn === true,
       canShareDevice: emp.canShareDevice === true,
+      qrlessCheckInOverride: emp.qrlessCheckInOverride ?? null,
+      requireGeofenceOverride: emp.requireGeofenceOverride ?? null,
       workStart: emp.workStart ?? null,
       workEnd: emp.workEnd ?? null,
       // Re-sent for the same reason as the rest: an omitted field is nulled, so toggling active

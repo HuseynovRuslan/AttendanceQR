@@ -171,6 +171,32 @@ public class Employee : ITenantScoped, IHasWorkCycle
     public bool CanShareDevice { get; set; }
 
     /// <summary>
+    /// This ONE person checks in without a poster, whatever their branch does. Null — the normal
+    /// state — means the branch decides (<see cref="Location.QrlessCheckIn"/>).
+    ///
+    /// The branch is still where this belongs by default, and for a reason worth keeping in mind: the
+    /// nineteen people who spent five weeks invisible were not missing a per-person permission, they
+    /// had it. What was missing was anything about the PLACE telling the app there was no poster. So
+    /// this is an exception, not the mechanism — for the driver whose branch has a poster he is never
+    /// near, or the one person moved onto a poster-less patch before the whole branch is.
+    ///
+    /// Deliberately NOT <see cref="CanFieldCheckIn"/>: a field visit is an errand somewhere else, with
+    /// its own screen, its own board and no fence. This is their ORDINARY day, recorded as an
+    /// ordinary attendance row at their own branch.
+    /// </summary>
+    public bool? QrlessCheckInOverride { get; set; }
+
+    /// <summary>
+    /// This one person's scans are MEASURED rather than refused when they fall outside the radius.
+    /// Null means the branch decides (<see cref="Location.RequireGeofence"/>).
+    ///
+    /// Same shape and same warning as above, one notch more dangerous: with it set to false this
+    /// person can record a day from anywhere. It is written down every time (an audit row carrying
+    /// the distance) and it is meant to come off once the site's real radius is known.
+    /// </summary>
+    public bool? RequireGeofenceOverride { get; set; }
+
+    /// <summary>
     /// When the employee accepted the data-processing notice (GPS, check-in selfie, work data).
     ///
     /// The digital stand-in for a signature: the app stores face + location + salary, which is

@@ -110,6 +110,8 @@ public class AdminController : ControllerBase
                 monthlySalary = e.MonthlySalary,
                 photoExempt = e.PhotoExempt,
                 canFieldCheckIn = e.CanFieldCheckIn,
+                qrlessCheckInOverride = e.QrlessCheckInOverride,
+                requireGeofenceOverride = e.RequireGeofenceOverride,
                 canShareDevice = e.CanShareDevice,
                 // Who has accepted the data-processing notice — the answer to "did this employee
                 // agree, and when", which is the whole point of recording it.
@@ -222,6 +224,8 @@ public class AdminController : ControllerBase
         employee.MonthlySalary = request.MonthlySalary;
         employee.CanFieldCheckIn = request.CanFieldCheckIn;
         employee.CanShareDevice = request.CanShareDevice;
+        employee.QrlessCheckInOverride = request.QrlessCheckInOverride;
+        employee.RequireGeofenceOverride = request.RequireGeofenceOverride;
         employee.WorkStart = ParseTimeOrNull(request.WorkStart);
         employee.WorkEnd = ParseTimeOrNull(request.WorkEnd);
         if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
@@ -952,6 +956,10 @@ public class AdminController : ControllerBase
         employee.PhotoExempt = request.PhotoExempt;
         employee.CanFieldCheckIn = request.CanFieldCheckIn;
         employee.CanShareDevice = request.CanShareDevice;
+        // Tri-state: null puts the person back on their branch's setting, which is what the form
+        // sends for «Filiala görə». An exception is only ever pinned by an explicit true/false.
+        employee.QrlessCheckInOverride = request.QrlessCheckInOverride;
+        employee.RequireGeofenceOverride = request.RequireGeofenceOverride;
         await RegisterPositionsAsync();
         employee.BirthDate = request.BirthDate;
         // Full date wins; keep the year in sync from it so the fallback display agrees.

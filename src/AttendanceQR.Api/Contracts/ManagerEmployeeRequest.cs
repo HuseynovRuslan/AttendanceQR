@@ -21,6 +21,10 @@ public record ManagerEmployeeRequest(
     // updateManagerEmployee caller must send it, or a partial update turns it off.
     bool CanFieldCheckIn = false,
     bool CanShareDevice = false,
+    // Round-tripped by the manager's form, never defaulted: null means "follow the branch", so an
+    // omitted value must not read as a pinned exception. See Employee.QrlessCheckInOverride.
+    bool? QrlessCheckInOverride = null,
+    bool? RequireGeofenceOverride = null,
     // Shift assignment and rotation — see EmployeeUpdateRequest. A manager is usually the person who
     // actually knows who is on which shift, so they may set it for their own staff.
     Guid? ScheduleId = null,

@@ -118,6 +118,9 @@ type FormState = {
   photoExempt: boolean
   /** Whether the employee may use field/mobile check-in ("Səyyar / Sahə ziyarəti"). */
   canFieldCheckIn: boolean
+  // '' = follow the branch. Tri-state, kept as a string because that is what a <select> speaks.
+  qrlessOverride: '' | 'on' | 'off'
+  fenceOverride: '' | 'on' | 'off'
   /** Whether this account may be carried on somebody else's phone — a brigade's shared handset, for
    *  a worker who has none of their own. Off by default: it gives up one-phone-one-employee. */
   canShareDevice: boolean
@@ -148,6 +151,8 @@ const EMPTY: FormState = {
   monthlySalary: '',
   photoExempt: false,
   canFieldCheckIn: false,
+  qrlessOverride: '',
+  fenceOverride: '',
   canShareDevice: false,
   managedLocationIds: [],
   cycle: NO_CYCLE,
@@ -270,6 +275,8 @@ export function EmployeesPage() {
       monthlySalary: e.monthlySalary != null ? String(e.monthlySalary) : '',
       photoExempt: e.photoExempt === true,
       canFieldCheckIn: e.canFieldCheckIn === true,
+      qrlessOverride: e.qrlessCheckInOverride == null ? '' : e.qrlessCheckInOverride ? 'on' : 'off',
+      fenceOverride: e.requireGeofenceOverride == null ? '' : e.requireGeofenceOverride ? 'off' : 'on',
       canShareDevice: e.canShareDevice === true,
       managedLocationIds: e.managedLocationIds ?? [],
       cycle: e.workCycleDays
@@ -317,6 +324,11 @@ export function EmployeesPage() {
       photoExempt: form.photoExempt,
       canFieldCheckIn: form.canFieldCheckIn,
       canShareDevice: form.canShareDevice,
+      // '' means "follow the branch" and must reach the server as null, not as false — false is a
+      // pinned exception that would override a branch which already has the setting on.
+      qrlessCheckInOverride: form.qrlessOverride === '' ? null : form.qrlessOverride === 'on',
+      // Inverted on purpose: the admin picks «GPS divarı», and the field stores "is it required".
+      requireGeofenceOverride: form.fenceOverride === '' ? null : form.fenceOverride === 'off',
       // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
       workStart: form.workStart || null,
       workEnd: form.workEnd || null,
@@ -1338,6 +1350,53 @@ ${back}`,
               </span>
             </span>
           </label>
+
+          {/* The same two settings the BRANCH carries, pinned for one person. Separate from the
+              checkbox above on purpose: «Sahə ziyarəti» is an errand somewhere else, with its own
+              screen and its own board. These two are about this person's ORDINARY day. Default is
+              «Filiala görə» — the branch is still where this belongs for everybody else, and the
+              nineteen invisible people were missing a fact about the PLACE, not a per-person tick. */}
+          <div style={{ margin: '12px 0 4px', padding: '10px 12px', border: '1px solid var(--c100)', borderRadius: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Fərdi giriş rejimi</div>
+            <div style={{ fontSize: 12, color: 'var(--c500)', marginBottom: 8 }}>
+              Yalnız bu işçi üçün. Toxunmasan filialın ayarı işləyir.
+            </div>
+
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 6 }}>
+              QR posteri
+              <select
+                className="input"
+                value={form.qrlessOverride}
+                onChange={(e) => set('qrlessOverride', e.target.value as '' | 'on' | 'off')}
+                style={{ marginTop: 2 }}
+              >
+                <option value="">Filiala görə</option>
+                <option value="on">QR-suz — üz və GPS ilə giriş etsin</option>
+                <option value="off">QR posteri skan etsin</option>
+              </select>
+            </label>
+
+            <label style={{ display: 'block', fontSize: 12 }}>
+              GPS divarı
+              <select
+                className="input"
+                value={form.fenceOverride}
+                onChange={(e) => set('fenceOverride', e.target.value as '' | 'on' | 'off')}
+                style={{ marginTop: 2 }}
+              >
+                <option value="">Filiala görə</option>
+                <option value="on">Radiusdan kənarda girişi rədd et</option>
+                <option value="off">Rədd etmə — yalnız ölç (yeri xəritəyə düşür)</option>
+              </select>
+            </label>
+
+            {form.qrlessOverride === 'on' && form.fenceOverride === 'off' && (
+              <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 8 }}>
+                <b>Diqqət:</b> bu işçidə nə poster, nə GPS yoxlaması qalır — yeganə lövbər selfi və üz
+                tanımadır.
+              </div>
+            )}
+          </div>
 
           {/* The one-phone-one-employee rule is what stops a colleague clocking in for an absent
               worker, and this hands it away for whoever is on the shared handset. Off by default and
