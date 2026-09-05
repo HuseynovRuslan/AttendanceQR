@@ -121,7 +121,7 @@ export function TenantsPage() {
         <div className="muted" style={{ fontSize: 13 }}>Bütün şirkətlər üzrə nəzarət, idarəetmə və audit.</div>
       </div>
 
-      <div style={{ display: 'flex', gap: 2, marginBottom: 16, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+      <div style={{ display: 'flex', gap: 2, marginBottom: 16, borderBottom: '1px solid var(--c100)' }}>
         {TABS.map((t) => (
           <button
             key={t.key}

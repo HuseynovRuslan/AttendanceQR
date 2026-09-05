@@ -219,3 +219,14 @@
 /* Leaflet ships a white attribution strip and light controls; on these pages that is the
    one white rectangle left. */
 .op-shell .leaflet-container { background: #0B1020; }
+
+/* Values for the few colours the pages write inline rather than reading from a token. Each one was a
+   light-theme literal — a black wash for a neutral chip, a dark amber for warning text — and a literal
+   is exactly what a token remap cannot reach: «deaktiv» and «Dayandırılıb» lost their chip entirely
+   (black tinted onto near-black is nothing) and «Susqun» rendered brown on obsidian. The pages now ask
+   for these by name and the tenant panel, which defines neither, keeps its own values through the
+   fallback written beside each var(). */
+.op-shell {
+  --tag-neutral: rgba(255, 255, 255, 0.08);
+  --amber-fg: #FBBF24;
+}

@@ -4,9 +4,12 @@ import { fmtDate } from '../../lib/format'
 
 const STATUS: Record<HealthStatus, { label: string; bg: string; fg: string }> = {
   healthy: { label: 'Sağlam', bg: 'var(--leaf-bg)', fg: 'var(--leaf-d)' },
-  quiet: { label: 'Susqun', bg: 'rgba(245,158,11,0.15)', fg: '#b45309' },
-  dormant: { label: 'Ölü', bg: 'rgba(200,60,40,0.12)', fg: 'var(--clay)' },
-  new: { label: 'Yeni', bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' },
+  // Both halves through tokens. The fg was #b45309 — a dark amber chosen for a white card, which on
+  // the console's near-black ground is unreadable — and «Yeni» filled with a black wash that tints
+  // to nothing there. Light and dark now each get a value that carries on their own surface.
+  quiet: { label: 'Susqun', bg: 'var(--amber-bg)', fg: 'var(--amber-fg, #b45309)' },
+  dormant: { label: 'Ölü', bg: 'var(--clay-bg)', fg: 'var(--clay)' },
+  new: { label: 'Yeni', bg: 'var(--tag-neutral, rgba(0,0,0,0.05))', fg: 'var(--c400)' },
 }
 
 function lastScanLabel(r: HealthRow): string {

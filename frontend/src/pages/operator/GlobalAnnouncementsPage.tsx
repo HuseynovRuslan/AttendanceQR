@@ -112,7 +112,7 @@ export function GlobalAnnouncementsPage() {
                   {a.isActive ? (
                     <span className="tag" style={{ background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }}>Aktiv</span>
                   ) : (
-                    <span className="tag" style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--c400)' }}>Dayandırılıb</span>
+                    <span className="tag" style={{ background: 'var(--tag-neutral, rgba(0,0,0,0.05))', color: 'var(--c400)' }}>Dayandırılıb</span>
                   )}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>

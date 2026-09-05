@@ -128,7 +128,7 @@ export function BillingPage() {
                   <div style={{ fontWeight: 700 }}>
                     {r.displayName}
                     {!r.isActive && (
-                      <span className="tag" style={{ marginLeft: 6, background: 'rgba(0,0,0,0.05)', color: 'var(--c400)' }}>
+                      <span className="tag" style={{ marginLeft: 6, background: 'var(--tag-neutral, rgba(0,0,0,0.05))', color: 'var(--c400)' }}>
                         deaktiv
                       </span>
                     )}
@@ -146,7 +146,7 @@ export function BillingPage() {
                       ✓ Ödənilib
                     </span>
                   ) : (
-                    <span className="tag" style={{ background: 'rgba(0,0,0,0.05)', color: 'var(--c400)' }}>
+                    <span className="tag" style={{ background: 'var(--tag-neutral, rgba(0,0,0,0.05))', color: 'var(--c400)' }}>
                       Gözləyir
                     </span>
                   )}
