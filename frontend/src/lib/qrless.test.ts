@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { qrlessRoute, recallQrless, rememberQrless, type KeyValueStore } from './qrless'
+import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless, type KeyValueStore } from './qrless'
 
 function memoryStore(): KeyValueStore & { map: Map<string, string> } {
   const map = new Map<string, string>()
@@ -60,5 +60,38 @@ describe('the remembered branch fact', () => {
     }
     expect(() => rememberQrless('a', true, broken)).not.toThrow()
     expect(recallQrless('a', broken)).toBeNull()
+  })
+})
+
+describe('the fence switch, as the phone sees it', () => {
+  it('lets the scan through ONLY when the branch is known to measure rather than refuse', () => {
+    // The bug this rule exists for: the wall was switched off in the admin panel, the server would
+    // have recorded the check-in, and the phone refused it before the request was ever sent. The
+    // test worker at «Aeroport yolu» met «Yeriniz təsdiqlənmədi» with zero rows in the database.
+    expect(mayPassOutsideFence(false)).toBe(true)
+  })
+
+  it('refuses when the branch is fenced — every ordinary branch, unchanged', () => {
+    expect(mayPassOutsideFence(true)).toBe(false)
+  })
+
+  it('refuses when the phone has never heard — unknown must not open a fence', () => {
+    // Being wrong this way costs one tap on «Yenə də cəhd et». Being wrong the other way would stop
+    // every branch in the company refusing anything.
+    expect(mayPassOutsideFence(null)).toBe(false)
+  })
+
+  it('remembers the fence fact per employee, separately from the poster fact', () => {
+    const map = new Map<string, string>()
+    const store: KeyValueStore = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }
+
+    rememberQrless('a', true, store)
+    rememberFence('a', false, store)
+    rememberFence('b', true, store)
+
+    expect(recallQrless('a', store)).toBe(true)
+    expect(recallFence('a', store)).toBe(false)
+    expect(recallFence('b', store)).toBe(true)
+    expect(recallFence('c', store)).toBeNull()
   })
 })

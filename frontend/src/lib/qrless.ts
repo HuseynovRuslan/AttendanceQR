@@ -10,6 +10,7 @@
 // branch that has a poster, and the screen names that refusal.
 
 const key = (employeeId: string) => `attendanceqr.qrless.${employeeId}`
+const fenceKey = (employeeId: string) => `attendanceqr.fenced.${employeeId}`
 
 /** The corner of Storage this module needs — injectable so the rule can be tested without a browser. */
 export interface KeyValueStore {
@@ -43,6 +44,46 @@ export function recallQrless(employeeId: string | null, store: KeyValueStore | n
   } catch {
     return null
   }
+}
+
+/**
+ * Does this person's branch REFUSE a scan from outside its radius, or only measure it?
+ *
+ * Remembered next to the poster fact and for the same reason: the pre-check runs before the profile
+ * request can be relied on, and a phone that has not heard must fall back to the behaviour the app
+ * has always had — the fence enforced. Being wrong in that direction costs a tap on «Yenə də cəhd
+ * et»; being wrong the other way would silently stop refusing scans at every ordinary branch.
+ */
+export function rememberFence(employeeId: string | null, fenced: boolean, store: KeyValueStore | null = browserStore()): void {
+  if (!employeeId || !store) return
+  try {
+    store.setItem(fenceKey(employeeId), fenced ? '1' : '0')
+  } catch {
+    // Blocked storage: the next profile load tries again, and "unknown" means fenced.
+  }
+}
+
+/** True / false when the phone has heard; null when it never has. */
+export function recallFence(employeeId: string | null, store: KeyValueStore | null = browserStore()): boolean | null {
+  if (!employeeId || !store) return null
+  try {
+    const v = store.getItem(fenceKey(employeeId))
+    return v === '1' ? true : v === '0' ? false : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * May the scan screen carry on even though the phone is inside no branch's fence?
+ *
+ * Only when the person's OWN branch has its wall down — the server will record the scan and write
+ * the position down as a measurement. Unknown counts as fenced: that is what every branch did before
+ * the switch existed, and the cost of being wrong is one extra tap rather than a fence that quietly
+ * stopped working everywhere.
+ */
+export function mayPassOutsideFence(fenced: boolean | null): boolean {
+  return fenced === false
 }
 
 export type QrlessRoute = 'selfie' | 'camera'

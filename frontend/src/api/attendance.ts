@@ -109,6 +109,10 @@ export interface MyProfile {
   locationName: string | null
   /** The assigned branch's id — the scan screen routes by PLACE (inside MY branch vs another one). */
   locationId?: string
+  /** False when this branch's radius only MEASURES: the pre-check must not refuse what the server
+   *  accepts (see Location.RequireGeofence). Absent on an older server — then the fence is enforced,
+   *  which is what it has always done. */
+  requireGeofence?: boolean
   /** Full date of birth "yyyy-MM-dd" (null if unset) — for the home-screen birthday greeting. */
   birthDate?: string | null
   /** False when an admin has waived the check-in selfie for this employee. */

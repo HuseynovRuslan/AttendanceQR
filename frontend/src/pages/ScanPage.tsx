@@ -16,7 +16,7 @@ import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/f
 import { getDeviceFingerprint } from '../lib/device'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
-import { qrlessRoute, recallQrless, rememberQrless } from '../lib/qrless'
+import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless } from '../lib/qrless'
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
 import { todayStr } from '../lib/att'
@@ -158,6 +158,11 @@ export function ScanPage() {
   const [qrlessReady, setQrlessReady] = useState<
     { me: MyProfile | null; branch: string | null; outside?: boolean } | null
   >(null)
+  // The branch's wall is down and the phone is outside it. NOT a refusal — the scan will be recorded
+  // and the position written down — but the distance is still said out loud, because a screen that
+  // knows somebody is 2.7 km from their branch and shows them nothing would be lying to them in the
+  // other direction.
+  const [measuredAway, setMeasuredAway] = useState<{ name: string; distance: number } | null>(null)
   // Neither the profile nor the phone's memory of it answered in time: the camera opens (the default
   // every scan has ever had), and one line under it says why a person with no poster sees one.
   const [branchUnknown, setBranchUnknown] = useState(false)
@@ -212,8 +217,10 @@ export function ScanPage() {
         const me = r.status === 200 && r.data && 'fullName' in r.data ? r.data : null
         if (me) {
           setProfile(me)
-          // The branch fact, kept on the phone for the next open with no signal.
-          rememberQrless(decodeJwt(getToken() ?? '')?.sub ?? null, me.qrlessCheckIn === true)
+          // The branch facts, kept on the phone for the next open with no signal.
+          const sub = decodeJwt(getToken() ?? '')?.sub ?? null
+          rememberQrless(sub, me.qrlessCheckIn === true)
+          rememberFence(sub, me.requireGeofence !== false)
         }
         return me
       })
@@ -274,6 +281,7 @@ export function ScanPage() {
     setAtBranch(null)
     setQrlessReady(null)
     setBranchUnknown(false)
+    setMeasuredAway(null)
     setPhase('scanning')
     scanDoneRef.current = false
     busyRef.current = false
@@ -341,6 +349,16 @@ export function ScanPage() {
     // there was a "scan anyway" link under it, and nobody pressed it — the sentence had already told
     // them scanning was not allowed, so they went home unrecorded. Now the nearest branch decides,
     // and when they are inside one the screen names it instead.
+    // The branch facts have to be in hand BEFORE the fence is judged, because whether the fence
+    // refuses at all is one of them. Bounded (3 s) and total (the promise cannot reject); when it is
+    // late the phone's own memory answers, and "never heard" means fenced — what every branch did
+    // before the switch existed.
+    const myId = decodeJwt(getToken() ?? '')?.sub ?? null
+    const me = await Promise.race([profileReadyRef.current, delay(3000).then(() => null)])
+    const known = me ? me.qrlessCheckIn === true : recallQrless(myId)
+    const fenced = me ? me.requireGeofence !== false : recallFence(myId)
+    if (known === null) setBranchUnknown(true)
+
     // The fence the phone is in, for the routing below — null when there is no branch list at all.
     let hit: { id: string | null; name: string } | null = null
     if (branches.length > 0) {
@@ -354,13 +372,22 @@ export function ScanPage() {
       hit = inside ? { id: inside.id ?? null, name: inside.name } : null
       if (!inside) {
         const nearest = ranked[0]
-        setChecks((c) => ({ ...c, location: 'fail' }))
-        await delay(900)
-        setVerifying(false)
-        setRadiusFail({ distance: nearest.dist, name: nearest.name })
-        return
+        // Their own branch only MEASURES? Then the pre-check must not refuse what the server will
+        // record — otherwise switching the wall off in the admin panel changes nothing anybody can
+        // see, which is exactly what happened the first time it was switched on: the test worker met
+        // «Yeriniz təsdiqlənmədi» and the scan never reached the server at all.
+        if (mayPassOutsideFence(fenced)) {
+          setMeasuredAway({ distance: nearest.dist, name: nearest.name })
+        } else {
+          setChecks((c) => ({ ...c, location: 'fail' }))
+          await delay(900)
+          setVerifying(false)
+          setRadiusFail({ distance: nearest.dist, name: nearest.name })
+          return
+        }
+      } else {
+        setAtBranch(inside.name)
       }
-      setAtBranch(inside.name)
     }
     setChecks((c) => ({ ...c, location: 'ok', camera: 'run' }))
 
@@ -373,10 +400,6 @@ export function ScanPage() {
     // only source (the phone remembers the fact from the last profile it saw, so a QR-less worker with
     // no signal still gets the selfie path). And the route is decided by PLACE, the way the server
     // decides it — see qrlessRoute — so a driver helping at a branch that HAS a poster gets the camera.
-    const myId = decodeJwt(getToken() ?? '')?.sub ?? null
-    const me = await Promise.race([profileReadyRef.current, delay(3000).then(() => null)])
-    const known = me ? me.qrlessCheckIn === true : recallQrless(myId)
-    if (known === null) setBranchUnknown(true)
     if (qrlessRoute({ known, ownLocationId: me?.locationId, insideId: hit?.id }) === 'selfie') {
       setChecks((c) => ({ ...c, camera: 'ok' }))
       setVerifying(false)
@@ -407,8 +430,8 @@ export function ScanPage() {
     setChecks((c) => ({ ...c, location: 'ok', camera: 'ok' }))
     // The server is the final word on the fence either way; at a QR-less branch it is reached
     // without a poster, so the escape hatch offers the same «Giriş et» button — still a tap.
-    const myId = decodeJwt(getToken() ?? '')?.sub ?? null
-    const known = profile ? profile.qrlessCheckIn === true : recallQrless(myId)
+    const escapeId = decodeJwt(getToken() ?? '')?.sub ?? null
+    const known = profile ? profile.qrlessCheckIn === true : recallQrless(escapeId)
     // `outside: true` — this path is only ever reached from the "you are N m away" card, and the card
     // below must not then greet them with «Filialınızın ərazisindəsiniz». Telling somebody they are at
     // work immediately after telling them they are not is the exact contradiction this screen was
@@ -1030,19 +1053,26 @@ export function ScanPage() {
               📍
             </div>
             <h2 className="text-lg font-extrabold text-white">
-              {qrlessReady.outside
-                ? 'Yenə də cəhd edin'
-                : qrlessReady.branch
-                  ? `${qrlessReady.branch} filialındasınız`
-                  : 'Filialınızın ərazisindəsiniz'}
+              {measuredAway
+                ? 'Giriş qeydə alınacaq'
+                : qrlessReady.outside
+                  ? 'Yenə də cəhd edin'
+                  : qrlessReady.branch
+                    ? `${qrlessReady.branch} filialındasınız`
+                    : 'Filialınızın ərazisindəsiniz'}
             </h2>
             <p className="mt-2 text-xs font-medium text-slate-300 leading-relaxed">
               Bu filialda QR posteri yoxdur.{' '}
-              {qrlessReady.outside
-                ? 'Telefon sizi filialdan kənarda göstərdi — son sözü server deyir. Cəhd edə bilərsiniz.'
-                : today.kind === 'none'
-                  ? 'Giriş selfi və GPS ilə qeydə alınır.'
-                  : 'Çıxış GPS ilə qeydə alınır.'}
+              {measuredAway
+                // The wall is down on purpose. Say the distance anyway — this is the number the whole
+                // measurement exists to collect, and hiding it from the person it describes would be
+                // the same silence, pointed the other way.
+                ? `${measuredAway.name} filialından təxminən ${measuredAway.distance} m aralıda göründünüz. Bu filialda GPS divarı sönülüdür — girişiniz qeydə alınacaq və yeriniz xəritəyə düşəcək.`
+                : qrlessReady.outside
+                  ? 'Telefon sizi filialdan kənarda göstərdi — son sözü server deyir. Cəhd edə bilərsiniz.'
+                  : today.kind === 'none'
+                    ? 'Giriş selfi və GPS ilə qeydə alınır.'
+                    : 'Çıxış GPS ilə qeydə alınır.'}
             </p>
             <button
               onClick={() => void proceed('', qrlessReady.me)}
@@ -1050,6 +1080,15 @@ export function ScanPage() {
             >
               {today.kind === 'none' ? 'Giriş et' : 'Çıxış et'}
             </button>
+          </div>
+        )}
+
+        {/* A poster branch whose fence only measures: the camera opens as always, and the distance is
+            stated rather than swallowed. */}
+        {showCamera && measuredAway && (
+          <div className="w-full max-w-sm rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-center text-xs font-medium text-sky-200 backdrop-blur-md">
+            {measuredAway.name} filialından ~{measuredAway.distance} m aralıda göründünüz — bu filialda
+            GPS divarı sönülüdür, skan qəbul ediləcək.
           </div>
         )}
 

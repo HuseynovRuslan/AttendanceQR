@@ -184,6 +184,14 @@ public class AttendanceController : ControllerBase
                 qrlessCheckIn = _db.Locations
                     .Where(l => l.Id == e.LocationId)
                     .Select(l => l.QrlessCheckIn)
+                    .FirstOrDefault(),
+                // Whether the radius REFUSES or merely measures. The phone runs its own copy of the
+                // fence before the camera — so without this it goes on blocking people the server
+                // would happily record, and switching the wall off in the admin panel does nothing
+                // anybody can see. That is exactly what happened the first time it was switched on.
+                requireGeofence = _db.Locations
+                    .Where(l => l.Id == e.LocationId)
+                    .Select(l => l.RequireGeofence)
                     .FirstOrDefault()
             })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
@@ -246,6 +254,7 @@ public class AttendanceController : ControllerBase
             profile.photoRequired, profile.consentRequired, profile.locationName,
             profile.canFieldCheckIn,
             profile.qrlessCheckIn,
+            profile.requireGeofence,
             profile.locationId,
             shiftStart, shiftEnd,
             unverifiedCheckIns = unverified,
