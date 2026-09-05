@@ -13,6 +13,7 @@ import {
   cancelFieldVisit,
   discardFieldVisit,
   forceCheckOutFieldVisit,
+  reviewFieldVisit,
   getFieldVisitChecklist,
   getFieldVisitWorkPhoto,
   type BoardFieldVisit,
@@ -70,7 +71,12 @@ function nearestSite(sites: AdminLocation[], lat: number, lng: number) {
 const MAX_CHECKLIST = 10
 /** The words these crews actually use. A hardcoded starter set, NOT a catalogue — no table, no page:
  *  a manager assigning ~20 near-identical visits will not type Azerbaijani ə/ş/ç/ı sixty times. */
-const QUICK_TASKS = ['süpür', 'zibili boşalt', 'sula', 'ot biç', 'döşəməni yu']
+const QUICK_TASKS = [
+  'süpür', 'zibili boşalt', 'sula', 'ot biç', 'döşəməni yu',
+  // The rest of what these crews actually do, in their own words — added because a manager listing
+  // a day's rota was typing them out: the canals and the garden are half the work at some sites.
+  'zibil qablarını boşalt', 'kanalı təmizlə', 'bağı təmizlə', 'yarpaqları yığ', 'pəncərələri sil',
+]
 // Local calendar date "YYYY-MM-DD". Deliberately NOT toISOString() — that returns the UTC date, which
 // in Baku (UTC+4) is the previous day before 04:00 and breaks the day navigation round-trip.
 const todayStr = () => {
@@ -494,6 +500,28 @@ export function FieldVisitsAdminPage() {
     else setError('Silinmədi')
   }
 
+  /**
+   * The manager's verdict on finished work. «Tamamlandı» is the WORKER's word — it means they checked
+   * out, not that the yard is clean — so a rota of small jobs needs somebody to look and say yes or
+   * no. Re-callable: a job put right after a rejection must be able to change the answer.
+   */
+  async function review(v: BoardFieldVisit, ok: boolean) {
+    const note = ok
+      ? (window.prompt('Qeyd (istəyə bağlı):', v.reviewNote ?? '') ?? undefined)
+      : (window.prompt('Nə həll olunmayıb?', v.reviewNote ?? '') ?? undefined)
+    // A cancelled prompt is a cancelled action — only an explicit empty string means "no note".
+    if (note === undefined) return
+
+    const { status, data } = await reviewFieldVisit(v.id, ok, note)
+    if (status !== 200 || !data || 'error' in data) {
+      setError('Qeyd olunmadı')
+      return
+    }
+    const saved = data
+    setRows((prev) => (prev ?? []).map((x) => (x.id === saved.id ? { ...x, ...saved } : x)))
+    setDetail((d) => (d && d.id === saved.id ? { ...d, ...saved } : d))
+  }
+
   async function forceCheckout(v: BoardFieldVisit) {
     // Ask for the departure TIME, not just for confirmation.
     //
@@ -626,7 +654,11 @@ export function FieldVisitsAdminPage() {
               <label className="form-label">İşçi</label>
               <select className="inp" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
                 <option value="">— seçin —</option>
-                {people.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.fullName}{p.location ? ` · ${p.location}` : ''}
+                  </option>
+                ))}
               </select>
               {people.length === 0 && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Sahə girişi icazəsi olan işçi yoxdur (işçi profilində açın).</div>}
             </div>
@@ -882,6 +914,29 @@ export function FieldVisitsAdminPage() {
                     <td data-label="">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn btn-sm" onClick={() => void openDetail(v)}>Təfərrüat</button>
+                        {/* The verdict on the WORK, beside the actions on the visit. Only once there
+                            is work to judge — an unstarted task is cancelled, not failed. */}
+                        {(v.status === 'Completed' || v.status === 'CheckedIn') && (
+                          v.reviewOk == null ? (
+                            <>
+                              <button className="btn btn-sm" title="İş həll olundu" onClick={() => void review(v, true)}>✓ Həll olundu</button>
+                              <button className="btn btn-sm" title="İş həll olunmadı" onClick={() => void review(v, false)}>✕ Olmadı</button>
+                            </>
+                          ) : (
+                            <button
+                              className="btn btn-sm"
+                              title={v.reviewNote ?? 'Verdikti dəyiş'}
+                              onClick={() => void review(v, !v.reviewOk)}
+                              style={{
+                                color: v.reviewOk ? '#15803D' : '#B91C1C',
+                                borderColor: v.reviewOk ? '#BBF7D0' : '#FECACA',
+                                background: v.reviewOk ? '#F0FDF4' : '#FEF2F2',
+                              }}
+                            >
+                              {v.reviewOk ? '✓ Həll olundu' : '✕ Həll olunmadı'}
+                            </button>
+                          )
+                        )}
                         {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
                         {/* Any visit that is not already cancelled — the server has always allowed
                             this and only the button was narrower, which left an OPEN one (a test
@@ -910,6 +965,7 @@ export function FieldVisitsAdminPage() {
           onCancel={() => void cancel(detail)}
           onDiscard={() => void discard(detail)}
           onForceCheckout={() => void forceCheckout(detail)}
+          onReview={(ok) => void review(detail, ok)}
           stuck={isStuck(detail, date)}
         />
       )}
@@ -1020,7 +1076,8 @@ function StatCard({ variant, label, value, sub, active, onClick }: {
   )
 }
 
-function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onDiscard, onForceCheckout, stuck }: {
+function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, onCancel, onDiscard, onForceCheckout, onReview, stuck }: {
+  onReview?: (ok: boolean) => void
   sites: AdminLocation[]
   v: BoardFieldVisit
   checklist: ChecklistItem[] | null
@@ -1187,7 +1244,28 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
         {/* The selfie render path is GONE with its endpoint — after this there is no code on the
             admin field surface that can display a field selfie, only the work photo above. */}
 
+        {v.reviewOk != null && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', marginBottom: 12,
+              borderRadius: 10, fontSize: 13,
+              background: v.reviewOk ? '#F0FDF4' : '#FEF2F2',
+              border: `1px solid ${v.reviewOk ? '#BBF7D0' : '#FECACA'}`,
+              color: v.reviewOk ? '#15803D' : '#B91C1C',
+            }}
+          >
+            <b>{v.reviewOk ? '✓ Həll olundu' : '✕ Həll olunmadı'}</b>
+            {v.reviewNote && <span style={{ color: 'var(--c600)' }}>— {v.reviewNote}</span>}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {onReview && (v.status === 'Completed' || v.status === 'CheckedIn') && (
+            <>
+              <button className="btn btn-sm" onClick={() => onReview(true)}>✓ Həll olundu</button>
+              <button className="btn btn-sm" onClick={() => onReview(false)}>✕ Həll olunmadı</button>
+            </>
+          )}
           {v.status === 'Assigned' && <button className="btn btn-sm" onClick={onCancel}>Ləğv et</button>}
           {v.status === 'Completed' && onDiscard && <button className="btn btn-sm" onClick={onDiscard}>Sil</button>}
           {stuck && <button className="btn btn-sm btn-danger" onClick={onForceCheckout}>Çıxışı bağla</button>}

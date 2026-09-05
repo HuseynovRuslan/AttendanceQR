@@ -62,6 +62,10 @@ export interface BoardFieldVisit {
   hasCheckOutPhoto: boolean
   /** İŞ ŞƏKLİ present — a photo of the work, never of a face. */
   hasWorkPhoto: boolean
+  /** The manager's verdict on the work; null while nobody has looked. */
+  reviewOk?: boolean | null
+  reviewedAtUtc?: string | null
+  reviewNote?: string | null
   checklistTotal: number
   checklistDone: number
   note: string | null
@@ -126,10 +130,25 @@ export interface AssignBody {
 export interface AssignablePerson {
   id: string
   fullName: string
+  /** Their branch — a manager of two sites needs it to tell two same-named workers apart. */
+  location: string | null
 }
 export function getAssignablePeople() {
   return apiRequest<AssignablePerson[]>('/api/field-visits/assignable')
 }
+/**
+ * The manager's verdict on finished work: «həll olundu» or «həll olunmadı».
+ *
+ * Separate from status, which is written by the WORKER and only says they checked out. Re-callable —
+ * a job put right after a rejection has to be able to change the answer.
+ */
+export function reviewFieldVisit(id: string, ok: boolean, note?: string) {
+  return apiRequest<BoardFieldVisit | { error: string }>(`/api/field-visits/${id}/review`, {
+    method: 'POST',
+    body: { ok, note: note?.trim() || null },
+  })
+}
+
 export function assignFieldVisit(body: AssignBody) {
   return apiRequest<{ id: string }>('/api/field-visits', { method: 'POST', body })
 }

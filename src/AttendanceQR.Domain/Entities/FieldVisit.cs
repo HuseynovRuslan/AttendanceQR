@@ -26,6 +26,30 @@ public enum FieldVisitStatus
 /// </summary>
 public class FieldVisit : ITenantScoped
 {
+    /// <summary>
+    /// The manager's verdict AFTER the work was done: was the job actually resolved?
+    ///
+    /// Status answers a different question — Completed means the worker checked out, which says they
+    /// left, not that the yard is clean. A rota of small jobs («süpür», «zibili boşalt», «kanalı
+    /// təmizlə») is only worth assigning if somebody looks afterwards and says yes or no, and until
+    /// this there was nowhere to put that answer: the board's only two endings were «Tamamlandı»,
+    /// written by the worker, and «Ləğv», which erases the visit rather than judging it.
+    ///
+    /// Null while nobody has looked yet. Never blocks anything and never changes the hours — this is
+    /// a note on the work, not on the attendance.
+    /// </summary>
+    public bool? ReviewOk { get; set; }
+
+    /// <summary>When the verdict was recorded; null while unreviewed.</summary>
+    public DateTime? ReviewedAtUtc { get; set; }
+
+    /// <summary>Who looked. Kept so «həll olunmadı» has a name against it, like every other judgement
+    /// in this product — an anonymous rejection is one nobody can ask about.</summary>
+    public Guid? ReviewedByEmployeeId { get; set; }
+
+    /// <summary>Why, in the reviewer's own words. Optional, and the only free text on the verdict.</summary>
+    public string? ReviewNote { get; set; }
+
     public Guid Id { get; set; } = Guid.NewGuid();
 
     // Multi-tenancy: which company this row belongs to (auto-stamped on save).

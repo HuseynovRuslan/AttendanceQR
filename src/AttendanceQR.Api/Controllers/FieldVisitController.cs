@@ -455,10 +455,16 @@ public class FieldVisitController : ControllerBase
         var worker = await _db.Employees.FirstOrDefaultAsync(e => e.Id == req.EmployeeId && e.IsActive, ct);
         if (worker is null)
             return BadRequest(new { error = "EmployeeNotFound" });
-        // Defence in depth: the assignable list already filters to field workers, but never trust it.
-        if (!worker.CanFieldCheckIn)
-            return BadRequest(new { error = "NotFieldWorker" });
-
+        // CanFieldCheckIn is deliberately NOT required here, and the distinction is the whole point of
+        // the flag: it gates SELF-REPORT — a visit the worker invents, at a place they name, with no
+        // fence — which is why it needs a permission at all. An ASSIGNED visit is the opposite: a
+        // manager decided it, for their own branch's staff, and the worker can already see it
+        // (GET /mine) and check in and out of it without the flag. Requiring it here only ever
+        // produced an empty dropdown: at CleanFix nobody had it, so a manager who wanted to hand out
+        // «süpür / zibili boşalt / otu biç» opened the form and found no names in it at all.
+        //
+        // What still bounds this is the branch rule below, which is the real authority: their own
+        // sites, plain staff only.
         // A manager may only assign to a Role==Employee worker in their own branches — never to an
         // admin or a fellow manager (the management rule, not the looser visibility one).
         if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), req.EmployeeId, ct))
@@ -613,12 +619,20 @@ public class FieldVisitController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
         var managed = await ManagedScopeAsync(ct);
-        var query = _db.Employees.Where(e => e.IsActive && e.CanFieldCheckIn);
+        // Everyone the caller may actually assign to — NOT everyone with the self-report flag. The
+        // two are different questions and answering the wrong one is what emptied this list.
+        var query = _db.Employees.Where(e => e.IsActive && e.Role == EmployeeRole.Employee);
         if (managed != null)
-            query = query.Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee);
+            query = query.Where(e => managed.Contains(e.LocationId));
         var people = await query
             .OrderBy(e => e.FullName)
-            .Select(e => new { id = e.Id, fullName = e.FullName })
+            // The branch rides along so a manager of two sites can tell two «Məmmədov Elçin»s apart.
+            .Select(e => new
+            {
+                id = e.Id,
+                fullName = e.FullName,
+                location = _db.Locations.Where(l => l.Id == e.LocationId).Select(l => l.Name).FirstOrDefault(),
+            })
             .ToListAsync(ct);
         return Ok(people);
     }
@@ -642,6 +656,47 @@ public class FieldVisitController : ControllerBase
     /// and judged it false is how people end up editing the database by hand — which is precisely
     /// what this endpoint exists to stop.
     /// </summary>
+    /// <summary>
+    /// POST /api/field-visits/{id}/review — the manager's verdict on finished work.
+    ///
+    /// «Tamamlandı» is written by the WORKER and only means they checked out; it does not mean the
+    /// yard is clean. A rota of small jobs is only worth handing out if somebody looks afterwards, and
+    /// until this the board's endings were «Tamamlandı» and «Ləğv» — one of which is the worker's own
+    /// word and the other of which erases the visit instead of judging it.
+    ///
+    /// Re-reviewable on purpose: a manager who marked «həll olunmadı», had it put right and came back
+    /// must be able to say so. The latest verdict stands, with its own time and name against it.
+    /// </summary>
+    [HttpPost("{id:guid}/review")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> Review(Guid id, [FromBody] ReviewFieldVisitRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var visit = await _db.FieldVisits.FirstOrDefaultAsync(v => v.Id == id, ct);
+        if (visit is null)
+            return NotFound(new { error = "VisitNotFound" });
+
+        // The same boundary every other manager write has: their branches, plain staff only.
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+
+        // Nothing to judge before the work has happened — an unstarted task is cancelled, not failed.
+        if (visit.Status is FieldVisitStatus.Assigned or FieldVisitStatus.Cancelled)
+            return BadRequest(new { error = "NotFinished" });
+
+        visit.ReviewOk = request.Ok;
+        visit.ReviewedAtUtc = DateTime.UtcNow;
+        visit.ReviewedByEmployeeId = Me;
+        var note = request.Note?.Trim();
+        visit.ReviewNote = string.IsNullOrEmpty(note) ? null : note[..Math.Min(note.Length, 500)];
+
+        await _db.SaveChangesAsync(ct);
+
+        var items = await ChecklistByVisitAsync([visit.Id], ct);
+        return Ok(Project(visit, null, items.GetValueOrDefault(visit.Id)));
+    }
+
     [HttpPost("{id:guid}/discard")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Discard(Guid id, [FromBody] DiscardVisitRequest? request = null)
@@ -869,6 +924,11 @@ public class FieldVisitController : ControllerBase
             checklistTotal = list.Count,
             checklistDone = list.Count(i => i.IsDone),
             hasWorkPhoto = v.WorkPhotoKey != null,
+            // The manager's verdict on the WORK — null while nobody has looked. Separate from status,
+            // which only says the worker left.
+            reviewOk = v.ReviewOk,
+            reviewedAtUtc = v.ReviewedAtUtc,
+            reviewNote = v.ReviewNote,
         };
     }
 
