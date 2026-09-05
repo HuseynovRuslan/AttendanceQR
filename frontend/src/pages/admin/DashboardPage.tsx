@@ -497,6 +497,12 @@ export function DashboardPage() {
           </div>
           {activity.length === 0 ? (
             <div className="muted" style={{ padding: '10px 16px' }}>Bu gün hələ hərəkət yoxdur</div>
+          ) : shownActivity.length === 0 ? (
+            // A search that matches nothing must SAY so. Without this the panel simply emptied, which
+            // reads as "there was no activity today" — the opposite of what the filter just did.
+            <div className="muted" style={{ padding: '10px 16px' }}>
+              «{feedQuery}» üzrə nəticə yoxdur
+            </div>
           ) : (
             <div className="lux-feed">
               {shownActivity.map((e, i) => (
