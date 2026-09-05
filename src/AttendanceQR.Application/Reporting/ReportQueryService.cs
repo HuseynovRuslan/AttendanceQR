@@ -762,6 +762,14 @@ public sealed class ReportQueryService : IReportQueryService
         bool IsLeaveOfType(Guid employeeId, DateOnly date, LeaveType type) =>
             LeaveTypeOn(employeeId, date) == type;
 
+        // "Checked in, never out" means two different things and the difference is whether the day is
+        // over. On a finished day it is a forgotten check-out: that day scores zero hours until
+        // somebody closes it, and the person needs telling. On TODAY it means they are AT WORK — and
+        // the employee's own «Saatlarım» greeted them with a red «1 gün çıxış etməmisiniz» the moment
+        // they clocked in, about a shift they were in the middle of. The dashboard already drew this
+        // distinction (GetDashboardAsync); the report it shares its rows with never did.
+        var todayLocal = LocalToday();
+
         var grouped = rows
             .GroupBy(x => new { x.EmployeeId, x.FullName })
             .Select(g => new EmployeeReportRow(
@@ -771,7 +779,9 @@ public sealed class ReportQueryService : IReportQueryService
                 WorkDays: g.Count(x => x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete),
                 LateCount: g.Count(x => x.Status == DailySummaryStatus.Late),
                 AbsentDays: g.Count(x => x.Status == DailySummaryStatus.Absent),
-                IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete),
+                // Today is excluded: a shift still running is not a missed check-out. It stays inside
+                // WorkDays above — the day IS being worked — and its hours land when they scan out.
+                IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete && x.Date != todayLocal),
                 TotalWorkedHours: Math.Round(g.Sum(x => x.WorkedMinutes) / 60.0, 2),
                 OvertimeHours: Math.Round(g.Sum(x => x.OvertimeMinutes) / 60.0, 2),
                 EarlyLeaveHours: Math.Round(g.Sum(x => x.EarlyLeaveMinutes) / 60.0, 2),
