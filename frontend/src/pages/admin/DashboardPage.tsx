@@ -112,6 +112,40 @@ function Sparkline({ points }: { points: number[] }) {
   )
 }
 
+/**
+ * The day's attendance rate as an arc.
+ *
+ * It was «54%» set in the corner as plain text — the same weight as the hero figure beside it, so two
+ * numbers competed for the one glance this card gets, and neither won. A ring is read before it is
+ * read: the arc says «about half» while the eye is still arriving, and the digits confirm it.
+ *
+ * Pure presentation — the number is handed in, nothing is fetched, nothing is computed here beyond the
+ * geometry.
+ */
+function RateRing({ pct }: { pct: number }) {
+  const safe = Math.max(0, Math.min(100, Math.round(pct)))
+  const R = 26
+  const C = 2 * Math.PI * R
+  // Below half the day is going badly and the ring should say so without anyone reading the label.
+  const stroke = safe >= 75 ? 'var(--leaf-d)' : safe >= 50 ? '#3B82F6' : 'var(--clay)'
+
+  return (
+    <span className="lux-ring" role="img" aria-label={`Bugünkü iştirak ${safe}%`}>
+      <svg width="64" height="64" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r={R} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="6" />
+        <circle
+          cx="32" cy="32" r={R} fill="none" stroke={stroke} strokeWidth="6" strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C * (1 - safe / 100)}
+          transform="rotate(-90 32 32)"
+          className="lux-ring-arc"
+        />
+      </svg>
+      <b className="lux-ring-n">{safe}%</b>
+    </span>
+  )
+}
+
 export function DashboardPage() {
   const navigate = useNavigate()
   // Everything the panel shows for today comes from here; `rows` below is this, narrowed to the
@@ -124,6 +158,12 @@ export function DashboardPage() {
   // '' = the whole company. With one branch this was a question nobody had; with six, "how many are
   // at work" has six different answers and the panel was only ever giving the sum.
   const [filterLoc, setFilterLoc] = useState('')
+  // Which branch the MAP is framed on — framing only, never filtering: the numbers on this page are
+  // governed by filterLoc above, and a second control that quietly changed them would be a trap.
+  const [mapFocus, setMapFocus] = useState<string | null>(null)
+  // The activity list is the whole day and scrolls; on a busy morning that is 300 rows, and «where is
+  // Rəşad» is answered by typing four letters rather than by scrolling.
+  const [feedQuery, setFeedQuery] = useState('')
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -301,6 +341,15 @@ export function DashboardPage() {
   const bucketRows = openBucket ? rows.filter((r) => rowInBucket(r, openBucket)).sort((a, b) => a.employeeName.localeCompare(b.employeeName)) : []
   const openPill = (b: Bucket) => setOpenBucket((cur) => (cur === b ? null : b))
 
+  // Name or branch, folded — the same match the rest of the product uses for Azerbaijani text.
+  const shownActivity = useMemo(() => {
+    const q = feedQuery.trim().toLocaleLowerCase('az-AZ')
+    if (!q) return activity
+    return activity.filter(
+      (e) => e.name.toLocaleLowerCase('az-AZ').includes(q) || e.loc.toLocaleLowerCase('az-AZ').includes(q),
+    )
+  }, [activity, feedQuery])
+
   // The board hangs on a wall in Baku; it shows Baku's time whatever the machine driving it thinks.
   const clock = now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })
 
@@ -346,9 +395,11 @@ export function DashboardPage() {
           <div className="lux-hero-num">{cOnDuty}<span className="lux-hero-unit">nəfər</span></div>
           <div className="lux-hero-note">{cTotal} işçidən {cOnDuty}-i hazırda işdədir</div>
         </div>
-        {/* One number leads; the day's attendance rate is a quiet chip, not a second big figure. */}
+        {/* One number leads; the day's rate is the SHAPE beside it. As bare text in the corner it was
+            a second figure competing with the first — as a ring it is read before it is read, and the
+            arc says «about half» before anyone parses «54%». */}
         <div className="lux-hero-rate">
-          <span className="lux-hero-rate-n">{cRate}%</span>
+          <RateRing pct={cRate} />
           <span className="lux-hero-rate-l">bugünkü iştirak</span>
         </div>
       </section>
@@ -402,10 +453,26 @@ export function DashboardPage() {
         <div className="card lux-panel">
           <div className="lux-panel-h">
             <span>Filiallar</span>
-            <span className="muted">nöqtənin böyüklüyü — hazırda işdə olanların sayı</span>
+            {/* Framing, not filtering: the page's own branch filter (up beside the clock) decides what
+                the numbers COUNT, and a second control that looked like it did the same thing would
+                be the duplication this screen has just been cleared of. This one only flies the map —
+                with twenty-two sites, finding one by eye is the actual difficulty. */}
+            {sites.length > 1 ? (
+              <select
+                className="inp lux-map-jump"
+                value=""
+                onChange={(e) => { setMapFocus(e.target.value || null); e.currentTarget.value = '' }}
+                aria-label="Xəritədə filiala yaxınlaş"
+              >
+                <option value="">Filiala yaxınlaş…</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            ) : (
+              <span className="muted">nöqtənin böyüklüyü — hazırda işdə olanların sayı</span>
+            )}
           </div>
           {sites.length > 0 || people.length > 0 ? (
-            <DashboardMap sites={sites} people={people} />
+            <DashboardMap sites={sites} people={people} focusSiteId={mapFocus} />
           ) : (
             <div className="muted" style={{ padding: 24 }}>Koordinatı olan aktiv filial yoxdur.</div>
           )}
@@ -414,13 +481,25 @@ export function DashboardPage() {
         <div className="card lux-panel">
           <div className="lux-panel-h">
             <span>Son fəaliyyət</span>
-            {activity.length > 0 && <span className="muted">bu gün · {activity.length} hərəkət</span>}
+            {activity.length > 0 && (
+              <span className="lux-feed-tools">
+                <input
+                  className="inp lux-feed-find"
+                  type="search"
+                  value={feedQuery}
+                  onChange={(e) => setFeedQuery(e.target.value)}
+                  placeholder="Ad axtar…"
+                  aria-label="Fəaliyyətdə axtar"
+                />
+                <span className="muted">{shownActivity.length} hərəkət</span>
+              </span>
+            )}
           </div>
           {activity.length === 0 ? (
             <div className="muted" style={{ padding: '10px 16px' }}>Bu gün hələ hərəkət yoxdur</div>
           ) : (
             <div className="lux-feed">
-              {activity.map((e, i) => (
+              {shownActivity.map((e, i) => (
                 <div key={e.id} className={`lux-feed-row${i === 0 ? ' is-new' : ''}`}>
                   <span className="lux-feed-dot" style={{ background: e.type === 'in' ? 'var(--leaf)' : 'var(--blue)' }} />
                   <span className="lux-feed-nm"><EmployeeLink id={e.empId} name={e.name} /></span>

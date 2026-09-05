@@ -78,7 +78,30 @@ function FitTo({ sites, people }: { sites: DashSite[]; people: DashPerson[] }) {
   return null
 }
 
-export function DashboardMap({ sites, people }: { sites: DashSite[]; people: DashPerson[] }) {
+/**
+ * Flies the map to one branch when the panel's «Filiala yaxınlaş» picker names one.
+ *
+ * A separate component because it needs the map instance, and the only way to hold one is from inside
+ * MapContainer. It reacts to the id CHANGING — re-framing on every twenty-second refresh would move
+ * the map under the hand of whoever is reading it.
+ */
+function FocusSite({ sites, focusSiteId }: { sites: DashSite[]; focusSiteId?: string | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!focusSiteId) return
+    const site = sites.find((s) => s.id === focusSiteId)
+    if (site) map.flyTo([site.lat, site.lng], 16, { duration: 0.8 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSiteId])
+  return null
+}
+
+export function DashboardMap({ sites, people, focusSiteId }: {
+  sites: DashSite[]
+  people: DashPerson[]
+  /** Branch to fly to; framing only — it never changes what the page counts. */
+  focusSiteId?: string | null
+}) {
   const centre = useMemo<[number, number]>(() => {
     if (sites.length === 0) return [40.4093, 49.8671] // Baku
     const c = densestCluster(sites)
@@ -101,6 +124,7 @@ export function DashboardMap({ sites, people }: { sites: DashSite[]; people: Das
         <TileLayer url={BASE.url} attribution={BASE.attribution}
                    subdomains={BASE.subdomains} maxZoom={BASE.maxZoom} />
         <FitTo sites={sites} people={people} />
+        <FocusSite sites={sites} focusSiteId={focusSiteId} />
 
         {/* Location layer — geofence + a small centre pin, always drawn so the site is marked even
             when nobody there has a known scan position. */}

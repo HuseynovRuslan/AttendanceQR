@@ -37,7 +37,9 @@ const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri' }
 
 const PAGE_META: Record<string, { title: string; sub: string }> = {
-  '/admin/dashboard': { title: 'İdarəetmə paneli', sub: 'Ümumi baxış — canlı' },
+  // Deliberately EMPTY — see the topbar below. The dashboard writes its own «İdarəetmə paneli»
+  // heading, and the bar repeating it word for word two lines higher was the first thing anyone saw.
+  '/admin/dashboard': { title: '', sub: '' },
   '/admin/tenants': { title: 'Şirkətlər', sub: 'Bütün müştərilər — yarat, söndür, aç' },
   '/admin/tasks': { title: 'Tapşırıqlar', sub: 'Komandanın ortaq görüləcək işlər siyahısı' },
   '/admin/today': { title: 'Davamiyyət', sub: 'Gün seçin — bugün canlı, keçmiş günlərə də baxın' },
@@ -284,8 +286,18 @@ export function AdminLayout() {
               {sidebarOpen ? <IconX /> : <IconMenu />}
             </button>
             <div style={{ minWidth: 0 }}>
-              <div className="topbar-title">{meta.title}</div>
-              <div className="topbar-sub">{meta.sub}</div>
+              {/* Where a page names itself (the dashboard does, under its own live pill), the bar
+                  states the CONTEXT instead of repeating the name: which company you are looking at,
+                  which is the one thing an operator switching between five of them needs on screen. */}
+              {meta.title
+                ? <>
+                    <div className="topbar-title">{meta.title}</div>
+                    <div className="topbar-sub">{meta.sub}</div>
+                  </>
+                : <>
+                    <div className="topbar-title">{branding.displayName ?? 'Şirkət'}</div>
+                    <div className="topbar-sub">İdarəetmə · canlı davamiyyət</div>
+                  </>}
             </div>
           </div>
           <div className="topbar-right">{isAdmin && <NotificationBell />}</div>
