@@ -109,3 +109,113 @@
 @media (max-width: 680px) {
   .op-shell .content > :not(.hq) { padding: 16px 14px; }
 }
+
+/* ==========================================================================
+   The pages INSIDE the frame.
+   ==========================================================================
+   Re-skinning the shell alone left every inner screen — Şirkətlər, Sağlamlıq,
+   Ödənişlər, Qlobal elan — as white cards glaring out of an obsidian ground. The board
+   was dark, the frame was dark, and the content was still the tenant panel's daylight.
+
+   The fix is a TOKEN REMAP, not eight pages of overrides. Every component in theme.css
+   reads its surface from --white, its rules from --c100/--c200 and its type from
+   --c400…--c900, so redefining that greyscale inside .op-shell turns the whole console
+   dark at once — including any screen added later, which is the half a per-page rewrite
+   cannot do. What follows the map is only the handful of components that hard-code a
+   colour and therefore cannot follow it. */
+.op-shell {
+  /* Surfaces */
+  --white: #0D131F;          /* every .card, .tbl-wrap, .inp, .btn */
+  --sand: #070A11;           /* the page ground behind them */
+  --c50: #141C2E;            /* thead, tfoot, hover fills, ghost-button hover */
+
+  /* Rules. Kept as translucent white so a border reads on BOTH surface levels. */
+  --c100: rgba(255, 255, 255, 0.08);
+  --c200: rgba(255, 255, 255, 0.18);
+
+  /* Type, coolest → strongest. The admin panel's neutrals are warm greys; on this ground
+     they read as dirty, so the console's are slate. */
+  --c400: #64748B;
+  --c500: #94A3B8;
+  --c600: #A9B6C7;
+  --c700: #CBD5E1;
+  --c800: #E2E8F0;
+  --c900: #FFFFFF;
+
+  /* The tinted pastels are lighter than this ground — as a badge fill they would be the
+     brightest thing on the screen. Same hues, held as translucent washes. */
+  --leaf-bg: rgba(74, 222, 128, 0.12);
+  --amber-bg: rgba(245, 158, 11, 0.12);
+  --clay-bg: rgba(248, 113, 113, 0.12);
+  --blue-bg: rgba(56, 189, 248, 0.12);
+  --purple-bg: rgba(168, 85, 247, 0.12);
+  --teal-bg: rgba(45, 212, 191, 0.12);
+  /* …and their foregrounds lifted to carry on a dark fill. */
+  --leaf-d: #4ADE80;
+  --clay: #F87171;
+  --amber: #FBBF24;
+  --blue: #38BDF8;
+  --purple: #C084FC;
+  --teal: #2DD4BF;
+
+  --sh: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  --sh-sm: 0 2px 10px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* --- the components that cannot follow the map ---------------------------- */
+
+/* .chip.active is `background: var(--c900); color: #fff` — white on white once --c900
+   flipped. It is the one place the old scale used its darkest value as a FILL. */
+.op-shell .chip.active {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.34);
+  color: #7DD3FC;
+}
+/* Same shape of problem: a hard-coded white foreground on a fill that is now light. */
+.op-shell .btn-primary { background: #2563EB; border-color: #2563EB; color: #fff; }
+.op-shell .btn-primary:hover { background: #1D4ED8; border-color: #1D4ED8; box-shadow: 0 0 16px rgba(37, 99, 235, 0.4); }
+.op-shell .btn-danger { background: rgba(248, 113, 113, 0.16); border-color: rgba(248, 113, 113, 0.32); color: #FCA5A5; }
+.op-shell .btn-danger:hover { background: rgba(248, 113, 113, 0.24); }
+.op-shell .btn:hover { border-color: rgba(255, 255, 255, 0.18); }
+
+/* Native form chrome renders its own light popup list unless the control declares the
+   scheme it is drawn in. Without this the selects and date pickers on these pages open a
+   white menu on a black page. */
+.op-shell .inp, .op-shell select, .op-shell input, .op-shell textarea { color-scheme: dark; }
+.op-shell .inp::placeholder, .op-shell input::placeholder, .op-shell textarea::placeholder { color: #64748B; }
+.op-shell .inp:focus, .op-shell input:focus, .op-shell textarea:focus {
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
+
+/* --- the table, to the console's own standard ----------------------------- */
+.op-shell .tbl-wrap, .op-shell table.tbl { box-shadow: var(--sh-sm); border-radius: 14px; }
+.op-shell .tbl-wrap thead tr, .op-shell table.tbl thead tr {
+  background: rgba(255, 255, 255, 0.02);
+}
+.op-shell .tbl-wrap th, .op-shell table.tbl th {
+  height: 44px; padding: 0 16px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: #64748B;
+}
+.op-shell .tbl-wrap td, .op-shell table.tbl td {
+  height: 56px; padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: #CBD5E1;
+}
+/* Lighter, not darker: on a dark ground the admin panel's `rgba(0,0,0,.015)` hover is
+   invisible — it was tinting black onto near-black. */
+.op-shell .tbl-wrap tbody tr:hover td, .op-shell table.tbl tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+  transition: background .15s ease;
+}
+.op-shell .tbl-wrap tfoot td, .op-shell table.tbl tfoot td { background: rgba(255, 255, 255, 0.03); color: #fff; }
+/* Figures line up down a column and never reflow as they count. */
+.op-shell td, .op-shell .num, .op-shell .mono { font-variant-numeric: tabular-nums; }
+
+/* A five-row table on a 1400px screen left two thirds of the page as empty black. The
+   floor is the table's, not the page's, so a long list is unaffected. */
+.op-shell .tbl-wrap { min-height: 320px; }
+
+/* Leaflet ships a white attribution strip and light controls; on these pages that is the
+   one white rectangle left. */
+.op-shell .leaflet-container { background: #0B1020; }
