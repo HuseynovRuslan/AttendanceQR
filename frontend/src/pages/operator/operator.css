@@ -309,7 +309,9 @@
 /* --- skeleton ------------------------------------------------------------- */
 .con-skel-row td { border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
 .con-skel {
-  display: block; height: 11px; border-radius: 999px;
+  /* A floor, because the numeric columns are shrink-to-fit: without it the placeholder in an «İşçi»
+     column collapses to a dot and the loading state reads as broken rather than as pending. */
+  display: block; height: 11px; min-width: 32px; border-radius: 999px;
   background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.10) 37%, rgba(255,255,255,.05) 63%);
   background-size: 400% 100%;
   animation: con-shimmer 1.4s ease infinite;
@@ -330,3 +332,12 @@
 .con-sort.is-on i { opacity: 1; color: #38BDF8; }
 /* A sortable column sits in a th the table already pads; the button must not add its own. */
 .op-shell th:has(.con-sort) { padding: 0 16px; }
+/* A numeric column right-aligns its DATA through .num, and the header has to follow it. The sort
+   button is an inline-flex box, so it sat at the start of the cell while the figures sat at the end
+   — «İŞÇİ» floating a hundred pixels left of the 80 underneath it. */
+.op-shell th.num .con-sort { display: flex; width: 100%; justify-content: flex-end; }
+
+/* Numeric columns take the width of their content, so the name column absorbs the slack instead of
+   the figures drifting into the middle of an empty table. */
+.op-shell .tbl th.num, .op-shell .tbl td.num,
+.op-shell .tbl-wrap th.num, .op-shell .tbl-wrap td.num { width: 1%; white-space: nowrap; }
