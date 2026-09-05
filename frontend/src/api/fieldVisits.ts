@@ -78,16 +78,27 @@ export interface GeoPhotoBody {
 export function getMyFieldVisits() {
   return apiRequest<MyFieldVisit[]>('/api/field-visits/mine')
 }
+// The three writes that record presence carry a deadline, like the QR scan's (ScanPage). Without
+// one, a wedged rural uplink held «Göndərilir…» open FOREVER — the sheet disables both dismiss
+// paths while sending, so the worker's only move was killing the app, mid-selfie-upload. Past the
+// deadline the fetch throws, the sheet shows its retry card, and the tap can be taken again.
+// (These still lack the scan path's offline queue — a server-side idempotency id for field visits
+// is the missing prerequisite.)
+const FIELD_WRITE_TIMEOUT_MS = 20_000
+
 export function startFieldVisit(body: GeoPhotoBody & { targetLabel?: string | null }) {
-  return apiRequest<MyFieldVisit>('/api/field-visits/start', { method: 'POST', body })
+  return apiRequest<MyFieldVisit>('/api/field-visits/start', {
+    method: 'POST', body, timeoutMs: FIELD_WRITE_TIMEOUT_MS })
 }
 export function checkInFieldVisit(id: string, body: GeoPhotoBody) {
-  return apiRequest<MyFieldVisit>(`/api/field-visits/${id}/check-in`, { method: 'POST', body })
+  return apiRequest<MyFieldVisit>(`/api/field-visits/${id}/check-in`, {
+    method: 'POST', body, timeoutMs: FIELD_WRITE_TIMEOUT_MS })
 }
 /** `doneItemIds` is the ABSOLUTE set of ticked lines — it reconciles ticks whose own POST never
  *  reached the server, so a whole afternoon of failed ticks still lands with the departure. */
 export function checkOutFieldVisit(id: string, body: GeoPhotoBody & { doneItemIds?: string[] }) {
-  return apiRequest<MyFieldVisit>(`/api/field-visits/${id}/check-out`, { method: 'POST', body })
+  return apiRequest<MyFieldVisit>(`/api/field-visits/${id}/check-out`, {
+    method: 'POST', body, timeoutMs: FIELD_WRITE_TIMEOUT_MS })
 }
 /** Ticks one line. Fire-and-forget from the app's point of view — failure is never shown as an error. */
 export function setChecklistItem(id: string, itemId: string, isDone: boolean) {

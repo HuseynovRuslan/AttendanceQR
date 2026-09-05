@@ -49,6 +49,28 @@ git fetch -q origin main
 git reset -q --hard origin/main
 git log -1 --pretty='  now on: %h %s'
 
+# Did this pull change the Caddyfile? It matters because the file is bind-mounted into the caddy
+# container and git replaces its INODE on pull — the running Caddy keeps reading the old copy, and
+# even `caddy reload` inside the container sees the old file. The 2026-09-04 outage fix (the
+# patient_proxy retry) would have silently never activated. So: validate the new file NOW, before
+# anything is touched — an invalid config force-recreated later would take down every host behind
+# this Caddy, the neighbour projects included — and force-recreate caddy only after the app proves
+# healthy, at the very end.
+CADDY_CHANGED=""
+if ! git diff --quiet "$PREV" HEAD -- Caddyfile; then
+  CADDY_CHANGED=1
+  echo "→ Caddyfile changed — validating the new config"
+  if docker run --rm -v "$APP_DIR/Caddyfile:/etc/caddy/Caddyfile:ro" \
+       caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    echo "  valid ✓ (caddy will be force-recreated after the app is healthy)"
+  else
+    echo "REFUSING: the new Caddyfile does not validate — deploy aborted before touching anything."
+    echo "  docker run --rm -v $APP_DIR/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile"
+    git reset -q --hard "$PREV"
+    exit 1
+  fi
+fi
+
 # A dump right before the change, so a bad migration has a same-minute restore point that does not
 # depend on last night's backup.
 #
@@ -68,7 +90,11 @@ fi
 
 start_containers() { docker compose -f docker-compose.prod.yml up -d --build backend frontend; }
 
-# ~60s for the API to answer. Returns non-zero if it never does.
+# Waits for the API to answer through the edge. Healthy deploys pass in seconds. A DEAD backend now
+# takes up to ~3 minutes to declare, not ~60s: the probe goes through Caddy, whose patient_proxy
+# holds each failed probe for curl's full 6s instead of answering an instant 502. That stretch is
+# accepted deliberately — it is extra headroom for a slow migration, during which a premature
+# rollback is the worse outcome (see the watchdog note above).
 wait_healthy() {
   for _ in $(seq 1 20); do
     if curl -fsS --max-time 6 https://api.qrlog.az/health >/dev/null 2>&1; then
@@ -85,6 +111,25 @@ start_containers
 echo "→ waiting for health"
 if wait_healthy; then
   echo "  healthy ✓"
+  # Only now, with the app proven, does a changed Caddyfile reach the proxy. Recreate is the ONLY
+  # way it can (the bind-mount inode problem above) and it drops every edge for a couple of
+  # seconds — which is why it is last, behind the validate gate and the health gate.
+  if [ -n "$CADDY_CHANGED" ]; then
+    echo "→ Caddyfile changed — force-recreating caddy"
+    docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+    if wait_healthy; then
+      echo "  edge healthy ✓"
+    else
+      echo "  EDGE NOT HEALTHY after caddy recreate — rolling the Caddyfile back to ${PREV:0:7}"
+      # The old file is left in the working tree ON PURPOSE: the tree then matches what the proxy is
+      # actually running (the next deploy's reset --hard cleans it up, and its validate gate will
+      # reject the broken file again if it is still on main).
+      git checkout -q "$PREV" -- Caddyfile
+      docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+      echo "  the CODE deploy stood; the CADDYFILE did not. Fix it and redeploy."
+      exit 1
+    fi
+  fi
   echo "DONE — deployed $(git rev-parse --short HEAD)"
   exit 0
 fi

@@ -19,9 +19,10 @@
  * Bump CACHE to force-invalidate on a breaking service-worker change (activate deletes every other
  * cache — v1→v2 evicted the stale Bakı Abadlıq icons from existing installs, and v2→v3 does the same
  * for bax after it was corrected to Green Garden, and v3→v4 for the QRLog wordmark itself, which was
- * replaced with the clean one — the old file was a sheet with the square mark and a divider baked in).
+ * replaced with the clean one — the old file was a sheet with the square mark and a divider baked in;
+ * v4→v5 evicts shells poisoned by the 502-caching bug below).
  */
-const CACHE = 'qrlog-shell-v4'
+const CACHE = 'qrlog-shell-v5'
 const SHELL = '/index.html'
 
 self.addEventListener('install', (event) => {
@@ -52,14 +53,24 @@ self.addEventListener('fetch', (event) => {
   // The staleness check must always read the real server value — never intercept it.
   if (url.pathname === '/version.json') return
 
-  // App navigation: network-first, cached shell as the offline fallback.
+  // App navigation: network-first, cached shell as the fallback — for BOTH ways the network can
+  // fail. A dead connection rejects the fetch and lands in the catch; but a deploy window does not:
+  // Caddy answers 502 FOR the container being swapped, the fetch fulfils, and this handler used to
+  // hand that error page to the user — and, having no res.ok check, to CACHE it as the shell, so
+  // even the offline fallback was poisoned until the next good load. That pair is how a worker
+  // standing at the poster with full signal "couldn't scan out" on 2026-09-04: the app never opened,
+  // so the offline queue never got the chance to save the tap. Only a real page is shown or cached;
+  // a 5xx is served only when there is no cached shell at all to stand in for it.
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone()
-          caches.open(CACHE).then((c) => c.put(SHELL, copy)).catch(() => {})
-          return res
+          if (res.ok) {
+            const copy = res.clone()
+            caches.open(CACHE).then((c) => c.put(SHELL, copy)).catch(() => {})
+            return res
+          }
+          return caches.match(SHELL).then((cached) => cached || res)
         })
         .catch(() => caches.match(SHELL).then((r) => r || Response.error())),
     )
@@ -94,8 +105,10 @@ self.addEventListener('fetch', (event) => {
           if (res.ok) {
             const copy = res.clone()
             caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {})
+            return res
           }
-          return res
+          // Same deploy-window 502 as navigations: prefer the last good copy over the error page.
+          return caches.match(req).then((cached) => cached || res)
         })
         .catch(() => caches.match(req).then((r) => r || Response.error())),
     )

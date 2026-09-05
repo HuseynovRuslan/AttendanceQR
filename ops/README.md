@@ -152,11 +152,18 @@ of the release ceremony the app does:
 
     cd /opt/attendanceqr && git pull && bash ops/build-landing.sh
 
-If the Caddyfile changed in the same pull, reload Caddy after it — but validate first, because an
-invalid config takes qrlog.az, bax.qrlog.az and api.qrlog.az down together:
+If the Caddyfile changed in the same pull, `caddy reload` will NOT pick it up — the file is
+bind-mounted, and git replaces its inode on pull, so anything run inside the container (validate
+included) still reads the OLD file. Validate the new file from the host with a throwaway container,
+then force-recreate — and validate first, because an invalid config takes every host behind this
+Caddy down together, the neighbour projects included:
 
-    docker compose -f docker-compose.prod.yml exec caddy caddy validate --config /etc/caddy/Caddyfile \
-      && docker compose -f docker-compose.prod.yml exec caddy caddy reload --config /etc/caddy/Caddyfile
+    docker run --rm -v /opt/attendanceqr/Caddyfile:/etc/caddy/Caddyfile:ro \
+      caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile \
+      && docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+
+(`ops/deploy-prod.sh` now does exactly this on its own when it sees the Caddyfile changed; the
+commands above are for a Caddyfile-only change shipped outside a deploy.)
 
 It writes to a temp directory first and refuses to publish a build with no `index.html`, so a broken
 build leaves the live site alone. It touches nothing but `landing-dist/` — never the app, the API or
