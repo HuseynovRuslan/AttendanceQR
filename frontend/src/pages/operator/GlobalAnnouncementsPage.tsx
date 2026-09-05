@@ -7,6 +7,7 @@ import {
 } from '../../api/admin'
 import { fmtDateTime } from '../../lib/format'
 import { useCan } from './OperatorContext'
+import { EmptyState } from './console'
 
 export function GlobalAnnouncementsPage() {
   const [rows, setRows] = useState<GlobalAnnouncement[]>([])
@@ -98,7 +99,13 @@ export function GlobalAnnouncementsPage() {
           <tbody>
             {loading && <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>Yüklənir…</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>Hələ qlobal elan yoxdur</td></tr>
+              <tr><td colSpan={5} style={{ padding: 0 }}>
+                <EmptyState
+                  icon="📣"
+                  title="Hələ qlobal elan yoxdur"
+                  note="Buradan göndərilən elan bütün şirkətlərin işçilərinin ana ekranında görünür."
+                />
+              </td></tr>
             )}
             {rows.map((a) => (
               <tr key={a.id} style={{ opacity: a.isActive ? 1 : 0.55 }}>

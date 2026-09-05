@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getBilling, markBilling, type BillingResponse, type BillingRow } from '../../api/admin'
+import { ConsoleToolbar, EmptyState, TableSkeleton, TenantAvatar, matches, useTableSort } from './console'
 import { parseMoney, formatMoney as money } from '../../lib/money'
 import { useCan } from './OperatorContext'
 
@@ -27,6 +28,10 @@ export function BillingPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const canBill = useCan('Billing')
+  const [query, setQuery] = useState('')
+  const [only, setOnly] = useState('all')
+  // Biggest invoice first: the money is what this page is read for.
+  const { sort, Th, key: sortKey, dir: sortDir } = useTableSort<BillingRow>('amount', 'desc')
 
   async function load() {
     setLoading(true)
@@ -85,6 +90,20 @@ export function BillingPage() {
 
   const t = data?.totals
 
+  const shown = useMemo(() => {
+    const rows = (data?.rows ?? []).filter(
+      (r) => only === 'all' || (only === 'paid' ? r.isPaid : !r.isPaid),
+    )
+    return sort(rows.filter((r) => matches(query, r.displayName)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, query, only, sortKey, sortDir])
+
+  const FILTERS = [
+    { key: 'all', label: 'Hamısı', count: t?.totalCount ?? 0 },
+    { key: 'unpaid', label: 'Gözləyir', count: (t?.totalCount ?? 0) - (t?.paidCount ?? 0) },
+    { key: 'paid', label: 'Ödənilib', count: t?.paidCount ?? 0 },
+  ]
+
   return (
     <div>
       {/* Month selector */}
@@ -107,35 +126,56 @@ export function BillingPage() {
       </div>
 
       <div className="card">
+        <ConsoleToolbar
+          query={query}
+          onQuery={setQuery}
+          placeholder="Şirkət adı üzrə axtar…"
+          filters={FILTERS}
+          activeFilter={only}
+          onFilter={setOnly}
+        />
         <table className="tbl">
           <thead>
             <tr>
-              <th>Şirkət</th>
-              <th className="num">İşçi</th>
-              <th className="num">Aylıq məbləğ</th>
+              <Th field="displayName">Şirkət</Th>
+              <Th field="employeeCount" className="num">İşçi</Th>
+              <Th field="amount" className="num">Aylıq məbləğ</Th>
               <th>Status</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>Yüklənir…</td></tr>}
-            {!loading && data && data.rows.length === 0 && (
-              <tr><td colSpan={5} className="muted" style={{ padding: 18 }}>Aktiv şirkət yoxdur</td></tr>
+            {loading && <TableSkeleton rows={5} cols={5} />}
+            {!loading && shown.length === 0 && (
+              <tr><td colSpan={5} style={{ padding: 0 }}>
+                <EmptyState
+                  icon={data && data.rows.length > 0 ? '🔍' : '💳'}
+                  title={data && data.rows.length > 0 ? 'Nəticə yoxdur' : 'Bu ay üçün faktura yoxdur'}
+                  note={data && data.rows.length > 0
+                    ? 'Axtarışı və ya süzgəci dəyişin.'
+                    : 'Aktiv şirkət olan kimi aylıq məbləğlər burada hesablanacaq.'}
+                />
+              </td></tr>
             )}
-            {!loading && data?.rows.map((r) => (
+            {!loading && shown.map((r) => (
               <tr key={r.tenantId}>
                 <td>
-                  <div style={{ fontWeight: 700 }}>
-                    {r.displayName}
-                    {!r.isActive && (
-                      <span className="tag" style={{ marginLeft: 6, background: 'var(--tag-neutral, rgba(0,0,0,0.05))', color: 'var(--c400)' }}>
-                        deaktiv
+                  <div className="con-named">
+                    <TenantAvatar name={r.displayName} />
+                    <div className="con-named-t">
+                      <b>
+                        {r.displayName}
+                        {!r.isActive && (
+                          <span className="tag" style={{ marginLeft: 6, background: 'var(--tag-neutral, rgba(0,0,0,0.05))', color: 'var(--c400)' }}>
+                            deaktiv
+                          </span>
+                        )}
+                      </b>
+                      <span>
+                        {r.plan ?? '— plansız'}
+                        {r.priceOverride != null && <> · <span title="Fərdi qiymət">fərdi</span></>}
                       </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--c400)' }}>
-                    {r.plan ?? '— plansız'}
-                    {r.priceOverride != null && <> · <span title="Fərdi qiymət">fərdi</span></>}
+                    </div>
                   </div>
                 </td>
                 <td className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.employeeCount}</td>

@@ -230,3 +230,103 @@
   --tag-neutral: rgba(255, 255, 255, 0.08);
   --amber-fg: #FBBF24;
 }
+
+/* ==========================================================================
+   The console's own layer: toolbar, empty state, skeleton, avatar, sorting.
+   ========================================================================== */
+
+/* --- toolbar -------------------------------------------------------------- */
+/* Inside the table's card, above the head — a control that governs a table belongs to it. */
+.con-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px; border-bottom: 1px solid var(--c100);
+}
+.con-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.con-search {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  min-width: 220px; flex: 0 1 300px;
+  padding: 0 10px; height: 36px; border-radius: 9px;
+  background: #141C2E; border: 1px solid var(--c100);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.con-search:focus-within { border-color: rgba(56, 189, 248, 0.55); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14); }
+.con-search svg { width: 15px; height: 15px; color: #64748B; flex-shrink: 0; }
+.con-search input {
+  flex: 1; min-width: 0; border: 0; background: none; outline: none;
+  color: #E2E8F0; font: inherit; font-size: 13px;
+}
+.con-search input::placeholder { color: #64748B; }
+/* The browser's own clear affordance is a light glyph it draws itself; ours matches the panel. */
+.con-search input::-webkit-search-cancel-button { display: none; }
+.con-search button {
+  border: 0; background: none; color: #64748B; cursor: pointer; font-size: 12px; padding: 2px 4px;
+}
+.con-search button:hover { color: #E2E8F0; }
+
+.con-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.con-filter {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+  background: transparent; border: 1px solid var(--c100); color: #94A3B8;
+  font: inherit; font-size: 12.5px; font-weight: 700;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.con-filter:hover { background: rgba(255, 255, 255, 0.04); color: #E2E8F0; }
+.con-filter b { font-weight: 800; color: #64748B; font-variant-numeric: tabular-nums; }
+.con-filter.is-on {
+  background: rgba(56, 189, 248, 0.12); border-color: rgba(56, 189, 248, 0.34); color: #7DD3FC;
+}
+.con-filter.is-on b { color: #7DD3FC; }
+
+/* --- avatar --------------------------------------------------------------- */
+.con-avatar {
+  display: inline-grid; place-items: center; flex-shrink: 0;
+  border-radius: 10px; border: 1px solid transparent;
+  font-weight: 800; letter-spacing: .02em; line-height: 1;
+}
+/* Name and avatar as one object, so a column of them reads as a list of companies. */
+.con-named { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.con-named-t { min-width: 0; }
+.con-named-t b { display: block; font-weight: 700; color: #fff; font-size: 13.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.con-named-t span { display: block; font-size: 11px; color: #64748B; margin-top: 1px; }
+
+/* --- empty state ---------------------------------------------------------- */
+.con-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 46px 24px; text-align: center;
+}
+.con-empty-icon {
+  font-size: 26px; line-height: 1; margin-bottom: 4px;
+  width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--c100);
+}
+.con-empty b { font-size: 14.5px; color: #E2E8F0; font-weight: 700; }
+.con-empty p { margin: 0; font-size: 12.5px; color: #64748B; max-width: 42ch; line-height: 1.5; }
+.con-empty > :last-child:not(p):not(b) { margin-top: 10px; }
+
+/* --- skeleton ------------------------------------------------------------- */
+.con-skel-row td { border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.con-skel {
+  display: block; height: 11px; border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 25%, rgba(255,255,255,.10) 37%, rgba(255,255,255,.05) 63%);
+  background-size: 400% 100%;
+  animation: con-shimmer 1.4s ease infinite;
+}
+@keyframes con-shimmer { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+@media (prefers-reduced-motion: reduce) { .con-skel { animation: none } }
+
+/* --- sortable header ------------------------------------------------------ */
+.con-sort {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit;
+}
+.con-sort i { font-style: normal; font-size: 10px; opacity: .35; transition: opacity .15s ease; }
+.con-sort:hover { color: #CBD5E1; }
+.con-sort:hover i { opacity: .8; }
+.con-sort.is-on { color: #E2E8F0; }
+.con-sort.is-on i { opacity: 1; color: #38BDF8; }
+/* A sortable column sits in a th the table already pads; the button must not add its own. */
+.op-shell th:has(.con-sort) { padding: 0 16px; }

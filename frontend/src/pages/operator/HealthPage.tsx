@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getHealth, type HealthResponse, type HealthRow, type HealthStatus } from '../../api/admin'
 import { fmtDate } from '../../lib/format'
+import { ConsoleToolbar, EmptyState, TableSkeleton, TenantAvatar, matches, useTableSort } from './console'
 
 const STATUS: Record<HealthStatus, { label: string; bg: string; fg: string }> = {
   healthy: { label: 'Sağlam', bg: 'var(--leaf-bg)', fg: 'var(--leaf-d)' },
@@ -31,6 +32,11 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'ok
 
 export function HealthPage() {
   const [data, setData] = useState<HealthResponse | null>(null)
+  const [query, setQuery] = useState('')
+  const [only, setOnly] = useState('all')
+  // Worst first by default: this screen exists to surface the companies that have gone quiet, and
+  // alphabetical order buries them among the healthy ones.
+  const { sort, Th, key: sortKey, dir: sortDir } = useTableSort<HealthRow>('daysSinceLastScan', 'desc')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,6 +57,21 @@ export function HealthPage() {
 
   const s = data?.summary
 
+  // Search and the status filter, applied once. The table is small, so this is a memo for tidiness
+  // rather than for speed — it keeps the JSX below reading as markup.
+  const shown = useMemo(() => {
+    const rows = (data?.rows ?? []).filter((r) => only === 'all' || r.status === only)
+    return sort(rows.filter((r) => matches(query, r.displayName, r.plan)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, query, only, sortKey, sortDir])
+
+  const FILTERS = [
+    { key: 'all', label: 'Hamısı', count: data?.rows.length ?? 0 },
+    { key: 'healthy', label: 'Sağlam', count: s?.healthy ?? 0 },
+    { key: 'quiet', label: 'Susqun', count: s?.quiet ?? 0 },
+    { key: 'dormant', label: 'Ölü / Yeni', count: s?.dormant ?? 0 },
+  ]
+
   return (
     <div>
       {error && <div className="fb fb-err" style={{ marginBottom: 14 }}>{error}</div>}
@@ -64,30 +85,51 @@ export function HealthPage() {
       </div>
 
       <div className="card">
+        <ConsoleToolbar
+          query={query}
+          onQuery={setQuery}
+          placeholder="Şirkət və ya plan üzrə axtar…"
+          filters={FILTERS}
+          activeFilter={only}
+          onFilter={setOnly}
+        />
         <table className="tbl">
           <thead>
             <tr>
-              <th>Şirkət</th>
-              <th className="num">İşçi</th>
-              <th className="num">Filial</th>
-              <th>Son skan</th>
-              <th className="num">Bu gün</th>
-              <th className="num">Bu ay</th>
+              <Th field="displayName">Şirkət</Th>
+              <Th field="employeeCount" className="num">İşçi</Th>
+              <Th field="locationCount" className="num">Filial</Th>
+              <Th field="daysSinceLastScan">Son skan</Th>
+              <Th field="checkInsToday" className="num">Bu gün</Th>
+              <Th field="checkInsThisMonth" className="num">Bu ay</Th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={7} className="muted" style={{ padding: 18 }}>Yüklənir…</td></tr>}
-            {!loading && data && data.rows.length === 0 && (
-              <tr><td colSpan={7} className="muted" style={{ padding: 18 }}>Aktiv şirkət yoxdur</td></tr>
+            {loading && <TableSkeleton rows={6} cols={7} />}
+            {!loading && shown.length === 0 && (
+              <tr><td colSpan={7} style={{ padding: 0 }}>
+                <EmptyState
+                  icon={data && data.rows.length > 0 ? '🔍' : '🏢'}
+                  title={data && data.rows.length > 0 ? 'Bu şərtlərə uyğun şirkət yoxdur' : 'Hələ aktiv şirkət yoxdur'}
+                  note={data && data.rows.length > 0
+                    ? 'Axtarışı və ya statusu dəyişin.'
+                    : 'Şirkət yaradılan kimi onun skan aktivliyi burada görünəcək.'}
+                />
+              </td></tr>
             )}
-            {!loading && data?.rows.map((r) => {
+            {!loading && shown.map((r) => {
               const st = STATUS[r.status]
               return (
                 <tr key={r.tenantId}>
                   <td>
-                    <div style={{ fontWeight: 700 }}>{r.displayName}</div>
-                    <div style={{ fontSize: 11, color: 'var(--c400)' }}>{r.plan ?? '— plansız'}</div>
+                    <div className="con-named">
+                      <TenantAvatar name={r.displayName} />
+                      <div className="con-named-t">
+                        <b>{r.displayName}</b>
+                        <span>{r.plan ?? '— plansız'}</span>
+                      </div>
+                    </div>
                   </td>
                   <td className="num" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {r.employeeCount}
