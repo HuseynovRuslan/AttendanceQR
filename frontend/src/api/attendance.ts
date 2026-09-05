@@ -290,6 +290,19 @@ export function getOpenRecords() {
   return apiRequest<OpenRecord[]>('/api/admin/attendance/open')
 }
 
+/**
+ * POST /api/admin/attendance/close-open — close a batch of forgotten check-outs, each at the end of
+ * THAT person's own shift on THAT day. Explicit ids, never "everything open": what gets written is
+ * what was on the admin's screen. Returns how many were closed and how many were skipped (already
+ * closed, out of scope, or dated today — a shift still running is not a forgotten check-out).
+ */
+export function closeOpenDays(recordIds: string[]) {
+  return apiRequest<{ closed: number; skipped: number } | { error: string }>(
+    '/api/admin/attendance/close-open',
+    { method: 'POST', body: { recordIds } },
+  )
+}
+
 /** PUT /api/admin/attendance/{recordId} — correct an existing record's check-in/out (either or
  * both; omitted fields are left as-is). Recomputes that date's summary immediately. */
 export function adminUpdateRecord(recordId: string, checkInAtUtc?: string, checkOutAtUtc?: string) {

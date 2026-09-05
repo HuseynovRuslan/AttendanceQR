@@ -440,18 +440,35 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
     ? {
         label: 'İndi iş başında',
         value: onDuty,
-        note: `Bu gün ${fmt.format(totals.present)} / ${fmt.format(observed)} nəfər işə gəlib — ${totals.attendancePct}% · ${fmt.format(totals.notStarted)} nəfər tətbiqi hələ açmayıb`,
+        // Three facts, three chips. It used to be one sentence — «Bu gün 200 / 337 nəfər işə gəlib —
+        // 59% — 320 nəfər tətbiqi hələ açmayıb» — which is the same information and unreadable at
+        // the distance this board is actually read from: one run-on line under a 48px number, with
+        // the three numbers in it competing rather than separating.
+        chips: [
+          { tone: 'ok' as const, text: `${fmt.format(totals.present)} / ${fmt.format(observed)} gəlib` },
+          { tone: 'info' as const, text: `${totals.attendancePct}% davamiyyət` },
+          ...(totals.notStarted > 0
+            ? [{ tone: 'warn' as const, text: `${fmt.format(totals.notStarted)} tətbiqi açmayıb` }]
+            : []),
+        ],
       }
     : totals.present > 0
       ? {
           label: 'Bu gün işə gəldi',
           value: present,
-          note: `İş günü tamamlanıb · ${fmt.format(totals.present)} / ${fmt.format(observed)} — ${totals.attendancePct}%`,
+          chips: [
+            { tone: 'ok' as const, text: `${fmt.format(totals.present)} / ${fmt.format(observed)} gəlib` },
+            { tone: 'info' as const, text: `${totals.attendancePct}% davamiyyət` },
+            { tone: 'muted' as const, text: 'iş günü tamamlanıb' },
+          ],
         }
       : {
           label: 'Sistemdə qeydiyyatda',
           value: employees,
-          note: `${totals.companies} şirkət · ${totals.locations} filial · bu gün hələ skan olmayıb`,
+          chips: [
+            { tone: 'muted' as const, text: `${totals.companies} şirkət · ${totals.locations} filial` },
+            { tone: 'muted' as const, text: 'bu gün hələ skan olmayıb' },
+          ],
         }
 
   return (
@@ -503,7 +520,13 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
             <div className="hq-hero-value hq-num">
               {fmt.format(hero.value)}<span className="hq-hero-unit">nəfər</span>
             </div>
-            <div className="hq-hero-note">{hero.note}</div>
+            <div className="hq-hero-chips">
+              {hero.chips.map((c) => (
+                <span key={c.text} className={`hq-chip is-${c.tone}`}>
+                  {c.tone === 'ok' ? '✓' : c.tone === 'warn' ? '⚠️' : ''} {c.text}
+                </span>
+              ))}
+            </div>
           </div>
           <div className="hq-stats">
             {/* Opens WHO has not started — the board's largest number and, until it did, the one with
@@ -634,7 +657,8 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                     title={`${f.fullName} — harada olub`}
                   >
                     <span className="hq-feed-time hq-num">{timeOf(f.atUtc)}</span>
-                    <span className="hq-feed-name">{f.fullName}</span>
+                    <span className="hq-feed-who">
+                      <span className="hq-feed-name">{f.fullName}</span>
                     {f.hasPhoto && f.recordId && (
                       // A <span role="button"> rather than a <button>: this row IS a button, and a
                       // button inside a button is invalid HTML that browsers silently unnest —
@@ -653,6 +677,10 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                         {photoBusy === f.recordId ? '…' : '📷'}
                       </span>
                     )}
+                    </span>
+                    {/* Company and flag share one cell so the coloured tags line up down the list
+                        whatever the names beside them do. */}
+                    <span className="hq-feed-tags">
                     <span
                       className="hq-feed-co"
                       style={{
@@ -677,6 +705,7 @@ export function GroupBoardPage({ embedded = false }: { embedded?: boolean } = {}
                         ⚠️ {f.faceMatchStatus === 'NoFace' ? 'üzsüz' : 'şübhəli'}
                       </span>
                     )}
+                    </span>
                     <span className={`hq-feed-kind ${f.kind.endsWith('in') ? 'hq-in' : 'hq-out'}`}>
                       {f.kind.startsWith('field') ? '📍 ' : ''}{f.kind.endsWith('in') ? 'GİRİŞ' : 'ÇIXIŞ'}
                     </span>

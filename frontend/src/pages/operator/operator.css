@@ -1,0 +1,111 @@
+/* The operator console's shell, dark.
+ *
+ * The console shares its frame (.app / .sidebar / .topbar / .content) with the tenant admin panel,
+ * and that panel is deliberately light: it is a working tool, read at arm's length, all day. The
+ * console is not — its main screen is the group board, which is read across a room and has been dark
+ * since it was built. The two met at a white 58px topbar sitting on top of an obsidian board, and
+ * the seam was the first thing anyone saw.
+ *
+ * So this file re-skins the SAME markup rather than forking it: every rule below is scoped to
+ * `.op-shell`, which only OperatorLayout sets. Nothing here can reach the admin panel, and the
+ * console keeps inheriting every later fix to the shared shell.
+ */
+
+.op-shell {
+  /* One palette, shared with hq.css so the frame and the board are the same world. */
+  --op-bg: #080B11;
+  --op-surface: #0E1420;
+  --op-surface-2: #151E30;
+  --op-line: rgba(255, 255, 255, 0.07);
+  --op-line-strong: rgba(255, 255, 255, 0.16);
+  --op-fg: #F1F5F9;
+  --op-fg-dim: #94A3B8;
+  --op-fg-muted: #64748B;
+  --op-accent: #38BDF8;
+
+  background: var(--op-bg);
+  color: var(--op-fg);
+}
+
+/* --- sidebar ------------------------------------------------------------- */
+.op-shell .sidebar {
+  background: var(--op-surface);
+  border-right: 1px solid var(--op-line);
+}
+.op-shell .sidebar-logo { padding: 20px 16px 14px; }
+.op-shell .logo-text .t1 { color: var(--op-fg); }
+.op-shell .logo-text .t2 { color: var(--op-fg-muted); }
+
+/* The identity card. It carried a full e-mail address on one line, which on a long address simply
+   ran out of the sidebar; and the role — the one thing that decides what this person may do — was
+   grey caption text under it. Now the local part is the name, the address is the title attribute,
+   and the role is a badge you can read at a glance. */
+.op-shell .sidebar-role {
+  margin: 0 12px 14px;
+  background: var(--op-surface-2);
+  border: 1px solid var(--op-line);
+  border-radius: 10px;
+  padding: 10px 11px;
+}
+.op-shell .role-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--op-fg);
+  /* The address is longer than the sidebar on most accounts — clip it rather than pushing the frame. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.op-shell .role-area { color: var(--op-fg-muted); }
+.op-shell .op-role-badge {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #7DD3FC;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+/* --- navigation ---------------------------------------------------------- */
+.op-shell .nav-item { color: var(--op-fg-dim); border-radius: 9px; }
+.op-shell .nav-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--op-fg); }
+.op-shell .nav-item.active {
+  background: rgba(56, 189, 248, 0.10);
+  color: #BAE6FD;
+}
+.op-shell .nav-item.active svg { color: #7DD3FC; }
+/* The shared shell paints this bar with the leaf green of the tenant panel. */
+.op-shell .nav-item.active::before { background: var(--op-accent); }
+.op-shell .nav-section + .nav-section { border-top-color: var(--op-line); }
+.op-shell .sidebar-footer { border-top: 1px solid var(--op-line); }
+
+/* --- topbar and content -------------------------------------------------- */
+.op-shell .main { background: var(--op-bg); }
+.op-shell .topbar {
+  /* Translucent rather than flat: the board's own gradient shows through as it scrolls under, which
+     is what stops the bar reading as a separate white plank laid on top of the screen. */
+  background: rgba(8, 11, 17, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--op-line);
+}
+.op-shell .topbar-title { color: var(--op-fg); font-size: 16px; }
+.op-shell .topbar-sub { color: var(--op-fg-muted); }
+.op-shell .hamburger-btn {
+  background: var(--op-surface-2);
+  border-color: var(--op-line-strong);
+  color: var(--op-fg-dim);
+}
+.op-shell .content { padding: 0; }
+
+/* The board brings its own padding and its own background; every OTHER console screen is an ordinary
+   card layout that still needs the frame's. */
+.op-shell .content > :not(.hq) { padding: 22px 26px; display: block; }
+
+@media (max-width: 680px) {
+  .op-shell .content > :not(.hq) { padding: 16px 14px; }
+}

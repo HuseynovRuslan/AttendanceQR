@@ -140,6 +140,110 @@ public class AdminAttendanceController : ControllerBase
         return Ok(Project(record));
     }
 
+    /// <summary>
+    /// Closes many forgotten check-outs at once, each at the end of THAT person's own shift on THAT
+    /// day — never a blanket hour.
+    ///
+    /// One at a time, this screen is a chore nobody finishes: a day that is checked in and never out
+    /// scores zero hours, the list only grows, and the fix is the same three clicks per row. What made
+    /// a batch honest is that the hour is no longer a guess — every employee is on a named shift or
+    /// carries their own, so «bitir 18:00» comes from EffectiveShift rather than from a default typed
+    /// into a form.
+    ///
+    /// Deliberately still a BUTTON, not a nightly job. Closing days automatically was offered with the
+    /// figures and turned down on 2026-08-11, and for a good reason: an unclosed day is evidence that
+    /// somebody did not scan, and a job that quietly tidies it away destroys the evidence and pays the
+    /// hours anyway. A person pressing this is vouching for the days on their screen.
+    ///
+    /// TODAY is never closed, whatever is sent: a shift still running is not a forgotten check-out —
+    /// the same rule the board and «Saatlarım» apply.
+    /// </summary>
+    [HttpPost("close-open")]
+    public async Task<IActionResult> CloseOpenDays([FromBody] CloseOpenDaysRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var ids = (request.RecordIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+            return BadRequest(new { error = "NothingSelected" });
+        if (ids.Count > MaxBulkClose)
+            return BadRequest(new { error = "TooMany" });
+
+        var requesterId = User.EmployeeId();
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+
+        var records = await _db.AttendanceRecords
+            .Where(r => ids.Contains(r.Id) && r.CheckInAtUtc != null && r.CheckOutAtUtc == null)
+            .ToListAsync(ct);
+
+        var closed = 0;
+        var skipped = 0;
+        var days = new HashSet<DateOnly>();
+
+        foreach (var record in records)
+        {
+            if (record.AttendanceDate >= todayLocal) { skipped++; continue; }
+
+            if (!await LocationScopeRules.CanManageEmployeeAsync(_db, requesterId, User.Role(), record.EmployeeId, ct))
+            { skipped++; continue; }
+
+            var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId, ct);
+            var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId, ct);
+            if (location is null || employee is null) { skipped++; continue; }
+
+            var shift = EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location);
+            var closeAt = ShiftEndUtc(shift, record.AttendanceDate, record.CheckInAtUtc!.Value);
+            if (closeAt <= record.CheckInAtUtc) { skipped++; continue; }
+
+            record.CheckOutAtUtc = closeAt;
+            record.ManualByEmployeeId = requesterId; // written by hand, and attributed like any other
+            closed++;
+            days.Add(record.AttendanceDate);
+        }
+
+        if (closed == 0)
+            return Ok(new { closed, skipped });
+
+        await _db.SaveChangesAsync(ct);
+
+        // One audit row per record, exactly as a single edit writes — a batch must not be cheaper to
+        // audit than the twenty clicks it replaces.
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        foreach (var r in records.Where(r => r.CheckOutAtUtc != null && r.ManualByEmployeeId == requesterId))
+            await WriteAuditAsync(r.EmployeeId, requesterId, r.Id, ip);
+
+        foreach (var day in days)
+            await _dailySummaryService.GenerateForDateAsync(day, ct);
+
+        return Ok(new { closed, skipped });
+    }
+
+    /// <summary>How many days one press may close. High enough for a month's backlog at a big company,
+    /// low enough that a malformed call cannot rewrite a year of attendance in one request.</summary>
+    private const int MaxBulkClose = 500;
+
+    /// <summary>
+    /// The moment that shift ends, in UTC, on that date. An overnight shift (end before start) ends on
+    /// the FOLLOWING day — closing a 22:00–06:00 shift at 06:00 of the day it began would put the
+    /// check-out sixteen hours before the check-in.
+    /// </summary>
+    private DateTime ShiftEndUtc(EffectiveShift shift, DateOnly date, DateTime checkInUtc)
+    {
+        var hours = shift.HoursOn(date);
+        var endDate = hours.End < hours.Start ? date.AddDays(1) : date;
+        var localEnd = DateTime.SpecifyKind(endDate.ToDateTime(hours.End), DateTimeKind.Unspecified);
+        var utc = TimeZoneInfo.ConvertTimeToUtc(localEnd, _timeZone);
+        // A day whose scan came in AFTER its own shift end (a late arrival on a short shift) would
+        // otherwise close before it opened. Fall back to the check-in itself plus the shift's length.
+        if (utc <= checkInUtc)
+        {
+            var span = hours.End < hours.Start
+                ? (TimeOnly.MaxValue - hours.Start) + hours.End.ToTimeSpan()
+                : hours.End - hours.Start;
+            utc = checkInUtc.Add(span);
+        }
+        return utc;
+    }
+
     // Open to a manager, scoped exactly as the edit beside it is.
     //
     // It was Admin-only on the reasoning that writing a day out of nothing is a different power from

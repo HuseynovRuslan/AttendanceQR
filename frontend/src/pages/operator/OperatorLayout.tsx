@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import './operator.css'
 import { BrandLogo } from '../../components/BrandLogo'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
@@ -73,11 +74,18 @@ export function OperatorLayout() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // The part before the @ — a name, not an address. Memoised only to keep it out of every render's
+  // work; it changes once, at sign-in.
+  const displayName = useMemo(() => (email ? email.split('@')[0] : '—'), [email])
+
   const title = TITLES[location.pathname] ?? 'SuperAdmin paneli'
   const links = LINKS.filter((l) => !l.perm || operator.permissions.includes(l.perm))
 
   return (
-    <div className="app">
+    // `op-shell` is what makes this console dark. The frame is shared with the tenant admin panel,
+    // which stays light on purpose, so the re-skin is scoped to this class rather than applied to the
+    // shell's own selectors — see operator.css.
+    <div className="app op-shell">
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 
       <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
@@ -96,9 +104,13 @@ export function OperatorLayout() {
         <div className="sidebar-role">
           <div className="role-badge">
             <span className="role-dot" style={{ background: '#1E70C8' }} />
-            <div>
-              <div className="role-name">{email ?? '—'}</div>
-              <div className="role-area">{operator.role ? ROLE_LABEL[operator.role] ?? operator.role : 'Operator'}</div>
+            <div style={{ minWidth: 0 }}>
+              {/* The address is the identity but not the label: «baxmmc.ai@gmail.com» overflowed the
+                  sidebar, so the local part is shown and the whole thing stays in the tooltip. */}
+              <div className="role-name" title={email ?? undefined}>{displayName}</div>
+              <div className="op-role-badge">
+                {operator.role ? ROLE_LABEL[operator.role] ?? operator.role : 'Operator'}
+              </div>
             </div>
           </div>
         </div>

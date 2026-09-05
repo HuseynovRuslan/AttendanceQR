@@ -293,24 +293,27 @@ export function SiteMap({ sites, companies = [], accentOf }: {
         {!wheelArmed && shown.length > 0 && (
           <div className="hq-map-hint">Yaxınlaşdırmaq üçün xəritəyə klikləyin</div>
         )}
+
+        {/* Over the map, because it is a fact ABOUT the map: an empty branch draws the smallest
+            marker there is, so absence is the one thing these dots cannot say for themselves.
+            Pressable — it states a fact whose obvious next question is «which ones». */}
+        {emptyCount > 0 && (
+          <button
+            type="button"
+            className={`hq-site-note${emptyOnly ? ' is-on' : ''}`}
+            onClick={() => setEmptyOnly((v) => !v)}
+            title={emptyOnly ? 'Bütün filiallara qayıt' : 'Yalnız boşları göstər'}
+          >
+            <em>{emptyCount}</em>
+            <span>filialda hazırda heç kim yoxdur</span>
+            <b>{emptyOnly ? '✕' : '→'}</b>
+          </button>
+        )}
       </div>
 
       {/* Names, readable, ordered by where the work is. Clicking one flies the map to it — the single
           most useful thing to be able to do while someone is watching. */}
       <ul className="hq-sitelist">
-        {emptyCount > 0 && (
-          // Pressable, because it states a fact and the obvious next question is «which ones». The
-          // answer was at the bottom of a list of twenty-one, sorted so that the empty ones come
-          // last — the reader had to scroll past everything that was fine to reach what was not.
-          <li
-            className={`hq-site-note${emptyOnly ? ' is-on' : ''}`}
-            onClick={() => setEmptyOnly((v) => !v)}
-            title={emptyOnly ? 'Bütün filiallara qayıt' : 'Yalnız boşları göstər'}
-          >
-            <span>{emptyCount} filialda hazırda heç kim yoxdur</span>
-            <b>{emptyOnly ? 'hamısı ✕' : 'bax →'}</b>
-          </li>
-        )}
         {listed.map((s) => (
           <li
             id={`hq-site-${s.id}`}

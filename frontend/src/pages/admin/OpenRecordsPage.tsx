@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { adminUpdateRecord, getOpenRecords, type OpenRecord } from '../../api/attendance'
+import { adminUpdateRecord, closeOpenDays, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
 import { fmtDate, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 
@@ -26,6 +26,11 @@ export function OpenRecordsPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   // Per-row chosen check-out, keyed by recordId; seeded lazily from defaultCheckout.
   const [times, setTimes] = useState<Record<string, string>>({})
+  // Which rows the batch will close. Empty by default and never "all open days" implicitly: this
+  // writes hours people are paid for, so the admin ticks what they are willing to vouch for.
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
 
   useEffect(() => {
     void load()
@@ -41,6 +46,46 @@ export function OpenRecordsPage() {
     } else {
       setError('Yüklənmədi')
     }
+  }
+
+  function toggle(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  /**
+   * Closes every ticked day at its own shift end — the server decides the hour, per employee, per
+   * date. One at a time this screen is a chore nobody finishes: the list only grows and every row
+   * costs the same three clicks.
+   */
+  async function closePicked() {
+    const ids = [...picked]
+    if (ids.length === 0) return
+    if (!window.confirm(
+      `${ids.length} gün bağlanacaq. Hər gün həmin işçinin öz növbəsinin bitmə saatı ilə yazılacaq. Davam edilsin?`,
+    )) return
+
+    setBulkBusy(true)
+    setError(null)
+    setDone(null)
+    const { status, data } = await closeOpenDays(ids)
+    setBulkBusy(false)
+
+    if (status !== 200 || !data || 'error' in data) {
+      setError('Bağlanmadı')
+      return
+    }
+    setDone(
+      data.skipped > 0
+        ? `${data.closed} gün bağlandı · ${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)`
+        : `${data.closed} gün bağlandı`,
+    )
+    setPicked(new Set())
+    await load()
   }
 
   function timeFor(r: OpenRecord): string {
@@ -86,13 +131,42 @@ export function OpenRecordsPage() {
         </div>
       )}
 
+      {done && (
+        <div className="fb fb-ok" style={{ marginBottom: 12 }}>
+          <IconCheck />
+          <span>{done}</span>
+        </div>
+      )}
+
       {count > 0 && (
         <div className="card card-pad" style={{ marginBottom: 14, borderColor: '#fde68a', background: '#fffbeb' }}>
-          <div style={{ fontWeight: 700, color: '#92400e' }}>
-            ⚠️ {count} gün çıxış gözləyir
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--c600)', marginTop: 2 }}>
-            Hər sətir üçün çıxış vaxtını yoxlayıb «Bağla» düyməsinə basın.
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontWeight: 700, color: '#92400e' }}>
+                ⚠️ {count} gün çıxış gözləyir
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--c600)', marginTop: 2 }}>
+                Sətirləri seçib birdəfəlik bağlaya, ya da hər birinin vaxtını əl ilə yoxlayıb «Bağla»
+                düyməsinə basa bilərsiniz. Toplu bağlamada hər gün <b>həmin işçinin öz növbəsinin
+                bitmə saatı</b> ilə yazılır.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => setPicked(new Set(picked.size === count ? [] : (rows ?? []).map((r) => r.recordId)))}
+                disabled={bulkBusy}
+              >
+                {picked.size === count ? 'Seçimi ləğv et' : `Hamısını seç (${count})`}
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => void closePicked()}
+                disabled={bulkBusy || picked.size === 0}
+              >
+                <IconCheck /> {bulkBusy ? 'Bağlanır…' : `Seçilmişləri bağla (${picked.size})`}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -141,6 +215,14 @@ export function OpenRecordsPage() {
         <table>
           <thead>
             <tr>
+              <th style={{ width: 34 }}>
+                <input
+                  type="checkbox"
+                  aria-label="Hamısını seç"
+                  checked={count > 0 && picked.size === count}
+                  onChange={() => setPicked(new Set(picked.size === count ? [] : (rows ?? []).map((r) => r.recordId)))}
+                />
+              </th>
               <th>İşçi</th>
               <th>Tarix</th>
               <th>Giriş</th>
@@ -150,7 +232,15 @@ export function OpenRecordsPage() {
           </thead>
           <tbody>
             {(rows ?? []).map((r) => (
-              <tr key={r.recordId}>
+              <tr key={r.recordId} className={picked.has(r.recordId) ? 'is-picked' : undefined}>
+                <td data-label="">
+                  <input
+                    type="checkbox"
+                    aria-label={`${r.employeeName} — seç`}
+                    checked={picked.has(r.recordId)}
+                    onChange={() => toggle(r.recordId)}
+                  />
+                </td>
                 <td>
                   <div style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.locationName}</div>
@@ -176,14 +266,14 @@ export function OpenRecordsPage() {
             ))}
             {empty && !error && (
               <tr>
-                <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   Çıxışı unudulan gün yoxdur 🎉
                 </td>
               </tr>
             )}
             {rows === null && !error && (
               <tr>
-                <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   Yüklənir…
                 </td>
               </tr>
