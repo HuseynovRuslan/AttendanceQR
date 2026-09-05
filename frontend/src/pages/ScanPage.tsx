@@ -155,7 +155,9 @@ export function ScanPage() {
   // check-in that nobody chose — open the app in the yard forty minutes early to read an announcement,
   // and you have arrived. At a poster the deliberate act is aiming the camera; this button is its
   // equivalent. `me` is carried with it because the profile state may not have rendered yet.
-  const [qrlessReady, setQrlessReady] = useState<{ me: MyProfile | null; branch: string | null } | null>(null)
+  const [qrlessReady, setQrlessReady] = useState<
+    { me: MyProfile | null; branch: string | null; outside?: boolean } | null
+  >(null)
   // Neither the profile nor the phone's memory of it answered in time: the camera opens (the default
   // every scan has ever had), and one line under it says why a person with no poster sees one.
   const [branchUnknown, setBranchUnknown] = useState(false)
@@ -407,8 +409,12 @@ export function ScanPage() {
     // without a poster, so the escape hatch offers the same «Giriş et» button — still a tap.
     const myId = decodeJwt(getToken() ?? '')?.sub ?? null
     const known = profile ? profile.qrlessCheckIn === true : recallQrless(myId)
+    // `outside: true` — this path is only ever reached from the "you are N m away" card, and the card
+    // below must not then greet them with «Filialınızın ərazisindəsiniz». Telling somebody they are at
+    // work immediately after telling them they are not is the exact contradiction this screen was
+    // rewritten to stop making.
     if (qrlessRoute({ known, ownLocationId: profile?.locationId, insideId: null }) === 'selfie')
-      setQrlessReady({ me: profile, branch: null })
+      setQrlessReady({ me: profile, branch: null, outside: true })
     else void startCamera()
   }
 
@@ -1004,7 +1010,7 @@ export function ScanPage() {
               onClick={scanAnyway}
               className="mt-2 w-full py-2 text-xs font-medium text-slate-400 transition hover:text-white cursor-pointer"
             >
-              Yenə də skan et
+              {profile?.qrlessCheckIn ? 'Yenə də cəhd et' : 'Yenə də skan et'}
             </button>
           </div>
         )}
@@ -1024,11 +1030,19 @@ export function ScanPage() {
               📍
             </div>
             <h2 className="text-lg font-extrabold text-white">
-              {qrlessReady.branch ? `${qrlessReady.branch} filialındasınız` : 'Filialınızın ərazisindəsiniz'}
+              {qrlessReady.outside
+                ? 'Yenə də cəhd edin'
+                : qrlessReady.branch
+                  ? `${qrlessReady.branch} filialındasınız`
+                  : 'Filialınızın ərazisindəsiniz'}
             </h2>
             <p className="mt-2 text-xs font-medium text-slate-300 leading-relaxed">
               Bu filialda QR posteri yoxdur.{' '}
-              {today.kind === 'none' ? 'Giriş selfi və GPS ilə qeydə alınır.' : 'Çıxış GPS ilə qeydə alınır.'}
+              {qrlessReady.outside
+                ? 'Telefon sizi filialdan kənarda göstərdi — son sözü server deyir. Cəhd edə bilərsiniz.'
+                : today.kind === 'none'
+                  ? 'Giriş selfi və GPS ilə qeydə alınır.'
+                  : 'Çıxış GPS ilə qeydə alınır.'}
             </p>
             <button
               onClick={() => void proceed('', qrlessReady.me)}
