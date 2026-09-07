@@ -106,7 +106,7 @@ export function PrintQrPage() {
   const [qr, setQr] = useState<StaticQrResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [invalidating, setInvalidating] = useState(false)
   const [validityMode, setValidityMode] = useState<StaticQrValidityMode>('days')
@@ -116,6 +116,7 @@ export function PrintQrPage() {
   async function load(validity: StaticQrValidityRequest, successMessage?: string) {
     if (!locationId) return
     setLoading(true)
+    setQr(null)
     setError(null)
     const { status, data } = await generateStaticQr(locationId, validity)
     setLoading(false)
@@ -135,8 +136,13 @@ export function PrintQrPage() {
   }
 
   useEffect(() => {
-    void load({ validityDays: DEFAULT_STATIC_QR_VALIDITY_DAYS })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // A printable QR is not stored server-side. Generating one automatically here meant that every
+    // refresh silently replaced the QR shown on screen with a fresh 60-day token, which made an
+    // already-created permanent poster look as if it had gained an expiry date.
+    setQr(null)
+    setError(null)
+    setOk(null)
+    setLoading(false)
   }, [locationId])
 
   function selectedValidity(): StaticQrValidityRequest | null {
@@ -151,7 +157,12 @@ export function PrintQrPage() {
     const validity = selectedValidity()
     if (!validity) return
     setOk(null)
-    await load(validity, 'Seçdiyiniz müddətlə yeni QR yaradıldı.')
+    await load(
+      validity,
+      'permanent' in validity
+        ? 'Müddətsiz yeni QR yaradıldı.'
+        : `${validity.validityDays} günlük yeni QR yaradıldı.`,
+    )
   }
 
   /**
@@ -525,7 +536,19 @@ export function PrintQrPage() {
       )}
 
       <div className="card card-pad" style={{ textAlign: 'center' }}>
-        {loading && <p className="muted">Yüklənir…</p>}
+        {loading && <p className="muted">QR yaradılır…</p>}
+
+        {!qr && !loading && (
+          <>
+            <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 6 }}>
+              QR müddətini seçin
+            </div>
+            <div className="muted" style={{ fontSize: 13 }}>
+              Yuxarıdan müddətli və ya müddətsiz seçib yeni QR yaradın. Səhifəni yeniləmək əvvəl
+              yaratdığınız QR-i ləğv etmir.
+            </div>
+          </>
+        )}
 
         {qr && !loading && (
           <>
