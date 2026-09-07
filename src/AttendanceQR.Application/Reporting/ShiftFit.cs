@@ -73,4 +73,53 @@ public static class ShiftFit
     /// </summary>
     public static bool ShouldFlag(int scans, int offScans)
         => scans >= MinScans && offScans * 2 > scans;
+
+    /// <summary>
+    /// The second fingerprint: a DAY whose two scans cannot both belong to it.
+    ///
+    /// Arrival times alone miss the worst version of this failure, and missed it in production for a
+    /// week. A night guard at Qala Anbar is on the branch's 09:00–18:00 because no shift was ever
+    /// assigned to him, so the rule that closes a night with a morning scan — which needs the shift to
+    /// cross midnight — never runs. His 08:00 exit therefore OPENS a new day, and his 20:00 arrival
+    /// that evening CLOSES it. Every day is then stored as "in at 04:46, out at 22:01": seventeen
+    /// hours, most of them spent asleep at home, and the night he actually worked is nowhere.
+    ///
+    /// Read as arrivals, those 04:46 and 05:21 scans sit less than four hours from a 09:00 start, so
+    /// <see cref="IsOff"/> shrugged and the man stayed invisible while his rest days were scored
+    /// «Qayıb» and deducted from his pay. What gives him away is not either scan but the SPAN between
+    /// them: nobody is at work from before dawn until after dark, so the two scans belong to two
+    /// different nights and the shift behind them is wrong.
+    ///
+    /// Deliberately three conditions, not one. Pre-dawn in and late-evening out alone would flag an
+    /// honest long day; the span must also be implausible as a single shift (twelve hours) AND clearly
+    /// longer than the shift the person is actually on — which is the thing this report asks about.
+    /// </summary>
+    public static bool IsSplitNight(TimeOnly checkIn, TimeOnly checkOut, TimeSpan shiftLength)
+    {
+        if (checkIn.Hour >= SplitNightInBefore || checkOut.Hour < SplitNightOutAfter)
+            return false;
+
+        var span = checkOut.ToTimeSpan() - checkIn.ToTimeSpan();
+        return span >= TimeSpan.FromHours(SplitNightSpanHours)
+            && span >= shiftLength + TimeSpan.FromHours(SplitNightLongerBy);
+    }
+
+    /// <summary>Before this hour, an arrival is too early to be the start of any day shift.</summary>
+    public const int SplitNightInBefore = 7;
+
+    /// <summary>From this hour, a departure is too late to be the end of the same day's shift.</summary>
+    public const int SplitNightOutAfter = 19;
+
+    /// <summary>A single shift this long does not happen; the two scans are two different nights.</summary>
+    public const int SplitNightSpanHours = 12;
+
+    /// <summary>And it has to exceed the assigned shift by this much, or it is merely a long day.</summary>
+    public const int SplitNightLongerBy = 3;
+
+    /// <summary>
+    /// Two such days. One is a story — somebody stayed the night, a record was closed by hand. Two is
+    /// a shift that is wrong, and this shape is specific enough that waiting for a majority (which
+    /// <see cref="ShouldFlag"/> requires of arrivals) would leave the person hidden for another month.
+    /// </summary>
+    public const int MinSplitNightDays = 2;
 }

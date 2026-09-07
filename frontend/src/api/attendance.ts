@@ -296,6 +296,21 @@ export function getOpenRecords() {
  * what was on the admin's screen. Returns how many were closed and how many were skipped (already
  * closed, out of scope, or dated today — a shift still running is not a forgotten check-out).
  */
+/**
+ * POST /api/admin/attendance/recompute?from&to — rebuild the stored day summaries for a range.
+ *
+ * Past days are READ from DailySummaries, not recomputed on the fly (only today is live), and the
+ * nightly job only fills days it has never seen. So correcting a shift or a record changes nothing
+ * anybody can see until this is run: the tabel and the reports keep showing what was computed under
+ * the old, wrong hours. Admin-only, at most 92 days, and today is refused — today is still live.
+ */
+export function recomputeDays(from: string, to: string) {
+  return apiRequest<{ days: number; employees: number; from: string; to: string } | { error: string }>(
+    `/api/admin/attendance/recompute?from=${from}&to=${to}`,
+    { method: 'POST' },
+  )
+}
+
 export function closeOpenDays(recordIds: string[]) {
   return apiRequest<{ closed: number; skipped: number } | { error: string }>(
     '/api/admin/attendance/close-open',

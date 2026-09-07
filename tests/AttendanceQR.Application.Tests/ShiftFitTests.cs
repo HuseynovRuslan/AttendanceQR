@@ -77,4 +77,63 @@ public class ShiftFitTests
         // scheduling error — the person is behaving correctly and their shift is right.
         Assert.False(ShiftFit.ShouldFlag(scans: 21, offScans: 1));
     }
+
+    // ── The second fingerprint ────────────────────────────────────────────────────────────────
+    // Xaliqov İsa, Qala Anbar, September 2026. A 20:00–08:00 guard on the branch's 09:00–18:00,
+    // because no shift was ever assigned to him. His morning exit opens a new day and his evening
+    // arrival closes it, so every day is stored as one impossible shift — and his ARRIVALS
+    // (04:46, 05:21, 06:32) sit within four hours of 09:00, so the arrival rule never saw him.
+
+    private static readonly TimeSpan DayShift = TimeSpan.FromHours(9); // 09:00–18:00
+
+    [Fact]
+    public void A_day_that_runs_from_before_dawn_to_after_dark_is_two_different_nights()
+    {
+        // 01.09: in 04:46, out 22:01. Seventeen hours, most of them spent asleep at home.
+        Assert.True(ShiftFit.IsSplitNight(new TimeOnly(4, 46), new TimeOnly(22, 1), DayShift));
+        Assert.True(ShiftFit.IsSplitNight(new TimeOnly(5, 21), new TimeOnly(22, 51), DayShift));
+        Assert.True(ShiftFit.IsSplitNight(new TimeOnly(6, 32), new TimeOnly(20, 6), DayShift));
+    }
+
+    [Fact]
+    public void His_arrivals_alone_would_never_have_flagged_him()
+    {
+        // Why the second fingerprint had to exist: judged as arrivals against 09:00, these are
+        // 4h14, 3h39 and 2h28 out — and only the first clears the four-hour bar.
+        var nine = new TimeOnly(9, 0);
+        Assert.True(ShiftFit.IsOff(new TimeOnly(4, 46), nine));
+        Assert.False(ShiftFit.IsOff(new TimeOnly(5, 21), nine));
+        Assert.False(ShiftFit.IsOff(new TimeOnly(6, 32), nine));
+        Assert.False(ShiftFit.ShouldFlag(scans: 5, offScans: 2)); // and so he stayed invisible
+    }
+
+    [Fact]
+    public void An_ordinary_long_day_is_not_a_split_night()
+    {
+        // 08:00 to 19:30 is a long day, and long days happen. It is not pre-dawn, and it is not
+        // twelve hours — a report that fires on this is one people learn to close.
+        Assert.False(ShiftFit.IsSplitNight(new TimeOnly(8, 0), new TimeOnly(19, 30), DayShift));
+        // Pre-dawn but home before dark: an early crew, nothing to ask about.
+        Assert.False(ShiftFit.IsSplitNight(new TimeOnly(5, 0), new TimeOnly(14, 0), DayShift));
+        // Late finish after a normal start.
+        Assert.False(ShiftFit.IsSplitNight(new TimeOnly(9, 5), new TimeOnly(23, 0), DayShift));
+    }
+
+    [Fact]
+    public void A_twelve_hour_shift_is_not_flagged_for_working_its_own_hours()
+    {
+        // Camaşırxana Laçın's day crew is 09:00–19:00, and a driver on a real 07:00–19:30 rota is
+        // working the hours they were given. The span has to exceed the ASSIGNED shift, not just
+        // the clock, or this report accuses every long shift in the company.
+        var twelve = TimeSpan.FromHours(12);
+        Assert.False(ShiftFit.IsSplitNight(new TimeOnly(6, 30), new TimeOnly(19, 0), twelve));
+    }
+
+    [Fact]
+    public void Two_such_days_are_enough_to_ask()
+    {
+        // Deliberately not a majority: the shape is specific enough that waiting for one would
+        // leave the person hidden for another month, with their rest days scored as Qayıb.
+        Assert.Equal(2, ShiftFit.MinSplitNightDays);
+    }
 }

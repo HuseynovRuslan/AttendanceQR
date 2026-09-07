@@ -1401,9 +1401,11 @@ public sealed class ReportQueryService : IReportQueryService
         var schedules = await _db.Schedules.ToDictionaryAsync(s => s.Id, ct);
 
         var empIds = employees.Select(e => e.Id).ToHashSet();
+        // The check-out comes too: the second fingerprint is the SPAN between the two scans, not
+        // either one of them (ShiftFit.IsSplitNight).
         var scans = await _db.AttendanceRecords
             .Where(a => a.AttendanceDate >= from && a.CheckInAtUtc != null)
-            .Select(a => new { a.EmployeeId, a.AttendanceDate, a.CheckInAtUtc })
+            .Select(a => new { a.EmployeeId, a.AttendanceDate, a.CheckInAtUtc, a.CheckOutAtUtc })
             .ToListAsync(ct);
 
         var byEmployee = scans
@@ -1427,23 +1429,36 @@ public sealed class ReportQueryService : IReportQueryService
             judged++;
             var off = 0;
             var worst = 0;
+            var splitNights = 0;
             TimeOnly? earliest = null, latest = null;
 
             foreach (var a in mine)
             {
                 var local = TimeZoneInfo.ConvertTimeFromUtc(a.CheckInAtUtc!.Value, _timeZone);
                 var at = TimeOnly.FromDateTime(local);
+                var day = DateOnly.FromDateTime(local);
                 // The hours that applied ON THAT DAY — a crew whose weekend starts later must not be
                 // flagged every Saturday for keeping to the shift it was actually given.
-                var expected = shift.HoursOn(DateOnly.FromDateTime(local)).Start;
+                var (expected, expectedEnd) = shift.HoursOn(day);
 
                 if (ShiftFit.IsOff(at, expected)) off++;
                 worst = Math.Max(worst, ShiftFit.GapHours(at, expected));
                 if (earliest is null || at < earliest) earliest = at;
                 if (latest is null || at > latest) latest = at;
+
+                // A shift that already crosses midnight explains its own long span, so it is never a
+                // split night — the shape only means anything against hours that do not.
+                if (a.CheckOutAtUtc is DateTime outUtc && expectedEnd > expected)
+                {
+                    var outAt = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(outUtc, _timeZone));
+                    if (ShiftFit.IsSplitNight(at, outAt, expectedEnd - expected)) splitNights++;
+                }
             }
 
-            if (!ShiftFit.ShouldFlag(mine.Count, off)) continue;
+            // Either signature is enough. The arrival rule needs a majority because an odd arrival is
+            // ordinary; a split night is not ordinary at all, so two of them speak for themselves.
+            if (!ShiftFit.ShouldFlag(mine.Count, off) && splitNights < ShiftFit.MinSplitNightDays)
+                continue;
 
             var (start, end) = (shift.Start, shift.End);
             rows.Add(new ShiftMismatchRow(
@@ -1452,12 +1467,14 @@ public sealed class ReportQueryService : IReportQueryService
                 $"{start.Hour:D2}:{start.Minute:D2}–{end.Hour:D2}:{end.Minute:D2}",
                 shift.ScheduleName,
                 mine.Count, off, worst,
-                earliest!.Value, latest!.Value));
+                earliest!.Value, latest!.Value, splitNights));
         }
 
-        // Worst first: the biggest gap is the one most likely to be a genuinely misfiled person, and
-        // the one costing whole days rather than minutes.
-        rows.Sort((a, b) => b.WorstGapHours.CompareTo(a.WorstGapHours));
+        // Split nights first — that shape is not a person keeping odd hours, it is a shift that is
+        // wrong and days that are being stored wrong because of it. Then the widest arrival gap.
+        rows.Sort((a, b) => b.SplitNightDays != a.SplitNightDays
+            ? b.SplitNightDays.CompareTo(a.SplitNightDays)
+            : b.WorstGapHours.CompareTo(a.WorstGapHours));
 
         return (ReportAccess.Allowed, new ShiftMismatchReport(days, judged, rows));
     }

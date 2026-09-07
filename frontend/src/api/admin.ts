@@ -1623,6 +1623,11 @@ export interface ShiftMismatchRow {
   /** "HH:mm:ss" — the span of their actual arrivals. */
   earliestIn: string
   latestIn: string
+  /**
+   * Days stored as one impossible shift — in before dawn, out after dark. That is what a night
+   * worked on a day shift looks like from the inside, and the arrival times alone never show it.
+   */
+  splitNightDays: number
 }
 
 export interface ShiftMismatchReport {

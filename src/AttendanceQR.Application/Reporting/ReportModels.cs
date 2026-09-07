@@ -368,7 +368,13 @@ public sealed record ShiftMismatchRow(
     int OffScans,
     int WorstGapHours,
     TimeOnly EarliestIn,
-    TimeOnly LatestIn);
+    TimeOnly LatestIn,
+    /// <summary>
+    /// Days stored as one impossible shift — in before dawn, out after dark — which is what a night
+    /// worked on a day shift looks like from the inside. See <see cref="ShiftFit.IsSplitNight"/>.
+    /// Zero for the ordinary mismatch, where only the arrival times disagree.
+    /// </summary>
+    int SplitNightDays = 0);
 
 /// <param name="Days">How far back the arrivals were read.</param>
 /// <param name="Checked">How many employees had enough scans to judge — the denominator, so an empty
