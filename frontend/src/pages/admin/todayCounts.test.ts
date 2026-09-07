@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countToday, matchesLeaveCard, sortRows, type TodayLike } from './todayCounts'
+import { bucketOf, countToday, matchesLeaveCard, sortRows, type TodayLike } from './todayCounts'
 
 /**
  * The board's cards, and the distinction that has now been got wrong twice.
@@ -158,5 +158,43 @@ describe('Onboarding — lövhəyə-özəl «Hazırlanır» statusu', () => {
   it('«İşdə» qalığına da düşmür — tanınmayan status ora yıxılır, bu isə tanınır', () => {
     const c = countToday([{ status: 'Onboarding' }])
     expect(c.incomplete).toBe(0)
+  })
+})
+
+describe('bucketOf — Excel eksportunun məftili', () => {
+  // These exact strings travel to the server, where DayBoardSheet counts the summary sheet by
+  // comparing them ORDINALLY against its own literals. Renaming one here silently empties a column
+  // in the workbook the leadership reads, and nothing else would fail.
+  it('hər status üçün serverin gözlədiyi açarı verir', () => {
+    expect(bucketOf({ status: 'OnTime' })).toBe('present')
+    expect(bucketOf({ status: 'Late' })).toBe('present')
+    expect(bucketOf({ status: 'Field' })).toBe('present')
+    expect(bucketOf({ status: 'Absent' })).toBe('absent')
+    expect(bucketOf({ status: 'Pending' })).toBe('pending')
+    expect(bucketOf({ status: 'Onboarding' })).toBe('onboarding')
+    expect(bucketOf({ status: 'DayOff' })).toBe('dayOff')
+    expect(bucketOf({ status: 'Permission' })).toBe('permission')
+    expect(bucketOf({ status: 'Incomplete' })).toBe('incomplete')
+  })
+
+  it('məzuniyyət növlərini ayırır — ezamiyyət iş, xəstəlik ayrı', () => {
+    expect(bucketOf({ status: 'OnLeave', leaveType: 'BusinessTrip' })).toBe('trip')
+    expect(bucketOf({ status: 'OnLeave', leaveType: 'Sick' })).toBe('sick')
+    expect(bucketOf({ status: 'OnLeave', leaveType: 'Vacation' })).toBe('onLeave')
+    expect(bucketOf({ status: 'OnLeave', leaveType: 'Unpaid' })).toBe('onLeave')
+    expect(bucketOf({ status: 'OnLeave' })).toBe('onLeave')
+  })
+
+  it('sayğac da elə bu funksiyanı işlədir — fayl ilə ekran ayrıla bilmir', () => {
+    const rows = [
+      { status: 'OnLeave', leaveType: 'BusinessTrip' },
+      { status: 'OnLeave', leaveType: 'Sick' },
+      { status: 'OnTime' },
+    ]
+    const c = countToday(rows)
+    expect(c.trip).toBe(1)
+    expect(c.sick).toBe(1)
+    expect(c.onLeave).toBe(0)
+    expect(rows.map(bucketOf)).toEqual(['trip', 'sick', 'present'])
   })
 })

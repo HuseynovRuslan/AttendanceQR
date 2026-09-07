@@ -257,6 +257,10 @@ export interface ExportDayRowInput {
   checkIn: string
   checkOut: string
   photo: string
+  /** The board's own bucket for this row (see bucketOf) — the summary sheet is counted from these,
+   *  never from the status text, so the workbook cannot disagree with the screen it came from. */
+  bucket?: string
+  position?: string
 }
 
 /** POST /api/reports/export-day — send the visible board rows, download a tidy .xlsx. Returns false on
@@ -265,6 +269,11 @@ export async function exportDayXlsx(payload: {
   title: string
   date: string
   rows: ExportDayRowInput[]
+  /** Which sites the reader chose, in words — printed on both sheets so the file says what it covers. */
+  scopeNote?: string
+  /** What the board calls each bucket — its words, so the sheet's headings cannot drift from the
+   *  screen the file was exported from. Includes «İşdə» / «Çıxış yoxdur», which only the board knows. */
+  bucketLabels?: Record<string, string>
 }): Promise<boolean> {
   const token = getToken()
   try {

@@ -155,9 +155,16 @@ public class ReportsController : ControllerBase
         return Ok(rows);
     }
 
-    // POST /api/reports/export-day — format the (already filtered) board the admin sees into a tidy
-    // .xlsx: a title line, a coloured header row, borders and sensible column widths. The client sends
-    // exactly what's on screen, so any active filters carry through.
+    // POST /api/reports/export-day — the workbook the leadership receives every morning.
+    //
+    // It used to be one flat A-to-Z list of the whole company, which the reader then had to sort by
+    // site before it answered anything. It is now two sheets — «Xülasə», a line per site with the
+    // day's counts, and «Davamiyyət», the same people grouped under collapsible site banners. The
+    // shaping lives in DayBoardSheet, which is pure and therefore has tests.
+    //
+    // The rows still arrive FROM the client. That is not laziness: the status label and the bucket
+    // both need the leave type, and re-deriving them here would put the «Ezamiyyət exported as
+    // Məzuniyyət» bug in a second place. What the board shows is what the file says.
     [HttpPost("export-day")]
     public IActionResult ExportDay([FromBody] ExportDayRequest request)
     {
@@ -165,58 +172,24 @@ public class ReportsController : ControllerBase
         if (data.Count > 5000)
             return BadRequest(new { error = "TooManyRows" });
 
-        using var wb = new XLWorkbook();
-        var ws = wb.Worksheets.Add("Davamiyyət");
+        var rows = data
+            .Select(row => new DayBoardSheet.Row(
+                row.Name ?? string.Empty,
+                row.Position ?? string.Empty,
+                row.Location ?? string.Empty,
+                row.Status ?? string.Empty,
+                row.CheckIn ?? string.Empty,
+                row.CheckOut ?? string.Empty,
+                row.Photo ?? string.Empty,
+                row.Bucket))
+            .ToList();
 
-        // Title line across the table.
-        ws.Cell(1, 1).Value = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;
-        ws.Range(1, 1, 1, 6).Merge();
-        ws.Cell(1, 1).Style.Font.Bold = true;
-        ws.Cell(1, 1).Style.Font.FontSize = 14;
+        var title = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;
+        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels);
 
-        var headers = new[] { "Ad Soyad", "Ərazi", "Status", "Giriş", "Çıxış", "Şəkil" };
-        for (var i = 0; i < headers.Length; i++)
-        {
-            var c = ws.Cell(2, i + 1);
-            c.Value = headers[i];
-            c.Style.Font.Bold = true;
-            c.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E70C8");
-            c.Style.Font.FontColor = XLColor.White;
-            c.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        }
-
-        var r = 3;
-        foreach (var row in data)
-        {
-            ws.Cell(r, 1).Value = row.Name ?? string.Empty;
-            ws.Cell(r, 2).Value = row.Location ?? string.Empty;
-            ws.Cell(r, 3).Value = row.Status ?? string.Empty;
-            ws.Cell(r, 4).Value = row.CheckIn ?? string.Empty;
-            ws.Cell(r, 5).Value = row.CheckOut ?? string.Empty;
-            ws.Cell(r, 6).Value = row.Photo ?? string.Empty;
-            r++;
-        }
-
-        if (r > 3)
-        {
-            var table = ws.Range(2, 1, r - 1, 6);
-            table.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            table.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-        }
-
-        ws.Column(1).Width = 28;
-        ws.Column(2).Width = 20;
-        ws.Column(3).Width = 16;
-        ws.Column(4).Width = 10;
-        ws.Column(5).Width = 10;
-        ws.Column(6).Width = 9;
-        ws.SheetView.FreezeRows(2);
-
-        using var ms = new MemoryStream();
-        wb.SaveAs(ms);
         var safeDate = string.IsNullOrWhiteSpace(request.Date) ? "gun" : request.Date;
         return File(
-            ms.ToArray(),
+            bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"davamiyyet-{safeDate}.xlsx");
     }

@@ -42,23 +42,35 @@ const EMPTY: TodayCounts = {
   dayOff: 0, onLeave: 0, sick: 0, trip: 0, permission: 0,
 }
 
+export type TodayBucket = keyof TodayCounts
+
+/**
+ * Which column of the day this one person belongs in.
+ *
+ * Split out of the counting loop because the Excel export needs the SAME answer, row by row: the
+ * workbook's summary sheet is built from these buckets rather than re-derived from the status text,
+ * so the file and the board cannot disagree about how many people are on a work trip. One definition,
+ * two readers — the alternative is the bug in the header comment, shipped a third time.
+ */
+export function bucketOf(r: TodayLike): TodayBucket {
+  if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') return 'present'
+  if (r.status === 'Absent') return 'absent'
+  if (r.status === 'Pending') return 'pending'
+  if (r.status === 'Onboarding') return 'onboarding'
+  if (r.status === 'DayOff') return 'dayOff'
+  if (r.status === 'OnLeave') {
+    if (r.leaveType === 'Sick') return 'sick'
+    if (r.leaveType === 'BusinessTrip') return 'trip'
+    return 'onLeave'
+  }
+  if (r.status === 'Permission') return 'permission'
+  // Checked in with no check-out yet: "İşdə" on today's board, "Çıxış yoxdur" on a past date.
+  return 'incomplete'
+}
+
 export function countToday(rows: TodayLike[]): TodayCounts {
   const c = { ...EMPTY }
-  for (const r of rows) {
-    if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') c.present++
-    else if (r.status === 'Absent') c.absent++
-    else if (r.status === 'Pending') c.pending++
-    else if (r.status === 'Onboarding') c.onboarding++
-    else if (r.status === 'DayOff') c.dayOff++
-    else if (r.status === 'OnLeave') {
-      if (r.leaveType === 'Sick') c.sick++
-      else if (r.leaveType === 'BusinessTrip') c.trip++
-      else c.onLeave++
-    }
-    else if (r.status === 'Permission') c.permission++
-    // Checked in with no check-out yet: "İşdə" on today's board, "Çıxış yoxdur" on a past date.
-    else c.incomplete++
-  }
+  for (const r of rows) c[bucketOf(r)]++
   return c
 }
 

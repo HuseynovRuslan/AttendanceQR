@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
+import { exportRow } from './exportRows'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
@@ -12,7 +13,7 @@ import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBad
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
 import { IconCamera, IconPencil, IconX } from '../../components/icons'
-import { fmtTime } from '../../lib/format'
+import { fmtTime, toCompanyInputValue } from '../../lib/format'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -94,7 +95,15 @@ export function TodayPage() {
     setMenuPos({ top: Math.min(r.bottom + 4, window.innerHeight - 250), left: Math.min(r.left, window.innerWidth - 210) })
     setReasonFor(employeeId)
   }
-  const todayISO = useMemo(() => localDateISO(new Date()), [])
+  // The company's day, not the device's — and recomputed every render rather than frozen at mount.
+  //
+  // It was `localDateISO(new Date())` inside a useMemo with no deps, which is two bugs in one line: a
+  // laptop on any other timezone opened the board on the wrong date (the rows come from the server's
+  // Baku day, so the file was headed one day and filled with another's people), and a board left open
+  // past midnight went on calling itself today — exporting the new day's rows under yesterday's date
+  // and filename until somebody reloaded. Both are silent; both put the wrong date on a file sent to
+  // the leadership.
+  const todayISO = toCompanyInputValue(new Date().toISOString()).slice(0, 10)
   const [date, setDate] = useState(todayISO)
   const isToday = date === todayISO
 
@@ -124,6 +133,11 @@ export function TodayPage() {
   const [sortDesc, setSortDesc] = useState(false)
   const [filterPosition, setFilterPosition] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  // Which sites go into the workbook. Chosen explicitly before every export: the file is sent to the
+  // leadership, and one that quietly carried whatever filter happened to be on screen is a report
+  // nobody can tell apart from the whole company.
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportSites, setExportSites] = useState<string[]>([])
 
   async function viewPhoto(row: DayAttendanceRow) {
     if (!row.recordId) return
@@ -258,33 +272,74 @@ export function TodayPage() {
       ? { cursor: 'pointer', boxShadow: '0 0 0 2px #1E70C8' }
       : { cursor: 'pointer' }
 
-  async function exportXlsx() {
-    // The exported Status must say EXACTLY what the badge beside it says.
-    //
-    // It did not. The file was built from `STATUS_MAP[r.status]`, and the backend stores Məzuniyyət,
-    // Xəstəlik and Ezamiyyət under one status — OnLeave — so every one of them printed «Məzuniyyət».
-    // On screen the same row already read correctly, because the badge passes leaveVisual(leaveType).
-    // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
-    // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
-    // leave. The type is already on the row and was simply never read here.
-    const label = (r: DayAttendanceRow) =>
-      r.status === 'Incomplete'
-        ? incompleteLabel
-        : r.status === 'OnLeave'
-          ? leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
-          : (STATUS_MAP as Record<string, { label: string }>)[r.status]?.label ?? r.status
-    const rows = visible.map((r) => ({
-      name: r.employeeName,
-      location: r.locationName,
-      status: label(r),
-      checkIn: fmtTime(r.checkInAtUtc) + (r.lateArrivalReason ? ` (gec: ${r.lateArrivalReason})` : ''),
-      checkOut: fmtTime(r.checkOutAtUtc) + (r.earlyDepartureReason ? ` (tez: ${r.earlyDepartureReason})` : ''),
-      photo: r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',
-    }))
+  // The exported Status must say EXACTLY what the badge beside it says.
+  //
+  // It did not. The file was built from `STATUS_MAP[r.status]`, and the backend stores Məzuniyyət,
+  // Xəstəlik and Ezamiyyət under one status — OnLeave — so every one of them printed «Məzuniyyət».
+  // On screen the same row already read correctly, because the badge passes leaveVisual(leaveType).
+  // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
+  // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
+  // leave. The type is already on the row and was simply never read here.
+  const statusLabel = (r: DayAttendanceRow) =>
+    r.status === 'Incomplete'
+      ? incompleteLabel
+      : r.status === 'OnLeave'
+        ? leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
+        : (STATUS_MAP as Record<string, { label: string }>)[r.status]?.label ?? r.status
+
+
+  function openExport() {
+    // Pre-tick what the reader is already looking at: the site they filtered to, or all of them.
+    setExportSites(filterLoc ? [filterLoc] : locations.map((l) => l.id))
+    setExportOpen(true)
+  }
+
+  async function runExport() {
+    const chosen = new Set(exportSites)
+    // Deliberately built from `rows`, not from `visible`. The screen's search, status and photo
+    // filters are how somebody LOOKS at a day; a report to the leadership has to be everybody at the
+    // sites it claims to cover, or a file headed «Qala Anbar» silently omits the nine people who did
+    // not match a search box left over from ten minutes ago.
+    const picked = sortRows(rows.filter((r) => chosen.has(r.locationId)), 'name', false)
+    // One line per person, shaped by exportRows — pure, and tested against the cases an audit of this
+    // report actually found wrong: a night that read backwards, a carried-over night that read as this
+    // morning, and a field worker exported with no times at all.
+    const payload = picked.map((r) => exportRow(r, date, statusLabel(r)))
+
+    // Never «Bütün ərazilər». `locations` is only what is on THIS board: a branch manager sees their
+    // own branches, so the phrase would stamp a two-site file as the whole company, and even for an
+    // admin a site whose staff are all inactive never appears. The sites are named instead, and once
+    // there are too many to name the count stands — the Xülasə sheet lists every one of them anyway.
+    const names = locations.filter((l) => chosen.has(l.id)).map((l) => l.name)
+    const scopeNote = names.length <= 6
+      ? `${names.length} ərazi: ${names.join(', ')} · ${picked.length} işçi`
+      : `${names.length} ərazi · ${picked.length} işçi (siyahı «Xülasə» vərəqindədir)`
+
     setExporting(true)
-    const ok = await exportDayXlsx({ title: `Davamiyyət — ${dateLabel}`, date, rows })
+    const ok = await exportDayXlsx({
+      title: `Davamiyyət — ${dateLabel}`,
+      date,
+      rows: payload,
+      scopeNote,
+      // The sheet's headings are the BOARD's, sent rather than repeated server-side. Three of them
+      // had already drifted — it said «Gəlib» where this screen says «Tamamlayıb», a word retired on
+      // purpose because it read as though somebody still at work had not come.
+      bucketLabels: {
+        present: STATUS_MAP.OnTime.label,
+        incomplete: incompleteLabel,
+        absent: STATUS_MAP.Absent.label,
+        onLeave: STATUS_MAP.OnLeave.label,
+        sick: 'Xəstəlik',
+        trip: 'Ezamiyyət',
+        permission: STATUS_MAP.Permission.label,
+        dayOff: STATUS_MAP.DayOff.label,
+        pending: STATUS_MAP.Pending.label,
+        onboarding: STATUS_MAP.Onboarding.label,
+      },
+    })
     setExporting(false)
-    if (!ok) setPhotoError('Excel çıxarıla bilmədi')
+    if (ok) setExportOpen(false)
+    else setPhotoError('Excel çıxarıla bilmədi')
   }
 
   const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString('az-AZ', {
@@ -357,7 +412,7 @@ export function TodayPage() {
         {search && (
           <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>
         )}
-        <button className="btn btn-sm" disabled={exporting} onClick={exportXlsx} style={{ marginLeft: 'auto' }}>
+        <button className="btn btn-sm" disabled={exporting} onClick={openExport} style={{ marginLeft: 'auto' }}>
           {exporting ? 'Çıxarılır…' : '⬇ Excel-ə çıxar'}
         </button>
       </div>
@@ -636,6 +691,22 @@ export function TodayPage() {
         </table>
       </div>
 
+      {exportOpen && (
+        <ExportDialog
+          date={dateLabel}
+          locations={locations}
+          countAt={(id) => rows.filter((r) => r.locationId === id).length}
+          selected={exportSites}
+          onToggle={(id) =>
+            setExportSites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
+          onAll={() => setExportSites(locations.map((l) => l.id))}
+          onNone={() => setExportSites([])}
+          busy={exporting}
+          onRun={() => void runExport()}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
+
       {modal && (
         <PhotoCompareModal
           title={modal.title}
@@ -660,3 +731,83 @@ export function TodayPage() {
   )
 }
 
+/**
+ * Choosing what goes into the morning report.
+ *
+ * The workbook is sent to the leadership, so the one thing this must never do is produce a file whose
+ * scope is a surprise — hence the sites are ticked by hand every time, the file is headed with the
+ * choice, and the dialog says out loud that the screen's own filters do not travel with it.
+ */
+function ExportDialog({
+  date, locations, countAt, selected, onToggle, onAll, onNone, busy, onRun, onClose,
+}: {
+  date: string
+  locations: { id: string; name: string }[]
+  countAt: (id: string) => number
+  selected: string[]
+  onToggle: (id: string) => void
+  onAll: () => void
+  onNone: () => void
+  busy: boolean
+  onRun: () => void
+  onClose: () => void
+}) {
+  const total = locations.filter((l) => selected.includes(l.id)).reduce((n, l) => n + countAt(l.id), 0)
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 10000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
+      <div
+        className="card card-pad"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 560, width: '100%', maxHeight: '85vh', overflow: 'auto' }}
+      >
+        <div className="card-title" style={{ marginBottom: 4 }}>Excel-ə çıxar</div>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 14, lineHeight: 1.6 }}>
+          {date} · Fayl iki vərəqdən ibarətdir: <b>Xülasə</b> (hər ərazi üzrə günün rəqəmləri) və{' '}
+          <b>Davamiyyət</b> (adamlar ərazi-ərazi qruplaşdırılmış). Seçilmiş ərazilərin{' '}
+          <b>bütün işçiləri</b> daxil edilir — ekrandakı axtarış və status filtrləri fayla keçmir.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <button className="btn btn-sm" onClick={onAll}>Hamısı</button>
+          <button className="btn btn-sm" onClick={onNone}>Heç biri</button>
+          <span className="muted" style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 12 }}>
+            {selected.length} ərazi · {total} işçi
+          </span>
+        </div>
+
+        <div style={{ border: '1px solid var(--c100)', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
+          {locations.map((l, i) => (
+            <label
+              key={l.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer',
+                borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
+              }}
+            >
+              <input type="checkbox" checked={selected.includes(l.id)} onChange={() => onToggle(l.id)} />
+              <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{l.name}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{countAt(l.id)} nəfər</span>
+            </label>
+          ))}
+          {locations.length === 0 && (
+            <div className="muted" style={{ padding: 14, fontSize: 13 }}>Bu gün üçün ərazi yoxdur.</div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" disabled={busy || selected.length === 0} onClick={onRun}>
+            {busy ? 'Çıxarılır…' : '⬇ Çıxar'}
+          </button>
+          <button className="btn" onClick={onClose}>Ləğv et</button>
+        </div>
+      </div>
+    </div>
+  )
+}
