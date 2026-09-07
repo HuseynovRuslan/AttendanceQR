@@ -117,6 +117,10 @@ public sealed class ReminderJob : BackgroundService
 
                 var locations = await db.Locations.ToDictionaryAsync(l => l.Id, ct);
                 var schedules = await db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
+                // Today's cover shifts, so a reminder is about the shift the person is actually on.
+                var overrides = new ShiftOverrideMap(await db.ShiftOverrides
+                    .Where(o => o.Date == todayLocal)
+                    .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
                 var records = await db.AttendanceRecords
                     .Where(r => r.AttendanceDate >= todayUtc.AddDays(-1))
                     .ToListAsync(ct);
@@ -135,9 +139,12 @@ public sealed class ReminderJob : BackgroundService
 
                     // Same resolution the scan and the reports use — a nudge sent against different
                     // hours than the ones the day is judged by is worse than no nudge at all.
+                    // Through the day's cover shift: nudging somebody at 22:50 because their own rota
+                    // ends at 23:00, on a night they are working 21:00–07:00 for somebody else, is a
+                    // reminder that is wrong twice — too early, and about the wrong shift.
                     var shift = EffectiveShift.Resolve(
                         employee,
-                        employee.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null,
+                        overrides.ScheduleFor(employee.Id, todayLocal, employee.ScheduleId, schedules),
                         location);
                     // Today's hours. The comment above is the reason this matters: the nudge is timed
                     // ten minutes before the end of the shift, and on a day the crew finishes to a

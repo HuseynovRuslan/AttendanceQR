@@ -766,7 +766,7 @@ public class AttendanceController : ControllerBase
 
         // Resolved once here and carried through both branches, so a single scan cannot judge its
         // check-in against one set of hours and its check-out against another.
-        var shift = await ResolveShiftAsync(employee, location);
+        var shift = await ResolveShiftAsync(employee, location, today);
 
         var record = await _db.AttendanceRecords
             .FirstOrDefaultAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == today);
@@ -778,10 +778,20 @@ public class AttendanceController : ControllerBase
             // wrongly open a fresh check-in and leave last night's shift forever un-closed. Strictly
             // additive — the branch only runs for an overnight shift (end earlier than start) scanned
             // before noon, so ordinary day shifts are completely unaffected.
+            //
+            // The shift asked about is YESTERDAY's, not today's. They are the same for everybody on a
+            // standing rota — and different for exactly the person this branch has to serve: somebody
+            // covering a night that was not their own shift. Nəcəfov Vüqar is on a 13:00–23:00 day
+            // shift; the night he covered was judged against it, so this branch never ran, his
+            // Saturday stayed open at zero hours and his 06:51 exit opened a fresh check-in on his
+            // rest day. Resolving the night's own shift is what makes the branch see an overnight.
+            //
+            // Ordered so the cheap test comes first: an afternoon scan never pays for the extra read.
             var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
-            if (shift.IsOvernightOn(today.AddDays(-1)) && nowLocal.Hour < 12)
+            var yesterday = today.AddDays(-1);
+            var nightShift = nowLocal.Hour < 12 ? await ResolveShiftAsync(employee, location, yesterday) : shift;
+            if (nowLocal.Hour < 12 && nightShift.IsOvernightOn(yesterday))
             {
-                var yesterday = today.AddDays(-1);
                 var openNight = await _db.AttendanceRecords.FirstOrDefaultAsync(r =>
                     r.EmployeeId == employee.Id && r.AttendanceDate == yesterday
                     && r.CheckInAtUtc != null && r.CheckOutAtUtc == null);
@@ -793,7 +803,9 @@ public class AttendanceController : ControllerBase
                         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                         return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
                     }
-                    return await CheckOutAsync(openNight, employee, location, shift, nowUtc, ip,
+                    // Closed against the shift the NIGHT was worked under — the hours, the early-leave
+                    // test and the overnight arithmetic all belong to that shift, not to today's.
+                    return await CheckOutAsync(openNight, employee, location, nightShift, nowUtc, ip,
                         request.ClientScanId, request.Offline, serverNow);
                 }
             }
@@ -1120,17 +1132,27 @@ public class AttendanceController : ControllerBase
     }
 
     /// <summary>
-    /// The hours that apply to this employee: their assigned shift ("növbə") if they are on one, else
-    /// their own WorkStart/WorkEnd, else the location's. The rule itself lives in
+    /// The hours that apply to this employee ON THIS DATE: the shift they covered that day if an
+    /// «əvəzləmə» says so, else their assigned shift ("növbə"), else their own WorkStart/WorkEnd, else
+    /// the location's. The rule itself lives in
     /// <see cref="EffectiveShift.Resolve(Employee, Schedule?, Location)"/> — the scan must judge a day
     /// exactly the way the reports later will, so neither side is allowed its own copy of it.
     ///
-    /// One extra read, and only for an employee actually on a shift.
+    /// The DATE is not decoration. A cover shift belongs to one day, and the morning scan that closes
+    /// a night has to ask about the night BEFORE — see the overnight branch in Scan, which resolves
+    /// yesterday rather than reusing today's answer.
     /// </summary>
-    internal async Task<EffectiveShift> ResolveShiftAsync(Employee employee, Location location)
+    internal async Task<EffectiveShift> ResolveShiftAsync(Employee employee, Location location, DateOnly date)
     {
-        var schedule = employee.ScheduleId is Guid id
-            ? await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted)
+        var ct = HttpContext.RequestAborted;
+        var covering = await _db.ShiftOverrides
+            .Where(o => o.EmployeeId == employee.Id && o.Date == date)
+            .Select(o => (Guid?)o.ScheduleId)
+            .FirstOrDefaultAsync(ct);
+
+        var scheduleId = covering ?? employee.ScheduleId;
+        var schedule = scheduleId is Guid id
+            ? await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, ct)
             : null;
         return EffectiveShift.Resolve(employee, schedule, location);
     }

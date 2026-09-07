@@ -50,6 +50,11 @@ public sealed class DailySummaryService : IDailySummaryService
         // A handful of rows per tenant, so they are loaded whole and looked up in memory rather
         // than joined into every employee projection.
         var schedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
+        // «Əvəzləmə» for this one date: whoever worked somebody else's shift is judged by THAT shift,
+        // which is what lets a cover night be an overnight at all.
+        var overrides = new ShiftOverrideMap(await _db.ShiftOverrides
+            .Where(o => o.Date == date)
+            .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
 
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
         var locations = await _db.Locations
@@ -173,7 +178,7 @@ public sealed class DailySummaryService : IDailySummaryService
 
             var shift = EffectiveShift.Resolve(
                 emp.WorkStart, emp.WorkEnd, emp.WorkCycleDays, emp.WorkCycleOnDays, emp.WorkCycleAnchor,
-                emp.ScheduleId is Guid sid ? schedules.GetValueOrDefault(sid) : null, location);
+                overrides.ScheduleFor(emp.Id, date, emp.ScheduleId, schedules), location);
 
             var isWorkingDay = shift.IsWorkingDay(date)
                                 && !isGloballyNonWorking

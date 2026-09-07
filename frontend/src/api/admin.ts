@@ -1476,6 +1476,41 @@ export interface Schedule {
 
 export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight' | 'locationName'>
 
+/**
+ * «Əvəzləmə» — the days one person worked somebody else's shift.
+ *
+ * A pointer to a SHIFT, never a pair of times: hours typed onto a day are a copy, and a copy drifts
+ * from the rota it came from. Everything downstream — the overnight pivot that closes a night with a
+ * morning scan, the working-day mask, the late threshold — then applies with no special case.
+ */
+export interface ShiftOverrideRow {
+  id: string
+  date: string
+  scheduleId: string
+  scheduleName: string
+  shiftStart: string
+  shiftEnd: string
+  note: string | null
+}
+
+export function getShiftOverrides(employeeId: string) {
+  return apiRequest<ShiftOverrideRow[]>(`/api/admin/shift-overrides/employee/${employeeId}`)
+}
+
+/** Re-callable for the same date — correcting «it was Gecə B» must not need a delete first. */
+export function setShiftOverride(body: {
+  employeeId: string
+  date: string
+  scheduleId: string
+  note?: string | null
+}) {
+  return apiRequest<{ ok: true } | { error: string }>('/api/admin/shift-overrides', { method: 'POST', body })
+}
+
+export function removeShiftOverride(id: string) {
+  return apiRequest<{ ok: true } | { error: string }>(`/api/admin/shift-overrides/${id}`, { method: 'DELETE' })
+}
+
 export function getSchedules() {
   return apiRequest<Schedule[]>('/api/admin/schedules')
 }

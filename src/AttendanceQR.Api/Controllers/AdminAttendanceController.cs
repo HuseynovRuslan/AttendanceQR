@@ -121,7 +121,7 @@ public class AdminAttendanceController : ControllerBase
             var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId);
             var shift = employee is null
                 ? EffectiveShift.Resolve(null, null, null, 1, null, null, location)
-                : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location);
+                : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
             record.Status = AttendanceController.DetermineStatus(
                 shift.HoursOn(record.AttendanceDate).Start, shift.LateThresholdMinutes,
                 request.CheckInAtUtc.Value, _timeZone);
@@ -190,7 +190,7 @@ public class AdminAttendanceController : ControllerBase
             var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId, ct);
             if (location is null || employee is null) { skipped++; continue; }
 
-            var shift = EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location);
+            var shift = EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
             var closeAt = ShiftEndUtc(shift, record.AttendanceDate, record.CheckInAtUtc!.Value);
             if (closeAt <= record.CheckInAtUtc) { skipped++; continue; }
 
@@ -290,7 +290,7 @@ public class AdminAttendanceController : ControllerBase
             CheckOutAtUtc = request.CheckOutAtUtc,
             ManualByEmployeeId = requesterId, // created by hand, not a scan
             Status = AttendanceController.DetermineStatus(
-                EffectiveShift.Resolve(employee, await ScheduleForAsync(employee), location)
+                EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, request.Date), location)
                     .HoursOn(request.Date).Start,
                 location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
         };
@@ -785,8 +785,20 @@ public class AdminAttendanceController : ControllerBase
     };
 
     /// <summary>The employee's assigned shift, or null when they are not on one.</summary>
-    private Task<Schedule?> ScheduleForAsync(Employee employee) =>
-        employee.ScheduleId is Guid id
-            ? _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == id, HttpContext.RequestAborted)
-            : Task.FromResult<Schedule?>(null);
+    /// <summary>
+    /// The schedule that answers for this employee ON THIS DATE — the day's «əvəzləmə» when there is
+    /// one, otherwise their own. An admin correcting a cover night has to recompute it against the
+    /// shift that night was actually worked under, or the correction re-states the error it is fixing.
+    /// </summary>
+    private async Task<Schedule?> ScheduleForAsync(Employee employee, DateOnly date)
+    {
+        var ct = HttpContext.RequestAborted;
+        var covering = await _db.ShiftOverrides
+            .Where(o => o.EmployeeId == employee.Id && o.Date == date)
+            .Select(o => (Guid?)o.ScheduleId)
+            .FirstOrDefaultAsync(ct);
+
+        var id = covering ?? employee.ScheduleId;
+        return id is Guid sid ? await _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == sid, ct) : null;
+    }
 }

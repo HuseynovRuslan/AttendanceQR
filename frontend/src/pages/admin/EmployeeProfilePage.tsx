@@ -18,6 +18,7 @@ import {
 import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecord, adminClearCheckout, adminDeleteRecord } from '../../api/attendance'
 import type { AttendanceRecord, PhotoUrlResponse } from '../../api/attendance'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
+import { ShiftOverridesCard } from './ShiftOverridesCard'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
@@ -445,6 +446,10 @@ export function EmployeeProfilePage() {
           <p className="muted" style={{ fontSize: 13 }}>Bu ay üçün məlumat yoxdur.</p>
         )}
       </div>
+
+      {/* The days this person worked somebody else's shift. Sits with how their days are DECIDED,
+          directly under the month figures it changes — not down among the address fields. */}
+      {id && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
 
       {/* Personal */}
       <div className="card card-pad">

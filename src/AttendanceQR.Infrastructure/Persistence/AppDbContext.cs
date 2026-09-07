@@ -42,6 +42,7 @@ public class AppDbContext : DbContext
     public DbSet<NonWorkingDay> NonWorkingDays => Set<NonWorkingDay>();
     public DbSet<LeaveRecord> LeaveRecords => Set<LeaveRecord>();
     public DbSet<Schedule> Schedules => Set<Schedule>();
+    public DbSet<ShiftOverride> ShiftOverrides => Set<ShiftOverride>();
     public DbSet<ProcessedScan> ProcessedScans => Set<ProcessedScan>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
@@ -120,6 +121,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<NonWorkingDay>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<LeaveRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Schedule>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ShiftOverride>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
 
         // A shift may belong to one branch or to the whole company (null). SetNull rather than
         // Restrict: deleting a branch must not be blocked by a shift, and must not delete a shift out
@@ -131,6 +133,14 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.LocationId)
             .OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<Schedule>().HasIndex(s => new { s.TenantId, s.LocationId });
+        // One override per person per day — «he worked two different shifts that day» is not a thing,
+        // and without the constraint a double-click would leave two rows and a coin toss over which
+        // one decides the hours somebody is paid for.
+        modelBuilder.Entity<ShiftOverride>()
+            .HasIndex(o => new { o.TenantId, o.EmployeeId, o.Date })
+            .IsUnique();
+        // Every read is «what applies on this date», so the date leads.
+        modelBuilder.Entity<ShiftOverride>().HasIndex(o => new { o.TenantId, o.Date });
         modelBuilder.Entity<ProcessedScan>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Announcement>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AnnouncementRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
