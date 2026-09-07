@@ -21,7 +21,7 @@ import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { ShiftOverridesCard } from './ShiftOverridesCard'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
-import { fmtDate, fmtDuration, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
+import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
@@ -342,61 +342,64 @@ export function EmployeeProfilePage() {
 
       {/* Header */}
       <div className="card card-pad">
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Identity on the left, actions on the right — the shape every account page has, so the eye
+            knows where the buttons are before reading. The status chips sit UNDER the name with the
+            things they describe, not floated off to the far edge where they lined up with nothing. */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--leaf-bg)', color: 'var(--leaf-d)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20, flexShrink: 0 }}>
             {initials(emp.fullName)}
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--c900)' }}>
+          <div style={{ minWidth: 0, flex: '1 1 200px' }}>
+            <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 800, fontSize: 20, color: 'var(--c900)', lineHeight: 1.2 }}>
               {emp.fullName}{emp.fatherName ? ` ${emp.fatherName}` : ''}
             </div>
-            <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+            <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>
               {[emp.position, emp.locationName].filter(Boolean).join(' · ') || '—'}
+              <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: 'var(--c400)', marginLeft: 8, whiteSpace: 'nowrap' }}>ID {emp.id.slice(0, 8)}</span>
             </div>
-            <div className="muted" style={{ fontSize: 11, fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>
-              ID: {emp.id.slice(0, 8)}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 9 }}>
+              <span className="tag">{ROLE_LABEL[emp.role] ?? emp.role}</span>
+              <span className={`badge ${emp.isActive ? 'b-present' : 'b-absent'}`}>{emp.isActive ? 'Aktiv' : 'Deaktiv'}</span>
+              {!emp.activated && <span className="badge b-late">Aktivləşməyib</span>}
+              <span className={`badge ${emp.hasDevice ? 'b-device' : 'b-nodevice'}`}>{emp.hasDevice ? 'Cihaz bağlı' : 'Cihaz yox'}</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <span className="tag">{ROLE_LABEL[emp.role] ?? emp.role}</span>
-            <span className={`badge ${emp.isActive ? 'b-present' : 'b-absent'}`}>{emp.isActive ? 'Aktiv' : 'Deaktiv'}</span>
-            {!emp.activated && <span className="badge b-late">Aktivləşməyib</span>}
-            <span className={`badge ${emp.hasDevice ? 'b-device' : 'b-nodevice'}`}>{emp.hasDevice ? 'Cihaz bağlı' : 'Cihaz yox'}</span>
-          </div>
-        </div>
 
-        {/* Actions. Every one of these is refused server-side for a card this caller may not act on —
-            a manager opening a peer's or their branch admin's card. Showing them anyway would turn a
-            deliberate boundary into what looks like a broken button. */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-          {!manageable && (
-            <span className="muted" style={{ fontSize: 13, alignSelf: 'center' }}>
-              Bu hesab sizin idarənizdə deyil — yalnız baxa bilərsiniz.
-            </span>
-          )}
-          {/* A manager edits from their OWN roster; the admin one is not theirs to open, and
-              sending them there landed on a page that renders its 403 as "no employees". */}
-          {manageable && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => navigate(`/admin/${isManager ? 'my-employees' : 'employees'}?edit=${emp.id}`)}
-            >
-              Redaktə et
-            </button>
-          )}
-          {manageable && (
-            <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
-          )}
-          {/* Re-invite mints an activation link and has no manager endpoint; offering it would
-              only ever 403. A manager reissues a temporary PIN instead, which they can do. */}
-          {!emp.activated && !isManager && (
-            <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
-          )}
-          {manageable && (
-            <button className={`btn btn-sm ${emp.isActive ? 'btn-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
-              {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
-            </button>
-          )}
+          {/* Actions. Every one of these is refused server-side for a card this caller may not act on —
+              a manager opening a peer's or their branch admin's card. Showing them anyway would turn a
+              deliberate boundary into what looks like a broken button.
+              One primary (the thing most people came to do), the rest outlined; the destructive one is
+              outlined in clay so it is recognisable without competing with «Redaktə et». */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', flex: '1 1 auto', marginLeft: 'auto' }}>
+            {!manageable && (
+              <span className="muted" style={{ fontSize: 13 }}>
+                Bu hesab sizin idarənizdə deyil — yalnız baxa bilərsiniz.
+              </span>
+            )}
+            {/* A manager edits from their OWN roster; the admin one is not theirs to open, and
+                sending them there landed on a page that renders its 403 as "no employees". */}
+            {manageable && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => navigate(`/admin/${isManager ? 'my-employees' : 'employees'}?edit=${emp.id}`)}
+              >
+                Redaktə et
+              </button>
+            )}
+            {manageable && (
+              <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
+            )}
+            {/* Re-invite mints an activation link and has no manager endpoint; offering it would
+                only ever 403. A manager reissues a temporary PIN instead, which they can do. */}
+            {!emp.activated && !isManager && (
+              <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
+            )}
+            {manageable && (
+              <button className={`btn btn-sm ${emp.isActive ? 'btn-outline-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
+                {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
+              </button>
+            )}
+          </div>
         </div>
 
         {err && <div className="fb fb-err" style={{ marginTop: 12 }}><IconX /><span>{err}</span></div>}
@@ -417,12 +420,18 @@ export function EmployeeProfilePage() {
         <div className="card-title">Bu ay</div>
         {summary ? (
           <>
-            <div className="stat-grid" style={{ marginBottom: 0 }}>
-              <Stat label="İş günü" value={summary.workDays} metric="workDays" open={openMetric} onOpen={setOpenMetric} />
-              <Stat label="Saat" value={summary.totalWorkedHours.toFixed(1)} metric="hours" open={openMetric} onOpen={setOpenMetric} />
-              <Stat label="Gecikmə" value={summary.lateCount} metric="late" open={openMetric} onOpen={setOpenMetric} />
-              <Stat label="Qayıb" value={summary.absentDays} metric="absent" open={openMetric} onOpen={setOpenMetric} />
-              <Stat label="Natamam" value={summary.incompleteDays} metric="incomplete" open={openMetric} onOpen={setOpenMetric} />
+            {/* Seven tiles (up to ten) that must read as ONE row, not a ragged two. 104px is the narrowest
+                «Məzuniyyət» still fits at this size, and seven of them sit in one line beside the
+                sidebar on anything wider than ~1130px (7×104 + 6×8 = 776px).
+                Tone per tile: the two that only go up are always alive; the three that are trouble
+                fall silent at zero — a grey «Qayıb 0» is the good news it should be — and colour
+                up only when there is something to look at. */}
+            <div className="stat-grid" style={{ marginBottom: 0, gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 8 }}>
+              <Stat label="İş günü" value={summary.workDays} metric="workDays" tone="good" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Saat" value={summary.totalWorkedHours.toFixed(1)} metric="hours" tone="good" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Gecikmə" value={summary.lateCount} metric="late" tone="warn" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Qayıb" value={summary.absentDays} metric="absent" tone="bad" open={openMetric} onOpen={setOpenMetric} />
+              <Stat label="Natamam" value={summary.incompleteDays} metric="incomplete" tone="warn" open={openMetric} onOpen={setOpenMetric} />
               {/* «Məzuniyyət» alone now — sick has its own tile. The combined tile disagreed with the
                   list that opens beneath it, which names each day by its real type. */}
               <Stat label="Məzuniyyət" value={summary.vacationDays ?? summary.leaveDays} metric="leave" open={openMetric} onOpen={setOpenMetric} />
@@ -457,8 +466,8 @@ export function EmployeeProfilePage() {
         <div className="form-row cols2" style={{ marginBottom: 0 }}>
           <Field label="Ata adı" value={emp.fatherName} />
           <Field label="Doğum tarixi" value={emp.birthDate ? emp.birthDate.split('-').reverse().join('.') : emp.birthYear ? String(emp.birthYear) : null} />
-          <Field label="Telefon" value={emp.phoneNumber} />
-          <Field label="Email" value={emp.email} />
+          <Field label="Telefon" value={fmtPhone(emp.phoneNumber)} href={telHref(emp.phoneNumber)} />
+          <Field label="Email" value={emp.email} href={emp.email ? `mailto:${emp.email}` : undefined} />
           <Field label="İş saatı" value={emp.workStart && emp.workEnd ? `${emp.workStart} – ${emp.workEnd}` : 'Filialın saatı'} />
           <Field label="Qeydiyyat" value={emp.createdAtUtc ? fmtDate(emp.createdAtUtc.slice(0, 10)) : null} />
         </div>
@@ -669,18 +678,34 @@ export function EmployeeProfilePage() {
   )
 }
 
-function Stat({ label, value, metric, open, onOpen }: {
-  label: string; value: string | number; metric: string; open: string | null; onOpen: (m: string | null) => void
+/**
+ * How a month tile should feel. `good` counts what was done and is always alive; `warn` and `bad`
+ * count what went wrong, so at zero they step back to grey (nothing to see) and at anything else they
+ * take their colour; `info` is a leave-type figure — neither good nor bad, just a fact.
+ */
+type StatTone = 'good' | 'warn' | 'bad' | 'info'
+
+function Stat({ label, value, metric, tone = 'info', open, onOpen }: {
+  label: string; value: string | number; metric: string; tone?: StatTone
+  open: string | null; onOpen: (m: string | null) => void
 }) {
   const active = open === metric
+  const zero = Number(value) === 0
+  const quiet = (tone === 'warn' || tone === 'bad') && zero
+  const stripe = quiet ? '' : tone === 'good' ? 'leaf' : tone === 'warn' ? 'amber' : tone === 'bad' ? 'clay' : 'slate'
+  const valueColor = quiet ? 'var(--c400)' : tone === 'warn' ? 'var(--amber)' : tone === 'bad' ? 'var(--clay)' : 'var(--c900)'
   return (
     <div
-      className="stat-card"
+      className={`stat-card ${stripe}`}
       onClick={() => onOpen(active ? null : metric)}
-      style={{ cursor: 'pointer', boxShadow: active ? '0 0 0 2px var(--c400)' : undefined }}
+      style={{
+        cursor: 'pointer', padding: '12px 14px', borderRadius: 14,
+        background: quiet ? 'var(--c50)' : undefined,
+        boxShadow: active ? '0 0 0 2px var(--leaf)' : quiet ? 'none' : undefined,
+      }}
     >
-      <div className="stat-lbl">{label}</div>
-      <div className="stat-val">{value}</div>
+      <div className="stat-lbl" style={{ color: quiet ? 'var(--c400)' : undefined }}>{label}</div>
+      <div className="stat-val" style={{ fontSize: 24, color: valueColor }}>{value}</div>
     </div>
   )
 }
@@ -755,11 +780,21 @@ function MetricBreakdown({ metric, days, onClose }: { metric: string; days: Empl
   )
 }
 
-function Field({ label, value }: { label: string; value: string | null }) {
+/** One labelled value. A missing one is a quiet dash, never a blank — a blank looks like a bug. */
+function Field({ label, value, href }: { label: string; value: string | null; href?: string }) {
+  const style = { fontSize: 14, color: value ? 'var(--c900)' : 'var(--c400)', fontVariantNumeric: 'tabular-nums' as const }
   return (
     <div>
       <div className="form-label">{label}</div>
-      <div style={{ fontSize: 14, color: value ? 'var(--c900)' : 'var(--c400)' }}>{value || '—'}</div>
+      {value && href
+        ? <a href={href} style={{ ...style, textDecoration: 'none' }}>{value}</a>
+        : <div style={style}>{value || '—'}</div>}
     </div>
   )
+}
+
+/** A dialable link for a stored number — only when it is the nine digits we can vouch for. */
+function telHref(raw: string | null | undefined): string | undefined {
+  const digits = (raw ?? '').replace(/\D/g, '')
+  return digits.length >= 9 ? `tel:+994${digits.slice(-9)}` : undefined
 }

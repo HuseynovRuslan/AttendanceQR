@@ -129,6 +129,25 @@ export function fromCompanyInputValue(value: string): string {
   return new Date(guess - companyOffsetMs(new Date(once))).toISOString()
 }
 
+/**
+ * A stored phone number → "+994 50 800 67 10", for reading — never for sending.
+ *
+ * The server keeps the last nine digits ("508006710", see PhoneNumbers.Normalize) and older rows
+ * still carry whatever was pasted in ("0508006710", "+994508006710"). All of those are the same
+ * subscriber, so all of them come out in the one spelling a person would write on a card. Anything
+ * that is not nine digits after stripping — a seven-digit landline, a foreign number — is shown as
+ * it was typed rather than forced into a shape that would be wrong. Empty → null, so the field
+ * shows its own dash.
+ */
+export function fmtPhone(raw: string | null | undefined): string | null {
+  const text = (raw ?? '').trim()
+  if (!text) return null
+  const digits = text.replace(/\D/g, '')
+  if (digits.length < 9) return text
+  const n = digits.slice(-9)
+  return `+994 ${n.slice(0, 2)} ${n.slice(2, 5)} ${n.slice(5, 7)} ${n.slice(7, 9)}`
+}
+
 export function minutesBetween(startIso: string, endIso: string): number {
   return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000)
 }

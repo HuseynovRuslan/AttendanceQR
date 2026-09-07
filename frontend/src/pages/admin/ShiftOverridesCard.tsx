@@ -8,7 +8,7 @@ import {
   type ShiftOverrideRow,
 } from '../../api/admin'
 import { fmtDate } from '../../lib/format'
-import { IconCheck, IconX } from '../../components/icons'
+import { IconCalendar, IconCheck, IconX } from '../../components/icons'
 
 /**
  * «Növbə əvəzləmələri» — the days this person worked somebody else's shift.
@@ -75,43 +75,75 @@ export function ShiftOverridesCard({ employeeId, onChanged }: {
     onChanged?.()
   }
 
+  // One height for every control in the row, whatever the browser gives a <select> or a date
+  // picker by default — the four of them sat at three different heights before this.
+  const control = { height: 38, padding: '0 12px', fontSize: 13, marginTop: 4 } as const
+
   return (
     <div className="card card-pad">
-      <div className="card-title">Növbə əvəzləmələri</div>
-      <div className="muted" style={{ fontSize: 12, marginTop: -10, marginBottom: 14 }}>
-        İşçi bir gün başqasının növbəsində işləyibsə, həmin günü burada qeyd edin. O gün seçilmiş
-        növbəyə görə hesablanır — gecə növbəsidirsə, səhər vurulan çıxış həmin gecəni bağlayır.
-        Ertəsi gün işçi öz növbəsinə qayıdır.
+      {/* One sentence says what the card is for; the mechanics (why a night closes in the morning)
+          live in the tooltip, for the one admin in ten who wants to know. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <div className="card-title" style={{ margin: 0 }}>Növbə əvəzləmələri</div>
+        {rows && rows.length > 0 && <span className="tag">{rows.length}</span>}
+        <span
+          className="muted"
+          title="O gün seçilmiş növbəyə görə hesablanır — gecə növbəsidirsə, səhər vurulan çıxış həmin gecəni bağlayır."
+          aria-label="İzah"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16,
+            borderRadius: '50%', border: '1px solid var(--c200)', fontSize: 10, fontWeight: 700, cursor: 'help',
+          }}
+        >
+          i
+        </span>
+      </div>
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 14, lineHeight: 1.5 }}>
+        Müvəqqəti başqa növbədə işlədiyi günü qeyd edin. Ertəsi gün işçi avtomatik öz növbəsinə qayıdır.
       </div>
 
       {error && <div className="fb fb-err" style={{ marginBottom: 10 }}><IconX /><span>{error}</span></div>}
       {ok && <div className="fb fb-ok" style={{ marginBottom: 10 }}><IconCheck /><span>{ok}</span></div>}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
-        <label style={{ fontSize: 12 }}>
+      {/* One compact row: date · shift · reason · button. The reason column stretches, the button
+          keeps its own width — on a narrow screen the row folds to one control per line. */}
+      <div
+        style={{
+          display: 'grid', gridTemplateColumns: 'minmax(140px, 160px) minmax(200px, 1.2fr) minmax(160px, 1fr) auto',
+          gap: 10, alignItems: 'end', marginBottom: 16,
+        }}
+        className="ovr-form"
+      >
+        <label className="form-label" style={{ margin: 0 }}>
           Tarix
-          <input className="inp" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ marginTop: 2 }} />
+          <input className="inp" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={control} />
         </label>
-        <label style={{ fontSize: 12, minWidth: 190 }}>
+        <label className="form-label" style={{ margin: 0 }}>
           Növbə
-          <select className="inp" value={scheduleId} onChange={(e) => setScheduleId(e.target.value)} style={{ marginTop: 2 }}>
+          <select className="inp" value={scheduleId} onChange={(e) => setScheduleId(e.target.value)} style={control}>
             <option value="">Seçin…</option>
             {schedules.map((s) => (
-              <option key={s.id} value={s.id}>{s.name} ({s.shiftStart}–{s.shiftEnd})</option>
+              <option key={s.id} value={s.id}>{s.name} · {s.shiftStart}–{s.shiftEnd}</option>
             ))}
           </select>
         </label>
-        <label style={{ fontSize: 12, flex: 1, minWidth: 160 }}>
-          Səbəb (istəyə bağlı)
+        <label className="form-label" style={{ margin: 0 }}>
+          Səbəb <span style={{ fontWeight: 500, color: 'var(--c400)' }}>(istəyə bağlı)</span>
           <input
             className="inp"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="mühafizəçini əvəz etdi"
-            style={{ marginTop: 2 }}
+            maxLength={200}
+            style={control}
           />
         </label>
-        <button className="btn btn-primary btn-sm" onClick={() => void add()} disabled={busy || !date || !scheduleId}>
+        <button
+          className="btn btn-primary"
+          onClick={() => void add()}
+          disabled={busy || !date || !scheduleId}
+          style={{ height: 38, padding: '0 16px', fontSize: 13 }}
+        >
           <IconCheck /> Əlavə et
         </button>
       </div>
@@ -119,24 +151,44 @@ export function ShiftOverridesCard({ employeeId, onChanged }: {
       {rows === null ? (
         <div className="muted" style={{ fontSize: 13 }}>Yüklənir…</div>
       ) : rows.length === 0 ? (
-        <div className="muted" style={{ fontSize: 13 }}>Hələ əvəzləmə yoxdur.</div>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 12,
+            background: 'var(--c50)', border: '1px dashed var(--c200)', color: 'var(--c500)', fontSize: 13,
+          }}
+        >
+          <IconCalendar style={{ width: 18, height: 18, flexShrink: 0, color: 'var(--c400)' }} />
+          <span>Hələ əvəzləmə yoxdur — işçi bütün günləri öz növbəsində hesablanır.</span>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ border: '1px solid var(--c100)', borderRadius: 12, overflow: 'hidden' }}>
           {rows.map((r, i) => (
             <div
               key={r.id}
               style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '9px 2px',
-                borderBottom: i < rows.length - 1 ? '1px solid var(--c50)' : 'none',
+                display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px',
+                borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
               }}
             >
-              <span className="mono" style={{ fontSize: 13, minWidth: 92 }}>{fmtDate(r.date)}</span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <b style={{ fontSize: 13.5, color: 'var(--c900)' }}>{r.scheduleName}</b>
-                <span className="muted" style={{ fontSize: 12 }}> · {r.shiftStart}–{r.shiftEnd}</span>
-                {r.note && <div className="muted" style={{ fontSize: 12, fontStyle: 'italic' }}>{r.note}</div>}
+              <span
+                className="mono"
+                style={{
+                  fontSize: 12, fontWeight: 600, color: 'var(--c700)', background: 'var(--c100)',
+                  padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {fmtDate(r.date)}
               </span>
-              <button className="btn btn-sm" onClick={() => void remove(r)} disabled={busy}>Sil</button>
+              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 10, rowGap: 2 }}>
+                <b style={{ fontSize: 13.5, color: 'var(--c900)' }}>{r.scheduleName}</b>
+                <span className="mono" style={{ fontSize: 12, color: 'var(--c500)' }}>{r.shiftStart}–{r.shiftEnd}</span>
+                {r.note && (
+                  <span className="muted" style={{ fontSize: 12, fontStyle: 'italic', flexBasis: '100%' }}>{r.note}</span>
+                )}
+              </span>
+              <button className="btn btn-sm btn-ghost-danger" onClick={() => void remove(r)} disabled={busy}>
+                Sil
+              </button>
             </div>
           ))}
         </div>

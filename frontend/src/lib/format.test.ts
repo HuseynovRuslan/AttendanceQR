@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  fmtDate, fmtDateOfInstant, fmtDateTime, fmtDayMonth, fmtDuration, fmtHM, fmtShortDate, fmtTime,
+  fmtDate, fmtDateOfInstant, fmtDateTime, fmtDayMonth, fmtDuration, fmtHM, fmtPhone, fmtShortDate, fmtTime,
   minutesBetween,
 } from './format'
 
@@ -87,5 +87,29 @@ describe('fmtHM', () => {
 
   it('shows a dash for nothing worked', () => {
     expect(fmtHM(0)).toBe('—')
+  })
+})
+
+describe('fmtPhone', () => {
+  it('spells the stored nine digits the way a person writes them', () => {
+    // What the server keeps (PhoneNumbers.Normalize): the subscriber number alone.
+    expect(fmtPhone('508006710')).toBe('+994 50 800 67 10')
+  })
+
+  it('collapses every older spelling onto the same one', () => {
+    // Rows imported before normalisation still carry these.
+    expect(fmtPhone('0508006710')).toBe('+994 50 800 67 10')
+    expect(fmtPhone('+994508006710')).toBe('+994 50 800 67 10')
+    expect(fmtPhone('+994 50 800-67-10')).toBe('+994 50 800 67 10')
+  })
+
+  it('leaves a number it cannot vouch for as it was typed', () => {
+    // A seven-digit landline forced into "+994 XX …" would be a wrong number, not a tidy one.
+    expect(fmtPhone('4921234')).toBe('4921234')
+  })
+
+  it('is null for nothing, so the field draws its own dash', () => {
+    expect(fmtPhone(null)).toBeNull()
+    expect(fmtPhone('  ')).toBeNull()
   })
 })

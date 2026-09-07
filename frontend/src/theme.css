@@ -115,6 +115,13 @@
 .btn-danger:hover{background:#a8432a}
 .btn-ghost{border-color:transparent;background:transparent}
 .btn-ghost:hover{background:var(--c50)}
+/* A destructive action that is one click among several — «Deaktiv et» beside «Redaktə et». Solid
+   clay there shouted louder than the primary; the outline says "careful" without competing. */
+.btn-outline-danger{background:var(--white);border-color:var(--clay);color:var(--clay)}
+.btn-outline-danger:hover{background:var(--clay-bg);border-color:var(--clay)}
+/* Same, one notch quieter: a row's «Sil», which must not read as a button until it is looked at. */
+.btn-ghost-danger{border-color:transparent;background:transparent;color:var(--clay)}
+.btn-ghost-danger:hover{background:var(--clay-bg)}
 .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
 .btn-lg{padding:13px 22px;font-size:15px;border-radius:14px}
 .btn-bl{width:100%}
@@ -228,6 +235,8 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
   .hamburger-btn{display:inline-flex}
   .content{padding:14px}
   .stat-grid{grid-template-columns:repeat(2,1fr)}
+  /* The cover-day form is one row on a desk and one control per line on a phone. */
+  .ovr-form{grid-template-columns:1fr !important}
 }
 
 /* ── Canlı lövhə (live board) ──────────────────────────────────────────────────
