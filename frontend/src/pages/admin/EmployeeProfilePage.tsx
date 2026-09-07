@@ -22,12 +22,29 @@ import { ShiftOverridesCard } from './ShiftOverridesCard'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
+import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
 import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
+
+/**
+ * What the server refused, said plainly. Every one of these used to arrive as «Qeyd yaradılmadı»,
+ * which tells the person neither what is wrong nor what to change — and the commonest of them,
+ * a night whose check-out looked earlier than its check-in, was not their mistake at all.
+ */
+const CREATE_ERROR: Record<string, string> = {
+  RecordAlreadyExists: 'Bu gün üçün artıq qeyd var — sətri redaktə edin',
+  CheckOutBeforeCheckIn: 'Çıxış girişdən əvvəl ola bilməz',
+  CheckInInFuture: 'Giriş vaxtı gələcəkdə ola bilməz',
+  CheckOutInFuture: 'Çıxış vaxtı hələ gəlməyib',
+  DateInFuture: 'Gələcək tarixə qeyd yazmaq olmaz',
+  Forbidden: 'Bu işçi sizin idarənizdə deyil',
+  EmployeeNotFound: 'İşçi tapılmadı',
+  LocationNotFound: 'İşçinin filialı təyin olunmayıb',
+}
 
 /** One employee's full profile: identity + this-month summary + recent attendance + photos + devices,
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
@@ -309,19 +326,19 @@ export function EmployeeProfilePage() {
   }
 
   async function createRecord() {
-    if (!emp || !crDate || !crIn) { setRecErr('Tarix və giriş vaxtı seçin'); return }
-    const checkIn = fromInput(`${crDate}T${crIn}`)
-    const checkOut = crOut ? fromInput(`${crDate}T${crOut}`) : undefined
-    if (!checkIn) { setRecErr('Giriş vaxtı düzgün deyil'); return }
+    // The record keeps the date the shift BEGAN; only the check-out may fall on the next morning.
+    // See manualRecordTimes — a night built from one date is what made this form refuse nights.
+    const times = manualRecordTimes(crDate, crIn, crOut || undefined)
+    if (!emp || !times) { setRecErr('Tarix və giriş vaxtı seçin'); return }
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminCreateRecord(emp.id, crDate, checkIn, checkOut)
+    const { status, data } = await adminCreateRecord(emp.id, times.date, times.checkInIso, times.checkOutIso)
     setRecBusy(false)
     if (status === 200) {
       setShowCreate(false); setCrDate(''); setCrIn(''); setCrOut('')
       void load()
     } else {
       const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
-      setRecErr(code === 'RecordAlreadyExists' ? 'Bu gün üçün artıq qeyd var' : 'Qeyd yaradılmadı')
+      setRecErr(CREATE_ERROR[code] ?? (status === 403 ? CREATE_ERROR.Forbidden : 'Qeyd yaradılmadı'))
     }
   }
 
@@ -335,6 +352,10 @@ export function EmployeeProfilePage() {
     )
 
   const recent = [...records].sort((a, b) => (a.attendanceDate < b.attendanceDate ? 1 : -1)).slice(0, 12)
+
+  // What «Yarat» will actually write, shown before it is pressed — a night silently becoming a
+  // next-morning check-out is exactly the kind of helpfulness that must be visible to be trusted.
+  const crTimes = manualRecordTimes(crDate, crIn, crOut || undefined)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -482,10 +503,14 @@ export function EmployeeProfilePage() {
       <div className="card card-pad">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <div className="card-title" style={{ margin: 0 }}>Son davamiyyət</div>
-          {/* Creating a day from nothing stayed Admin-only when the controller opened to managers —
-              correcting a record that exists is a different power from inventing one. Offering the
-              button anyway would only ever 403. A manager corrects the rows below instead. */}
-          {!isManager && (
+          {/* Gated on the same thing the server gates it on — may this caller act on this person —
+              and no longer on «not a manager». AdminAttendanceController.Create was opened to branch
+              managers for the case that actually happens: somebody leaves their phone at home and
+              never scans, so there is no record to correct and the person who knows they were at work
+              is the manager who saw them. This button stayed hidden anyway, so the manager had to ask
+              an admin for every one — which is how «gecə növbədən çıxdığı günü necə qeyd edim»
+              reached the owner. */}
+          {manageable && (
             <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setShowCreate((v) => !v); setRecErr(null) }}>
               + Qeyd əlavə et
             </button>
@@ -503,7 +528,25 @@ export function EmployeeProfilePage() {
             <div style={{ maxWidth: 200, marginBottom: 12 }}>
               <label className="form-label">Çıxış (istəyə bağlı)</label>
               <input className="inp" type="time" value={crOut} onChange={(e) => setCrOut(e.target.value)} />
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Gecə növbəsi üçün səhər saatını yazın — ertəsi gün sayılır.
+              </div>
             </div>
+
+            {crTimes && (
+              <div className="fb fb-info" style={{ marginBottom: 12, fontSize: 12.5, alignItems: 'center' }}>
+                <span>
+                  <b>{fmtDate(crTimes.date)} {crIn}</b>
+                  {crTimes.checkOutIso ? (
+                    <> → <b>{fmtDate(crTimes.outDate)} {crOut}</b> · {fmtDuration(crTimes.checkInIso, crTimes.checkOutIso)}</>
+                  ) : (
+                    <> · çıxış yazılmır, gün açıq qalacaq</>
+                  )}
+                  {crTimes.overnight && <> · <b>gecə növbəsi</b></>}
+                </span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-primary btn-sm" disabled={recBusy} onClick={() => void createRecord()}>{recBusy ? 'Yaradılır…' : 'Yarat'}</button>
               <button className="btn btn-sm" onClick={() => setShowCreate(false)}>Ləğv et</button>
