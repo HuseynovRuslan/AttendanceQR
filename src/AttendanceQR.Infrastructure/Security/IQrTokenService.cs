@@ -10,5 +10,11 @@ public interface IQrTokenService
     /// </summary>
     string Generate(Guid locationId, int version, int? ttlSeconds = null);
 
+    /// <summary>
+    /// Issues a signed token with no time expiry. The location/version pair is still embedded and
+    /// validated by the scan path, so bumping <c>Location.QrVersion</c> revokes it like any other QR.
+    /// </summary>
+    string GeneratePermanent(Guid locationId, int version);
+
     QrTokenValidationResult Validate(string token);
 }

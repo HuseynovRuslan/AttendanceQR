@@ -125,6 +125,8 @@ public class ScanHandlerTests
 
         public string ValidToken(int version = 1) => _qr.Generate(LocationId, version);
 
+        public string PermanentToken(int version = 1) => _qr.GeneratePermanent(LocationId, version);
+
         /// <summary>A scan payload at the office, for the harness's employee. Overrides let a test move
         /// the coordinate outside the fence or replay a client id.</summary>
         public ScanRequest Scan(
@@ -191,6 +193,31 @@ public class ScanHandlerTests
 
         var result = await h.Controller.Scan(h.Scan(token: h.ValidToken(version: 1)));
         Assert.Equal("TokenExpired", Error(result));
+    }
+
+    [Fact]
+    public async Task A_permanent_QR_checks_in_through_the_normal_scan_path()
+    {
+        using var h = new Harness();
+
+        var result = await h.Controller.Scan(h.Scan(token: h.PermanentToken()));
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.Equal(1, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task Invalidating_the_location_revokes_a_permanent_QR()
+    {
+        using var h = new Harness();
+        var permanentToken = h.PermanentToken();
+        h.Location.QrVersion = 2;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(token: permanentToken));
+
+        Assert.Equal("TokenExpired", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
     }
 
     [Fact]

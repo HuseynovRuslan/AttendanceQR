@@ -30,11 +30,13 @@ namespace AttendanceQR.Api.Controllers;
 [Route("api/admin/locations")]
 public class AdminLocationsController : ControllerBase
 {
-    // A printed poster needs to survive well past its next replacement cycle without becoming a
-    // permanent, un-revocable secret. 60 days gives comfortable buffer for a ~monthly reprint (so
-    // the poster never expires before it's replaced), while QrVersion still lets an admin invalidate
-    // it sooner if needed (a leaked photo, a lost poster, etc).
-    private const int StaticQrTtlSeconds = 60 * 24 * 60 * 60;
+    // Existing clients omit validityDays, so 60 days remains the printable QR default. An explicit
+    // duration can cover a customer's replacement cycle; ten years is the upper bound before they
+    // should use the clearly signed permanent form instead. Every form remains revocable by QrVersion.
+    private const int DefaultStaticQrValidityDays = 60;
+    private const int MinStaticQrValidityDays = 1;
+    private const int MaxStaticQrValidityDays = 3650;
+    private const int SecondsPerDay = 24 * 60 * 60;
 
     private readonly AppDbContext _db;
     private readonly IQrTokenService _qrTokenService;
@@ -268,7 +270,10 @@ public class AdminLocationsController : ControllerBase
     // could clock in — and the person standing in front of the wall could not fix it. Invalidating the
     // QR stays with the admin below, because that one voids every printed poster at once.
     [HttpPost("{id:guid}/static-qr")]
-    public async Task<IActionResult> GenerateStaticQr(Guid id)
+    public async Task<IActionResult> GenerateStaticQr(
+        Guid id,
+        [FromQuery] bool permanent = false,
+        [FromQuery] int? validityDays = null)
     {
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == id, HttpContext.RequestAborted);
         if (location is null)
@@ -277,9 +282,38 @@ public class AdminLocationsController : ControllerBase
         if (await OutOfScopeAsync(location.Id, HttpContext.RequestAborted) is { } refusal)
             return refusal;
 
-        var token = _qrTokenService.Generate(id, location.QrVersion, StaticQrTtlSeconds);
-        var expiresAtUtc = DateTime.UtcNow.AddSeconds(StaticQrTtlSeconds);
-        return Ok(new { token, expiresAtUtc, locationName = location.Name });
+        if (permanent && validityDays is not null)
+            return BadRequest(new { error = "QrValidityConflict" });
+
+        var effectiveValidityDays = permanent
+            ? (int?)null
+            : validityDays ?? DefaultStaticQrValidityDays;
+        if (effectiveValidityDays is < MinStaticQrValidityDays or > MaxStaticQrValidityDays)
+        {
+            return BadRequest(new
+            {
+                error = "QrValidityDaysOutOfRange",
+                minValidityDays = MinStaticQrValidityDays,
+                maxValidityDays = MaxStaticQrValidityDays,
+            });
+        }
+
+        var token = permanent
+            ? _qrTokenService.GeneratePermanent(id, location.QrVersion)
+            : _qrTokenService.Generate(id, location.QrVersion,
+                checked(effectiveValidityDays!.Value * SecondsPerDay));
+        DateTime? expiresAtUtc = permanent
+            ? null
+            : DateTime.UtcNow.AddDays(effectiveValidityDays!.Value);
+
+        return Ok(new
+        {
+            token,
+            expiresAtUtc,
+            locationName = location.Name,
+            permanent,
+            validityDays = effectiveValidityDays,
+        });
     }
 
     // Instantly revokes every outstanding QR for this location — the kiosk's rotating code AND any

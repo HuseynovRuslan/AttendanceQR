@@ -6,6 +6,14 @@ import { generateStaticQr, invalidateLocationQr, type StaticQrResult } from '../
 import { useBranding } from '../../branding/BrandingContext'
 import { IconCheck, IconDownload, IconQr, IconX } from '../../components/icons'
 import { fmtDateOfInstant } from '../../lib/format'
+import {
+  DEFAULT_STATIC_QR_VALIDITY_DAYS,
+  MAX_STATIC_QR_VALIDITY_DAYS,
+  MIN_STATIC_QR_VALIDITY_DAYS,
+  parseStaticQrValidity,
+  type StaticQrValidityMode,
+  type StaticQrValidityRequest,
+} from '../../lib/staticQrValidity'
 
 // The QR is rendered at print resolution (large), shown small on screen. Its data is unchanged by size.
 const QR_RENDER = 1000
@@ -101,24 +109,50 @@ export function PrintQrPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [invalidating, setInvalidating] = useState(false)
+  const [validityMode, setValidityMode] = useState<StaticQrValidityMode>('days')
+  const [validityDays, setValidityDays] = useState(String(DEFAULT_STATIC_QR_VALIDITY_DAYS))
+  const [validityError, setValidityError] = useState<string | null>(null)
 
-  async function load() {
+  async function load(validity: StaticQrValidityRequest, successMessage?: string) {
     if (!locationId) return
     setLoading(true)
     setError(null)
-    const { status, data } = await generateStaticQr(locationId)
+    const { status, data } = await generateStaticQr(locationId, validity)
     setLoading(false)
     if (status === 200 && data && 'token' in data) {
       setQr(data)
+      if (successMessage) setOk(successMessage)
     } else {
-      setError('Filial tapılmadı')
+      const code = data && 'error' in data ? data.error : ''
+      setError(
+        code === 'QrValidityDaysOutOfRange'
+          ? `Müddət ${MIN_STATIC_QR_VALIDITY_DAYS}–${MAX_STATIC_QR_VALIDITY_DAYS} gün olmalıdır`
+          : code === 'LocationNotFound'
+            ? 'Filial tapılmadı'
+            : 'QR yaradıla bilmədi',
+      )
     }
   }
 
   useEffect(() => {
-    void load()
+    void load({ validityDays: DEFAULT_STATIC_QR_VALIDITY_DAYS })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationId])
+
+  function selectedValidity(): StaticQrValidityRequest | null {
+    const validity = parseStaticQrValidity(validityMode, validityDays)
+    setValidityError(
+      validity ? null : `Tam gün sayı yazın: ${MIN_STATIC_QR_VALIDITY_DAYS}–${MAX_STATIC_QR_VALIDITY_DAYS}`,
+    )
+    return validity
+  }
+
+  async function onGenerate() {
+    const validity = selectedValidity()
+    if (!validity) return
+    setOk(null)
+    await load(validity, 'Seçdiyiniz müddətlə yeni QR yaradıldı.')
+  }
 
   /**
    * Draws the full A4 poster (QRLog-branded, tenant-adaptive) onto an offscreen canvas at print
@@ -256,10 +290,12 @@ export function PrintQrPage() {
     const waveTop = H - 13 * u
     const noteFont = 3.5 * u
     const noteBaseline = waveTop - 4 * u
+    const validityFont = 2.7 * u
+    const validityBaseline = noteBaseline - 5 * u
 
-    // QR card: centered in the space between the subtitle and the footer note, capped.
-    const noteTop = noteBaseline - noteFont
-    const avail = noteTop - subBottom
+    // QR card: centered in the space between the subtitle and the validity/footer notes, capped.
+    const validityTop = validityBaseline - validityFont
+    const avail = validityTop - subBottom
     const cardSize = Math.min(46 * u, avail - 4 * u)
     const cardY = subBottom + (avail - cardSize) / 2
     const cardX = cx - cardSize / 2
@@ -281,6 +317,15 @@ export function PrintQrPage() {
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(qrCanvas, cardX + quiet, cardY + quiet, qrDim, qrDim)
     ctx.imageSmoothingEnabled = true
+
+    // The printed poster carries its own replacement date, so a timed QR cannot expire silently.
+    ctx.font = `600 ${validityFont}px Manrope, system-ui, sans-serif`
+    ctx.fillStyle = MUTED
+    ctx.textAlign = 'center'
+    const validityText = qr.permanent || !qr.expiresAtUtc
+      ? 'Müddətsiz'
+      : `Etibarlıdır: ${fmtDateOfInstant(qr.expiresAtUtc)}-dək`
+    ctx.fillText(validityText, cx, validityBaseline)
 
     // Footer note (clock + text)
     ctx.font = `600 ${noteFont}px Manrope, system-ui, sans-serif`
@@ -365,6 +410,8 @@ export function PrintQrPage() {
 
   async function onInvalidate() {
     if (!locationId) return
+    const validity = selectedValidity()
+    if (!validity) return
     if (
       !window.confirm(
         'Bu filialın BÜTÜN QR kodları (kiosk ekranı DAXİL) ləğv ediləcək və yeni kod yaradılacaq. Çap olunmuş köhnə posterlər artıq işləməyəcək. Davam edilsin?',
@@ -376,8 +423,7 @@ export function PrintQrPage() {
     setOk(null)
     const { status } = await invalidateLocationQr(locationId)
     if (status === 200) {
-      await load()
-      setOk('Köhnə kodlar ləğv edildi — yeni kod aşağıdadır.')
+      await load(validity, 'Köhnə kodlar ləğv edildi — seçdiyiniz müddətlə yeni kod aşağıdadır.')
     } else {
       setError('Ləğv edilmədi')
     }
@@ -393,10 +439,76 @@ export function PrintQrPage() {
       <div className="fb fb-info" style={{ marginBottom: 16 }}>
         <IconQr />
         <span>
-          Bu, kiosk ekranındakı QR-dan fərqlidir — <b>30 gün etibarlıdır</b>, çap edib divara/qapıya
-          yapışdıra bilərsiniz. Kiosk QR-ı (60 saniyədə bir dəyişən) daha təhlükəsizdir; bunu yalnız
-          çap üçün rahatlıq məqsədilə istifadə edin.
+          Bu QR-i çap edib divara və ya qapıya yapışdıra bilərsiniz. Müddəti aşağıdan seçin. Kiosk QR-ı
+          60 saniyədə bir dəyişir və daha təhlükəsizdir.
         </span>
+      </div>
+
+      <div className="card card-pad" style={{ marginBottom: 16 }}>
+        <div className="card-title" style={{ marginBottom: 10 }}>Yeni QR üçün müddət</div>
+        <div className="chip-row" role="group" aria-label="QR müddəti">
+          <button
+            type="button"
+            className={`chip${validityMode === 'days' ? ' active' : ''}`}
+            aria-pressed={validityMode === 'days'}
+            onClick={() => {
+              setValidityMode('days')
+              setValidityError(null)
+            }}
+          >
+            Müddətli
+          </button>
+          <button
+            type="button"
+            className={`chip${validityMode === 'permanent' ? ' active' : ''}`}
+            aria-pressed={validityMode === 'permanent'}
+            onClick={() => {
+              setValidityMode('permanent')
+              setValidityError(null)
+            }}
+          >
+            Müddətsiz
+          </button>
+        </div>
+
+        {validityMode === 'days' ? (
+          <div style={{ display: 'flex', alignItems: 'end', gap: 10, flexWrap: 'wrap' }}>
+            <label style={{ flex: '1 1 180px', maxWidth: 240 }}>
+              <span className="form-label">Neçə gün etibarlı olsun?</span>
+              <input
+                className="inp"
+                type="number"
+                inputMode="numeric"
+                min={MIN_STATIC_QR_VALIDITY_DAYS}
+                max={MAX_STATIC_QR_VALIDITY_DAYS}
+                step={1}
+                value={validityDays}
+                aria-invalid={Boolean(validityError)}
+                onChange={(event) => {
+                  setValidityDays(event.target.value)
+                  setValidityError(null)
+                }}
+              />
+            </label>
+            <button className="btn btn-primary" disabled={loading} onClick={() => void onGenerate()}>
+              {loading ? 'Yaradılır…' : 'Bu müddətlə QR yarat'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span className="muted" style={{ fontSize: 13, flex: '1 1 240px' }}>
+              Bitmə tarixi olmayacaq. Lazım olduqda “Köhnə kodları ləğv et” ilə dayandıra bilərsiniz.
+            </span>
+            <button className="btn btn-primary" disabled={loading} onClick={() => void onGenerate()}>
+              {loading ? 'Yaradılır…' : 'Müddətsiz QR yarat'}
+            </button>
+          </div>
+        )}
+
+        {validityError && <div className="fb fb-err" style={{ marginTop: 12 }}>{validityError}</div>}
+        <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>
+          Yeni QR yaratmaq əvvəl çap edilmiş kodları avtomatik ləğv etmir.
+        </div>
       </div>
 
       {error && (
@@ -421,7 +533,9 @@ export function PrintQrPage() {
               {qr.locationName}
             </div>
             <div className="muted" style={{ fontSize: 12, marginBottom: 18 }}>
-              Etibarlıdır: {fmtDateOfInstant(qr.expiresAtUtc)} tarixinə qədər
+              {qr.permanent || !qr.expiresAtUtc
+                ? 'Etibarlıdır: müddətsiz'
+                : `Etibarlıdır: ${fmtDateOfInstant(qr.expiresAtUtc)} tarixinə qədər`}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>

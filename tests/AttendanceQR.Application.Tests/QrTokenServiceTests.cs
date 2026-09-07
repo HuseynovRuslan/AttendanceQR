@@ -78,6 +78,36 @@ public class QrTokenServiceTests
         Assert.Equal("SignatureInvalid", result.FailureReason);
     }
 
+    [Fact]
+    public void A_permanent_token_has_a_signed_zero_sentinel_and_validates()
+    {
+        var service = Service();
+        var token = service.GeneratePermanent(LocationId, version: 7);
+
+        var payload = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(token));
+        var result = service.Validate(token);
+
+        Assert.Equal("0", payload.Split('.')[2]);
+        Assert.True(result.IsValid);
+        Assert.Equal(LocationId, result.LocationId);
+        Assert.Equal(7, result.Version);
+    }
+
+    [Fact]
+    public void Changing_an_expired_token_to_the_permanent_sentinel_breaks_its_signature()
+    {
+        var service = Service();
+        var token = service.Generate(LocationId, version: 4, ttlSeconds: -60);
+        var parts = Encoding.UTF8.GetString(Base64Url.DecodeFromChars(token)).Split('.');
+        parts[2] = "0";
+        var tampered = Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Join('.', parts)));
+
+        var result = service.Validate(tampered);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("SignatureInvalid", result.FailureReason);
+    }
+
     private static QrTokenService Service(string hash = "", Guid? locationId = null) =>
         new(Options.Create(new QrTokenOptions
         {

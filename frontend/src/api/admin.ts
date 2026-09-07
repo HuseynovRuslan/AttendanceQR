@@ -1,5 +1,10 @@
 import { API_BASE_URL, apiRequest, getToken } from './client'
 import type { Role } from '../lib/jwt'
+import {
+  DEFAULT_STATIC_QR_VALIDITY_DAYS,
+  staticQrValidityQuery,
+  type StaticQrValidityRequest,
+} from '../lib/staticQrValidity'
 
 // --- reports / today -------------------------------------------------------
 
@@ -496,13 +501,19 @@ export function setLocationActive(id: string, isActive: boolean) {
 
 export interface StaticQrResult {
   token: string
-  expiresAtUtc: string
+  expiresAtUtc: string | null
   locationName: string
+  permanent: boolean
+  validityDays: number | null
 }
 
-/** Long-lived (30-day) QR meant to be printed and posted at the location. */
-export function generateStaticQr(locationId: string) {
-  return apiRequest<StaticQrResult | { error: string }>(`/api/admin/locations/${locationId}/static-qr`, {
+/** Static QR meant to be printed and posted at the location. Defaults to 60 days. */
+export function generateStaticQr(
+  locationId: string,
+  validity: StaticQrValidityRequest = { validityDays: DEFAULT_STATIC_QR_VALIDITY_DAYS },
+) {
+  const query = staticQrValidityQuery(validity)
+  return apiRequest<StaticQrResult | { error: string }>(`/api/admin/locations/${locationId}/static-qr?${query}`, {
     method: 'POST',
   })
 }

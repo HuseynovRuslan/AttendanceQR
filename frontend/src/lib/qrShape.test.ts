@@ -10,8 +10,11 @@ import { ForeignQrDetector, looksLikeQrToken } from './qrShape'
  */
 const b64url = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
-const realToken = (guid = 'fedfbfb7-5a15-4465-b190-dcc63a8e7129', version = 3) =>
-  b64url(`${guid}.${version}.${(1_790_000_000).toString()}.${b64url('0123456789abcdef')}.${b64url('some-hmac-bytes-here-32-long!!')}`)
+const realToken = (
+  guid = 'fedfbfb7-5a15-4465-b190-dcc63a8e7129',
+  version = 3,
+  expiry = '1790000000',
+) => b64url(`${guid}.${version}.${expiry}.${b64url('0123456789abcdef')}.${b64url('some-hmac-bytes-here-32-long!!')}`)
 
 describe('looksLikeQrToken', () => {
   it('accepts a token shaped exactly like the server generates', () => {
@@ -28,6 +31,10 @@ describe('looksLikeQrToken', () => {
 
   it('accepts a large version number — nothing here may be stricter than the server', () => {
     expect(looksLikeQrToken(realToken(undefined, 214748364))).toBe(true)
+  })
+
+  it('accepts the server\'s signed zero expiry sentinel for a permanent poster', () => {
+    expect(looksLikeQrToken(realToken(undefined, undefined, '0'))).toBe(true)
   })
 
   it('rejects a URL — the commonest foreign QR in the wild', () => {
