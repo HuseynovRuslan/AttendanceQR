@@ -92,7 +92,7 @@ public sealed class QrTokenService : IQrTokenService
 
         // Expiry is judged only against the server clock — never against any client time.
         var nowUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (expiresAtUnix < nowUnix)
+        if (expiresAtUnix < nowUnix && !IsExpiryExempt(token, locationId))
             return QrTokenValidationResult.Fail("TokenExpired");
 
         return QrTokenValidationResult.Success(locationId, version, nonce);
@@ -102,4 +102,28 @@ public sealed class QrTokenService : IQrTokenService
         HMACSHA256.HashData(
             Encoding.UTF8.GetBytes(_options.Secret),
             Encoding.UTF8.GetBytes(signingInput));
+
+    private bool IsExpiryExempt(string token, Guid locationId)
+    {
+        // An exemption is deliberately an exact-token fingerprint plus the signed location. A
+        // location-wide bypass would also revive every captured kiosk QR and every older poster.
+        if (_options.ExpiryExemptLocationId is not Guid exemptLocationId
+            || exemptLocationId != locationId)
+            return false;
+
+        byte[] exemptHash;
+        try
+        {
+            exemptHash = Convert.FromHexString(_options.ExpiryExemptTokenSha256);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+        if (exemptHash.Length != SHA256.HashSizeInBytes)
+            return false;
+
+        var tokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        return CryptographicOperations.FixedTimeEquals(tokenHash, exemptHash);
+    }
 }

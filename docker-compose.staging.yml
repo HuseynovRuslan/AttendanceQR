@@ -42,6 +42,8 @@ services:
       ConnectionStrings__DefaultConnection: "Host=stg-db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey}
       QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret}
+      QrToken__ExpiryExemptTokenSha256: ${QrToken__ExpiryExemptTokenSha256:-}
+      QrToken__ExpiryExemptLocationId: ${QrToken__ExpiryExemptLocationId:-}
       Cors__AllowedOrigins: ${Cors__AllowedOrigins}
       App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"

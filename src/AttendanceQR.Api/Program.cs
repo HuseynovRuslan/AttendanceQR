@@ -210,6 +210,16 @@ var qrToken = builder.Configuration.GetSection(QrTokenOptions.SectionName).Get<Q
 if (string.IsNullOrWhiteSpace(qrToken.Secret))
     throw new InvalidOperationException(
         "QrToken:Secret is not configured. Set the 'QrToken__Secret' environment variable.");
+var hasExpiryExemptHash = !string.IsNullOrWhiteSpace(qrToken.ExpiryExemptTokenSha256);
+var hasExpiryExemptLocation = qrToken.ExpiryExemptLocationId is not null;
+if (hasExpiryExemptHash != hasExpiryExemptLocation)
+    throw new InvalidOperationException(
+        "QrToken expiry exemption requires both 'ExpiryExemptTokenSha256' and 'ExpiryExemptLocationId'.");
+if (hasExpiryExemptHash
+    && (qrToken.ExpiryExemptTokenSha256.Length != 64
+        || !qrToken.ExpiryExemptTokenSha256.All(Uri.IsHexDigit)))
+    throw new InvalidOperationException(
+        "QrToken:ExpiryExemptTokenSha256 must be a 64-character hexadecimal SHA-256 fingerprint.");
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

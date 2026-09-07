@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Channels;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
@@ -46,9 +48,14 @@ public class ScanHandlerTests
         public Guid EmployeeId { get; } = Guid.NewGuid();
         public Guid LocationId { get; } = Guid.NewGuid();
         public Location Location { get; }
+        public string? ExpiredExemptPosterToken { get; }
         private readonly IQrTokenService _qr;
 
-        public Harness(TimeOnly? shiftStart = null, TimeOnly? shiftEnd = null, IFaceMatchService? face = null)
+        public Harness(
+            TimeOnly? shiftStart = null,
+            TimeOnly? shiftEnd = null,
+            IFaceMatchService? face = null,
+            bool exemptExpiredPoster = false)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantId);
@@ -89,7 +96,20 @@ public class ScanHandlerTests
             });
             Db.SaveChanges();
 
-            _qr = new QrTokenService(Options.Create(new QrTokenOptions { Secret = "test-secret-key-for-scan-tests", TtlSeconds = 300 }));
+            var qrOptions = new QrTokenOptions
+            {
+                Secret = "test-secret-key-for-scan-tests",
+                TtlSeconds = 300,
+            };
+            _qr = new QrTokenService(Options.Create(qrOptions));
+            if (exemptExpiredPoster)
+            {
+                var token = _qr.Generate(LocationId, version: 1, ttlSeconds: -60);
+                ExpiredExemptPosterToken = token;
+                qrOptions.ExpiryExemptTokenSha256 = Convert.ToHexString(
+                    SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+                qrOptions.ExpiryExemptLocationId = LocationId;
+            }
 
             Face = new StubFace();
             Controller = new AttendanceController(
@@ -171,6 +191,30 @@ public class ScanHandlerTests
 
         var result = await h.Controller.Scan(h.Scan(token: h.ValidToken(version: 1)));
         Assert.Equal("TokenExpired", Error(result));
+    }
+
+    [Fact]
+    public async Task The_exact_configured_expired_wall_poster_can_check_in()
+    {
+        using var h = new Harness(exemptExpiredPoster: true);
+
+        var result = await h.Controller.Scan(h.Scan(token: h.ExpiredExemptPosterToken));
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.Equal(1, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task Invalidating_the_location_still_revokes_the_exempt_wall_poster()
+    {
+        using var h = new Harness(exemptExpiredPoster: true);
+        h.Location.QrVersion = 2;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(token: h.ExpiredExemptPosterToken));
+
+        Assert.Equal("TokenExpired", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
     }
 
     // --- a branch with no poster (Location.QrlessCheckIn) -----------------------

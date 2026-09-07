@@ -32,6 +32,8 @@ services:
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB:-attendanceqr};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}"
       Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey in .env}
       QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret in .env}
+      QrToken__ExpiryExemptTokenSha256: ${QrToken__ExpiryExemptTokenSha256:-}
+      QrToken__ExpiryExemptLocationId: ${QrToken__ExpiryExemptLocationId:-}
       Cors__AllowedOrigins: ${Cors__AllowedOrigins:-http://localhost:8081}
       # First-run admin bootstrap (optional). If set and no Admin exists, one is created at startup.
       Bootstrap__AdminEmail: ${Bootstrap__AdminEmail:-}

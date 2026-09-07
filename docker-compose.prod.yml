@@ -32,6 +32,10 @@ services:
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
       Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey}
       QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret}
+      # One exact legacy poster may outlive its embedded expiry. Both values must be set together;
+      # empty keeps the normal expiry rule for every QR.
+      QrToken__ExpiryExemptTokenSha256: ${QrToken__ExpiryExemptTokenSha256:-}
+      QrToken__ExpiryExemptLocationId: ${QrToken__ExpiryExemptLocationId:-}
       Cors__AllowedOrigins: ${Cors__AllowedOrigins}
       # Every variable the app reads has to be named HERE — a value in .env alone reaches nothing,
       # because Compose only interpolates what this list mentions. (Same trap as TenantSeed__*.)
