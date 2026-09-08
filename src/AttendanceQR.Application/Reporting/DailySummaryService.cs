@@ -56,6 +56,15 @@ public sealed class DailySummaryService : IDailySummaryService
             .Where(o => o.Date == date)
             .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
 
+        // «Qayıb yaz» for this date: the people a manager has stated did not come. Absence is no longer
+        // inferred for anyone who has never recorded any attendance (see IsStillOnboarding), so this
+        // is how such a day gets its Qayıb — from somebody who watched it happen.
+        var absenceMarks = await _db.AbsenceMarks
+            .Where(a => a.Date == date)
+            .Select(a => a.EmployeeId)
+            .ToListAsync(ct);
+        var marked = absenceMarks.ToHashSet();
+
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
         var locations = await _db.Locations
             .Where(l => locationIds.Contains(l.Id))
@@ -162,7 +171,10 @@ public sealed class DailySummaryService : IDailySummaryService
             // person's first working scan is written as Qayıb — and payroll deducts a day per Qayıb.
             // 876 such days appeared in one company's first week. Skipped, not stored: the same
             // treatment as a day before the account existed, because that is what it is.
-            if (AttendanceCalculator.IsStillOnboarding(
+            // A manager's mark outranks the onboarding rule — which is precisely the case it exists to
+            // answer: somebody who has never scanned, was expected today, and did not come.
+            if (!marked.Contains(emp.Id)
+                && AttendanceCalculator.IsStillOnboarding(
                     date, emp.ActivatedAtUtc, FirstAttendanceOf(emp.Id), _timeZone))
             {
                 // Not merely "don't write one" — REMOVE the row if a previous run already wrote it.
@@ -187,6 +199,14 @@ public sealed class DailySummaryService : IDailySummaryService
             var noRecordStatus = AttendanceCalculator.ResolveNoRecordStatus(isWorkingDay, leaveType);
 
             records.TryGetValue(emp.Id, out var record);
+
+            // The manager's word, applied. It is deliberately the WEAKEST of the three: a scan or an
+            // approved leave is evidence and this is testimony, so if either turns up afterwards the
+            // mark goes quiet rather than overruling it. The write path refuses a mark on a day that
+            // already has one, so in practice this only settles what happens when somebody adds leave
+            // to a day that was already marked — and there, the leave is the later decision.
+            if (marked.Contains(emp.Id) && record is null && leaveType is null)
+                noRecordStatus = DailySummaryStatus.Absent;
 
             // An office record always wins: someone who scanned at their branch is judged by that scan,
             // and folding field minutes into it would double-count overlapping time. Field visits only

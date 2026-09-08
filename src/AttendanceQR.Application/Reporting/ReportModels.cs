@@ -230,7 +230,12 @@ public sealed record DayAttendanceRow(
     // The field visit behind FieldCheckInAtUtc, when there is one. On the board it makes the «ərazi»
     // row a way IN: one click opens that visit — where it was, how far from the target, the selfies
     // and the checklist — instead of a label saying a visit happened somewhere.
-    Guid? FieldVisitId = null);
+    Guid? FieldVisitId = null,
+    // Who wrote this Qayıb by hand («Qayıb yaz»). Null when the day was decided by the scans alone.
+    // Absence stopped being inferred for anyone who has never recorded any attendance, so on those
+    // rows a Qayıb only exists because somebody said so — and a day that costs a person a day's pay
+    // must carry the name of whoever decided it, the same way an assigned leave does.
+    string? AbsenceMarkedBy = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

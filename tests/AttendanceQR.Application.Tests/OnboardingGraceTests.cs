@@ -45,21 +45,29 @@ public class OnboardingGraceTests
     }
 
     [Fact]
-    public void Someone_who_has_never_scanned_is_forgiven_only_inside_the_window()
+    public void Someone_who_has_never_scanned_is_never_judged_at_all()
     {
-        // Still being set up — the GPS-blocked phones are exactly this case.
+        // Changed 2026-09-08, and the register is why. Two hundred and twenty-seven active people had
+        // never scanned once; the ten whose window had expired were carrying 28–45 Qayıb days each,
+        // and payroll deducts a day per Qayıb. Nobody had decided any of it — the absence of evidence
+        // was being read as evidence, against people this system cannot show were ever handed a
+        // working way to scan.
         Assert.True(Onboarding("2026-09-02", Imported, null));
-        // …but the window closes. Otherwise "never set your phone up" becomes a way of never being
-        // marked absent, which is the one thing this rule must not create.
-        Assert.False(Onboarding("2026-09-09", Imported, null));   // day 15
+        Assert.True(Onboarding("2026-09-09", Imported, null));   // day 15 — the window no longer closes
+        Assert.True(Onboarding("2027-03-01", Imported, null));   // nor ever
+
+        // What replaces it is a person: AbsenceMark. A manager who watched somebody not turn up says
+        // so, and their name goes on the day.
     }
 
     [Fact]
     public void The_window_boundary_is_inclusive_on_the_last_day()
     {
-        // Activated 25.08 + 14 days = 08.09 is the last forgiven day; the 9th is judged.
-        Assert.True(Onboarding("2026-09-08", Imported, null));
-        Assert.False(Onboarding("2026-09-09", Imported, null));
+        // The window now governs only the gap BEFORE a first scan — somebody who never scans is never
+        // judged at all. So this is measured against a person who did eventually start, on 01.10:
+        // activated 25.08 + 14 days = 08.09 is the last forgiven day, and the 9th is judged.
+        Assert.True(Onboarding("2026-09-08", Imported, "2026-10-01"));
+        Assert.False(Onboarding("2026-09-09", Imported, "2026-10-01"));
     }
 
     [Fact]
@@ -81,19 +89,24 @@ public class OnboardingGraceTests
     [Fact]
     public void A_long_standing_employee_is_untouched()
     {
-        // Activated in June; nothing here applies to them at all, whatever their scan history.
+        // Activated in June and working since the 2nd: nothing here applies to them at all.
         var june = new DateTime(2026, 6, 1, 6, 0, 0, DateTimeKind.Utc);
         Assert.False(Onboarding("2026-08-26", june, "2026-06-02"));
-        Assert.False(Onboarding("2026-08-26", june, null));
+
+        // Activated in June and never once scanned is a different person, and not a long-standing
+        // employee at all — it is an account nobody ever set up. It is not judged; a manager marks
+        // the day if somebody was actually expected and did not come.
+        Assert.True(Onboarding("2026-08-26", june, null));
     }
 
     [Fact]
     public void The_activation_instant_is_read_in_company_time()
     {
         // 2026-08-25 21:00 UTC is already the 26th in Baku (UTC+4). Read as UTC the window would end
-        // a day early, and the last day of somebody's setup would be billed to them.
+        // a day early, and the last day of somebody's setup would be billed to them. Measured against
+        // somebody who did eventually start, since that is the only case the window still governs.
         var lateUtc = new DateTime(2026, 8, 25, 21, 0, 0, DateTimeKind.Utc);
-        Assert.True(Onboarding("2026-09-09", lateUtc, null));    // 26.08 + 14 = 09.09
-        Assert.False(Onboarding("2026-09-10", lateUtc, null));
+        Assert.True(Onboarding("2026-09-09", lateUtc, "2026-10-01"));    // 26.08 + 14 = 09.09
+        Assert.False(Onboarding("2026-09-10", lateUtc, "2026-10-01"));
     }
 }

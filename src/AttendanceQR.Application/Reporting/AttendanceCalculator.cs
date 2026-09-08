@@ -91,17 +91,21 @@ public static class AttendanceCalculator
     /// <summary>
     /// Is this employee still being set up on this date — so the day must not be judged at all?
     ///
-    /// Two conditions, and BOTH are needed:
-    ///   • the date is inside the grace window that follows activation, and
-    ///   • the person had not yet recorded any attendance by then.
+    /// Someone who has NEVER recorded any attendance is never judged. Not for fourteen days — never.
+    /// The rule used to close that window and start writing Qayıb, and on 2026-09-08 the register
+    /// showed what that produced: two hundred and twenty-seven active people had never scanned once,
+    /// and the ten of them whose window had expired were carrying twenty-eight to forty-five absent
+    /// days each. Payroll deducts a day's pay per Qayıb, so those were real deductions against people
+    /// who, as far as this system can tell, were never handed a working way to scan. A person who has
+    /// produced no evidence at all cannot be convicted by the absence of it.
     ///
-    /// The second is what makes this safe. The moment somebody's first scan lands, the excuse ends —
-    /// for that day and every day after it, because they have now demonstrably got a working phone.
-    /// Only the days BEFORE that first scan are forgiven, and only inside the window.
+    /// What replaces the window is a human: <see cref="Domain.Entities.AbsenceMark"/> — a manager who
+    /// watched somebody not turn up says so, and their name goes on the day. That is the trade, and
+    /// it is the right way round: absence now needs a witness rather than a silence.
     ///
-    /// And the window is what stops the other failure: without it, a person who never scans at all
-    /// would never be absent either, which turns "never set your phone up" into a way of never being
-    /// marked away. After <see cref="OnboardingGraceDays"/> every day counts, scan or no scan.
+    /// Once they HAVE started, the old logic stands: the first scan ends the excuse for that day and
+    /// every day after it, and the days before it are forgiven only inside the window that follows
+    /// activation. Beyond that window somebody who is demonstrably up and running is simply absent.
     ///
     /// Deliberately NOT "no attendance record on this date" — that is just absence. The question is
     /// whether they had started AT ALL yet.
@@ -114,11 +118,16 @@ public static class AttendanceCalculator
     {
         if (activatedAtUtc is not DateTime activated) return false;
 
-        var activatedLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(activated, timeZone));
-        if (date > activatedLocal.AddDays(graceDays)) return false;   // window closed — judge normally
+        // Never started at all — nothing here can be read as "did not come".
+        if (firstAttendanceDate is not DateOnly started) return true;
 
-        // Started already? Then this day is only forgiven if it precedes that start.
-        return firstAttendanceDate is not DateOnly started || date < started;
+        // From the first scan onward they have a working phone: a missing day is a real absence.
+        if (date >= started) return false;
+
+        // The gap between activation and that first scan is an onboarding, but only for as long as
+        // setting a phone up plausibly takes.
+        var activatedLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(activated, timeZone));
+        return date <= activatedLocal.AddDays(graceDays);
     }
 
     /// <summary>One continuous stretch of presence — an office scan pair, or one field visit.</summary>

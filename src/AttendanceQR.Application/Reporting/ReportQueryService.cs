@@ -1016,6 +1016,26 @@ public sealed class ReportQueryService : IReportQueryService
         // honest name, on their own tile — and the Qayıb count means something again.
         var isOnboarding = await OnboardingCheckerAsync(employees.Select(e => e.Id).ToList(), ct);
 
+        // «Qayıb yaz»: the people a manager has stated did not come today. Absence is no longer
+        // inferred for anyone who has never recorded any attendance, so this is what puts a Qayıb on
+        // such a day — a person who watched it, rather than a silence.
+        var markRows = await _db.AbsenceMarks
+            .Where(a => a.Date == day)
+            .Select(a => new { a.EmployeeId, a.CreatedByEmployeeId })
+            .ToListAsync(ct);
+        var markedAbsent = markRows.Select(m => m.EmployeeId).ToHashSet();
+        // Who said so — a day that costs somebody a day's pay carries the name of whoever decided it,
+        // exactly as an assigned leave does.
+        var markerIds = markRows.Where(m => m.CreatedByEmployeeId != null)
+            .Select(m => m.CreatedByEmployeeId!.Value).Distinct().ToList();
+        var markerNames = await _db.Employees
+            .Where(e => markerIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.FullName })
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var markedBy = markRows.ToDictionary(
+            m => m.EmployeeId,
+            m => m.CreatedByEmployeeId is Guid by ? markerNames.GetValueOrDefault(by) : null);
+
         // Field/mobile attendance rides along on LiveDay — ComputeDayLiveAsync loaded it once, and has
         // already counted such a day as worked so the reports and the payroll agree with this board.
         return computed
@@ -1031,6 +1051,10 @@ public sealed class ReportQueryService : IReportQueryService
                 // Pending ("shift not started yet") is already neutral.
                 if (status == "Absent" && isOnboarding(d.Employee.Id, day))
                     status = "Onboarding";
+                // …unless somebody said otherwise. Testimony, so it yields to evidence: a scan or an
+                // approved leave on the same day wins, exactly as in the stored summary.
+                if (markedAbsent.Contains(d.Employee.Id) && d.Record?.CheckInAtUtc is null && d.Leave is null)
+                    status = "Absent";
                 return new DayAttendanceRow(
                     d.Employee.Id, d.Employee.FullName, d.Location.Id, d.Location.Name,
                     status,
@@ -1045,7 +1069,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.FieldIn, d.FieldOut, d.FieldLat, d.FieldLng,
                     d.Record?.ClosedByFieldVisitId != null,
                     d.Employee.CanShareDevice,
-                    d.FieldVisitId);
+                    d.FieldVisitId,
+                    markedAbsent.Contains(d.Employee.Id) ? markedBy.GetValueOrDefault(d.Employee.Id) ?? "—" : null);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

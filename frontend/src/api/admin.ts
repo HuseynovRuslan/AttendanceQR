@@ -57,6 +57,8 @@ export interface DayAttendanceRow {
   fieldCheckOutAtUtc?: string | null
   fieldCheckInLatitude?: number | null
   fieldCheckInLongitude?: number | null
+  /** Who wrote this Qayıb by hand («Qayıb yaz»). Null when the scans decided the day by themselves. */
+  absenceMarkedBy?: string | null
 }
 
 export interface EmployeeReportRow {
@@ -261,6 +263,27 @@ export interface ExportDayRowInput {
    *  never from the status text, so the workbook cannot disagree with the screen it came from. */
   bucket?: string
   position?: string
+}
+
+// --- «Qayıb yaz» -----------------------------------------------------------
+// Absence is no longer inferred for somebody who has never recorded any attendance — the system
+// cannot show they were ever handed a working way to scan, and payroll deducts a day per Qayıb. So a
+// Qayıb on such a day comes from a person who watched it, and can be taken off again.
+
+/** POST /api/admin/absence-marks — state that this employee did not come on this day. */
+export function markAbsent(employeeId: string, date: string, note?: string | null) {
+  return apiRequest<{ ok: true } | { error: string }>(
+    '/api/admin/absence-marks',
+    { method: 'POST', body: { employeeId, date, note: note ?? null } },
+  )
+}
+
+/** DELETE /api/admin/absence-marks — take the mark off and rebuild the day without it. */
+export function unmarkAbsent(employeeId: string, date: string) {
+  return apiRequest<{ ok: true } | { error: string }>(
+    `/api/admin/absence-marks?employeeId=${employeeId}&date=${date}`,
+    { method: 'DELETE' },
+  )
 }
 
 /** POST /api/reports/export-day — send the visible board rows, download a tidy .xlsx. Returns false on

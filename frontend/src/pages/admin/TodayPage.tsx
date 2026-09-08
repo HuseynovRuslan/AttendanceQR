@@ -3,7 +3,7 @@ import { countToday, matchesLeaveCard, sortRows, type SortColumn } from './today
 import { exportRow } from './exportRows'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { exportDayXlsx, getToday, type DayAttendanceRow } from '../../api/admin'
+import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow } from '../../api/admin'
 import { getImpersonation } from '../../api/client'
 import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
@@ -167,6 +167,35 @@ export function TodayPage() {
     setAssigningId(null)
     setReasonFor(null)
     if (res.status === 200) await load()
+  }
+
+  // «Qayıb yaz» — say, in so many words, that this person did not come.
+  //
+  // Needed because the system stopped guessing. Somebody who has never recorded any attendance is no
+  // longer written up as absent on their own (it was deducting a day's pay from people it could not
+  // show were ever handed a working phone), so their Qayıb now comes from whoever watched the day.
+  async function markDayAbsent(employeeId: string) {
+    setAssigningId(employeeId)
+    const res = await markAbsent(employeeId, date)
+    setAssigningId(null)
+    setReasonFor(null)
+    if (res.status === 200) { await load(); return }
+    const code = res.data && typeof res.data === 'object' && 'error' in res.data
+      ? (res.data as { error: string }).error : ''
+    setPhotoError(
+      code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
+        : code === 'HasLeave' ? 'Bu gün üçün məzuniyyət/icazə var — əvvəlcə onu silin'
+          : code === 'DateInFuture' ? 'Gələcək günə qayıb yazmaq olmaz'
+            : 'Qayıb yazılmadı')
+  }
+
+  async function undoDayAbsent(employeeId: string) {
+    setAssigningId(employeeId)
+    const res = await unmarkAbsent(employeeId, date)
+    setAssigningId(null)
+    setReasonFor(null)
+    if (res.status === 200) await load()
+    else setPhotoError('Qayıb geri alınmadı')
   }
 
   // Undo a mistaken reason — delete the single-day leave so the row goes back to Qayıb.
@@ -574,7 +603,11 @@ export function TodayPage() {
                             : undefined
                       }
                     />
-                    {(r.status === 'Absent' || ((r.status === 'OnLeave' || r.status === 'Permission') && r.leaveId)) && (
+                    {/* «Aktivləşdirməyib» joins the rows that can be acted on: that is precisely the
+                        person whose day nobody can decide but a human — no scan history, so the
+                        system will never call them absent by itself. */}
+                    {(r.status === 'Absent' || r.status === 'Onboarding'
+                      || ((r.status === 'OnLeave' || r.status === 'Permission') && r.leaveId)) && (
                       assigningId === r.employeeId ? (
                         <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>…</span>
                       ) : (
@@ -600,6 +633,19 @@ export function TodayPage() {
                               Qayıba qaytar
                             </button>
                           )}
+                          {/* The other half of the pair: a day the system will not judge by itself. */}
+                          {!r.leaveId && !r.absenceMarkedBy && r.status !== 'Absent' && (
+                            <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void markDayAbsent(r.employeeId)}>
+                              <span className="reason-dot" style={{ background: 'var(--clay)' }} />
+                              Qayıb yaz
+                            </button>
+                          )}
+                          {r.absenceMarkedBy && (
+                            <button className="reason-pop-item" onClick={() => void undoDayAbsent(r.employeeId)}>
+                              <span className="reason-dot" style={{ background: 'var(--c400)' }} />
+                              Qayıbı geri al
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
@@ -610,6 +656,10 @@ export function TodayPage() {
                       on the badge now: still there for anyone who asks, no longer a layout event. */}
                   {r.leaveAssignedBy && (
                     <span className="tbl-by" title={`Təyin edən: ${r.leaveAssignedBy}`}>ⓘ</span>
+                  )}
+                  {/* A Qayıb somebody wrote by hand says whose decision it was — it costs a day's pay. */}
+                  {r.absenceMarkedBy && (
+                    <span className="tbl-by" title={`Qayıbı yazan: ${r.absenceMarkedBy}`}>✋</span>
                   )}
                   {/* This giriş-çıxış was entered/changed by hand, not scanned — attribute it. */}
                   {r.manualBy && (

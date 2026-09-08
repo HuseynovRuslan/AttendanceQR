@@ -57,6 +57,17 @@ public class FieldVisitSummaryTests
                 // Activated well before the day under test, or the summary skips them as not-yet-onboarded.
                 ActivatedAtUtc = DateTime.UtcNow.AddDays(-30),
             });
+            // …and one real day behind them, so they count as up and running. Somebody who has NEVER
+            // recorded any attendance is never judged at all (AttendanceCalculator.IsStillOnboarding —
+            // absence needs a witness, not a silence), and these tests are about field visits, not
+            // about a new starter who was never handed a working phone.
+            Db.AttendanceRecords.Add(new AttendanceRecord
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, LocationId = LocationId,
+                AttendanceDate = Day.AddDays(-20),
+                CheckInAtUtc = DateTime.UtcNow.AddDays(-20),
+                CheckOutAtUtc = DateTime.UtcNow.AddDays(-20).AddHours(8),
+            });
             Db.SaveChanges();
 
             Service = new DailySummaryService(Db, new AppOptions { TimeZone = "Asia/Baku" });
