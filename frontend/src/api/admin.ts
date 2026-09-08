@@ -630,6 +630,12 @@ export interface InvitePayload {
   workCycleDays?: number | null
   workCycleOnDays?: number | null
   workCycleAnchor?: string | null
+  // Who the DOCUMENTS say employs this person, and at which of that employer's sites, when it is not
+  // the company whose system they are in. Nothing computes from them — attendance follows where the
+  // person actually works. Same null-default rule as the fields above: an edit that omits them
+  // CLEARS them, so every updateEmployee caller sends them.
+  paperEmployer?: string | null
+  paperSite?: string | null
 }
 
 export interface AdminEmployee {
@@ -639,6 +645,9 @@ export interface AdminEmployee {
   lastName: string | null
   fatherName: string | null
   position: string | null
+  /** «Sənəd üzrə» — the employer and site the paperwork names, when it differs from where they work. */
+  paperEmployer?: string | null
+  paperSite?: string | null
   birthYear: number | null
   /** Full date of birth "yyyy-MM-dd" (preferred over birthYear); null on rows that only had a year. */
   birthDate?: string | null

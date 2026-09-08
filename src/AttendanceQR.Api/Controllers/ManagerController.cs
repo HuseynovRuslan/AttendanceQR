@@ -354,6 +354,8 @@ public class ManagerController : ControllerBase
                 lastName = e.LastName,
                 fatherName = e.FatherName,
                 position = e.Position,
+                paperEmployer = e.PaperEmployer,
+                paperSite = e.PaperSite,
                 // A colleague's phone and e-mail are half their login credentials, and the review
                 // caught exactly this on the single card in the morning. Widening the roster must not
                 // reopen it, so contact details ride only on rows this manager may act on.
@@ -384,7 +386,7 @@ public class ManagerController : ControllerBase
 
         return Ok(rows.Select(r => new
         {
-            r.id, r.isSelf, r.manageable, r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.phoneNumber, r.email, r.locationId,
+            r.id, r.isSelf, r.manageable, r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.paperEmployer, r.paperSite, r.phoneNumber, r.email, r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn,
             // Was projected above and then dropped here, so the manager's screen counted zero however
@@ -444,6 +446,8 @@ public class ManagerController : ControllerBase
             lastName = e.LastName,
             fatherName = e.FatherName,
             position = e.Position,
+            paperEmployer = e.PaperEmployer,
+            paperSite = e.PaperSite,
             // Null for a peer or an admin: identity, not identifiers.
             phoneNumber = ownContacts ? e.PhoneNumber : null,
             email = ownContacts ? e.Email : null,
@@ -569,6 +573,9 @@ public class ManagerController : ControllerBase
         employee.PhoneNumber = phone;
         employee.FatherName = string.IsNullOrWhiteSpace(request.FatherName) ? null : request.FatherName.Trim();
         employee.Position = string.IsNullOrWhiteSpace(request.Position) ? null : request.Position.Trim();
+        // The branch manager is usually the only person who knows where this employee sits on paper.
+        employee.PaperEmployer = string.IsNullOrWhiteSpace(request.PaperEmployer) ? null : request.PaperEmployer.Trim();
+        employee.PaperSite = string.IsNullOrWhiteSpace(request.PaperSite) ? null : request.PaperSite.Trim();
         employee.BirthDate = request.BirthDate;
         employee.BirthYear = request.BirthDate?.Year ?? request.BirthYear;
         employee.LocationId = request.LocationId;

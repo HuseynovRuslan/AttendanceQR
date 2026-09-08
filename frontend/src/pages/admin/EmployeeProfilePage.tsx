@@ -209,6 +209,11 @@ export function EmployeeProfilePage() {
           workCycleDays: emp.workCycleDays ?? null,
           workCycleOnDays: emp.workCycleOnDays ?? null,
           workCycleAnchor: emp.workCycleAnchor ?? null,
+          // Re-sent for the same reason as everything else here: omitted means cleared, and the
+          // note of who employs this person on paper must not vanish because somebody was
+          // deactivated.
+          paperEmployer: emp.paperEmployer ?? null,
+          paperSite: emp.paperSite ?? null,
           isActive: !emp.isActive,
         })
       : await updateEmployee(emp.id, {
@@ -240,6 +245,8 @@ export function EmployeeProfilePage() {
       workCycleDays: emp.workCycleDays ?? null,
       workCycleOnDays: emp.workCycleOnDays ?? null,
       workCycleAnchor: emp.workCycleAnchor ?? null,
+      paperEmployer: emp.paperEmployer ?? null,
+      paperSite: emp.paperSite ?? null,
       isActive: !emp.isActive,
         })
     setBusy(false)

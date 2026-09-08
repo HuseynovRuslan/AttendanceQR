@@ -55,7 +55,13 @@ public sealed record EmployeeReportRow(
     // Leave/permission/trip days that landed on a day this person was not scheduled to work. Not a
     // figure anyone reads — it exists to be taken back OUT of the payroll divisor, which otherwise
     // counts a Sunday inside a holiday as a working day. See PayrollMath.Compute.
-    int OffDayLeaveDays = 0);
+    int OffDayLeaveDays = 0,
+    // Who the DOCUMENTS say employs this person, when it is not the company running this report.
+    // Null on almost everybody. Nothing above is computed from it — every figure in this row is about
+    // where the person actually worked — but the file the owner reads has to be able to say why a
+    // name on Green Garden's report sits on Bakı Abadlıq's payroll, instead of leaving them to ask.
+    string? PaperEmployer = null,
+    string? PaperSite = null);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(

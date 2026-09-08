@@ -34,4 +34,8 @@ public record ManagerEmployeeRequest(
     bool IsActive = true,
     // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
     string? FirstName = null,
-    string? LastName = null);
+    string? LastName = null,
+    // Who the documents say employs this person — see Employee.PaperEmployer. The branch manager is
+    // usually the only person who knows it, which is exactly why they may write it.
+    string? PaperEmployer = null,
+    string? PaperSite = null);

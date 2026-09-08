@@ -23,6 +23,10 @@ export interface ManagerEmployee {
   lastName: string | null
   fatherName: string | null
   position: string | null
+  /** «Sənəd üzrə» — the employer and site the paperwork names, when they differ from where the
+   *  person works. Read back by the profile screen so its saves can re-send them unchanged. */
+  paperEmployer?: string | null
+  paperSite?: string | null
   phoneNumber: string | null
   /** Null for phone-only employees (email became optional). */
   email: string | null
@@ -76,6 +80,11 @@ export interface ManagerEmployeeInput {
    *  manager's edit must not silently put somebody back on their branch's setting. */
   qrlessCheckInOverride?: boolean | null
   requireGeofenceOverride?: boolean | null
+  /** «Sənəd üzrə» — the employer and site the paperwork names. Round-tripped for the same reason as
+   *  everything else here: an omitted field is cleared server-side, and a branch manager toggling
+   *  somebody active must not wipe the note of who employs them on paper. */
+  paperEmployer?: string | null
+  paperSite?: string | null
   isActive: boolean
 }
 

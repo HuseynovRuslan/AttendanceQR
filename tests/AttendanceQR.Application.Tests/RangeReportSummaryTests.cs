@@ -17,12 +17,17 @@ public class RangeReportSummaryTests
     private static EmployeeReportRow Row(
         string name, string site, int workDays = 0, int absent = 0, double hours = 0,
         double overtime = 0, int vacation = 0, int sick = 0, int unpaid = 0, int rest = 0,
-        int trip = 0, int permission = 0)
+        int trip = 0, int permission = 0, string? paperEmployer = null, string? paperSite = null)
         => new(
             Guid.NewGuid(), name, site, workDays, LateCount: 0, absent, IncompleteDays: 0,
             hours, overtime, LeaveDays: vacation + sick + unpaid, trip, permission,
             EarlyLeaveHours: 0, EarlyArriveHours: 0,
-            VacationDays: vacation, SickDays: sick, UnpaidDays: unpaid, RestDays: rest);
+            VacationDays: vacation, SickDays: sick, UnpaidDays: unpaid, RestDays: rest,
+            PaperEmployer: paperEmployer, PaperSite: paperSite);
+
+    // Xülasə sheet columns, so a shifted column fails by name rather than by a bare number.
+    private const int ColHeadcount = 2, ColPaper = 3, ColWorkDays = 4, ColAbsent = 5, ColHours = 6;
+    private const int ColVacation = 8, ColSick = 9, ColLast = 13;
 
     private static XLWorkbook Export(params EmployeeReportRow[] rows)
     {
@@ -59,12 +64,12 @@ public class RangeReportSummaryTests
         var ws = wb.Worksheet("Xülasə");
         var novxani = FindRow(ws, "Novxanı");
 
-        Assert.Equal(2, ws.Cell(novxani, 2).GetValue<int>());   // İşçi sayı
-        Assert.Equal(11, ws.Cell(novxani, 3).GetValue<int>());  // İş günü
-        Assert.Equal(1, ws.Cell(novxani, 4).GetValue<int>());   // Qayıb
-        Assert.Equal(88, ws.Cell(novxani, 5).GetValue<double>()); // İşlənmiş saat
-        Assert.Equal(2, ws.Cell(novxani, 7).GetValue<int>());   // Məzuniyyət
-        Assert.Equal(1, ws.Cell(novxani, 8).GetValue<int>());   // Xəstəlik
+        Assert.Equal(2, ws.Cell(novxani, ColHeadcount).GetValue<int>());
+        Assert.Equal(11, ws.Cell(novxani, ColWorkDays).GetValue<int>());
+        Assert.Equal(1, ws.Cell(novxani, ColAbsent).GetValue<int>());
+        Assert.Equal(88, ws.Cell(novxani, ColHours).GetValue<double>());
+        Assert.Equal(2, ws.Cell(novxani, ColVacation).GetValue<int>());
+        Assert.Equal(1, ws.Cell(novxani, ColSick).GetValue<int>());
     }
 
     [Fact]
@@ -82,7 +87,7 @@ public class RangeReportSummaryTests
         var sites = Enumerable.Range(5, cemi - 5).ToList();   // header is row 4; sites start at 5
 
         Assert.Equal(3, sites.Count);
-        for (var col = 2; col <= 12; col++)
+        for (var col = ColHeadcount; col <= ColLast; col++)
             Assert.Equal(
                 sites.Sum(r => ws.Cell(r, col).GetValue<double>()),
                 ws.Cell(cemi, col).GetValue<double>());
@@ -110,7 +115,7 @@ public class RangeReportSummaryTests
 
         var ws = wb.Worksheet("Xülasə");
         Assert.Equal("—", ws.Cell(5, 1).GetString());
-        Assert.Equal(4, ws.Cell(5, 3).GetValue<int>());
+        Assert.Equal(4, ws.Cell(5, ColWorkDays).GetValue<int>());
     }
 
     [Theory]
@@ -129,6 +134,46 @@ public class RangeReportSummaryTests
         using var wb = new XLWorkbook(new MemoryStream(new ExcelReportExporter().Build(report)));
 
         Assert.Equal($"Davamiyyət hesabatı — {expected}", wb.Worksheet("Xülasə").Cell(1, 1).GetString());
+    }
+
+    [Fact]
+    public void The_summary_counts_how_many_of_a_site_are_on_another_companys_books()
+    {
+        // The owner's question in one cell: of the people working here, how many belong to somebody
+        // else on paper. Çingiz Hümbətov works at Green Garden and is on Bakı Abadlıq's payroll.
+        using var wb = Export(
+            Row("Çingiz Hümbətov", "Green Garden", workDays: 6,
+                paperEmployer: "Bakı Abadlıq Xidməti", paperSite: "Nərimanov Ofis"),
+            Row("Öz adamı", "Green Garden", workDays: 6),
+            Row("O biri", "Bayıl yolu", workDays: 6));
+
+        var ws = wb.Worksheet("Xülasə");
+        Assert.Equal(1, ws.Cell(FindRow(ws, "Green Garden"), ColPaper).GetValue<int>());
+        Assert.Equal(0, ws.Cell(FindRow(ws, "Bayıl yolu"), ColPaper).GetValue<int>());
+        Assert.Equal(1, ws.Cell(FindRow(ws, "CƏMİ"), ColPaper).GetValue<int>());
+    }
+
+    [Fact]
+    public void The_detail_sheet_names_the_employer_and_the_site()
+    {
+        using var wb = Export(
+            Row("Çingiz Hümbətov", "Green Garden",
+                paperEmployer: "Bakı Abadlıq Xidməti", paperSite: "Nərimanov Ofis"),
+            Row("Yalnız şirkət", "Green Garden", paperEmployer: "CleanFix"),
+            Row("Öz adamı", "Green Garden"));
+
+        var ws = wb.Worksheet("Davamiyyət");
+        var cell = (string name) =>
+        {
+            for (var r = 6; r <= 40; r++)
+                if (ws.Cell(r, 1).GetString() == name) return ws.Cell(r, 3).GetString();
+            throw new Xunit.Sdk.XunitException($"«{name}» tapılmadı.");
+        };
+
+        Assert.Equal("Bakı Abadlıq Xidməti / Nərimanov Ofis", cell("Çingiz Hümbətov"));
+        Assert.Equal("CleanFix", cell("Yalnız şirkət"));
+        // Empty, not a dash: the column has to stay quiet on the many so the eye lands on the few.
+        Assert.Equal(string.Empty, cell("Öz adamı"));
     }
 
     private static int FindRow(IXLWorksheet ws, string label)

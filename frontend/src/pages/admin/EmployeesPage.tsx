@@ -27,6 +27,7 @@ import {
   type InviteResult,
   type Schedule,
 } from '../../api/admin'
+import { getGroupCompanies } from '../../api/tenant'
 import {
   adminClearCheckout,
   adminCreateRecord,
@@ -102,6 +103,10 @@ type FormState = {
   lastName: string
   fatherName: string
   position: string
+  /** «Sənəd üzrə» — the employer and site the paperwork names, when they are not where the person
+   *  actually works. Blank on almost everybody; nothing is computed from them. */
+  paperEmployer: string
+  paperSite: string
   // Year kept only to preserve it for rows that were entered year-only (bulk import); the form edits
   // the full date below. birthDate is "yyyy-MM-dd" (what <input type="date"> emits), blank if unset.
   birthYear: string
@@ -139,6 +144,8 @@ const EMPTY: FormState = {
   lastName: '',
   fatherName: '',
   position: '',
+  paperEmployer: '',
+  paperSite: '',
   birthYear: '',
   birthDate: '',
   email: '',
@@ -172,6 +179,10 @@ export function EmployeesPage() {
   const [rows, setRows] = useState<AdminEmployee[]>([])
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
+  /** The other companies in this owner's group — the «Sənəd üzrə şirkət» picker. Empty for a tenant
+   *  that has none configured, and the field then falls back to a plain text box rather than an
+   *  empty dropdown nobody can get past. */
+  const [groupCompanies, setGroupCompanies] = useState<string[]>([])
   /** The shift the bulk strip will apply; 'none' clears instead. */
   const [bulkShift, setBulkShift] = useState('')
   const navigate = useNavigate()
@@ -217,10 +228,13 @@ export function EmployeesPage() {
   const [savingRecord, setSavingRecord] = useState(false)
 
   async function refresh() {
-    const [emp, locs, scheds] = await Promise.all([getEmployees(), getAdminLocations(), getSchedules()])
+    const [emp, locs, scheds, group] = await Promise.all([
+      getEmployees(), getAdminLocations(), getSchedules(), getGroupCompanies(),
+    ])
     if (emp.status === 200 && Array.isArray(emp.data)) setRows(emp.data)
     if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
     if (scheds.status === 200 && Array.isArray(scheds.data)) setSchedules(scheds.data)
+    if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
   }
 
   useEffect(() => {
@@ -263,6 +277,8 @@ export function EmployeesPage() {
       lastName: parts.last,
       fatherName: e.fatherName ?? '',
       position: e.position ?? '',
+      paperEmployer: e.paperEmployer ?? '',
+      paperSite: e.paperSite ?? '',
       birthYear: e.birthYear != null ? String(e.birthYear) : '',
       birthDate: e.birthDate ?? '',
       email: e.email ?? '',
@@ -318,6 +334,8 @@ export function EmployeesPage() {
       role: form.role,
       fatherName: form.fatherName.trim() || null,
       position: form.position.trim() || null,
+      paperEmployer: form.paperEmployer.trim() || null,
+      paperSite: form.paperSite.trim() || null,
       birthYear: form.birthYear ? Number(form.birthYear) : null,
       birthDate: form.birthDate || null,
       monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
@@ -1188,6 +1206,56 @@ ${back}`,
             </div>
           </div>
 
+          {/* «Sənəd üzrə» — only for the minority whose paperwork names a different company from the
+              one they work at. Nothing is computed from these: attendance, the geofence, the shift,
+              the tabel and the pay all follow the branch above. They exist so the fact stops living
+              in one manager's head and starts appearing on the report the owner reads. */}
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Sənəd üzrə şirkət</label>
+              {groupCompanies.length > 0 ? (
+                <select
+                  className="inp"
+                  value={form.paperEmployer}
+                  onChange={(e) => set('paperEmployer', e.target.value)}
+                >
+                  {/* The empty option is the normal case and must stay reachable: it is how an admin
+                      says "there is no discrepancy" and clears a note entered by mistake. */}
+                  <option value="">— eyni şirkət —</option>
+                  {groupCompanies.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  {/* A value already stored that is no longer on the list would otherwise be silently
+                      swapped for the blank option the moment anybody saved this form. */}
+                  {form.paperEmployer && !groupCompanies.includes(form.paperEmployer) && (
+                    <option value={form.paperEmployer}>{form.paperEmployer}</option>
+                  )}
+                </select>
+              ) : (
+                <input
+                  className="inp"
+                  value={form.paperEmployer}
+                  placeholder="məs. Bakı Abadlıq Xidməti"
+                  onChange={(e) => set('paperEmployer', e.target.value)}
+                />
+              )}
+            </div>
+            <div>
+              <label className="form-label">Sənəd üzrə ərazi</label>
+              <input
+                className="inp"
+                value={form.paperSite}
+                placeholder="məs. Nərimanov Ofis"
+                disabled={!form.paperEmployer.trim()}
+                onChange={(e) => set('paperSite', e.target.value)}
+              />
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Yalnız sənədi başqa şirkəti göstərən işçilər üçün. Davamiyyət yuxarıdakı filiala görə
+                hesablanır.
+              </div>
+            </div>
+          </div>
+
           <div className="form-row cols2">
             <div>
               <label className="form-label">Telefon nömrəsi</label>
@@ -1704,6 +1772,14 @@ ${back}`,
                 <td data-label="Vəzifə">{e.position || '—'}</td>
                 <td data-label="Filial">
                   {e.locationName ?? '—'}
+                  {/* Shown right under the branch, because the whole point is the CONTRAST between
+                      where this person works and where their paperwork says they belong. On its own
+                      line elsewhere it would read as a second branch. */}
+                  {e.paperEmployer && (
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                      sənəd: {e.paperEmployer}{e.paperSite ? ` / ${e.paperSite}` : ''}
+                    </div>
+                  )}
                   {/* The employee's own shift when set — so it's visible which schedule (day/night)
                       they're on at a location that runs several. */}
                   {/* The shift decides hours and days, so it replaces the raw times in the list. */}

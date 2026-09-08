@@ -98,6 +98,11 @@ public class AdminController : ControllerBase
                 lastName = e.LastName,
                 fatherName = e.FatherName,
                 position = e.Position,
+                // Round-tripped by the edit form, not only displayed: EmployeeUpdateRequest
+                // null-defaults every field, so a form that cannot read these back would clear them
+                // on the next unrelated edit.
+                paperEmployer = e.PaperEmployer,
+                paperSite = e.PaperSite,
                 birthYear = e.BirthYear,
                 birthDate = e.BirthDate,
                 workStart = e.WorkStart?.ToString("HH:mm"),
@@ -953,6 +958,10 @@ public class AdminController : ControllerBase
         employee.PhoneNumber = phone;
         employee.FatherName = request.FatherName;
         employee.Position = request.Position;
+        // Blank is the same as absent here: an empty box means "no discrepancy", not an empty string
+        // that would then show up as a mismatch row with nothing written in it.
+        employee.PaperEmployer = Blank(request.PaperEmployer);
+        employee.PaperSite = Blank(request.PaperSite);
         employee.PhotoExempt = request.PhotoExempt;
         employee.CanFieldCheckIn = request.CanFieldCheckIn;
         employee.CanShareDevice = request.CanShareDevice;
@@ -982,6 +991,9 @@ public class AdminController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(new { id = employee.Id });
     }
+
+    /// <summary>Whitespace and empty are the same as "not set" — a blank box must not become a value.</summary>
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// Sets which branches a Manager may see in the reports. Null → leave alone; a list → replace.

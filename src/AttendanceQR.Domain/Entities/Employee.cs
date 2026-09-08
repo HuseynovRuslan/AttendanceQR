@@ -31,6 +31,27 @@ public class Employee : ITenantScoped, IHasWorkCycle
 
     public string? Position { get; set; }
 
+    // Who employs this person ON PAPER when that is not the company whose system they are recorded
+    // in, and which of that employer's sites the documents name. Both null for the overwhelming
+    // majority, whose contract and workplace are the same company.
+    //
+    // These are NOT a second LocationId and nothing computes from them. Attendance follows the body:
+    // a person's scans, geofence, shift, tabel and pay are all decided by where they actually work,
+    // which is what LocationId says and what this system exists to record. What had nowhere to live
+    // was the OTHER true fact about the same person — Çingiz Hümbətov works at Green Garden and is on
+    // Bakı Abadlıq Xidməti's books, at Nərimanov Ofis — so it stayed in one branch manager's head and
+    // was explained by hand every time a report reached the owner. When that manager leaves, the
+    // knowledge leaves with them, and the report starts looking simply wrong.
+    //
+    // Text rather than a foreign key on purpose: the employer named here is a DIFFERENT tenant, and
+    // an employee row may not reach across that wall. PaperEmployer is picked from
+    // Tenant.GroupCompanies so one company cannot arrive spelled three ways — the lesson of the
+    // free-text job title — while PaperSite stays free text, because it names a branch inside a
+    // company this database is not allowed to see.
+    public string? PaperEmployer { get; set; }
+
+    public string? PaperSite { get; set; }
+
     // Kept for backward compatibility (bulk import + rows entered before full dates existed). When
     // BirthDate is set it is the source of truth and BirthYear is kept in sync with its year.
     public int? BirthYear { get; set; }

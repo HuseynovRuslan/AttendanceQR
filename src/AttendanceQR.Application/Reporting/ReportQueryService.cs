@@ -744,7 +744,13 @@ public sealed class ReportQueryService : IReportQueryService
         var reportEmployeeIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
         var scheduleOf = (await _db.Employees
                 .Where(e => reportEmployeeIds.Contains(e.Id))
-                .Select(e => new { e.Id, e.LocationId, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor })
+                // PaperEmployer/PaperSite ride along on a read that was already happening — the
+                // report must not grow a second query to print two mostly-null columns.
+                .Select(e => new
+                {
+                    e.Id, e.LocationId, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                    e.PaperEmployer, e.PaperSite,
+                })
                 .ToListAsync(ct))
             .ToDictionary(e => e.Id);
         var maskOf = await _db.Locations
@@ -819,7 +825,9 @@ public sealed class ReportQueryService : IReportQueryService
                 // the person was scheduled.
                 OffDayLeaveDays: g.Count(x =>
                     x.Status is DailySummaryStatus.OnLeave or DailySummaryStatus.Permission
-                    && !IsScheduledDay(x.EmployeeId, x.Date))))
+                    && !IsScheduledDay(x.EmployeeId, x.Date)),
+                PaperEmployer: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperEmployer,
+                PaperSite: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperSite))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 

@@ -32,7 +32,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     // cannot recover one from the other after the fact.
     private static readonly string[] Headers =
         {
-            "İşçi", "Filial", "İş günü", "Qayıb", "İşlənmiş saat", "Əlavə saat",
+            "İşçi", "Filial", "Sənəd üzrə", "İş günü", "Qayıb", "İşlənmiş saat", "Əlavə saat",
             "Məzuniyyət", "Xəstəlik", "Ödənişsiz", "İstirahət", "Ezamiyyət", "İcazə",
             "Tez çıxma (saat)", "Tez gəlmə (saat)"
         };
@@ -44,7 +44,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     /// </summary>
     private static readonly string[] SummaryHeaders =
         {
-            "Ərazi", "İşçi sayı", "İş günü", "Qayıb", "İşlənmiş saat", "Əlavə saat",
+            "Ərazi", "İşçi sayı", "Sənəd üzrə kənar", "İş günü", "Qayıb", "İşlənmiş saat", "Əlavə saat",
             "Məzuniyyət", "Xəstəlik", "Ödənişsiz", "İstirahət", "Ezamiyyət", "İcazə"
         };
 
@@ -110,18 +110,22 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         {
             ws.Cell(r, 1).Value = row.EmployeeName;
             ws.Cell(r, 2).Value = row.LocationName;
-            ws.Cell(r, 3).Value = row.WorkDays;
-            ws.Cell(r, 4).Value = row.AbsentDays;
-            ws.Cell(r, 5).Value = row.TotalWorkedHours;
-            ws.Cell(r, 6).Value = row.OvertimeHours;
-            ws.Cell(r, 7).Value = row.VacationDays;
-            ws.Cell(r, 8).Value = row.SickDays;
-            ws.Cell(r, 9).Value = row.UnpaidDays;
-            ws.Cell(r, 10).Value = row.RestDays;
-            ws.Cell(r, 11).Value = row.TripDays;
-            ws.Cell(r, 12).Value = row.PermissionDays;
-            ws.Cell(r, 13).Value = row.EarlyLeaveHours;
-            ws.Cell(r, 14).Value = row.EarlyArriveHours;
+            // Blank for almost everybody, and that is the point: the few filled cells are the people
+            // whose paperwork names another company, which is the question this column exists to
+            // answer without anybody having to ask a branch manager.
+            ws.Cell(r, 3).Value = PaperLabel(row);
+            ws.Cell(r, 4).Value = row.WorkDays;
+            ws.Cell(r, 5).Value = row.AbsentDays;
+            ws.Cell(r, 6).Value = row.TotalWorkedHours;
+            ws.Cell(r, 7).Value = row.OvertimeHours;
+            ws.Cell(r, 8).Value = row.VacationDays;
+            ws.Cell(r, 9).Value = row.SickDays;
+            ws.Cell(r, 10).Value = row.UnpaidDays;
+            ws.Cell(r, 11).Value = row.RestDays;
+            ws.Cell(r, 12).Value = row.TripDays;
+            ws.Cell(r, 13).Value = row.PermissionDays;
+            ws.Cell(r, 14).Value = row.EarlyLeaveHours;
+            ws.Cell(r, 15).Value = row.EarlyArriveHours;
             for (var c = 1; c <= Headers.Length; c++)
                 ws.Cell(r, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             r++;
@@ -129,18 +133,18 @@ public sealed class ExcelReportExporter : IExcelReportExporter
 
         // Totals row.
         ws.Cell(r, 1).Value = "CƏMİ";
-        ws.Cell(r, 3).Value = report.Totals.WorkDays;
-        ws.Cell(r, 4).Value = report.Totals.AbsentDays;
-        ws.Cell(r, 5).Value = report.Totals.TotalWorkedHours;
-        ws.Cell(r, 6).Value = report.Totals.OvertimeHours;
-        ws.Cell(r, 7).Value = report.Totals.VacationDays;
-        ws.Cell(r, 8).Value = report.Totals.SickDays;
-        ws.Cell(r, 9).Value = report.Totals.UnpaidDays;
-        ws.Cell(r, 10).Value = report.Totals.RestDays;
-        ws.Cell(r, 11).Value = report.Totals.TripDays;
-        ws.Cell(r, 12).Value = report.Totals.PermissionDays;
-        ws.Cell(r, 13).Value = report.Totals.EarlyLeaveHours;
-        ws.Cell(r, 14).Value = report.Totals.EarlyArriveHours;
+        ws.Cell(r, 4).Value = report.Totals.WorkDays;
+        ws.Cell(r, 5).Value = report.Totals.AbsentDays;
+        ws.Cell(r, 6).Value = report.Totals.TotalWorkedHours;
+        ws.Cell(r, 7).Value = report.Totals.OvertimeHours;
+        ws.Cell(r, 8).Value = report.Totals.VacationDays;
+        ws.Cell(r, 9).Value = report.Totals.SickDays;
+        ws.Cell(r, 10).Value = report.Totals.UnpaidDays;
+        ws.Cell(r, 11).Value = report.Totals.RestDays;
+        ws.Cell(r, 12).Value = report.Totals.TripDays;
+        ws.Cell(r, 13).Value = report.Totals.PermissionDays;
+        ws.Cell(r, 14).Value = report.Totals.EarlyLeaveHours;
+        ws.Cell(r, 15).Value = report.Totals.EarlyArriveHours;
         var totalRange = ws.Range(r, 1, r, Headers.Length);
         totalRange.Style.Font.Bold = true;
         totalRange.Style.Fill.BackgroundColor = XLColor.LightYellow;
@@ -229,18 +233,31 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             // Headcount counts PEOPLE, not rows — the report is one row per employee today, and a
             // distinct count keeps that true if it ever stops being.
             ws.Cell(row, 2).Value = people.Select(x => x.EmployeeId).Distinct().Count();
-            ws.Cell(row, 3).Value = people.Sum(x => x.WorkDays);
-            ws.Cell(row, 4).Value = people.Sum(x => x.AbsentDays);
-            ws.Cell(row, 5).Value = Math.Round(people.Sum(x => x.TotalWorkedHours), 1);
-            ws.Cell(row, 6).Value = Math.Round(people.Sum(x => x.OvertimeHours), 1);
-            ws.Cell(row, 7).Value = people.Sum(x => x.VacationDays);
-            ws.Cell(row, 8).Value = people.Sum(x => x.SickDays);
-            ws.Cell(row, 9).Value = people.Sum(x => x.UnpaidDays);
-            ws.Cell(row, 10).Value = people.Sum(x => x.RestDays);
-            ws.Cell(row, 11).Value = people.Sum(x => x.TripDays);
-            ws.Cell(row, 12).Value = people.Sum(x => x.PermissionDays);
+            // How many of them are here but on another company's books. The owner's actual question
+            // — "how many borrowed people work at this site" — answered in one cell per site.
+            ws.Cell(row, 3).Value = people.Count(x => !string.IsNullOrWhiteSpace(x.PaperEmployer));
+            ws.Cell(row, 4).Value = people.Sum(x => x.WorkDays);
+            ws.Cell(row, 5).Value = people.Sum(x => x.AbsentDays);
+            ws.Cell(row, 6).Value = Math.Round(people.Sum(x => x.TotalWorkedHours), 1);
+            ws.Cell(row, 7).Value = Math.Round(people.Sum(x => x.OvertimeHours), 1);
+            ws.Cell(row, 8).Value = people.Sum(x => x.VacationDays);
+            ws.Cell(row, 9).Value = people.Sum(x => x.SickDays);
+            ws.Cell(row, 10).Value = people.Sum(x => x.UnpaidDays);
+            ws.Cell(row, 11).Value = people.Sum(x => x.RestDays);
+            ws.Cell(row, 12).Value = people.Sum(x => x.TripDays);
+            ws.Cell(row, 13).Value = people.Sum(x => x.PermissionDays);
         }
     }
+
+    /// <summary>«Bakı Abadlıq Xidməti / Nərimanov Ofis», or just the company when no site is named.
+    /// Empty — not a dash — when there is no discrepancy, so the column stays quiet on the many and
+    /// the eye lands on the few.</summary>
+    private static string PaperLabel(EmployeeReportRow row) =>
+        string.IsNullOrWhiteSpace(row.PaperEmployer)
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(row.PaperSite)
+                ? row.PaperEmployer
+                : $"{row.PaperEmployer} / {row.PaperSite}";
 
     /// <summary>
     /// «1–8 sentyabr 2026» — the period as somebody says it out loud, with the month and year written

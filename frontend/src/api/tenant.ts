@@ -14,3 +14,11 @@ export interface TenantBranding {
 export function getTenantBranding() {
   return apiRequest<TenantBranding>('/api/tenant/branding', { auth: false })
 }
+
+/** GET /api/tenant/group-companies — the other companies in this customer's group, the options for
+ *  «Sənəd üzrə şirkət» on the employee forms. Authorised staff only: which companies share an owner
+ *  is not something the anonymous branding call may hand a stranger. Empty when none are configured,
+ *  and the field falls back to a plain text box. */
+export function getGroupCompanies() {
+  return apiRequest<string[]>('/api/tenant/group-companies')
+}

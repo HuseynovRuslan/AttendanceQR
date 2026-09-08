@@ -104,4 +104,9 @@ public record EmployeeUpdateRequest(
     IReadOnlyList<Guid>? ManagedLocationIds = null,
     // Structured name parts. When both are given, FullName is (re)composed as "FirstName LastName".
     string? FirstName = null,
-    string? LastName = null);
+    string? LastName = null,
+    // Who the documents say employs this person, and at which of that employer's sites, when it is
+    // not the company they are recorded in. Null clears them — like every other field here — which is
+    // right: an admin who empties the boxes means "there is no discrepancy any more".
+    string? PaperEmployer = null,
+    string? PaperSite = null);

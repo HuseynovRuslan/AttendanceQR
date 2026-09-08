@@ -52,6 +52,37 @@ public class TenantController : ControllerBase
         });
     }
 
+    // GET /api/tenant/group-companies — the other companies in this customer's group, for the
+    // employee form's «Sənəd üzrə şirkət» picker.
+    //
+    // Deliberately NOT part of /branding, which is anonymous: branding is what a login page may show
+    // a stranger, and which companies belong to one owner is not. Authorised staff only, and only
+    // their own tenant's list.
+    [HttpGet("group-companies")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<IActionResult> GroupCompanies()
+    {
+        if (!_tenant.IsResolved) return Ok(Array.Empty<string>());
+
+        var csv = await _db.Tenants
+            .Where(t => t.Id == _tenant.TenantId)
+            .Select(t => t.GroupCompanies)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        return Ok(SplitCompanies(csv));
+    }
+
+    /// <summary>
+    /// The stored CSV as a clean list: trimmed, blanks dropped, duplicates removed. One company
+    /// spelled two ways in the picker would defeat the point of having a picker at all.
+    /// </summary>
+    internal static string[] SplitCompanies(string? csv) =>
+        string.IsNullOrWhiteSpace(csv)
+            ? []
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                 .ToArray();
+
     // GET /api/tenant/manifest — the PWA manifest, per tenant. The frontend nginx proxies
     // <slug>.qrlog.az/manifest.webmanifest here (same-origin), so an installed "Add to Home Screen"
     // gets the tenant's own name + logo instead of a shared one. Tenant resolved from the Host header.

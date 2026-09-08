@@ -68,4 +68,13 @@ public class Tenant
     /// feature to the platform needs no migration and defaults to enabled everywhere.
     /// See <c>TenantFeatures</c> for the key catalogue and the resolver.</summary>
     public string? DisabledFeatures { get; set; }
+
+    // The other companies in this customer's group, comma-separated — the choices the employee form
+    // offers under «Sənəd üzrə şirkət» (Employee.PaperEmployer). Empty or null and that field falls
+    // back to a plain text box, so a tenant that never sets this loses nothing.
+    //
+    // A stored list rather than a lookup because those companies are separate tenants and one tenant
+    // may not read another's rows; a list rather than free text because a single company spelled
+    // three ways would make the group's mismatch report unreadable.
+    public string? GroupCompanies { get; set; }
 }

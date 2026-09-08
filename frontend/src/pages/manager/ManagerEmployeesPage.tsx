@@ -14,6 +14,7 @@ import {
 } from '../../api/manager'
 import { IconX } from '../../components/icons'
 import { getManagerSchedules, type ManagerSchedule } from '../../api/manager'
+import { getGroupCompanies } from '../../api/tenant'
 import './manager.css'
 
 const EMPTY: ManagerEmployeeInput = {
@@ -21,6 +22,7 @@ const EMPTY: ManagerEmployeeInput = {
   locationId: '', birthDate: null, birthYear: null, workStart: null, workEnd: null,
   scheduleId: null, workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
   photoExempt: false, canFieldCheckIn: false, isActive: true,
+  paperEmployer: null, paperSite: null,
 }
 
 /** Prefer stored parts; fall back to splitting FullName (last token = surname) for un-backfilled rows. */
@@ -52,6 +54,8 @@ export function ManagerEmployeesPage() {
   const [locations, setLocations] = useState<ManagerLocation[]>([])
   const navigate = useNavigate()
   const [positions, setPositions] = useState<string[]>([])
+  /** The group's other companies — «Sənəd üzrə şirkət» options. Empty → a plain text box. */
+  const [groupCompanies, setGroupCompanies] = useState<string[]>([])
   const [schedules, setSchedules] = useState<ManagerSchedule[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<string | null>(null) // id, or 'new', or null
@@ -95,9 +99,11 @@ export function ManagerEmployeesPage() {
 
   async function load() {
     setLoading(true)
-    const [e, l, p, sc] = await Promise.all([
+    const [e, l, p, sc, group] = await Promise.all([
       getManagerEmployees(), getManagerLocations(), getManagerPositions(), getManagerSchedules(),
+      getGroupCompanies(),
     ])
+    if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
     if (e.status === 200 && Array.isArray(e.data)) setRows(e.data)
     if (l.status === 200 && Array.isArray(l.data)) setLocations(l.data)
     if (p.status === 200 && Array.isArray(p.data)) setPositions(p.data.map((x) => x.name))
@@ -130,6 +136,9 @@ export function ManagerEmployeesPage() {
       canFieldCheckIn: e.canFieldCheckIn, isActive: e.isActive,
       scheduleId: e.scheduleId,
       workCycleDays: e.workCycleDays, workCycleOnDays: e.workCycleOnDays, workCycleAnchor: e.workCycleAnchor,
+      // Read back before it can be written back: the payload is a spread of `form`, so a field that
+      // never lands in the form reaches the server as undefined and is cleared there.
+      paperEmployer: e.paperEmployer ?? null, paperSite: e.paperSite ?? null,
     })
     setEditing(e.id)
     setErr(null)
@@ -316,6 +325,46 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               </select>
             </div>
           </div>
+          {/* «Sənəd üzrə» — the branch manager is usually the ONLY person who knows this, which is
+              why they may write it. Nothing is computed from it: the branch above still decides the
+              geofence, the shift, the tabel and the pay. */}
+          <div className="form-row cols2">
+            <div>
+              <label className="form-label">Sənəd üzrə şirkət</label>
+              {groupCompanies.length > 0 ? (
+                <select
+                  className="inp"
+                  value={form.paperEmployer ?? ''}
+                  onChange={(e) => set('paperEmployer', e.target.value || null)}
+                >
+                  <option value="">— eyni şirkət —</option>
+                  {groupCompanies.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {/* Keep a stored value that has since left the list, or saving would drop it. */}
+                  {form.paperEmployer && !groupCompanies.includes(form.paperEmployer) && (
+                    <option value={form.paperEmployer}>{form.paperEmployer}</option>
+                  )}
+                </select>
+              ) : (
+                <input
+                  className="inp"
+                  value={form.paperEmployer ?? ''}
+                  placeholder="məs. Bakı Abadlıq Xidməti"
+                  onChange={(e) => set('paperEmployer', e.target.value || null)}
+                />
+              )}
+            </div>
+            <div>
+              <label className="form-label">Sənəd üzrə ərazi</label>
+              <input
+                className="inp"
+                value={form.paperSite ?? ''}
+                placeholder="məs. Nərimanov Ofis"
+                disabled={!form.paperEmployer}
+                onChange={(e) => set('paperSite', e.target.value || null)}
+              />
+            </div>
+          </div>
+
           {/* One shift control — hours, work-days and rotation all come from the named shift chosen
               here (created in the Növbələr panel), not retyped per person. Any old per-person hours
               still ride along in `form` and are saved back untouched, so nothing is lost. */}
