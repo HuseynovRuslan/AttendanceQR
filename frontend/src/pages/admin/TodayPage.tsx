@@ -579,10 +579,15 @@ export function TodayPage() {
                             : undefined
                       }
                     />
-                    {/* «Aktivləşdirməyib» joins the rows that can be acted on: that is precisely the
-                        person whose day nobody can decide but a human — no scan history, so the
-                        system will never call them absent by itself. */}
-                    {(r.status === 'Absent' || r.status === 'Onboarding'
+                    {/* Which rows can be given a reason.
+                        «Aktivləşdirməyib»: the person whose day nobody can decide but a human — no
+                        scan history, so the system will never call them absent by itself.
+                        «İstirahət»: a rest day is the branch's calendar, not a statement about the
+                        person, and somebody on that day may in fact be on holiday or off sick. The
+                        Fəvvarələr manager had nineteen people reading «İstirahət» on a Sunday, some
+                        of them on leave and some ill, and no way to say so from this screen — the
+                        pencil simply never appeared on those rows. */}
+                    {(r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
                       || ((r.status === 'OnLeave' || r.status === 'Permission') && r.leaveId)) && (
                       assigningId === r.employeeId ? (
                         <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>…</span>
@@ -603,10 +608,12 @@ export function TodayPage() {
                               {o.label}
                             </button>
                           ))}
+                          {/* «Səbəbi sil», not «Qayıba qaytar»: the day underneath may be a rest day,
+                              and removing a holiday from a Sunday returns it to İstirahət. */}
                           {r.leaveId && (
                             <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void removeLeave(r.employeeId, r.leaveId!)}>
                               <span className="reason-dot" style={{ background: 'var(--clay)' }} />
-                              Qayıba qaytar
+                              Səbəbi sil
                             </button>
                           )}
                           {/* The other half of the pair: a day the system will not judge by itself. */}
