@@ -13,7 +13,7 @@ import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBad
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
 import { IconCamera, IconPencil, IconX } from '../../components/icons'
-import { fmtTime, toCompanyInputValue } from '../../lib/format'
+import { fmtLongDate, fmtTime, toCompanyInputValue } from '../../lib/format'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -342,9 +342,7 @@ export function TodayPage() {
     else setPhotoError('Excel çıxarıla bilmədi')
   }
 
-  const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString('az-AZ', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
+  const dateLabel = fmtLongDate(date)
 
   return (
     <div>

@@ -45,7 +45,7 @@ public static class DayBoardSheet
         ("trip", "Ezamiyyət"),
         ("permission", "İcazə"),
         ("dayOff", "İstirahət"),
-        ("pending", "Gözlənilir"),
+        ("pending", "Növbəsi başlamayıb"),
         ("onboarding", "Aktivləşdirməyib"),
     ];
 

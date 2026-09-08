@@ -15,7 +15,10 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   // Board-only: a scheduled worker whose shift hasn't started yet. Neutral, NOT the red Qayıb — a
   // 21:00 night worker at 10:00 is not a no-show, their shift is later. Set by the live board; the
   // stored DailySummaryStatus never carries it.
-  Pending: { cls: 'b-pending', label: 'Gözlənilir', icon: 'clock' },
+  // «Növbəsi başlamayıb», not «Gözlənilir». The day is not late and nobody is waiting on this
+  // person: their shift has simply not begun yet — a night guard at nine in the morning. «Gözlənilir»
+  // sat next to «Qayıb» on the board and read as the first stage of being absent.
+  Pending: { cls: 'b-pending', label: 'Növbəsi başlamayıb', icon: 'clock' },
   // Board-only, like Pending: imported but no first scan yet — the phone is still being handed over,
   // permissions granted, the shift assigned. NOT the red Qayıb: 290 of these drowned the 67 real
   // no-shows the morning a company onboarded. The stored DailySummaryStatus never carries it, and the

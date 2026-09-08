@@ -26,7 +26,7 @@ import { COMPANY_TZ, fmtTime } from '../../lib/format'
 type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'trip'
 
 const BUCKET_LABEL: Record<Bucket, string> = {
-  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir', onboarding: 'Aktivləşdirməyib',
+  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Növbəsi başlamayıb', onboarding: 'Aktivləşdirməyib',
   sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə', rest: 'İstirahət',
   trip: 'Ezamiyyət',
 }
@@ -410,7 +410,7 @@ export function DashboardPage() {
         <Pill tone="slate" n={cTotal} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
         <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
         <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
-        {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Gözlənilir" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
+        {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Növbəsi başlamayıb" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
         {counts.onboarding > 0 && <Pill tone="slate" n={counts.onboarding} label="Aktivləşdirməyib" active={openBucket === 'onboarding'} onClick={() => openPill('onboarding')} />}
         {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
         {counts.vacation > 0 && <Pill tone="purple" n={counts.vacation} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}

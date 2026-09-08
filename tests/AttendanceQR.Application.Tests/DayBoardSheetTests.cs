@@ -26,7 +26,7 @@ public class DayBoardSheetTests
         ["present"] = "Tamamlayıb", ["incomplete"] = "İşdə", ["absent"] = "Qayıb",
         ["onLeave"] = "Məzuniyyət", ["sick"] = "Xəstəlik", ["trip"] = "Ezamiyyət",
         ["permission"] = "İcazə", ["dayOff"] = "İstirahət",
-        ["pending"] = "Gözlənilir", ["onboarding"] = "Aktivləşdirməyib",
+        ["pending"] = "Növbəsi başlamayıb", ["onboarding"] = "Aktivləşdirməyib",
     };
 
     private static DayBoardSheet.Row Person(
@@ -184,7 +184,7 @@ public class DayBoardSheetTests
         var words = Enumerable.Range(1, 12).Select(c => header.Cell(c).GetString()).ToList();
 
         Assert.Contains("Tamamlayıb", words);
-        Assert.Contains("Gözlənilir", words);
+        Assert.Contains("Növbəsi başlamayıb", words);
         Assert.Contains("Aktivləşdirməyib", words);
         Assert.DoesNotContain("Gəlib", words);
     }

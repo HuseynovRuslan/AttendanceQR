@@ -55,6 +55,36 @@ export function fmtShortDate(dateOnly: string): string {
   return `${d}.${m}`
 }
 
+/**
+ * Weekday names, written out for the same reason the months are.
+ *
+ * `toLocaleDateString('az-AZ', { weekday: 'long', month: 'long' })` is only Azerbaijani where the
+ * runtime happens to carry Azerbaijani locale data. Where it does not — and it did not, in the
+ * browser this product is used from — Intl falls back to the root locale and returns «2026 M09 7,
+ * Mon». That string went out at the top of the attendance workbook the leadership reads every
+ * morning. A report in a language nobody at the company writes is not a formatting nit; it is the
+ * first line of the file.
+ */
+const AZ_WEEKDAYS = [
+  'bazar', 'bazar ertəsi', 'çərşənbə axşamı', 'çərşənbə',
+  'cümə axşamı', 'cümə', 'şənbə',
+]
+
+/** A calendar date → "7 sentyabr 2026, bazar ertəsi". The long form, for a heading or a title. */
+export function fmtLongDate(dateOnly: string): string {
+  const d = new Date(`${dateOnly}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return dateOnly
+  return `${d.getDate()} ${AZ_MONTHS[d.getMonth()] ?? ''} ${d.getFullYear()}, ${AZ_WEEKDAYS[d.getDay()] ?? ''}`
+}
+
+/**
+ * An instant → "7 sentyabr 2026, bazar ertəsi" in COMPANY time — for a screen that shows "now"
+ * rather than a chosen calendar date.
+ */
+export function fmtLongDateOfInstant(iso: string): string {
+  return fmtLongDate(toCompanyInputValue(iso).slice(0, 10))
+}
+
 /** A calendar date → "5 iyul". Reads as prose, for a sentence rather than a table. */
 export function fmtDayMonth(dateOnly: string): string {
   const d = new Date(`${dateOnly}T00:00:00`)

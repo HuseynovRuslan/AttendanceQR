@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import { getKioskLocation, getKioskToken } from '../api/kiosk'
-import { COMPANY_TZ } from '../lib/format'
+import { COMPANY_TZ, fmtLongDateOfInstant } from '../lib/format'
 
 export function KioskPage() {
   const { locationId } = useParams()
@@ -112,13 +112,7 @@ export function KioskPage() {
           {now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })}
         </p>
         <p className="text-slate-400 mt-1 capitalize">
-          {now.toLocaleDateString('az-AZ', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            timeZone: COMPANY_TZ,
-          })}
+          {fmtLongDateOfInstant(now.toISOString())}
         </p>
       </header>
 

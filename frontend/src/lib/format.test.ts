@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   fmtDate, fmtDateOfInstant, fmtDateTime, fmtDayMonth, fmtDuration, fmtHM, fmtPhone, fmtShortDate, fmtTime,
-  minutesBetween,
+  minutesBetween, fmtLongDate,
 } from './format'
 
 // These are shared by fifteen screens now, so a mistake here is a mistake everywhere. The cases that
@@ -111,5 +111,28 @@ describe('fmtPhone', () => {
   it('is null for nothing, so the field draws its own dash', () => {
     expect(fmtPhone(null)).toBeNull()
     expect(fmtPhone('  ')).toBeNull()
+  })
+})
+
+describe('fmtLongDate', () => {
+  it('writes the date in Azerbaijani without asking the runtime for the locale', () => {
+    // The bug: toLocaleDateString('az-AZ', {weekday:'long', month:'long'}) fell back to the root
+    // locale and produced «2026 M09 7, Mon» — which went out as the title of the workbook sent to
+    // the leadership every morning.
+    expect(fmtLongDate('2026-09-07')).toBe('7 sentyabr 2026, bazar ertəsi')
+  })
+
+  it('names every weekday', () => {
+    // 6–12 September 2026 is Sunday through Saturday.
+    expect(fmtLongDate('2026-09-06')).toContain('bazar')
+    expect(fmtLongDate('2026-09-08')).toContain('çərşənbə axşamı')
+    expect(fmtLongDate('2026-09-09')).toContain('çərşənbə')
+    expect(fmtLongDate('2026-09-10')).toContain('cümə axşamı')
+    expect(fmtLongDate('2026-09-11')).toContain('cümə')
+    expect(fmtLongDate('2026-09-12')).toContain('şənbə')
+  })
+
+  it('does not shift the day, whatever the machine timezone is', () => {
+    expect(fmtLongDate('2026-01-01')).toBe('1 yanvar 2026, cümə axşamı')
   })
 })
