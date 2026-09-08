@@ -771,6 +771,11 @@ public class AttendanceController : ControllerBase
         var record = await _db.AttendanceRecords
             .FirstOrDefaultAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == today);
 
+        // Both branches below need to know where in the day this scan falls: a night shift's single
+        // working day spans two dates, so "morning" and "evening" decide what a scan can possibly mean.
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        var yesterday = today.AddDays(-1);
+
         if (record is null)
         {
             // Night shift: a MORNING scan is the check-OUT of a shift that began the previous evening
@@ -787,8 +792,6 @@ public class AttendanceController : ControllerBase
             // rest day. Resolving the night's own shift is what makes the branch see an overnight.
             //
             // Ordered so the cheap test comes first: an afternoon scan never pays for the extra read.
-            var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
-            var yesterday = today.AddDays(-1);
             var nightShift = nowLocal.Hour < 12 ? await ResolveShiftAsync(employee, location, yesterday) : shift;
             if (nowLocal.Hour < 12 && nightShift.IsOvernightOn(yesterday))
             {
@@ -807,6 +810,36 @@ public class AttendanceController : ControllerBase
                     // test and the overnight arithmetic all belong to that shift, not to today's.
                     return await CheckOutAsync(openNight, employee, location, nightShift, nowUtc, ip,
                         request.ClientScanId, request.Offline, serverNow);
+                }
+            }
+
+            // A night worker's MORNING scan can only ever be a check-out. If there was nothing left to
+            // close — because their night was already closed earlier the same morning — then this is a
+            // repeat of an exit that is already on the books, and opening a fresh day for it is how a
+            // whole night gets eaten: the stray sits there all day, the evening arrival is read as its
+            // check-out, and the shift the person actually works that night is never recorded at all.
+            // Measured over forty days: eleven night workers, about one such day every day and a half.
+            //
+            // This blocks nobody's check-in. Their shift starts in the evening, so it refuses only a
+            // scan that could not have been an arrival — and only once THEIR OWN check-out for that
+            // same morning exists. Without that condition it would silence somebody whose night was
+            // never recorded, which is the opposite of what this is for.
+            if (nowLocal.Hour < NightScanRules.MorningBefore && shift.IsOvernightOn(today))
+            {
+                var closedAtUtc = await _db.AttendanceRecords
+                    .Where(r => r.EmployeeId == employee.Id && r.AttendanceDate == yesterday
+                                && r.CheckOutAtUtc != null)
+                    .Select(r => r.CheckOutAtUtc)
+                    .FirstOrDefaultAsync();
+                var closedOn = closedAtUtc is DateTime closed
+                    ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(closed, _timeZone))
+                    : (DateOnly?)null;
+
+                if (NightScanRules.IsRepeatOfThisMorningsExit(
+                        TimeOnly.FromDateTime(nowLocal), today, shift.IsOvernightOn(today), closedOn))
+                {
+                    await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "NightAlreadyClosed", ip);
+                    return Conflict(new { error = "AlreadyCompleted" });
                 }
             }
 
@@ -834,6 +867,34 @@ public class AttendanceController : ControllerBase
 
         if (record.CheckOutAtUtc is null)
         {
+            // The evening arrival of a night worker is an ARRIVAL — even when a stray open record is
+            // sitting there from this morning.
+            //
+            // Without this, that stray swallows the night. Hacıyeva Güllü closed her night at 06:05,
+            // scanned once more at 09:35, and that scan opened a day; her 21:30 arrival would then have
+            // been written as its check-out — «09:35 → 21:30», twelve hours she spent asleep at home —
+            // and the night she actually worked would have had no check-in at all. The morning half of
+            // this is refused above; this is the belt to that pair of braces, and it also rescues the
+            // days already carrying a stray from before the fix.
+            //
+            // Deliberately narrow: it only ever rewrites a check-in from the MORNING, on a shift that
+            // crosses midnight and starts in the afternoon or later, once that shift has begun. An
+            // early arrival at 20:30 for a 21:00 start is not a morning scan and never reaches this.
+            // The morning scan is not lost either — every scan of it is in the audit log.
+            var openedLocal = record.CheckInAtUtc is DateTime strayIn
+                ? TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(strayIn, _timeZone))
+                : (TimeOnly?)null;
+            if (NightScanRules.IsEveningArrivalOverStrayDay(
+                    TimeOnly.FromDateTime(nowLocal), shift.HoursOn(today).Start,
+                    shift.IsOvernightOn(today), openedLocal))
+            {
+                _db.AttendanceRecords.Remove(record);
+                await _db.SaveChangesAsync();
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, "StrayMorningReplaced", ip);
+                return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
+                    request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
+            }
+
             // Reject an accidental rapid second scan instead of checking the employee straight back
             // out. A genuine check-out is many minutes/hours later; a scan seconds after check-in is
             // a double-tap ("did it work?"), so keep them checked IN and tell them.
