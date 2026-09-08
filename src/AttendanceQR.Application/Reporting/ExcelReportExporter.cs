@@ -1,3 +1,4 @@
+using System.Globalization;
 using ClosedXML.Excel;
 
 namespace AttendanceQR.Application.Reporting;
@@ -36,14 +37,56 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             "Tez çıxma (saat)", "Tez gəlmə (saat)"
         };
 
+    /// <summary>
+    /// The site-by-site line the summary sheet is made of. Same shape as the detail sheet's columns,
+    /// minus the two early-hours diagnostics — a summary that repeats every column of the table under
+    /// it is not a summary, and nobody decides anything from "tez gəlmə" totalled across a park.
+    /// </summary>
+    private static readonly string[] SummaryHeaders =
+        {
+            "Ərazi", "İşçi sayı", "İş günü", "Qayıb", "İşlənmiş saat", "Əlavə saat",
+            "Məzuniyyət", "Xəstəlik", "Ödənişsiz", "İstirahət", "Ezamiyyət", "İcazə"
+        };
+
+    // The daily board's workbook (DayBoardSheet) already prints a summary in these colours, and this
+    // report is read by the same people on the same morning. Two summary sheets of the same company
+    // that look like they came from different products is how a reader starts checking one against
+    // the other instead of reading either.
+    private static readonly XLColor HeaderBlue = XLColor.FromHtml("#1E70C8");
+    private static readonly XLColor TotalBand = XLColor.FromHtml("#FFF4CE");
+
+    /// <summary>Azerbaijani collation, so «Ə» and «İ» sort where a reader expects rather than after Z.</summary>
+    private static readonly StringComparer Az = BuildAz();
+
+    private static StringComparer BuildAz()
+    {
+        try
+        {
+            return StringComparer.Create(CultureInfo.GetCultureInfo("az"), ignoreCase: true);
+        }
+        catch (CultureNotFoundException)
+        {
+            // A container without the Azerbaijani locale data still has to produce a file.
+            return StringComparer.OrdinalIgnoreCase;
+        }
+    }
+
     public byte[] Build(AttendanceReport report)
     {
         using var workbook = new XLWorkbook();
+
+        // The summary goes FIRST, because it is what the file is opened for. Until now this export
+        // was one flat list of every employee in the company, and the reader's first act on receiving
+        // it was to rebuild it into exactly this table by hand — the same complaint that produced the
+        // daily board's two-sheet workbook. The period figures are per SITE here: "how did Fəvvarələr
+        // do this month" is answerable on one screen instead of by filtering four hundred rows.
+        BuildRangeSummary(workbook, report);
+
         var ws = workbook.Worksheets.Add("Davamiyyət");
 
         // Title block.
         var title = ws.Range(1, 1, 1, Headers.Length).Merge();
-        title.Value = "Davamiyyət hesabatı";
+        title.Value = $"Davamiyyət hesabatı — {PeriodLabel(report.From, report.To)}";
         title.Style.Font.Bold = true;
         title.Style.Font.FontSize = 14;
 
@@ -111,6 +154,111 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     }
 
     // Azerbaijani + AZN — this sheet goes straight to the accountant, so it speaks their language.
+    /// <summary>
+    /// One line per site for the whole period, and a CƏMİ line under them.
+    ///
+    /// Every figure is summed from the SAME rows the detail sheet prints — never from a second query.
+    /// A summary that can disagree with the table behind it is worse than no summary, because the
+    /// reader has no way to tell which of the two is lying.
+    /// </summary>
+    private static void BuildRangeSummary(XLWorkbook wb, AttendanceReport report)
+    {
+        var ws = wb.Worksheets.Add("Xülasə");
+        var cols = SummaryHeaders.Length;
+
+        ws.Cell(1, 1).Value = $"Davamiyyət hesabatı — {PeriodLabel(report.From, report.To)}";
+        ws.Range(1, 1, 1, cols).Merge();
+        ws.Cell(1, 1).Style.Font.Bold = true;
+        ws.Cell(1, 1).Style.Font.FontSize = 14;
+        ws.Cell(1, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+        ws.Cell(2, 1).Value = $"Əhatə: {report.ScopeLabel}";
+        ws.Range(2, 1, 2, cols).Merge();
+        ws.Cell(2, 1).Style.Font.Italic = true;
+        ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#555555");
+        ws.Cell(2, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+        const int headerRow = 4;
+        for (var i = 0; i < cols; i++)
+            ws.Cell(headerRow, i + 1).Value = SummaryHeaders[i];
+
+        var head = ws.Range(headerRow, 1, headerRow, cols);
+        head.Style.Font.Bold = true;
+        head.Style.Fill.BackgroundColor = HeaderBlue;
+        head.Style.Font.FontColor = XLColor.White;
+        head.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        head.Style.Alignment.WrapText = true;
+
+        var groups = report.Rows
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.LocationName) ? "—" : x.LocationName)
+            .OrderBy(g => g.Key, Az)
+            .ToList();
+
+        var r = headerRow + 1;
+        foreach (var g in groups)
+        {
+            Write(r, g.Key, g.ToList());
+            r++;
+        }
+
+        // Summed from the lines above, not from report.Totals: this sheet's own table has to add up.
+        ws.Cell(r, 1).Value = "CƏMİ";
+        WriteFigures(r, report.Rows);
+        var total = ws.Range(r, 1, r, cols);
+        total.Style.Font.Bold = true;
+        total.Style.Fill.BackgroundColor = TotalBand;
+
+        var table = ws.Range(headerRow, 1, r, cols);
+        table.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        table.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        ws.Range(headerRow + 1, 2, r, cols).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+        ws.Column(1).Width = 30;
+        for (var c = 2; c <= cols; c++)
+            ws.Column(c).Width = 12;
+        ws.SheetView.FreezeRows(headerRow);
+
+        void Write(int row, string site, IReadOnlyCollection<EmployeeReportRow> people)
+        {
+            ws.Cell(row, 1).Value = site;
+            WriteFigures(row, people);
+        }
+
+        void WriteFigures(int row, IReadOnlyCollection<EmployeeReportRow> people)
+        {
+            // Headcount counts PEOPLE, not rows — the report is one row per employee today, and a
+            // distinct count keeps that true if it ever stops being.
+            ws.Cell(row, 2).Value = people.Select(x => x.EmployeeId).Distinct().Count();
+            ws.Cell(row, 3).Value = people.Sum(x => x.WorkDays);
+            ws.Cell(row, 4).Value = people.Sum(x => x.AbsentDays);
+            ws.Cell(row, 5).Value = Math.Round(people.Sum(x => x.TotalWorkedHours), 1);
+            ws.Cell(row, 6).Value = Math.Round(people.Sum(x => x.OvertimeHours), 1);
+            ws.Cell(row, 7).Value = people.Sum(x => x.VacationDays);
+            ws.Cell(row, 8).Value = people.Sum(x => x.SickDays);
+            ws.Cell(row, 9).Value = people.Sum(x => x.UnpaidDays);
+            ws.Cell(row, 10).Value = people.Sum(x => x.RestDays);
+            ws.Cell(row, 11).Value = people.Sum(x => x.TripDays);
+            ws.Cell(row, 12).Value = people.Sum(x => x.PermissionDays);
+        }
+    }
+
+    /// <summary>
+    /// «1–8 sentyabr 2026» — the period as somebody says it out loud, with the month and year written
+    /// once when they are shared. «2026-09-01 — 2026-09-08» is still on the sheet below for anyone
+    /// reconciling; this is the line at the top of the page.
+    /// </summary>
+    private static string PeriodLabel(DateOnly from, DateOnly to)
+    {
+        var month = AzMonths.Select(m => m.ToLowerInvariant()).ToArray();
+
+        if (from == to) return $"{from.Day} {month[from.Month - 1]} {from.Year}";
+        if (from.Year != to.Year)
+            return $"{from.Day} {month[from.Month - 1]} {from.Year} – {to.Day} {month[to.Month - 1]} {to.Year}";
+        if (from.Month != to.Month)
+            return $"{from.Day} {month[from.Month - 1]} – {to.Day} {month[to.Month - 1]} {to.Year}";
+        return $"{from.Day}–{to.Day} {month[from.Month - 1]} {from.Year}";
+    }
+
     private static readonly string[] PayrollHeaders =
         {
             "İşçi", "Filial", "Aylıq maaş", "İş günü", "Gəlib", "Qayıb",
