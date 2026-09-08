@@ -171,9 +171,17 @@ public sealed class DailySummaryService : IDailySummaryService
             // person's first working scan is written as Qayıb — and payroll deducts a day per Qayıb.
             // 876 such days appeared in one company's first week. Skipped, not stored: the same
             // treatment as a day before the account existed, because that is what it is.
-            // A manager's mark outranks the onboarding rule — which is precisely the case it exists to
-            // answer: somebody who has never scanned, was expected today, and did not come.
+            // Two things outrank the onboarding rule, and both are somebody's decision rather than an
+            // inference:
+            //   • a manager's «Qayıb yaz» — precisely the case this rule exists to answer;
+            //   • an approved LEAVE. Skipping the day here threw the leave away: sixteen people at
+            //     Bakı Abadlıq Xidməti had holidays, sick leave and a work trip entered by their
+            //     managers and NOTHING in the tabel for any of it — Abdullayev Elnur's eleven days of
+            //     sick leave, Kərimova Arzu's fifteen days of holiday, all of it silently absent from
+            //     the timesheet the accountant works from. The onboarding rule exists to stop a
+            //     silence being read as absence; it was never meant to erase a decision.
             if (!marked.Contains(emp.Id)
+                && !leaveByEmployee.ContainsKey(emp.Id)
                 && AttendanceCalculator.IsStillOnboarding(
                     date, emp.ActivatedAtUtc, FirstAttendanceOf(emp.Id), _timeZone))
             {

@@ -161,6 +161,23 @@ public class AbsenceMarkTests
     }
 
     [Fact]
+    public async Task An_approved_leave_is_written_even_for_somebody_who_has_never_scanned()
+    {
+        // The hole this closed. The onboarding rule skips the day entirely for a person with no
+        // attendance history — and it was skipping their APPROVED LEAVE with it. Sixteen people at
+        // Bakı Abadlıq Xidməti had holidays, sick leave and a work trip entered by their managers and
+        // not one row in the tabel to show for any of it. A silence may not be read as absence; a
+        // decision somebody recorded may not be thrown away either.
+        using var h = new Harness();
+        h.AddLeave(LeaveType.Sick);
+
+        var s = await h.RunAsync();
+
+        Assert.NotNull(s);
+        Assert.Equal(DailySummaryStatus.OnLeave, s!.Status);
+    }
+
+    [Fact]
     public async Task Taking_the_mark_off_takes_the_Qayib_off()
     {
         // It has to be undoable in the thing that reads it, not just in the table it is stored in —
