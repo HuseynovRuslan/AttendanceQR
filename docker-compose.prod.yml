@@ -43,6 +43,11 @@ services:
       App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
       # Employee ids allowed to see the shared "Tapşırıqlar" board (allowlist, not a role).
       App__TaskBoardEmployeeIds: ${App__TaskBoardEmployeeIds:-}
+      # Operator/system accounts kept OUT of the staff lists and the reports — "they're operators,
+      # not staff". Set in .env since the first deploy and never named here, so it reached nothing:
+      # the three accounts it lists have been sitting in every branch's board ever since, and two of
+      # them had quietly accumulated fifty-odd Qayıb days apiece by 2026-09-08.
+      App__HiddenEmails: ${App__HiddenEmails:-}
       # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
       # the proxy's address instead of the phone's.
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"

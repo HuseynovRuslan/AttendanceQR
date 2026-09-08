@@ -46,6 +46,8 @@ services:
       QrToken__ExpiryExemptLocationId: ${QrToken__ExpiryExemptLocationId:-}
       Cors__AllowedOrigins: ${Cors__AllowedOrigins}
       App__SuperAdminEmployeeIds: ${App__SuperAdminEmployeeIds:-}
+      # Operator/system accounts kept out of the staff lists and reports — see the prod file.
+      App__HiddenEmails: ${App__HiddenEmails:-}
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
       # Empty by DEFAULT — the app no-ops each of these rather than failing, and staging has no
       # business touching the real photo bucket, the real push subscriptions or a paid face API.
