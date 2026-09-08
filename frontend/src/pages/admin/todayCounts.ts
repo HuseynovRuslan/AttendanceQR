@@ -15,10 +15,12 @@
  * screen where the next person to add a leave type will not find it.
  */
 
-/** Just the two fields the buckets are decided from. */
+/** Just the fields the buckets are decided from. */
 export interface TodayLike {
   status: string
   leaveType?: string | null
+  /** A «Sahədə» day is closed by the worker leaving the SITE, not by an office scan. */
+  fieldCheckOutAtUtc?: string | null
 }
 
 export interface TodayCounts {
@@ -53,7 +55,12 @@ export type TodayBucket = keyof TodayCounts
  * two readers — the alternative is the bug in the header comment, shipped a third time.
  */
 export function bucketOf(r: TodayLike): TodayBucket {
-  if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') return 'present'
+  // «Sahədə» is a day like any other: finished once they have left, still running until they do.
+  // It used to count as arrived-and-done whatever the visit was doing, so on 08.09 the summary sent
+  // to the leadership reported eleven people who were standing on a site as «Tamamlayıb» — at
+  // Stadion ətrafı all three of that branch's "completed" were still out.
+  if (r.status === 'Field') return r.fieldCheckOutAtUtc ? 'present' : 'incomplete'
+  if (r.status === 'OnTime' || r.status === 'Late') return 'present'
   if (r.status === 'Absent') return 'absent'
   if (r.status === 'Pending') return 'pending'
   if (r.status === 'Onboarding') return 'onboarding'

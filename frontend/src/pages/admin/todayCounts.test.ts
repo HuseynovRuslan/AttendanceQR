@@ -51,7 +51,9 @@ describe('a work trip is not a holiday', () => {
 describe('the rest of the board', () => {
   it('counts the ordinary statuses', () => {
     const c = countToday([
-      row('OnTime'), row('Late'), row('Field'),
+      row('OnTime'), row('Late'),
+      // A field day counts as done only once they have left the site — see the «Sahədə» block below.
+      { status: 'Field', fieldCheckOutAtUtc: '2026-09-08T13:05:00Z' },
       row('Absent'), row('Pending'), row('DayOff'), row('Permission'),
     ])
 
@@ -168,7 +170,7 @@ describe('bucketOf — Excel eksportunun məftili', () => {
   it('hər status üçün serverin gözlədiyi açarı verir', () => {
     expect(bucketOf({ status: 'OnTime' })).toBe('present')
     expect(bucketOf({ status: 'Late' })).toBe('present')
-    expect(bucketOf({ status: 'Field' })).toBe('present')
+    expect(bucketOf({ status: 'Field', fieldCheckOutAtUtc: '2026-09-08T13:05:00Z' })).toBe('present')
     expect(bucketOf({ status: 'Absent' })).toBe('absent')
     expect(bucketOf({ status: 'Pending' })).toBe('pending')
     expect(bucketOf({ status: 'Onboarding' })).toBe('onboarding')
@@ -196,5 +198,28 @@ describe('bucketOf — Excel eksportunun məftili', () => {
     expect(c.sick).toBe(1)
     expect(c.onLeave).toBe(0)
     expect(rows.map(bucketOf)).toEqual(['trip', 'sick', 'present'])
+  })
+})
+
+describe('«Sahədə» günü — çıxış edibsə bitib, etməyibsə hələ işdədir', () => {
+  // 08.09.2026: rəhbərliyə gedən xülasədə sahədə DAYANAN 11 nəfər «Tamamlayıb» kimi çıxmışdı.
+  // Stadion ətrafında həmin filialın «tamamlayıb 3»-ünün hər üçü o an sahədə idi.
+  it('sahədən çıxış etməyib — «İşdə»', () => {
+    expect(bucketOf({ status: 'Field' })).toBe('incomplete')
+    expect(bucketOf({ status: 'Field', fieldCheckOutAtUtc: null })).toBe('incomplete')
+  })
+
+  it('sahədən çıxış edib — «Tamamlayıb»', () => {
+    expect(bucketOf({ status: 'Field', fieldCheckOutAtUtc: '2026-09-08T13:05:00Z' })).toBe('present')
+  })
+
+  it('sayğacda da eynidir', () => {
+    const c = countToday([
+      { status: 'Field' },
+      { status: 'Field', fieldCheckOutAtUtc: '2026-09-08T13:05:00Z' },
+      { status: 'OnTime' },
+    ])
+    expect(c.incomplete).toBe(1)
+    expect(c.present).toBe(2)
   })
 })

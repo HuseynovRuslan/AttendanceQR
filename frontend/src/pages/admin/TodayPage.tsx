@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
-import { countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
+import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
 import { exportRow } from './exportRows'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
@@ -20,30 +20,6 @@ function localDateISO(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-// Does a row's status belong to the clicked stat-card bucket? Mirrors the counts grouping (Late folds
-// into present; "incomplete" is everything not one of the five named statuses).
-function statusMatches(status: string, filter: string): boolean {
-  switch (filter) {
-    case 'present':
-      return status === 'OnTime' || status === 'Late' || status === 'Field'
-    case 'absent':
-      return status === 'Absent'
-    case 'pending':
-      return status === 'Pending'
-    case 'onboarding':
-      return status === 'Onboarding'
-    case 'dayOff':
-      return status === 'DayOff'
-    case 'onLeave':
-      return status === 'OnLeave'
-    case 'permission':
-      return status === 'Permission'
-    case 'incomplete':
-      return !['OnTime', 'Late', 'Field', 'Absent', 'Pending', 'Onboarding', 'DayOff', 'OnLeave', 'Permission'].includes(status)
-    default:
-      return true
-  }
-}
 
 // The reasons an admin/manager can pin on a Qayıb row — each with the colour dot that matches the
 // badge it becomes (İcazə green, Məzuniyyət purple, Xəstəlik blue, Ödənişsiz amber, İstirahət grey).
@@ -264,7 +240,7 @@ export function TodayPage() {
     // need the row, not just the status.
     if (statusFilter === 'sick' || statusFilter === 'trip' || statusFilter === 'onLeave') {
       if (!matchesLeaveCard(r, statusFilter)) return false
-    } else if (statusFilter && !statusMatches(r.status, statusFilter)) return false
+    } else if (statusFilter && bucketOf(r) !== statusFilter) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
     if (filterPosition && (r.position ?? '') !== filterPosition) return false
     if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
