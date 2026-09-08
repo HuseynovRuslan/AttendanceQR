@@ -1636,6 +1636,37 @@ export async function downloadTabelExcel(year: number, month: number, locationId
   URL.revokeObjectURL(url)
 }
 
+// --- geofence fit -----------------------------------------------------------
+// Sites whose GPS circle refuses people who are standing at them. Every refusal was already in the
+// audit log and on no screen: the scan fails, the worker taps four more times, gives up, and the day
+// is written as Qayıb.
+
+export interface GeofenceFitRow {
+  locationId: string
+  locationName: string
+  radiusMeters: number
+  rejections: number
+  peopleAffected: number
+  /** The closest anybody stood when refused — the number that says WHICH problem this is. */
+  nearestRejectedMeters: number | null
+  medianRejectedMeters: number | null
+  /** How far the site already accepts people from, as evidence of the room the crew needs. */
+  farthestAcceptedMeters: number | null
+  /** "Tight" — a few metres short, widen it. "Misplaced" — the circle is somewhere else, move it. */
+  verdict: 'Tight' | 'Misplaced'
+}
+
+export interface GeofenceFitReport {
+  days: number
+  checked: number
+  rows: GeofenceFitRow[]
+}
+
+/** GET /api/reports/geofence-fit?days=… */
+export function getGeofenceFit(days = 40) {
+  return apiRequest<GeofenceFitReport | { error: string }>(`/api/reports/geofence-fit?days=${days}`)
+}
+
 // --- shift mismatch ---------------------------------------------------------
 // People whose real arrival times disagree with the shift they are assigned to. A wrong shift is
 // silent — see the backend's ShiftFit — so this is the screen that goes looking for it.

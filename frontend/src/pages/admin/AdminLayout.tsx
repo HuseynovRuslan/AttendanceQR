@@ -56,6 +56,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/billing': { title: 'Abunəlik', sub: 'Paketiniz, aylıq məbləğ və ödəniş tarixçəsi' },
   '/admin/problems': { title: 'Problemlər', sub: 'Rədd edilmiş skanlar — kim, nə vaxt, niyə' },
   '/admin/shift-mismatch': { title: 'Növbə uyğunsuzluğu', sub: 'Faktiki iş saatı təyin olunmuş növbə ilə uyuşmayan işçilər' },
+  '/admin/geofence-fit': { title: 'Radius uyğunsuzluğu', sub: 'Filialda dayanıb skan vura bilməyən işçilər' },
   '/admin/field-visits': { title: 'Sahə ziyarətləri', sub: 'Səyyar işçilər — tapşır, görülən işi və şəkli yoxla' },
   '/admin/open-records': { title: 'Çıxışı unudulan günlər', sub: 'Giriş edib çıxış etməyən günlər' },
   '/admin/locations': { title: 'Filiallar', sub: 'Filial əlavə et / redaktə et' },
@@ -153,6 +154,9 @@ export function AdminLayout() {
         // Manager too, and scoped to their branches by the endpoint: a wrong shift is fixed by
         // whoever knows when the crew actually works, which is the branch manager.
         { to: '/admin/shift-mismatch', label: 'Növbə uyğunsuzluğu', Icon: IconClock },
+        // Same idea as the row above it, for the other silent misconfiguration: a site whose GPS
+        // circle refuses people who are standing at it.
+        { to: '/admin/geofence-fit', label: 'Radius uyğunsuzluğu', Icon: IconMapPin },
         // Manager too: AdminMissedCheckoutController is [Authorize(Roles = "Admin,Manager")] and has
         // been since it was written — the menu was the only thing hiding it, so branch managers could
         // not close their own staff's open days and had to ask an admin for every one.

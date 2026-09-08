@@ -381,6 +381,34 @@ public sealed record ShiftMismatchRow(
     /// </summary>
     int SplitNightDays = 0);
 
+/// <summary>
+/// One site's GPS circle, judged against the scans it actually refused.
+/// </summary>
+/// <param name="Rejections">Refused scans in the window — people who were there and could not clock in.</param>
+/// <param name="PeopleAffected">How many different employees that was.</param>
+/// <param name="NearestRejectedMeters">The closest anybody stood when refused. The telling number:
+/// if even this is far outside, the circle is in the wrong place rather than merely too small.</param>
+/// <param name="MedianRejectedMeters">Where the refusals sit as a group.</param>
+/// <param name="FarthestAcceptedMeters">How far the site already accepts people from — the evidence
+/// for how much room the crew really needs.</param>
+public sealed record GeofenceFitRow(
+    Guid LocationId,
+    string LocationName,
+    int RadiusMeters,
+    int Rejections,
+    int PeopleAffected,
+    int? NearestRejectedMeters,
+    int? MedianRejectedMeters,
+    int? FarthestAcceptedMeters,
+    string Verdict);
+
+/// <param name="Days">How far back the refusals were read.</param>
+/// <param name="Checked">Sites with the GPS wall switched on — the denominator.</param>
+public sealed record GeofenceFitReport(
+    int Days,
+    int Checked,
+    IReadOnlyList<GeofenceFitRow> Rows);
+
 /// <param name="Days">How far back the arrivals were read.</param>
 /// <param name="Checked">How many employees had enough scans to judge — the denominator, so an empty
 /// list reads as "nobody is misfiled" rather than "the report did not run".</param>

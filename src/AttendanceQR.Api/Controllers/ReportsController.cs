@@ -287,6 +287,21 @@ public class ReportsController : ControllerBase
     }
 
 
+    // GET /api/reports/geofence-fit?days=40 — sites whose GPS circle refuses people standing at them.
+    // Every refusal was already in the audit log and on no screen; the fix is a setting, and the two
+    // shapes need opposite ones — see GeofenceFit.
+    [HttpGet("geofence-fit")]
+    public async Task<IActionResult> GeofenceFitReport([FromQuery] int days = 40)
+    {
+        var (access, report) = await _reports.GetGeofenceFitAsync(
+            days, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+
+        return Ok(report);
+    }
+
     // GET /api/reports/shift-mismatch?days=21 — people whose real arrival times disagree with the
     // shift they are on. Read-only and accusatory of nothing: a mismatch is a question about the
     // SCHEDULE, not about the employee. See ShiftFit for why it exists.

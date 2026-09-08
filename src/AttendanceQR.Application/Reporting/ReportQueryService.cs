@@ -2,6 +2,7 @@ using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,6 +51,9 @@ public interface IReportQueryService
     /// People whose real arrival times disagree with the shift they are assigned to — see
     /// <see cref="ShiftFit"/>. Same scope authority as every other report.
     /// </summary>
+    Task<(ReportAccess Access, GeofenceFitReport? Report)> GetGeofenceFitAsync(
+        int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
     Task<(ReportAccess Access, ShiftMismatchReport? Report)> GetShiftMismatchAsync(
         int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
@@ -1392,6 +1396,112 @@ public sealed class ReportQueryService : IReportQueryService
             trend, weekday, topLate, onboardingCount);
 
         return (ReportAccess.Allowed, report);
+    }
+
+    /// <summary>
+    /// Which sites are refusing people who are standing at them.
+    ///
+    /// Every refusal is already recorded — «OutsideRadius|lat,lng,distance» in the audit log — and
+    /// until now none of it was on a screen. A site stored as one point and one radius fits a shop and
+    /// does not fit a park, a bridge or a stretch of road, and when it does not fit, the failure is
+    /// silent: the scan is refused, the worker taps four more times, gives up, and the day is written
+    /// as Qayıb. Qafur Məmmədov Parkı had refused 133 scans that way, the nearest from 466 metres.
+    ///
+    /// Only sites with the wall switched ON can refuse anybody, so only those are judged.
+    /// </summary>
+    public async Task<(ReportAccess Access, GeofenceFitReport? Report)> GetGeofenceFitAsync(
+        int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        if (role != EmployeeRole.Admin && role != EmployeeRole.Manager)
+            return (ReportAccess.Forbidden, null);
+
+        var from = DateTime.UtcNow.AddDays(-Math.Clamp(days, 1, 120));
+
+        var locations = await _db.Locations
+            .Where(l => l.IsActive && l.RequireGeofence)
+            .Select(l => new { l.Id, l.Name, l.RadiusMeters })
+            .ToListAsync(ct);
+
+        if (role == EmployeeRole.Manager)
+        {
+            var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, requesterId, ct);
+            locations = locations.Where(l => managed.Contains(l.Id)).ToList();
+        }
+
+        var locationIds = locations.Select(l => l.Id).ToHashSet();
+
+        // The refusals, mapped to the site the person belongs to. Reason is «OutsideRadius|lat,lng,m».
+        var refusals = await _db.AuditLogs
+            .Where(a => a.CreatedAtUtc >= from && a.Reason != null && a.Reason.StartsWith("OutsideRadius|"))
+            .Join(_db.Employees, a => a.EmployeeId, e => e.Id, (a, e) => new { a.Reason, e.Id, e.LocationId })
+            .ToListAsync(ct);
+
+        // How far each site already accepts people from — the evidence for how much room is needed.
+        // Coordinates come back raw and the distance is computed here: Haversine has no SQL
+        // translation, and asking EF for one silently turns the whole query client-side anyway.
+        var accepted = await _db.AttendanceRecords
+            .Where(r => r.CheckInAtUtc >= from && r.CheckInLatitude != null && r.CheckInLongitude != null
+                        && locationIds.Contains(r.LocationId))
+            .Join(_db.Locations, r => r.LocationId, l => l.Id, (r, l) => new
+            {
+                l.Id, l.Latitude, l.Longitude,
+                Lat = r.CheckInLatitude!.Value, Lng = r.CheckInLongitude!.Value,
+            })
+            .ToListAsync(ct);
+
+        var farthestAccepted = accepted
+            .GroupBy(x => x.Id)
+            .ToDictionary(
+                g => g.Key,
+                g => (int)Math.Round(g.Max(x => GeoCalculator.DistanceMeters(x.Latitude, x.Longitude, x.Lat, x.Lng))));
+
+        var byLocation = refusals
+            .Where(x => locationIds.Contains(x.LocationId))
+            .Select(x => new { x.LocationId, x.Id, Meters = ParseMeters(x.Reason!) })
+            .Where(x => x.Meters is not null)
+            .GroupBy(x => x.LocationId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var rows = new List<GeofenceFitRow>();
+        foreach (var l in locations)
+        {
+            byLocation.TryGetValue(l.Id, out var refused);
+            var metres = refused?.Select(x => x.Meters!.Value).OrderBy(m => m).ToList() ?? [];
+            var nearest = metres.Count > 0 ? metres[0] : (double?)null;
+            var median = metres.Count > 0 ? metres[metres.Count / 2] : (double?)null;
+
+            var verdict = GeofenceFit.Judge(l.RadiusMeters, metres.Count, nearest);
+            if (verdict == GeofenceFit.Verdict.Ok)
+                continue;
+
+            rows.Add(new GeofenceFitRow(
+                l.Id, l.Name, l.RadiusMeters,
+                metres.Count,
+                refused!.Select(x => x.Id).Distinct().Count(),
+                nearest is double n ? (int)Math.Round(n) : null,
+                median is double m ? (int)Math.Round(m) : null,
+                farthestAccepted.GetValueOrDefault(l.Id) is int f and > 0 ? f : null,
+                verdict.ToString()));
+        }
+
+        // Worst first: the site costing the most refused scans is the one to look at this morning.
+        rows.Sort((a, b) => b.Rejections.CompareTo(a.Rejections));
+
+        return (ReportAccess.Allowed, new GeofenceFitReport(days, locations.Count, rows));
+    }
+
+    /// <summary>«OutsideRadius|40.42719,49.91938,152» → 152. Null on anything unexpected — an audit
+    /// row from an older shape must not take the report down with it.</summary>
+    private static double? ParseMeters(string reason)
+    {
+        var parts = reason.Split('|');
+        if (parts.Length < 2) return null;
+        var fields = parts[1].Split(',');
+        return fields.Length >= 3 && double.TryParse(
+            fields[2], System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var m)
+            ? m
+            : null;
     }
 
     public async Task<(ReportAccess Access, ShiftMismatchReport? Report)> GetShiftMismatchAsync(

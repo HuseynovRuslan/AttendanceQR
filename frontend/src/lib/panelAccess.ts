@@ -44,6 +44,7 @@ export const PANEL_PAGES: PanelPage[] = [
   // A wrong shift is fixed by whoever knows when the crew actually works — the branch manager. The
   // endpoint narrows their view to their own branches and plain employees, the same as every board.
   { path: 'shift-mismatch', roles: BOTH },
+  { path: 'geofence-fit', roles: BOTH },
   { path: 'field-visits', roles: BOTH },
   { path: 'tasks', roles: BOTH },
 

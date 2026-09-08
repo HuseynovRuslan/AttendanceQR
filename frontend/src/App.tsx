@@ -66,6 +66,7 @@ const DeviceChangesPage = lazy(() => import('./pages/admin/DeviceChangesPage').t
 const PinResetsPage = lazy(() => import('./pages/admin/PinResetsPage').then(m => ({ default: m.PinResetsPage })))
 const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => ({ default: m.ProblemsPage })))
 const ShiftMismatchPage = lazy(() => import('./pages/admin/ShiftMismatchPage').then(m => ({ default: m.ShiftMismatchPage })))
+const GeofenceFitPage = lazy(() => import('./pages/admin/GeofenceFitPage').then(m => ({ default: m.GeofenceFitPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
@@ -390,6 +391,7 @@ function AppRoutes() {
         {/* Rejected-scan log — Admin + Manager (manager scoped to their locations server-side). */}
         <Route path="problems" element={<PanelPage path="problems"><ProblemsPage /></PanelPage>} />
         <Route path="shift-mismatch" element={<PanelPage path="shift-mismatch"><ShiftMismatchPage /></PanelPage>} />
+        <Route path="geofence-fit" element={<PanelPage path="geofence-fit"><GeofenceFitPage /></PanelPage>} />
         {/* Field visits board + assign — Admin + Manager (the endpoints gate on Admin,Manager). */}
         <Route path="field-visits" element={<PanelPage path="field-visits"><FieldVisitsAdminPage /></PanelPage>} />
         {/* Unclosed days — Admin only, since fixing a record (setting a check-out) is Admin only. */}
