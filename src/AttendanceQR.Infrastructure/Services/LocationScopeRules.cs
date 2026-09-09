@@ -68,6 +68,42 @@ public static class LocationScopeRules
     }
 
     /// <summary>
+    /// Whether <paramref name="requesterId"/> may ROSTER <paramref name="targetEmployeeId"/> — say
+    /// which shift one of their days is judged against (a cover night, a swap).
+    ///
+    /// Deliberately the SEEING scope, not the managing one, and that is the whole point of it being
+    /// its own question. What <see cref="CanManageEmployeeAsync"/>'s Role==Employee rule protects is
+    /// the ACCOUNT — the PIN, the role, the phone number somebody logs in with — because a manager
+    /// who could act on a same-branch admin could take the company (the P0 of 2026-08-08). A cover
+    /// day touches none of that: it changes which hours a shift is measured by, nothing else, and it
+    /// is stamped with the name of whoever recorded it.
+    ///
+    /// Refusing it made the roster wrong rather than making anything safer. A site with two managers
+    /// covering each other's nights could not record that fact about the other, so those nights were
+    /// scored against the wrong shift — the exact failure the override exists to prevent, reintroduced
+    /// by a rule written for a different danger. The person who knows a colleague covered last night
+    /// is the manager standing beside them.
+    ///
+    /// A manager may roster themselves — one who worked the night IS the person who knows it. An
+    /// ordinary employee may roster NOBODY, themselves least of all: the shift a day is measured by
+    /// decides whether that day was late, short, or a day off at all, so letting a worker pick it
+    /// would let them retire their own absence. That is the one line where this cannot borrow
+    /// <see cref="CanAccessEmployeeAsync"/>, which allows self by design because reading your own
+    /// record is not the same act as rewriting how it is judged.
+    /// </summary>
+    public static async Task<bool> CanScheduleEmployeeAsync(
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+    {
+        if (role == EmployeeRole.Admin)
+            return true;
+        if (role != EmployeeRole.Manager)
+            return false;
+
+        // Anyone standing at a branch this manager runs, whatever their role — including themselves.
+        return await CanAccessEmployeeAsync(db, requesterId, role, targetEmployeeId, ct);
+    }
+
+    /// <summary>
     /// Whether <paramref name="requesterId"/> may MANAGE <paramref name="targetEmployeeId"/> — act on
     /// their account or records (assign/cancel field visits, pull their selfies, close their days).
     /// Stricter than <see cref="CanAccessEmployeeAsync"/> on two points, both learned the hard way:

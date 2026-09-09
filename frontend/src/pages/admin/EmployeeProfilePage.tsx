@@ -401,7 +401,10 @@ export function EmployeeProfilePage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', flex: '1 1 auto', marginLeft: 'auto' }}>
             {!manageable && (
               <span className="muted" style={{ fontSize: 13 }}>
-                Bu hesab sizin idarənizdə deyil — yalnız baxa bilərsiniz.
+                {/* Precise, because the line used to be wrong in the direction that matters: a
+                    manager CAN roster a colleague at their own branch (the card below), and telling
+                    them they may only look sent them to ask an admin for something they could do. */}
+                Bu hesabın məlumatlarını dəyişə bilmirsiniz — növbə əvəzləməsi yaza bilərsiniz.
               </span>
             )}
             {/* A manager edits from their OWN roster; the admin one is not theirs to open, and

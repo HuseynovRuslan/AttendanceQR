@@ -43,7 +43,7 @@ public class ShiftOverridesController : ControllerBase
     public async Task<IActionResult> ForEmployee(Guid employeeId)
     {
         var ct = HttpContext.RequestAborted;
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
+        if (!await LocationScopeRules.CanScheduleEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var rows = await _db.ShiftOverrides
@@ -75,7 +75,7 @@ public class ShiftOverridesController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
+        if (!await LocationScopeRules.CanScheduleEmployeeAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == request.ScheduleId, ct);
@@ -131,7 +131,7 @@ public class ShiftOverridesController : ControllerBase
         if (row is null)
             return NotFound(new { error = "NotFound" });
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), row.EmployeeId, ct))
+        if (!await LocationScopeRules.CanScheduleEmployeeAsync(_db, User.EmployeeId(), User.Role(), row.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var date = row.Date;
