@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
-import { exportRow } from './exportRows'
+import { areaOf, exportRow, uniqueAreas, type AreaView } from './exportRows'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow } from '../../api/admin'
@@ -114,6 +114,10 @@ export function TodayPage() {
   // nobody can tell apart from the whole company.
   const [exportOpen, setExportOpen] = useState(false)
   const [exportSites, setExportSites] = useState<string[]>([])
+  // Which structure the file is built in. HR sends leadership the «sənəd üzrə» view every morning;
+  // somebody else wants the branches. Both are the same people on the same day — only the shape of
+  // the report differs — so it is one switch, not two exports to keep in step.
+  const [exportView, setExportView] = useState<AreaView>('actual')
 
   async function viewPhoto(row: DayAttendanceRow) {
     if (!row.recordId) return
@@ -302,36 +306,67 @@ export function TodayPage() {
   const statusLabel = (r: DayAttendanceRow) => dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
+  // The areas of the CHOSEN view, gathered from the board's own rows.
+  //
+  // Keyed by NAME rather than by branch id, because a «sənəd üzrə» area is a name — it can belong to
+  // another company's structure and have no branch behind it at all. Counting from the rows also
+  // means the list can never offer an area that turns out to hold nobody.
+  const exportAreas = useMemo(() => {
+    const by = new Map<string, number>()
+    for (const r of rows) by.set(areaOf(r, exportView), (by.get(areaOf(r, exportView)) ?? 0) + 1)
+    return [...by.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'az'))
+  }, [rows, exportView])
+
   function openExport() {
-    // Pre-tick what the reader is already looking at: the site they filtered to, or all of them.
-    setExportSites(filterLoc ? [filterLoc] : locations.map((l) => l.id))
+    // Pre-tick what the reader is already looking at: the area they filtered to, or all of them.
+    const current = locations.find((l) => l.id === filterLoc)?.name
+    setExportView('actual')
+    setExportSites(current ? [current] : uniqueAreas(rows, 'actual'))
     setExportOpen(true)
+  }
+
+  // Switching the view re-ticks everything: a selection made in one structure means nothing in the
+  // other — «Aeroport yolu» unticked as a branch does not name an area on the paper side — and
+  // carrying it across would silently drop people from a file whose scope note still claims them.
+  function switchExportView(view: AreaView) {
+    setExportView(view)
+    setExportSites(uniqueAreas(rows, view))
   }
 
   async function runExport() {
     const chosen = new Set(exportSites)
+    const inScope = (r: DayAttendanceRow) => chosen.has(areaOf(r, exportView))
     // Deliberately built from `rows`, not from `visible`. The screen's search, status and photo
     // filters are how somebody LOOKS at a day; a report to the leadership has to be everybody at the
     // sites it claims to cover, or a file headed «Qala Anbar» silently omits the nine people who did
     // not match a search box left over from ten minutes ago.
-    const picked = sortRows(rows.filter((r) => chosen.has(r.locationId)), 'name', false)
+    const picked = sortRows(rows.filter(inScope), 'name', false)
     // One line per person, shaped by exportRows — pure, and tested against the cases an audit of this
     // report actually found wrong: a night that read backwards, a carried-over night that read as this
     // morning, and a field worker exported with no times at all.
-    const payload = picked.map((r) => exportRow(r, date, statusLabel(r)))
+    const payload = picked.map((r) => exportRow(r, date, statusLabel(r), exportView))
 
     // Never «Bütün ərazilər». `locations` is only what is on THIS board: a branch manager sees their
     // own branches, so the phrase would stamp a two-site file as the whole company, and even for an
     // admin a site whose staff are all inactive never appears. The sites are named instead, and once
     // there are too many to name the count stands — the Xülasə sheet lists every one of them anyway.
-    const names = locations.filter((l) => chosen.has(l.id)).map((l) => l.name)
-    const scopeNote = names.length <= 6
-      ? `${names.length} ərazi: ${names.join(', ')} · ${picked.length} işçi`
-      : `${names.length} ərazi · ${picked.length} işçi (siyahı «Xülasə» vərəqindədir)`
+    const names = exportAreas.filter((a) => chosen.has(a.name)).map((a) => a.name)
+    // The view is named FIRST, because it is the thing a reader cannot infer from the numbers: two
+    // files of the same morning with the same total can group the same people differently, and the
+    // one that does not say which is which is the one somebody reconciles against the wrong list.
+    const viewNote = exportView === 'paper' ? 'Sənəd üzrə' : 'Faktiki ərazi'
+    const areaPart = names.length <= 6
+      ? `${names.length} ərazi: ${names.join(', ')}`
+      : `${names.length} ərazi (siyahı «Xülasə» vərəqindədir)`
+    const scopeNote = `${viewNote} · ${areaPart} · ${picked.length} işçi`
 
     setExporting(true)
     const ok = await exportDayXlsx({
-      title: `Davamiyyət — ${dateLabel}`,
+      title: exportView === 'paper'
+        ? `Davamiyyət (sənəd üzrə) — ${dateLabel}`
+        : `Davamiyyət — ${dateLabel}`,
       date,
       rows: payload,
       scopeNote,
@@ -749,12 +784,14 @@ export function TodayPage() {
       {exportOpen && (
         <ExportDialog
           date={dateLabel}
-          locations={locations}
-          countAt={(id) => rows.filter((r) => r.locationId === id).length}
+          areas={exportAreas}
+          view={exportView}
+          onView={switchExportView}
+          hasPaper={rows.some((r) => r.paperSite)}
           selected={exportSites}
-          onToggle={(id) =>
-            setExportSites((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
-          onAll={() => setExportSites(locations.map((l) => l.id))}
+          onToggle={(name) =>
+            setExportSites((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))}
+          onAll={() => setExportSites(exportAreas.map((a) => a.name))}
           onNone={() => setExportSites([])}
           busy={exporting}
           onRun={() => void runExport()}
@@ -794,20 +831,24 @@ export function TodayPage() {
  * choice, and the dialog says out loud that the screen's own filters do not travel with it.
  */
 function ExportDialog({
-  date, locations, countAt, selected, onToggle, onAll, onNone, busy, onRun, onClose,
+  date, areas, view, onView, hasPaper, selected, onToggle, onAll, onNone, busy, onRun, onClose,
 }: {
   date: string
-  locations: { id: string; name: string }[]
-  countAt: (id: string) => number
+  /** The areas of the CHOSEN view, with how many people each holds. */
+  areas: { name: string; count: number }[]
+  view: AreaView
+  onView: (v: AreaView) => void
+  /** Whether anybody on this board actually has a «sənəd üzrə ərazi» written. */
+  hasPaper: boolean
   selected: string[]
-  onToggle: (id: string) => void
+  onToggle: (name: string) => void
   onAll: () => void
   onNone: () => void
   busy: boolean
   onRun: () => void
   onClose: () => void
 }) {
-  const total = locations.filter((l) => selected.includes(l.id)).reduce((n, l) => n + countAt(l.id), 0)
+  const total = areas.filter((a) => selected.includes(a.name)).reduce((n, a) => n + a.count, 0)
 
   return (
     <div
@@ -829,6 +870,42 @@ function ExportDialog({
           <b>bütün işçiləri</b> daxil edilir — ekrandakı axtarış və status filtrləri fayla keçmir.
         </div>
 
+        {/* The view, first: it decides what «ərazi» means in the list below, so choosing sites before
+            choosing the structure would be answering the second question first. */}
+        <div style={{ marginBottom: 12 }}>
+          <div className="form-label" style={{ marginBottom: 6 }}>Fayl hansı quruluşda olsun?</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(['actual', 'paper'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={`btn btn-sm${view === v ? '' : ' btn-outline'}`}
+                onClick={() => onView(v)}
+              >
+                {v === 'actual' ? 'Faktiki ərazi' : 'Sənəd üzrə'}
+              </button>
+            ))}
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+            {view === 'paper' ? (
+              <>
+                Adamlar <b>sənədlərinin göstərdiyi əraziyə</b> görə qruplaşır. Sənədi ayrıca
+                yazılmayanlar öz filialında qalır.
+                {/* Said plainly, because otherwise the two files come out identical and the reader
+                    concludes the switch is broken rather than that the field is unfilled. */}
+                {!hasPaper && (
+                  <>
+                    {' '}<b style={{ color: '#b45309' }}>Bu lövhədə hələ heç kimin «sənəd üzrə ərazi»si
+                    yazılmayıb</b> — ona görə fayl faktiki ilə eyni çıxacaq.
+                  </>
+                )}
+              </>
+            ) : (
+              <>Adamlar <b>skan etdikləri filiala</b> görə qruplaşır — indiki qayda.</>
+            )}
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <button className="btn btn-sm" onClick={onAll}>Hamısı</button>
           <button className="btn btn-sm" onClick={onNone}>Heç biri</button>
@@ -838,29 +915,29 @@ function ExportDialog({
         </div>
 
         <div style={{ border: '1px solid var(--c100)', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
-          {locations.map((l, i) => (
+          {areas.map((a, i) => (
             <label
-              key={l.id}
+              key={a.name}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer',
                 borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
               }}
             >
-              <input type="checkbox" checked={selected.includes(l.id)} onChange={() => onToggle(l.id)} />
-              <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{l.name}</span>
-              <span className="muted" style={{ fontSize: 12 }}>{countAt(l.id)} nəfər</span>
+              <input type="checkbox" checked={selected.includes(a.name)} onChange={() => onToggle(a.name)} />
+              <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{a.name}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{a.count} nəfər</span>
             </label>
           ))}
-          {locations.length === 0 && (
+          {areas.length === 0 && (
             <div className="muted" style={{ padding: 14, fontSize: 13 }}>Bu gün üçün ərazi yoxdur.</div>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" disabled={busy || selected.length === 0} onClick={onRun}>
-            {busy ? 'Çıxarılır…' : '⬇ Çıxar'}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-outline" onClick={onClose}>Ləğv et</button>
+          <button className="btn" disabled={busy || selected.length === 0} onClick={onRun}>
+            {busy ? 'Çıxarılır…' : 'Çıxar'}
           </button>
-          <button className="btn" onClick={onClose}>Ləğv et</button>
         </div>
       </div>
     </div>

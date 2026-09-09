@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellTime, exportRow, type ExportableRow } from './exportRows'
+import { cellTime, exportRow, type ExportableRow, areaOf, uniqueAreas } from './exportRows'
 
 // Baku is UTC+4. Every case below is one an adversarial audit of the morning report actually found:
 // a night that read backwards, a carried-over night that read as this morning, a field worker with no
@@ -98,5 +98,46 @@ describe('exportRow', () => {
     expect(out.checkOut).toBe('')
     expect(out.photo).toBe('—')
     expect(out.bucket).toBe('absent')
+  })
+})
+
+describe('«Faktiki» ilə «sənəd üzrə» — eyni adamlar, iki quruluş', () => {
+  // HR hər səhər rəhbərliyə sənəd üzrə fayl göndərir, başqası isə faktiki istəyir. Eyni gün, eyni
+  // adamlar — yalnız hesabatın forması dəyişir, ona görə bu, bir açardır, iki ayrı ixrac deyil.
+  const row = { employeeName: 'Kimsə', locationName: 'Green Garden', status: 'OnTime' }
+
+  it('sənəd üzrə görünüşdə adam sənədinin göstərdiyi əraziyə düşür', () => {
+    expect(areaOf({ ...row, paperSite: 'Nərimanov Ofis' }, 'paper')).toBe('Nərimanov Ofis')
+  })
+
+  it('sənədi yazılmayan adam öz filialında qalır — fərq yalnız yazılanlarda olur', () => {
+    // Bu geriyə düşmə qaydanın özüdür: demək olar hamıda sənəd filialla üst-üstə düşür, və boş
+    // sahə «bu adamın yeri yoxdur» yox, «fərq yoxdur» deməkdir.
+    expect(areaOf({ ...row, paperSite: null }, 'paper')).toBe('Green Garden')
+    expect(areaOf(row, 'paper')).toBe('Green Garden')
+  })
+
+  it('faktiki görünüş sənədə heç vaxt baxmır', () => {
+    expect(areaOf({ ...row, paperSite: 'Nərimanov Ofis' }, 'actual')).toBe('Green Garden')
+  })
+
+  it('fayl seçilmiş görünüşə görə qruplaşır — sətrin «location» xanası budur', () => {
+    // Kitabça hansı Location verilirsə ona görə qruplaşdırır: həm «Xülasə» sətirləri, həm
+    // «Davamiyyət» bannerleri. Yəni görünüşü burada seçmək bütün faylı yenidən formalaşdırır.
+    const r = { ...row, paperSite: 'Nərimanov Ofis' }
+    expect(exportRow(r, '2026-09-09', 'Tamamlayıb', 'paper').location).toBe('Nərimanov Ofis')
+    expect(exportRow(r, '2026-09-09', 'Tamamlayıb', 'actual').location).toBe('Green Garden')
+    // Görünüş verilməyəndə köhnə davranış qalır — mövcud çağırışlar dəyişmir.
+    expect(exportRow(r, '2026-09-09', 'Tamamlayıb').location).toBe('Green Garden')
+  })
+
+  it('ərazi siyahısı seçilmiş görünüşün əraziləridir, təkrarsız və sıralı', () => {
+    const rows = [
+      { ...row, locationName: 'Green Garden', paperSite: 'Nərimanov Ofis' },
+      { ...row, locationName: 'Green Garden', paperSite: null },
+      { ...row, locationName: 'Qala Anbar', paperSite: 'Nərimanov Ofis' },
+    ]
+    expect(uniqueAreas(rows, 'actual')).toEqual(['Green Garden', 'Qala Anbar'])
+    expect(uniqueAreas(rows, 'paper')).toEqual(['Green Garden', 'Nərimanov Ofis'])
   })
 })
