@@ -208,4 +208,36 @@ public class DayBoardSheetTests
         Assert.Equal(2, wb.Worksheets.Count);
         Assert.Equal(0, RowStarting(wb.Worksheet("Xülasə"), "CƏMİ")!.Cell(2).GetValue<int>());
     }
+
+    [Fact]
+    public void The_detail_sheet_names_the_employer_the_paperwork_gives()
+    {
+        // The morning workbook kept raising a question it could not settle — why a name appears on a
+        // company's list that does not employ them. Blank on nearly every row, and deliberately blank
+        // rather than a dash, so the eye lands on the few that are filled.
+        var bytes = DayBoardSheet.Build(
+            "Davamiyyət",
+            [
+                new DayBoardSheet.Row("Çingiz Hümbətov", "Ofis Meneceri", "Green Garden", "Tamamlayıb",
+                    "08:02", "18:01", "", "present", "Bakı Abadlıq Xidməti / Nərimanov Ofis"),
+                new DayBoardSheet.Row("Öz adamı", "Bağban", "Green Garden", "Tamamlayıb",
+                    "08:00", "18:00", "", "present"),
+            ],
+            null, null);
+
+        using var wb = new XLWorkbook(new MemoryStream(bytes));
+        var ws = wb.Worksheet("Davamiyyət");
+
+        var header = ws.RowsUsed().First(r => r.Cell(1).GetString() == "Ad Soyad");
+        var paper = Enumerable.Range(1, 10).First(c => header.Cell(c).GetString() == "Sənəd üzrə");
+        var status = Enumerable.Range(1, 10).First(c => header.Cell(c).GetString() == "Status");
+
+        var borrowed = ws.RowsUsed().First(r => r.Cell(1).GetString() == "Çingiz Hümbətov");
+        var own = ws.RowsUsed().First(r => r.Cell(1).GetString() == "Öz adamı");
+
+        Assert.Equal("Bakı Abadlıq Xidməti / Nərimanov Ofis", borrowed.Cell(paper).GetString());
+        Assert.Equal(string.Empty, own.Cell(paper).GetString());
+        // The column was inserted BEFORE Status; every cell after it had to move with its header.
+        Assert.Equal("Tamamlayıb", borrowed.Cell(status).GetString());
+    }
 }

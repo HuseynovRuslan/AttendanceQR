@@ -181,7 +181,8 @@ public class ReportsController : ControllerBase
                 row.CheckIn ?? string.Empty,
                 row.CheckOut ?? string.Empty,
                 row.Photo ?? string.Empty,
-                row.Bucket))
+                row.Bucket,
+                row.Paper ?? string.Empty))
             .ToList();
 
         var title = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;

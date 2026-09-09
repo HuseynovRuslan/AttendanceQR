@@ -41,4 +41,8 @@ public record ExportDayRow(
     /// onLeave, sick, trip, permission, dayOff, pending, onboarding. Null from an older client, in
     /// which case the person is still counted in the headcount and in no other column.</summary>
     string? Bucket = null,
-    string? Position = null);
+    string? Position = null,
+    /// <summary>«Bakı Abadlıq Xidməti / Nərimanov Ofis» — whose books this person is on, when it is
+    /// not the company whose board this is. Empty on almost every row, and that is the point: the few
+    /// that are filled are the ones the reader keeps asking about.</summary>
+    string? Paper = null);

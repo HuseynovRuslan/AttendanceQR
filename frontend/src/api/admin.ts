@@ -40,6 +40,11 @@ export interface DayAttendanceRow {
   leaveId?: string | null
   /** The employee's job title, so a morning's "who is missing" can be narrowed to one trade. */
   position?: string | null
+  /** «Sənəd üzrə» — the employer and site the paperwork names, when they are not this board's own
+   *  company. Null on nearly every row; it exists so the morning workbook can answer, on the line
+   *  itself, why somebody appears on a list of a company that does not employ them. */
+  paperEmployer?: string | null
+  paperSite?: string | null
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null

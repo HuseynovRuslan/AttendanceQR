@@ -10,6 +10,7 @@ import { SuperAudit, SuperUsers, TenantsTab } from '../admin/TenantsPage'
 // İcmal is the group board itself. The old overview was a strip of platform counters; this one shows
 // the companies, their people and their sites, and each card opens that company's own panel.
 import { GroupBoardPage } from '../hq/GroupBoardPage'
+import { PaperRosterPage } from '../hq/PaperRosterPage'
 
 /**
  * Routing for the platform operator console (admin.qrlog.az). Rendered only on the operator host and
@@ -21,6 +22,7 @@ export function OperatorRoutes() {
     <Routes>
       <Route element={<OperatorLayout />}>
         <Route index element={<GroupBoardPage embedded />} />
+        <Route path="paper-roster" element={<PaperRosterPage />} />
         <Route path="tenants" element={<TenantsTab />} />
         <Route path="health" element={<HealthPage />} />
         <Route path="billing" element={<BillingPage />} />

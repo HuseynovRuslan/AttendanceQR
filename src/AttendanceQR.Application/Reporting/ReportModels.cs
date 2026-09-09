@@ -241,7 +241,13 @@ public sealed record DayAttendanceRow(
     // Absence stopped being inferred for anyone who has never recorded any attendance, so on those
     // rows a Qayıb only exists because somebody said so — and a day that costs a person a day's pay
     // must carry the name of whoever decided it, the same way an assigned leave does.
-    string? AbsenceMarkedBy = null);
+    string? AbsenceMarkedBy = null,
+    // «Sənəd üzrə» — whose books this person is on, when it is not the company whose board they are
+    // on. Almost always null. It travels because the workbook built from this board goes to the
+    // leadership every morning, and a name that appears on the wrong company's list with no
+    // explanation is a question somebody has to answer by hand each time it is asked.
+    string? PaperEmployer = null,
+    string? PaperSite = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

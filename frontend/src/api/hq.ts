@@ -1,4 +1,4 @@
-import { apiRequest } from './client'
+import { API_BASE_URL, apiRequest, getToken } from './client'
 
 export interface GroupCompany {
   id: string
@@ -150,4 +150,64 @@ export interface HqPhoto {
 
 export function getHqPhoto(recordId: string) {
   return apiRequest<HqPhoto>(`/api/super/hq/records/${recordId}/photo-url`)
+}
+
+/** One person as their paperwork sees them, beside where they actually stand. */
+export interface PaperPerson {
+  id: string
+  fullName: string
+  position: string | null
+  paperEmployer: string
+  paperSite: string | null
+  actualCompany: string
+  actualSite: string
+  phoneNumber: string | null
+  isActive: boolean
+  /** The documents name a different company from the one running their account. */
+  elsewhere: boolean
+}
+
+export interface PaperEmployerCount {
+  name: string
+  total: number
+  elsewhere: number
+}
+
+export interface PaperRoster {
+  employers: PaperEmployerCount[]
+  employer: string | null
+  rows: PaperPerson[]
+}
+
+/** GET /api/super/hq/paper-roster — the roster BY PAPER, across every company at once.
+ *  A tenant panel cannot answer this: a person on one company's books may sit in another company's
+ *  data, and no panel may read across that wall. This is the one place that can. */
+export function getPaperRoster(employer?: string, onlyElsewhere = false) {
+  const q = new URLSearchParams()
+  if (employer) q.set('employer', employer)
+  if (onlyElsewhere) q.set('onlyElsewhere', 'true')
+  const qs = q.toString()
+  return apiRequest<PaperRoster>(`/api/super/hq/paper-roster${qs ? `?${qs}` : ''}`)
+}
+
+/** The same rows as a formatted .xlsx — what the accountant asks for when one legal entity pays
+ *  people standing at three different companies' sites. */
+export async function downloadPaperRoster(employer?: string, onlyElsewhere = false): Promise<void> {
+  const q = new URLSearchParams()
+  if (employer) q.set('employer', employer)
+  if (onlyElsewhere) q.set('onlyElsewhere', 'true')
+  const token = getToken()
+  const res = await fetch(`${API_BASE_URL}/api/super/hq/paper-roster/export?${q}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new Error(`export failed: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `sened-uzre_${(employer || 'qrup').replace(/[^\w-]+/g, '-').toLowerCase()}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }

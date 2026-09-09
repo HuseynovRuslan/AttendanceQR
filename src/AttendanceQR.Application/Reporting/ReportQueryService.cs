@@ -117,7 +117,12 @@ public sealed class ReportQueryService : IReportQueryService
         bool CanShareDevice = false,
         // The job title, so the board can show it and be filtered by it — «bütün bağbanlar» is a
         // question somebody asks of a morning, and the answer was one the screen could not give.
-        string? Position = null);
+        string? Position = null,
+        // Whose books this person is on, when it is not the company they are recorded in. Carried so
+        // the daily workbook can say it: the leadership reads that file every morning, and «why is a
+        // Bakı Abadlıq employee on Green Garden's list» is exactly the question it kept raising.
+        string? PaperEmployer = null,
+        string? PaperSite = null);
 
     /// <summary>One employee's computed day with everything it was computed from still attached — so
     /// the two callers can each project what they need (the board wants the record's photo/face/reason
@@ -185,7 +190,8 @@ public sealed class ReportQueryService : IReportQueryService
         var employees = await query
             .Select(e => new ScopedEmployee(
                 e.Id, e.FullName, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd,
-                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.CanShareDevice, e.Position))
+                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.CanShareDevice, e.Position,
+                e.PaperEmployer, e.PaperSite))
             .ToListAsync(ct);
         return (ReportAccess.Allowed, employees);
     }
@@ -1118,7 +1124,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Record?.ClosedByFieldVisitId != null,
                     d.Employee.CanShareDevice,
                     d.FieldVisitId,
-                    markedAbsent.Contains(d.Employee.Id) ? markedBy.GetValueOrDefault(d.Employee.Id) ?? "—" : null);
+                    markedAbsent.Contains(d.Employee.Id) ? markedBy.GetValueOrDefault(d.Employee.Id) ?? "—" : null,
+                    d.Employee.PaperEmployer, d.Employee.PaperSite);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

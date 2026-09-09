@@ -59,7 +59,7 @@ public static class DayBoardSheet
     ];
 
     private static readonly string[] DetailHeaders =
-        ["Ad Soyad", "Vəzifə", "Ərazi", "Status", "Giriş", "Çıxış", "Şəkil"];
+        ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"];
 
     private static readonly XLColor HeaderBlue = XLColor.FromHtml("#1E70C8");
     private static readonly XLColor GroupBand = XLColor.FromHtml("#DCE9F8");
@@ -87,7 +87,11 @@ public static class DayBoardSheet
 
     public sealed record Row(
         string Name, string Position, string Location, string Status,
-        string CheckIn, string CheckOut, string Photo, string? Bucket);
+        string CheckIn, string CheckOut, string Photo, string? Bucket,
+        // «Sənəd üzrə» — the employer the paperwork names when it is not this board's company.
+        // Blank on nearly every row; the few that are filled answer the question this file used to
+        // raise and could not settle: why a name appears on a company's list that does not employ them.
+        string Paper = "");
 
     /// <param name="labels">
     /// The board's word for each bucket, keyed by bucket name. Anything missing falls back to
@@ -238,10 +242,11 @@ public static class DayBoardSheet
                 ws.Cell(r, 1).Value = p.Name;
                 ws.Cell(r, 2).Value = p.Position;
                 ws.Cell(r, 3).Value = p.Location;
-                ws.Cell(r, 4).Value = p.Status;
-                ws.Cell(r, 5).Value = p.CheckIn;
-                ws.Cell(r, 6).Value = p.CheckOut;
-                ws.Cell(r, 7).Value = p.Photo;
+                ws.Cell(r, 4).Value = p.Paper;
+                ws.Cell(r, 5).Value = p.Status;
+                ws.Cell(r, 6).Value = p.CheckIn;
+                ws.Cell(r, 7).Value = p.CheckOut;
+                ws.Cell(r, 8).Value = p.Photo;
                 r++;
             }
 

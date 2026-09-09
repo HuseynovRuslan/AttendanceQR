@@ -15,6 +15,9 @@ export interface ExportableRow {
   employeeName: string
   locationName: string
   position?: string | null
+  /** «Sənəd üzrə» — the employer the documents name, when it is not this board's company. */
+  paperEmployer?: string | null
+  paperSite?: string | null
   status: string
   leaveType?: string | null
   checkInAtUtc?: string | null
@@ -65,6 +68,7 @@ export interface ExportRowOut {
   checkOut: string
   photo: string
   bucket: string
+  paper: string
 }
 
 /**
@@ -88,5 +92,10 @@ export function exportRow(r: ExportableRow, date: string, statusLabel: string): 
     // there would read as a missing one rather than one that was never asked for.
     photo: r.hasPhoto ? 'var' : r.checkInAtUtc ? 'yox' : '—',
     bucket: bucketOf(r),
+    // Blank for nearly everyone, and deliberately blank rather than a dash: the column has to stay
+    // quiet on the many so the eye lands on the few whose paperwork names another company.
+    paper: r.paperEmployer
+      ? `${r.paperEmployer}${r.paperSite ? ` / ${r.paperSite}` : ''}`
+      : '',
   }
 }

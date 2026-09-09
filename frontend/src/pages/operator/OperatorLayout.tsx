@@ -27,6 +27,10 @@ type NavItem = { to: string; label: string; Icon: typeof IconHome; end: boolean;
 const LINKS: NavItem[] = [
   { to: '/', label: 'İcmal', Icon: IconHome, end: true },
   { to: '/tenants', label: 'Şirkətlər', Icon: IconClipboard, end: false },
+  // Not an operator's business screen — it is the CUSTOMER's question, and the only place in the
+  // product that can answer it: which people one legal entity employs, wherever they stand. Left
+  // ungated so «Qrup rəhbəri» keeps it; the server still checks the super-admin allowlist.
+  { to: '/paper-roster', label: 'Sənəd üzrə siyahı', Icon: IconUsers, end: false },
   { to: '/health', label: 'Sağlamlıq', Icon: IconClock, end: false },
   // Business sections — hidden from «Qrup rəhbəri», who is the CUSTOMER's group head and has no
   // business seeing our plans, prices, invoices or the operator trail. The server gates these on
@@ -41,6 +45,7 @@ const LINKS: NavItem[] = [
 const TITLES: Record<string, string> = {
   '/': 'İcmal',
   '/tenants': 'Şirkətlər',
+  '/paper-roster': 'Sənəd üzrə siyahı',
   '/health': 'Sağlamlıq',
   '/billing': 'Ödənişlər',
   '/announcements': 'Qlobal elan',
