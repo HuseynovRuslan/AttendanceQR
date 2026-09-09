@@ -48,7 +48,10 @@ thead .tb-name-col { background: var(--c50); z-index: 3; }
 .tb-perm    { background: #FEF3E2; color: #B4690E; }   /* İC — permission */
 .tb-trip    { background: #F0FDFA; color: #0D9488; }   /* Ez — ezamiyyət (work trip) */
 .tb-holiday { background: #FEF9C3; color: #A16207; }   /* B  — holiday */
-.tb-off     { background: var(--c50); color: var(--c400); }  /* H — rest day */
+.tb-off     { background: var(--c50); color: var(--c400); }  /* H  — the roster's own day off */
+/* İs — a granted rest. Deliberately NOT the blue leave tint: a rest day is not məzuniyyət and must
+   not read as one; it is a day off, so it stays in the grey family and is simply darker than H. */
+.tb-rest    { background: #E4E7EA; color: #4B5563; }
 .tb-future  { background: repeating-linear-gradient(45deg, #fff, #fff 3px, #fafafa 3px, #fafafa 6px); }
 
 .tb-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 4px 2px; font-size: 12px; color: var(--c600); }

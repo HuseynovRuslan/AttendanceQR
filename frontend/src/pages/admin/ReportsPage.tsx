@@ -114,6 +114,11 @@ export function ReportsPage() {
                 <th className="num">Məzuniyyət</th>
                 <th className="num">Xəstəlik</th>
                 <th className="num">Ödənişsiz</th>
+                {/* İstirahət had no column here at all while the Excel exported from this very screen
+                    has one, so a granted rest day was counted nowhere: the row's days did not add up
+                    to the period and the two documents disagreed. It is NOT leave — it sits beside
+                    them, never inside «Məzuniyyət». */}
+                <th className="num">İstirahət</th>
                 <th className="num">Ezamiyyət</th>
                 <th className="num">İcazə</th>
                 <th className="num">Ümumi saat</th>
@@ -132,6 +137,7 @@ export function ReportsPage() {
                   <td data-label="Məzuniyyət" className="num mono">{r.vacationDays ?? r.leaveDays}</td>
                   <td data-label="Xəstəlik" className="num mono">{r.sickDays ?? 0}</td>
                   <td data-label="Ödənişsiz" className="num mono">{r.unpaidDays ?? 0}</td>
+                  <td data-label="İstirahət" className="num mono">{r.restDays ?? 0}</td>
                   <td data-label="Ezamiyyət" className="num mono">{r.tripDays}</td>
                   <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
                   <td data-label="Ümumi saat" className="num mono">{fmtHM(r.totalWorkedHours)}</td>
@@ -142,7 +148,7 @@ export function ReportsPage() {
               ))}
               {report.rows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                  <td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                     Bu aralıqda məlumat yoxdur
                   </td>
                 </tr>
@@ -154,7 +160,16 @@ export function ReportsPage() {
                   <td colSpan={2}>CƏM</td>
                   <td className="num mono">{report.totals.workDays}</td>
                   <td className="num mono">{report.totals.absentDays}</td>
-                  <td className="num mono">{report.totals.leaveDays}</td>
+                  {/* Every cell below answers the SAME question as the column above it. It did not:
+                      the row was two cells short, so from «Xəstəlik» rightwards each total sat under
+                      the wrong heading — the sick-leave figure was really the Ezamiyyət count, and
+                      «Ezamiyyət» showed total worked HOURS. And «Məzuniyyət» summed leaveDays
+                      (annual + sick + unpaid) over a column that prints annual leave alone, so the
+                      total openly disagreed with the numbers above it. */}
+                  <td className="num mono">{report.totals.vacationDays ?? report.totals.leaveDays}</td>
+                  <td className="num mono">{report.totals.sickDays ?? 0}</td>
+                  <td className="num mono">{report.totals.unpaidDays ?? 0}</td>
+                  <td className="num mono">{report.totals.restDays ?? 0}</td>
                   <td className="num mono">{report.totals.tripDays}</td>
                   <td className="num mono">{report.totals.permissionDays}</td>
                   <td className="num mono">{fmtHM(report.totals.totalWorkedHours)}</td>

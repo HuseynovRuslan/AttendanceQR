@@ -169,7 +169,7 @@ public class DayBoardSheetTests
         var header = wb.Worksheet("Xülasə").Row(4);
 
         Assert.Contains(
-            Enumerable.Range(1, 12).Select(c => header.Cell(c).GetString()),
+            Enumerable.Range(1, header.LastCellUsed()!.Address.ColumnNumber).Select(c => header.Cell(c).GetString()),
             h => h == "Çıxış yoxdur");
     }
 
@@ -181,7 +181,7 @@ public class DayBoardSheetTests
         using var wb = Build(
             Person("A", "S", "present"), Person("B", "S", "pending"), Person("C", "S", "onboarding"));
         var header = wb.Worksheet("Xülasə").Row(4);
-        var words = Enumerable.Range(1, 12).Select(c => header.Cell(c).GetString()).ToList();
+        var words = Enumerable.Range(1, header.LastCellUsed()!.Address.ColumnNumber).Select(c => header.Cell(c).GetString()).ToList();
 
         Assert.Contains("Tamamlayıb", words);
         Assert.Contains("Növbəsi başlamayıb", words);

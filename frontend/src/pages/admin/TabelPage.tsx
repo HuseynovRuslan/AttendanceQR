@@ -26,6 +26,10 @@ const CODE_CLASS: Record<string, string> = {
   'Ez': 'tb-trip',
   'B': 'tb-holiday',
   'H': 'tb-off',
+  // «İs» — a rest day somebody GRANTED, as against «H», the roster's own day off. Its own tint, or
+  // the month reads as though nobody ever assigned one: two thirds of every leave filed in this
+  // product is an İstirahət, and until now all of them printed as the plain weekend.
+  'İs': 'tb-rest',
 }
 
 /** Weekday initial under each day number, so the eye can find Sundays without counting. */

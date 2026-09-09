@@ -142,6 +142,11 @@ export function PayrollPage() {
                 <th className="num">Məzuniyyət</th>
                 <th className="num">Xəstəlik</th>
                 <th className="num">Ödənişsiz</th>
+                {/* Both were already in the Maaş sheet built from this same report and missing from
+                    the screen, so the accountant's file and the screen it came from listed different
+                    columns. İstirahət is not leave and never joins «Məzuniyyət»; Ezamiyyət is work. */}
+                <th className="num">İstirahət</th>
+                <th className="num">Ezamiyyət</th>
                 <th className="num">İcazə</th>
                 <th className="num">Çıxılan</th>
                 <th className="num">Ödəniləcək</th>
@@ -163,6 +168,8 @@ export function PayrollPage() {
                   <td data-label="Məzuniyyət" className="num mono">{r.vacationDays ?? r.leaveDays}</td>
                   <td data-label="Xəstəlik" className="num mono">{r.sickDays ?? 0}</td>
                   <td data-label="Ödənişsiz" className="num mono">{r.unpaidDays ?? 0}</td>
+                  <td data-label="İstirahət" className="num mono">{r.restDays ?? 0}</td>
+                  <td data-label="Ezamiyyət" className="num mono">{r.tripDays}</td>
                   <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
                   <td data-label="Çıxılan" className="num mono" style={{ color: r.deduction > 0 ? 'var(--clay)' : undefined }}>
                     {r.monthlySalary == null ? '—' : azn(r.deduction)}
@@ -174,7 +181,7 @@ export function PayrollPage() {
               ))}
               {report.rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                  <td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                     Bu aralıqda məlumat yoxdur
                   </td>
                 </tr>
@@ -185,8 +192,19 @@ export function PayrollPage() {
                 <tr>
                   <td colSpan={2}>CƏMİ</td>
                   <td className="num mono">{azn(report.totalMonthlySalary)}</td>
-                  <td className="num" colSpan={3} />
-                  <td className="num" />
+                  {/* Counted, not guessed. The row used to be three cells short of its own headings,
+                      which put «Çıxılan» under «Xəstəlik» and «Ödəniləcək» under «Ödənişsiz» — the
+                      bottom line of the payroll read as a count of sick days. Empty cells are spelt
+                      out one per column so the next added column cannot silently shift it again. */}
+                  <td className="num" />{/* İş günü */}
+                  <td className="num" />{/* Gəlib */}
+                  <td className="num" />{/* Qayıb */}
+                  <td className="num" />{/* Məzuniyyət */}
+                  <td className="num" />{/* Xəstəlik */}
+                  <td className="num" />{/* Ödənişsiz */}
+                  <td className="num" />{/* İstirahət */}
+                  <td className="num" />{/* Ezamiyyət */}
+                  <td className="num" />{/* İcazə */}
                   <td className="num mono">{azn(report.totalDeduction)}</td>
                   <td className="num mono" style={{ fontWeight: 800 }}>{azn(report.totalPayable)}</td>
                 </tr>

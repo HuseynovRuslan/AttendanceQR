@@ -23,11 +23,12 @@ import { COMPANY_TZ, fmtTime } from '../../lib/format'
  * restated the same numbers a third time and nobody read them.
  */
 
-type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'trip'
+type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'dayOff' | 'trip'
 
 const BUCKET_LABEL: Record<Bucket, string> = {
   total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Növbəsi başlamayıb', onboarding: 'Aktivləşdirməyib',
-  sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə', rest: 'İstirahət',
+  sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə',
+  rest: 'İstirahət (təyin edilmiş)', dayOff: 'Həftəlik istirahət',
   trip: 'Ezamiyyət',
 }
 
@@ -43,7 +44,8 @@ function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
     case 'pending': return r.status === 'Pending'
     case 'onboarding': return r.status === 'Onboarding'
     case 'permission': return r.status === 'Permission'
-    case 'rest': return r.status === 'DayOff'
+    case 'rest': return r.status === 'DayOff' && r.leaveType === 'Rest'
+    case 'dayOff': return r.status === 'DayOff' && r.leaveType !== 'Rest'
     case 'sick': return r.status === 'OnLeave' && r.leaveType === 'Sick'
     case 'unpaid': return r.status === 'OnLeave' && r.leaveType === 'Unpaid'
     case 'trip': return r.status === 'OnLeave' && r.leaveType === 'BusinessTrip'
@@ -224,7 +226,7 @@ export function DashboardPage() {
     return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 500)
   }, [rows])
 
-  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, onboarding: 0, dayOff: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
+  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, onboarding: 0, dayOff: 0, rest: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
   for (const r of rows) {
     // 'Field' burada olmasa «Natamam»a yıxılırdı: bütün günü sahədə işləyən adam lövhədə qüsur kimi
     // görünürdü. Bugünkü lövhə (todayCounts.ts) onu artıq işdə sayır — iki ekran razılaşmalıdır.
@@ -233,7 +235,10 @@ export function DashboardPage() {
     else if (r.status === 'Pending') counts.pending++
     // Tanınmasa «İşdə» qalığına yıxılardı — və 294 qurulmamış hesab «İndi iş başında» sayılardı.
     else if (r.status === 'Onboarding') counts.onboarding++
-    else if (r.status === 'DayOff') counts.dayOff++
+    // Two facts under one status. «İstirahət 220» on a Sunday, when nobody was granted anything, is
+    // noise the reader learns to skip — and the handful of days a manager actually decided were
+    // buried inside it. Only the leave type separates them, and it now travels for rest days too.
+    else if (r.status === 'DayOff') { if (r.leaveType === 'Rest') counts.rest++; else counts.dayOff++ }
     else if (r.status === 'Permission') counts.permission++
     else if (r.status === 'OnLeave') {
       if (r.leaveType === 'Sick') counts.sick++
@@ -417,7 +422,10 @@ export function DashboardPage() {
         {counts.unpaid > 0 && <Pill tone="purple" n={counts.unpaid} label="Ödənişsiz" active={openBucket === 'unpaid'} onClick={() => openPill('unpaid')} />}
         {counts.permission > 0 && <Pill tone="purple" n={counts.permission} label="İcazə" active={openBucket === 'permission'} onClick={() => openPill('permission')} />}
         {counts.trip > 0 && <Pill tone="teal" n={counts.trip} label="Ezamiyyət" active={openBucket === 'trip'} onClick={() => openPill('trip')} />}
-        {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="İstirahət" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
+        {/* The one somebody DECIDED, first and only when there is one — that is what a manager files
+            the record to be able to see. The roster's own day off follows it, and says so. */}
+        {counts.rest > 0 && <Pill tone="purple" n={counts.rest} label="İstirahət (təyin edilmiş)" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
+        {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="Həftəlik istirahət" active={openBucket === 'dayOff'} onClick={() => openPill('dayOff')} />}
         <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
       </section>
 

@@ -30,9 +30,18 @@ export interface TodayCounts {
   /** İmport olunub, hələ ilk skanı yoxdur — lövhəyə-özəl «Hazırlanır». Qayıba QARIŞMIR. */
   onboarding: number
   incomplete: number
+  /** The roster's own day off — a Sunday, a rotation's off-day. Nobody decided it for this person. */
   dayOff: number
-  /** Məzuniyyət — holiday and unpaid/rest leave. NOT sick, NOT a work trip. */
+  /** An İstirahət somebody GRANTED. Its own number because it is a decision, and the whole reason a
+   *  manager files one is to be able to see it again; merged into dayOff it was invisible among the
+   *  two hundred people whose Sunday it simply was. */
+  rest: number
+  /** Məzuniyyət — annual leave ONLY. Not sick, not unpaid, not a work trip, not a rest day. */
   onLeave: number
+  /** Ödənişsiz məzuniyyət, apart: it is not paid, and the dashboard already counted it separately —
+   *  folding it into «Məzuniyyət» here made the two admin screens report different numbers for the
+   *  same morning, and the list under the card showed rows badged «Ödənişsiz məzuniyyət». */
+  unpaid: number
   sick: number
   /** Ezamiyyət. Its own bucket because these people are working. */
   trip: number
@@ -41,7 +50,7 @@ export interface TodayCounts {
 
 const EMPTY: TodayCounts = {
   present: 0, absent: 0, pending: 0, onboarding: 0, incomplete: 0,
-  dayOff: 0, onLeave: 0, sick: 0, trip: 0, permission: 0,
+  dayOff: 0, rest: 0, onLeave: 0, unpaid: 0, sick: 0, trip: 0, permission: 0,
 }
 
 export type TodayBucket = keyof TodayCounts
@@ -64,10 +73,13 @@ export function bucketOf(r: TodayLike): TodayBucket {
   if (r.status === 'Absent') return 'absent'
   if (r.status === 'Pending') return 'pending'
   if (r.status === 'Onboarding') return 'onboarding'
-  if (r.status === 'DayOff') return 'dayOff'
+  // DayOff carries two facts under one status: the roster's own day off, and one a manager granted.
+  // Only leaveType separates them, and it now travels for rest days too.
+  if (r.status === 'DayOff') return r.leaveType === 'Rest' ? 'rest' : 'dayOff'
   if (r.status === 'OnLeave') {
     if (r.leaveType === 'Sick') return 'sick'
     if (r.leaveType === 'BusinessTrip') return 'trip'
+    if (r.leaveType === 'Unpaid') return 'unpaid'
     return 'onLeave'
   }
   if (r.status === 'Permission') return 'permission'
@@ -88,11 +100,15 @@ export function countToday(rows: TodayLike[]): TodayCounts {
  * status — clicking Məzuniyyət has to exclude the sick and the travelling, or the list disagrees
  * with the number on the card the reader just pressed.
  */
-export function matchesLeaveCard(row: TodayLike, card: 'sick' | 'trip' | 'onLeave'): boolean {
+export function matchesLeaveCard(row: TodayLike, card: 'sick' | 'trip' | 'onLeave' | 'unpaid'): boolean {
   if (row.status !== 'OnLeave') return false
   if (card === 'sick') return row.leaveType === 'Sick'
   if (card === 'trip') return row.leaveType === 'BusinessTrip'
-  return row.leaveType !== 'Sick' && row.leaveType !== 'BusinessTrip'
+  if (card === 'unpaid') return row.leaveType === 'Unpaid'
+  // «Məzuniyyət» is now annual leave alone. Written as an exclusion rather than a test for
+  // 'Vacation' on purpose: a row whose type never arrived must still land somewhere, and the card it
+  // belongs under is the general one.
+  return row.leaveType !== 'Sick' && row.leaveType !== 'BusinessTrip' && row.leaveType !== 'Unpaid'
 }
 
 /**

@@ -9,7 +9,7 @@ import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
 import { useAuth } from '../../auth/AuthContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
-import { StatusBadge, STATUS_MAP, leaveVisual } from '../../components/StatusBadge'
+import { StatusBadge, STATUS_MAP, dayLabel, dayVisual } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
 import { IconCamera, IconPencil, IconX } from '../../components/icons'
@@ -150,6 +150,12 @@ export function TodayPage() {
   // Needed because the system stopped guessing. Somebody who has never recorded any attendance is no
   // longer written up as absent on their own (it was deducting a day's pay from people it could not
   // show were ever handed a working phone), so their Qayıb now comes from whoever watched the day.
+  /** What is actually standing in the way, in the same words the row beside it uses. */
+  function blockingLabel(employeeId: string): string {
+    const r = rows.find((x) => x.employeeId === employeeId)
+    return r ? dayLabel(r.status, r.leaveType).toLocaleLowerCase('az') : 'məzuniyyət/icazə'
+  }
+
   async function markDayAbsent(employeeId: string) {
     setAssigningId(employeeId)
     const res = await markAbsent(employeeId, date)
@@ -160,7 +166,13 @@ export function TodayPage() {
       ? (res.data as { error: string }).error : ''
     setPhotoError(
       code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
-        : code === 'HasLeave' ? 'Bu gün üçün məzuniyyət/icazə var — əvvəlcə onu silin'
+        // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
+        // admin blocked by a rest day (two thirds of every record filed) or by an ezamiyyət went
+        // looking for a holiday that did not exist.
+        // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
+        // admin blocked by a rest day — two thirds of every record ever filed — or by an ezamiyyət
+        // went looking for a holiday that does not exist.
+        : code === 'HasLeave' ? `Bu gün üçün ${blockingLabel(employeeId)} var — əvvəlcə onu silin`
           : code === 'DateInFuture' ? 'Gələcək günə qayıb yazmaq olmaz'
             : 'Qayıb yazılmadı')
   }
@@ -238,7 +250,7 @@ export function TodayPage() {
     if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
     // Sick / Ezamiyyət / Məzuniyyət all come from OnLeave, split by leaveType — so their filters
     // need the row, not just the status.
-    if (statusFilter === 'sick' || statusFilter === 'trip' || statusFilter === 'onLeave') {
+    if (statusFilter === 'sick' || statusFilter === 'trip' || statusFilter === 'onLeave' || statusFilter === 'unpaid') {
       if (!matchesLeaveCard(r, statusFilter)) return false
     } else if (statusFilter && bucketOf(r) !== statusFilter) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
@@ -285,12 +297,9 @@ export function TodayPage() {
   // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
   // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
   // leave. The type is already on the row and was simply never read here.
-  const statusLabel = (r: DayAttendanceRow) =>
-    r.status === 'Incomplete'
-      ? incompleteLabel
-      : r.status === 'OnLeave'
-        ? leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
-        : (STATUS_MAP as Record<string, { label: string }>)[r.status]?.label ?? r.status
+  // One call, and the file now says the same word the screen does — for rest days too, which the
+  // hand-rolled version above could not, because it only ever consulted the type for OnLeave.
+  const statusLabel = (r: DayAttendanceRow) => dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
   function openExport() {
@@ -334,10 +343,12 @@ export function TodayPage() {
         incomplete: incompleteLabel,
         absent: STATUS_MAP.Absent.label,
         onLeave: STATUS_MAP.OnLeave.label,
+        unpaid: 'Ödənişsiz',
         sick: 'Xəstəlik',
         trip: 'Ezamiyyət',
         permission: STATUS_MAP.Permission.label,
-        dayOff: STATUS_MAP.DayOff.label,
+        dayOff: 'Həftəlik istirahət',
+        rest: 'İstirahət (təyin edilmiş)',
         pending: STATUS_MAP.Pending.label,
         onboarding: STATUS_MAP.Onboarding.label,
       },
@@ -454,14 +465,33 @@ export function TodayPage() {
           <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
           <div className="stat-val">{counts.present}</div>
         </div>
+        {/* The roster's own day off. Kept grey-purple and quiet: on a Sunday this is most of the
+            company and nobody decided any of it. */}
         <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
-          <div className="stat-lbl">{STATUS_MAP.DayOff.label}</div>
+          <div className="stat-lbl">Həftəlik istirahət</div>
           <div className="stat-val">{counts.dayOff}</div>
         </div>
+        {/* A rest day somebody GRANTED — shown only when there is one, because that is the number a
+            manager filed the record to be able to see. It used to be added into the card above and
+            was therefore invisible among two hundred ordinary Sundays. */}
+        {counts.rest > 0 && (
+          <div className="stat-card purple" style={cardStyle('rest')} onClick={() => toggleStatus('rest')}>
+            <div className="stat-lbl">İstirahət (təyin edilmiş)</div>
+            <div className="stat-val">{counts.rest}</div>
+          </div>
+        )}
         <div className="stat-card purple" style={cardStyle('onLeave')} onClick={() => toggleStatus('onLeave')}>
           <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
           <div className="stat-val">{counts.onLeave}</div>
         </div>
+        {/* Unpaid leave is not paid, and the dashboard already counted it on its own — folding it in
+            here made the two screens disagree about «Məzuniyyət» on the same morning. */}
+        {counts.unpaid > 0 && (
+          <div className="stat-card purple" style={cardStyle('unpaid')} onClick={() => toggleStatus('unpaid')}>
+            <div className="stat-lbl">Ödənişsiz</div>
+            <div className="stat-val">{counts.unpaid}</div>
+          </div>
+        )}
         {counts.sick > 0 && (
           <div className="stat-card blue" style={cardStyle('sick')} onClick={() => toggleStatus('sick')}>
             <div className="stat-lbl">Xəstəlik</div>
@@ -571,13 +601,7 @@ export function TodayPage() {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                     <StatusBadge
                       status={r.status}
-                      override={
-                        r.status === 'Incomplete'
-                          ? incompleteOverride
-                          : r.status === 'OnLeave'
-                            ? leaveVisual(r.leaveType)
-                            : undefined
-                      }
+                      override={r.status === 'Incomplete' ? incompleteOverride : dayVisual(r.status, r.leaveType)}
                     />
                     {/* Which rows can be given a reason.
                         «Aktivləşdirməyib»: the person whose day nobody can decide but a human — no

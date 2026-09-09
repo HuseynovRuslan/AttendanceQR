@@ -459,6 +459,12 @@ public sealed class ReportQueryService : IReportQueryService
     private const string CodeBusinessTrip = "Ez"; // ezamiyyət — work trip, no scan but working & paid
     private const string CodeHoliday = "B";     // bayram / admin-declared non-working day
     private const string CodeWeekend = "H";     // həftələrarası istirahət — off per the work-day mask
+    // A rest day somebody GRANTED, as opposed to the calendar's own H. They are different facts: H is
+    // "the roster says this person is not due today", İs is "a manager decided this person is off".
+    // Printing both as H lost the second one entirely — and, worse, an İstirahət for anyone still
+    // inside the onboarding window fell through LeaveCodeFor's default and printed «M», turning a
+    // rest day into a day of annual leave on the timesheet the accountant reconciles.
+    private const string CodeRest = "İs";       // təyin edilmiş istirahət — a granted day off
     private const string CodeFuture = "";       // a day that has not happened yet this month
     // İmport olunub, hələ ilk skanı yoxdur (bax IsStillOnboarding). Qayıb DEYİL: telefon hələ
     // paylanmayıb — bu günlər tabeldə də, maaşda da heç kimin əleyhinə işləmir.
@@ -474,7 +480,8 @@ public sealed class ReportQueryService : IReportQueryService
         new TabelLegendItem(CodePermission, "İcazə"),
         new TabelLegendItem(CodeBusinessTrip, "Ezamiyyət"),
         new TabelLegendItem(CodeHoliday, "Bayram / qeyri-iş günü"),
-        new TabelLegendItem(CodeWeekend, "İstirahət günü"),
+        new TabelLegendItem(CodeWeekend, "Həftəlik istirahət"),
+        new TabelLegendItem(CodeRest, "İstirahət (təyin edilmiş)"),
         new TabelLegendItem(CodeNotActivated, "Aktivləşdirməyib (ilk skana qədər)"),
     };
 
@@ -542,9 +549,23 @@ public sealed class ReportQueryService : IReportQueryService
                 LeaveType.Unpaid => CodeUnpaid,
                 LeaveType.Permission => CodePermission,
                 LeaveType.BusinessTrip => CodeBusinessTrip,
+                // Rest reached this switch through the onboarding branch below and, having no arm of
+                // its own, fell into the default and printed «M» — the owner's complaint, literally:
+                // a rest day became a day of annual leave. Two thirds of every leave ever filed here
+                // is an İstirahət, and 227 people have never scanned, so the two populations meet.
+                LeaveType.Rest => CodeRest,
                 _ => CodeVacation, // OnLeave with no matching row (shouldn't happen) — treat as leave, not absence
             };
         }
+
+        // «H» or «İs»: the calendar's own day off, or one somebody granted. Both are days off and
+        // neither costs pay — the difference is whether a human decided it, which is exactly what the
+        // manager who filed it wants to see again afterwards.
+        string RestCodeFor(Guid employeeId, DateOnly date) =>
+            leaves.Any(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date
+                            && l.Type == LeaveType.Rest)
+                ? CodeRest
+                : CodeWeekend;
 
         // Fast lookup of the computed day per (employee, date).
         var byKey = dayRows.ToDictionary(r => (r.EmployeeId, r.Date));
@@ -587,11 +608,15 @@ public sealed class ReportQueryService : IReportQueryService
                 }
                 if (isOnboarding(e.Id, date))
                 {
-                    // On leave and still onboarding: print the leave and count it as leave. Falls
-                    // through to no summary row (none was written for these days), which the branch
-                    // below would otherwise read from the calendar as absence.
-                    codes[day - 1] = LeaveCodeFor(e.Id, date);
-                    leave++;
+                    // On leave and still onboarding: print the leave. Falls through to no summary row
+                    // (none was written for these days), which the branch below would otherwise read
+                    // from the calendar as absence.
+                    var onboardingCode = LeaveCodeFor(e.Id, date);
+                    codes[day - 1] = onboardingCode;
+                    // A rest day is NOT leave and must not be counted as one — the same rule the
+                    // summary already follows by keeping RestDays out of LeaveDays. Counting it here
+                    // was how one İstirahət became one day of annual leave on the row's total.
+                    if (onboardingCode != CodeRest) leave++;
                     continue;
                 }
 
@@ -606,7 +631,10 @@ public sealed class ReportQueryService : IReportQueryService
                         DailySummaryStatus.Absent => CodeAbsent,
                         DailySummaryStatus.OnLeave => LeaveCodeFor(e.Id, date),
                         DailySummaryStatus.Permission => CodePermission,
-                        DailySummaryStatus.DayOff => CodeWeekend,
+                        // DayOff carries two different facts under one value: the roster's own day
+                        // off, and a rest day a manager granted. Only the leave record can tell them
+                        // apart, and it is right here — so ask it instead of printing both as «H».
+                        DailySummaryStatus.DayOff => RestCodeFor(e.Id, date),
                         _ => CodeAbsent,
                     };
                     workedMinutes += d.WorkedMinutes;
@@ -672,8 +700,11 @@ public sealed class ReportQueryService : IReportQueryService
                 if (h.Date > today) continue;
                 if (h.LocationId is Guid hl && hl != empLoc) continue; // location-specific holiday
                 var idx = h.Date.Day - 1;
-                // Only recolour a rest cell → holiday. Never touch worked time, leave, or an absence:
-                // recolouring an absence would silently drop it from the AbsentDays total computed above.
+                // Only the CALENDAR's own rest cell → holiday. Never worked time, leave or an absence
+                // (recolouring an absence would silently drop it from the AbsentDays total above) —
+                // and deliberately never CodeRest either: a bayram falling on a day somebody was
+                // granted off does not undo the granting, and overwriting it lost the day twice, first
+                // into the weekend and then into the holiday.
                 if (codes[idx] == CodeWeekend)
                     codes[idx] = CodeHoliday;
             }
@@ -877,7 +908,12 @@ public sealed class ReportQueryService : IReportQueryService
             .OrderBy(r => r.Date)
             .Select(r => new EmployeeDayRow(
                 r.Date, r.Status.ToString(), r.CheckInAtUtc, r.CheckOutAtUtc, r.WorkedMinutes, r.LateMinutes,
-                r.Status == DailySummaryStatus.OnLeave ? LeaveTypeFor(r.Date) : null))
+                // Sent for EVERY day a leave record explains, not only the OnLeave ones. İstirahət
+                // resolves to DayOff — the same status an ordinary Sunday carries — so withholding
+                // the type here left every screen downstream unable to tell a granted rest day from
+                // the weekend, and the admin who granted it could not find it again on the card. The
+                // type is the only thing that separates them; it has to travel.
+                LeaveTypeFor(r.Date)))
             .ToList();
         return (ReportAccess.Allowed, days);
     }

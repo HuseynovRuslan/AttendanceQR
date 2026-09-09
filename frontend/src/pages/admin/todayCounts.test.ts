@@ -30,12 +30,27 @@ describe('a work trip is not a holiday', () => {
     expect(c).toMatchObject({ sick: 1, onLeave: 1, trip: 1 })
   })
 
-  it('leaves unpaid and rest leave under Məzuniyyət', () => {
-    // They ARE absences from work; only sick and the trip are told apart, and for different reasons.
-    const c = countToday([row('OnLeave', 'Unpaid'), row('OnLeave', 'Rest'), row('OnLeave', 'Vacation')])
+  it('counts unpaid leave on its own, not as Məzuniyyət', () => {
+    // It used to ride inside «Məzuniyyət» while the dashboard already showed it separately, so the
+    // two admin screens reported different numbers for the same morning — and pressing the card
+    // opened a list of rows badged «Ödənişsiz məzuniyyət».
+    const c = countToday([row('OnLeave', 'Unpaid'), row('OnLeave', 'Vacation')])
 
-    expect(c.onLeave).toBe(3)
-    expect(c.trip).toBe(0)
+    expect(c.unpaid).toBe(1)
+    expect(c.onLeave).toBe(1)
+  })
+
+  it('separates a GRANTED rest day from the calendar weekend', () => {
+    // Both arrive as DayOff — the status cannot tell them apart, only the type can. Merged, every
+    // rest day a manager filed was invisible among two hundred ordinary Sundays.
+    const c = countToday([
+      { status: 'DayOff', leaveType: 'Rest' },
+      { status: 'DayOff' },
+      { status: 'DayOff', leaveType: null as unknown as string },
+    ])
+
+    expect(c.rest).toBe(1)
+    expect(c.dayOff).toBe(2)
   })
 
   it('does not lose a leave whose type is missing', () => {
@@ -179,12 +194,25 @@ describe('bucketOf — Excel eksportunun məftili', () => {
     expect(bucketOf({ status: 'Incomplete' })).toBe('incomplete')
   })
 
-  it('məzuniyyət növlərini ayırır — ezamiyyət iş, xəstəlik ayrı', () => {
+  it('məzuniyyət növlərini ayırır — hər biri öz sütununa', () => {
     expect(bucketOf({ status: 'OnLeave', leaveType: 'BusinessTrip' })).toBe('trip')
     expect(bucketOf({ status: 'OnLeave', leaveType: 'Sick' })).toBe('sick')
+    expect(bucketOf({ status: 'OnLeave', leaveType: 'Unpaid' })).toBe('unpaid')
     expect(bucketOf({ status: 'OnLeave', leaveType: 'Vacation' })).toBe('onLeave')
-    expect(bucketOf({ status: 'OnLeave', leaveType: 'Unpaid' })).toBe('onLeave')
+    // A row whose type never arrived still has to land somewhere; «Məzuniyyət» is the general one.
     expect(bucketOf({ status: 'OnLeave' })).toBe('onLeave')
+    // And the two DayOff facts, which no status can distinguish.
+    expect(bucketOf({ status: 'DayOff', leaveType: 'Rest' })).toBe('rest')
+    expect(bucketOf({ status: 'DayOff' })).toBe('dayOff')
+  })
+
+  it('a leave type on a WORKED day never changes the bucket', () => {
+    // leaveType now travels on every row a leave record covers, worked days included — somebody who
+    // turned up on their own rest day, or during a holiday. Reading it there would file them as
+    // absent while they were standing at the gate.
+    expect(bucketOf({ status: 'OnTime', leaveType: 'Rest' })).toBe('present')
+    expect(bucketOf({ status: 'Late', leaveType: 'Vacation' })).toBe('present')
+    expect(bucketOf({ status: 'Absent', leaveType: 'Sick' })).toBe('absent')
   })
 
   it('sayğac da elə bu funksiyanı işlədir — fayl ilə ekran ayrıla bilmir', () => {

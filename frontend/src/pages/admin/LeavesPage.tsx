@@ -69,9 +69,10 @@ export function LeavesPage() {
     <div>
       <div className="fb" style={{ marginBottom: 16, background: 'var(--c50, #f6f8f4)', color: 'var(--c500)' }}>
         <span>
-          Bu aralıqdakı günlərdə işçi <b>"Qayıb"</b> sayılmır — İstirahət tabeldə istirahət (H) kimi, Məzuniyyət/Xəstəlik/Ödənişsiz
-          "Məzuniyyət", İcazə isə "İcazə" statusu göstərir. Həmin gündə giriş edilsə, yenə normal
-          işlənmiş kimi sayılır.
+          Bu aralıqdakı günlərdə işçi <b>"Qayıb"</b> sayılmır və maaşdan tutulmur. Hər növ öz adı ilə
+          görünür: <b>İstirahət</b> tabeldə <b>İs</b> (həftəlik istirahət isə H), <b>Məzuniyyət</b> M,
+          <b>Xəstəlik</b> X, <b>Ödənişsiz</b> ÖM, <b>Ezamiyyət</b> Ez, <b>İcazə</b> İC. Həmin gündə
+          giriş edilsə, gün yenə normal işlənmiş kimi sayılır.
         </span>
       </div>
 

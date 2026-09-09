@@ -479,6 +479,13 @@ export function EmployeeProfilePage() {
               {summary.tripDays > 0 && (
                 <Stat label="Ezamiyyət" value={summary.tripDays} metric="trip" open={openMetric} onOpen={setOpenMetric} />
               )}
+              {/* A rest day a manager GRANTED. It landed in no tile at all — not İş günü, not Qayıb,
+                  not Məzuniyyət — so somebody filed one and then opened the card to find the month
+                  unchanged. It is not leave and must never join «Məzuniyyət»; the figure was already
+                  on the payload and simply read by nothing. Hidden at zero, like Ezamiyyət. */}
+              {(summary.restDays ?? 0) > 0 && (
+                <Stat label="İstirahət" value={summary.restDays ?? 0} metric="rest" open={openMetric} onOpen={setOpenMetric} />
+              )}
             </div>
             {openMetric && <MetricBreakdown metric={openMetric} days={monthDays} onClose={() => setOpenMetric(null)} />}
           </>
@@ -794,6 +801,10 @@ function daysForMetric(days: EmployeeDay[], metric: string): EmployeeDay[] {
     case 'unpaid': return ofType('Unpaid')
     case 'permission': return days.filter((d) => d.status === 'Permission')
     case 'trip': return ofType('BusinessTrip')
+    // A granted rest resolves to DayOff, not OnLeave — the one leave kind whose days are not found
+    // by `ofType`. Its type now travels on the row, which is the only thing separating it from an
+    // ordinary Sunday.
+    case 'rest': return days.filter((d) => d.status === 'DayOff' && d.leaveType === 'Rest')
     default: return []
   }
 }
@@ -804,7 +815,7 @@ function dayDetail(d: EmployeeDay, metric: string): string {
   if (metric === 'absent') return 'Giriş yoxdur'
   if (metric === 'incomplete') return `Giriş ${ci} · çıxış yoxdur`
   if (metric === 'hours') return `${ci}–${co} · ${(d.workedMinutes / 60).toFixed(1)} saat`
-  if (['leave', 'sick', 'unpaid', 'permission', 'trip'].includes(metric))
+  if (['leave', 'sick', 'unpaid', 'permission', 'trip', 'rest'].includes(metric))
     return leaveVisual(d.leaveType)?.label ?? (d.status === 'Permission' ? 'İcazə' : 'Məzuniyyət')
   return `${ci}–${co}`
 }

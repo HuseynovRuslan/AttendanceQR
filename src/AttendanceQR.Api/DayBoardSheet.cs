@@ -41,10 +41,19 @@ public static class DayBoardSheet
         ("incomplete", "İşdə"),
         ("absent", "Qayıb"),
         ("onLeave", "Məzuniyyət"),
+        // Ödənişsiz məzuniyyət, counted apart. It was inside «Məzuniyyət» while the dashboard already
+        // showed it on its own, so two screens of the same company reported different numbers for one
+        // morning — and the detail sheet said «Ödənişsiz məzuniyyət» on the very rows the summary was
+        // counting as annual leave.
+        ("unpaid", "Ödənişsiz"),
         ("sick", "Xəstəlik"),
         ("trip", "Ezamiyyət"),
         ("permission", "İcazə"),
-        ("dayOff", "İstirahət"),
+        // Two different facts, and the second is the one somebody DID: «Həftəlik istirahət» is the
+        // roster's own day off, «İstirahət (təyin edilmiş)» is a day a manager granted. Summed into
+        // one column, every granted rest day vanished among two hundred ordinary Sundays.
+        ("dayOff", "Həftəlik istirahət"),
+        ("rest", "İstirahət (təyin edilmiş)"),
         ("pending", "Növbəsi başlamayıb"),
         ("onboarding", "Aktivləşdirməyib"),
     ];

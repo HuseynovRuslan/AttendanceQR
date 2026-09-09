@@ -28,7 +28,10 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   // On a PAST day it means a check-out was never recorded (a real problem) — callers viewing a past
   // date should override this via StatusBadge's `override` prop (see TodayPage.tsx).
   Incomplete: { cls: 'b-permitted', label: 'İşdə', icon: 'clock' },
-  DayOff: { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' },
+  // «Həftəlik istirahət», not a bare «İstirahət»: this is the ROSTER's own day off — a Sunday, a
+  // rotation's off-day — and it used to render identically to a rest day a manager granted, which
+  // made the granted one impossible to find again. The granted one is leaveVisual('Rest') below.
+  DayOff: { cls: 'b-sick', label: 'Həftəlik istirahət', icon: 'calendar' },
   OnLeave: { cls: 'b-leave', label: 'Məzuniyyət', icon: 'calendar' },
   Permission: { cls: 'b-permission', label: 'İcazə', icon: 'check' },
   // Board-only: checked in from an ad-hoc field site (no office scan) — present, out in the field.
@@ -37,6 +40,34 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
 
 export function statusLabel(status: string): string {
   return STATUS_MAP[status]?.label ?? status
+}
+
+/**
+ * THE one place a day becomes a word — status plus leave type, together.
+ *
+ * Every screen used to answer this for itself, so «fix it here and it comes back over there» was the
+ * product's normal behaviour: the board read the type, the export did not, the profile had no type to
+ * read at all, and a rest day appeared as «Məzuniyyət» in one place and vanished in another. Reading
+ * the status alone cannot work — four entitlements share `OnLeave`, and `DayOff` covers both the
+ * roster's own day off and one a manager granted. Both distinctions live here, once.
+ *
+ * @param incompleteLabel what «Incomplete» means in THIS context — «İşdə» on today's board, «Çıxış
+ * yoxdur» on a past date. The only thing a caller may still decide.
+ */
+export function dayLabel(status: string, leaveType?: string | null, incompleteLabel?: string): string {
+  if (status === 'Incomplete' && incompleteLabel) return incompleteLabel
+  return dayVisual(status, leaveType)?.label ?? status
+}
+
+/** The same answer as {@link dayLabel}, with the colour — for anything that draws a badge. */
+export function dayVisual(status: string, leaveType?: string | null): StatusVisual | undefined {
+  // A leave type is only ever meaningful for the two statuses a leave record can produce. Anywhere
+  // else it is stale data riding along on a row, and honouring it would badge a worked day as leave.
+  if (status === 'OnLeave' || status === 'DayOff') {
+    const v = leaveVisual(leaveType)
+    if (v) return v
+  }
+  return STATUS_MAP[status]
 }
 
 export type StatusVisual = { cls: string; label: string; icon: 'check' | 'clock' | 'x' | 'calendar' }
@@ -54,7 +85,10 @@ export function leaveVisual(leaveType?: string | null): StatusVisual | undefined
     case 'Unpaid':
       return { cls: 'b-leave', label: 'Ödənişsiz məzuniyyət', icon: 'calendar' }
     case 'Rest':
-      return { cls: 'b-sick', label: 'İstirahət', icon: 'calendar' }
+      // Deliberately distinct from STATUS_MAP.DayOff, which it used to duplicate exactly. A rest day
+      // somebody granted is a decision; a weekend is the calendar. It is still NOT məzuniyyət and
+      // keeps its own colour family, away from the blue leave badges.
+      return { cls: 'b-permitted', label: 'İstirahət (təyin edilmiş)', icon: 'calendar' }
     case 'BusinessTrip':
       return { cls: 'b-trip', label: 'Ezamiyyət', icon: 'calendar' }
     case 'Permission':
