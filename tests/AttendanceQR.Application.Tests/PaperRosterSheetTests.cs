@@ -114,4 +114,29 @@ public class PaperRosterSheetTests
 
         Assert.Contains("bütün qrup", wb.Worksheet("Sənəd üzrə").Cell(1, 1).GetString());
     }
+
+    [Fact]
+    public void A_narrowed_file_prints_the_narrowing()
+    {
+        // The one that matters for a file that leaves the building. An export filtered to one site
+        // and not saying so is the file somebody opens next month and reads as the whole company.
+        var wb = new XLWorkbook(new MemoryStream(PaperRosterSheet.Build(
+            [Person("Kimsə", "Bakı Abadlıq Xidməti", "CleanFix", paperSite: "Zoopark", actualSite: "Bakı Zooloji parkı")],
+            "Bakı Abadlıq Xidməti", onlyElsewhere: true,
+            site: "Bakı Zooloji parkı", paperSite: "Zoopark")));
+        var note = wb.Worksheet("Sənəd üzrə").Cell(2, 1).GetString();
+
+        Assert.Contains("faktiki ərazi: Bakı Zooloji parkı", note);
+        Assert.Contains("sənəd üzrə ərazi: Zoopark", note);
+        Assert.Contains("yalnız başqa şirkətdə", note);
+    }
+
+    [Fact]
+    public void An_unfiltered_file_says_what_it_is_instead_of_an_empty_filter_line()
+    {
+        var wb = new XLWorkbook(new MemoryStream(PaperRosterSheet.Build(
+            [Person("Kimsə", "CleanFix", "CleanFix")], "CleanFix", false)));
+
+        Assert.DoesNotContain("Süzgəc", wb.Worksheet("Sənəd üzrə").Cell(2, 1).GetString());
+    }
 }

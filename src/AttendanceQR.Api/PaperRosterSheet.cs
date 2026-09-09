@@ -35,7 +35,11 @@ public static class PaperRosterSheet
     /// reads it: "of the people on my books, where are they standing". The «Fərq» column is the point
     /// of the file — it is the only place the two answers are printed side by side.
     /// </summary>
-    public static byte[] Build(IReadOnlyList<Row> rows, string? employer, bool onlyElsewhere)
+    /// <param name="site">The chosen ACTUAL site, if any — where these people stand.</param>
+    /// <param name="paperSite">The chosen site the DOCUMENTS name, if any.</param>
+    public static byte[] Build(
+        IReadOnlyList<Row> rows, string? employer, bool onlyElsewhere,
+        string? site = null, string? paperSite = null)
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Sənəd üzrə");
@@ -48,10 +52,17 @@ public static class PaperRosterSheet
         ws.Cell(1, 1).Style.Font.Bold = true;
         ws.Cell(1, 1).Style.Font.FontSize = 14;
 
-        // Says out loud what the file is, so nobody reads it as an attendance report. It is a roster:
-        // who belongs to whom on paper, and where they actually stand.
-        ws.Cell(2, 1).Value = onlyElsewhere
-            ? "Yalnız sənədi başqa şirkəti göstərən işçilər. Davamiyyət deyil — kadr siyahısıdır."
+        // Says out loud what the file is, so nobody reads it as an attendance report — it is a roster:
+        // who belongs to whom on paper, and where they actually stand. And it names its own filter,
+        // because a narrowed export that hides the narrowing is the file somebody later reads as the
+        // whole company.
+        var scope = new List<string>();
+        if (!string.IsNullOrWhiteSpace(site)) scope.Add($"faktiki ərazi: {site}");
+        if (!string.IsNullOrWhiteSpace(paperSite)) scope.Add($"sənəd üzrə ərazi: {paperSite}");
+        if (onlyElsewhere) scope.Add("yalnız başqa şirkətdə işləyənlər");
+
+        ws.Cell(2, 1).Value = scope.Count > 0
+            ? $"Süzgəc — {string.Join("; ", scope)}. Davamiyyət deyil — kadr siyahısıdır."
             : "Sənədə görə bu şirkətin işçiləri, faktiki iş yerləri ilə birlikdə. Davamiyyət deyil — kadr siyahısıdır.";
         ws.Range(2, 1, 2, cols).Merge();
         ws.Cell(2, 1).Style.Font.Italic = true;

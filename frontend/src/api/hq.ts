@@ -173,31 +173,54 @@ export interface PaperEmployerCount {
   elsewhere: number
 }
 
+export interface PaperSiteCount {
+  name: string
+  total: number
+}
+
 export interface PaperRoster {
   employers: PaperEmployerCount[]
   employer: string | null
+  site: string | null
+  paperSite: string | null
+  /** Where these people actually stand, narrowed to the chosen employer. */
+  sites: PaperSiteCount[]
+  /** What their documents name — short by design, and empty until somebody fills a card in. */
+  paperSites: PaperSiteCount[]
   rows: PaperPerson[]
+}
+
+/** The two site filters, kept apart on purpose: «ərazi» is ambiguous here and the ambiguity changes
+ *  the answer — `site` is where somebody stands, `paperSite` is what their documents say. */
+export interface PaperRosterFilter {
+  employer?: string
+  site?: string
+  paperSite?: string
+  onlyElsewhere?: boolean
+}
+
+function paperQuery(f: PaperRosterFilter): string {
+  const q = new URLSearchParams()
+  if (f.employer) q.set('employer', f.employer)
+  if (f.site) q.set('site', f.site)
+  if (f.paperSite) q.set('paperSite', f.paperSite)
+  if (f.onlyElsewhere) q.set('onlyElsewhere', 'true')
+  return q.toString()
 }
 
 /** GET /api/super/hq/paper-roster — the roster BY PAPER, across every company at once.
  *  A tenant panel cannot answer this: a person on one company's books may sit in another company's
  *  data, and no panel may read across that wall. This is the one place that can. */
-export function getPaperRoster(employer?: string, onlyElsewhere = false) {
-  const q = new URLSearchParams()
-  if (employer) q.set('employer', employer)
-  if (onlyElsewhere) q.set('onlyElsewhere', 'true')
-  const qs = q.toString()
+export function getPaperRoster(filter: PaperRosterFilter = {}) {
+  const qs = paperQuery(filter)
   return apiRequest<PaperRoster>(`/api/super/hq/paper-roster${qs ? `?${qs}` : ''}`)
 }
 
 /** The same rows as a formatted .xlsx — what the accountant asks for when one legal entity pays
  *  people standing at three different companies' sites. */
-export async function downloadPaperRoster(employer?: string, onlyElsewhere = false): Promise<void> {
-  const q = new URLSearchParams()
-  if (employer) q.set('employer', employer)
-  if (onlyElsewhere) q.set('onlyElsewhere', 'true')
+export async function downloadPaperRoster(filter: PaperRosterFilter = {}): Promise<void> {
   const token = getToken()
-  const res = await fetch(`${API_BASE_URL}/api/super/hq/paper-roster/export?${q}`, {
+  const res = await fetch(`${API_BASE_URL}/api/super/hq/paper-roster/export?${paperQuery(filter)}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!res.ok) throw new Error(`export failed: ${res.status}`)
@@ -205,7 +228,7 @@ export async function downloadPaperRoster(employer?: string, onlyElsewhere = fal
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `sened-uzre_${(employer || 'qrup').replace(/[^\w-]+/g, '-').toLowerCase()}.xlsx`
+  a.download = `sened-uzre_${(filter.employer || 'qrup').replace(/[^\w-]+/g, '-').toLowerCase()}.xlsx`
   document.body.appendChild(a)
   a.click()
   a.remove()

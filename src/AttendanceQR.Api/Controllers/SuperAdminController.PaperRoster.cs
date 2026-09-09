@@ -88,19 +88,30 @@ public partial class SuperAdminController
             .ToList();
     }
 
-    // GET /api/super/hq/paper-roster?employer=&onlyElsewhere=&includeInactive=
+    // GET /api/super/hq/paper-roster?employer=&site=&paperSite=&onlyElsewhere=&includeInactive=
     //
     // Without `employer` it returns the whole group so the console can list who exists and how many
     // each employer carries; with one, just that employer's people.
+    //
+    // TWO site filters, deliberately not one. «Ərazi» is ambiguous on this screen and the ambiguity
+    // changes the answer: `site` is where the person actually stands (who is at Zoopark today),
+    // `paperSite` is what their documents name (who does Nərimanov Ofis carry on its books). Merging
+    // them into a single box would silently answer whichever question the code happened to pick.
     [HttpGet("hq/paper-roster")]
     public async Task<IActionResult> PaperRoster(
-        string? employer = null, bool onlyElsewhere = false, bool includeInactive = false)
+        string? employer = null, string? site = null, string? paperSite = null,
+        bool onlyElsewhere = false, bool includeInactive = false)
     {
         if (!IsSuperAdmin)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
 
         var all = await PaperRosterAsync(HttpContext.RequestAborted);
-        var rows = Filter(all, employer, onlyElsewhere, includeInactive);
+        var rows = Filter(all, employer, site, paperSite, onlyElsewhere, includeInactive);
+
+        // The site lists are narrowed by the CHOSEN employer, not by the whole group: offering every
+        // site in five companies under a picker that has already been narrowed to one is how a filter
+        // starts returning nothing and looking broken.
+        var forSites = Filter(all, employer, null, null, onlyElsewhere, includeInactive);
 
         return Ok(new
         {
@@ -118,6 +129,23 @@ public partial class SuperAdminController
                 .OrderByDescending(x => x.total)
                 .ToList(),
             employer,
+            site,
+            paperSite,
+            // Only sites that actually have somebody, with their headcount — a picker whose options
+            // can all return zero is one people stop trusting.
+            sites = forSites
+                .GroupBy(p => p.ActualSite)
+                .Select(g => new { name = g.Key, total = g.Count() })
+                .OrderByDescending(x => x.total).ThenBy(x => x.name)
+                .ToList(),
+            // Only the ones somebody actually wrote — this list is short by design and empty until a
+            // manager fills a card in, which is itself worth seeing.
+            paperSites = forSites
+                .Where(p => !string.IsNullOrWhiteSpace(p.PaperSite))
+                .GroupBy(p => p.PaperSite!)
+                .Select(g => new { name = g.Key, total = g.Count() })
+                .OrderByDescending(x => x.total).ThenBy(x => x.name)
+                .ToList(),
             rows = rows.Select(p => new
             {
                 id = p.Id,
@@ -137,17 +165,20 @@ public partial class SuperAdminController
     // GET /api/super/hq/paper-roster/export — the same rows as a formatted .xlsx.
     [HttpGet("hq/paper-roster/export")]
     public async Task<IActionResult> PaperRosterExport(
-        string? employer = null, bool onlyElsewhere = false, bool includeInactive = false)
+        string? employer = null, string? site = null, string? paperSite = null,
+        bool onlyElsewhere = false, bool includeInactive = false)
     {
         if (!IsSuperAdmin)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotSuperAdmin" });
 
-        var rows = Filter(await PaperRosterAsync(HttpContext.RequestAborted), employer, onlyElsewhere, includeInactive);
+        var rows = Filter(
+            await PaperRosterAsync(HttpContext.RequestAborted),
+            employer, site, paperSite, onlyElsewhere, includeInactive);
         var bytes = PaperRosterSheet.Build(
             rows.Select(p => new PaperRosterSheet.Row(
                 p.FullName, p.Position, p.PaperEmployer, p.PaperSite,
                 p.ActualCompany, p.ActualSite, p.PhoneNumber, p.IsActive, p.Elsewhere)).ToList(),
-            employer, onlyElsewhere);
+            employer, onlyElsewhere, site, paperSite);
 
         var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd");
         var name = string.IsNullOrWhiteSpace(employer) ? "qrup" : Slugify(employer);
@@ -158,12 +189,17 @@ public partial class SuperAdminController
     }
 
     private static List<PaperPerson> Filter(
-        List<PaperPerson> all, string? employer, bool onlyElsewhere, bool includeInactive)
+        List<PaperPerson> all, string? employer, string? site, string? paperSite,
+        bool onlyElsewhere, bool includeInactive)
     {
         IEnumerable<PaperPerson> q = all;
         if (!includeInactive) q = q.Where(p => p.IsActive);
         if (!string.IsNullOrWhiteSpace(employer))
             q = q.Where(p => string.Equals(p.PaperEmployer, employer, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(site))
+            q = q.Where(p => string.Equals(p.ActualSite, site, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(paperSite))
+            q = q.Where(p => string.Equals(p.PaperSite, paperSite, StringComparison.OrdinalIgnoreCase));
         if (onlyElsewhere) q = q.Where(p => p.Elsewhere);
         return q.OrderBy(p => p.ActualCompany).ThenBy(p => p.ActualSite).ThenBy(p => p.FullName).ToList();
     }

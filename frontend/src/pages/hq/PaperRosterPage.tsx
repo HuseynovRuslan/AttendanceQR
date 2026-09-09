@@ -4,6 +4,7 @@ import {
   getPaperRoster,
   type PaperEmployerCount,
   type PaperPerson,
+  type PaperSiteCount,
 } from '../../api/hq'
 
 /**
@@ -20,6 +21,12 @@ import {
 export function PaperRosterPage() {
   const [employers, setEmployers] = useState<PaperEmployerCount[]>([])
   const [employer, setEmployer] = useState<string>('')
+  // Two site filters, kept apart because «ərazi» is ambiguous on this screen and the ambiguity
+  // changes the answer: one asks where somebody stands, the other what their documents say.
+  const [site, setSite] = useState<string>('')
+  const [paperSite, setPaperSite] = useState<string>('')
+  const [sites, setSites] = useState<PaperSiteCount[]>([])
+  const [paperSites, setPaperSites] = useState<PaperSiteCount[]>([])
   const [onlyElsewhere, setOnlyElsewhere] = useState(false)
   const [rows, setRows] = useState<PaperPerson[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,14 +36,21 @@ export function PaperRosterPage() {
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employer, onlyElsewhere])
+  }, [employer, site, paperSite, onlyElsewhere])
 
   async function load() {
     setLoading(true)
     setErr(null)
-    const res = await getPaperRoster(employer || undefined, onlyElsewhere)
+    const res = await getPaperRoster({
+      employer: employer || undefined,
+      site: site || undefined,
+      paperSite: paperSite || undefined,
+      onlyElsewhere,
+    })
     if (res.status === 200 && res.data) {
       setEmployers(res.data.employers)
+      setSites(res.data.sites)
+      setPaperSites(res.data.paperSites)
       setRows(res.data.rows)
     } else {
       setErr('Siyahı gəlmədi')
@@ -47,7 +61,12 @@ export function PaperRosterPage() {
   async function onExport() {
     setBusy(true)
     try {
-      await downloadPaperRoster(employer || undefined, onlyElsewhere)
+      await downloadPaperRoster({
+        employer: employer || undefined,
+        site: site || undefined,
+        paperSite: paperSite || undefined,
+        onlyElsewhere,
+      })
     } catch {
       setErr('Fayl yüklənmədi')
     }
@@ -79,7 +98,18 @@ export function PaperRosterPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select className="inp" style={{ width: 'auto' }} value={employer} onChange={(e) => setEmployer(e.target.value)}>
+        <select
+          className="inp"
+          style={{ width: 'auto' }}
+          value={employer}
+          onChange={(e) => {
+            // Clear the sites with it: a site chosen under the previous employer usually has nobody
+            // under the new one, and an empty list reads as a broken screen rather than a stale filter.
+            setSite('')
+            setPaperSite('')
+            setEmployer(e.target.value)
+          }}
+        >
           <option value="">Bütün qrup</option>
           {employers.map((x) => (
             <option key={x.name} value={x.name}>
@@ -87,6 +117,24 @@ export function PaperRosterPage() {
             </option>
           ))}
         </select>
+
+        <select className="inp" style={{ width: 'auto' }} value={site} onChange={(e) => setSite(e.target.value)}>
+          <option value="">Faktiki ərazi — hamısı</option>
+          {sites.map((x) => (
+            <option key={x.name} value={x.name}>{x.name} — {x.total}</option>
+          ))}
+        </select>
+
+        {/* Only offered once somebody has actually written one; an empty picker beside a full one
+            teaches the reader that the screen is broken rather than that the field is unfilled. */}
+        {paperSites.length > 0 && (
+          <select className="inp" style={{ width: 'auto' }} value={paperSite} onChange={(e) => setPaperSite(e.target.value)}>
+            <option value="">Sənəd üzrə ərazi — hamısı</option>
+            {paperSites.map((x) => (
+              <option key={x.name} value={x.name}>{x.name} — {x.total}</option>
+            ))}
+          </select>
+        )}
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600 }}>
           <input type="checkbox" checked={onlyElsewhere} onChange={(e) => setOnlyElsewhere(e.target.checked)} />
@@ -114,10 +162,12 @@ export function PaperRosterPage() {
           Bu şərtlərə uyğun işçi yoxdur.
         </div>
       ) : (
-        groups.map(([site, people]) => (
-          <div key={site}>
+        // `group`, not `site` — the state variable of that name is the FILTER, and shadowing it here
+        // would let a later edit read the group heading as the chosen filter without a type error.
+        groups.map(([group, people]) => (
+          <div key={group}>
             <div style={{ fontWeight: 800, margin: '6px 0 6px' }}>
-              {site} <span className="muted" style={{ fontWeight: 600 }}>· {people.length}</span>
+              {group} <span className="muted" style={{ fontWeight: 600 }}>· {people.length}</span>
             </div>
             <div className="tbl-wrap">
               <table>
