@@ -10,6 +10,17 @@ interface Totals {
   incompleteDays: number
   totalWorkedHours: number
   overtimeHours: number
+  // The days somebody decided FOR this person. They were on the payload all along and shown
+  // nowhere: a worker whose manager filed a rest day, a holiday or a sick day could not see it on
+  // any screen of their own, while the same day was visible to every admin. The one absence figure
+  // they did get was the red «Qayıb» — so the app told them what they were blamed for and not what
+  // they were granted, and «niyə qayıb yazılıb?» had no answer they could check themselves.
+  vacationDays?: number
+  sickDays?: number
+  unpaidDays?: number
+  restDays?: number
+  tripDays?: number
+  permissionDays?: number
 }
 
 function ymd(d: Date): string {
@@ -65,6 +76,21 @@ export function StatsPage() {
         </div>
       )}
 
+      {/* Each kind by its own name, and only when there is one — a wall of zeroes is a screen people
+          stop reading. İstirahət is deliberately NOT folded into «Məzuniyyət»: a rest day is a day
+          off, an annual leave day comes off a yearly entitlement, and telling a worker they took
+          holiday when they were given a rest day is the same confusion the admin screens had. */}
+      {totals && leaveChips(totals).length > 0 && (
+        <div>
+          <div className="mb-2 text-xs font-semibold text-slate-500">Bu ay qeyd olunub</div>
+          <div className="grid grid-cols-2 gap-3">
+            {leaveChips(totals).map((c) => (
+              <Chip key={c.label} label={c.label} value={c.value} tone="slate" />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* The cost of forgetting to scan out, in the employee's own numbers: those days added zero
           hours. Shown only when it is actually happening — no nagging otherwise. */}
       {totals && totals.incompleteDays > 0 && (
@@ -104,6 +130,18 @@ function Kpi({ tone, label, value, unit }: { tone: 'blue' | 'green'; label: stri
       <div className="mt-1 text-sm opacity-90">{unit}</div>
     </div>
   )
+}
+
+/** The month's granted days, in the order somebody would read them, zeroes dropped. */
+function leaveChips(t: Totals): { label: string; value: number }[] {
+  return [
+    { label: 'Məzuniyyət', value: t.vacationDays ?? 0 },
+    { label: 'Xəstəlik', value: t.sickDays ?? 0 },
+    { label: 'Ödənişsiz', value: t.unpaidDays ?? 0 },
+    { label: 'İstirahət', value: t.restDays ?? 0 },
+    { label: 'Ezamiyyət', value: t.tripDays ?? 0 },
+    { label: 'İcazə', value: t.permissionDays ?? 0 },
+  ].filter((c) => c.value > 0)
 }
 
 function Chip({ label, value, tone }: { label: string; value: number; tone: 'amber' | 'red' | 'slate' }) {
