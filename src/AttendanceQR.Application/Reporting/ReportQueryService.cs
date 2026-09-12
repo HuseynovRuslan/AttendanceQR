@@ -368,7 +368,7 @@ public sealed class ReportQueryService : IReportQueryService
                 foreach (var extra in blocks.Skip(1))
                 {
                     if (extra.CheckInAtUtc is DateTime bIn && extra.CheckOutAtUtc is DateTime bOut)
-                        extraSpans.Add(new AttendanceCalculator.WorkSpan(bIn, bOut));
+                        extraSpans.Add(new AttendanceCalculator.WorkSpan(bIn, bOut, RosteredReturn: true));
                     else
                     {
                         anyExtraOpen = true;

@@ -9,9 +9,10 @@ namespace AttendanceQR.Application.Tests;
 ///
 /// The arithmetic itself is <see cref="AttendanceCalculator.WorkedMinutesAcross"/>'s and is tested
 /// there; what these pin is that a split day is handed to it as SEPARATE stretches rather than as one
-/// span from the first arrival to the last departure. The difference is the eleven hours the crew
-/// spends at home between washing an area in the morning and coming back at ten at night — measured
-/// end-to-end, the day would pay for them.
+/// span from the first arrival to the last departure, and that the later stretch is flagged as a
+/// rostered return. The difference is the eleven hours the crew spends at home between washing an
+/// area in the morning and coming back at ten at night — measured end-to-end the day would pay for
+/// all of them, and unflagged it would still pay an hour of them as travel.
 /// </summary>
 public class SplitShiftDayShapeTests
 {
@@ -26,25 +27,40 @@ public class SplitShiftDayShapeTests
     };
 
     [Fact]
-    public void The_eleven_hours_at_home_are_not_paid_except_for_the_travel_cap()
+    public void The_eleven_hours_at_home_are_not_paid_at_all()
     {
         // 07:00–11:00 and 22:00–07:00 the next morning: four hours plus nine — NOT the twenty-four
         // between the first arrival and the last departure, which is the failure this whole path
         // exists to avoid.
         //
-        // Plus one hour. The gap rule was written for a crew hopping between two of the company's own
-        // sites, and it pays any gap up to TravelGapCapMinutes rather than dropping it, deliberately,
-        // to avoid a cliff at fifty-nine minutes. An eleven-hour gap is not travel — they went home —
-        // so the cap is credited to a day that did not earn it, once per double day, per person.
-        //
-        // Pinned here as the CURRENT rule rather than silently corrected: changing it moves the
-        // figure for every field-visit day in the product, which is a decision for the owner and not
-        // a detail of this feature.
-        var night = new[] { new AttendanceCalculator.WorkSpan(At(22), At(7, 0, 1)) };
+        // And exactly thirteen. The gap rule pays a gap up to TravelGapCapMinutes because a crew sent
+        // from one of the company's sites to another is working while they drive; a rostered return is
+        // the other thing entirely — they went home, and the owner's ruling is that the road home is
+        // their own. Hence RosteredReturn on the span rather than a limit on how long a gap may be:
+        // the flag says WHAT the stretch is, and only the loaders that read a second attendance block
+        // set it.
+        var night = new[] { new AttendanceCalculator.WorkSpan(At(22), At(7, 0, 1), RosteredReturn: true) };
 
         var minutes = AttendanceCalculator.MergedWorkedMinutes(Morning(), night, anyExtraOpen: false);
 
-        Assert.Equal(((4 + 9) * 60) + AttendanceCalculator.TravelGapCapMinutes, minutes);
+        Assert.Equal((4 + 9) * 60, minutes);
+    }
+
+    [Fact]
+    public void A_field_visit_between_the_stretches_is_still_paid_its_travel()
+    {
+        // The flag is per-stretch, not per-day: a double day with a dispatched visit in the middle
+        // pays the drive TO the visit and nothing for the evening at home. Told apart by what each
+        // stretch is — which is the whole reason this is a flag and not a rule about long gaps.
+        var rest = new[]
+        {
+            new AttendanceCalculator.WorkSpan(At(12), At(13)),                          // a site visit
+            new AttendanceCalculator.WorkSpan(At(22), At(7, 0, 1), RosteredReturn: true),
+        };
+
+        var minutes = AttendanceCalculator.MergedWorkedMinutes(Morning(), rest, anyExtraOpen: false);
+
+        Assert.Equal((4 * 60) + AttendanceCalculator.TravelGapCapMinutes + 60 + (9 * 60), minutes);
     }
 
     [Fact]
@@ -61,13 +77,22 @@ public class SplitShiftDayShapeTests
     }
 
     [Fact]
-    public void A_gap_longer_than_the_cap_pays_only_the_cap()
+    public void Only_the_gap_before_a_rostered_return_goes_unpaid()
     {
-        var night = new[] { new AttendanceCalculator.WorkSpan(At(22), At(23)) };
+        // Same eleven hours, same two stretches — the ONLY difference is the flag. Left unset, this is
+        // a crew still out on the road and the cap applies as it always has; set, it is a crew that
+        // went home. If these two ever agree, the distinction has been lost and every split day is
+        // quietly paying an extra hour again.
+        var asTravel = new[] { new AttendanceCalculator.WorkSpan(At(22), At(23)) };
+        var asReturn = new[] { new AttendanceCalculator.WorkSpan(At(22), At(23), RosteredReturn: true) };
 
-        var minutes = AttendanceCalculator.MergedWorkedMinutes(Morning(), night, anyExtraOpen: false);
+        Assert.Equal(
+            (4 * 60) + AttendanceCalculator.TravelGapCapMinutes + 60,
+            AttendanceCalculator.MergedWorkedMinutes(Morning(), asTravel, anyExtraOpen: false));
 
-        Assert.Equal((4 * 60) + AttendanceCalculator.TravelGapCapMinutes + 60, minutes);
+        Assert.Equal(
+            (4 * 60) + 60,
+            AttendanceCalculator.MergedWorkedMinutes(Morning(), asReturn, anyExtraOpen: false));
     }
 
     [Fact]

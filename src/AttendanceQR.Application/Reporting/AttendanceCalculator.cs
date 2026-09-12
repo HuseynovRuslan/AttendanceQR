@@ -130,8 +130,25 @@ public static class AttendanceCalculator
         return date <= activatedLocal.AddDays(graceDays);
     }
 
-    /// <summary>One continuous stretch of presence — an office scan pair, or one field visit.</summary>
-    public readonly record struct WorkSpan(DateTime StartUtc, DateTime EndUtc);
+    /// <summary>
+    /// One continuous stretch of presence — an office scan pair, or one field visit.
+    /// </summary>
+    /// <param name="RosteredReturn">
+    /// True when this stretch is a LATER block of a day the roster splits in two: the person finished,
+    /// went home, and came back for a second rostered stretch.
+    ///
+    /// It exists to answer one question — is the gap BEFORE this stretch paid? For a field visit the
+    /// answer is yes up to the travel cap, because a worker sent from one of the company's sites to
+    /// another is working while they drive. For a rostered return the answer is no: the crew that
+    /// washes an area until eleven and comes back at ten at night spent those eleven hours at home,
+    /// and the cap — being a cap rather than a cut-off — was quietly crediting an hour of them.
+    ///
+    /// Told apart by WHAT THEY ARE rather than by how long the gap is, deliberately. A duration
+    /// threshold looked simpler and was wrong: three-hour gaps between dispatched visits are an
+    /// ordinary day for a field crew and are paid on purpose, so any threshold low enough to catch
+    /// the eleven-hour one also took money from them.
+    /// </param>
+    public readonly record struct WorkSpan(DateTime StartUtc, DateTime EndUtc, bool RosteredReturn = false);
 
     /// <summary>
     /// How much of a gap BETWEEN two stretches of presence counts as paid travel.
@@ -150,6 +167,8 @@ public static class AttendanceCalculator
     /// more), this is the single place it is read from.
     /// </summary>
     public const int TravelGapCapMinutes = 60;
+
+
 
     /// <summary>
     /// Total worked minutes across every stretch of presence in one day: overlapping stretches are
@@ -185,7 +204,10 @@ public static class AttendanceCalculator
             }
 
             total += (currentEnd - currentStart).TotalMinutes;
-            total += Math.Min((span.StartUtc - currentEnd).TotalMinutes, travelGapCapMinutes);
+            // The gap. Paid as travel up to the cap between stretches of one working day — but not a
+            // minute of it when the next stretch is a rostered return, because the person was at home.
+            if (!span.RosteredReturn)
+                total += Math.Min((span.StartUtc - currentEnd).TotalMinutes, travelGapCapMinutes);
             currentStart = span.StartUtc;
             currentEnd = span.EndUtc;
         }
