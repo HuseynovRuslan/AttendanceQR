@@ -177,8 +177,20 @@ public class ManagerController : ControllerBase
             {
                 id = sc.Id,
                 name = sc.Name,
+                locationId = sc.LocationId,
+                // Resolved here rather than left to the screen: without it every shift read «bütün
+                // şirkət» on the manager's list — including the ones pinned to their own branch — and
+                // a manager comparing two branches' rotas was told they were all the same shift.
+                locationName = _db.Locations.Where(l => l.Id == sc.LocationId).Select(l => l.Name).FirstOrDefault(),
                 shiftStart = sc.ShiftStart.ToString("HH:mm"),
                 shiftEnd = sc.ShiftEnd.ToString("HH:mm"),
+                // The second stretch of a split day. The manager cannot SET it — that stays with the
+                // admin — but they must be able to SEE it: this is the screen the «əlavə qüvvə» crew's
+                // shift is read from, and without these the 22:00–07:00 half is invisible, so the
+                // shift reads as an ordinary morning that ends at eleven.
+                secondShiftStart = sc.SecondShiftStart != null ? sc.SecondShiftStart.Value.ToString("HH:mm") : null,
+                secondShiftEnd = sc.SecondShiftEnd != null ? sc.SecondShiftEnd.Value.ToString("HH:mm") : null,
+                isSplit = sc.SecondShiftStart != null && sc.SecondShiftEnd != null,
                 lateThresholdMinutes = sc.LateThresholdMinutes,
                 workDaysMask = sc.WorkDaysMask,
                 workCycleDays = sc.WorkCycleDays,
@@ -196,7 +208,9 @@ public class ManagerController : ControllerBase
         // admin set.
         var shaped = rows.Select(r => new
         {
-            r.id, r.name, r.shiftStart, r.shiftEnd, r.lateThresholdMinutes, r.workDaysMask,
+            r.id, r.name, r.locationId, r.locationName, r.shiftStart, r.shiftEnd,
+            r.secondShiftStart, r.secondShiftEnd, r.isSplit,
+            r.lateThresholdMinutes, r.workDaysMask,
             r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor, r.isOvernight,
             dayHours = DayHours.Parse(r.dayHoursSpec).ToDictionary(
                 kv => ((int)kv.Key).ToString(),

@@ -494,6 +494,14 @@ export function SchedulesPage() {
                       </td>
                       <td data-label="Saatlar">
                         {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
+                        {/* A split day's second stretch. Shown on its own line rather than appended:
+                            the two are hours apart with the crew at home in between, and «07:00–11:00
+                            + 22:00–07:00» read as one run of sixteen hours to everybody who saw it. */}
+                        {s.isSplit && (
+                          <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
+                            + {s.secondShiftStart}–{s.secondShiftEnd} 🌙
+                          </div>
+                        )}
                       </td>
                       <td data-label="Günlər">{daysLabel(s)}</td>
                       <td data-label="İşçi">
