@@ -360,6 +360,9 @@ public sealed class ReportQueryService : IReportQueryService
             // and tonight's stored row will disagree about the same day.
             var extraSpans = new List<AttendanceCalculator.WorkSpan>(fv.Spans ?? []);
             var anyExtraOpen = fv.AnyOpen;
+            // Tracked apart from the field flag: a LATER office block still running means the person
+            // is at work right now, and the board has to say so.
+            var laterBlockOpen = false;
             if (blocksByEmployee.TryGetValue(e.Id, out var blocks) && blocks.Count > 1)
             {
                 foreach (var extra in blocks.Skip(1))
@@ -367,12 +370,23 @@ public sealed class ReportQueryService : IReportQueryService
                     if (extra.CheckInAtUtc is DateTime bIn && extra.CheckOutAtUtc is DateTime bOut)
                         extraSpans.Add(new AttendanceCalculator.WorkSpan(bIn, bOut));
                     else
+                    {
                         anyExtraOpen = true;
+                        laterBlockOpen = true;
+                    }
                 }
             }
             var merged = AttendanceCalculator.MergedWorkedMinutes(record, extraSpans, anyExtraOpen);
             if (merged is int minutes)
                 c = c with { WorkedMinutes = minutes };
+
+            // Somebody in the middle of their night is AT WORK, whatever the morning block says.
+            // The status is computed from the FIRST stretch — which on a split day is closed by
+            // eleven in the morning — so without this the board announced «Tamamlayıb» over a man
+            // who was out washing a road at two in the morning. Worked minutes stay as merged: an
+            // unfinished stretch contributes nothing until it is closed, exactly as on any other day.
+            if (laterBlockOpen)
+                c = c with { Status = DailySummaryStatus.Incomplete };
 
             var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;
             var dayBlocks = blocksByEmployee.GetValueOrDefault(e.Id);
