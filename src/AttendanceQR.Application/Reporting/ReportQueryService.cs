@@ -139,7 +139,13 @@ public sealed class ReportQueryService : IReportQueryService
         double? FieldLat = null, double? FieldLng = null,
         // The visit behind that arrival, so a row on a board can open the visit itself — its map,
         // its selfies, its checklist — rather than only saying that one happened.
-        Guid? FieldVisitId = null);
+        Guid? FieldVisitId = null,
+        // A day worked in TWO stretches: how many there were, and when the LAST one ended. The board
+        // shows the first arrival and this departure, so a split day reads «07:00 → 07:00» with a
+        // «2 blok» mark instead of «07:00 → 11:00», which would look like the night was never
+        // recorded — the exact thing the feature was built to stop.
+        int BlockCount = 1,
+        DateTime? LastCheckOutAtUtc = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -218,10 +224,18 @@ public sealed class ReportQueryService : IReportQueryService
         // the evidence behind the disciplinary action — but every computation of what a day WAS has
         // to skip it, or the fraudulent scan keeps paying for itself. Filtered at the load, in both
         // the nightly path and the live one, so the stored summary and today's board agree.
-        var records = await _db.AttendanceRecords
+        // Grouped, not keyed — the same change as in DailySummaryService, and for the same reason: a
+        // day is no longer guaranteed to be one row. The FIRST block is the day's record (arrival,
+        // selfie, lateness all belong to it); the rest are folded in as extra spans below, so the
+        // board and the nightly job add a split day up identically.
+        var recordRows = await _db.AttendanceRecords
             .Where(r => r.VoidedAtUtc == null)
             .Where(r => r.AttendanceDate == date && employeeIds.Contains(r.EmployeeId))
-            .ToDictionaryAsync(r => r.EmployeeId, ct);
+            .ToListAsync(ct);
+        var blocksByEmployee = recordRows
+            .GroupBy(r => r.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CheckInAtUtc ?? DateTime.MaxValue).ToList());
+        var records = blocksByEmployee.ToDictionary(kv => kv.Key, kv => kv.Value[0]);
 
         // Field visits for the same day. Loaded HERE, once, because every consumer of this method
         // needs them: the board labels such a day "Sahədə", and the reports/tabel must count it as
@@ -340,13 +354,31 @@ public sealed class ReportQueryService : IReportQueryService
             // Minutes across BOTH halves — the same shared decision the nightly job makes, so the
             // board and the stored summary can never disagree. Status, lateness and overtime stay as
             // resolved above: only the office half has an hour it was due at.
-            var merged = AttendanceCalculator.MergedWorkedMinutes(record, fv.Spans ?? new List<AttendanceCalculator.WorkSpan>(), fv.AnyOpen);
+            // Field visits AND the day's further office blocks — one list, one answer. See the
+            // matching block in DailySummaryService; the two must agree to the minute or the board
+            // and tonight's stored row will disagree about the same day.
+            var extraSpans = new List<AttendanceCalculator.WorkSpan>(fv.Spans ?? []);
+            var anyExtraOpen = fv.AnyOpen;
+            if (blocksByEmployee.TryGetValue(e.Id, out var blocks) && blocks.Count > 1)
+            {
+                foreach (var extra in blocks.Skip(1))
+                {
+                    if (extra.CheckInAtUtc is DateTime bIn && extra.CheckOutAtUtc is DateTime bOut)
+                        extraSpans.Add(new AttendanceCalculator.WorkSpan(bIn, bOut));
+                    else
+                        anyExtraOpen = true;
+                }
+            }
+            var merged = AttendanceCalculator.MergedWorkedMinutes(record, extraSpans, anyExtraOpen);
             if (merged is int minutes)
                 c = c with { WorkedMinutes = minutes };
 
             var manualBy = record?.ManualByEmployeeId is Guid mby ? manualByNames.GetValueOrDefault(mby) : null;
+            var dayBlocks = blocksByEmployee.GetValueOrDefault(e.Id);
             rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy,
-                fv.In, fv.Out, fv.Lat, fv.Lng, fv.Id));
+                fv.In, fv.Out, fv.Lat, fv.Lng, fv.Id,
+                dayBlocks?.Count ?? (record is null ? 0 : 1),
+                dayBlocks is { Count: > 1 } ? dayBlocks[^1].CheckOutAtUtc : record?.CheckOutAtUtc));
         }
 
         return rows;
@@ -1125,7 +1157,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Employee.CanShareDevice,
                     d.FieldVisitId,
                     markedAbsent.Contains(d.Employee.Id) ? markedBy.GetValueOrDefault(d.Employee.Id) ?? "—" : null,
-                    d.Employee.PaperEmployer, d.Employee.PaperSite);
+                    d.Employee.PaperEmployer, d.Employee.PaperSite,
+                    d.BlockCount, d.LastCheckOutAtUtc);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

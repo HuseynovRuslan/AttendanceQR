@@ -70,6 +70,23 @@ public class Schedule : ITenantScoped, IHasWorkCycle
     /// </summary>
     public string? DayHours { get; set; }
 
+    /// <summary>
+    /// The SECOND block of a day that is worked in two stretches — «əlavə qüvvə» washing an area from
+    /// 07:00 to 11:00, going home, and coming back at 22:00 until 07:00 the next morning.
+    ///
+    /// Null on every ordinary shift, and that is what makes this safe: a day with no second window can
+    /// never open a second block, so the scan path for everybody else is byte-for-byte what it was.
+    /// The pair is all-or-nothing — one without the other describes nothing and is treated as absent.
+    ///
+    /// It lives on the SHIFT rather than on the employee because a crew is moved onto a double day as a
+    /// crew, for a date, through a «növbə əvəzləməsi». That also dates it for free: the ordinary days
+    /// on either side keep the ordinary shift and are never re-judged, which is the failure that
+    /// produced a «47 saat tez çıxma» when somebody was moved between shifts without a date.
+    /// </summary>
+    public TimeOnly? SecondShiftStart { get; set; }
+
+    public TimeOnly? SecondShiftEnd { get; set; }
+
     public int LateThresholdMinutes { get; set; } = 15;
 
     /// <summary>Working-days bitmask, same layout as Location.WorkDaysMask (Sunday=0 … Saturday=6).

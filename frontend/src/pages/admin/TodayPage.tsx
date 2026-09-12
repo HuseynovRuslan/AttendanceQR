@@ -738,7 +738,17 @@ export function TodayPage() {
                   )}
                 </td>
                 <td className="mono" data-label="Çıxış">
-                  {(r.checkOutAtUtc ?? r.fieldCheckOutAtUtc) ? fmtTime(r.checkOutAtUtc ?? r.fieldCheckOutAtUtc) : ''}
+                  {/* On a day worked in two stretches this is the NIGHT's departure, not the
+                      morning block's — otherwise the row would read «07:00 → 11:00» and look as
+                      though the nine hours after ten at night were never recorded. */}
+                  {(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
+                    ? fmtTime(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
+                    : ''}
+                  {(r.blocks ?? 1) > 1 && (
+                    <span className="tag" style={{ marginLeft: 6, background: 'var(--c50)', color: 'var(--c500)' }}>
+                      {r.blocks} blok
+                    </span>
+                  )}
                   {r.earlyDepartureReason && (
                     <div className="tbl-note">
                       Tez: {r.earlyDepartureReason}

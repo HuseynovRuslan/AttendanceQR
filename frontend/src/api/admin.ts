@@ -45,6 +45,10 @@ export interface DayAttendanceRow {
    *  itself, why somebody appears on a list of a company that does not employ them. */
   paperEmployer?: string | null
   paperSite?: string | null
+  /** How many stretches this day was worked in. 1 for everybody but a split-shift crew. */
+  blocks?: number
+  /** When the LAST stretch ended — on a split day the night's departure, not the morning block's. */
+  lastCheckOutAtUtc?: string | null
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null
@@ -1505,6 +1509,13 @@ export interface Schedule {
   locationName: string | null
   shiftStart: string // "HH:mm"
   shiftEnd: string
+  /** The SECOND stretch of a day worked in two — «əlavə qüvvə» 07:00–11:00, home, then 22:00–07:00.
+   *  Null on every ordinary shift, and that is what confines the split-shift scan path to the crews
+   *  whose roster actually says two blocks. Both or neither; a half-filled pair means no window. */
+  secondShiftStart?: string | null
+  secondShiftEnd?: string | null
+  /** True when both ends of the second stretch are set — the list badges the shift with it. */
+  isSplit?: boolean
   lateThresholdMinutes: number
   workDaysMask: number
   /** Rotation; null = none and workDaysMask decides. */

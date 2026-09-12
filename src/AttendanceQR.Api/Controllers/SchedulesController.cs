@@ -87,6 +87,8 @@ public class SchedulesController : ControllerBase
             Name = request.Name.Trim(),
             ShiftStart = start,
             ShiftEnd = end,
+            SecondShiftStart = SecondWindow(request).Start,
+            SecondShiftEnd = SecondWindow(request).End,
             LateThresholdMinutes = request.LateThresholdMinutes,
             WorkDaysMask = request.WorkDaysMask,
         };
@@ -115,6 +117,7 @@ public class SchedulesController : ControllerBase
         schedule.Name = request.Name.Trim();
         schedule.ShiftStart = start;
         schedule.ShiftEnd = end;
+        (schedule.SecondShiftStart, schedule.SecondShiftEnd) = SecondWindow(request);
         schedule.LateThresholdMinutes = request.LateThresholdMinutes;
         schedule.WorkDaysMask = request.WorkDaysMask;
         if (await ApplyLocationAsync(schedule, request.LocationId) is { } locationError)
@@ -187,6 +190,19 @@ public class SchedulesController : ControllerBase
         return true;
     }
 
+    /// <summary>
+    /// The second stretch of a double day, parsed — or nothing.
+    ///
+    /// All-or-nothing on purpose: a start with no end (or an unparseable pair) describes no window,
+    /// and storing half of one would leave the scan endpoint asking a question with no answer. A
+    /// half-filled form therefore produces an ORDINARY shift rather than a broken split one, which is
+    /// the safe direction to fail in — it refuses a second block instead of opening one by accident.
+    /// </summary>
+    private static (TimeOnly? Start, TimeOnly? End) SecondWindow(ScheduleRequest r)
+        => TimeOnly.TryParse(r.SecondShiftStart, out var s2) && TimeOnly.TryParse(r.SecondShiftEnd, out var e2)
+            ? (s2, e2)
+            : (null, null);
+
     private static object Project(Schedule s, string? locationName = null) => new
     {
         id = s.Id,
@@ -196,6 +212,11 @@ public class SchedulesController : ControllerBase
         locationName,
         shiftStart = s.ShiftStart.ToString("HH:mm"),
         shiftEnd = s.ShiftEnd.ToString("HH:mm"),
+        secondShiftStart = s.SecondShiftStart?.ToString("HH:mm"),
+        secondShiftEnd = s.SecondShiftEnd?.ToString("HH:mm"),
+        // A day worked in two stretches — the screen labels the shift with it, and the scan endpoint
+        // uses the same pair to decide whether an evening arrival may open a second block.
+        isSplit = s.SecondShiftStart is not null && s.SecondShiftEnd is not null,
         lateThresholdMinutes = s.LateThresholdMinutes,
         workDaysMask = s.WorkDaysMask,
         workCycleDays = s.WorkCycleDays,

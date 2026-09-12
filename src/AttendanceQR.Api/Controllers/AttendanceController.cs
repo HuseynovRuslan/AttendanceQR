@@ -768,8 +768,14 @@ public class AttendanceController : ControllerBase
         // check-in against one set of hours and its check-out against another.
         var shift = await ResolveShiftAsync(employee, location, today);
 
-        var record = await _db.AttendanceRecords
-            .FirstOrDefaultAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == today);
+        // A day is a LIST of stretches now, not a row. For everybody but a split-shift crew the list
+        // has one entry and every branch below behaves exactly as it did — the open one if there is
+        // one, otherwise the last closed one, which for a single-entry day is the same row as before.
+        var blocks = await _db.AttendanceRecords
+            .Where(r => r.EmployeeId == employee.Id && r.AttendanceDate == today)
+            .OrderBy(r => r.CheckInAtUtc)
+            .ToListAsync();
+        var record = blocks.FirstOrDefault(r => r.CheckOutAtUtc is null) ?? blocks.LastOrDefault();
 
         // Both branches below need to know where in the day this scan falls: a night shift's single
         // working day spans two dates, so "morning" and "evening" decide what a scan can possibly mean.
@@ -906,6 +912,32 @@ public class AttendanceController : ControllerBase
             }
             return await CheckOutAsync(record, employee, location, shift, nowUtc, ip,
                 request.ClientScanId, request.Offline, serverNow);
+        }
+
+        // A day worked in TWO stretches — «əlavə qüvvə» washing an area 07:00–11:00, going home, and
+        // coming back at 22:00 until morning. Before this, the 11:00 check-out closed the day and the
+        // 22:00 arrival was refused right here: nine hours of night work recorded nowhere at all.
+        //
+        // Reached ONLY by a shift that declares a second window, which no ordinary shift does — so for
+        // everybody else this is still the refusal below, unchanged. SplitShiftRules holds the rest of
+        // the conditions and is tested on its own; the point of asking it here rather than inlining is
+        // that a stray afternoon retry must never open a block that then stays open all night.
+        if (SplitShiftRules.MayOpenSecondBlock(
+                TimeOnly.FromDateTime(nowLocal), shift.HasSecondWindow,
+                shift.SecondStart, shift.SecondEnd, blocks.Count, anyOpen: false))
+        {
+            // The same cool-off the first check-in has. Two scans a minute apart at 22:00 are one
+            // arrival and a "did it work?" — the second must not open a stretch of its own.
+            if (record?.CheckOutAtUtc is DateTime lastOut
+                && (nowUtc - lastOut).Duration() < TimeSpan.FromMinutes(MinCheckoutMinutes))
+            {
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "TooSoonAfterCheckOut", ip);
+                return Conflict(new { error = "AlreadyCompleted" });
+            }
+
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, "SecondBlockOpened", ip);
+            return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
+                request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
         }
 
         // Already checked in and out today.

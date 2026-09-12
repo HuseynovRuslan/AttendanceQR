@@ -247,7 +247,14 @@ public sealed record DayAttendanceRow(
     // leadership every morning, and a name that appears on the wrong company's list with no
     // explanation is a question somebody has to answer by hand each time it is asked.
     string? PaperEmployer = null,
-    string? PaperSite = null);
+    string? PaperSite = null,
+    /// <summary>How many stretches this day was worked in. One for everybody but a split-shift crew,
+    /// and the board says nothing unless it is more.</summary>
+    int Blocks = 1,
+    /// <summary>When the LAST stretch ended. The same as CheckOutAtUtc on an ordinary day; on a split
+    /// day it is the night's departure, so the row reads «07:00 → 07:00» rather than stopping at the
+    /// morning block and looking as though the night was never recorded.</summary>
+    DateTime? LastCheckOutAtUtc = null);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(

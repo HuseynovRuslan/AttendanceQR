@@ -74,10 +74,20 @@ public sealed class DailySummaryService : IDailySummaryService
         // the evidence behind the disciplinary action — but every computation of what a day WAS has
         // to skip it, or the fraudulent scan keeps paying for itself. Filtered at the load, in both
         // the nightly path and the live one, so the stored summary and today's board agree.
-        var records = await _db.AttendanceRecords
+        // Grouped, not keyed. A day used to be one row per person — the database enforced it — and a
+        // dictionary keyed on EmployeeId was therefore safe. It is not any more: a split shift works
+        // one day in two stretches, and this load would have thrown on the duplicate key the first
+        // night the «əlavə qüvvə» crew came back at ten. The FIRST block stays the day's record — it
+        // carries the arrival, the selfie, the lateness — and the rest are folded in as extra spans,
+        // exactly the way field visits already are.
+        var recordRows = await _db.AttendanceRecords
             .Where(r => r.VoidedAtUtc == null)
             .Where(r => r.AttendanceDate == date)
-            .ToDictionaryAsync(r => r.EmployeeId, ct);
+            .ToListAsync(ct);
+        var blocksByEmployee = recordRows
+            .GroupBy(r => r.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(r => r.CheckInAtUtc ?? DateTime.MaxValue).ToList());
+        var records = blocksByEmployee.ToDictionary(kv => kv.Key, kv => kv.Value[0]);
 
         // Field visits are attendance too. A worker sent to a site with no QR poster proves presence
         // with GPS + time instead of a scan, so a day spent in the field must count as WORKED here —
@@ -244,9 +254,28 @@ public sealed class DailySummaryService : IDailySummaryService
             // The union counts overlap once and pays each gap up to the travel cap. Status, lateness
             // and overtime are left exactly as computed above: those are judged against the shift, and
             // only the office half has an hour it was due at.
+            // The day's FURTHER office blocks join the field visits here, as stretches of the same
+            // kind: a split day's night is presence that is not the first pair, exactly like a visit.
+            var extraSpans = new List<AttendanceCalculator.WorkSpan>();
+            var anyExtraOpen = false;
             if (fieldByEmployee.TryGetValue(emp.Id, out var fvSpans))
             {
-                var merged = AttendanceCalculator.MergedWorkedMinutes(record, fvSpans.Spans, fvSpans.AnyOpen);
+                extraSpans.AddRange(fvSpans.Spans);
+                anyExtraOpen = fvSpans.AnyOpen;
+            }
+            if (blocksByEmployee.TryGetValue(emp.Id, out var blocks) && blocks.Count > 1)
+            {
+                foreach (var extra in blocks.Skip(1))
+                {
+                    if (extra.CheckInAtUtc is DateTime bIn && extra.CheckOutAtUtc is DateTime bOut)
+                        extraSpans.Add(new AttendanceCalculator.WorkSpan(bIn, bOut));
+                    else
+                        anyExtraOpen = true;
+                }
+            }
+            if (extraSpans.Count > 0 || anyExtraOpen)
+            {
+                var merged = AttendanceCalculator.MergedWorkedMinutes(record, extraSpans, anyExtraOpen);
                 if (merged is int minutes)
                     computed.WorkedMinutes = minutes;
             }

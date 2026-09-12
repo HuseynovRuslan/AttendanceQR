@@ -37,8 +37,19 @@ public readonly record struct EffectiveShift(
     /// <see cref="DayHours"/>. Only a schedule can carry them; a personal override or a location is
     /// one pair of times and always was.
     /// </summary>
-    string? DayHoursSpec = null)
+    string? DayHoursSpec = null,
+    /// <summary>
+    /// The second stretch of a day worked in two blocks — see <see cref="Schedule.SecondShiftStart"/>.
+    /// Null on every ordinary shift, which is what confines the whole feature: no second window, no
+    /// second block, and the scan path behaves exactly as it always has.
+    /// </summary>
+    TimeOnly? SecondStart = null,
+    TimeOnly? SecondEnd = null)
 {
+    /// <summary>Is this a day worked in two separate stretches? Both ends are needed — one alone
+    /// describes nothing, and guessing the other would invent hours nobody agreed to.</summary>
+    public bool HasSecondWindow => SecondStart is not null && SecondEnd is not null;
+
     /// <summary>True when the shift's ORDINARY hours cross midnight (22:00–06:00). A day with its own
     /// hours may differ — ask <see cref="IsOvernightOn"/> when a date is in hand.</summary>
     public bool IsOvernight => End < Start;
@@ -92,7 +103,10 @@ public readonly record struct EffectiveShift(
             return new EffectiveShift(
                 schedule.ShiftStart, schedule.ShiftEnd, schedule.LateThresholdMinutes,
                 schedule.WorkDaysMask, schedule.WorkCycleDays, schedule.WorkCycleOnDays,
-                schedule.WorkCycleAnchor, schedule.Name, schedule.DayHours);
+                schedule.WorkCycleAnchor, schedule.Name, schedule.DayHours,
+                // Only a schedule can carry a second window. A personal override or a location is one
+                // pair of times and always was — and a crew is moved onto a double day as a crew.
+                schedule.SecondShiftStart, schedule.SecondShiftEnd);
 
         return new EffectiveShift(
             employeeStart ?? location.ShiftStart,

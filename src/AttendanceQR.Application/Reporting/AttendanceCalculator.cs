@@ -204,27 +204,34 @@ public static class AttendanceCalculator
     /// system losing someone's hours. Reviewing two implementations for agreement is a promise;
     /// having one is a guarantee.
     ///
-    /// Returns null when the field data changes nothing, so the caller keeps whatever
+    /// The extra stretches are of two kinds and are deliberately treated as one: field visits, and the
+    /// FURTHER BLOCKS of a day worked in two stretches (07:00–11:00, home, 22:00–07:00 — see
+    /// <c>SplitShiftRules</c>). Both are "presence that is not the first office pair", both are
+    /// already closed rows with real times, and both must be added to the day rather than replace it.
+    /// Giving them one path is the point: a second way of adding up a day is a second answer to
+    /// «neçə saat işlədi», and the first thing that happens then is that two screens disagree.
+    ///
+    /// Returns null when the extra data changes nothing, so the caller keeps whatever
     /// <see cref="Compute"/> already decided:
-    ///   • no completed field visits at all;
-    ///   • a field-only day with a visit still open (that day is Incomplete, and Incomplete is 0);
+    ///   • no completed extra stretches at all;
+    ///   • an extras-only day with one still open (that day is Incomplete, and Incomplete is 0);
     ///   • an office day still open (nothing to merge into — an unclosed day is 0 either way).
     /// </summary>
     public static int? MergedWorkedMinutes(
-        AttendanceRecord? officeRecord, IReadOnlyList<WorkSpan> fieldSpans, bool anyFieldOpen)
+        AttendanceRecord? officeRecord, IReadOnlyList<WorkSpan> extraSpans, bool anyExtraOpen)
     {
-        if (fieldSpans.Count == 0)
+        if (extraSpans.Count == 0)
             return null;
 
-        // No office scan → the day IS the field visits.
+        // No office scan → the day IS the extra stretches.
         if (officeRecord?.CheckInAtUtc is null)
-            return anyFieldOpen ? null : WorkedMinutesAcross(fieldSpans);
+            return anyExtraOpen ? null : WorkedMinutesAcross(extraSpans);
 
         // A mixed day, but only once the office half is actually closed.
         if (officeRecord.CheckInAtUtc is not DateTime officeIn || officeRecord.CheckOutAtUtc is not DateTime officeOut)
             return null;
 
-        var spans = new List<WorkSpan>(fieldSpans) { new(officeIn, officeOut) };
+        var spans = new List<WorkSpan>(extraSpans) { new(officeIn, officeOut) };
         return WorkedMinutesAcross(spans);
     }
 

@@ -59,6 +59,9 @@ type FormState = {
   locationId: string
   shiftStart: string
   shiftEnd: string
+  /** A day worked in TWO stretches. '' on both when the day is one stretch, which is almost always. */
+  secondShiftStart: string
+  secondShiftEnd: string
   lateThresholdMinutes: string
   workDaysMask: number
   cycle: WorkCycleValue
@@ -71,6 +74,8 @@ const EMPTY: FormState = {
   locationId: '',
   shiftStart: '09:00',
   shiftEnd: '18:00',
+  secondShiftStart: '',
+  secondShiftEnd: '',
   lateThresholdMinutes: '15',
   workDaysMask: 126,
   cycle: NO_CYCLE,
@@ -156,6 +161,8 @@ export function SchedulesPage() {
       name: s.name,
       locationId: s.locationId ?? '',
       shiftStart: s.shiftStart,
+      secondShiftStart: s.secondShiftStart ?? '',
+      secondShiftEnd: s.secondShiftEnd ?? '',
       shiftEnd: s.shiftEnd,
       lateThresholdMinutes: String(s.lateThresholdMinutes),
       workDaysMask: s.workDaysMask,
@@ -195,6 +202,10 @@ export function SchedulesPage() {
       name: form.name.trim(),
       locationId: form.locationId || null,
       shiftStart: form.shiftStart,
+      // Sent as a pair or not at all — the server treats a half-filled window as absent, so an
+      // abandoned second row produces an ordinary shift rather than a broken split one.
+      secondShiftStart: form.secondShiftStart || null,
+      secondShiftEnd: form.secondShiftEnd || null,
       shiftEnd: form.shiftEnd,
       lateThresholdMinutes: Number(form.lateThresholdMinutes) || 0,
       workDaysMask: form.workDaysMask,
@@ -333,6 +344,31 @@ export function SchedulesPage() {
               <span>🌙 Gecə növbəsi — gecə yarısını keçir, səhər çıxış həmin növbəyə yazılır.</span>
             </div>
           )}
+
+          {/* The second stretch of a double day. Left empty by every ordinary shift, and that is what
+              keeps the second-block scan path out of reach for everybody who works one stretch. */}
+          <div className="form-row cols2" style={{ marginBottom: 6 }}>
+            <div>
+              <label className="form-label">İkinci blok — başlama <span className="muted">(istəyə bağlı)</span></label>
+              <input className="inp" type="time" value={form.secondShiftStart}
+                onChange={(e) => setForm((f) => ({ ...f, secondShiftStart: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">İkinci blok — bitmə</label>
+              <input className="inp" type="time" value={form.secondShiftEnd}
+                disabled={!form.secondShiftStart}
+                onChange={(e) => setForm((f) => ({ ...f, secondShiftEnd: e.target.value }))} />
+            </div>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 14, lineHeight: 1.6 }}>
+            Günü <b>iki hissəyə bölünən</b> briqadalar üçün — məs. 07:00–11:00, sonra evə, axşam
+            22:00-dan səhər 07:00-a qədər. Boş buraxsanız növbə adi qaydada bir hissədən ibarət olur.
+            {form.secondShiftStart && form.secondShiftEnd && (
+              <> <b style={{ color: 'var(--c900)' }}>
+                İkiqat gün: {form.shiftStart}–{form.shiftEnd} və {form.secondShiftStart}–{form.secondShiftEnd}.
+              </b></>
+            )}
+          </div>
 
           {/* The rotation replaces the weekly days entirely, so only one of the two is ever shown. */}
           {!form.cycle.days && (

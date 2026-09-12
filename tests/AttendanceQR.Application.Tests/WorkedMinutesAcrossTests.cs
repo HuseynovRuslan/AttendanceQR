@@ -168,7 +168,7 @@ public class WorkedMinutesAcrossTests
     {
         // Incomplete, and Incomplete is zero — measuring the closed visits would pay a day that is
         // still, as far as anyone knows, being worked.
-        Assert.Null(AttendanceCalculator.MergedWorkedMinutes(null, new[] { Span(9, 11) }, anyFieldOpen: true));
+        Assert.Null(AttendanceCalculator.MergedWorkedMinutes(null, new[] { Span(9, 11) }, anyExtraOpen: true));
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class WorkedMinutesAcrossTests
         // The open visit contributes no span (it has no end); the closed ones still count, and the
         // office half is untouched. anyFieldOpen must not veto a mixed day the way it vetoes a
         // field-only one.
-        Assert.Equal(480, AttendanceCalculator.MergedWorkedMinutes(Office(12, 17), new[] { Span(9, 11) }, anyFieldOpen: true));
+        Assert.Equal(480, AttendanceCalculator.MergedWorkedMinutes(Office(12, 17), new[] { Span(9, 11) }, anyExtraOpen: true));
     }
 
     [Fact]
