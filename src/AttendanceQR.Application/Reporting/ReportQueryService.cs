@@ -1220,7 +1220,7 @@ public sealed class ReportQueryService : IReportQueryService
             // Yesterday's date on both counts: the shift that is still running started then, and on a
             // schedule with per-day hours it is yesterday's pair that says whether it crosses midnight
             // and when it ends.
-            .Where(d => d.Shift.IsOvernightOn(day.AddDays(-1))
+            .Where(d => d.Shift.CrossesIntoNextMorningOn(day.AddDays(-1))
                         && WithinOvernightWindow(d.Shift, nowLocal, day.AddDays(-1)))
             .ToDictionary(d => d.Employee.Id);
         if (stillOpen.Count == 0)
@@ -1271,7 +1271,10 @@ public sealed class ReportQueryService : IReportQueryService
     /// </summary>
     internal static bool WithinOvernightWindow(EffectiveShift shift, TimeOnly nowLocal, DateOnly startedOn)
     {
-        var cutoff = shift.HoursOn(startedOn).End.AddHours(2);
+        // The LAST window's end: on a split day the shift that is still running at 02:00 is the
+        // 22:00–07:00 one, and measuring from the morning window's 11:00 would have dropped the crew
+        // off the board hours before they went home.
+        var cutoff = shift.LastEndOn(startedOn).AddHours(2);
         // End is a morning time for an overnight shift, so the window is simply [00:00, end+2h].
         return nowLocal <= cutoff;
     }

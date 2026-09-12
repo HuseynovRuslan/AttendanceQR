@@ -73,6 +73,35 @@ public readonly record struct EffectiveShift(
     }
 
     /// <summary>
+    /// Does work STARTED on this date run past midnight into the next morning — counting the second
+    /// window as well as the first?
+    ///
+    /// Not the same question as <see cref="IsOvernightOn"/>, and the difference is the split day. The
+    /// «əlavə qüvvə» crew's ordinary hours are 07:00–11:00, which do not cross midnight; their SECOND
+    /// window, 22:00–07:00, does. Asked the narrow question, the morning scan that should have closed
+    /// their night said "this is not a night shift", left nine hours of work open forever and opened a
+    /// fresh day on top of it — the exact failure the overnight branch was written to prevent, walking
+    /// in through the one door the branch could not see.
+    ///
+    /// Identical to <see cref="IsOvernightOn"/> for every shift without a second window, which is
+    /// every shift in the company but one. Ask THIS when the question is "could an open record from
+    /// yesterday still be running"; ask the other when it is "does a morning scan mean an arrival is
+    /// impossible" — on a split day a 07:00 scan is an arrival, and conflating the two would refuse
+    /// the crew their own morning.
+    /// </summary>
+    public bool CrossesIntoNextMorningOn(DateOnly date)
+        => IsOvernightOn(date)
+           || (SecondStart is TimeOnly s2 && SecondEnd is TimeOnly e2 && e2 <= s2);
+
+    /// <summary>
+    /// When the day's LAST stretch is due to end — the second window's end if there is one, else the
+    /// first's. What "how long past the end may an open record still be a shift in progress" has to
+    /// measure from.
+    /// </summary>
+    public TimeOnly LastEndOn(DateOnly date)
+        => SecondEnd is TimeOnly e2 && SecondStart is not null ? e2 : HoursOn(date).End;
+
+    /// <summary>
     /// Whether the shift is scheduled to work on <paramref name="date"/>, before company holidays are
     /// taken into account — callers still subtract <c>NonWorkingDay</c> themselves.
     /// </summary>

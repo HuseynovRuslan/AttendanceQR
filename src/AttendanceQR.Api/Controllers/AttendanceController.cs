@@ -799,7 +799,11 @@ public class AttendanceController : ControllerBase
             //
             // Ordered so the cheap test comes first: an afternoon scan never pays for the extra read.
             var nightShift = nowLocal.Hour < 12 ? await ResolveShiftAsync(employee, location, yesterday) : shift;
-            if (nowLocal.Hour < 12 && nightShift.IsOvernightOn(yesterday))
+            // CrossesIntoNextMorningOn, not IsOvernightOn: a split day's ordinary hours end at eleven
+            // in the morning and cross nothing, while its second window runs 22:00–07:00. The narrow
+            // test read the first window, decided this was no night shift, and walked past nine hours
+            // of work that then stayed open for ever.
+            if (nowLocal.Hour < 12 && nightShift.CrossesIntoNextMorningOn(yesterday))
             {
                 var openNight = await _db.AttendanceRecords.FirstOrDefaultAsync(r =>
                     r.EmployeeId == employee.Id && r.AttendanceDate == yesterday
@@ -830,7 +834,12 @@ public class AttendanceController : ControllerBase
             // scan that could not have been an arrival — and only once THEIR OWN check-out for that
             // same morning exists. Without that condition it would silence somebody whose night was
             // never recorded, which is the opposite of what this is for.
-            if (nowLocal.Hour < NightScanRules.MorningBefore && shift.IsOvernightOn(today))
+            // Yesterday's shift counts too. For a standing night rota the two are the same question,
+            // but the split crew's night belongs to YESTERDAY's shift and their own today is an
+            // ordinary day — so after their 07:00 exit, a second tap found no guard and opened a
+            // stray day on a morning they were not due to work at all.
+            if (nowLocal.Hour < NightScanRules.MorningBefore
+                && (shift.IsOvernightOn(today) || nightShift.CrossesIntoNextMorningOn(yesterday)))
             {
                 var closedAtUtc = await _db.AttendanceRecords
                     .Where(r => r.EmployeeId == employee.Id && r.AttendanceDate == yesterday
@@ -842,7 +851,9 @@ public class AttendanceController : ControllerBase
                     : (DateOnly?)null;
 
                 if (NightScanRules.IsRepeatOfThisMorningsExit(
-                        TimeOnly.FromDateTime(nowLocal), today, shift.IsOvernightOn(today), closedOn))
+                        TimeOnly.FromDateTime(nowLocal), today,
+                        shift.IsOvernightOn(today) || nightShift.CrossesIntoNextMorningOn(yesterday),
+                        closedOn))
                 {
                     await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "NightAlreadyClosed", ip);
                     return Conflict(new { error = "AlreadyCompleted" });
