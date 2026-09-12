@@ -744,10 +744,17 @@ export function TodayPage() {
                   {(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
                     ? fmtTime(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
                     : ''}
-                  {(r.blocks ?? 1) > 1 && (
-                    <span className="tag" style={{ marginLeft: 6, background: 'var(--c50)', color: 'var(--c500)' }}>
-                      {r.blocks} blok
-                    </span>
+                  {/* The count alone did not read: «07:18 → 11:19 · 2 blok» looked like one unbroken
+                      stretch with a puzzling label, and the whole point of a split day is that the
+                      person went home in between. So the stretches are named under the times. */}
+                  {(r.blocks ?? 1) > 1 && r.blockSpans && (
+                    <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 3, lineHeight: 1.5 }}>
+                      {r.blockSpans.map((b, i) => (
+                        <div key={i}>
+                          {i + 1}. {b.inAtUtc ? fmtTime(b.inAtUtc) : '—'} → {b.outAtUtc ? fmtTime(b.outAtUtc) : 'işdə'}
+                        </div>
+                      ))}
+                    </div>
                   )}
                   {r.earlyDepartureReason && (
                     <div className="tbl-note">

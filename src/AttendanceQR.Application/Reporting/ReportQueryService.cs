@@ -145,7 +145,8 @@ public sealed class ReportQueryService : IReportQueryService
         // «2 blok» mark instead of «07:00 → 11:00», which would look like the night was never
         // recorded — the exact thing the feature was built to stop.
         int BlockCount = 1,
-        DateTime? LastCheckOutAtUtc = null);
+        DateTime? LastCheckOutAtUtc = null,
+        IReadOnlyList<DayBlock>? BlockSpans = null);
 
     private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -378,7 +379,11 @@ public sealed class ReportQueryService : IReportQueryService
             rows.Add(new LiveDay(e, location, record, c, shift, leaveType, leaveAssignedBy, leaveId, manualBy,
                 fv.In, fv.Out, fv.Lat, fv.Lng, fv.Id,
                 dayBlocks?.Count ?? (record is null ? 0 : 1),
-                dayBlocks is { Count: > 1 } ? dayBlocks[^1].CheckOutAtUtc : record?.CheckOutAtUtc));
+                dayBlocks is { Count: > 1 } ? dayBlocks[^1].CheckOutAtUtc : record?.CheckOutAtUtc,
+                // Only for a split day: an ordinary row already says everything in its two cells.
+                dayBlocks is { Count: > 1 }
+                    ? dayBlocks.Select(b => new DayBlock(b.CheckInAtUtc, b.CheckOutAtUtc)).ToList()
+                    : null));
         }
 
         return rows;
@@ -1158,7 +1163,7 @@ public sealed class ReportQueryService : IReportQueryService
                     d.FieldVisitId,
                     markedAbsent.Contains(d.Employee.Id) ? markedBy.GetValueOrDefault(d.Employee.Id) ?? "—" : null,
                     d.Employee.PaperEmployer, d.Employee.PaperSite,
-                    d.BlockCount, d.LastCheckOutAtUtc);
+                    d.BlockCount, d.BlockSpans, d.LastCheckOutAtUtc);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

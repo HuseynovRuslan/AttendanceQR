@@ -47,6 +47,8 @@ export interface DayAttendanceRow {
   paperSite?: string | null
   /** How many stretches this day was worked in. 1 for everybody but a split-shift crew. */
   blocks?: number
+  /** Each stretch, in order — sent only when there is more than one, so an ordinary row is untouched. */
+  blockSpans?: { inAtUtc: string | null; outAtUtc: string | null }[] | null
   /** When the LAST stretch ended — on a split day the night's departure, not the morning block's. */
   lastCheckOutAtUtc?: string | null
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).

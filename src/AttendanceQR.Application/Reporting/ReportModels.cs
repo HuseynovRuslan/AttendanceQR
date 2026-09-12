@@ -251,10 +251,23 @@ public sealed record DayAttendanceRow(
     /// <summary>How many stretches this day was worked in. One for everybody but a split-shift crew,
     /// and the board says nothing unless it is more.</summary>
     int Blocks = 1,
+    /// <summary>
+    /// Each stretch, in order — but only when there is more than one.
+    ///
+    /// The count alone was not enough to read. A row that said «07:18 → 11:19 · 2 blok» looked like
+    /// one unbroken four-hour stretch with a puzzling label on it; the whole point of a split day is
+    /// that the person went home in between, and the row was hiding exactly that. Null on an ordinary
+    /// day, so nothing is added to the six hundred rows that have one stretch.
+    /// </summary>
+    IReadOnlyList<DayBlock>? BlockSpans = null,
     /// <summary>When the LAST stretch ended. The same as CheckOutAtUtc on an ordinary day; on a split
     /// day it is the night's departure, so the row reads «07:00 → 07:00» rather than stopping at the
     /// morning block and looking as though the night was never recorded.</summary>
     DateTime? LastCheckOutAtUtc = null);
+
+/// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
+/// check-out. Only ever sent for a day worked in more than one stretch.</summary>
+public sealed record DayBlock(DateTime? InAtUtc, DateTime? OutAtUtc);
 
 /// <summary>One rejected scan — a row of the "Problems" screen (who couldn't scan, when, and why).</summary>
 public sealed record ProblemRow(
