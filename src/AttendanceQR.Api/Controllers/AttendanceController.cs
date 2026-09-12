@@ -933,7 +933,24 @@ public class AttendanceController : ControllerBase
         // everybody else this is still the refusal below, unchanged. SplitShiftRules holds the rest of
         // the conditions and is tested on its own; the point of asking it here rather than inlining is
         // that a stray afternoon retry must never open a block that then stays open all night.
-        if (SplitShiftRules.MayOpenSecondBlock(
+        //
+        // The OTHER way a day ends up with a finished stretch and more work still to come: a field
+        // visit closed it. Somebody sent out in the morning has their poster check-in closed at the
+        // moment they left the site — see TryCloseOpenAttendanceAsync, which exists so that a day
+        // spent away does not score zero hours. Coming BACK was then refused right here: the day read
+        // as finished, and the afternoon they went on to work at the centre was recorded nowhere at
+        // all. «Ezamiyyəti bitirib mərkəzə qayıdır, QR vurа bilmir» is exactly this.
+        //
+        // Narrow by construction, and deliberately not a time window: the only record it reopens is
+        // one THIS PRODUCT closed on the employee's behalf, stamped with the visit's id. A day the
+        // employee themselves closed at the poster is left alone — the evidence that they left and
+        // came back is the visit, not a second tap — and a day with no field visit cannot reach it.
+        var reopenAfterFieldVisit =
+            record is { CheckOutAtUtc: not null, ClosedByFieldVisitId: not null }
+            && blocks.Count < SplitShiftRules.MaxBlocksPerDay;
+
+        if (reopenAfterFieldVisit
+            || SplitShiftRules.MayOpenSecondBlock(
                 TimeOnly.FromDateTime(nowLocal), shift.HasSecondWindow,
                 shift.SecondStart, shift.SecondEnd, blocks.Count, anyOpen: false))
         {
@@ -946,7 +963,8 @@ public class AttendanceController : ControllerBase
                 return Conflict(new { error = "AlreadyCompleted" });
             }
 
-            await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, "SecondBlockOpened", ip);
+            await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess,
+                reopenAfterFieldVisit ? "ReopenedAfterFieldVisit" : "SecondBlockOpened", ip);
             return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
                 request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
         }

@@ -271,6 +271,69 @@ public class SplitShiftScanTests
         public ChannelReader<FaceMatchJob> Reader => Channel.CreateUnbounded<FaceMatchJob>().Reader;
     }
 
+    // --- coming back from an assignment ------------------------------------
+
+    [Fact]
+    public async Task A_day_a_field_visit_closed_can_be_reopened_at_the_poster()
+    {
+        // «Səhər 08:00-da ezamiyyətə getdi, 11:00-da bitirib mərkəzə qayıtdı, QR vura bilmir.» The
+        // morning check-in was closed on their behalf when they left the site, so the poster read the
+        // day as finished — and the rest of the day they worked at the centre was recorded nowhere.
+        using var h = new Harness(secondWindow: false);   // an ORDINARY shift: no second window
+        await h.CompleteFirstBlockAsync();
+        var morning = await h.Db.AttendanceRecords.FirstAsync();
+        morning.ClosedByFieldVisitId = Guid.NewGuid();    // what TryCloseOpenAttendanceAsync stamps
+        await h.Db.SaveChangesAsync();
+
+        var backAtTheCentre = await h.Controller.Scan(h.Scan());
+
+        Assert.Null(Error(backAtTheCentre));
+        var blocks = await h.BlocksAsync();
+        Assert.Equal(2, blocks.Count);
+        Assert.Equal(blocks[0].AttendanceDate, blocks[1].AttendanceDate);
+        Assert.NotNull(blocks[0].CheckOutAtUtc);   // the morning stays exactly as the visit left it
+        Assert.Null(blocks[1].CheckOutAtUtc);
+    }
+
+    [Fact]
+    public async Task A_day_the_employee_closed_themselves_is_not_reopened()
+    {
+        // THE boundary. The same shift, the same finished day — the only difference is that no field
+        // visit closed it. If this ever opens a block, every ordinary check-out in the company becomes
+        // re-openable by the next tap, and the refusal that protects six hundred people is gone.
+        using var h = new Harness(secondWindow: false);
+        await h.CompleteFirstBlockAsync();
+
+        var again = await h.Controller.Scan(h.Scan());
+
+        Assert.Equal("AlreadyCompleted", Error(again));
+        Assert.Single(await h.BlocksAsync());
+    }
+
+    [Fact]
+    public async Task A_reopened_day_still_stops_at_two_stretches()
+    {
+        // The cap is shared with the split shift deliberately: whatever reason a day has for a second
+        // stretch, a third is a retry loop, and an unbounded one writes blocks all afternoon.
+        using var h = new Harness(secondWindow: false);
+        await h.CompleteFirstBlockAsync();
+        var morning = await h.Db.AttendanceRecords.FirstAsync();
+        morning.ClosedByFieldVisitId = Guid.NewGuid();
+        await h.Db.SaveChangesAsync();
+
+        await h.Controller.Scan(h.Scan());                       // opens the second stretch
+        var second = await h.Db.AttendanceRecords.OrderBy(r => r.CheckInAtUtc).LastAsync();
+        second.CheckInAtUtc = DateTime.UtcNow.AddHours(-2);
+        second.CheckOutAtUtc = DateTime.UtcNow.AddHours(-1);     // and it is closed again
+        second.ClosedByFieldVisitId = Guid.NewGuid();             // even by another visit
+        await h.Db.SaveChangesAsync();
+
+        var third = await h.Controller.Scan(h.Scan());
+
+        Assert.Equal("AlreadyCompleted", Error(third));
+        Assert.Equal(2, (await h.BlocksAsync()).Count);
+    }
+
     private sealed class StubFace : IFaceMatchService
     {
         public bool Enabled => false;
