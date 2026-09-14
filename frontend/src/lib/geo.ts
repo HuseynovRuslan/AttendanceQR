@@ -75,30 +75,61 @@ function once(options: PositionOptions): Promise<GeolocationPosition> {
  * internet. A phone with no data plan cannot obtain one. The safety net was missing under the only
  * people who fall.
  *
- * So it watches instead of asking once, and takes the first fix that arrives — accuracy is only ever a
- * warning here, never a block, so an early coarse fix is worth more than a perfect one that comes
- * after the person has given up. The coarse attempt still runs at the end for anyone who does have
- * data. `onCountdown` lets the screen show the seconds rather than looking frozen: a wait nobody can
- * see is a wait people abandon.
+ * So it watches instead of asking once. A good fix ends the wait at once; a coarse one is held for
+ * a few seconds while the phone refines it (see REFINE_MS) and used if nothing better comes — accuracy
+ * is still only ever a warning here, never a block. The coarse attempt still runs at the end for
+ * anyone who got nothing at all and does have data. `onCountdown` lets the screen show the seconds
+ * rather than looking frozen: a wait nobody can see is a wait people abandon.
  */
 const COLD_FIX_BUDGET_MS = 45_000
+
+/**
+ * How long to keep listening after a COARSE first fix, for the phone to refine it.
+ *
+ * Taking the first fix was right for the person it was written for — a cold start under trees, where
+ * anything at all beats nothing. It was wrong for everybody whose phone answers instantly with a
+ * cell-tower estimate: that answer arrives in under a second, is typically ±300–2000 m, and is the
+ * SAME point every time, because the tower does not move. Against a 150 m fence it is a certain
+ * rejection, and «Yenidən skan et» only fetches it again. Baxşəliyev İxtiyar at Qafur Məmmədov Parkı
+ * was refused twenty times in ninety minutes from one identical point 699 m away, his phone reporting
+ * ±2000 m — then got in from 6 m once the satellites had locked. Across the company since 6 September,
+ * 200 of 430 «uzaqdasınız» refusals were somebody stuck on one point like that, and on nineteen of the
+ * twenty largest clusters the phone itself had reported the coarse accuracy that day.
+ *
+ * This never sends a worse position than before: a good fix still ends the wait immediately, and when
+ * nothing better arrives the coarse one is used exactly as it was. Nor is it the accuracy allowance
+ * turned down on 5 September — the server's fence is untouched; the phone is only given the seconds
+ * it needs to tell the truth.
+ */
+export const REFINE_MS = 15_000
 
 export async function getPosition(onCountdown?: (secondsLeft: number) => void): Promise<GeoResult> {
   if (!navigator.geolocation) return { ok: false, kind: 'unsupported' }
 
   const watched = await new Promise<GeolocationPosition | GeolocationPositionError | null>((resolve) => {
     let settled = false
+    // The most accurate fix seen so far — held, not returned, while it is too coarse to judge a fence.
+    let best: GeolocationPosition | null = null
+    let refine: ReturnType<typeof setTimeout> | undefined
     const finish = (v: GeolocationPosition | GeolocationPositionError | null) => {
       if (settled) return
       settled = true
       navigator.geolocation.clearWatch(id)
       clearInterval(tick)
       clearTimeout(deadline)
+      clearTimeout(refine)
       resolve(v)
     }
 
     const id = navigator.geolocation.watchPosition(
-      (pos) => finish(pos),
+      (pos) => {
+        const current = !best || pos.coords.accuracy < best.coords.accuracy ? pos : best
+        best = current
+        if (current.coords.accuracy <= POOR_ACCURACY_METERS) return finish(current)
+        // Coarse: give the phone a little longer to refine it — started once, by the first coarse fix,
+        // so a stream of coarse updates cannot keep pushing the answer further away.
+        if (refine === undefined) refine = setTimeout(() => finish(best), REFINE_MS)
+      },
       // A hard refusal is final and there is nothing to wait for; anything else may still resolve
       // itself when a satellite comes into view, so the watch stays open until the budget runs out.
       (err) => { if (err.code === 1) finish(err) },
@@ -112,7 +143,8 @@ export async function getPosition(onCountdown?: (secondsLeft: number) => void): 
     }, 1000)
     onCountdown?.(COLD_FIX_BUDGET_MS / 1000)
 
-    const deadline = setTimeout(() => finish(null), COLD_FIX_BUDGET_MS)
+    // The overall budget still wins: a coarse fix first seen at 40 s is returned at 45, not at 55.
+    const deadline = setTimeout(() => finish(best), COLD_FIX_BUDGET_MS)
   })
 
   if (watched && 'coords' in watched) return { ok: true, coords: watched.coords }
