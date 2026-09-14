@@ -200,6 +200,26 @@ api-test.qrlog.az {
 	import patient_proxy stg-backend:8080
 }
 
+# hr.test.qrlog.az — Vüqar Bəbirov's own environment for the HR module (branch `hr-modulu`), 2026-09-14.
+#
+# Unlike the staging pair above, its containers are NOT on production's network: Caddy is attached to a
+# separate one, qrlog_hr_edge, and that environment's autodeploy re-attaches Caddy on every run — so a
+# recreate of this container (every Caddyfile change does one) costs the HR site two minutes at most,
+# and nothing in it can reach production's database. Why its compose file is pinned on the server and
+# not read from the branch is in ops/hr/. Above the catch-all for the same reason as the staging pair.
+hr.test.qrlog.az {
+	encode zstd gzip
+	import security_headers
+	import app_csp https://api-hr.test.qrlog.az
+	import patient_proxy qrlog-hr-frontend:80
+}
+
+api-hr.test.qrlog.az {
+	encode zstd gzip
+	import security_headers
+	import patient_proxy qrlog-hr-backend:8080
+}
+
 # QRCatalog (WOODMARK) — a separate project with its own stack in /opt/qrcatalog, reached over the
 # shared docker network (its compose attaches to attendanceqr_default with the alias qrcatalog-web).
 #

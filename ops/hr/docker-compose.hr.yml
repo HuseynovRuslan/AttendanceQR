@@ -1,0 +1,113 @@
+# hr.test.qrlog.az — Vüqar Bəbirov's own test environment for the HR module (branch `hr-modulu`).
+#
+# THE COPY THAT RUNS IS /opt/qrlog-hr-infra/docker-compose.hr.yml ON THE SERVER, NOT THIS FILE.
+# This one is the record of what was installed; change the server copy and this one together.
+#
+# The autodeploy passes the server copy with --project-directory pointing at the hr-modulu checkout, so
+# that branch supplies the CODE and nothing else: which containers exist, what they mount, what they
+# may reach and how much memory they get is fixed here, where a push cannot change it. test.qrlog.az
+# reads its compose file from the very branch it deploys, as root, on the production host — one line
+# there (a host path, the docker socket, `privileged: true`) hands production to whoever pushed it.
+# This environment is for somebody who writes code with an assistant and does not read compose files,
+# so it does not get that door.
+#
+# Isolation, by construction:
+#   • its own database and its own secrets (/opt/qrlog-hr-infra/.env.hr — root-only, never in git)
+#   • its own network, qrlog_hr_edge, shared ONLY with Caddy — it cannot reach production's database
+#   • every external integration hard-coded OFF, with no ${...:-} fallback an env value could fill
+#   • memory and CPU caps, so a runaway loop starves this and not the attendance app next door
+
+name: qrlog-hr
+
+services:
+  hr-db:
+    image: postgres:16-alpine
+    container_name: qrlog-hr-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - hrdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # default network only: nothing outside this project can reach the database
+    mem_limit: 512m
+    cpus: 0.5
+
+  hr-backend:
+    container_name: qrlog-hr-backend
+    build:
+      context: .
+      dockerfile: src/AttendanceQR.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=hr-db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Jwt__SigningKey: ${Jwt__SigningKey:?set Jwt__SigningKey}
+      QrToken__Secret: ${QrToken__Secret:?set QrToken__Secret}
+      QrToken__ExpiryExemptTokenSha256: ""
+      QrToken__ExpiryExemptLocationId: ""
+      Cors__AllowedOrigins: https://hr.test.qrlog.az
+      App__SuperAdminEmployeeIds: ""
+      App__HiddenEmails: ""
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # OFF, literally. The app no-ops each of these when empty.
+      Storage__Minio__Endpoint: ""
+      Storage__Minio__AccessKey: ""
+      Storage__Minio__SecretKey: ""
+      Storage__Minio__BucketName: attendance-photos
+      Storage__Minio__Region: ""
+      Storage__Minio__UseSsl: "true"
+      Rekognition__AccessKey: ""
+      Rekognition__SecretKey: ""
+      Push__PublicKey: ""
+      Push__PrivateKey: ""
+      DeviceBinding__AutoBind: "true"
+      DeviceBinding__MaxActiveDevices: "3"
+      DeviceBinding__MaxBindsPer30Days: "3"
+      DeviceBinding__MaxAccountsPerDevice: "20"
+      # The one company this environment serves — hr.test.qrlog.az resolves to slug "hr" (first label).
+      TenantSeed__Slug: hr
+      TenantSeed__Name: ${TenantSeed__Name:-HR modulu (test)}
+      TenantSeed__AdminPhone: ${TenantSeed__AdminPhone:?set TenantSeed__AdminPhone}
+      TenantSeed__AdminPin: ${TenantSeed__AdminPin:?set TenantSeed__AdminPin}
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      hr-db:
+        condition: service_healthy
+    networks:
+      - default
+      - edge
+    mem_limit: 1g
+    cpus: 1.0
+
+  hr-frontend:
+    container_name: qrlog-hr-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://api-hr.test.qrlog.az
+        VITE_CARTO_KEY: ""
+    restart: unless-stopped
+    depends_on:
+      - hr-backend
+    networks:
+      - default
+      - edge
+    mem_limit: 256m
+    cpus: 0.5
+
+networks:
+  default:
+  # Shared with Caddy and nothing else. Created by the autodeploy if missing.
+  edge:
+    external: true
+    name: qrlog_hr_edge
+
+volumes:
+  hrdata:

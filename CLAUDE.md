@@ -66,6 +66,11 @@ admin links them by hand.
 own hours; the Sora font — it has no Azerbaijani `ə`; a single-use QR nonce — it breaks the printed
 poster; a free-text position input — job titles come from the `JobPositions` catalogue.
 
+**In progress — the HR module.** Leave entitlement, an append-only balance ledger and a request
+approval flow, brought over from a separate prototype (NovaHR: Next.js + Prisma). The model moves,
+the code does not. What it adds, what it must not duplicate, and the invariants it must not break
+are in `docs/hr-modulu.md` — read that before touching anything named `Leave*`.
+
 ## Working on it
 
     docker compose up --build          # local: frontend 8081, backend 8080, postgres 15432

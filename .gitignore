@@ -505,3 +505,8 @@ android-signing/
 
 # Firebase client config — injected in CI from GOOGLE_SERVICES_JSON_B64 secret, not committed
 frontend/android/app/google-services.json
+
+# Server-only environment files. Only the *.example copies belong in git: a committed .env.staging
+# would be written over the server's real one by the staging autodeploy's reset --hard.
+.env.staging
+.env.hr
