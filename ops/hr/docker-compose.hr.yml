@@ -80,8 +80,16 @@ services:
       hr-db:
         condition: service_healthy
     networks:
-      - default
-      - edge
+      default:
+        # frontend/nginx.conf proxies /manifest.webmanifest to `backend:8080` and nginx resolves that
+        # name at START-UP — with no `backend` on its networks the frontend container exits and
+        # restarts forever (the first deploy of this environment, 2026-09-14). The alias lives on THIS
+        # project's private network only. It must NEVER be added under `edge`: Caddy sits on edge and
+        # reaches production's API as `backend:8080`, so a second `backend` there could route
+        # production traffic to this container.
+        aliases:
+          - backend
+      edge: {}
     mem_limit: 1g
     cpus: 1.0
 
