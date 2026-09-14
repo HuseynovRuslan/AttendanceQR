@@ -285,12 +285,15 @@ public class ManagerSelfLeaveTests
     }
 
     [Fact]
-    public async Task Widening_leaves_did_not_widen_the_account_powers()
+    public async Task Widening_leaves_did_not_widen_the_account_powers_over_an_admin()
     {
-        // The point of the split. Leaves went branch-scoped; reset-pin did NOT. A manager reaching a
-        // same-branch admin's PIN is the 2026-08-08 takeover, and it stays shut.
+        // The point of the split. Leaves went branch-scoped; the ADMIN's PIN did not come with them. A
+        // manager reaching a same-branch admin's PIN is the 2026-08-08 takeover, and it stays shut.
         using var h = new Harness();
         AssertForbidden(await h.Controller.ResetPin(h.AdminId));
-        AssertForbidden(await h.Controller.ResetPin(h.PeerManagerId));
+
+        // A fellow manager's PIN, by contrast, IS reachable since 2026-09-14 — the owner's decision, made
+        // on its own and not as a side effect of this one. ManagerCredentialTests is where that is pinned.
+        Assert.IsType<OkObjectResult>(await h.Controller.ResetPin(h.PeerManagerId));
     }
 }

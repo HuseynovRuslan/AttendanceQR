@@ -15,6 +15,7 @@ import {
 import { IconX } from '../../components/icons'
 import { getManagerSchedules, type ManagerSchedule } from '../../api/manager'
 import { getGroupCompanies } from '../../api/tenant'
+import { CredentialDesk } from './CredentialDesk'
 import './manager.css'
 
 const EMPTY: ManagerEmployeeInput = {
@@ -192,6 +193,10 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => setPin(null)}>Bağla</button>
         </div>
       )}
+
+      {/* Company-wide PIN reset and login-number change — staff at other areas and fellow managers,
+          whom this roster (their own branches only) cannot reach. The server decides who qualifies. */}
+      {!editing && <CredentialDesk />}
 
       {/* The two opt-in capabilities across this manager's own staff. The manager is who knows which
           of their brigade owns no phone and which of their sites has no poster; making them ask an

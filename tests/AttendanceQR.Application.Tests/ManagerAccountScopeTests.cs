@@ -23,6 +23,10 @@ namespace AttendanceQR.Application.Tests;
 /// (ManageableEmployeeAsync): a manager may act only on a Role==Employee target inside a branch they
 /// oversee, in their own tenant. Same-branch admin/manager/self → 403 with no state touched; other
 /// branch or other tenant → 404 (no probing). If any of these tests fail, that boundary regressed.
+///
+/// Since 2026-09-14 the PIN reset (and the login number) reaches further, at the owner's request: any
+/// plain employee or fellow manager in the tenant — never an admin, an operator or self. The two tests
+/// below that used to refuse it now pin the widening; ManagerCredentialTests covers the rest of it.
 /// </summary>
 public class ManagerAccountScopeTests
 {
@@ -212,12 +216,14 @@ public class ManagerAccountScopeTests
     }
 
     [Fact]
-    public async Task ResetPin_same_branch_manager_is_forbidden()
+    public async Task ResetPin_same_branch_manager_is_allowed()
     {
+        // Reversed 2026-09-14 at the owner's request — see CredentialTargetAsync. The ADMIN refusal above
+        // is the part of 2026-08-08 that stays, and must.
         using var h = new Harness();
         var result = await h.Controller.ResetPin(h.SameBranchManagerId);
-        AssertForbidden(result);
-        Assert.Equal("original-hash", h.Row(h.SameBranchManagerId).PasswordHash);
+        Assert.IsType<OkObjectResult>(result);
+        Assert.NotEqual("original-hash", h.Row(h.SameBranchManagerId).PasswordHash);
     }
 
     [Fact]
@@ -230,12 +236,14 @@ public class ManagerAccountScopeTests
     }
 
     [Fact]
-    public async Task ResetPin_other_branch_employee_is_not_found()
+    public async Task ResetPin_other_branch_employee_is_allowed()
     {
+        // Company-wide since 2026-09-14, while the FULL edit of the same person is still 404
+        // (Update_other_branch_employee_is_not_found) — the seam this pair pins.
         using var h = new Harness();
         var result = await h.Controller.ResetPin(h.OtherBranchEmployeeId);
-        Assert.IsType<NotFoundObjectResult>(result);
-        Assert.Equal("original-hash", h.Row(h.OtherBranchEmployeeId).PasswordHash);
+        Assert.IsType<OkObjectResult>(result);
+        Assert.NotEqual("original-hash", h.Row(h.OtherBranchEmployeeId).PasswordHash);
     }
 
     [Fact]

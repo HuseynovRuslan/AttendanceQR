@@ -16,6 +16,9 @@ export interface ManagerEmployee {
   /** May this manager CHANGE this row? Their branch AND plain staff — the same rule every write
    *  re-checks server-side. A colleague's row is visible and read-only. */
   manageable?: boolean
+  /** May this manager reset the PIN / change the login number? Wider than `manageable`: any plain
+   *  employee or fellow manager — never an admin or themself. Only the single card sends it. */
+  credentialsManageable?: boolean
   /** Not ordinary staff — another manager, or the admin who clocks in at this branch. */
   isColleague?: boolean
   fullName: string
@@ -121,6 +124,31 @@ export function resetManagerEmployeePin(id: string) {
     `/api/manager/employees/${id}/reset-pin`,
     { method: 'POST' },
   )
+}
+
+/** Somebody whose PIN or login number a manager may change — anywhere in the company. Only the last four
+ *  digits of the number travel: enough to confirm the right person, not a company phone book. */
+export interface CredentialTarget {
+  id: string
+  fullName: string
+  position: string | null
+  locationName: string
+  /** A fellow manager. Resetting them hands you a PIN to their account — the screen says so first. */
+  isManager: boolean
+  phoneTail: string | null
+  activated: boolean
+}
+
+/** Needs at least two characters; a name or part of the number. */
+export function findCredentialTargets(q: string) {
+  return apiRequest<CredentialTarget[]>(`/api/manager/credential-targets?q=${encodeURIComponent(q)}`)
+}
+
+export function changeManagerEmployeePhone(id: string, phoneNumber: string) {
+  return apiRequest<{ id: string } | { error: string }>(`/api/manager/employees/${id}/phone`, {
+    method: 'PUT',
+    body: { phoneNumber },
+  })
 }
 
 /** The manager's own version — same body, narrowed server-side to their branches' plain staff. */

@@ -98,6 +98,52 @@ public class ManagerController : ControllerBase
     }
 
     /// <summary>
+    /// Who a manager may hand a new PIN or a new login number: ANY plain employee or fellow MANAGER in
+    /// the company — not only the people at their own branches.
+    ///
+    /// Wider than <see cref="ManageableEmployeeAsync"/> on purpose, and for these two actions only. The
+    /// owner asked for it outright (2026-09-14): a manager whose colleague has lost a phone or forgotten a
+    /// PIN at seven in the morning cannot wait for the one admin, and an area nobody manages — 130 people
+    /// that day — left its staff with nobody at all who could help. Everything else about an account —
+    /// the branch, the shift, switching it off — stays behind the branch rule.
+    ///
+    /// It knowingly re-opens part of what 2026-08-08 closed: a manager who resets a PEER's PIN is handed
+    /// that PIN and could sign in as the peer. Two things keep that from becoming a quiet takeover:
+    ///   • never an ADMIN, a platform operator or the caller — the escalation cases stay shut, and the
+    ///     roles are an explicit allowlist, so a role added later is refused rather than let in;
+    ///   • every use is written to the audit log against the account it changed, naming who did it.
+    /// </summary>
+    private async Task<(Employee? Employee, IActionResult? Error)> CredentialTargetAsync(Guid id)
+    {
+        var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
+        if (target is null)
+            return (null, NotFound(new { error = "EmployeeNotFound" }));
+        if (target.Role is not (EmployeeRole.Employee or EmployeeRole.Manager) || target.Id == M15())
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagerCannotManageRole" }));
+        if (_operatorIds.Contains(target.Id))
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" }));
+        return (target, null);
+    }
+
+    /// <summary>Records who changed whose credentials — the other half of <see cref="CredentialTargetAsync"/>.</summary>
+    private async Task AuditCredentialChangeAsync(Employee target, string what)
+    {
+        var me = M15();
+        var myName = await _db.Employees.Where(e => e.Id == me).Select(e => e.FullName)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = target.Id,
+            EventType = AuditEventType.CredentialChangedByManager,
+            Reason = $"{what} — menecer {myName ?? "?"} ({me})",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+    }
+
+    private static string? Tail(string? phone) =>
+        string.IsNullOrEmpty(phone) ? null : phone.Length <= 4 ? phone : phone[^4..];
+
+    /// <summary>
     /// Who a LEAVE may be filed for: anyone at this manager's own branches, including a fellow manager
     /// or an admin who works there, plus the manager THEMSELVES.
     ///
@@ -450,6 +496,10 @@ public class ManagerController : ControllerBase
         // argument. A first draft of this card reversed both without noticing.
         var mayAct = e.Role == EmployeeRole.Employee && e.Id != M15() && managed.Contains(e.LocationId);
         var ownContacts = mayAct || e.Id == M15();
+        // The PIN / number actions reach further than the full edit — see CredentialTargetAsync — so a
+        // fellow manager's card offers «PIN sıfırla» while «Redaktə et» stays off.
+        var mayResetCredentials = (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)
+                                  && e.Id != M15() && !_operatorIds.Contains(e.Id);
 
         return Ok(new
         {
@@ -485,6 +535,7 @@ public class ManagerController : ControllerBase
             // Deliberately absent: MonthlySalary and Role. Not hidden in the UI — never sent.
             // Whether this manager may ACT on this person is a separate question, answered per write.
             manageable = mayAct,
+            credentialsManageable = mayResetCredentials,
         });
     }
 
@@ -614,12 +665,13 @@ public class ManagerController : ControllerBase
         return Ok(new { id = employee.Id });
     }
 
-    // POST /api/manager/employees/{id}/reset-pin — hand an employee a fresh temporary PIN.
+    // POST /api/manager/employees/{id}/reset-pin — hand a fresh temporary PIN to a plain employee or a
+    // fellow manager anywhere in the company. Who qualifies is CredentialTargetAsync's decision alone.
     [HttpPost("employees/{id:guid}/reset-pin")]
     public async Task<IActionResult> ResetPin(Guid id)
     {
         var ct = HttpContext.RequestAborted;
-        var (employee, denied) = await ManageableEmployeeAsync(id);
+        var (employee, denied) = await CredentialTargetAsync(id);
         if (employee is null)
             return denied!;
 
@@ -627,9 +679,90 @@ public class ManagerController : ControllerBase
         employee.PasswordHash = _passwordHasher.Hash(tempPin);
         employee.MustChangePin = true;
         employee.TokenVersion++; // any existing session stops working — a reset should end old logins
+        await AuditCredentialChangeAsync(employee, "PIN sıfırlandı");
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { id = employee.Id, tempPin });
+    }
+
+    // PUT /api/manager/employees/{id}/phone — change ONLY the login number, for the same people as
+    // reset-pin. Deliberately not the full edit: moving somebody, changing their shift or switching them
+    // off stays with the manager of their own branch.
+    [HttpPut("employees/{id:guid}/phone")]
+    public async Task<IActionResult> ChangePhone(Guid id, [FromBody] ManagerPhoneChangeRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var (employee, denied) = await CredentialTargetAsync(id);
+        if (employee is null)
+            return denied!;
+
+        var phone = PhoneNumbers.Normalize(request.PhoneNumber);
+        if (phone is null)
+            return BadRequest(new { error = "PhoneInvalid" });
+        if (phone == employee.PhoneNumber)
+            return Ok(new { id = employee.Id });
+        // Login is phone + PIN, and Employees has no unique index on the number — a second row carrying
+        // it silently signs the wrong person in. Refused here exactly as the full edit refuses it.
+        if (await _db.Employees.AnyAsync(e => e.PhoneNumber == phone && e.Id != id, ct))
+            return Conflict(new { error = "PhoneAlreadyExists" });
+
+        var before = Tail(employee.PhoneNumber);
+        employee.PhoneNumber = phone;
+        // No TokenVersion bump: they stay signed in, and the new number is what they type next time.
+        // Logging people out is the one thing this product does not do to them.
+        await AuditCredentialChangeAsync(employee, $"Nömrə dəyişdi …{before ?? "—"} → …{Tail(phone)}");
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { id = employee.Id });
+    }
+
+    // GET /api/manager/credential-targets?q= — find whose PIN or number to change, company-wide.
+    //
+    // The roster is a manager's branches and nothing else, so without this the widened reset-pin had no
+    // door in for exactly the people it was widened for. It returns what finding the right person takes —
+    // name, job, area and the LAST FOUR digits, enough to confirm «the Rəşad whose number ends 7391» —
+    // and not a directory of every login number in the company.
+    [HttpGet("credential-targets")]
+    public async Task<IActionResult> CredentialTargets([FromQuery] string? q)
+    {
+        var ct = HttpContext.RequestAborted;
+        var term = (q ?? "").Trim();
+        if (term.Length < 2)
+            return Ok(Array.Empty<object>());
+
+        var self = M15();
+        var lowered = term.ToLower();
+        var digits = new string(term.Where(char.IsDigit).ToArray());
+        var byPhone = digits.Length >= 3;
+
+        var rows = await _db.Employees
+            .Where(e => e.IsActive && e.Id != self
+                        && (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)
+                        && !_operatorIds.Contains(e.Id)
+                        && (e.FullName.ToLower().Contains(lowered)
+                            || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))))
+            .OrderBy(e => e.FullName)
+            .Take(20)
+            .Select(e => new
+            {
+                e.Id, e.FullName, e.Position, e.Role, e.PhoneNumber, e.LocationId,
+                Activated = e.ActivatedAtUtc != null,
+            })
+            .ToListAsync(ct);
+
+        var locationIds = rows.Select(r => r.LocationId).Distinct().ToList();
+        var locationNames = await _db.Locations.Where(l => locationIds.Contains(l.Id))
+            .ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+
+        return Ok(rows.Select(r => new
+        {
+            id = r.Id,
+            fullName = r.FullName,
+            position = r.Position,
+            locationName = locationNames.GetValueOrDefault(r.LocationId, ""),
+            isManager = r.Role == EmployeeRole.Manager,
+            phoneTail = Tail(r.PhoneNumber),
+            activated = r.Activated,
+        }));
     }
 
     /// <summary>

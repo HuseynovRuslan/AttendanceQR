@@ -63,6 +63,9 @@ export function EmployeeProfilePage() {
    * deactivate on an admin, and the refusal arrived as a 403 the person reads as a broken button.
    */
   const [manageable, setManageable] = useState(true)
+  /** The PIN reset reaches further than the edit for a manager — a fellow manager, or staff at another
+   *  area (see CredentialTargetAsync) — so it has its own answer instead of riding on `manageable`. */
+  const [canResetPin, setCanResetPin] = useState(true)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -136,7 +139,9 @@ export function EmployeeProfilePage() {
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
-    setManageable(!isManager || (found != null && (found as unknown as { manageable?: boolean }).manageable === true))
+    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean } | null
+    setManageable(!isManager || flags?.manageable === true)
+    setCanResetPin(!isManager || flags?.manageable === true || flags?.credentialsManageable === true)
     if (!found) {
       setNotFound(true)
       setLoading(false)
@@ -156,6 +161,9 @@ export function EmployeeProfilePage() {
 
   async function onResetPin() {
     if (!emp) return
+    // A manager may now reset a fellow manager's PIN, and the PIN that comes back opens that account —
+    // one deliberate confirmation, saying what is at stake, before it happens.
+    if (isManager && !window.confirm(`${emp.fullName} üçün yeni müvəqqəti PIN yaradılsın?\n\nKöhnə PIN dərhal işləməyəcək. Bu əməliyyat jurnala sizin adınızla yazılır.`)) return
     setBusy(true)
     setErr(null)
     // The manager twin re-checks the branch and the target's role; the admin one 403s for them
@@ -404,7 +412,9 @@ export function EmployeeProfilePage() {
                 {/* Precise, because the line used to be wrong in the direction that matters: a
                     manager CAN roster a colleague at their own branch (the card below), and telling
                     them they may only look sent them to ask an admin for something they could do. */}
-                Bu hesabın məlumatlarını dəyişə bilmirsiniz — növbə əvəzləməsi yaza bilərsiniz.
+                {canResetPin
+                  ? 'Bu hesabın məlumatlarını dəyişə bilmirsiniz — PIN sıfırlaya və növbə əvəzləməsi yaza bilərsiniz.'
+                  : 'Bu hesabın məlumatlarını dəyişə bilmirsiniz — növbə əvəzləməsi yaza bilərsiniz.'}
               </span>
             )}
             {/* A manager edits from their OWN roster; the admin one is not theirs to open, and
@@ -417,7 +427,7 @@ export function EmployeeProfilePage() {
                 Redaktə et
               </button>
             )}
-            {manageable && (
+            {canResetPin && (
               <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
             )}
             {/* Re-invite mints an activation link and has no manager endpoint; offering it would

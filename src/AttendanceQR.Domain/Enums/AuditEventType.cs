@@ -53,5 +53,11 @@ public enum AuditEventType
     // no position data to draw a circle from, so the wall comes down, the points are collected, and
     // the radius is then set from what people actually did rather than from a guess on a map.
     // The reason carries "lat,lng,dist" exactly like OutsideRadius, so the same screen can map it.
-    CheckInOutsideFence = 17
+    CheckInOutsideFence = 17,
+
+    // A manager handed another account a new temporary PIN or changed its login number. Written against
+    // the account that CHANGED, naming the manager in the reason: since 2026-09-14 a manager may do this
+    // to a fellow manager anywhere in the company, and a PIN they reset is a PIN they know — so the row
+    // is what turns a quiet sign-in as somebody else into a question with a name and a time on it.
+    CredentialChangedByManager = 18
 }
