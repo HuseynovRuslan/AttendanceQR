@@ -78,12 +78,26 @@ public class AdminAttendanceController : ControllerBase
                 employeeName = e.FullName,
                 locationName = l.Name,
                 attendanceDate = r.AttendanceDate,
-                checkInAtUtc = r.CheckInAtUtc
+                checkInAtUtc = r.CheckInAtUtc,
+                e.Role,
+                EmployeeLocationId = e.LocationId,
             })
             .Take(500)
             .ToListAsync(HttpContext.RequestAborted);
 
-        return Ok(rows);
+        // The list is what a manager SEES — every day scanned at their branches — but closing one goes
+        // through CanManageEmployeeAsync, which stops at plain staff of their own branches. So their own
+        // forgotten day and a fellow manager's sat at the top of this list, took a time, and answered
+        // «Bağlanmadı» with no reason (Alıyev Nihat, 2026-09-14: five such rows — three Bəbirov Vüsal's,
+        // one Əmirov Aydın's, one his own). Each row now says whether THIS caller may close it, by the
+        // same rule the write applies, so the screen can say «admin bağlamalıdır» instead of failing.
+        var me = User.EmployeeId();
+        return Ok(rows.Select(x => new
+        {
+            x.recordId, x.employeeId, x.employeeName, x.locationName, x.attendanceDate, x.checkInAtUtc,
+            closable = managed is null
+                       || (x.Role == EmployeeRole.Employee && x.employeeId != me && managed.Contains(x.EmployeeLocationId)),
+        }));
     }
 
     [HttpPut("{recordId:guid}")]

@@ -282,6 +282,10 @@ export interface OpenRecord {
   locationName: string
   attendanceDate: string
   checkInAtUtc: string
+  /** May THIS caller close it? False on a manager's own day, a fellow manager's or an admin's — the list
+   *  shows every day scanned at their branches, but closing one stops at their own plain staff.
+   *  Absent (an older server) reads as closable, which is what the screen assumed before. */
+  closable?: boolean
 }
 
 /** GET /api/admin/attendance/open — past days with a check-in but no check-out (today excluded).

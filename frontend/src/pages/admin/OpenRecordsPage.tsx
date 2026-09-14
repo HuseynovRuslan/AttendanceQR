@@ -20,6 +20,14 @@ function defaultCheckout(checkInIso: string): string {
   return toLocalInput(d)
 }
 
+/** Why a close was refused, said plainly — «Bağlanmadı» alone sent a manager to the owner to ask. */
+const CLOSE_ERROR: Record<string, string> = {
+  OutOfScope: 'Bu günü siz bağlaya bilməzsiniz — admin bağlamalıdır',
+  CheckOutInFuture: 'Çıxış vaxtı gələcəkdə ola bilməz',
+  CheckOutBeforeCheckIn: 'Çıxış girişdən əvvəl ola bilməz',
+  RecordNotFound: 'Bu gün artıq bağlanıb — səhifəni yeniləyin',
+}
+
 export function OpenRecordsPage() {
   const [rows, setRows] = useState<OpenRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -103,17 +111,24 @@ export function OpenRecordsPage() {
       return
     setBusyId(r.recordId)
     setError(null)
-    const { status } = await adminUpdateRecord(r.recordId, undefined, iso)
+    const { status, data } = await adminUpdateRecord(r.recordId, undefined, iso)
     if (status === 200) {
       setRows((prev) => (prev ?? []).filter((x) => x.recordId !== r.recordId))
     } else {
-      setError('Bağlanmadı')
+      const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
+      setError(CLOSE_ERROR[code] ?? 'Bağlanmadı')
     }
     setBusyId(null)
   }
 
   const count = rows?.length ?? 0
   const empty = rows !== null && count === 0
+  // A manager's list carries days they may see but not close — their own, a fellow manager's, an
+  // admin's. Those stay on the list (the day is still open, still zero hours) but nothing on the row
+  // pretends it can be fixed from here, and selecting «all» selects only what can.
+  const canClose = (r: OpenRecord) => r.closable !== false
+  const closable = (rows ?? []).filter(canClose)
+  const closableCount = closable.length
 
   return (
     <div>
@@ -150,14 +165,20 @@ export function OpenRecordsPage() {
                 düyməsinə basa bilərsiniz. Toplu bağlamada hər gün <b>həmin işçinin öz növbəsinin
                 bitmə saatı</b> ilə yazılır.
               </div>
+              {closableCount < count && (
+                <div style={{ fontSize: 13, color: 'var(--c600)', marginTop: 6 }}>
+                  {count - closableCount} gün — sizin özünüzün, həmkar menecerin və ya adminin — yalnız admin
+                  tərəfindən bağlana bilər.
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 className="btn btn-sm"
-                onClick={() => setPicked(new Set(picked.size === count ? [] : (rows ?? []).map((r) => r.recordId)))}
-                disabled={bulkBusy}
+                onClick={() => setPicked(new Set(picked.size === closableCount ? [] : closable.map((r) => r.recordId)))}
+                disabled={bulkBusy || closableCount === 0}
               >
-                {picked.size === count ? 'Seçimi ləğv et' : `Hamısını seç (${count})`}
+                {picked.size === closableCount && closableCount > 0 ? 'Seçimi ləğv et' : `Hamısını seç (${closableCount})`}
               </button>
               <button
                 className="btn btn-primary btn-sm"
@@ -219,8 +240,9 @@ export function OpenRecordsPage() {
                 <input
                   type="checkbox"
                   aria-label="Hamısını seç"
-                  checked={count > 0 && picked.size === count}
-                  onChange={() => setPicked(new Set(picked.size === count ? [] : (rows ?? []).map((r) => r.recordId)))}
+                  checked={closableCount > 0 && picked.size === closableCount}
+                  disabled={closableCount === 0}
+                  onChange={() => setPicked(new Set(picked.size === closableCount ? [] : closable.map((r) => r.recordId)))}
                 />
               </th>
               <th>İşçi</th>
@@ -238,6 +260,7 @@ export function OpenRecordsPage() {
                     type="checkbox"
                     aria-label={`${r.employeeName} — seç`}
                     checked={picked.has(r.recordId)}
+                    disabled={!canClose(r)}
                     onChange={() => toggle(r.recordId)}
                   />
                 </td>
@@ -254,13 +277,24 @@ export function OpenRecordsPage() {
                     className="inp"
                     type="datetime-local"
                     value={timeFor(r)}
+                    disabled={!canClose(r)}
                     onChange={(e) => setTimes((prev) => ({ ...prev, [r.recordId]: e.target.value }))}
                   />
                 </td>
                 <td data-label="">
-                  <button className="btn btn-primary btn-sm" disabled={busyId === r.recordId} onClick={() => close(r)}>
-                    <IconCheck /> Bağla
-                  </button>
+                  {canClose(r) ? (
+                    <button className="btn btn-primary btn-sm" disabled={busyId === r.recordId} onClick={() => close(r)}>
+                      <IconCheck /> Bağla
+                    </button>
+                  ) : (
+                    <span
+                      className="muted"
+                      style={{ fontSize: 12 }}
+                      title="Menecer yalnız öz ərazisindəki adi işçilərin gününü bağlaya bilər"
+                    >
+                      Admin bağlamalıdır
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

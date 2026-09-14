@@ -62,10 +62,17 @@ public class OpenRecordsManagerScopeTests
         /// <summary>An admin who clocks in at the branch our manager oversees — the P0 row.</summary>
         public Guid SameBranchAdminId { get; } = Guid.NewGuid();
 
+        /// <summary>A second manager at the same branch — Heydər Əliyev Mərkəzi has four.</summary>
+        public Guid PeerManagerId { get; } = Guid.NewGuid();
+
         // Unclosed days (check-in, no check-out) on a PAST date — what the screen lists.
         public Guid OpenMineId { get; } = Guid.NewGuid();
         public Guid OpenTheirsId { get; } = Guid.NewGuid();
         public Guid OpenAdminId { get; } = Guid.NewGuid();
+        public Guid OpenPeerId { get; } = Guid.NewGuid();
+
+        /// <summary>The manager's OWN forgotten day — theirs to see, never theirs to close.</summary>
+        public Guid OpenSelfId { get; } = Guid.NewGuid();
 
         /// <summary>Open, but dated today: somebody still at work, not a forgotten scan.</summary>
         public Guid OpenTodayMineId { get; } = Guid.NewGuid();
@@ -105,10 +112,13 @@ public class OpenRecordsManagerScopeTests
             Db.Employees.Add(Person(MyWorkerId, "Menim Iscim", EmployeeRole.Employee, ManagedBranch));
             Db.Employees.Add(Person(TheirWorkerId, "Ozge Isci", EmployeeRole.Employee, OtherBranch));
             Db.Employees.Add(Person(SameBranchAdminId, "Eyni Filialda Admin", EmployeeRole.Admin, ManagedBranch));
+            Db.Employees.Add(Person(PeerManagerId, "Hemkar Menecer", EmployeeRole.Manager, ManagedBranch));
 
             Db.AttendanceRecords.Add(Record(OpenMineId, MyWorkerId, ManagedBranch, OpenDate, closed: false));
             Db.AttendanceRecords.Add(Record(OpenTheirsId, TheirWorkerId, OtherBranch, OpenDate, closed: false));
             Db.AttendanceRecords.Add(Record(OpenAdminId, SameBranchAdminId, ManagedBranch, OpenDate, closed: false));
+            Db.AttendanceRecords.Add(Record(OpenPeerId, PeerManagerId, ManagedBranch, OpenDate, closed: false));
+            Db.AttendanceRecords.Add(Record(OpenSelfId, ManagerId, ManagedBranch, OpenDate, closed: false));
             Db.AttendanceRecords.Add(Record(OpenTodayMineId, MyWorkerId, ManagedBranch, Today, closed: false));
             Db.AttendanceRecords.Add(Record(ClosedMineId, MyWorkerId, ManagedBranch, ClosedDate, closed: true));
             Db.AttendanceRecords.Add(Record(ClosedTheirsId, TheirWorkerId, OtherBranch, ClosedDate, closed: true));
@@ -266,6 +276,42 @@ public class OpenRecordsManagerScopeTests
 
         Assert.Contains(f.OpenAdminId, ListedRecordIds(await f.AsManager().Open()));
         AssertOutOfScope(await f.AsManager().Update(f.OpenAdminId, CloseAt(Fixture.OpenDate)));
+    }
+
+    private static Dictionary<Guid, bool> Closable(IActionResult result)
+    {
+        var ok = Assert.IsType<OkObjectResult>(result);
+        return ((System.Collections.IEnumerable)ok.Value!).Cast<object>().ToDictionary(
+            r => (Guid)r.GetType().GetProperty("recordId")!.GetValue(r)!,
+            r => (bool)r.GetType().GetProperty("closable")!.GetValue(r)!);
+    }
+
+    [Fact]
+    public async Task Each_listed_day_says_whether_this_manager_may_close_it()
+    {
+        // Alıyev Nihat, 2026-09-14: «çıxışı redaktə edə bilmirəm». His list showed his own forgotten day and
+        // a fellow manager's three; each took a time and answered «Bağlanmadı» with no reason. The server
+        // was refusing them correctly all along — the list just never said which rows those were.
+        using var f = new Fixture();
+
+        var closable = Closable(await f.AsManager().Open());
+
+        Assert.True(closable[f.OpenMineId]);
+        Assert.False(closable[f.OpenAdminId]);
+        Assert.False(closable[f.OpenPeerId]);
+        Assert.False(closable[f.OpenSelfId]);
+
+        // The flag is the write's own answer, not a second opinion that could drift away from it.
+        AssertOutOfScope(await f.AsManager().Update(f.OpenPeerId, CloseAt(Fixture.OpenDate)));
+        AssertOutOfScope(await f.AsManager().Update(f.OpenSelfId, CloseAt(Fixture.OpenDate)));
+    }
+
+    [Fact]
+    public async Task An_admin_may_close_every_day_on_their_list()
+    {
+        using var f = new Fixture();
+
+        Assert.All(Closable(await f.AsAdmin().Open()).Values, v => Assert.True(v));
     }
 
     // --- closing a day (PUT) ----------------------------------------------------------------------

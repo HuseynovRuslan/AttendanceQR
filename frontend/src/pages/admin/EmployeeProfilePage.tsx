@@ -44,7 +44,14 @@ const CREATE_ERROR: Record<string, string> = {
   Forbidden: 'Bu işçi sizin idarənizdə deyil',
   EmployeeNotFound: 'İşçi tapılmadı',
   LocationNotFound: 'İşçinin filialı təyin olunmayıb',
+  // The edit, clear-checkout and delete answers — same screen, same need to say why.
+  OutOfScope: 'Bu qeydi dəyişə bilməzsiniz — menecer yalnız öz ərazisindəki adi işçilərin qeydini düzəldir',
+  NothingToUpdate: 'Heç nə dəyişmədi',
+  RecordNotFound: 'Qeyd tapılmadı — səhifəni yeniləyin',
 }
+
+const errorCodeOf = (data: unknown) =>
+  data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
 
 /** One employee's full profile: identity + this-month summary + recent attendance + photos + devices,
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
@@ -287,19 +294,19 @@ export function EmployeeProfilePage() {
   async function saveEditRecord() {
     if (!editRecId) return
     setRecBusy(true); setRecErr(null)
-    const { status } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut))
+    const { status, data } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut))
     setRecBusy(false)
     if (status === 200) { setEditRecId(null); void load() }
-    else setRecErr('Qeyd dəyişmədi')
+    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd dəyişmədi')
   }
 
   async function clearCheckout(recordId: string) {
     if (!window.confirm('Çıxış qeydi silinsin? İşçi yenidən çıxış edə biləcək.')) return
     setRecBusy(true); setRecErr(null)
-    const { status } = await adminClearCheckout(recordId)
+    const { status, data } = await adminClearCheckout(recordId)
     setRecBusy(false)
     if (status === 200) void load()
-    else setRecErr('Çıxış silinmədi')
+    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Çıxış silinmədi')
   }
 
   /**
@@ -320,10 +327,10 @@ export function EmployeeProfilePage() {
       'Yalnız heç bir işi əks etdirməyən səhv qeydlər üçün istifadə edin — ' +
       'saatı düzəltmək lazımdırsa «Redaktə» edin.')) return
     setRecBusy(true); setRecErr(null)
-    const { status } = await adminDeleteRecord(r.recordId)
+    const { status, data } = await adminDeleteRecord(r.recordId)
     setRecBusy(false)
     if (status === 200) void load()
-    else setRecErr('Qeyd silinmədi')
+    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd silinmədi')
   }
 
   async function viewRecordPhoto(r: AttendanceRecord) {
@@ -650,7 +657,10 @@ export function EmployeeProfilePage() {
                               none — the id is empty — so these would 404 rather than do nothing
                               visible, which is exactly what happened: a staff member typed the right
                               times into the wrong screen and got «Qeyd dəyişmədi» four times. */}
-                          {!r.isFieldDay && (
+                          {/* …and only where this viewer may correct the day — the same `manageable` the
+                              «+ Qeyd əlavə et» button above already waits on. A manager's own day and a
+                              fellow manager's were offered all three and refused with a bare error. */}
+                          {!r.isFieldDay && manageable && (
                             <>
                               <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
                               {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
