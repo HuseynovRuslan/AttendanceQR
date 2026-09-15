@@ -258,6 +258,13 @@ psklub.qrlog.az {
 	reverse_proxy psklub-app:8080
 }
 
+# Literature Millionaire (“Ayın kitabı” book kiosk) — separate project, own stack in
+# /opt/literature-millionaire. Its compose attaches only the web (Nginx) container to
+# attendanceqr_default, under the project-unique alias below; its API and database are not on it.
+book.qrlog.az {
+	reverse_proxy literature-millionaire-web:80
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #
