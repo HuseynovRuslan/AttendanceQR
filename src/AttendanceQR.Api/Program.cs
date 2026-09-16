@@ -144,6 +144,11 @@ builder.Services.AddSingleton<IExcelReportExporter, ExcelReportExporter>();
 var assistantOptions = builder.Configuration.GetSection(AssistantOptions.SectionName).Get<AssistantOptions>() ?? new AssistantOptions();
 builder.Services.AddSingleton(assistantOptions);
 builder.Services.AddHttpClient("assistant-llm", c => c.Timeout = TimeSpan.FromSeconds(90));
+
+// "QRLog ilə davam et" in Kitabxana 2.0: this is the call that vouches for an employee to it. Short
+// timeout on purpose - the employee is standing at a kiosk waiting for the screen to move on, and a
+// failure here is recoverable by asking the kiosk for a new QR.
+builder.Services.AddHttpClient("kitabxana", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<IAssistantLlm>(sp => new OpenAiAssistantLlm(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("assistant-llm"), assistantOptions));
 builder.Services.AddScoped(sp => new AssistantDataService(
