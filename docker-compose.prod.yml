@@ -55,6 +55,9 @@ services:
       Kitabxana__VouchSecret: ${Kitabxana__VouchSecret:-}
       Kitabxana__BaseUrl: ${Kitabxana__BaseUrl:-https://book.qrlog.az}
       Kitabxana__TenantIds__0: ${Kitabxana__TenantIds__0:-}
+      # "true" lets every company on this system use the shortcut, which matches the quiz itself:
+      # anyone can play by typing their details in. Leave it unset to fall back to the list above.
+      Kitabxana__AnyTenant: ${Kitabxana__AnyTenant:-}
       # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
       # the proxy's address instead of the phone's.
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"

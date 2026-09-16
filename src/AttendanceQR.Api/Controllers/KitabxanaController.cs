@@ -51,8 +51,12 @@ public class KitabxanaController : ControllerBase
         var secret = _config["Kitabxana:VouchSecret"];
         var baseUrl = (_config["Kitabxana:BaseUrl"] ?? "https://book.qrlog.az").TrimEnd('/');
         var allowedTenants = _config.GetSection("Kitabxana:TenantIds").Get<Guid[]>() ?? [];
+        // The quiz is open to anyone who types their name and phone into its kiosk, so limiting the
+        // shortcut to one company protected nothing and only made the two routes in inconsistent.
+        // Still an explicit opt-in, not a default: somebody has to write it down.
+        var anyTenant = _config.GetValue("Kitabxana:AnyTenant", false);
 
-        if (string.IsNullOrWhiteSpace(secret) || allowedTenants.Length == 0)
+        if (string.IsNullOrWhiteSpace(secret) || (!anyTenant && allowedTenants.Length == 0))
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "NotConfigured" });
         }
@@ -75,8 +79,8 @@ public class KitabxanaController : ControllerBase
             return Unauthorized(new { error = "UnknownEmployee" });
         }
 
-        // The quiz belongs to one company. Another tenant's employee must not be signed into it.
-        if (!allowedTenants.Contains(employee.TenantId))
+        // Whose employees the quiz is for. With AnyTenant it is everyone on this system.
+        if (!anyTenant && !allowedTenants.Contains(employee.TenantId))
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotEligible" });
         }
