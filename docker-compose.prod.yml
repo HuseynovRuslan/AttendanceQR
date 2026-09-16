@@ -48,6 +48,13 @@ services:
       # the three accounts it lists have been sitting in every branch's board ever since, and two of
       # them had quietly accumulated fifty-odd Qayıb days apiece by 2026-09-08.
       App__HiddenEmails: ${App__HiddenEmails:-}
+      # "QRLog ilə davam et" in Kitabxana 2.0 (book.qrlog.az): the secret it signs sign-in
+      # confirmations with, and the tenants whose employees that quiz is for. Both empty by default,
+      # which leaves the feature off - /api/kitabxana/sign-in answers NotConfigured rather than
+      # vouching for anyone. Anyone holding the secret can claim to be any employee.
+      Kitabxana__VouchSecret: ${Kitabxana__VouchSecret:-}
+      Kitabxana__BaseUrl: ${Kitabxana__BaseUrl:-https://book.qrlog.az}
+      Kitabxana__TenantIds__0: ${Kitabxana__TenantIds__0:-}
       # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
       # the proxy's address instead of the phone's.
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
