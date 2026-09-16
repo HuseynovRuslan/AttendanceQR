@@ -92,10 +92,20 @@ public class KitabxanaController : ControllerBase
             return BadRequest(new { error = "NoPhoneNumber" });
         }
 
+        // We store nine national digits ("501234567"); the quiz files everyone under "+994XXXXXXXXX"
+        // and refuses anything it cannot read that way. Sending ours as-is failed every single sign-in,
+        // and because the quiz's form is hidden behind the QR, nobody saw why - the button simply did
+        // nothing. Normalising here also means an employee who once typed their number in by hand
+        // lands on the SAME participant, which is what keeps one attempt per campaign honest.
+        if (!TryNormalizePhone(employee.PhoneNumber, out var phone))
+        {
+            return BadRequest(new { error = "BadPhoneNumber" });
+        }
+
         var timestamp = DateTimeOffset.UtcNow.ToString("O");
         var signature = Convert.ToHexString(HMACSHA256.HashData(
             Encoding.UTF8.GetBytes(secret),
-            Encoding.UTF8.GetBytes($"{code}\n{employee.PhoneNumber}\n{timestamp}")));
+            Encoding.UTF8.GetBytes($"{code}\n{phone}\n{timestamp}")));
 
         try
         {
@@ -104,7 +114,7 @@ public class KitabxanaController : ControllerBase
             {
                 code,
                 fullName = employee.FullName,
-                phoneNumber = employee.PhoneNumber,
+                phoneNumber = phone,
                 timestamp,
                 signature,
             }, ct);
@@ -134,4 +144,29 @@ public class KitabxanaController : ControllerBase
 
         return NoContent();
     }
+
+    /// <summary>
+    /// To "+994XXXXXXXXX", the one form the quiz files participants under. Accepts what this database
+    /// holds (nine national digits) as well as the 0XX / 994 / +994 spellings, and ignores the spaces,
+    /// dashes and brackets people type into a phone field.
+    /// </summary>
+    private static bool TryNormalizePhone(string input, out string normalized)
+    {
+        normalized = string.Empty;
+        var digits = new string(input.Where(char.IsDigit).ToArray());
+
+        // Longest prefix first: "994..." must not be read as a national number beginning with 99.
+        if (digits.Length == 12 && digits.StartsWith("994", StringComparison.Ordinal)) digits = digits[3..];
+        else if (digits.Length == 10 && digits[0] == '0') digits = digits[1..];
+
+        if (digits.Length != 9) return false;
+        // The quiz only knows Azerbaijani mobiles; a landline would be signed in as somebody who then
+        // cannot play, which is worse than being told now.
+        if (!MobilePrefixes.Contains(digits[..2])) return false;
+
+        normalized = "+994" + digits;
+        return true;
+    }
+
+    private static readonly string[] MobilePrefixes = ["10", "50", "51", "55", "60", "70", "77", "99"];
 }
