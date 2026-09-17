@@ -11,7 +11,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, mustChangePin } = useAuth()
   const location = useLocation()
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />
+    // With the query string: a link that carries something (the Kitabxana sign-in code) must survive
+    // the detour through login, or the employee returns to a page that no longer knows why it opened.
+    return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
   }
   // Account still on a temporary PIN — force the "set your PIN" screen before anything else.
   if (mustChangePin && location.pathname !== '/set-pin') {
