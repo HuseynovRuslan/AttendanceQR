@@ -35,11 +35,32 @@ src/
   i18n/ui.ts                 # BÜTÜN tərcümələr (AZ/RU/EN) — mətn dəyişikliyi burada olur
   data/site.ts               # domen, əlaqə, qiymət, sahə siyahısı, rəylər — tərcümə olunmayan hər şey
   layouts/BaseLayout.astro   # SEO <head>, JSON-LD, Header + Footer, qlobal skriptlər
+  styles/global.css          # saytın öz stilləri
+  styles/tailwind.css        # Tailwind v4 (aşağıda: «Stil»)
   components/                # hər bölmə ayrıca komponent
   content/blog/              # Markdown məqalələr
   pages/                     # index, qiymet, haqqimizda, elaqe, bloq/ (+ ru/ və en/ variantları)
 public/                      # loqolar, og-image, favicon, robots.txt
 ```
+
+## Stil
+
+Saytın öz stilləri `src/styles/global.css`-dədir. Yanında Tailwind v4 qoşulub, komponentlərdə
+utility class-ları birbaşa yazmaq olar.
+
+- **Utility həmişə `global.css`-dən üstündür.** `global.css` `base` cascade layer-indədir, utility-lər
+  ondan yuxarıda: `global.css`-də `a { color: inherit }` olsa da, `<a class="text-blue-600">` mavi olur.
+- **Preflight (Tailwind-in reset-i) qoşulmayıb** — `global.css`-in öz reset-i var. Ona görə başlıqlar
+  qalın, siyahılar markerli qalır; lazım olanda `font-normal`, `list-none` yazın.
+- Saytın rəngləri CSS dəyişənləridir: `text-(--ink)`, `bg-(--paper)`, `border-(--line)`.
+  `font-sans` / `font-mono` — IBM Plex.
+- `animate-spin`, `animate-ping`, `animate-pulse` işləyir, keyframe adları isə `tw-*`-dır:
+  `global.css`-də eyni adlı (`spin`, `ping`, `pulse`) animasiyalar var.
+- `global.css`-i `tailwind.css`-ə import etməyin — niyə ayrıca fayldan qoşulduğu
+  `src/styles/global-layered.css`-də yazılıb.
+- `vite` `package.json`-a birbaşa yazılıb ki, Astro ilə Tailwind plugin-i eyni Vite-i işlətsin
+  (yoxsa npm yanına ayrıca, daha yeni Vite qoyur). Astro-nu yeni Vite major versiyasına keçən
+  buraxılışa yeniləyəndə `vite`-i də onunla bir yeniləyin.
 
 ## Nəyi harada dəyişmək
 

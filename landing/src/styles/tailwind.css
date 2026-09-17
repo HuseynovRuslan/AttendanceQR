@@ -1,0 +1,49 @@
+/*
+ * Tailwind v4, added to a site that already has a stylesheet of its own (global.css). BaseLayout
+ * imports this file first and global-layered.css second — that order is the cascade.
+ *
+ * No Preflight, Tailwind's reset: global.css carries its own reset and was written against browser
+ * defaults that Preflight takes away, so switching it on would restyle pages nobody meant to touch.
+ *
+ * The layer order is declared here, before any CSS lands in a layer. global.css goes into `base`,
+ * under `utilities`: a utility class on an element beats it whatever the specificity. Left unlayered,
+ * its `* { margin:0; padding:0 }` and `a { color:inherit }` would cancel `mt-4`, `p-6` and `text-*`.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+/* Classes are looked for in src/ only. Left to find files on its own, Tailwind skips what .gitignore
+   lists — and the Docker build has no .gitignore, so the server would build different CSS than a
+   local build does. */
+@import 'tailwindcss/utilities.css' layer(utilities) source('..');
+
+@theme {
+  /* `font-sans` / `font-mono` mean the faces BaseLayout loads, not system fonts. */
+  --font-sans: 'IBM Plex Sans', 'Inter', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* global.css already has keyframes named spin, ping and pulse. Tailwind writes an animate-*
+     utility's keyframes outside any layer, where they would beat those and change the site's own
+     animations — so Tailwind's three live under names of their own. */
+  --animate-spin: tw-spin 1s linear infinite;
+  --animate-ping: tw-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-pulse: tw-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes tw-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes tw-ping {
+    75%,
+    100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+  @keyframes tw-pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+}
