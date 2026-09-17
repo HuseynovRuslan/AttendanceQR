@@ -7,6 +7,23 @@
  * screen in another tab waiting for them.
  */
 
+/**
+ * Where to send the employee back to once they have approved: the screen they came from, so an
+ * administrator who started in the panel returns to the panel and a player returns to the game.
+ *
+ * Only an address on the quiz's own site is accepted. It arrives in a link, and a link can be sent by
+ * anyone, so an unchecked one would turn this page into a redirect somebody else gets to aim.
+ */
+export function readReturnUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'https:' && url.hostname === 'book.qrlog.az' ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
 /** The code the quiz put in its QR: hex, and nothing else may be sent as one. */
 export function readCode(raw: string | null | undefined): string | null {
   const code = (raw ?? '').trim()

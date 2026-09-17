@@ -1,11 +1,14 @@
-import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { apiRequest } from '../api/client'
 import { SubPageHeader } from '../components/SubPageHeader'
 import { activeProfileId, listProfiles } from '../lib/profiles'
-import { NETWORK_MESSAGE, classifySignIn, readCode } from './kitabxanaOutcome'
+import { NETWORK_MESSAGE, classifySignIn, readCode, readReturnUrl } from './kitabxanaOutcome'
 
 const KITABXANA_URL = 'https://book.qrlog.az'
+
+/** Long enough to read "Təsdiqləndi", short enough that nobody wonders whether it worked. */
+const LEAVE_AFTER_MS = 1200
 
 /**
  * Approving a Kitabxana 2.0 sign-in from this phone.
@@ -22,11 +25,26 @@ const KITABXANA_URL = 'https://book.qrlog.az'
  */
 export function KitabxanaSignInPage() {
   const [params] = useSearchParams()
+  const navigate = useNavigate()
   const code = readCode(params.get('code'))
+  // The exact screen the sign-in started on: the panel for an administrator, the game for a player.
+  const returnUrl = readReturnUrl(params.get('return'))
   const name = listProfiles().find((p) => p.employeeId === activeProfileId())?.name ?? null
 
   const [phase, setPhase] = useState<'ask' | 'busy' | 'done'>('ask')
   const [error, setError] = useState<string | null>(null)
+
+  // Approved: hand the screen back rather than leave the employee on a page with nothing left to do.
+  // Back to the quiz where it opened in this very tab, otherwise to this app's own home - the other
+  // tab has already signed itself in by the time they look at it.
+  useEffect(() => {
+    if (phase !== 'done') return
+    const timer = window.setTimeout(() => {
+      if (returnUrl) window.location.assign(returnUrl)
+      else navigate('/home', { replace: true })
+    }, LEAVE_AFTER_MS)
+    return () => window.clearTimeout(timer)
+  }, [phase, returnUrl, navigate])
 
   async function approve() {
     if (!code) return
@@ -72,10 +90,12 @@ export function KitabxanaSignInPage() {
             <div className="text-5xl" aria-hidden="true">✅</div>
             <h2 className="mt-3 text-lg font-bold text-slate-900">Təsdiqləndi</h2>
             <p className="mt-2 text-slate-700">
-              Kitabxana səhifəsinə qayıdın — giriş orada özü davam edir. Səhifəni bağlamısınızsa, aşağıdakı düymə ilə açın.
+              {returnUrl
+                ? 'Kitabxana ekranına qaytarılırsınız…'
+                : 'Kitabxana səhifəsinə qayıdın — giriş orada özü davam edir.'}
             </p>
             <a
-              href={KITABXANA_URL}
+              href={returnUrl ?? KITABXANA_URL}
               className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-green-600 px-6 font-semibold text-white"
             >
               Kitabxana 2.0-a keç
