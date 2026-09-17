@@ -5,6 +5,7 @@ import {
   SERVER_MESSAGE,
   classifySignIn,
   readCode,
+  readReturnUrl,
 } from './kitabxanaOutcome'
 
 /**
@@ -43,5 +44,21 @@ describe('classifySignIn', () => {
   it('does not blame the connection for a decision the server made', () => {
     expect(classifySignIn(400, { error: 'NoPhoneNumber' })).toEqual({ kind: 'refused', message: NO_PHONE_MESSAGE })
     expect(classifySignIn(502, { error: 'KitabxanaUnreachable' })).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
+  })
+})
+
+describe('readReturnUrl', () => {
+  it('accepts an address on the quiz site, and only that', () => {
+    expect(readReturnUrl('https://book.qrlog.az/admin')).toBe('https://book.qrlog.az/admin')
+    expect(readReturnUrl('https://book.qrlog.az/register/2')).toBe('https://book.qrlog.az/register/2')
+  })
+
+  it('refuses a redirect somebody else would get to aim', () => {
+    expect(readReturnUrl(null)).toBeNull()
+    expect(readReturnUrl('https://evil.example.com/')).toBeNull()
+    expect(readReturnUrl('http://book.qrlog.az/admin')).toBeNull() // not https
+    expect(readReturnUrl('https://book.qrlog.az.evil.example.com/')).toBeNull()
+    expect(readReturnUrl('javascript:alert(1)')).toBeNull()
+    expect(readReturnUrl('/admin')).toBeNull() // not absolute: nothing to trust in it
   })
 })
