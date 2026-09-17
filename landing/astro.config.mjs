@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config'
 import sitemap from '@astrojs/sitemap'
+import tailwindcss from '@tailwindcss/vite'
 
 // site: the absolute base for canonical URLs, Open Graph and the generated sitemap. It is the real
 // production domain — the app itself lives on bax.qrlog.az (see SITE.appUrl in src/data/site.ts).
@@ -27,4 +28,8 @@ export default defineConfig({
       },
     }),
   ],
+  // Tailwind v4. How it sits next to the existing global.css is explained in src/styles/tailwind.css.
+  vite: {
+    plugins: [tailwindcss()],
+  },
 })

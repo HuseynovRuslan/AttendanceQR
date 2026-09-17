@@ -1,5 +1,7 @@
 ---
-import '../styles/global.css'
+// In this order: tailwind.css declares the cascade layers that global-layered.css puts global.css in.
+import '../styles/tailwind.css'
+import '../styles/global-layered.css'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
