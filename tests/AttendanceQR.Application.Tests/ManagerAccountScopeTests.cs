@@ -152,12 +152,25 @@ public class ManagerAccountScopeTests
     }
 
     [Fact]
-    public async Task Update_same_branch_manager_is_forbidden()
+    public async Task Update_a_fellow_manager_is_allowed_and_written_down()
     {
+        // 2026-09-18, the owner's call: a fellow MANAGER is reachable company-wide (IsColleague).
         using var h = new Harness();
-        var result = await h.Controller.UpdateEmployee(h.SameBranchManagerId, Edit("Ele Keçirilmiş", h.BranchA));
-        AssertForbidden(result);
-        Assert.Equal("İkinci Menecer", h.Row(h.SameBranchManagerId).FullName);
+        var result = await h.Controller.UpdateEmployee(h.SameBranchManagerId, Edit("Düzəldilmiş Menecer", h.BranchA));
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("Düzəldilmiş Menecer", h.Row(h.SameBranchManagerId).FullName);
+        Assert.Contains(h.Db.AuditLogs, a => a.EmployeeId == h.SameBranchManagerId
+            && a.EventType == AuditEventType.CredentialChangedByManager);
+    }
+
+    [Fact]
+    public async Task A_fellow_manager_cannot_be_switched_off_by_a_colleague()
+    {
+        // Deactivating locks them out of the company — still the admin's decision.
+        using var h = new Harness();
+        var edit = Edit("İkinci Menecer", h.BranchA) with { IsActive = false };
+        AssertForbidden(await h.Controller.UpdateEmployee(h.SameBranchManagerId, edit));
+        Assert.True(h.Row(h.SameBranchManagerId).IsActive);
     }
 
     [Fact]
@@ -367,10 +380,15 @@ public class ManagerAccountScopeTests
 
         Assert.NotNull(Row(h.SameBranchEmployeeId));
         Assert.Equal(true, Field(Row(h.SameBranchEmployeeId)!, "manageable"));
+        // A fellow manager is actionable since 2026-09-18.
+        Assert.Equal(true, Field(Row(h.SameBranchManagerId)!, "manageable"));
 
         // Anything else at the branch is visible and read-only; anything off it is still absent.
         foreach (var r in rows)
-            if ((Guid)r.GetType().GetProperty("id")!.GetValue(r)! != h.SameBranchEmployeeId)
+        {
+            var id = (Guid)r.GetType().GetProperty("id")!.GetValue(r)!;
+            if (id != h.SameBranchEmployeeId && id != h.SameBranchManagerId)
                 Assert.Equal(false, Field(r, "manageable"));
+        }
     }
 }

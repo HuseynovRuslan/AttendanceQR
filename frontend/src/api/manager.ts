@@ -100,9 +100,12 @@ export function getManagerPositions() {
 }
 
 /** `includeSelf` adds the manager's OWN row — the leave form needs it, since a manager may file their
- *  own absence. Every other screen leaves it off: those buttons refuse a non-Employee row anyway. */
-export function getManagerEmployees(includeSelf = false) {
-  return apiRequest<ManagerEmployee[]>(`/api/manager/employees${includeSelf ? '?includeSelf=true' : ''}`)
+ *  own absence. `includeColleagues` adds every fellow manager in the company — the roster only, where
+ *  they can be edited (since 2026-09-18). Every other screen leaves both off, so «my branches» stays
+ *  what the shift and bulk screens mean. */
+export function getManagerEmployees(includeSelf = false, includeColleagues = false) {
+  const q = [includeSelf && 'includeSelf=true', includeColleagues && 'includeColleagues=true'].filter(Boolean).join('&')
+  return apiRequest<ManagerEmployee[]>(`/api/manager/employees${q ? `?${q}` : ''}`)
 }
 
 export function createManagerEmployee(input: ManagerEmployeeInput) {

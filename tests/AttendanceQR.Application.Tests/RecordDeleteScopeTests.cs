@@ -184,7 +184,6 @@ public class RecordDeleteScopeTests
 
     [Theory]
     [InlineData("admin")]
-    [InlineData("manager")]
     public async Task And_never_for_a_privileged_account_even_in_their_own_branch(string who)
     {
         // The 2026-08-08 rule: branch membership alone is not authority over somebody. Erasing an
