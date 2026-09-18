@@ -34,17 +34,25 @@ export function KitabxanaSignInPage() {
   const [phase, setPhase] = useState<'ask' | 'busy' | 'done'>('ask')
   const [error, setError] = useState<string | null>(null)
 
+  // Whether the quiz opened this in a tab of its own. That tab is still there, still waiting, and it
+  // finishes the sign-in by itself - so the thing to do is get out of the way, not open the quiz a
+  // second time beside it.
+  const openedByTheQuiz = typeof window !== 'undefined' && window.opener !== null
+
   // Approved: hand the screen back rather than leave the employee on a page with nothing left to do.
-  // Back to the quiz where it opened in this very tab, otherwise to this app's own home - the other
-  // tab has already signed itself in by the time they look at it.
   useEffect(() => {
     if (phase !== 'done') return
     const timer = window.setTimeout(() => {
+      if (openedByTheQuiz) {
+        // Only a window a script opened may close itself; if the browser refuses, the message below stays.
+        window.close()
+        return
+      }
       if (returnUrl) window.location.assign(returnUrl)
       else navigate('/home', { replace: true })
     }, LEAVE_AFTER_MS)
     return () => window.clearTimeout(timer)
-  }, [phase, returnUrl, navigate])
+  }, [phase, returnUrl, navigate, openedByTheQuiz])
 
   async function approve() {
     if (!code) return
@@ -90,9 +98,11 @@ export function KitabxanaSignInPage() {
             <div className="text-5xl" aria-hidden="true">✅</div>
             <h2 className="mt-3 text-lg font-bold text-slate-900">Təsdiqləndi</h2>
             <p className="mt-2 text-slate-700">
-              {returnUrl
-                ? 'Kitabxana ekranına qaytarılırsınız…'
-                : 'Kitabxana səhifəsinə qayıdın — giriş orada özü davam edir.'}
+              {openedByTheQuiz
+                ? 'Kitabxana səhifəsinə qayıdın — giriş orada özü davam edir.'
+                : returnUrl
+                  ? 'Kitabxana ekranına qaytarılırsınız…'
+                  : 'Kitabxana səhifəsinə qayıdın — giriş orada özü davam edir.'}
             </p>
             <a
               href={returnUrl ?? KITABXANA_URL}
