@@ -1244,6 +1244,13 @@ public class AdminController : ControllerBase
         // could convert its hour into a permanent login for the customer's admin.
         if (ImpersonationRefusal(employee) is { } impersonationRefusal)
             return impersonationRefusal;
+        // Never one's own. The reset ends the caller's own session in the same breath (TokenVersion++)
+        // and the temporary PIN it returns vanishes with the page — an admin who pressed it on their own
+        // card was locked out of their company with nobody left to let them back in (staging,
+        // 2026-09-18; CleanFix's sole admin once did the same by switching themselves off). Changing
+        // one's own PIN is «PIN dəyiş» on the profile, which asks for the old one.
+        if (employee.Id == User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotResetOwnPin" });
         if (employee.ActivatedAtUtc is null)
             return Conflict(new { error = "NotActivated" });
 
@@ -1408,6 +1415,11 @@ public class AdminController : ControllerBase
         {
             // Every guard the single reset applies, per row — this endpoint hands back plaintext just
             // as that one does, so weakening any of them here would simply move the hole.
+            if (employee.Id == User.EmployeeId())
+            {
+                skipped.Add(new { id = employee.Id, fullName = employee.FullName, reason = "CannotResetOwnPin" });
+                continue;
+            }
             if (_operatorIds.Contains(employee.Id))
             {
                 skipped.Add(new { id = employee.Id, fullName = employee.FullName, reason = "CannotManageOperator" });
