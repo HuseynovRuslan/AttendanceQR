@@ -271,7 +271,13 @@ book.qrlog.az {
 # included) comes from the app itself, whose policy is versioned with its code — so no security_headers import.
 meydan.qrlog.az {
 	encode zstd gzip
-	header Strict-Transport-Security "max-age=31536000"
+	header {
+		# Applied AFTER the upstream answered (defer), so this replaces the HSTS the API sends on /api rather than
+		# adding a second copy, and strips nginx's Server header the same way security_headers does for our hosts.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+		defer
+	}
 	reverse_proxy meydan-web:80
 }
 
