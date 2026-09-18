@@ -156,6 +156,9 @@ builder.Services.AddScoped(sp => new AssistantDataService(
 
 // Nightly summary job (~00:30 local) + startup gap-fill.
 builder.Services.AddHostedService<DailySummaryJob>();
+// A past day a late scan landed on gets its stored summary rebuilt — see ISummaryRebuildQueue.
+builder.Services.AddSingleton<ISummaryRebuildQueue, SummaryRebuildQueue>();
+builder.Services.AddHostedService<SummaryRebuildWorker>();
 
 // Nightly photo-retention job (~01:00 local): prunes check-in selfies older than RetentionDays.
 builder.Services.AddHostedService<PhotoCleanupJob>();

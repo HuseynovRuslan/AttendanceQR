@@ -58,16 +58,23 @@ public class AttendanceController : ControllerBase
     // everyone else). A generous per-employee hourly budget bounds both: a real person scans twice a
     // day and might retake a photo once or twice, so 20 is far above normal use and far below abuse.
     /// <summary>
-    /// How far back an OFFLINE scan's own timestamp is still trusted. The client mirrors this in
-    /// <c>MAX_QUEUED_AGE_MS</c> as a pre-filter, but this is the authority: past it the scan is
-    /// refused, never silently re-dated.
+    /// How far back an OFFLINE scan's own timestamp is still trusted. Past it the scan is refused,
+    /// never silently re-dated.
+    ///
+    /// Thirty days. It was eighteen hours, and the phone threw away whatever was older — ninety scans by
+    /// forty-two people in one month, each one a day somebody worked and was not paid for: a phone off
+    /// for the weekend, an app not opened until Monday. The owner's rule (2026-09-18): an offline scan
+    /// is never lost. The record is written on the day it was TAKEN (the phone's clock), marked
+    /// WasOffline with the day it arrived, so a late one is visible to the admin as late; and the day's
+    /// stored summary is rebuilt (ISummaryRebuildQueue), so the tabel and the payroll see it.
     /// </summary>
-    public const int OfflineTrustWindowHours = 18;
+    public const int OfflineTrustWindowHours = 30 * 24;
 
     private const int MaxFaceChecksPerHour = 20;
     private static readonly TimeSpan FaceCheckWindow = TimeSpan.FromHours(1);
 
     private readonly AppDbContext _db;
+    private readonly ISummaryRebuildQueue? _summaryRebuild;
     private readonly IQrTokenService _qrTokenService;
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
@@ -90,8 +97,10 @@ public class AttendanceController : ControllerBase
         DeviceBindingOptions deviceOptions,
         AppOptions appOptions,
         IMemoryCache cache,
-        ILogger<AttendanceController> logger)
+        ILogger<AttendanceController> logger,
+        ISummaryRebuildQueue? summaryRebuild = null)
     {
+        _summaryRebuild = summaryRebuild;
         _db = db;
         _qrTokenService = qrTokenService;
         _attendanceQuery = attendanceQuery;
@@ -1067,6 +1076,7 @@ public class AttendanceController : ControllerBase
 
         // Mark this scan processed so a replay of the same offline queue item doesn't check in twice.
         await RecordProcessedScanAsync(clientScanId, employee.Id);
+        RebuildIfPast(today);
 
         // Photo audit — strictly best-effort and AFTER the check-in has been committed, so a storage
         // failure can never block or roll back attendance. The photo is persisted to the DURABLE
@@ -1279,6 +1289,7 @@ public class AttendanceController : ControllerBase
         }
         await _db.SaveChangesAsync();
         await RecordProcessedScanAsync(clientScanId, employee.Id);
+        RebuildIfPast(record.AttendanceDate);
 
         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutSuccess, null, ip);
         return Ok(new
@@ -1290,6 +1301,18 @@ public class AttendanceController : ControllerBase
             earlyDeparture = IsEarlyDeparture(
                 shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone)
         });
+    }
+
+    /// <summary>
+    /// A scan landed on a day that is already summarised — an offline one sent late, or a night's
+    /// check-out in the morning. Ask for that day's stored summary to be rebuilt, or the tabel and the
+    /// payroll keep reading it as it was at 00:30. See <see cref="ISummaryRebuildQueue"/>.
+    /// </summary>
+    private void RebuildIfPast(DateOnly date)
+    {
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        if (date < localToday)
+            _summaryRebuild?.Request(_db.CurrentTenantId, date);
     }
 
     // Records the idempotency marker for a scan that carried a client id. Best-effort and isolated from
