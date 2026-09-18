@@ -122,9 +122,52 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> MyToday()
     {
         var employeeId = User.EmployeeId();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        var today = DateOnly.FromDateTime(nowLocal);
         var record = await _attendanceQuery.GetTodayAsync(employeeId, today, HttpContext.RequestAborted);
-        return Ok(record); // null when there's no scan yet today
+        if (record is null) return Ok(record); // null when there's no scan yet today
+
+        // A finished day may still take another scan — back from a field visit, or the second stretch
+        // of a split shift. The phone used to decide «finished» on its own and hide the button; it now
+        // shows it when THIS says so, and this asks the same two rules Scan does.
+        //
+        // Only when the day Scan would file this scan under is the day shown. Scan dates by the UTC
+        // calendar; between 00:00 and 04:00 in Baku the two disagree, and a guess there is worse than
+        // the old behaviour — which is what false gives.
+        if (record.CheckOutAtUtc is not null && record.CheckInAtUtc is not null
+            && DateOnly.FromDateTime(nowUtc) == today
+            && await MayScanAgainAsync(employeeId, today, nowLocal))
+            record = record with { MayScanAgain = true };
+        return Ok(record);
+    }
+
+    /// <summary>
+    /// Would a scan right now open another stretch of a day whose stretches are all closed? The same
+    /// two questions the closed-day branch of Scan asks, in the same order — field-visit reopen first,
+    /// then the split shift's second window. The check-out cool-off is left out on purpose: it is five
+    /// minutes, and a button that appears five minutes early costs one «bir az gözləyin».
+    /// </summary>
+    private async Task<bool> MayScanAgainAsync(Guid employeeId, DateOnly today, DateTime nowLocal)
+    {
+        var ct = HttpContext.RequestAborted;
+        var blocks = await _db.AttendanceRecords
+            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == today)
+            .OrderBy(r => r.CheckInAtUtc)
+            .Select(r => new { r.CheckOutAtUtc, r.ClosedByFieldVisitId })
+            .ToListAsync(ct);
+        if (blocks.Count == 0 || blocks.Any(b => b.CheckOutAtUtc is null)) return false;
+
+        if (SplitShiftRules.MayReopenAfterFieldVisit(blocks[^1].ClosedByFieldVisitId is not null, blocks.Count))
+            return true;
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null) return false;
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == employee.LocationId, ct);
+        if (location is null) return false;
+        var shift = await ResolveShiftAsync(employee, location, today);
+        return SplitShiftRules.MayOpenSecondBlock(TimeOnly.FromDateTime(nowLocal), shift.HasSecondWindow,
+            shift.SecondStart, shift.SecondEnd, blocks.Count, anyOpen: false);
     }
 
     // GET /api/attendance/me/profile — the caller's own profile (name/location) for the mobile
@@ -945,9 +988,8 @@ public class AttendanceController : ControllerBase
         // one THIS PRODUCT closed on the employee's behalf, stamped with the visit's id. A day the
         // employee themselves closed at the poster is left alone — the evidence that they left and
         // came back is the visit, not a second tap — and a day with no field visit cannot reach it.
-        var reopenAfterFieldVisit =
-            record is { CheckOutAtUtc: not null, ClosedByFieldVisitId: not null }
-            && blocks.Count < SplitShiftRules.MaxBlocksPerDay;
+        var reopenAfterFieldVisit = record is { CheckOutAtUtc: not null }
+            && SplitShiftRules.MayReopenAfterFieldVisit(record.ClosedByFieldVisitId is not null, blocks.Count);
 
         if (reopenAfterFieldVisit
             || SplitShiftRules.MayOpenSecondBlock(

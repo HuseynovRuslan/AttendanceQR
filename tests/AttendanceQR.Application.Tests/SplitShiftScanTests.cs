@@ -108,7 +108,7 @@ public class SplitShiftScanTests
 
             var identity = new ClaimsIdentity([new Claim("sub", EmployeeId.ToString())], "test");
             Controller = new AttendanceController(
-                Db, _qr, new StubQuery(), new StubPhoto(), new StubQueue(), new PhotoUploadQueue(),
+                Db, _qr, new AttendanceQueryService(Db), new StubPhoto(), new StubQueue(), new PhotoUploadQueue(),
                 new StubFace(), new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),
@@ -332,6 +332,79 @@ public class SplitShiftScanTests
 
         Assert.Equal("AlreadyCompleted", Error(third));
         Assert.Equal(2, (await h.BlocksAsync()).Count);
+    }
+
+    // --- what the phone is told: /me/today ----------------------------------
+    //
+    // The server could already reopen a day a field visit closed, and in a month nobody reached it: the
+    // phone read «checked out» as «finished» and hid the button. These pin the answer it now asks for.
+
+    /// <summary>/me/today files by the Baku date, Scan by the UTC one; for four hours after midnight
+    /// they differ and the endpoint deliberately answers false. A run in that window says nothing.</summary>
+    private static bool DatesAgree()
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Baku"));
+        return DateOnly.FromDateTime(local) == DateOnly.FromDateTime(DateTime.UtcNow);
+    }
+
+    private static AttendanceRecordDto? Today(IActionResult r) => (r as OkObjectResult)?.Value as AttendanceRecordDto;
+
+    [Fact]
+    public async Task Today_tells_the_phone_a_field_closed_day_takes_another_scan()
+    {
+        if (!DatesAgree()) return;
+        using var h = new Harness(secondWindow: false);
+        await h.CompleteFirstBlockAsync();
+        var morning = await h.Db.AttendanceRecords.FirstAsync();
+        morning.ClosedByFieldVisitId = Guid.NewGuid();
+        await h.Db.SaveChangesAsync();
+
+        var today = Today(await h.Controller.MyToday());
+
+        Assert.NotNull(today);
+        Assert.True(today!.MayScanAgain);
+    }
+
+    [Fact]
+    public async Task Today_leaves_an_ordinary_finished_day_finished()
+    {
+        using var h = new Harness(secondWindow: false);
+        await h.CompleteFirstBlockAsync();
+
+        var today = Today(await h.Controller.MyToday());
+
+        Assert.NotNull(today);
+        Assert.False(today!.MayScanAgain);
+    }
+
+    [Fact]
+    public async Task Today_offers_the_split_shift_its_second_window()
+    {
+        if (!DatesAgree()) return;
+        using var h = new Harness(secondWindow: true);
+        await h.CompleteFirstBlockAsync();
+
+        Assert.True(Today(await h.Controller.MyToday())!.MayScanAgain);
+    }
+
+    [Fact]
+    public async Task Today_returns_the_open_stretch_not_the_closed_morning()
+    {
+        // Two rows on one date. Unordered, the lookup could hand back the closed morning while the
+        // afternoon was open, and the phone showed a finished day to somebody still at work.
+        if (!DatesAgree()) return;
+        using var h = new Harness(secondWindow: false);
+        await h.CompleteFirstBlockAsync();
+        var morning = await h.Db.AttendanceRecords.FirstAsync();
+        morning.ClosedByFieldVisitId = Guid.NewGuid();
+        await h.Db.SaveChangesAsync();
+        await h.Controller.Scan(h.Scan());                        // back at the centre
+
+        var today = Today(await h.Controller.MyToday());
+
+        Assert.NotNull(today);
+        Assert.Null(today!.CheckOutAtUtc);
+        Assert.False(today.MayScanAgain);                          // open: the next scan is a check-out
     }
 
     private sealed class StubFace : IFaceMatchService

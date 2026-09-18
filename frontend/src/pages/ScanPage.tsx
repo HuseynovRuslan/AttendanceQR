@@ -81,7 +81,9 @@ const PHOTO_H = 540
 type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
 type TodayInfo =
   | { kind: 'loading' }
-  | { kind: 'none' }
+  /** `again` — part of today is already worked and closed; the server says the next scan opens
+   *  another stretch (back from a field visit, or a split shift's second window). */
+  | { kind: 'none'; again?: boolean }
   | { kind: 'in-progress'; checkInAtUtc: string }
   | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string }
 
@@ -697,6 +699,17 @@ export function ScanPage() {
 
   async function onDecoded(text: string) {
     if (busyRef.current) return
+    // Kitabxana 2.0 sign-in, not a check-in. The kiosk at book.qrlog.az shows this QR so an employee
+    // can start a quiz without typing their name and phone; we vouch for them and send them back to
+    // the screen. Checked before the poster-shape test, which would otherwise write it off as a
+    // foreign QR, and returned before `proceed`, so no selfie, location or attendance record is ever
+    // involved. Nobody is photographed for a quiz.
+    const kitabxana = /^https?:\/\/book\.qrlog\.az\/qr\/([0-9a-f]{8,64})$/i.exec(text.trim())
+    if (kitabxana) {
+      await signInToKitabxana(kitabxana[1])
+      return
+    }
+
     // A decode that does not even have the token's shape never leaves the phone. No error, no
     // stopped camera — the next frame is another chance, which is how a scanner should feel. It
     // used to walk the worker through the whole selfie flow and then fail red on the server's
@@ -708,6 +721,49 @@ export function ScanPage() {
       return
     }
     await proceed(text)
+  }
+
+  /**
+   * Vouches for this employee to Kitabxana 2.0 so its kiosk can fill in their name and phone.
+   *
+   * Only the code travels: who they are is settled by their own token, on the server, which is also
+   * where the shared signature is computed. Nothing here is an attendance event, so the camera is
+   * released and the result card is final - the quiz continues on the kiosk screen, not on the phone.
+   */
+  async function signInToKitabxana(code: string) {
+    busyRef.current = true
+    try {
+      await stopCamera()
+      setPhase('processing')
+      const { status } = await apiRequest('/api/kitabxana/sign-in', { method: 'POST', body: { code } })
+      if (status === 204) {
+        successFeedback()
+        setResult({
+          tone: 'green',
+          title: 'Kitabxana 2.0-a daxil oldunuz',
+          detail: 'Adınız və nömrəniz ekranda dolduruldu. Yarışa başlamaq üçün ekrana baxın.',
+          final: true,
+        })
+      } else {
+        errorFeedback()
+        setResult({
+          tone: 'red',
+          title: status === 409 ? 'QR kodun vaxtı bitib' : 'Giriş alınmadı',
+          detail: status === 409
+            ? 'Ekrandan yeni QR kod alın və yenidən oxudun.'
+            : 'Bir az sonra yenidən cəhd edin və ya məlumatlarınızı ekranda əl ilə yazın.',
+          final: true,
+        })
+      }
+    } catch {
+      errorFeedback()
+      setResult({ tone: 'red', title: 'Şəbəkə xətası', detail: 'Serverə qoşulmaq mümkün olmadı.', final: true })
+    } finally {
+      setPhase('done')
+      // As after a finished check-in: keep the card up instead of restarting the camera.
+      scanDoneRef.current = true
+      busyRef.current = false
+    }
   }
 
   /**
@@ -1306,7 +1362,7 @@ function TodayBanner({ today }: { today: TodayInfo }) {
       {today.kind === 'none' && (
         <>
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-          <span>Bu gün hələ giriş etməmisiniz</span>
+          <span>{today.again ? 'Günün növbəti hissəsi üçün giriş edin' : 'Bu gün hələ giriş etməmisiniz'}</span>
         </>
       )}
       {today.kind === 'in-progress' && (
@@ -1324,6 +1380,10 @@ function TodayBanner({ today }: { today: TodayInfo }) {
 function recordToTodayInfo(record: AttendanceRecord | undefined): TodayInfo {
   if (!record?.checkInAtUtc) return { kind: 'none' }
   if (!record.checkOutAtUtc) return { kind: 'in-progress', checkInAtUtc: record.checkInAtUtc }
+  // Closed, but the server would open another stretch now — back at the centre after a field visit,
+  // or a split shift's second window. Reading this as «completed» kept the camera shut on exactly the
+  // scan the server was waiting for.
+  if (record.mayScanAgain) return { kind: 'none', again: true }
   return { kind: 'completed', checkInAtUtc: record.checkInAtUtc, checkOutAtUtc: record.checkOutAtUtc }
 }
 

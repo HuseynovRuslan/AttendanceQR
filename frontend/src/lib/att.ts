@@ -47,16 +47,46 @@ export function initials(fullName: string | null | undefined): string {
 }
 
 export type TodayState =
-  /** `pending` — the step was taken on this phone and is still waiting to reach the server. */
-  | { kind: 'none' }
+  /** `pending` — the step was taken on this phone and is still waiting to reach the server.
+   *  `again` — not a fresh day: part of it is already worked and the next scan opens another stretch.
+   *  'field' after a field visit, 'second' for a split shift's second window. */
+  | { kind: 'none'; again?: 'field' | 'second' }
   | { kind: 'in'; checkIn: string; pending?: boolean }
   | { kind: 'done'; checkIn: string; checkOut: string; pending?: boolean }
 
-export function todayState(records: AttendanceRecord[]): TodayState {
-  const rec = records.find((r) => r.attendanceDate === todayStr())
-  if (!rec?.checkInAtUtc) return { kind: 'none' }
-  if (!rec.checkOutAtUtc) return { kind: 'in', checkIn: rec.checkInAtUtc }
-  return { kind: 'done', checkIn: rec.checkInAtUtc, checkOut: rec.checkOutAtUtc }
+/**
+ * Where today stands, for the home card.
+ *
+ * Reported from the field, and it cost people their afternoon: a driver sent out at 08:00 on a
+ * «səyyar» visit came back to the centre at noon and found no «Giriş et» at all. Two ways led there.
+ * A day with only a field visit comes back as a synthesized row (`isFieldDay`) carrying the visit's
+ * times, and this read it as a finished poster day. And a poster check-in the field visit closed
+ * really is closed — but the server reopens exactly that day at the next scan, while this had already
+ * said «tamamlandı» and hidden the button. In a month, not one reopen happened.
+ *
+ * So: field-day rows never finish the day; a day holding two stretches is read by its open one, else
+ * its latest; and whether a closed day takes another scan is the SERVER's answer (`latest`, from
+ * /me/today — `mayScanAgain`). Without that answer (`latest === undefined`, the request failed) the
+ * one case we can see for ourselves still counts: a single stretch closed by a field visit.
+ */
+export function todayState(records: AttendanceRecord[], latest?: AttendanceRecord | null): TodayState {
+  const day = todayStr()
+  const fieldDay = records.some((r) => r.attendanceDate === day && r.isFieldDay)
+  const blocks = records.filter((r) => r.attendanceDate === day && !r.isFieldDay && r.checkInAtUtc)
+  const rows = latest?.attendanceDate === day && latest.checkInAtUtc ? [latest, ...blocks] : blocks
+
+  const open = rows.find((r) => !r.checkOutAtUtc)
+  if (open) return { kind: 'in', checkIn: open.checkInAtUtc! }
+
+  const last = [...rows].sort((a, b) => (a.checkInAtUtc! < b.checkInAtUtc! ? 1 : -1))[0]
+  if (!last) return fieldDay ? { kind: 'none', again: 'field' } : { kind: 'none' }
+
+  const mayScanAgain = latest === undefined
+    ? last.closedByFieldVisit === true && blocks.length < 2
+    : latest?.mayScanAgain === true
+  if (mayScanAgain) return { kind: 'none', again: last.closedByFieldVisit ? 'field' : 'second' }
+
+  return { kind: 'done', checkIn: last.checkInAtUtc!, checkOut: last.checkOutAtUtc! }
 }
 
 /** Just enough of a queued scan to place it in the day. */

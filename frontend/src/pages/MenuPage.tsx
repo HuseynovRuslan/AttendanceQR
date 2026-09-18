@@ -32,6 +32,7 @@ import {
   IconLogout,
   IconMapPin,
   IconPhone,
+  IconQr,
   IconSend,
   IconShield,
 } from '../components/icons'
@@ -251,6 +252,15 @@ export function MenuPage() {
         {/* The app photographs their face and reads their position; where that goes has to be
             reachable from inside the app, not only from the website they never visit. */}
         <MenuRow to="/privacy" Icon={IconShield} label="Məlumatlarınız / məxfilik" />
+      </div>
+
+      {/* Things this app does that are not attendance. Kitabxana 2.0 is one of ours, so it belongs in
+          the menu rather than behind a QR somebody has to be handed. */}
+      <div>
+        <h2 className="px-1 pb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Xidmətlər</h2>
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+          <MenuRow to="/kitabxana/scan" Icon={IconQr} label="Kitabxana 2.0 — yarışa giriş" />
+        </div>
       </div>
 
       {/* Notifications carry the announcements and the checkout reminder, so turning them off should

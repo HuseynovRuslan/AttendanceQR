@@ -49,6 +49,10 @@ const BillingPage = lazy(() => import('./pages/admin/BillingPage').then(m => ({ 
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
+// Reached only from a Kitabxana 2.0 link on the same phone; no employee's cold start should pay for it.
+const KitabxanaSignInPage = lazy(() => import('./pages/KitabxanaSignInPage').then(m => ({ default: m.KitabxanaSignInPage })))
+// Opened from Menu → Xidmətlər: the camera, and only the quiz's QR. No attendance checks.
+const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m => ({ default: m.KitabxanaScanPage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
@@ -202,6 +206,26 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <HelpChatPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Kitabxana 2.0 sign-in from this very phone, where there is no QR to scan (the quiz links here
+          with the code). Behind the same guard as the scanner: it vouches for whoever is signed in. */}
+      <Route
+        path="/kitabxana"
+        element={
+          <ProtectedRoute>
+            <KitabxanaSignInPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/kitabxana/scan"
+        element={
+          <ProtectedRoute>
+            <KitabxanaScanPage />
           </ProtectedRoute>
         }
       />
