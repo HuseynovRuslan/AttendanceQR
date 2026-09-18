@@ -42,7 +42,7 @@ public class SplitShiftScanTests
     private const double OfficeLat = 40.4093;
     private const double OfficeLng = 49.8671;
 
-    private sealed class Harness : IDisposable
+    internal sealed class Harness : IDisposable
     {
         public AppDbContext Db { get; }
         public AttendanceController Controller { get; }

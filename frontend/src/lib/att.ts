@@ -49,8 +49,10 @@ export function initials(fullName: string | null | undefined): string {
 export type TodayState =
   /** `pending` — the step was taken on this phone and is still waiting to reach the server.
    *  `again` — not a fresh day: part of it is already worked and the next scan opens another stretch.
-   *  'field' after a field visit, 'second' for a split shift's second window. */
-  | { kind: 'none'; again?: 'field' | 'second' }
+   *  'field' after a field visit, 'second' for a split shift's second window.
+   *  `unknown` — no signal and nothing remembered: whether they are checked in is not known, and the
+   *  card must say that rather than «Hələ giriş etməmisiniz» (see lib/todayCache). */
+  | { kind: 'none'; again?: 'field' | 'second'; unknown?: boolean }
   | { kind: 'in'; checkIn: string; pending?: boolean }
   | { kind: 'done'; checkIn: string; checkOut: string; pending?: boolean }
 

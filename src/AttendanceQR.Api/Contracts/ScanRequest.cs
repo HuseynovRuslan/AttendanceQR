@@ -48,6 +48,10 @@ namespace AttendanceQR.Api.Contracts;
 /// token is acceptable is the SERVER's call (Location.QrlessCheckIn), never the phone's: at a branch
 /// with a poster it is still refused as malformed.
 /// </param>
+/// <param name="ConfirmEarlyCheckOut">
+/// The employee answered «bəli, çıxıram» to the phone's question — needed for a check-out within two
+/// hours of arriving, which is otherwise read as a «did it work?» retry. See EarlyCheckOutRules.
+/// </param>
 public record ScanRequest(
     string? QrToken,
     string DeviceFingerprint,
@@ -56,4 +60,5 @@ public record ScanRequest(
     string? PhotoBase64 = null,
     Guid? ClientScanId = null,
     DateTime? ClientTimestampUtc = null,
-    bool Offline = false);
+    bool Offline = false,
+    bool ConfirmEarlyCheckOut = false);

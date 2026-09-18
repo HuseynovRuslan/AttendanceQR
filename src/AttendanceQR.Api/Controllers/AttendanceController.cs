@@ -964,6 +964,22 @@ public class AttendanceController : ControllerBase
                 await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                 return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
             }
+
+            // Soon after arriving, a scan is a check-out only when the employee said so — the phone asks
+            // and sends the answer. Without it this is a «did it work?» retry, most often one queued with
+            // no signal and replayed later, and it used to close the day at 07:44 and refuse the real
+            // exit that evening. Nothing is written; the check-in stands. See EarlyCheckOutRules.
+            if (EarlyCheckOutRules.NeedsConfirmation(record.CheckInAtUtc, nowUtc, request.ConfirmEarlyCheckOut))
+            {
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected,
+                    request.Offline ? "OfflineEarlyCheckOutIgnored" : "EarlyCheckOutUnconfirmed", ip);
+                return Conflict(new
+                {
+                    error = "ConfirmEarlyCheckOut",
+                    checkInAtUtc = record.CheckInAtUtc,
+                    minutes = EarlyCheckOutRules.ConfirmWithinMinutes,
+                });
+            }
             return await CheckOutAsync(record, employee, location, shift, nowUtc, ip,
                 request.ClientScanId, request.Offline, serverNow);
         }
