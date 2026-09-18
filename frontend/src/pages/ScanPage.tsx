@@ -19,9 +19,9 @@ import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../
 import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless } from '../lib/qrless'
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
-import { todayStr } from '../lib/att'
+import { todayStr, withPendingScans } from '../lib/att'
 import { knownToday, rememberToday } from '../lib/todayCache'
-import { isEarlyCheckOut } from '../lib/earlyCheckOut'
+import { DOUBLE_TAP_MS, isEarlyCheckOut } from '../lib/earlyCheckOut'
 import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
@@ -88,8 +88,9 @@ type TodayInfo =
   /** `unknown` — no signal and nothing remembered: the phone does not know whether they are checked
    *  in, and must not say «hələ giriş etməmisiniz» (see lib/todayCache). */
   | { kind: 'none'; again?: boolean; unknown?: 'offline' | 'server' }
-  | { kind: 'in-progress'; checkInAtUtc: string }
-  | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string }
+  /** `pending` — this step is a scan still waiting on the phone, not yet on the server. */
+  | { kind: 'in-progress'; checkInAtUtc: string; pending?: boolean }
+  | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string; pending?: boolean }
 
 const READER_ID = 'reader'
 
@@ -474,13 +475,17 @@ export function ScanPage() {
    * needed; guessing "finished" costs a day's pay.
    */
   function withQueued(info: TodayInfo, queued: QueuedScan[]): TodayInfo {
-    if (info.kind !== 'none') return info
-    const today = todayStr()
-    const first = queued
-      .map((q) => q.clientTimestampUtc)
-      .filter((t) => t.slice(0, 10) === today)
-      .sort()[0]
-    return first ? { kind: 'in-progress', checkInAtUtc: first } : info
+    // Unknown stays unknown: a queued tap could be either, and this is the moment not to guess.
+    if (info.kind === 'loading' || info.kind === 'completed' || (info.kind === 'none' && info.unknown)) return info
+    // The home card's reading of the queue, so the two screens can never tell one person two things.
+    const day = withPendingScans(
+      info.kind === 'none' ? { kind: 'none' } : { kind: 'in', checkIn: info.checkInAtUtc },
+      queued, todayStr())
+    if (day.kind === 'done')
+      return { kind: 'completed', checkInAtUtc: day.checkIn, checkOutAtUtc: day.checkOut, pending: true }
+    if (day.kind === 'in' && day.pending)
+      return { kind: 'in-progress', checkInAtUtc: day.checkIn, pending: true }
+    return info
   }
 
   async function loadTodayStatus() {
@@ -906,6 +911,13 @@ export function ScanPage() {
       // Soon after a check-in the phone knows about, this tap is a CHECK-OUT. Online the server asks;
       // offline nobody would have — and «did it work?» retries queued here were replayed later as
       // check-outs at 07:44 that closed the day. Ask now, before anything is saved.
+      // Inside the double-tap window the server takes no check-out at all — so this card must not
+      // announce one. The same words the server's own answer gets online.
+      if (known.kind === 'in-progress'
+          && Date.parse(clientTimestampUtc) - Date.parse(known.checkInAtUtc) < DOUBLE_TAP_MS) {
+        setResult(errorResult(409, { error: 'TooSoonToCheckOut', minutes: 5 }, coords.accuracy))
+        return
+      }
       if (known.kind === 'in-progress' && !confirmEarlyCheckOut
           && isEarlyCheckOut(known.checkInAtUtc, clientTimestampUtc)) {
         const leaving = await askEarlyCheckOut(known.checkInAtUtc)
@@ -1128,6 +1140,9 @@ export function ScanPage() {
               ✓
             </div>
             <h2 className="text-xl font-extrabold text-white">Bu gün tamamlandı</h2>
+            {today.pending && (
+              <p className="mt-1 text-xs font-bold text-amber-300">📴 Çıxış telefonda saxlanılıb — hələ serverə göndərilməyib</p>
+            )}
             <p className="mt-2 text-sm text-slate-300 font-medium">
               {fmtTime(today.checkInAtUtc, '')} – {fmtTime(today.checkOutAtUtc, '')}
               {' · '}
@@ -1497,7 +1512,8 @@ function TodayBanner({ today, asOf }: { today: TodayInfo; asOf: number | null })
         <>
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span>
-            Giriş: <strong className="text-white font-semibold">{fmtTime(today.checkInAtUtc, '')}</strong> — hələ çıxış etməmisiniz{stale}
+            Giriş: <strong className="text-white font-semibold">{fmtTime(today.checkInAtUtc, '')}</strong>
+            {today.pending ? ' (📴 telefonda, göndərilməyi gözləyir)' : ''} — hələ çıxış etməmisiniz{stale}
           </span>
         </>
       )}

@@ -1,5 +1,6 @@
 import type { AttendanceRecord } from '../api/attendance'
 import { COMPANY_TZ } from './format'
+import { DOUBLE_TAP_MS, EARLY_CHECKOUT_CONFIRM_MS } from './earlyCheckOut'
 
 // Attendance-domain helpers. The time/date formatters that used to live here moved to lib/format.ts,
 // where someone looking for a time formatter can actually find them.
@@ -95,6 +96,18 @@ export function todayState(records: AttendanceRecord[], latest?: AttendanceRecor
 export interface PendingScan {
   /** The phone's clock when the scan was taken — the time the server will record it at. */
   clientTimestampUtc: string
+  /** The employee answered «bəli, çıxıram» before it was queued (see lib/earlyCheckOut). */
+  confirmEarlyCheckOut?: boolean
+}
+
+/**
+ * Will the server take this queued tap as the way OUT of a stretch that began at `checkIn`? Its own two
+ * rules, so the phone can say what the server will do: nothing inside the double-tap window, and within
+ * two hours of arriving only with a «bəli» (EarlyCheckOutRules).
+ */
+function leaves(checkIn: string, tap: PendingScan): boolean {
+  const gap = Date.parse(tap.clientTimestampUtc) - Date.parse(checkIn)
+  return gap >= DOUBLE_TAP_MS && (gap >= EARLY_CHECKOUT_CONFIRM_MS || tap.confirmEarlyCheckOut === true)
 }
 
 /**
@@ -126,22 +139,29 @@ export function withPendingScans(
   today: string = todayStr(),
 ): TodayState {
   const taps = pending
-    .map((p) => p.clientTimestampUtc)
-    .filter((t) => t.slice(0, 10) === today)
-    .sort()
+    .filter((p) => p.clientTimestampUtc.slice(0, 10) === today)
+    .sort((a, b) => (a.clientTimestampUtc < b.clientTimestampUtc ? -1 : 1))
   if (taps.length === 0) return state
 
-  if (state.kind === 'none') return { kind: 'in', checkIn: taps[0]!, pending: true }
-
-  if (state.kind === 'in') {
-    // A check-out taken offline: the server already has the check-in, so a tap AFTER it can only be
-    // the way out. A tap before it is the check-in itself, still queued behind a reply that arrived
-    // some other way — nothing to add.
-    const out = taps.find((t) => t > state.checkIn)
-    return out ? { kind: 'done', checkIn: state.checkIn, checkOut: out, pending: true } : state
+  // The first queued tap of a day with nothing on it is the check-in.
+  let day: TodayState = state
+  let rest = taps
+  if (day.kind === 'none') {
+    day = { kind: 'in', checkIn: taps[0]!.clientTimestampUtc, pending: true }
+    rest = taps.slice(1)
   }
 
-  return state
+  if (day.kind === 'in') {
+    // A check-out taken offline — the one the server will actually take, by its own rules. It used to
+    // stop at one step: a check-in AND a check-out both queued still read «İşdəsiniz · Çıxış et», and
+    // the person who had just checked out was invited to do it again. A tap before the check-in is the
+    // check-in itself, still queued behind a reply that arrived some other way — nothing to add.
+    const inAt = day.checkIn
+    const out = rest.find((t) => t.clientTimestampUtc > inAt && leaves(inAt, t))
+    return out ? { kind: 'done', checkIn: inAt, checkOut: out.clientTimestampUtc, pending: true } : day
+  }
+
+  return day
 }
 
 
