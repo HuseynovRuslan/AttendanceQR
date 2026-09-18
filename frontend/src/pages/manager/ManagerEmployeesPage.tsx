@@ -198,8 +198,8 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
         </div>
       )}
 
-      {/* Company-wide PIN reset and login-number change — staff at other areas and fellow managers,
-          whom this roster (their own branches only) cannot reach. The server decides who qualifies. */}
+      {/* Company-wide PIN reset and login-number change for staff at other areas, and for fellow managers
+          at the caller's own branches. The server decides who qualifies. */}
       {!editing && <CredentialDesk />}
 
       {/* The two opt-in capabilities across this manager's own staff. The manager is who knows which

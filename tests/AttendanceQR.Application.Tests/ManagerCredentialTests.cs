@@ -69,7 +69,7 @@ public class ManagerCredentialTests
             inactive.IsActive = false;
             Db.Employees.Add(inactive);
             // An operator whose tenant row is a MANAGER — the shape the widened gate newly admits by role.
-            Db.Employees.Add(Person(OperatorId, "Test Operator", EmployeeRole.Manager, BranchB, "501110008"));
+            Db.Employees.Add(Person(OperatorId, "Test Operator", EmployeeRole.Manager, BranchA, "501110008"));
             // Placed on BranchA's own id: only the tenant filter keeps this row out.
             Db.Employees.Add(Person(OtherTenantEmployeeId, "Test Başqa Şirkət", EmployeeRole.Employee, BranchA, "501110009", TenantB));
             Db.SaveChanges();
@@ -156,15 +156,17 @@ public class ManagerCredentialTests
     }
 
     [Fact]
-    public async Task A_fellow_manager_can_have_their_PIN_reset_at_the_same_branch_or_another()
+    public async Task A_fellow_managers_PIN_is_reset_at_the_same_branch_and_not_another()
     {
+        // The owner, 2026-09-18: a colleague is a manager at YOUR branch; another branch's managers are
+        // not to be seen. Their answer is «not found», the same as somebody who does not exist.
         using var h = new Harness();
 
         Assert.IsType<OkObjectResult>(await h.Controller.ResetPin(h.SameBranchManagerId));
-        Assert.IsType<OkObjectResult>(await h.Controller.ResetPin(h.OtherBranchManagerId));
+        AssertStatus(await h.Controller.ResetPin(h.OtherBranchManagerId), StatusCodes.Status404NotFound);
 
         Assert.NotEqual("original-hash", h.Row(h.SameBranchManagerId).PasswordHash);
-        Assert.NotEqual("original-hash", h.Row(h.OtherBranchManagerId).PasswordHash);
+        Assert.Equal("original-hash", h.Row(h.OtherBranchManagerId).PasswordHash);
     }
 
     [Fact]
@@ -172,10 +174,10 @@ public class ManagerCredentialTests
     {
         using var h = new Harness();
 
-        var ok = Assert.IsType<OkObjectResult>(await h.Controller.ResetPin(h.OtherBranchManagerId));
+        var ok = Assert.IsType<OkObjectResult>(await h.Controller.ResetPin(h.SameBranchManagerId));
         var tempPin = (string)Prop(ok.Value!, "tempPin")!;
 
-        var audit = Assert.Single(h.Audits(h.OtherBranchManagerId));
+        var audit = Assert.Single(h.Audits(h.SameBranchManagerId));
         Assert.Contains("PIN sıfırlandı", audit.Reason);
         Assert.Contains("Test Menecer Özü", audit.Reason);
         Assert.Contains(h.ManagerId.ToString(), audit.Reason);
@@ -236,14 +238,19 @@ public class ManagerCredentialTests
     {
         using var h = new Harness();
 
-        var result = await h.Controller.ChangePhone(h.OtherBranchManagerId, new ManagerPhoneChangeRequest("+994 50 777 66 55"));
+        var result = await h.Controller.ChangePhone(h.SameBranchManagerId, new ManagerPhoneChangeRequest("+994 50 777 66 55"));
 
         Assert.IsType<OkObjectResult>(result);
-        Assert.Equal("507776655", h.Row(h.OtherBranchManagerId).PhoneNumber);
-        var audit = Assert.Single(h.Audits(h.OtherBranchManagerId));
-        Assert.Contains("0004", audit.Reason);          // the old number's tail
+        Assert.Equal("507776655", h.Row(h.SameBranchManagerId).PhoneNumber);
+        var audit = Assert.Single(h.Audits(h.SameBranchManagerId));
+        Assert.Contains("0003", audit.Reason);          // the old number's tail
         Assert.Contains("6655", audit.Reason);          // the new one's
         Assert.Contains("Test Menecer Özü", audit.Reason);
+
+        // Another branch's manager: untouched, and not even admitted to exist.
+        AssertStatus(await h.Controller.ChangePhone(h.OtherBranchManagerId, new ManagerPhoneChangeRequest("0507776644")),
+            StatusCodes.Status404NotFound);
+        Assert.Equal("501110004", h.Row(h.OtherBranchManagerId).PhoneNumber);
     }
 
     [Fact]
@@ -340,14 +347,16 @@ public class ManagerCredentialTests
     }
 
     [Fact]
-    public async Task The_search_reaches_staff_and_managers_everywhere_and_nobody_it_must_not()
+    public async Task The_search_reaches_staff_everywhere_managers_at_home_and_nobody_it_must_not()
     {
+        // Plain staff company-wide (2026-09-14); a fellow manager only at the caller's own branches
+        // (2026-09-18 — «qıraq filialların menecerlərini görməməlidir»).
         using var h = new Harness();
 
         var ids = (await Lookup(h, "test")).Select(r => (Guid)Prop(r, "id")!).ToHashSet();
 
         Assert.Equal(
-            new HashSet<Guid> { h.SameBranchEmployeeId, h.OtherBranchEmployeeId, h.SameBranchManagerId, h.OtherBranchManagerId },
+            new HashSet<Guid> { h.SameBranchEmployeeId, h.OtherBranchEmployeeId, h.SameBranchManagerId },
             ids);
     }
 
@@ -368,9 +377,11 @@ public class ManagerCredentialTests
     {
         using var h = new Harness();
 
-        var row = Assert.Single(await Lookup(h, "uzaq"));
+        var row = Assert.Single(await Lookup(h, "həmkar"));
 
         Assert.Equal(true, Prop(row, "isManager"));
+        // And the one at another branch is not there to be marked.
+        Assert.Empty(await Lookup(h, "uzaq"));
     }
 
     [Fact]
@@ -378,8 +389,10 @@ public class ManagerCredentialTests
     {
         using var h = new Harness();
 
-        var row = Assert.Single(await Lookup(h, "110004"));
+        var row = Assert.Single(await Lookup(h, "110003"));
 
-        Assert.Equal(h.OtherBranchManagerId, (Guid)Prop(row, "id")!);
+        Assert.Equal(h.SameBranchManagerId, (Guid)Prop(row, "id")!);
+        // Another branch's manager cannot be found by their number either.
+        Assert.Empty(await Lookup(h, "110004"));
     }
 }

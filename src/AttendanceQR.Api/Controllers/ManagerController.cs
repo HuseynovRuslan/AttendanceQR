@@ -103,8 +103,9 @@ public class ManagerController : ControllerBase
     }
 
     /// <summary>
-    /// Who a manager may hand a new PIN or a new login number: ANY plain employee or fellow MANAGER in
-    /// the company — not only the people at their own branches.
+    /// Who a manager may hand a new PIN or a new login number: ANY plain employee in the company — not
+    /// only the people at their own branches — and a fellow MANAGER at one of their own branches (the
+    /// owner narrowed the managers on 2026-09-18: «qıraq filialların menecerlərini görməməlidir»).
     ///
     /// Wider than <see cref="ManageableEmployeeAsync"/> on purpose, and for these two actions only. The
     /// owner asked for it outright (2026-09-14): a manager whose colleague has lost a phone or forgotten a
@@ -122,6 +123,13 @@ public class ManagerController : ControllerBase
     {
         var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
         if (target is null)
+            return (null, NotFound(new { error = "EmployeeNotFound" }));
+        // A fellow manager only at one of the caller's OWN branches (the owner, 2026-09-18: «qıraq
+        // filialların menecerlərini görməməlidir»). Another branch's manager reads as not found — the
+        // same answer as somebody who does not exist, so the desk cannot be used to probe for them.
+        // Plain staff stay company-wide: that is what 2026-09-14 was for.
+        if (target.Role == EmployeeRole.Manager && target.Id != M15()
+            && !(await ManagedLocationIdsAsync()).Contains(target.LocationId))
             return (null, NotFound(new { error = "EmployeeNotFound" }));
         if (target.Role is not (EmployeeRole.Employee or EmployeeRole.Manager) || target.Id == M15())
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagerCannotManageRole" }));
@@ -520,7 +528,8 @@ public class ManagerController : ControllerBase
         var ownContacts = mayAct || e.Id == M15();
         // The PIN / number actions reach further than the full edit — see CredentialTargetAsync — so a
         // plain employee at another branch still gets «PIN sıfırla» without «Redaktə et».
-        var mayResetCredentials = (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)
+        var mayResetCredentials = (e.Role == EmployeeRole.Employee
+                                   || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
                                   && e.Id != M15() && !_operatorIds.Contains(e.Id);
 
         return Ok(new
@@ -768,10 +777,13 @@ public class ManagerController : ControllerBase
         var lowered = term.ToLower();
         var digits = new string(term.Where(char.IsDigit).ToArray());
         var byPhone = digits.Length >= 3;
+        var managed = await ManagedLocationIdsAsync();
 
         var rows = await _db.Employees
             .Where(e => e.IsActive && e.Id != self
-                        && (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)
+                        // Plain staff anywhere; a fellow manager only at the caller's own branches.
+                        && (e.Role == EmployeeRole.Employee
+                            || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
                         && !_operatorIds.Contains(e.Id)
                         && (e.FullName.ToLower().Contains(lowered)
                             || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))))
