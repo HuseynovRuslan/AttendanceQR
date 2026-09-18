@@ -265,6 +265,16 @@ book.qrlog.az {
 	reverse_proxy literature-millionaire-web:80
 }
 
+# MEYDAN (Bakı kəndləri yaradıcı müsabiqələri, meydan.qrlog.az) — separate project, own stack in /opt/meydan
+# (deploy/compose.yml in its repository). Only its nginx joins attendanceqr_default, as meydan-web; its API and
+# database stay on that project's private network. HSTS is set here at the edge; every other header (the CSP
+# included) comes from the app itself, whose policy is versioned with its code — so no security_headers import.
+meydan.qrlog.az {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy meydan-web:80
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #
