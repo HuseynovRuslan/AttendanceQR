@@ -1853,7 +1853,8 @@ ${back}`,
                         {
                           label: 'PIN sıfırla',
                           icon: <IconPhone />,
-                          hidden: !e.activated,
+                          // Never one's own — the server refuses it (it would lock the admin out).
+                          hidden: !e.activated || e.id === myId,
                           onClick: () => onResetPin(e),
                           title: 'İşçi PIN-ini unudubsa — müvəqqəti PIN ver',
                         },

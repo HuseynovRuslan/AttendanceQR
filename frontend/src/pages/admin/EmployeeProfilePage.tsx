@@ -59,7 +59,7 @@ const errorCodeOf = (data: unknown) =>
 export function EmployeeProfilePage() {
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
-  const { role } = useAuth()
+  const { role, employeeId: myId } = useAuth()
   const isManager = role === 'Manager'
   /**
    * Whether this caller may ACT on the person whose card is open.
@@ -438,7 +438,9 @@ export function EmployeeProfilePage() {
                 Redaktə et
               </button>
             )}
-            {canResetPin && (
+            {/* Never on one's own card: the reset ends this very session and the temporary PIN vanishes
+                with it — an admin locked themselves out that way. Their own PIN is «PIN dəyiş». */}
+            {canResetPin && emp.id !== myId && (
               <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
             )}
             {/* Re-invite mints an activation link and has no manager endpoint; offering it would
