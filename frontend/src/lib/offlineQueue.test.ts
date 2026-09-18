@@ -65,19 +65,19 @@ describe('when a queued scan is too old to replay', () => {
     expect(isTooOldToReplay(item, queuedAtMs + MAX_QUEUED_AGE_MS)).toBe(false)
   })
 
-  it('drops one past it', () => {
-    // Past 18h the server stops trusting the phone's clock and stamps SERVER time — so a Thursday
-    // scan syncing on Monday is not recorded late, it is recorded on MONDAY. If they already checked
-    // in that morning it reads as their check-out and closes a live shift.
+  it('stops replaying one past it — it goes to the archive, never the bin', () => {
+    // Past thirty days the server refuses the phone's clock (OfflineTooOld). Replaying would only be
+    // refused again, so the scan moves to the archive with its verdict; the employee and the admin
+    // are told. It used to be eighteen hours, and the scan was deleted.
     const item = scan({ queuedAtMs })
     expect(isTooOldToReplay(item, queuedAtMs + MAX_QUEUED_AGE_MS + 1)).toBe(true)
-    expect(isTooOldToReplay(item, queuedAtMs + 4 * 24 * 60 * 60 * 1000)).toBe(true)
+    expect(isTooOldToReplay(item, queuedAtMs + 31 * 24 * 60 * 60 * 1000)).toBe(true)
   })
 
-  it('matches the server’s 18-hour window', () => {
+  it('matches the server’s 30-day window', () => {
     // If AttendanceController's window ever moves, this is the tripwire — the two must agree or the
     // client either drops scans the server would have accepted, or sends ones it will misdate.
-    expect(MAX_QUEUED_AGE_MS).toBe(18 * 60 * 60 * 1000)
+    expect(MAX_QUEUED_AGE_MS).toBe(30 * 24 * 60 * 60 * 1000)
   })
 
   it('is not confused by a clock that jumped backwards', () => {

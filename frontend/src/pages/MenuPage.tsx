@@ -19,6 +19,7 @@ import { fmtDayMonth } from '../lib/format'
 import { Avatar } from '../components/Avatar'
 import { AvatarPickerSheet } from '../components/AvatarPickerSheet'
 import { InstallAppCard } from '../components/InstallAppCard'
+import { OfflineScanHistory } from '../components/OfflineScanHistory'
 import { AccountSwitcherSheet } from '../components/AccountSwitcherSheet'
 import { PinChangeSheet } from '../components/PinChangeSheet'
 import { PushToggle } from '../components/PushToggle'
@@ -235,6 +236,9 @@ export function MenuPage() {
       {device && !device.bound && <DeviceCard device={device} />}
 
       <InstallAppCard />
+
+      {/* Only for somebody who has scanned with no connection — kept on the phone, never deleted. */}
+      <OfflineScanHistory />
 
       <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
         {/* Staff who also run the panel (admin/manager) get a way back — mirror of the sidebar's

@@ -12,13 +12,15 @@ vi.mock('../api/client', () => ({
 }))
 vi.mock('./jwt', () => ({ decodeJwt: () => ({ sub: 'emp-1' }) }))
 
-const removeScan = vi.fn(async (_id: string) => {})
+// «Left the queue» — every scan now leaves through settleScan, into the archive; the second argument
+// is the verdict it is kept with. Nothing is deleted.
+const removeScan = vi.fn(async (_id: string, _outcome?: unknown) => {})
 const queue: unknown[] = []
 vi.mock('./offlineQueue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./offlineQueue')>()),
   allScans: async () => queue,
   scansFor: async () => queue,
-  removeScan: (id: string) => removeScan(id),
+  settleScan: (i: { clientScanId: string }, o: unknown) => removeScan(i.clientScanId, o),
 }))
 
 const reportFailure = vi.fn()
@@ -73,7 +75,7 @@ describe('draining the offline queue', () => {
     queue.push(item('lost-response'))
     apiRequest.mockResolvedValue({ status: 200, data: { action: 'AlreadyRecorded', alreadyProcessed: true } })
     await syncOfflineScans()
-    expect(removeScan).toHaveBeenCalledWith('lost-response')
+    expect(removeScan).toHaveBeenCalledWith('lost-response', expect.anything())
     expect(addReject).not.toHaveBeenCalled()
     expect(reportFailure).not.toHaveBeenCalled()
   })
@@ -82,7 +84,7 @@ describe('draining the offline queue', () => {
     queue.push(item('refused'))
     apiRequest.mockResolvedValue({ status: 409, data: { error: 'DeviceMismatch' } })
     await syncOfflineScans()
-    expect(removeScan).toHaveBeenCalledWith('refused')
+    expect(removeScan).toHaveBeenCalledWith('refused', expect.anything())
     expect(reportFailure).toHaveBeenCalled()
     expect(addReject).toHaveBeenCalledWith(expect.objectContaining({ code: 'DeviceMismatch' }))
   })
@@ -91,7 +93,7 @@ describe('draining the offline queue', () => {
     queue.push(item('dup'))
     apiRequest.mockResolvedValue({ status: 409, data: { error: 'AlreadyCompleted' } })
     await syncOfflineScans()
-    expect(removeScan).toHaveBeenCalledWith('dup')
+    expect(removeScan).toHaveBeenCalledWith('dup', expect.anything())
     expect(addReject).not.toHaveBeenCalled()
   })
 
@@ -102,7 +104,7 @@ describe('draining the offline queue', () => {
     queue.push(item('retry'))
     apiRequest.mockResolvedValue({ status: 409, data: { error: 'ConfirmEarlyCheckOut' } })
     await syncOfflineScans()
-    expect(removeScan).toHaveBeenCalledWith('retry')
+    expect(removeScan).toHaveBeenCalledWith('retry', expect.anything())
     expect(addReject).not.toHaveBeenCalled()
     expect(reportFailure).not.toHaveBeenCalled()
   })
@@ -114,6 +116,17 @@ describe('draining the offline queue', () => {
     const bodies = apiRequest.mock.calls.map((c) => (c[1] as { body: Record<string, unknown> }).body)
     expect(bodies[0]).toMatchObject({ clientScanId: 'out', confirmEarlyCheckOut: true, offline: true })
     expect(bodies[1]).not.toHaveProperty('confirmEarlyCheckOut')
+  })
+
+  it('keeps every scan: a sent one is archived as sent, a refused one with its reason', async () => {
+    // The owner, 2026-09-18: an offline scan is never deleted. It leaves the queue into the archive.
+    queue.push(item('ok'), item('no'))
+    apiRequest
+      .mockResolvedValueOnce({ status: 200, data: { action: 'CheckOut' } })
+      .mockResolvedValueOnce({ status: 409, data: { error: 'SomethingDefinitive' } })
+    await syncOfflineScans()
+    expect(removeScan).toHaveBeenCalledWith('ok', { outcome: 'sent', action: 'CheckOut' })
+    expect(removeScan).toHaveBeenCalledWith('no', { outcome: 'rejected', code: 'SomethingDefinitive' })
   })
 
   it('keeps the queue when the network drops mid-drain', async () => {

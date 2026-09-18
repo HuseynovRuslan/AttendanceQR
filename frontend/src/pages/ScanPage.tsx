@@ -960,11 +960,11 @@ export function ScanPage() {
               : 'Skan telefonda saxlanıldı',
           detail: `Saat ${fmtTime(clientTimestampUtc, '')} · hələ serverə çatmayıb`,
           // It used to promise «özü göndəriləcək — tətbiqi bağlaya bilərsiniz». There is no
-          // background sync: a closed app sends nothing, and after 18 hours the scan is dropped —
-          // ninety scans by forty-two people in one month. The truth is one extra tap, so say it.
+          // background sync: a closed app sends nothing until it is opened again. The truth is one
+          // extra tap, so say it — and that the scan is kept on the phone, which is now true.
           note: reason === 'server'
             ? 'Server müvəqqəti əlçatmazdır. Tətbiq açıq qalsa, özü yenidən göndərəcək; bağlasanız, sonra bir dəfə açın.'
-            : `${whyUnreachable() === 'offline' ? 'İnternet yoxdur.' : 'Serverə qoşulmaq alınmadı.'} Əlaqə olanda tətbiqi bir dəfə açın — skan o zaman göndəriləcək. 18 saat ərzində göndərilməsə, itir.`,
+            : `${whyUnreachable() === 'offline' ? 'İnternet yoxdur.' : 'Serverə qoşulmaq alınmadı.'} Əlaqə olanda tətbiqi bir dəfə açın — skan o zaman göndəriləcək. Skan telefonda qalır, silinmir.`,
           final: true,
           photo: photoBase64 ?? undefined,
         })

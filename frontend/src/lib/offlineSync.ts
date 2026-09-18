@@ -16,7 +16,7 @@ import { listProfiles } from './profiles'
 import { reportFailure } from './scanFailures'
 import { addReject } from './offlineRejects'
 import { isPermanentQueuedReject } from './scanReject'
-import { allScans, removeScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
+import { allScans, settleScan, scansFor, isTooOldToReplay, type QueuedScan } from './offlineQueue'
 import { flushFailures } from './scanFailures'
 
 let syncing = false
@@ -97,15 +97,14 @@ export async function syncOfflineScans(): Promise<void> {
     const who = identities(token)
     const known = new Set(who.map((i) => i.employeeId))
 
-    // Age out every stale item belonging to somebody this device can NO LONGER speak for — a profile
-    // that was removed, or a scan left behind by a previous holder of the phone. Such an item is
-    // skipped by every drain below and would otherwise sit here for ever carrying a few hundred kB of
-    // selfie. Dropped locally and NOT reported: the report would be attributed to whoever is signed
-    // in now, which is the very misattribution this file exists to prevent.
+    // Every stale item belonging to somebody this device can NO LONGER speak for — a profile that was
+    // removed, or a scan left behind by a previous holder of the phone — leaves the queue for the
+    // archive, where it stays. Not reported: the report would be attributed to whoever is signed in
+    // now, which is the very misattribution this file exists to prevent.
     const now = Date.now()
     for (const item of await allScans()) {
       if (isTooOldToReplay(item, now) && item.employeeId !== undefined && !known.has(item.employeeId))
-        await removeScan(item.clientScanId)
+        await settleScan(item, { outcome: 'expired' })
     }
 
     for (const identity of who) if (!(await drainFor(identity))) break
@@ -130,15 +129,13 @@ async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
   const reportAs = token ? me ?? undefined : undefined
 
   for (const item of await scansFor(me)) {
-    // Too old to replay honestly: past the server's 18-hour trust window it stops using the phone's
-    // clock and stamps SERVER time, so this would not be recorded late — it would be recorded on the
-    // wrong DAY, and if they have already checked in today it would be read as their check-out and
-    // close a live shift. Drop it, but loudly: the employee sees a banner and the admin gets a
+    // Older than the server accepts (thirty days): it would only be refused. It leaves the queue for
+    // the archive — never the bin — and loudly: the employee sees a banner and the admin gets a
     // Problems row, which is what makes a manual correction possible.
     if (isTooOldToReplay(item, Date.now())) {
-      // Dropped FIRST: if the report threw, "reported but still queued" would report it again on
+      // Settled FIRST: if the report threw, "reported but still queued" would report it again on
       // every drain, and the throw would escape and abandon the remaining items.
-      await removeScan(item.clientScanId)
+      await settleScan(item, { outcome: 'expired' })
       reportFailure('OfflineExpired', undefined, item.clientTimestampUtc, reportAs)
       addReject({ kind: 'OfflineExpired', scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
       continue
@@ -160,7 +157,7 @@ async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
       // 60-second heartbeat resend one tap for hours (75 times on a device code, 132 on a geofence
       // one) while the worker's screen still said "göndərilməyi gözləyir". Drop and tell them.
       if (isPermanentQueuedReject(status, code)) {
-        await removeScan(item.clientScanId)
+        await settleScan(item, { outcome: 'rejected', code })
         reportFailure('OfflineRejected', undefined, item.clientTimestampUtc, reportAs)
         addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
         continue
@@ -172,11 +169,17 @@ async function drainFor({ employeeId: me, token }: Identity): Promise<boolean> {
       // moment somebody picks a PIN — and the other accounts on this phone still get their turn.
       if (status === 401 || status === 403) return true
 
-      // A definitive 4xx (OutsideRadius, AlreadyCompleted, …) can never succeed on a retry, so the
-      // item goes — but it is NOT a silent drop. The employee was shown a green "saved" card when
-      // they tapped; without this they are simply absent that day and nobody knows why.
-      await removeScan(item.clientScanId)
-      if (status >= 400 && !ALREADY_RECORDED.has(code ?? '')) {
+      // Recorded — or a definitive 4xx (AlreadyCompleted, …) that no retry can change. Either way it
+      // leaves the queue for the archive, with the verdict. A refusal is NOT silent: the employee was
+      // shown a card when they tapped; without this they are simply absent that day and nobody knows.
+      if (status < 400) {
+        const action = data && typeof data === 'object' && 'action' in data
+          && (data.action === 'CheckIn' || data.action === 'CheckOut') ? data.action : undefined
+        await settleScan(item, { outcome: 'sent', action })
+      } else if (ALREADY_RECORDED.has(code ?? '')) {
+        await settleScan(item, { outcome: 'ignored', code })
+      } else {
+        await settleScan(item, { outcome: 'rejected', code })
         reportFailure('OfflineRejected', undefined, item.clientTimestampUtc, reportAs)
         addReject({ kind: 'OfflineRejected', code, scanAtIso: item.clientTimestampUtc, atMs: Date.now(), employeeId: me })
       }
