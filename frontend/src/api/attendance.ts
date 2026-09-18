@@ -27,6 +27,10 @@ export interface AttendanceRecord {
   closedByFieldVisit?: boolean
   /** No poster scan on this date — the times come from a field visit. recordId is empty for these. */
   isFieldDay?: boolean
+  /** Only on /me/today: the day is closed as it stands, but a scan NOW would open another stretch of
+   *  it — back at the centre after a field visit, or a split shift's second window. The server's
+   *  answer; the phone must not decide «finished» on its own (it used to, and hid the button). */
+  mayScanAgain?: boolean
 }
 
 /** GET /api/attendance/me — this employee's full check-in/out history, newest first. Self-scoped

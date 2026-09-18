@@ -81,7 +81,9 @@ const PHOTO_H = 540
 type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
 type TodayInfo =
   | { kind: 'loading' }
-  | { kind: 'none' }
+  /** `again` — part of today is already worked and closed; the server says the next scan opens
+   *  another stretch (back from a field visit, or a split shift's second window). */
+  | { kind: 'none'; again?: boolean }
   | { kind: 'in-progress'; checkInAtUtc: string }
   | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string }
 
@@ -1360,7 +1362,7 @@ function TodayBanner({ today }: { today: TodayInfo }) {
       {today.kind === 'none' && (
         <>
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-          <span>Bu gün hələ giriş etməmisiniz</span>
+          <span>{today.again ? 'Günün növbəti hissəsi üçün giriş edin' : 'Bu gün hələ giriş etməmisiniz'}</span>
         </>
       )}
       {today.kind === 'in-progress' && (
@@ -1378,6 +1380,10 @@ function TodayBanner({ today }: { today: TodayInfo }) {
 function recordToTodayInfo(record: AttendanceRecord | undefined): TodayInfo {
   if (!record?.checkInAtUtc) return { kind: 'none' }
   if (!record.checkOutAtUtc) return { kind: 'in-progress', checkInAtUtc: record.checkInAtUtc }
+  // Closed, but the server would open another stretch now — back at the centre after a field visit,
+  // or a split shift's second window. Reading this as «completed» kept the camera shut on exactly the
+  // scan the server was waiting for.
+  if (record.mayScanAgain) return { kind: 'none', again: true }
   return { kind: 'completed', checkInAtUtc: record.checkInAtUtc, checkOutAtUtc: record.checkOutAtUtc }
 }
 

@@ -23,10 +23,18 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
 
     public async Task<AttendanceRecordDto?> GetTodayAsync(Guid employeeId, DateOnly date, CancellationToken ct = default)
     {
-        // Single row via the (EmployeeId, AttendanceDate) unique index — an exact-match lookup, not a
+        // One day's rows via the (EmployeeId, AttendanceDate) index — an exact-match lookup, not a
         // history scan. This is what the Scan page waits on before opening the camera.
+        //
+        // A day can hold two stretches (a split shift, or a return after a field visit), so WHICH row
+        // matters: the open one if there is one — that is what the next scan checks out of — otherwise
+        // the latest. Unordered, the database was free to hand back the morning's closed block while the
+        // afternoon one was still open, and the phone then showed a finished day to somebody at work.
+        // Same choice Scan makes («open ?? last»).
         var r = await _db.AttendanceRecords
             .Where(x => x.EmployeeId == employeeId && x.AttendanceDate == date)
+            .OrderBy(x => x.CheckOutAtUtc == null ? 0 : 1)
+            .ThenByDescending(x => x.CheckInAtUtc)
             .Select(x => new
             {
                 x.Id, x.AttendanceDate, x.LocationId, x.CheckInAtUtc, x.CheckOutAtUtc,
