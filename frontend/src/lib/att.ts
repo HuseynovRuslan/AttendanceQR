@@ -52,7 +52,7 @@ export type TodayState =
    *  'field' after a field visit, 'second' for a split shift's second window.
    *  `unknown` — no signal and nothing remembered: whether they are checked in is not known, and the
    *  card must say that rather than «Hələ giriş etməmisiniz» (see lib/todayCache). */
-  | { kind: 'none'; again?: 'field' | 'second'; unknown?: boolean }
+  | { kind: 'none'; again?: 'field' | 'second'; unknown?: 'offline' | 'server' }
   | { kind: 'in'; checkIn: string; pending?: boolean }
   | { kind: 'done'; checkIn: string; checkOut: string; pending?: boolean }
 

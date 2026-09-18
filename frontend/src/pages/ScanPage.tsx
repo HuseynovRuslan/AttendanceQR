@@ -31,7 +31,7 @@ import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, CAMERA_FAIL_REASON, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
 import { checkForFace } from '../lib/faceCheck'
-import { getMyProfile, type MyProfile } from '../api/attendance'
+import { getMyProfile, todayAnswered, whyUnreachable, type MyProfile } from '../api/attendance'
 import { fmtTime } from '../lib/format'
 
 type Card = {
@@ -87,7 +87,7 @@ type TodayInfo =
    *  another stretch (back from a field visit, or a split shift's second window). */
   /** `unknown` — no signal and nothing remembered: the phone does not know whether they are checked
    *  in, and must not say «hələ giriş etməmisiniz» (see lib/todayCache). */
-  | { kind: 'none'; again?: boolean; unknown?: boolean }
+  | { kind: 'none'; again?: boolean; unknown?: 'offline' | 'server' }
   | { kind: 'in-progress'; checkInAtUtc: string }
   | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string }
 
@@ -499,7 +499,7 @@ export function ScanPage() {
     const fallback = () => {
       const known = knownToday(me)
       if (known) settle(recordToTodayInfo(known.record ?? undefined), known.atMs)
-      else settle({ kind: 'none', unknown: true })
+      else settle({ kind: 'none', unknown: whyUnreachable() })
     }
     try {
       // Bounded: a request that never settles used to leave `today` on 'loading' forever, and the
@@ -515,7 +515,8 @@ export function ScanPage() {
         return
       }
       const { status, data } = res
-      if (status !== 200) {
+      // 204 is an answer too — «no scan yet today» (see todayAnswered).
+      if (!todayAnswered(status)) {
         fallback()
         return
       }
@@ -951,7 +952,7 @@ export function ScanPage() {
           // ninety scans by forty-two people in one month. The truth is one extra tap, so say it.
           note: reason === 'server'
             ? 'Server müvəqqəti əlçatmazdır. Tətbiq açıq qalsa, özü yenidən göndərəcək; bağlasanız, sonra bir dəfə açın.'
-            : 'İnternet yoxdur. İnternet olanda tətbiqi bir dəfə açın — skan o zaman göndəriləcək. 18 saat ərzində göndərilməsə, itir.',
+            : `${whyUnreachable() === 'offline' ? 'İnternet yoxdur.' : 'Serverə qoşulmaq alınmadı.'} Əlaqə olanda tətbiqi bir dəfə açın — skan o zaman göndəriləcək. 18 saat ərzində göndərilməsə, itir.`,
           final: true,
           photo: photoBase64 ?? undefined,
         })
@@ -1476,7 +1477,11 @@ function TodayBanner({ today, asOf }: { today: TodayInfo; asOf: number | null })
     return (
       <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-slate-300 shadow-sm backdrop-blur-md">
         <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-        <span>📴 İnternet yoxdur — bugünkü girişiniz yoxlanıla bilmədi</span>
+        <span>
+          {today.unknown === 'offline'
+            ? '📴 İnternet yoxdur — bugünkü girişiniz yoxlanıla bilmədi'
+            : 'Server cavab vermir — bugünkü girişiniz yoxlanıla bilmədi'}
+        </span>
       </div>
     )
   }
