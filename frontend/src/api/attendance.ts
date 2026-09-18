@@ -45,6 +45,24 @@ export function getMyToday() {
   return apiRequest<AttendanceRecord | null>('/api/attendance/me/today')
 }
 
+/**
+ * Did /me/today ANSWER? 200 with the record — or 204 when there is no scan yet today, because ASP.NET
+ * turns `Ok(null)` into No Content. Reading only 200 as an answer made every person who had not yet
+ * checked in look like a phone with no connection: «İnternet yoxdur» on a phone with full Wi-Fi.
+ */
+export function todayAnswered(status: number): boolean {
+  return status === 200 || status === 204
+}
+
+/**
+ * Why the day could not be read — said to the employee in those words. A request that throws is not
+ * proof of no signal: a server down behind a live proxy fails the same way. Only the phone's own
+ * «offline» flag is.
+ */
+export function whyUnreachable(): 'offline' | 'server' {
+  return typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'server'
+}
+
 /** POST /api/attendance/scan-failure — report a scan that never left the phone (no GPS, permission
  * denied, position too coarse). Fire-and-forget: the employee's flow never waits on it, and the
  * server de-duplicates retries — but the attempt now shows up in the admin "Problemlər" screen

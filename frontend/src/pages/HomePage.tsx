@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMyAttendance, getMyProfile, getMySummary, getMyToday, type AttendanceRecord, type MyProfile } from '../api/attendance'
+import { getMyAttendance, getMyProfile, getMySummary, getMyToday, todayAnswered, whyUnreachable, type AttendanceRecord, type MyProfile } from '../api/attendance'
 import { rememberQrless } from '../lib/qrless'
 import { getMyFieldVisits, type MyFieldVisit } from '../api/fieldVisits'
 import { useAuth } from '../auth/AuthContext'
@@ -41,7 +41,7 @@ export function HomePage() {
   // No connection on the last load. The day then comes from what the server said last (`asOf`, when
   // it said it) — or, with nothing remembered, is shown as unknown. Never as «not checked in»: that is
   // what made people who had checked in at 07:38 scan again, and the second scan closed their day.
-  const [offline, setOffline] = useState(false)
+  const [offline, setOffline] = useState<false | 'offline' | 'server'>(false)
   const [asOf, setAsOf] = useState<number | null>(null)
   // The hero waits for the day to load instead of showing «Giriş et» and swapping it out a moment
   // later — people switching tabs saw the button come and go and could barely tap it. But never for
@@ -70,7 +70,7 @@ export function HomePage() {
     } catch {
       // A request THREW — no connection (HTTP errors come back as statuses, not throws).
       const known = knownToday(employeeId)
-      setOffline(true)
+      setOffline(whyUnreachable())
       setLatest(known ? known.record : undefined)
       setAsOf(known ? known.atMs : null)
     } finally {
@@ -91,8 +91,8 @@ export function HomePage() {
       getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] })),
       getMyToday().catch(() => ({ status: 0, data: undefined })),
     ])
-    setLatest(t.status === 200 ? (t.data ?? null) : undefined)
-    if (t.status === 200) rememberToday(employeeId, t.data ?? null)
+    setLatest(todayAnswered(t.status) ? (t.data ?? null) : undefined)
+    if (todayAnswered(t.status)) rememberToday(employeeId, t.data ?? null)
     setFieldVisits(f.status === 200 && Array.isArray(f.data) ? f.data : [])
     if (p.status === 200 && p.data && 'fullName' in p.data) {
       setProfile(p.data)
@@ -123,8 +123,8 @@ export function HomePage() {
     if (a.status === 200 && Array.isArray(a.data)) {
       setRecords([...a.data].sort((x, y) => (x.attendanceDate < y.attendanceDate ? 1 : -1)))
     }
-    setLatest(t.status === 200 ? (t.data ?? null) : undefined)
-    if (t.status === 200) rememberToday(employeeId, t.data ?? null)
+    setLatest(todayAnswered(t.status) ? (t.data ?? null) : undefined)
+    if (todayAnswered(t.status)) rememberToday(employeeId, t.data ?? null)
   }
 
   /**
@@ -152,7 +152,7 @@ export function HomePage() {
   // Offline with nothing remembered: unknown, and the queue is not read into it either — a queued tap
   // could be a check-in or a check-out, and this is exactly the moment not to guess.
   const today: TodayState = offline && latest === undefined
-    ? { kind: 'none', unknown: true }
+    ? { kind: 'none', unknown: offline }
     : withPendingScans(todayState(records, latest), queued)
   const again = today.kind === 'none' ? (today.again ?? (today.unknown ? 'unknown' : undefined)) : undefined
   // A night worker's shift lives on YESTERDAY's row until noon. Without this the screen tells someone
@@ -287,7 +287,7 @@ export function HomePage() {
       {loading && !slow ? (
         <div className="h-44 animate-pulse rounded-3xl bg-slate-100" />
       ) : (
-        <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} asOf={asOf} onScan={() => navigate('/scan')} />
+        <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} asOf={asOf} why={offline || undefined} onScan={() => navigate('/scan')} />
       )}
 
       <div>
@@ -300,7 +300,7 @@ export function HomePage() {
         {loading ? (
           <SkeletonList />
         ) : recent.length === 0 ? (
-          <EmptyCard text={offline ? '📴 İnternet yoxdur — tarixçə yüklənmədi' : 'Hələ qeyd yoxdur'} />
+          <EmptyCard text={offline === 'offline' ? '📴 İnternet yoxdur — tarixçə yüklənmədi' : offline ? 'Server cavab vermir — tarixçə yüklənmədi' : 'Hələ qeyd yoxdur'} />
         ) : (
           <div className="flex flex-col gap-2">
             {recent.map((r) => (
@@ -334,7 +334,7 @@ function isOverdue(checkInIso: string, shiftEnd?: string | null): boolean {
  *  bottom bar. Context-aware: green "Giriş et" before check-in, blue "Çıxış et" while at work (red and
  *  insistent once the shift is over — a forgotten check-out reads as zero hours), a calm summary once
  *  the day is done. The whole card is the tap target. */
-function ScanHero({ today, night, shiftEnd, qrless, asOf, onScan }: {
+function ScanHero({ today, night, shiftEnd, qrless, asOf, why, onScan }: {
   today: TodayState
   night: { kind: 'night'; checkIn: string } | null
   shiftEnd?: string | null
@@ -342,6 +342,8 @@ function ScanHero({ today, night, shiftEnd, qrless, asOf, onScan }: {
   qrless?: boolean
   /** The day came from the phone's memory, not the server — when the server last said it. */
   asOf?: number | null
+  /** Why the server could not be asked — no signal on the phone, or the server itself. */
+  why?: 'offline' | 'server'
   onScan: () => void
 }) {
   const heroBtn = 'relative w-full overflow-hidden rounded-3xl p-6 text-left text-white shadow-lg transition active:scale-[.99]'
@@ -378,7 +380,7 @@ function ScanHero({ today, night, shiftEnd, qrless, asOf, onScan }: {
   // Said on every card that was built from memory: how old it is, and why.
   const staleLine = asOf != null && (
     <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-bold">
-      📴 İnternet yoxdur · {fmtTime(new Date(asOf).toISOString())} məlumatı
+      📴 {why === 'offline' ? 'İnternet yoxdur' : 'Server cavab vermir'} · {fmtTime(new Date(asOf).toISOString())} məlumatı
     </div>
   )
 
@@ -387,10 +389,12 @@ function ScanHero({ today, night, shiftEnd, qrless, asOf, onScan }: {
     return (
       <button onClick={onScan} className={`${heroBtn} bg-gradient-to-br from-slate-600 to-slate-800 shadow-slate-600/25`}>
         <IconQr className="pointer-events-none absolute -right-3 -top-3 h-24 w-24 opacity-15" />
-        <div className="text-xs font-bold uppercase tracking-wider opacity-85">Bu gün · 📴 internet yoxdur</div>
+        <div className="text-xs font-bold uppercase tracking-wider opacity-85">
+          Bu gün · 📴 {today.unknown === 'offline' ? 'internet yoxdur' : 'server cavab vermir'}
+        </div>
         <div className="mt-1 text-3xl font-extrabold">Skan et</div>
         <div className="mt-1 text-sm opacity-90">
-          Bugünkü qeydiniz yüklənmədi. Skan telefonda saxlanılacaq — internet olanda tətbiqi açın.
+          Bugünkü qeydiniz yüklənmədi. Skan etsəniz, telefonda saxlanılacaq və sonra göndəriləcək.
         </div>
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
           {cta('Skan üçün toxunun', 'Toxunun')}
@@ -463,7 +467,7 @@ function ScanHero({ today, night, shiftEnd, qrless, asOf, onScan }: {
       )}
       {asOf != null && (
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
-          📴 İnternet yoxdur · {fmtTime(new Date(asOf).toISOString())} məlumatı
+          📴 {why === 'offline' ? 'İnternet yoxdur' : 'Server cavab vermir'} · {fmtTime(new Date(asOf).toISOString())} məlumatı
         </div>
       )}
     </div>
