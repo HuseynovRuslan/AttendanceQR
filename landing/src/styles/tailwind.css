@@ -18,6 +18,14 @@
 @import 'tailwindcss/utilities.css' layer(utilities) source('..');
 
 @theme {
+  /* The site's own blue — the "Log" of the logo, the stats band, --blue in global.css — so that
+     `bg-brand` and `from-brand` mean QRLog blue and not Tailwind's default, which is lighter and
+     more electric. -600 is the hover shade, -700 the pressed one; white text on all three clears
+     5.4:1, which Tailwind's own blue-500 → blue-600 gradient did not. */
+  --color-brand: #155EEF;
+  --color-brand-600: #0F4FD1;
+  --color-brand-700: #0B3CA8;
+
   /* `font-sans` / `font-mono` mean the faces BaseLayout loads, not system fonts. */
   --font-sans: 'IBM Plex Sans', 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;

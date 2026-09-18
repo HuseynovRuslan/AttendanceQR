@@ -337,6 +337,7 @@ export const ui = {
 
     'a11y.skip': 'Keçid: əsas məzmun',
     'a11y.lang': 'Dil',
+    'a11y.nav': 'Əsas menyu',
   },
 
   ru: {
@@ -646,6 +647,7 @@ export const ui = {
 
     'a11y.skip': 'Перейти к содержимому',
     'a11y.lang': 'Язык',
+    'a11y.nav': 'Основное меню',
   },
 
   en: {
@@ -957,6 +959,7 @@ export const ui = {
 
     'a11y.skip': 'Skip to main content',
     'a11y.lang': 'Language',
+    'a11y.nav': 'Main navigation',
   },
 } as const
 

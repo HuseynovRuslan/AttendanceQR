@@ -11,7 +11,7 @@
   --radius: 18px;
   --shadow: 0 24px 60px -28px rgba(11, 23, 38, .35);
   --shadow-sm: 0 8px 24px -14px rgba(11, 23, 38, .28);
-  --maxw: 1160px;
+  --maxw: 1360px;
 }
 
 * {
@@ -87,92 +87,6 @@ img {
   left: 0
 }
 
-/* ---------- Header ---------- */
-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: rgba(255, 255, 255, .82);
-  backdrop-filter: saturate(160%) blur(14px);
-  border-bottom: 1px solid var(--line)
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  height: 72px
-}
-
-.brand img {
-  height: 30px;
-  width: auto
-}
-
-.nav-links {
-  display: flex;
-  gap: 26px;
-  margin-left: 14px
-}
-
-.nav-links a {
-  font-size: 14.5px;
-  font-weight: 500;
-  color: var(--muted);
-  transition: color .18s;
-  position: relative
-}
-
-.nav-links a::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 100%;
-  bottom: -4px;
-  height: 2px;
-  background: var(--blue);
-  border-radius: 2px;
-  transition: right .25s
-}
-
-.nav-links a:hover {
-  color: var(--ink)
-}
-
-.nav-links a:hover::after {
-  right: 0
-}
-
-.nav-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 14px
-}
-
-.lang {
-  display: inline-flex;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px;
-  gap: 2px
-}
-
-.lang a {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--muted);
-  padding: 6px 12px;
-  border-radius: 999px;
-  transition: all .18s
-}
-
-.lang a.active {
-  background: var(--ink);
-  color: #fff
-}
-
 .btn {
   display: inline-flex;
   align-items: center;
@@ -219,24 +133,6 @@ header {
 .btn-white:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm)
-}
-
-.menu-toggle {
-  display: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  padding: 6px
-}
-
-.menu-toggle span {
-  display: block;
-  width: 22px;
-  height: 2px;
-  background: var(--ink);
-  margin: 5px 0;
-  border-radius: 2px;
-  transition: .25s
 }
 
 /* ---------- Hero ---------- */
@@ -1717,42 +1613,9 @@ footer {
     grid-template-columns: 1fr 1fr
   }
 
-  .nav-links {
-    display: none
   }
-
-  .menu-toggle {
-    display: block
-  }
-
-  .nav-links.open {
-    display: flex;
-    position: absolute;
-    top: 72px;
-    left: 0;
-    right: 0;
-    flex-direction: column;
-    background: #fff;
-    border-bottom: 1px solid var(--line);
-    padding: 16px 24px;
-    gap: 8px;
-    margin: 0
-  }
-}
-
-/* The login link lives twice: a ghost button in the header for wide screens, a plain menu row for
-   narrow ones — where .nav-right .btn is hidden. Exactly one of the two is ever visible. */
-.nav-login-mobile {
-  display: none
-}
 
 @media(max-width:560px) {
-  .nav-login-mobile {
-    display: block;
-    font-weight: 600;
-    color: var(--blue)
-  }
-
   .foot-grid {
     grid-template-columns: 1fr 1fr
   }
@@ -1770,10 +1633,7 @@ footer {
     gap: 22px
   }
 
-  .nav-right .btn {
-    display: none
   }
-}
 
 @media(prefers-reduced-motion:reduce) {
   * {
@@ -3144,11 +3004,7 @@ footer {
   --radius: 20px;
   --shadow: 0 34px 90px -44px rgba(4, 18, 29, .42);
   --shadow-sm: 0 16px 40px -28px rgba(4, 18, 29, .32);
-  --maxw: 1220px;
-}
-
-html {
-  scroll-padding-top: 86px
+  --maxw: 1320px;
 }
 
 body {
@@ -3218,66 +3074,6 @@ section {
   font-size: 17px;
   line-height: 1.72;
   color: var(--muted)
-}
-
-/* Header */
-header {
-  background: rgba(255, 255, 255, .92);
-  border-bottom: 1px solid rgba(7, 21, 33, .09);
-  backdrop-filter: blur(18px) saturate(140%);
-}
-
-.nav {
-  height: 78px;
-  gap: 34px
-}
-
-.brand {
-  display: flex;
-  align-items: center
-}
-
-.brand img {
-  height: 29px
-}
-
-.nav-links {
-  gap: 30px;
-  margin-left: 18px
-}
-
-.nav-links a {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #566771
-}
-
-.nav-links a::after {
-  bottom: -10px;
-  height: 1px
-}
-
-.nav-right {
-  gap: 12px
-}
-
-.lang {
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  padding: 0;
-  gap: 1px
-}
-
-.lang a {
-  padding: 7px 9px;
-  border-radius: 6px;
-  font-size: 11px
-}
-
-.lang a.active {
-  background: var(--ink);
-  color: #fff
 }
 
 .btn {
@@ -5115,6 +4911,7 @@ footer {
 }
 
 /* Responsive */
+
 @media(max-width:1100px) {
   .hero-grid {
     grid-template-columns: 1fr .86fr;
@@ -5180,22 +4977,6 @@ footer {
 
   .wrap {
     padding-inline: 22px
-  }
-
-  .nav {
-    height: 72px
-  }
-
-  .nav-links.open {
-    top: 72px;
-    gap: 0;
-    padding: 10px 22px 18px;
-    box-shadow: 0 22px 40px -30px rgba(7, 21, 33, .4)
-  }
-
-  .nav-links.open a {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--line)
   }
 
   .hero {
@@ -5398,14 +5179,6 @@ footer {
 
   .sec-head p {
     font-size: 15px
-  }
-
-  .brand img {
-    height: 26px
-  }
-
-  .lang {
-    display: none
   }
 
   .hero {
@@ -5755,7 +5528,7 @@ footer {
   --radius: 2px;
   --shadow: none;
   --shadow-sm: none;
-  --maxw: 1240px;
+  --maxw: 1340px;
 }
 
 body {
@@ -5823,57 +5596,6 @@ section {
 .sec-head p {
   font-size: 16px;
   line-height: 1.65
-}
-
-/* Header: quiet and architectural. */
-header {
-  background: #F6F5F1;
-  border-bottom: 1px solid #BFC1BA;
-  backdrop-filter: none
-}
-
-.nav {
-  height: 82px
-}
-
-.nav-links a {
-  font-size: 13px;
-  font-weight: 500;
-  color: #454842
-}
-
-.nav-links a::after {
-  bottom: -12px;
-  height: 1px
-}
-
-.lang {
-  border-left: 1px solid #C8C9C3;
-  padding-left: 12px;
-  border-radius: 0
-}
-
-.lang a {
-  border-radius: 0
-}
-
-.lang a.active {
-  background: transparent;
-  color: var(--blue);
-  box-shadow: inset 0 -1px 0 var(--blue)
-}
-
-.nav .btn-primary {
-  min-height: 42px;
-  padding: 9px 17px;
-  border-radius: 0;
-  background: var(--ink);
-  box-shadow: none
-}
-
-.nav .btn-primary:hover {
-  background: var(--blue);
-  transform: none
 }
 
 /* Hero: warm editorial canvas + one instrument panel. */
@@ -6829,10 +6551,6 @@ footer {
     padding-inline: 18px
   }
 
-  .nav {
-    height: 70px
-  }
-
   h1.hero-title {
     font-size: clamp(43px, 13vw, 58px)
   }
@@ -7053,4 +6771,41 @@ footer {
   color: #93A9C2;
   font-size: 14px;
   line-height: 1.6;
+}
+
+/* ---------- Fixed header ---------- */
+/*
+ * The header is src/components/Header.astro, and everything it looks like is a Tailwind utility in
+ * that file — there are no .nav / .nav-links / .nav-right / .lang / .brand / .menu-toggle rules any
+ * more, here or anywhere else. What stays here is the part the component cannot own.
+ *
+ * The header is `position: fixed`, so it takes up no space in the page: the first section of every
+ * page starts at the top of the viewport and the glass bar floats over its background instead of
+ * sitting in a band of its own. --header-h is the bar's full height, its margins included, and the
+ * two rules below hand that height back as space above the first line of a page.
+ *
+ * This block has to stay at the end of the file: the responsive .hero / .page-hero paddings above
+ * would otherwise win over it.
+ */
+:root {
+  --header-h: 90px
+}
+
+@media(min-width:640px) {
+  :root {
+    --header-h: 98px
+  }
+}
+
+html {
+  /* #how, #features and #faq land below the bar, never under it. */
+  scroll-padding-top: var(--header-h)
+}
+
+.hero {
+  padding-top: calc(var(--header-h) + 60px)
+}
+
+.page-hero {
+  padding-top: calc(var(--header-h) + 48px)
 }

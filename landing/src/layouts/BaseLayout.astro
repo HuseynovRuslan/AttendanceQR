@@ -207,21 +207,7 @@ const websiteLd = {
         setInterval(tick, 1000)
       })()
 
-      // ---------- Mobile menu ----------
-      const mt = document.getElementById('menuToggle')
-      const nl = document.getElementById('navlinks')
-      if (mt && nl) {
-        mt.addEventListener('click', () => {
-          const open = nl.classList.toggle('open')
-          mt.setAttribute('aria-expanded', String(open))
-        })
-        nl.querySelectorAll('a').forEach((a) =>
-          a.addEventListener('click', () => {
-            nl.classList.remove('open')
-            mt.setAttribute('aria-expanded', 'false')
-          })
-        )
-      }
+      // The mobile menu and the language dropdown are wired up in Header.astro's own script.
 
       // ---------- Scroll reveal ----------
       const io = new IntersectionObserver(
