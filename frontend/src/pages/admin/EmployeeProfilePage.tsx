@@ -70,6 +70,9 @@ export function EmployeeProfilePage() {
    * deactivate on an admin, and the refusal arrived as a 403 the person reads as a broken button.
    */
   const [manageable, setManageable] = useState(true)
+  // A fellow manager's card, opened by a manager: editable since 2026-09-18, but switching them off
+  // stays with the admin (the server refuses it), so the button is not offered.
+  const [colleague, setColleague] = useState(false)
   /** The PIN reset reaches further than the edit for a manager — a fellow manager, or staff at another
    *  area (see CredentialTargetAsync) — so it has its own answer instead of riding on `manageable`. */
   const [canResetPin, setCanResetPin] = useState(true)
@@ -146,8 +149,9 @@ export function EmployeeProfilePage() {
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
-    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean } | null
+    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean; isColleague?: boolean } | null
     setManageable(!isManager || flags?.manageable === true)
+    setColleague(isManager && flags?.isColleague === true)
     setCanResetPin(!isManager || flags?.manageable === true || flags?.credentialsManageable === true)
     if (!found) {
       setNotFound(true)
@@ -442,7 +446,7 @@ export function EmployeeProfilePage() {
             {!emp.activated && !isManager && (
               <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
             )}
-            {manageable && (
+            {manageable && !colleague && (
               <button className={`btn btn-sm ${emp.isActive ? 'btn-outline-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
                 {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
               </button>

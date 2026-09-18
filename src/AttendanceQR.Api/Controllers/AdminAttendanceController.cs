@@ -67,8 +67,10 @@ public class AdminAttendanceController : ControllerBase
         var rows = await (
             from r in _db.AttendanceRecords
             where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayUtc
-                  && (managed == null || managed.Contains(r.LocationId))
             join e in _db.Employees on r.EmployeeId equals e.Id
+            // A fellow manager's forgotten day is on the list wherever they scanned — a colleague may
+            // close it since 2026-09-18 (LocationScopeRules.CanManageEmployeeAsync).
+            where managed == null || managed.Contains(r.LocationId) || e.Role == EmployeeRole.Manager
             join l in _db.Locations on r.LocationId equals l.Id
             orderby r.AttendanceDate descending, e.FullName
             select new
@@ -96,7 +98,8 @@ public class AdminAttendanceController : ControllerBase
         {
             x.recordId, x.employeeId, x.employeeName, x.locationName, x.attendanceDate, x.checkInAtUtc,
             closable = managed is null
-                       || (x.Role == EmployeeRole.Employee && x.employeeId != me && managed.Contains(x.EmployeeLocationId)),
+                       || (x.Role == EmployeeRole.Employee && x.employeeId != me && managed.Contains(x.EmployeeLocationId))
+                       || (x.Role == EmployeeRole.Manager && x.employeeId != me),
         }));
     }
 

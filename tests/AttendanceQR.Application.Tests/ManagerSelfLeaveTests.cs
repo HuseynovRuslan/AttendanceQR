@@ -228,7 +228,7 @@ public class ManagerSelfLeaveTests
         Assert.NotNull(Row(h.ManagerId));
         Assert.NotNull(Row(h.PeerManagerId));
         Assert.Equal(false, Field(Row(h.ManagerId)!, "manageable"));
-        Assert.Equal(false, Field(Row(h.PeerManagerId)!, "manageable"));
+        Assert.Equal(true, Field(Row(h.PeerManagerId)!, "manageable"));   // a colleague, since 2026-09-18
 
         // And asking for self on top of that cannot duplicate the row.
         var withSelf = Assert.IsAssignableFrom<IEnumerable<object>>(
@@ -265,10 +265,10 @@ public class ManagerSelfLeaveTests
     }
 
     [Fact]
-    public async Task Another_branchs_manager_is_still_out_of_reach()
+    public async Task Another_branchs_manager_can_have_their_leave_filed_but_not_their_staff()
     {
-        // Branch scope is what carries the whole rule now that role no longer does. If this fails,
-        // widening leaves has quietly made every manager in the company reachable by every other.
+        // It used to pin the opposite. The owner widened it on purpose (2026-09-18): every manager in the
+        // company may file a colleague's day off. Another branch's PLAIN staff stay out of reach.
         using var h = new Harness();
         var elsewhere = Guid.NewGuid();
         h.Db.Employees.Add(new Employee
@@ -279,9 +279,20 @@ public class ManagerSelfLeaveTests
         });
         h.Db.SaveChanges();
 
-        var result = await h.Controller.CreateLeave(Leave(elsewhere));
-        Assert.IsNotType<OkObjectResult>(result);
-        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == elsewhere));
+        var staffElsewhere = Guid.NewGuid();
+        h.Db.Employees.Add(new Employee
+        {
+            Id = staffElsewhere, TenantId = TenantA, FullName = "Basqa Filial Iscisi",
+            Role = EmployeeRole.Employee, IsActive = true, PasswordHash = "h",
+            LocationId = Guid.NewGuid(), ActivatedAtUtc = DateTime.UtcNow,
+        });
+        h.Db.SaveChanges();
+
+        Assert.IsType<OkObjectResult>(await h.Controller.CreateLeave(Leave(elsewhere)));
+        Assert.Single(h.Db.LeaveRecords.Where(l => l.EmployeeId == elsewhere));
+
+        Assert.IsNotType<OkObjectResult>(await h.Controller.CreateLeave(Leave(staffElsewhere)));
+        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == staffElsewhere));
     }
 
     [Fact]

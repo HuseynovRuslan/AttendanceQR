@@ -298,11 +298,11 @@ public class OpenRecordsManagerScopeTests
 
         Assert.True(closable[f.OpenMineId]);
         Assert.False(closable[f.OpenAdminId]);
-        Assert.False(closable[f.OpenPeerId]);
+        // A fellow manager's day IS closable since 2026-09-18 — exactly what Nihat was asking for.
+        Assert.True(closable[f.OpenPeerId]);
         Assert.False(closable[f.OpenSelfId]);
 
         // The flag is the write's own answer, not a second opinion that could drift away from it.
-        AssertOutOfScope(await f.AsManager().Update(f.OpenPeerId, CloseAt(Fixture.OpenDate)));
         AssertOutOfScope(await f.AsManager().Update(f.OpenSelfId, CloseAt(Fixture.OpenDate)));
     }
 

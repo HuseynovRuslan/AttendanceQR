@@ -322,12 +322,9 @@ public class ManagerCredentialTests
         AssertStatus(await h.Controller.UpdateEmployee(h.OtherBranchEmployeeId,
             new ManagerEmployeeRequest(FullName: "Köçürülmüş", Email: null, PhoneNumber: null, FatherName: null, Position: null, LocationId: h.BranchA)),
             StatusCodes.Status404NotFound);
-        AssertStatus(await h.Controller.UpdateEmployee(h.SameBranchManagerId,
-            new ManagerEmployeeRequest(FullName: "Dəyişdirilmiş", Email: null, PhoneNumber: null, FatherName: null, Position: null, LocationId: h.BranchA)),
-            StatusCodes.Status403Forbidden);
+        // (A fellow manager IS fully editable since 2026-09-18 — ManagerAccountScopeTests pins that.)
 
         Assert.Equal("Test Vəli", h.Row(h.OtherBranchEmployeeId).FullName);
-        Assert.Equal("Test Həmkar Menecer", h.Row(h.SameBranchManagerId).FullName);
     }
 
     // --- finding the person --------------------------------------------------------

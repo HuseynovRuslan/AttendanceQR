@@ -164,11 +164,12 @@ public class FieldVisitScopeTests
     }
 
     [Fact]
-    public async Task Manager_cannot_assign_to_same_branch_manager()
+    public async Task Manager_can_assign_to_a_fellow_manager()
     {
+        // 2026-09-18, the owner's call: a fellow MANAGER is reachable company-wide (IsColleague).
         using var h = new Harness();
-        AssertForbidden(await h.AsManager.Assign(new AssignFieldVisitRequest(h.SameBranchManagerId)));
-        Assert.Equal(0, h.VisitCount());
+        Assert.IsType<OkObjectResult>(await h.AsManager.Assign(new AssignFieldVisitRequest(h.SameBranchManagerId)));
+        Assert.Equal(1, h.VisitCount());
     }
 
     [Fact]
