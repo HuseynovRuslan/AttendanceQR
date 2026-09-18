@@ -1,72 +1,474 @@
 ---
-import { useTranslations, localizedPath, availableLangs, type Lang } from '../i18n/ui'
-import { SITE } from '../data/site'
+import { AZ, RU, US } from "country-flag-icons/string/3x2";
+import {
+  useTranslations,
+  localizedPath,
+  availableLangs,
+  type Lang,
+} from "../i18n/ui";
+import { SITE } from "../data/site";
 
 interface Props {
-  lang: Lang
+  lang: Lang;
   /** Current route without the language prefix — the language switcher keeps you on this page. */
-  path?: string
+  path?: string;
 }
-const { lang, path = '/' } = Astro.props
-const t = useTranslations(lang)
+const { lang, path = "/" } = Astro.props;
+const t = useTranslations(lang);
 
 // The switcher only offers languages this route was actually built in, and disappears entirely on
-// an Azerbaijani-only page (the blog, 404) — a one-button switcher is noise, and the missing
-// buttons used to lead to 404s.
-const routeLangs = availableLangs(path)
+// an Azerbaijani-only page (the blog, 404) — a one-item dropdown is noise, and the missing
+// languages used to lead to 404s.
+const routeLangs = availableLangs(path);
+const otherLangs = routeLangs.filter((l) => l !== lang);
+
+// Each language is named in itself, on every page: someone looking for Russian scans for "Русский",
+// not for the word for it in a language they may not read. The flags are inline SVG strings rendered
+// at build time — no React, no image requests. English takes the US flag because the site declares
+// en-US everywhere else (htmlLang, og:locale, the sitemap).
+const langMeta: Record<Lang, { name: string; flag: string }> = {
+  az: { name: "Azərbaycan", flag: AZ },
+  ru: { name: "Русский", flag: RU },
+  en: { name: "English", flag: US },
+};
 
 // Section links are absolute (home + hash) so the same header works on /elaqe/ and /bloq/ too.
-const home = localizedPath(lang, '/')
+// `page` marks the links that are pages of their own, so the one you are on can say so.
+const home = localizedPath(lang, "/");
 const links = [
-  { href: `${home}#how`, label: t('nav.how') },
-  { href: `${home}#features`, label: t('nav.features') },
+  { href: `${home}#how`, label: t("nav.how") },
+  { href: `${home}#features`, label: t("nav.features") },
   // Always shown: /qiymet/ exists whether or not the plan table does. With plans off it answers the
   // price question with an individual quote, which is still the page people came looking for.
-  { href: localizedPath(lang, '/qiymet/'), label: t('nav.pricing') },
-  { href: `${home}#faq`, label: t('nav.faq') },
-  { href: localizedPath(lang, '/elaqe/'), label: t('nav.contact') },
-]
+  {
+    href: localizedPath(lang, "/qiymet/"),
+    label: t("nav.pricing"),
+    page: "/qiymet/",
+  },
+  { href: `${home}#faq`, label: t("nav.faq") },
+  {
+    href: localizedPath(lang, "/elaqe/"),
+    label: t("nav.contact"),
+    page: "/elaqe/",
+  },
+];
+
+const appUrl = "https://app.qrlog.az";
+const contactHref = localizedPath(lang, "/elaqe/");
+
+// Shared class strings: one definition per thing that appears twice (the bar and the mobile menu both
+// carry the two buttons, five controls share the focus ring, three places show a flag).
+// No Preflight on this site (see styles/tailwind.css), so every <button> and <ul> below resets the
+// browser's own border, background, font and list style itself. The neutrals are `stone`, not
+// `slate`: the site's own greys are warm (#F6F5F1 paper, #111211 ink) and slate reads lavender
+// against them. `brand` is the site's blue (#155EEF, the "Log" in the logo) — see tailwind.css.
+const focusRing =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+const btnBase = `items-center justify-center whitespace-nowrap rounded-full text-sm font-semibold transition-all duration-200 ${focusRing}`;
+const btnGhost = `${btnBase} text-stone-700 hover:bg-stone-100 hover:text-stone-900`;
+const btnPrimary = `${btnBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
+const flagBox =
+  "block h-3.5 w-[21px] shrink-0 overflow-hidden rounded-[3px] ring-1 ring-stone-900/10 [&>svg]:block [&>svg]:size-full";
 ---
 
-<header>
-  <div class="wrap nav">
-    <a class="brand" href={home} aria-label={SITE.name}>
-      <img src="/logo-word.png" alt={SITE.name} width="150" height="30" />
-    </a>
-    <nav class="nav-links" id="navlinks" aria-label="Main">
-      {links.map((l) => <a href={l.href}>{l.label}</a>)}
-      <!-- Mobile only: the header buttons are hidden under 560px, and an employee reaching this site
-           on a phone is exactly the person who wants the app. -->
-      <a class="nav-login-mobile" href="https://app.qrlog.az">{t('cta.login')}</a>
-    </nav>
-    <div class="nav-right">
-      {routeLangs.length > 1 && (
-      <div class="lang" role="group" aria-label={t('a11y.lang')}>
-        {routeLangs.map((l) => (
-          <a
-            href={localizedPath(l, path)}
-            class={l === lang ? 'active' : ''}
-            hreflang={l}
-            aria-current={l === lang ? 'true' : undefined}
-          >{l.toUpperCase()}</a>
-        ))}
+<!--
+  Floating header. The <header> itself is only the strip that holds the bar away from the screen
+  edges; it is fixed, so it takes no space in the page — the first section of every page starts at the
+  very top and the glass bar floats over it. global.css gives .hero and .page-hero that height back
+  (--header-h), and it lets clicks through (pointer-events-none) so the page under its transparent
+  margins stays clickable.
+
+  Scroll behaviour lives on this element: `data-hidden` slides the whole strip out of view with a
+  transform, which the compositor can animate without touching layout. The script below decides when.
+-->
+<header
+  data-header
+  class="pointer-events-none fixed inset-x-0 top-0 z-50 p-3 transition-transform duration-300 ease-out data-hidden:-translate-y-full motion-reduce:transition-none sm:p-4"
+>
+  <div
+    data-header-bar
+    class="group/header pointer-events-auto relative mx-auto max-w-[calc(var(--maxw)-32px)] rounded-2xl border border-stone-200/60 bg-white/80 shadow-sm backdrop-blur-xl backdrop-saturate-150 transition-[background-color,box-shadow] duration-300 data-scrolled:bg-white/95 data-scrolled:shadow-md data-scrolled:shadow-stone-900/5"
+  >
+    <div class="flex h-16 items-center gap-3 pl-4 pr-3 lg:gap-8">
+      <a class={`shrink-0 rounded-md ${focusRing}`} href={home} aria-label={SITE.name}>
+        <img
+          class="h-6.5 w-auto sm:h-7"
+          src="/logo-word.png"
+          alt={SITE.name}
+          width="150"
+          height="30"
+        />
+      </a>
+
+      <nav class="hidden lg:block" aria-label={t("a11y.nav")}>
+        <ul class="flex list-none items-center gap-1">
+          {
+            links.map((l) => (
+              <li>
+                <a
+                  class={`inline-flex h-10 items-center rounded-full px-3 text-[14.5px] font-medium text-stone-600 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 aria-[current=page]:text-brand ${focusRing}`}
+                  href={l.href}
+                  aria-current={l.page === path ? "page" : undefined}
+                >
+                  {l.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-1 sm:gap-2">
+        {
+          otherLangs.length > 0 && (
+            <div class="group/lang relative" data-lang>
+              <button
+                type="button"
+                class={`flex h-10 cursor-pointer items-center gap-2 rounded-full border-0 bg-transparent px-3 text-sm font-semibold text-stone-700 [font-family:inherit] transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 group-data-open/lang:bg-stone-100 ${focusRing}`}
+                aria-expanded="false"
+                aria-controls="lang-menu"
+                aria-label={`${t("a11y.lang")}: ${lang.toUpperCase()} (${langMeta[lang].name})`}
+                data-lang-trigger
+              >
+                <span class={flagBox} aria-hidden="true" set:html={langMeta[lang].flag} />
+                <span aria-hidden="true">{lang.toUpperCase()}</span>
+                <svg
+                  class="size-3.5 text-stone-500 transition-transform duration-200 group-data-open/lang:rotate-180"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m5 7.5 5 5 5-5" />
+                </svg>
+              </button>
+
+              {/*
+                `visibility` is in the transition list so the card stays on screen for the whole fade
+                out — but only on the way out: the open state drops it again, so on the way in the menu
+                is visible in the same frame and ArrowDown can move focus into it straight away.
+              */}
+              <ul
+                id="lang-menu"
+                class="invisible absolute right-0 top-full z-10 mt-5 min-w-48 origin-top-right -translate-y-1 scale-95 list-none rounded-xl border border-stone-200/70 bg-white p-1.5 opacity-0 shadow-lg shadow-stone-900/10 transition-[opacity,translate,scale,visibility] duration-150 ease-out group-data-open/lang:visible group-data-open/lang:translate-y-0 group-data-open/lang:scale-100 group-data-open/lang:opacity-100 group-data-open/lang:transition-[opacity,translate,scale]"
+                data-lang-menu
+              >
+                {otherLangs.map((l) => (
+                  <li>
+                    <a
+                      class={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 transition-colors duration-150 hover:bg-stone-100 hover:text-stone-900 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand`}
+                      href={localizedPath(l, path)}
+                      hreflang={l}
+                      lang={l}
+                    >
+                      <span class={flagBox} aria-hidden="true" set:html={langMeta[l].flag} />
+                      <span class="flex-1 font-medium">{langMeta[l].name}</span>
+                      <span
+                        class="text-xs font-semibold tracking-wide text-stone-500"
+                        aria-hidden="true"
+                      >
+                        {l.toUpperCase()}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        }
+
+        <!--
+          Two calls to action, and they are for different people. "Əlaqə saxlayın" is for a company that
+          does not have QRLog yet — it stays the primary, because that is what this site is for. "Daxil
+          ol" is for the staff who already use it and land here by typing the name they remember; it goes
+          to app.qrlog.az, the one address that works for every company without knowing which company
+          they belong to. It is the quiet ghost button on purpose: it must not compete with sales.
+          (This site deliberately had no login link at all until 2026-08-24 — people were expected to
+          reach the app by its own address, and enough of them did not.)
+          Each moves into the mobile menu at the width where it stops fitting — the primary at 540px,
+          where the bar still holds the logo, the switcher, one pill and the burger, the quieter login
+          link a step earlier at `sm`. Exactly one copy of each is ever visible; the mobile menu's own
+          copies below carry the mirror-image breakpoints.
+        -->
+        <a class={`${btnGhost} hidden px-4 py-2.5 sm:inline-flex`} href={appUrl}>
+          {t("cta.login")}
+        </a>
+        <a
+          class={`${btnPrimary} hidden px-5 py-2.5 min-[540px]:inline-flex`}
+          href={contactHref}
+        >
+          {t("cta.btn1")}
+        </a>
+
+        <button
+          type="button"
+          class={`group/burger relative flex size-10 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-stone-800 transition-colors duration-200 hover:bg-stone-100 lg:hidden ${focusRing}`}
+          aria-expanded="false"
+          aria-controls="mobile-menu"
+          aria-label={t("nav.menu")}
+          data-menu-trigger
+        >
+          <span
+            class="absolute h-0.5 w-5 -translate-y-1.5 rounded-full bg-current transition duration-300 group-aria-expanded/burger:translate-y-0 group-aria-expanded/burger:rotate-45"
+            aria-hidden="true"></span>
+          <span
+            class="absolute h-0.5 w-5 rounded-full bg-current transition duration-200 group-aria-expanded/burger:scale-x-0 group-aria-expanded/burger:opacity-0"
+            aria-hidden="true"></span>
+          <span
+            class="absolute h-0.5 w-5 translate-y-1.5 rounded-full bg-current transition duration-300 group-aria-expanded/burger:translate-y-0 group-aria-expanded/burger:-rotate-45"
+            aria-hidden="true"></span>
+        </button>
       </div>
-      )}
-      <!--
-        Two calls to action, and they are for different people. "Əlaqə saxlayın" is for a company that
-        does not have QRLog yet — it stays the primary, because that is what this site is for. "Daxil
-        ol" is for the staff who already use it and land here by typing the name they remember; it goes
-        to app.qrlog.az, the one address that works for every company without knowing which company
-        they belong to. It is the quiet ghost button on purpose: it must not compete with sales.
-        (This site deliberately had no login link at all until 2026-08-24 — people were expected to
-        reach the app by its own address, and enough of them did not.)
-        Under 560px global.css hides .nav-right .btn, so both live in the mobile menu instead.
-      -->
-      <a class="btn btn-primary nav-login" href="https://app.qrlog.az">{t('cta.login')}</a>
-      <a class="btn btn-primary" href={localizedPath(lang, '/elaqe/')}>{t('cta.btn1')}</a>
-      <button class="menu-toggle" id="menuToggle" aria-label={t('nav.menu')} aria-expanded="false">
-        <span></span><span></span><span></span>
-      </button>
+    </div>
+
+    <!--
+      Mobile menu: it unfolds inside the floating bar rather than as a separate sheet. The 0fr→1fr grid
+      row animates the height without measuring it, and `invisible` keeps the collapsed links out of
+      the tab order and the accessibility tree — visibility is in the transition, so it only hides once
+      the fold has finished. The inner box scrolls on its own: on a short screen (a landscape phone, or
+      400% zoom) the list is taller than the viewport, and the bar is fixed, so the page cannot scroll
+      it into view.
+    -->
+    <div
+      id="mobile-menu"
+      class="invisible grid grid-rows-[0fr] transition-[grid-template-rows,visibility] duration-300 ease-out group-data-open/header:visible group-data-open/header:grid-rows-[1fr] lg:hidden"
+      data-menu
+    >
+      <div class="min-h-0 overflow-hidden">
+        <div
+          class="mx-2 max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain border-t border-stone-200/70 pb-3 pt-2"
+        >
+          <nav aria-label={t("a11y.nav")}>
+            <ul class="list-none">
+              {
+                links.map((l) => (
+                  <li>
+                    <a
+                      class="block rounded-xl px-2 py-3 text-[15px] font-medium text-stone-700 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand aria-[current=page]:text-brand"
+                      href={l.href}
+                      aria-current={l.page === path ? "page" : undefined}
+                    >
+                      {l.label}
+                    </a>
+                  </li>
+                ))
+              }
+            </ul>
+          </nav>
+          <!-- An employee reaching this site on a phone is exactly the person who wants the app. -->
+          <div class="mt-2 grid gap-2 border-t border-stone-200/70 pt-3 sm:hidden">
+            <a
+              class={`${btnGhost} flex px-4 py-3 ring-1 ring-inset ring-stone-200`}
+              href={appUrl}>{t("cta.login")}</a
+            >
+            <a
+              class={`${btnPrimary} flex px-5 py-3 min-[540px]:hidden`}
+              href={contactHref}>{t("cta.btn1")}</a
+            >
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </header>
+
+<script>
+  const header = document.querySelector<HTMLElement>("[data-header]");
+  const bar = header?.querySelector<HTMLElement>("[data-header-bar]");
+
+  if (header && bar) {
+    const menuBtn = bar.querySelector<HTMLButtonElement>("[data-menu-trigger]");
+    const menu = bar.querySelector<HTMLElement>("[data-menu]");
+    const lang = bar.querySelector<HTMLElement>("[data-lang]");
+    const langBtn = lang?.querySelector<HTMLButtonElement>("[data-lang-trigger]");
+    const langItems = lang
+      ? Array.from(lang.querySelectorAll<HTMLAnchorElement>("[data-lang-menu] a"))
+      : [];
+
+    // State lives in three attributes and nowhere else: `data-open` drives the styling
+    // (group-data-open:*), aria-expanded tells assistive technology, and `data-hidden` on the strip
+    // drives the scroll animation. Everything below goes through these setters.
+    const menuOpen = () => bar.hasAttribute("data-open");
+    const langOpen = () => !!lang?.hasAttribute("data-open");
+
+    let hidden = false;
+    const reveal = () => {
+      if (!hidden) return;
+      hidden = false;
+      header.removeAttribute("data-hidden");
+    };
+
+    const setLang = (open: boolean) => {
+      if (!lang || !langBtn) return;
+      lang.toggleAttribute("data-open", open);
+      langBtn.setAttribute("aria-expanded", String(open));
+      if (open) {
+        setMenu(false);
+        reveal();
+      }
+    };
+
+    const setMenu = (open: boolean) => {
+      if (!menuBtn) return;
+      bar.toggleAttribute("data-open", open);
+      menuBtn.setAttribute("aria-expanded", String(open));
+      if (open) {
+        setLang(false);
+        reveal();
+      }
+    };
+
+    // ---------- Language dropdown ----------
+    langBtn?.addEventListener("click", () => setLang(!langOpen()));
+
+    langBtn?.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      setLang(true);
+      langItems[e.key === "ArrowDown" ? 0 : langItems.length - 1]?.focus();
+    });
+
+    // The item the key was pressed on, not document.activeElement: this same event bubbles up from
+    // the trigger, and reading the active element there would move the focus a second time.
+    lang?.addEventListener("keydown", (e) => {
+      const i = langItems.indexOf(e.target as HTMLAnchorElement);
+      if (i < 0) return;
+      const last = langItems.length - 1;
+      const next =
+        e.key === "ArrowDown"
+          ? (i + 1) % langItems.length
+          : e.key === "ArrowUp"
+            ? (i - 1 + langItems.length) % langItems.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? last
+                : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      langItems[next].focus();
+    });
+
+    // ---------- Mobile menu ----------
+    menuBtn?.addEventListener("click", () => setMenu(!menuOpen()));
+
+    // A section link on the home page does not load a new page, so the menu has to fold itself.
+    menu
+      ?.querySelectorAll("a")
+      .forEach((a) => a.addEventListener("click", () => setMenu(false)));
+
+    // Rotating a tablet or widening the window past `lg` hides the menu button; an open menu would
+    // otherwise come back on its own the next time the window narrows.
+    window.matchMedia("(min-width: 1024px)").addEventListener("change", (e) => {
+      if (e.matches) setMenu(false);
+    });
+
+    // ---------- Shared: focus, outside click, Escape, back button ----------
+    // Tabbing out closes whatever is open, so the tab order never continues behind an open panel.
+    // Only when focus actually lands somewhere else: Safari does not focus a link on click, so a
+    // mouse click blurs to nothing (relatedTarget null) and closing then would pull the item out
+    // from under the click. Clicks outside are handled separately.
+    bar.addEventListener("focusout", (e) => {
+      const to = e.relatedTarget as Node | null;
+      if (!to || bar.contains(to)) return;
+      setLang(false);
+      setMenu(false);
+    });
+
+    document.addEventListener("click", (e) => {
+      const target = e.target as Node;
+      if (langOpen() && !lang?.contains(target)) setLang(false);
+      if (menuOpen() && !bar.contains(target)) setMenu(false);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (langOpen()) {
+        setLang(false);
+        langBtn?.focus();
+      } else if (menuOpen()) {
+        setMenu(false);
+        menuBtn?.focus();
+      }
+    });
+
+    // Coming back with the browser's Back button restores the page exactly as it was left (bfcache),
+    // open dropdown and all.
+    window.addEventListener("pageshow", (e) => {
+      if (!e.persisted) return;
+      setLang(false);
+      setMenu(false);
+      reveal();
+      lastY = window.scrollY;
+    });
+
+    // ---------- Scroll ----------
+    // The bar gets out of the way while you read downwards and comes straight back when you scroll
+    // up. `fromTop` is the middle of the viewport — the line the page is actually read at — so
+    // nothing hides while that line is still inside the first screen: at the top of a page the logo,
+    // the menu and both calls to action stay where a visitor expects them.
+    //
+    // Cost per scroll event: one rAF callback, two reads, and an attribute write only when the state
+    // actually changes. The strip then animates a transform, which the compositor does on its own —
+    // no layout, no repaint of the page behind it.
+    const keyboardInside = () => {
+      const el = document.activeElement;
+      if (!el || !header.contains(el)) return false;
+      // :focus-visible is what the browser itself calls "the focus you can see". Safari before 15.4
+      // throws on it, and there the safe answer is to keep the bar.
+      try {
+        return el.matches(":focus-visible");
+      } catch {
+        return true;
+      }
+    };
+
+    const JITTER = 6; // px — a tap, a rubber-band or a trackpad tremor is not a scroll
+    let lastY = window.scrollY;
+    let scrolled = false;
+    let ticking = false;
+
+    const paint = () => {
+      ticking = false;
+      const y = Math.max(window.scrollY, 0);
+      const fromTop = y + window.innerHeight / 2;
+      const delta = y - lastY;
+      if (Math.abs(delta) < JITTER) return; // lastY stays put, so small moves still add up
+      lastY = y;
+
+      const isScrolled = y > 8;
+      if (isScrolled !== scrolled) {
+        scrolled = isScrolled;
+        bar.toggleAttribute("data-scrolled", isScrolled);
+      }
+
+      // Never slide away from under an open panel, or from under the keyboard focus. A button that
+      // only holds focus because it was tapped does not count, or the bar would stay pinned for the
+      // rest of the visit after one tap on the burger.
+      const pinned = menuOpen() || langOpen() || keyboardInside();
+      const next = !pinned && delta > 0 && fromTop > window.innerHeight;
+      if (next !== hidden) {
+        hidden = next;
+        header.toggleAttribute("data-hidden", next);
+      }
+    };
+
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(paint);
+      },
+      { passive: true },
+    );
+
+    // Reloading half way down a page starts in the scrolled state.
+    scrolled = window.scrollY > 8;
+    bar.toggleAttribute("data-scrolled", scrolled);
+    header.addEventListener("focusin", reveal);
+  }
+</script>
