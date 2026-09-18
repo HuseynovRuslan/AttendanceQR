@@ -8,6 +8,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +45,7 @@ public class ManagerAccountScopeTests
         public Guid SameBranchAdminId { get; } = Guid.NewGuid();
         public Guid SameBranchManagerId { get; } = Guid.NewGuid();
         public Guid OtherBranchEmployeeId { get; } = Guid.NewGuid();
+        public Guid OtherBranchManagerId { get; } = Guid.NewGuid();
         public Guid OtherTenantEmployeeId { get; } = Guid.NewGuid();
 
         public Harness()
@@ -69,6 +71,7 @@ public class ManagerAccountScopeTests
             Db.Employees.Add(Person(SameBranchAdminId, "Filial Admini", EmployeeRole.Admin, BranchA, TenantA));
             Db.Employees.Add(Person(SameBranchManagerId, "İkinci Menecer", EmployeeRole.Manager, BranchA, TenantA));
             Db.Employees.Add(Person(OtherBranchEmployeeId, "Başqa Filial", EmployeeRole.Employee, BranchB, TenantA));
+            Db.Employees.Add(Person(OtherBranchManagerId, "Başqa Filialın Meneceri", EmployeeRole.Manager, BranchB, TenantA));
             // Deliberately placed at BranchA's OWN location id: only the tenant filter hides them,
             // which is exactly the boundary this row tests.
             Db.Employees.Add(Person(OtherTenantEmployeeId, "Başqa Tenant", EmployeeRole.Employee, BranchA, TenantB));
@@ -161,6 +164,32 @@ public class ManagerAccountScopeTests
         Assert.Equal("Düzəldilmiş Menecer", h.Row(h.SameBranchManagerId).FullName);
         Assert.Contains(h.Db.AuditLogs, a => a.EmployeeId == h.SameBranchManagerId
             && a.EventType == AuditEventType.CredentialChangedByManager);
+    }
+
+    [Fact]
+    public async Task Another_branchs_manager_is_neither_seen_nor_touched()
+    {
+        // The owner, 2026-09-18, the hour after a first cut reached every manager in the company:
+        // «öz filialında olan menecerləri dedim, qıraq filialların menecerlərini görməməlidir».
+        using var h = new Harness();
+
+        var roster = ((System.Collections.IEnumerable)Assert.IsType<OkObjectResult>(await h.Controller.Employees()).Value!)
+            .Cast<object>().Select(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)!).ToList();
+        Assert.DoesNotContain(h.OtherBranchManagerId, roster);
+        Assert.Contains(h.SameBranchManagerId, roster);
+
+        Assert.IsType<NotFoundObjectResult>(await h.Controller.Employee(h.OtherBranchManagerId));
+        Assert.IsType<NotFoundObjectResult>(
+            await h.Controller.UpdateEmployee(h.OtherBranchManagerId, Edit("Ele Keçirilmiş", h.BranchB)));
+        Assert.Equal("Başqa Filialın Meneceri", h.Row(h.OtherBranchManagerId).FullName);
+
+        // The central rule every other surface asks (qayıb, closing a day, field visits, selfies).
+        var ct = CancellationToken.None;
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.OtherBranchManagerId, ct));
+        Assert.False(await LocationScopeRules.CanAccessEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.OtherBranchManagerId, ct));
+        Assert.True(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.SameBranchManagerId, ct));
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.ManagerId, ct));
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.SameBranchAdminId, ct));
     }
 
     [Fact]

@@ -265,10 +265,12 @@ public class ManagerSelfLeaveTests
     }
 
     [Fact]
-    public async Task Another_branchs_manager_can_have_their_leave_filed_but_not_their_staff()
+    public async Task Another_branchs_manager_and_staff_are_still_out_of_reach()
     {
-        // It used to pin the opposite. The owner widened it on purpose (2026-09-18): every manager in the
-        // company may file a colleague's day off. Another branch's PLAIN staff stay out of reach.
+        // Branch scope is what carries the whole rule now that role no longer does. If this fails,
+        // widening leaves has quietly made every manager in the company reachable by every other —
+        // which shipped once for an hour on 2026-09-18, and the owner said no at once: a colleague is
+        // a manager at YOUR branch, not any manager anywhere.
         using var h = new Harness();
         var elsewhere = Guid.NewGuid();
         h.Db.Employees.Add(new Employee
@@ -288,8 +290,8 @@ public class ManagerSelfLeaveTests
         });
         h.Db.SaveChanges();
 
-        Assert.IsType<OkObjectResult>(await h.Controller.CreateLeave(Leave(elsewhere)));
-        Assert.Single(h.Db.LeaveRecords.Where(l => l.EmployeeId == elsewhere));
+        Assert.IsNotType<OkObjectResult>(await h.Controller.CreateLeave(Leave(elsewhere)));
+        Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == elsewhere));
 
         Assert.IsNotType<OkObjectResult>(await h.Controller.CreateLeave(Leave(staffElsewhere)));
         Assert.Empty(h.Db.LeaveRecords.Where(l => l.EmployeeId == staffElsewhere));

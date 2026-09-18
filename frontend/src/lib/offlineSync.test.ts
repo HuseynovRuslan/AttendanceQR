@@ -95,6 +95,27 @@ describe('draining the offline queue', () => {
     expect(addReject).not.toHaveBeenCalled()
   })
 
+  it('drops a morning retry the server ignored without raising an alarm', async () => {
+    // «Did it work?» — a second tap minutes after arriving, queued with no signal. The server keeps the
+    // check-in and ignores the retry (ConfirmEarlyCheckOut); that is the outcome the person wanted,
+    // and a red «your day was lost» banner over it would be a lie of its own.
+    queue.push(item('retry'))
+    apiRequest.mockResolvedValue({ status: 409, data: { error: 'ConfirmEarlyCheckOut' } })
+    await syncOfflineScans()
+    expect(removeScan).toHaveBeenCalledWith('retry')
+    expect(addReject).not.toHaveBeenCalled()
+    expect(reportFailure).not.toHaveBeenCalled()
+  })
+
+  it("sends the employee's «bəli, çıxıram» with a queued early exit, and nothing when there was none", async () => {
+    queue.push({ ...item('out'), confirmEarlyCheckOut: true }, item('plain'))
+    apiRequest.mockResolvedValue({ status: 200, data: { action: 'CheckOut' } })
+    await syncOfflineScans()
+    const bodies = apiRequest.mock.calls.map((c) => (c[1] as { body: Record<string, unknown> }).body)
+    expect(bodies[0]).toMatchObject({ clientScanId: 'out', confirmEarlyCheckOut: true, offline: true })
+    expect(bodies[1]).not.toHaveProperty('confirmEarlyCheckOut')
+  })
+
   it('keeps the queue when the network drops mid-drain', async () => {
     queue.push(item('a'), item('b'))
     apiRequest.mockRejectedValue(new TypeError('fetch failed'))

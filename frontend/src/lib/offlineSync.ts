@@ -54,6 +54,7 @@ function toBody(item: QueuedScan) {
     clientScanId: item.clientScanId,
     clientTimestampUtc: item.clientTimestampUtc,
     offline: true,
+    ...(item.confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
   }
 }
 
@@ -64,7 +65,12 @@ function toBody(item: QueuedScan) {
  * BLOCKING row on the Problems screen for an ordinary, harmless outcome, and admins who see that a
  * few times stop trusting the colour that actually matters.
  */
-const ALREADY_RECORDED = new Set(['AlreadyCompleted', 'DuplicateCheckIn', 'TooSoonToCheckOut'])
+const ALREADY_RECORDED = new Set([
+  'AlreadyCompleted', 'DuplicateCheckIn', 'TooSoonToCheckOut',
+  // A tap soon after arriving that nobody confirmed as leaving: the server kept the check-in and
+  // ignored the retry, which is the outcome the person wanted. Their day is open for the real exit.
+  'ConfirmEarlyCheckOut',
+])
 
 /** The server's error code, when the body carries one. */
 function errorCode(data: unknown): string | undefined {

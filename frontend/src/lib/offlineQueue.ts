@@ -33,6 +33,12 @@ export interface QueuedScan {
    * against B's reference. Undefined only for items queued before this field existed.
    */
   employeeId?: string
+  /**
+   * The employee answered «bəli, çıxıram» before this was queued. A check-out within two hours of
+   * arriving is otherwise read by the server as a «did it work?» retry and changes nothing — see
+   * EarlyCheckOutRules on the server. Absent on everything queued before the question existed.
+   */
+  confirmEarlyCheckOut?: boolean
 }
 
 /**

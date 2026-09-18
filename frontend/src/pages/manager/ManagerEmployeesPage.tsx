@@ -34,9 +34,6 @@ function splitName(first: string | null | undefined, last: string | null | undef
   return { first: toks.slice(0, -1).join(' '), last: toks[toks.length - 1] }
 }
 
-/** The filter value that shows fellow managers only — they sit at branches not in this manager's list. */
-const COLLEAGUES = '__colleagues'
-
 const ERRORS: Record<string, string> = {
   NameRequired: 'Ad tələb olunur',
   NeedEmailOrPhone: 'Telefon və ya e-poçt lazımdır',
@@ -105,7 +102,7 @@ export function ManagerEmployeesPage() {
   async function load() {
     setLoading(true)
     const [e, l, p, sc, group] = await Promise.all([
-      getManagerEmployees(false, true), getManagerLocations(), getManagerPositions(), getManagerSchedules(),
+      getManagerEmployees(), getManagerLocations(), getManagerPositions(), getManagerSchedules(),
       getGroupCompanies(),
     ])
     if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
@@ -179,7 +176,7 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
 
   const q = search.trim().toLowerCase()
   const visible = rows.filter((r) => {
-    if (filterLoc === COLLEAGUES ? !r.isColleague : filterLoc && r.locationId !== filterLoc) return false
+    if (filterLoc && r.locationId !== filterLoc) return false
     if (!q) return true
     return `${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.locationName ?? ''}`
       .toLowerCase()
@@ -188,10 +185,8 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
   // Every bulk action stops at the rows a manager may change — and at their own branches' staff: a
   // colleague is editable one at a time, but the server's bulk grant never reaches them.
   const grantable = visible.filter((r) => r.manageable !== false && !r.isColleague)
-  // The colleague being edited, if it is one — their branch is usually not this manager's, and they
-  // may be neither moved nor switched off from here.
+  // The colleague being edited, if it is one — they may not be switched off from here.
   const editingColleague = rows.find((r) => r.id === editing)?.isColleague === true
-  const editingRow = rows.find((r) => r.id === editing)
 
   return (
     <div>
@@ -203,8 +198,8 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
         </div>
       )}
 
-      {/* Company-wide PIN reset and login-number change — staff at other areas and fellow managers,
-          whom this roster (their own branches only) cannot reach. The server decides who qualifies. */}
+      {/* Company-wide PIN reset and login-number change for staff at other areas, and for fellow managers
+          at the caller's own branches. The server decides who qualifies. */}
       {!editing && <CredentialDesk />}
 
       {/* The two opt-in capabilities across this manager's own staff. The manager is who knows which
@@ -265,7 +260,7 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           />
           {/* Only worth showing to somebody who actually runs more than one — for a single-branch
               manager it is a control with one option and no purpose. */}
-          {(locations.length > 1 || rows.some((r) => r.isColleague)) && (
+          {locations.length > 1 && (
             <select
               className="inp"
               value={filterLoc}
@@ -274,7 +269,6 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
               aria-label="Filial üzrə süz"
             >
               <option value="">Bütün filiallar</option>
-              {rows.some((r) => r.isColleague) && <option value={COLLEAGUES}>Həmkar menecerlər</option>}
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           )}
@@ -335,10 +329,7 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
             </div>
             <div>
               <label className="form-label">Filial *</label>
-              <select className="inp" value={form.locationId} disabled={editingColleague} onChange={(e) => set('locationId', e.target.value)}>
-                {editingColleague && editingRow && !locations.some((l) => l.id === editingRow.locationId) && (
-                  <option value={editingRow.locationId}>{editingRow.locationName}</option>
-                )}
+              <select className="inp" value={form.locationId} onChange={(e) => set('locationId', e.target.value)}>
                 {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
@@ -486,8 +477,14 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
                   <div className="mgr-actions">
                     {/* A colleague's row is visible and read-only. The server refuses the write
                         either way — this is so the button is not there to be pressed. */}
-                    {e.isColleague && <span className="tag">menecer</span>}
-                    {e.manageable !== false && <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>}
+                    {/* A fellow manager at the same branch is editable since 2026-09-18; an admin who
+                        clocks in here is not, and the server refuses the write either way. */}
+                    {e.manageable === false
+                      ? <span className="tag">həmkar</span>
+                      : <>
+                          {e.isColleague && <span className="tag">menecer</span>}
+                          <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
+                        </>}
                   </div>
                 </div>
               </div>
