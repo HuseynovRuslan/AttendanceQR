@@ -47,12 +47,46 @@ describe('a queued scan counts on the employee\'s own screen', () => {
   })
 })
 
+describe('a check-in AND a check-out both waiting on the phone', () => {
+  // Staging, 2026-09-18: in at 14:25 and out at 14:35, both with no signal — and the card still said
+  // «İşdəsiniz · Çıxış et». Whoever had just checked out was asked to do it again. The phone knows the
+  // server's rules, so it can say what the server will do.
+
+  it('a confirmed early exit closes the day on the screen', () => {
+    const out = withPendingScans(
+      { kind: 'none' },
+      [at('14:25'), { ...at('14:35'), confirmEarlyCheckOut: true }],
+      TODAY)
+
+    expect(out).toEqual({
+      kind: 'done', checkIn: `${TODAY}T14:25:00.000Z`, checkOut: `${TODAY}T14:35:00.000Z`, pending: true,
+    })
+  })
+
+  it('an exit hours later needs no «bəli» to count', () => {
+    const out = withPendingScans({ kind: 'none' }, [at('08:50'), at('18:05')], TODAY)
+
+    expect(out.kind).toBe('done')
+  })
+
+  it("an unconfirmed early tap after the server's check-in is ignored, as the server ignores it", () => {
+    const server: TodayState = { kind: 'in', checkIn: `${TODAY}T08:50:00.000Z` }
+
+    expect(withPendingScans(server, [at('09:05')], TODAY)).toEqual(server)
+  })
+})
+
 describe('what it refuses to conclude', () => {
-  it('two queued scans still only say "at work"', () => {
-    // Whether the second becomes a check-out depends on a server rule about how long after the first
-    // it was. Guessing "done" would tell somebody their day is closed when it may not be; guessing
-    // "at work" costs at worst one scan the server declines.
+  it('a nervous second tap nobody confirmed stays "at work"', () => {
+    // Fifteen minutes after arriving, with no «bəli, çıxıram»: the server keeps the check-in and
+    // ignores the tap (EarlyCheckOutRules), so the screen must not announce a check-out either.
     const out = withPendingScans({ kind: 'none' }, [at('08:50'), at('09:05')], TODAY)
+
+    expect(out.kind).toBe('in')
+  })
+
+  it('a tap inside the double-tap window is no way out, even confirmed', () => {
+    const out = withPendingScans({ kind: 'none' }, [at('08:50'), { ...at('08:52'), confirmEarlyCheckOut: true }], TODAY)
 
     expect(out.kind).toBe('in')
   })
