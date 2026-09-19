@@ -10,6 +10,7 @@ import {
   readApp,
   readCode,
   readReturnUrl,
+  readSignInQr,
 } from './externalSignInOutcome'
 
 const meydan = readApp('meydan')!
@@ -63,5 +64,45 @@ describe('classifySignIn', () => {
     expect(classifySignIn(404, { error: 'UnknownApp' }, 'MEYDAN')).toEqual({ kind: 'refused', message: NOT_CONFIGURED_MESSAGE })
     expect(classifySignIn(502, { error: 'AppUnreachable' }, 'MEYDAN')).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
     expect(classifySignIn(500, 'garbage', 'MEYDAN')).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
+  })
+})
+
+describe('readSignInQr', () => {
+  const code = '0123456789abcdef0123456789abcdef'
+
+  it("takes MEYDAN's sign-in QR — QRLog's approval page with the ticket code — and returns only the code", () => {
+    expect(readSignInQr(`https://app.qrlog.az/signin/meydan?code=${code}`, meydan)).toBe(code)
+    expect(readSignInQr(`  https://app.qrlog.az/signin/meydan?code=${code.toUpperCase()}\n`, meydan)).toBe(code)
+  })
+
+  it('never follows a QR that is not exactly that', () => {
+    const wrong = [
+      `http://app.qrlog.az/signin/meydan?code=${code}`, // not https
+      `https://app.qrlog.az.evil.example/signin/meydan?code=${code}`, // someone else's host
+      `https://evil.example/signin/meydan?code=${code}`,
+      `https://bax.qrlog.az/signin/meydan?code=${code}`, // a tenant host is not where apps point
+      `https://app.qrlog.az:8443/signin/meydan?code=${code}`,
+      `https://user@app.qrlog.az/signin/meydan?code=${code}`,
+      `https://app.qrlog.az/signin/kitabxana?code=${code}`, // another app
+      `https://app.qrlog.az/signin/meydan/?code=${code}`,
+      `https://app.qrlog.az/SIGNIN/meydan?code=${code}`,
+      `https://app.qrlog.az/signin/meydan?code=${code}&return=https%3A%2F%2Fevil.example`, // anything extra
+      `https://app.qrlog.az/signin/meydan?code=${code}&code=${code}`,
+      `https://app.qrlog.az/signin/meydan?code=${code}#x`,
+      'https://app.qrlog.az/signin/meydan?code=not-hex', // not a ticket code
+      'https://app.qrlog.az/signin/meydan?code=abc',
+      'https://app.qrlog.az/signin/meydan',
+      'https://book.qrlog.az/qr/0123456789abcdef', // Kitabxana's QR
+      'QRLOG:ATTENDANCE:1234', // an attendance code
+      'javascript:alert(1)',
+      '',
+    ]
+    for (const text of wrong) expect(readSignInQr(text, meydan), text).toBeNull()
+    expect(readSignInQr(`https://app.qrlog.az/signin/meydan?code=${code}`, null)).toBeNull()
+  })
+
+  it('knows how MEYDAN is listed under Xidmətlər', () => {
+    expect(meydan.serviceName).toBe('MEYDAN v1')
+    expect(meydan.serviceLine).toBe('Müsabiqələrdə iştirak etmək üçün QRLog hesabınızla daxil olun.')
   })
 })

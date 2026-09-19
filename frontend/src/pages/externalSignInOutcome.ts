@@ -13,15 +13,20 @@ export interface ExternalApp {
   /** The only host a `return` address may point at. A link can be sent by anyone. */
   returnHost: string
   homeUrl: string
+  /** How the app is listed under Xidmətlər, and the one line that says what it is for. */
+  serviceName: string
+  serviceLine: string
 }
 
 export const EXTERNAL_APPS: Record<string, ExternalApp> = {
   meydan: {
     key: 'meydan',
     name: 'MEYDAN',
-    description: 'Bakı kəndləri yaradıcı müsabiqələri platforması',
+    description: 'Yaradıcı layihələr və açıq müsabiqələr platforması',
     returnHost: 'meydan.qrlog.az',
     homeUrl: 'https://meydan.qrlog.az',
+    serviceName: 'MEYDAN v1',
+    serviceLine: 'Müsabiqələrdə iştirak etmək üçün QRLog hesabınızla daxil olun.',
   },
 }
 
@@ -48,6 +53,31 @@ export function readReturnUrl(raw: string | null | undefined, app: ExternalApp |
   } catch {
     return null
   }
+}
+
+/** Where the apps' sign-in QR codes point: QRLog's own approval page, and only there. */
+export const SIGNIN_QR_HOST = 'app.qrlog.az'
+
+/**
+ * The ticket code from a QR that an app's "QRLog ilə daxil ol" shows on a computer — and from nothing else: https,
+ * exactly QRLog's approval page for this app, the code as its only parameter. Any other QR (someone's website, an
+ * attendance code, the same page with a way back or anything extra attached) is not a sign-in and is never followed.
+ * Whether the code is still valid is for the server to say; the person still approves with a deliberate tap.
+ */
+export function readSignInQr(text: string | null | undefined, app: ExternalApp | null): string | null {
+  if (!text || !app) return null
+  let url: URL
+  try {
+    url = new URL(text.trim())
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'https:' || url.hostname !== SIGNIN_QR_HOST || url.port !== '') return null
+  if (url.username || url.password || url.hash) return null
+  if (url.pathname !== `/signin/${app.key}`) return null
+  const keys = [...url.searchParams.keys()]
+  if (keys.length !== 1 || keys[0] !== 'code') return null
+  return readCode(url.searchParams.get('code'))
 }
 
 /** The same address with `cancelled=1` added, so the app can end the ticket and say so. */

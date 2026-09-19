@@ -53,6 +53,8 @@ const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.V
 const KitabxanaSignInPage = lazy(() => import('./pages/KitabxanaSignInPage').then(m => ({ default: m.KitabxanaSignInPage })))
 // Opened from Menu → Xidmətlər: the camera, and only the quiz's QR. No attendance checks.
 const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m => ({ default: m.KitabxanaScanPage })))
+// Xidmətlər → MEYDAN v1: scanning the sign-in QR an app of ours shows on a computer. Only reached from the menu.
+const ServiceSignInPage = lazy(() => import('./pages/ServiceSignInPage').then(m => ({ default: m.ServiceSignInPage })))
 // "QRLog ilə daxil ol" for another application of ours (MEYDAN): reached only from that app's link.
 const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
@@ -239,6 +241,17 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <KitabxanaScanPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Xidmətlər → an app that signs people in with QRLog (MEYDAN v1): scan the QR its computer page shows, then
+          approve on the same screen as /signin/:app. Same guard: it vouches for whoever is signed in here. */}
+      <Route
+        path="/services/:app"
+        element={
+          <ProtectedRoute>
+            <ServiceSignInPage />
           </ProtectedRoute>
         }
       />

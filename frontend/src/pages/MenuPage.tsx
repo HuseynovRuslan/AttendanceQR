@@ -264,6 +264,7 @@ export function MenuPage() {
         <h2 className="px-1 pb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Xidmətlər</h2>
         <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
           <MenuRow to="/kitabxana/scan" Icon={IconQr} label="Kitabxana 2.0 — yarışa giriş" />
+          <MenuRow to="/services/meydan" Icon={IconQr} label="MEYDAN v1 — müsabiqələrə giriş" />
         </div>
       </div>
 

@@ -27,15 +27,13 @@ export function ExternalSignInPage() {
   const [phase, setPhase] = useState<'ask' | 'busy' | 'done'>('ask')
   const [error, setError] = useState<string | null>(null)
 
-  // Approved: hand the screen back to the app that asked, rather than leave the employee here.
+  // Approved on this phone for this phone: hand the screen back to the app that asked. Approved for a computer (a
+  // scanned QR has no way back): stay here and say where the sign-in continues.
   useEffect(() => {
-    if (phase !== 'done') return
-    const timer = window.setTimeout(() => {
-      if (returnUrl) window.location.assign(returnUrl)
-      else navigate('/home', { replace: true })
-    }, LEAVE_AFTER_MS)
+    if (phase !== 'done' || !returnUrl) return
+    const timer = window.setTimeout(() => window.location.assign(returnUrl), LEAVE_AFTER_MS)
     return () => window.clearTimeout(timer)
-  }, [phase, returnUrl, navigate])
+  }, [phase, returnUrl])
 
   async function approve() {
     if (!code || !app) return
@@ -59,7 +57,7 @@ export function ExternalSignInPage() {
 
   function decline() {
     if (returnUrl) window.location.assign(cancelUrl(returnUrl))
-    else navigate('/home', { replace: true })
+    else navigate('/menu', { replace: true })
   }
 
   const title = app ? `${app.name}-a giriş` : 'Giriş'
@@ -90,24 +88,42 @@ export function ExternalSignInPage() {
             <div className="text-5xl" aria-hidden="true">✅</div>
             <h2 className="mt-3 text-lg font-bold text-slate-900">Təsdiqləndi</h2>
             <p className="mt-2 text-slate-700">
-              {returnUrl ? `${app.name} səhifəsinə qaytarılırsınız…` : `${app.name} səhifəsinə qayıdın — giriş orada özü davam edir.`}
+              {returnUrl
+                ? `${app.name} səhifəsinə qaytarılırsınız…`
+                : `Kompüterinizə qayıdın — ${app.name}-da giriş orada avtomatik davam edəcək.`}
             </p>
-            <a
-              href={returnUrl ?? app.homeUrl}
-              className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-green-600 px-6 font-semibold text-white"
-            >
-              {app.name}-a keç
-            </a>
+            {returnUrl ? (
+              <a
+                href={returnUrl}
+                className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-green-600 px-6 font-semibold text-white"
+              >
+                {app.name}-a keç
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate('/menu', { replace: true })}
+                className="mt-5 inline-flex min-h-12 items-center justify-center rounded-2xl bg-green-600 px-6 font-semibold text-white"
+              >
+                Xidmətlərə qayıt
+              </button>
+            )}
           </section>
         ) : (
           <section className="rounded-3xl border border-slate-200 bg-white p-6 text-center">
             <div className="text-5xl" aria-hidden="true">🎨</div>
-            <h2 className="mt-3 text-lg font-bold text-slate-900">{app.name}-a giriş təsdiqlənsin?</h2>
+            <h2 className="mt-3 text-lg font-bold text-slate-900">{app.name}-a daxil olmaq istəyirsiniz?</h2>
             <p className="mt-1 text-sm text-slate-500">{app.description}</p>
             <p className="mt-3 text-slate-700">
               {name ? <><strong>{name}</strong> adı ilə</> : 'Öz adınızla'} giriş ediləcək. Yalnız adınız və e-mail ünvanınız (varsa)
               göndəriləcək; telefon nömrəniz, şirkətiniz və vəzifəniz paylaşılmır.
             </p>
+            {!returnUrl && (
+              <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-900">
+                Yalnız <strong>öz kompüterinizin</strong> ekranında gördüyünüz QR kodu təsdiqləyin. Başqasının göstərdiyi kodu
+                təsdiqləsəniz, o, sizin adınızla daxil olar.
+              </p>
+            )}
 
             {error && (
               <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-left text-sm font-medium text-red-800">
@@ -129,7 +145,7 @@ export function ExternalSignInPage() {
               disabled={phase === 'busy'}
               className="mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 font-semibold text-slate-700 disabled:opacity-60"
             >
-              Ləğv et
+              İmtina et
             </button>
             <p className="mt-3 text-xs text-slate-500">Bu, davamiyyət qeydi deyil: selfi çəkilmir, məkan yoxlanmır.</p>
           </section>
