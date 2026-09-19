@@ -149,6 +149,9 @@ builder.Services.AddHttpClient("assistant-llm", c => c.Timeout = TimeSpan.FromSe
 // timeout on purpose - the employee is standing at a kiosk waiting for the screen to move on, and a
 // failure here is recoverable by asking the kiosk for a new QR.
 builder.Services.AddHttpClient("kitabxana", c => c.Timeout = TimeSpan.FromSeconds(10));
+// "QRLog ilə daxil ol" for other applications of ours (MEYDAN): the same vouching, generalised per app
+// (ExternalSignInController). Same short timeout, for the same reason.
+builder.Services.AddHttpClient("external-signin", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<IAssistantLlm>(sp => new OpenAiAssistantLlm(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("assistant-llm"), assistantOptions));
 builder.Services.AddScoped(sp => new AssistantDataService(

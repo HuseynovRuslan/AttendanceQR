@@ -53,6 +53,8 @@ const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.V
 const KitabxanaSignInPage = lazy(() => import('./pages/KitabxanaSignInPage').then(m => ({ default: m.KitabxanaSignInPage })))
 // Opened from Menu → Xidmətlər: the camera, and only the quiz's QR. No attendance checks.
 const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m => ({ default: m.KitabxanaScanPage })))
+// "QRLog ilə daxil ol" for another application of ours (MEYDAN): reached only from that app's link.
+const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
@@ -217,6 +219,17 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <KitabxanaSignInPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Approving a sign-in to another of our applications (MEYDAN) from this phone — the Kitabxana approval
+          generalised. Same guard: it vouches for whoever is signed in here, after one deliberate tap. */}
+      <Route
+        path="/signin/:app"
+        element={
+          <ProtectedRoute>
+            <ExternalSignInPage />
           </ProtectedRoute>
         }
       />
