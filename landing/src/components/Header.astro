@@ -124,7 +124,7 @@ const flagBox =
             <div class="group/lang relative" data-lang>
               <button
                 type="button"
-                class={`flex h-10 cursor-pointer items-center gap-2 rounded-full border-0 bg-transparent px-3 text-sm font-semibold text-stone-700 [font-family:inherit] transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 group-data-open/lang:bg-stone-100 ${focusRing}`}
+                class={`flex h-10 cursor-pointer items-center gap-2 rounded-full border-0 bg-transparent px-3 text-sm font-semibold text-stone-700 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 group-data-open/lang:bg-stone-100 ${focusRing}`}
                 aria-expanded="false"
                 aria-controls="lang-menu"
                 aria-label={`${t("a11y.lang")}: ${lang.toUpperCase()} (${langMeta[lang].name})`}
@@ -224,14 +224,7 @@ const flagBox =
       </div>
     </div>
 
-    <!--
-      Mobile menu: it unfolds inside the floating bar rather than as a separate sheet. The 0fr→1fr grid
-      row animates the height without measuring it, and `invisible` keeps the collapsed links out of
-      the tab order and the accessibility tree — visibility is in the transition, so it only hides once
-      the fold has finished. The inner box scrolls on its own: on a short screen (a landscape phone, or
-      400% zoom) the list is taller than the viewport, and the bar is fixed, so the page cannot scroll
-      it into view.
-    -->
+    <!-- Mobile menu: -->
     <div
       id="mobile-menu"
       class="invisible grid grid-rows-[0fr] transition-[grid-template-rows,visibility] duration-300 ease-out group-data-open/header:visible group-data-open/header:grid-rows-[1fr] lg:hidden"

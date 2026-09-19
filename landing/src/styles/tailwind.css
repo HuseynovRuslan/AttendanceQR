@@ -26,8 +26,16 @@
   --color-brand-600: #0F4FD1;
   --color-brand-700: #0B3CA8;
 
-  /* `font-sans` / `font-mono` mean the faces BaseLayout loads, not system fonts. */
-  --font-sans: 'IBM Plex Sans', 'Inter', sans-serif;
+  /* The site's typeface, and the only place one is named. global.css asks for var(--font-sans) and
+     var(--font-mono); components use `font-sans` / `font-mono` or nothing at all, because <body>
+     carries the sans stack and everything inherits it.
+
+     Onest is served by Google Fonts and is the only free face checked here that carries everything
+     this site sets: the Azerbaijani Ə ə İ ı Ğ ğ Ş ş, the full Russian alphabet, the arrows and check
+     marks in the copy, and — the one that rules most faces out — ₼, the manat sign the prices are in.
+     Inter follows it for anyone who has it installed; IBM Plex Sans, the face this site used before,
+     has no ₼ at all. Anything that replaces Onest has to be measured against the same list. */
+  --font-sans: 'Onest', 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 
   /* global.css already has keyframes named spin, ping and pulse. Tailwind writes an animate-*
