@@ -583,7 +583,7 @@ export const ui = {
     'price.quoteText':
       'Сумма зависит от числа сотрудников, количества филиалов и нужных вам возможностей. Зададим несколько вопросов и пришлём точное предложение — без скрытых платежей.',
     'price.quoteBtn': 'Получить предложение',
-    'cust.title': 'Компании, работающие на QR',
+    'cust.title': 'Компании, работающие на QRLog',
     'cust.eyebrow': 'НАДЕЖНЫЕ ПАРТНЕРЫ',
     'cust.c1s': 'Городское благоустройство',
     'cust.c2s': 'Профессиональный клининг',
@@ -913,7 +913,7 @@ export const ui = {
     'price.quoteText':
       'The figure depends on how many people you have, how many sites, and which capabilities you need. A few questions and we send an exact quote — no hidden fees.',
     'price.quoteBtn': 'Get a quote',
-    'cust.title': 'Companies running QR',
+    'cust.title': 'Companies running QRLog',
     'cust.eyebrow': 'TRUSTED PARTNERS',
     'cust.c1s': 'Municipal grounds and upkeep',
     'cust.c2s': 'Professional cleaning services',
