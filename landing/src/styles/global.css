@@ -1,3 +1,20 @@
+/* ---------- The typeface ----------
+ * --font-sans in styles/tailwind.css asks for TT Interphases first. That face is licensed from
+ * TypeType and is on no CDN, so it has to be served from this repo: put the woff2 files in
+ * public/fonts/ and uncomment the block below. Until then the stack falls through to Inter.
+ *
+ * @font-face {
+ *   font-family: 'TT Interphases';
+ *   src: url('/fonts/TTInterphases-Regular.woff2') format('woff2');
+ *   font-weight: 400;
+ *   font-style: normal;
+ *   font-display: swap;
+ * }
+ *   …and one block each for 500, 600, 700 and 800 — those are the weights this stylesheet uses.
+ *
+ * Check the file itself for Ə ə İ ı Ğ ğ Ş ş Ç ç Ö ö Ü ü before shipping it. This site already lost a
+ * typeface (Sora) that had no ə, and the whole site is in Azerbaijani.
+ */
 :root {
   --ink: #0B1726;
   --ink-2: #122438;
@@ -25,7 +42,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   color: var(--ink);
   background: var(--white);
   line-height: 1.6;
@@ -38,18 +55,27 @@ h2,
 h3,
 h4,
 .display {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: -.02em;
   line-height: 1.08
 }
 
 .mono {
-  font-family: 'JetBrains Mono', monospace
+  font-family: var(--font-mono)
 }
 
 a {
   color: inherit;
   text-decoration: none
+}
+
+/* No Preflight (see styles/tailwind.css): without this, every button, input and select falls back to
+   the browser's own UI font instead of the site's. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit
 }
 
 img {
@@ -64,7 +90,7 @@ img {
 }
 
 .eyebrow {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -92,7 +118,7 @@ img {
   align-items: center;
   gap: 8px;
   justify-content: center;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 14.5px;
   padding: 11px 20px;
@@ -309,7 +335,7 @@ h1.hero-title .hl::after {
 }
 
 .stat .num {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 28px;
   font-weight: 700;
   color: var(--ink)
@@ -390,7 +416,7 @@ h1.hero-title .hl::after {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .12em;
@@ -420,7 +446,7 @@ h1.hero-title .hl::after {
 }
 
 .scan-head .clock {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted)
 }
@@ -515,7 +541,7 @@ h1.hero-title .hl::after {
 }
 
 .feed-label {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: .1em;
   color: var(--muted);
@@ -546,7 +572,7 @@ h1.hero-title .hl::after {
   font-weight: 700;
   font-size: 13px;
   color: #fff;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif
+  font-family: var(--font-sans)
 }
 
 .row .who {
@@ -556,7 +582,7 @@ h1.hero-title .hl::after {
 
 .row .status {
   margin-left: auto;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #16A34A;
   display: flex;
@@ -571,7 +597,7 @@ h1.hero-title .hl::after {
 }
 
 .row .t {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
   text-align: right
@@ -616,7 +642,7 @@ section {
 
 .trust p {
   text-align: center;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -648,7 +674,7 @@ section {
 }
 
 .mq-item {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 22px;
   color: #9AA9BD;
@@ -711,7 +737,7 @@ section {
 }
 
 .stat-card .big {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: clamp(32px, 4vw, 48px);
   font-weight: 800;
   background: linear-gradient(180deg, #fff, #6E9BFF);
@@ -755,7 +781,7 @@ section {
 }
 
 .step .n {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-weight: 700;
   font-size: 13px;
   color: var(--blue);
@@ -883,7 +909,7 @@ section {
 
 .board-bar .title {
   margin-left: 14px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   color: #8CA0BC
 }
@@ -910,7 +936,7 @@ section {
 }
 
 .kpi .v {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 24px;
   font-weight: 700
 }
@@ -960,7 +986,7 @@ section {
   left: 0;
   right: 0;
   text-align: center;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: #7E92AE
 }
@@ -992,7 +1018,7 @@ section {
 }
 
 .donut .lab b {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 30px;
   font-weight: 700
 }
@@ -1245,7 +1271,7 @@ section {
   display: grid;
   place-items: center;
   color: #fff;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 15px
 }
@@ -1316,7 +1342,7 @@ section {
   font-weight: 700;
   padding: 4px 12px;
   border-radius: 999px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   letter-spacing: .08em
 }
 
@@ -1333,7 +1359,7 @@ section {
 }
 
 .plan .amt {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 38px;
   font-weight: 700;
   margin: 10px 0 2px
@@ -1343,7 +1369,7 @@ section {
   font-size: 14px;
   color: var(--muted);
   font-weight: 500;
-  font-family: 'Inter'
+  font-family: var(--font-sans)
 }
 
 .plan ul {
@@ -1403,7 +1429,7 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 16.5px;
   color: var(--ink)
@@ -1521,7 +1547,7 @@ footer {
   text-transform: uppercase;
   letter-spacing: .1em;
   margin-bottom: 14px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-weight: 700
 }
 
@@ -1718,7 +1744,7 @@ footer {
   color: var(--muted);
   display: grid;
   place-items: center;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-weight: 700;
   font-size: 14px;
   transition: all .3s
@@ -1855,7 +1881,7 @@ footer {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px 0;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   z-index: 4
 }
@@ -1970,7 +1996,7 @@ footer {
   right: 0;
   text-align: center;
   color: #B7C4D6;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .06em
 }
@@ -1994,7 +2020,7 @@ footer {
 }
 
 .screen-verify h4 {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
   font-weight: 600;
   text-align: center;
@@ -2226,7 +2252,7 @@ footer {
   right: 0;
   text-align: center;
   color: #AFC4E0;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .05em
 }
@@ -2290,7 +2316,7 @@ footer {
 }
 
 .done-title {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 24px;
   font-weight: 800;
   color: #16A34A
@@ -2303,7 +2329,7 @@ footer {
 }
 
 .done-meta {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--muted)
 }
@@ -2466,7 +2492,7 @@ footer {
 }
 
 .store-badge .tt small {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -2474,7 +2500,7 @@ footer {
 }
 
 .store-badge .tt b {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 700
 }
@@ -2512,7 +2538,7 @@ footer {
 
 /* ---------- Footer wordmark ---------- */
 .fword {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 800;
   font-size: 24px;
   color: #fff
@@ -2571,7 +2597,7 @@ footer {
   position: absolute;
   top: 12px;
   left: 14px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   color: var(--blue)
@@ -2729,7 +2755,7 @@ footer {
 }
 
 .contact-list span {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -2778,7 +2804,7 @@ footer {
 }
 
 .post-card time {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted)
 }
@@ -2792,166 +2818,6 @@ footer {
 .post-card p {
   color: var(--muted);
   font-size: 15px
-}
-
-/* ---------- Named customers (Trust.astro) ----------
-   A dark band under a light hero. Everything above is white-to-paper, so ink here stops the
-   customers reading as one more pale row and gives the three names a stage of their own. The glow
-   and dot grid are the hero's, reused rather than reinvented. */
-.cust {
-  position: relative;
-  overflow: hidden;
-  background: var(--ink);
-  color: #fff;
-  padding: 64px 0 68px
-}
-
-.cust-bg {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(60% 70% at 50% -10%, rgba(30, 99, 233, .30), transparent 70%),
-    radial-gradient(40% 60% at 90% 110%, rgba(47, 163, 107, .16), transparent 70%);
-}
-
-.cust-bg::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: .30;
-  background-image: radial-gradient(rgba(255, 255, 255, .22) 1.1px, transparent 1.1px);
-  background-size: 26px 26px;
-  -webkit-mask-image: radial-gradient(75% 70% at 50% 40%, #000, transparent 78%);
-  mask-image: radial-gradient(75% 70% at 50% 40%, #000, transparent 78%)
-}
-
-.cust-inner {
-  position: relative;
-  z-index: 1
-}
-
-.cust-eyebrow {
-  text-align: center;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11.5px;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: #8FB3FF;
-  margin-bottom: 12px
-}
-
-.cust-h {
-  text-align: center;
-  font-size: clamp(24px, 3.2vw, 34px);
-  font-weight: 700;
-  color: #fff;
-  margin: 0 auto 38px;
-  max-width: 22ch;
-  text-wrap: balance
-}
-
-.cust-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px
-}
-
-.cust-card {
-  position: relative;
-  border: 1px solid rgba(255, 255, 255, .11);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, .045);
-  padding: 28px 24px 26px;
-  text-align: center;
-  transition: transform .28s cubic-bezier(.2, .7, .3, 1), border-color .28s, background .28s, box-shadow .28s
-}
-
-.cust-card::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 26%, transparent), transparent 55%);
-  opacity: 0;
-  transition: opacity .28s
-}
-
-.cust-card:hover {
-  transform: translateY(-6px);
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: rgba(255, 255, 255, .07);
-  box-shadow: 0 26px 60px -30px color-mix(in srgb, var(--accent) 75%, transparent)
-}
-
-.cust-card:hover::before {
-  opacity: .5
-}
-
-/* Every logo on a white tile of the same size: the two real ones were drawn for their own
-   backgrounds (CleanFix blue-on-white, EastCaf a navy roundel), and EastCaf's navy is within a few
-   shades of this band. The tile is what makes three different shapes read as one row. */
-.cust-tile {
-  height: 110px;
-  margin-bottom: 18px;
-  border-radius: 14px;
-  background: #fff;
-  display: grid;
-  place-items: center;
-  padding: 18px 22px;
-  box-shadow: 0 10px 26px -18px rgba(0, 0, 0, .8)
-}
-
-/* Height comes from the item's own logoH — see CUSTOMERS in site.ts for why it is not shared. */
-.cust-tile img {
-  max-height: var(--logo-h, 56px);
-  max-width: 88%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  display: block
-}
-
-/* No logo yet — a monogram at the same optical weight keeps the row even. */
-.cust-mono {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 20px;
-  color: #fff;
-  letter-spacing: .02em;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 92%, #fff), color-mix(in srgb, var(--accent) 62%, #000))
-}
-
-.cust-card h3 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 5px;
-  letter-spacing: -.01em
-}
-
-.cust-card p {
-  font-size: 13.5px;
-  color: #9DB0C7;
-  line-height: 1.55;
-  margin: 0
-}
-
-@media(max-width:860px) {
-  .cust-grid {
-    grid-template-columns: 1fr;
-    max-width: 420px;
-    margin: 0 auto
-  }
-
-  .cust {
-    padding: 52px 0 56px
-  }
 }
 
 /* The individual-quote panel that stands in for the plan table while PRICING.showPlans is off. */
@@ -3008,7 +2874,7 @@ footer {
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   background: var(--white);
   color: var(--ink);
 }
@@ -3023,9 +2889,8 @@ h4,
 .kpi .v,
 .plan .amt,
 .done-title,
-.cust-mono,
 .fword {
-  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: -.04em;
 }
 
@@ -3042,7 +2907,7 @@ section {
   align-items: center;
   gap: 9px;
   color: var(--blue);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: .14em;
 }
@@ -3319,7 +3184,7 @@ h1.hero-title .hl::after {
 
 .scan-shell-bar b {
   margin-left: auto;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 8px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -3480,7 +3345,7 @@ h1.hero-title .hl::after {
   align-items: center;
   gap: 9px;
   color: #B7C8D3;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: .09em;
   text-transform: uppercase
@@ -3636,7 +3501,7 @@ h1.hero-title .hl::after {
 }
 
 .verify-node small {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 7px;
   letter-spacing: .09em;
   color: #667D8B
@@ -3712,7 +3577,7 @@ h1.hero-title .hl::after {
   border-radius: 11px;
   background: var(--blue);
   color: #fff;
-  font: 700 11px 'Manrope', sans-serif
+  font: 700 11px var(--font-sans)
 }
 
 .person-copy {
@@ -3722,7 +3587,7 @@ h1.hero-title .hl::after {
 }
 
 .person-copy small {
-  font: 700 8px 'JetBrains Mono';
+  font: 700 8px var(--font-mono);
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--blue)
@@ -3804,7 +3669,7 @@ h1.hero-title .hl::after {
 
 .orbit-result small {
   margin-top: 4px;
-  font: 8px 'JetBrains Mono';
+  font: 8px var(--font-mono);
   color: #758B98
 }
 
@@ -3912,115 +3777,6 @@ h1.hero-title .hl::after {
     height: 5px;
     opacity: .45
   }
-}
-
-/* Customers */
-.cust {
-  padding: 54px 0 62px;
-  background: var(--paper-warm);
-  color: var(--ink);
-  border-bottom: 1px solid var(--line)
-}
-
-.cust-bg {
-  display: none
-}
-
-.cust-inner {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 54px;
-  align-items: center
-}
-
-.cust-heading {
-  border-right: 1px solid var(--line);
-  padding-right: 32px
-}
-
-.cust-eyebrow {
-  text-align: left;
-  color: var(--blue);
-  margin: 0 0 10px;
-  font-size: 10px
-}
-
-.cust-h {
-  max-width: 12ch;
-  margin: 0;
-  text-align: left;
-  color: var(--ink);
-  font-size: 22px;
-  line-height: 1.24;
-  font-weight: 700
-}
-
-.cust-grid {
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
-  background: #fff
-}
-
-.cust-card {
-  min-width: 0;
-  padding: 20px 15px 17px;
-  border: 0;
-  border-right: 1px solid var(--line);
-  border-radius: 0;
-  background: #fff;
-  color: var(--ink);
-  text-align: center;
-  box-shadow: none;
-}
-
-.cust-card:last-child {
-  border-right: 0
-}
-
-.cust-card::before {
-  display: none
-}
-
-.cust-card:hover {
-  transform: none;
-  border-color: var(--line);
-  background: #FAFBFA;
-  box-shadow: none
-}
-
-.cust-tile {
-  height: 72px;
-  margin: 0 0 10px;
-  padding: 8px 15px;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent
-}
-
-.cust-tile img {
-  max-height: min(var(--logo-h, 56px), 54px);
-  max-width: 82%;
-  filter: saturate(.85);
-  transition: filter .2s, transform .2s
-}
-
-.cust-card:hover img {
-  filter: saturate(1);
-  transform: scale(1.035)
-}
-
-.cust-card h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 12px;
-  letter-spacing: -.01em
-}
-
-.cust-card p {
-  display: none
 }
 
 /* Product dashboard — brought up immediately after customer proof */
@@ -4737,7 +4493,7 @@ h1.hero-title .hl::after {
 
 .faq-q {
   padding: 22px 0;
-  font-family: 'Manrope', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px
 }
 
@@ -4930,23 +4686,6 @@ footer {
     right: -10px
   }
 
-  .cust-inner {
-    grid-template-columns: 190px 1fr;
-    gap: 30px
-  }
-
-  .cust-grid {
-    grid-template-columns: repeat(2, 1fr)
-  }
-
-  .cust-card:nth-child(2) {
-    border-right: 0
-  }
-
-  .cust-card:nth-child(-n+2) {
-    border-bottom: 1px solid var(--line)
-  }
-
   .dash .wrap {
     grid-template-columns: .78fr 1.22fr;
     gap: 42px
@@ -5003,31 +4742,6 @@ footer {
 
   .hero-orbit {
     margin: 0 auto
-  }
-
-  .cust-inner {
-    grid-template-columns: 1fr;
-    gap: 24px
-  }
-
-  .cust-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: end;
-    gap: 30px;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 0 0 20px
-  }
-
-  .cust-eyebrow {
-    margin: 0
-  }
-
-  .cust-h {
-    max-width: 14ch;
-    text-align: right;
-    font-size: 20px
   }
 
   .dash .wrap {
@@ -5325,27 +5039,6 @@ footer {
     grid-template-columns: auto 1fr
   }
 
-  .cust-heading {
-    display: block
-  }
-
-  .cust-h {
-    margin-top: 8px;
-    text-align: left
-  }
-
-  .cust-grid {
-    grid-template-columns: 1fr 1fr
-  }
-
-  .cust-card {
-    padding-inline: 8px
-  }
-
-  .cust-card h3 {
-    font-size: 10.5px
-  }
-
   .dash {
     padding: 82px 0
   }
@@ -5521,7 +5214,7 @@ footer {
   --blue: #155EEF;
   --blue-600: #0E4BC6;
   --blue-tint: #E7EEFF;
-  --paper: #F1EFEA;
+  --paper: #f5f6fa;
   --paper-warm: #EAE7E0;
   --line: #CFCFC8;
   --muted: #646760;
@@ -5532,7 +5225,7 @@ footer {
 }
 
 body {
-  font-family: 'IBM Plex Sans', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   background: #F6F5F1;
   color: var(--ink)
 }
@@ -5547,9 +5240,8 @@ h4,
 .kpi .v,
 .plan .amt,
 .done-title,
-.cust-mono,
 .fword {
-  font-family: 'IBM Plex Sans', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: -.045em;
 }
 
@@ -5557,7 +5249,7 @@ h4,
 .eyebrow,
 .feed-label,
 .orbit-time {
-  font-family: 'IBM Plex Mono', monospace
+  font-family: var(--font-mono)
 }
 
 .wrap {
@@ -5571,7 +5263,7 @@ section {
 
 .eyebrow {
   color: var(--blue);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .13em;
@@ -5598,11 +5290,13 @@ section {
   line-height: 1.65
 }
 
-/* Hero: warm editorial canvas + one instrument panel. */
+/* Hero: warm editorial canvas + one instrument panel.
+   The surface is the --paper token, not the hex it used to be: Trust.astro sits directly under this
+   section on the same colour and reads as one sheet with it, and two hex literals drift. */
 .hero {
   min-height: 760px;
   padding: 90px 0 82px;
-  background: #F1EFEA;
+  background: var(--paper);
   color: var(--ink)
 }
 
@@ -5749,7 +5443,7 @@ h1.hero-title .hl::before {
 .ops-feed-head span,
 .timeline-label span,
 .ops-kpis span {
-  font: 500 9px 'IBM Plex Mono';
+  font: 500 9px var(--font-mono);
   letter-spacing: .12em;
   text-transform: uppercase;
   color: #959B92
@@ -5757,7 +5451,7 @@ h1.hero-title .hl::before {
 
 .ops-head strong {
   margin-top: 7px;
-  font: 500 11px 'IBM Plex Mono';
+  font: 500 11px var(--font-mono);
   color: #F2F1EC
 }
 
@@ -5800,7 +5494,7 @@ h1.hero-title .hl::before {
 .ops-kpis strong {
   display: block;
   margin-top: 19px;
-  font: 500 36px/1 'IBM Plex Sans';
+  font: 500 36px/1 var(--font-sans);
   letter-spacing: -.06em
 }
 
@@ -5812,7 +5506,7 @@ h1.hero-title .hl::before {
 .ops-kpis small {
   display: inline-block;
   margin: 10px 0 0 8px;
-  font: 500 9px 'IBM Plex Mono';
+  font: 500 9px var(--font-mono);
   color: #5FDA91;
   vertical-align: top
 }
@@ -5829,7 +5523,7 @@ h1.hero-title .hl::before {
 }
 
 .timeline-label b {
-  font: 400 8px 'IBM Plex Mono';
+  font: 400 8px var(--font-mono);
   color: #777D75
 }
 
@@ -5837,7 +5531,7 @@ h1.hero-title .hl::before {
   display: flex;
   justify-content: space-between;
   margin-top: 18px;
-  font: 400 7px 'IBM Plex Mono';
+  font: 400 7px var(--font-mono);
   color: #626860
 }
 
@@ -5932,7 +5626,7 @@ h1.hero-title .hl::before {
 }
 
 .ops-feed-head small {
-  font: 400 8px 'IBM Plex Mono';
+  font: 400 8px var(--font-mono);
   color: #626860
 }
 
@@ -5956,7 +5650,7 @@ h1.hero-title .hl::before {
   width: 23px;
   height: 23px;
   border: 1px solid #4A4F48;
-  font: 500 7px 'IBM Plex Mono';
+  font: 500 7px var(--font-mono);
   color: #AEB3AA
 }
 
@@ -5972,7 +5666,7 @@ h1.hero-title .hl::before {
   display: flex;
   align-items: center;
   gap: 5px;
-  font: 400 7px 'IBM Plex Mono';
+  font: 400 7px var(--font-mono);
   color: #7B8178;
   animation: rowConfirm 4.8s steps(1, end) infinite;
   animation-delay: var(--row-delay)
@@ -5986,7 +5680,7 @@ h1.hero-title .hl::before {
 }
 
 .ops-row time {
-  font: 400 8px 'IBM Plex Mono';
+  font: 400 8px var(--font-mono);
   color: #656B63;
   text-align: right
 }
@@ -6019,70 +5713,6 @@ h1.hero-title .hl::before {
   72% {
     color: #42CF7E
   }
-}
-
-/* Client proof reads like an index, not a logo-card carousel. */
-.cust {
-  padding: 46px 0;
-  background: #F6F5F1;
-  border-bottom: 1px solid #BFC1BA
-}
-
-.cust-inner {
-  grid-template-columns: 220px 1fr;
-  gap: 42px
-}
-
-.cust-heading {
-  border-color: #BFC1BA
-}
-
-.cust-eyebrow {
-  color: #6A6D67
-}
-
-.cust-h {
-  font-size: 20px;
-  font-weight: 600
-}
-
-.cust-grid {
-  border: 0;
-  border-left: 1px solid #BFC1BA;
-  border-radius: 0;
-  background: transparent
-}
-
-.cust-card {
-  padding: 14px;
-  border-right: 1px solid #BFC1BA;
-  background: transparent
-}
-
-.cust-card:hover {
-  background: transparent
-}
-
-.cust-tile {
-  height: 58px;
-  margin-bottom: 8px
-}
-
-.cust-tile img {
-  max-height: min(var(--logo-h, 56px), 42px);
-  filter: grayscale(1);
-  opacity: .72
-}
-
-.cust-card:hover img {
-  filter: grayscale(0);
-  opacity: 1;
-  transform: none
-}
-
-.cust-card h3 {
-  font: 500 10px 'IBM Plex Mono';
-  color: #5B5F58
 }
 
 /* Product panel. */
@@ -6137,7 +5767,7 @@ h1.hero-title .hl::before {
 }
 
 .step .n {
-  font-family: 'IBM Plex Mono';
+  font-family: var(--font-mono);
   color: #155EEF
 }
 
@@ -6212,7 +5842,7 @@ h1.hero-title .hl::before {
 
 .feat::before {
   content: "0" counter(feature);
-  font: 500 9px 'IBM Plex Mono';
+  font: 500 9px var(--font-mono);
   color: #155EEF
 }
 
@@ -6270,7 +5900,7 @@ h1.hero-title .hl::before {
 
 /* Audience, security and modules use rows/rules instead of cards. */
 #audience {
-  background: #F1EFEA
+  background: #f5f6fa
 }
 
 .aud-grid {
@@ -6518,19 +6148,6 @@ footer {
 
   .hero {
     padding-top: 72px
-  }
-
-  .cust-inner {
-    grid-template-columns: 1fr
-  }
-
-  .cust-heading {
-    display: block;
-    text-align: left
-  }
-
-  .cust-h {
-    text-align: left
   }
 
   .aud-grid {

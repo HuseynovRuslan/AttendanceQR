@@ -1,65 +1,124 @@
 ---
-import { useTranslations, type Lang } from '../i18n/ui'
-import { TRUST_SECTORS, CUSTOMERS } from '../data/site'
+import { useTranslations, type Lang } from "../i18n/ui";
+import { TRUST_SECTORS, CUSTOMERS } from "../data/site";
 
-const { lang } = Astro.props as { lang: Lang }
-const t = useTranslations(lang)
+const { lang } = Astro.props as { lang: Lang };
+const t = useTranslations(lang);
 
-// Named customers when we have them, the sector marquee when we do not — one or the other, never
-// both. Three real names is a stronger and more honest claim than six sectors, which reads as a
+// Named customers when we have them, the sector marquee when we do not — one or the other,// both. Four real names is a stronger and more honest claim than six sectors, which reads as a
 // breadth of adoption we have not earned yet.
 //
-// The named version is a DARK band, deliberately: the page above it is white-to-paper with a blue
-// aurora, so going to ink here stops the customers reading as one more pale row and gives them a
-// stage. It borrows the hero's own dot grid and blue glow rather than introducing a second visual
-// language for one section.
+// The named version is a LOGO BAR, not a card grid. It carries the hero's own surface (--paper) and
+// draws no rule along its top, so the hero and the proof read as one continuous sheet: the logos are
+// the last line of the hero's argument, not a new section that has to re-introduce itself.
 //
-// Every logo sits on a WHITE tile. Both of the real ones were drawn for their own background —
-// CleanFix blue-on-white, EastCaf a navy roundel — and EastCaf's navy is within a few shades of this
-// band, so dropping it straight on would erase it. A white tile is also what keeps three logos of
-// different shapes, crops and colour reading as one row instead of three pasted images.
+// Nothing is written under a logo. A logo IS the name, and setting the name under it in 10px mono
+// said the same thing twice and turned a proof bar into a table. The name lives in `alt` — what a
+// screen reader announces and what a broken image shows.
+
+// The hairline of the editorial pass — the same grey as .hero::after and the .pain grid in
+// global.css. Written out rather than tokenised because those two are literals too; one value, one
+// look. Full strength for the short rule beside the heading, 60% for the tall repeated ones between
+// logos, which would otherwise stripe the row.
+const ruleY = "bg-[#BFC1BA]/80";
+const ruleX = "border-[#BFC1BA]/60";
+
+// Logo heights are RELATIVE, not equal. `logoH` in site.ts is one optical judgement per logo — a
+// wordmark 3.6x wider than it is tall carries far more ink than a roundel and has to sit lower — and
+// a shared max-height throws that away. The row this replaces capped every logo at 42px and did
+// exactly that, which is why CleanFix's wordmark dominated it. So the tallest logo gets the full
+// --logo-h (52px, 72px from md) and every other keeps the ratio site.ts set for it.
+const tallest = Math.max(...CUSTOMERS.items.map((c) => c.logoH ?? 56));
+
+// Grey at rest, colour under the pointer. Grayscale only, at full opacity: fading the logos as well
+// took weight off the one thing this bar exists to show.
 //
-// A company with no logo yet gets a monogram on the same tile, so the row stays even.
+// The desaturation is gated on @media (hover: hover), not merely on the hover state. Tailwind v4
+// already wraps `hover:` and `group-hover:` in that query, so a phone never reaches the lit state;
+// applied unconditionally, the grey would be the only thing a touch visitor ever sees — and the phone
+// is how most of this site is read. No pointer, no grey.
+//
+// Every class is written out in full: Tailwind scans this file for literal candidates, so a class
+// name assembled from a variable at build time is a class name that never gets compiled.
+const logoImg = [
+  "max-h-[calc(var(--logo-k)*var(--logo-h))] w-auto max-w-full object-contain",
+  "transition-all duration-300",
+  "[[@media(hover:hover)]:contrast-125",
+  "group-hover:scale-105 group-hover:grayscale-0 group-hover:contrast-100",
+].join(" ");
+
 const icon =
-  '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>'
-const loop = [...TRUST_SECTORS, ...TRUST_SECTORS]
+  '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>';
+const loop = [...TRUST_SECTORS, ...TRUST_SECTORS];
 ---
 
-{CUSTOMERS.show ? (
-  <section class="cust" aria-labelledby="cust-h">
-    <div class="cust-bg" aria-hidden="true"></div>
-    <div class="wrap cust-inner">
-      <div class="cust-heading">
-        <p class="cust-eyebrow rv">{t('cust.eyebrow')}</p>
-        <h2 id="cust-h" class="cust-h rv">{t('cust.title')}</h2>
-      </div>
+{
+  CUSTOMERS.show ? (
+    <section
+      class="border-b border-[#BFC1BA] bg-[var(--paper)] py-10 [--logo-h:3.25rem] sm:py-12 sm:[--logo-h:3.5rem] md:[--logo-h:4.5rem]"
+      aria-labelledby="cust-h"
+    >
+      <div class="wrap flex flex-col gap-7 lg:flex-row lg:items-center lg:gap-10">
+        {/* The fixed rail. On a phone it sits above the logos and the rule under it turns horizontal —
+          the same separation, turned through 90°, rather than a rule that simply disappears. */}
+        <div
+          class={`border-b ${ruleX} pb-6 lg:w-56 lg:shrink-0 lg:border-b-0 lg:pb-0`}
+        >
+          <p class="text-xs font-semibold tracking-[0.13em] text-stone-500 uppercase">
+            {t("cust.eyebrow")}
+          </p>
+          <h2 
+            id="cust-h"
+            class="mt-2 text-[18px] leading-snug font-bold text-slate-900" 
+            set:html={t("cust.title").replace('Log','<span class="text-[#125bb5]">Log</span>')} 
+            />
+        </div>
 
-      <div class="cust-grid">
-        {CUSTOMERS.items.map((c, i) => (
-          <article class={`cust-card rv d${i + 1}`} style={`--accent:${c.accent};--logo-h:${c.logoH ?? 56}px`}>
-            <div class="cust-tile">
-              {c.logo
-                ? <img src={c.logo} alt={c.name} loading="lazy" decoding="async" />
-                : <span class="cust-mono">{c.mark}</span>}
-            </div>
-            <h3>{c.name}</h3>
-            <p>{t(`cust.${c.key}s` as any)}</p>
-          </article>
-        ))}
+        <div
+          aria-hidden="true"
+          class={`hidden h-12 w-px shrink-0 ${ruleY} lg:block`}
+        />
+
+        {/* Two up on a phone, four across from sm — where the cells butt together and the rules between
+          them do the separating. The role is set by hand: list-none drops the list semantics in
+          Safari. */}
+        <ul
+          role="list"
+          class="grid list-none grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-0 lg:flex-1"
+        >
+          {CUSTOMERS.items.map((c) => (
+            <li
+              class={`group flex h-20 items-center justify-center px-3 sm:h-24 sm:px-5 sm:border-r ${ruleX} sm:last:border-r-0 md:h-28`}>
+              {c.logo ? (
+                <img
+                  src={c.logo}
+                  alt={c.name}
+                  loading="lazy"
+                  decoding="async"
+                  class={logoImg}
+                  style={`--logo-k:${((c.logoH ?? 56) / tallest).toFixed(3)}`}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  ) : (
+    <div class="trust">
+      <div class="wrap">
+        <p>{t("trust.title")}</p>
+      </div>
+      <div class="marquee">
+        <div class="marquee-track">
+          {loop.map((o) => (
+            <span class="mq-item">
+              <Fragment set:html={icon} />
+              {o}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
-  </section>
-) : (
-  <div class="trust">
-    <div class="wrap">
-      <p>{t('trust.title')}</p>
-    </div>
-    <div class="marquee">
-      <div class="marquee-track">
-        {loop.map((o) => (
-          <span class="mq-item"><Fragment set:html={icon} />{o}</span>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
+  )
+}
