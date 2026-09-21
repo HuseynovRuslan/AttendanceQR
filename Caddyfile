@@ -265,11 +265,13 @@ book.qrlog.az {
 	reverse_proxy literature-millionaire-web:80
 }
 
-# MEYDAN (Bakı kəndləri yaradıcı müsabiqələri, meydan.qrlog.az) — separate project, own stack in /opt/meydan
-# (deploy/compose.yml in its repository). Only its nginx joins attendanceqr_default, as meydan-web; its API and
-# database stay on that project's private network. HSTS is set here at the edge; every other header (the CSP
-# included) comes from the app itself, whose policy is versioned with its code — so no security_headers import.
-meydan.qrlog.az {
+# PRIZMA (the creative-competition platform, prizma.qrlog.az) — separate project, own stack in /opt/meydan
+# (deploy/compose.yml in its repository; the container and directory names keep the platform's old name, MEYDAN,
+# because the rename was a product decision and not a rebuild). Only its nginx joins attendanceqr_default, as
+# meydan-web; its API and database stay on that project's private network. HSTS is set here at the edge; every
+# other header (the CSP included) comes from the app itself, whose policy is versioned with its code — so no
+# security_headers import.
+prizma.qrlog.az {
 	encode zstd gzip
 	header {
 		# Applied AFTER the upstream answered (defer), so this replaces the HSTS the API sends on /api rather than
@@ -279,6 +281,13 @@ meydan.qrlog.az {
 		defer
 	}
 	reverse_proxy meydan-web:80
+}
+
+# The platform's former host. Everything that still knows the old name — printed QR codes, links people saved,
+# messages already sent — is sent to the same path on prizma.qrlog.az. 308 keeps the method and the body, so a
+# form post survives it. There is only ever one copy of the application running.
+meydan.qrlog.az {
+	redir https://prizma.qrlog.az{uri} permanent
 }
 
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
