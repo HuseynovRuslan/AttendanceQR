@@ -1,4 +1,5 @@
 ---
+import { Image } from "astro:assets";
 import { useTranslations, type Lang } from "../i18n/ui";
 import { TRUST_SECTORS, CUSTOMERS } from "../data/site";
 
@@ -90,9 +91,10 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS];
             <li
               class={`group flex h-20 items-center justify-center px-3 sm:h-24 sm:px-5 sm:border-r ${ruleX} sm:last:border-r-0 md:h-28`}>
               {c.logo ? (
-                <img
+                <Image
                   src={c.logo}
                   alt={c.name}
+                  height={144}
                   loading="lazy"
                   decoding="async"
                   class={logoImg}

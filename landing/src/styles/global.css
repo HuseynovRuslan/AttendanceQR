@@ -1,11 +1,15 @@
 /* ---------- The typeface ----------
  * --font-sans in styles/tailwind.css asks for TT Interphases first. That face is licensed from
  * TypeType and is on no CDN, so it has to be served from this repo: put the woff2 files in
- * public/fonts/ and uncomment the block below. Until then the stack falls through to Inter.
+ * src/assets/fonts/ and uncomment the block below. Until then the stack falls through to Inter.
+ *
+ * src/assets/, not public/: Vite hashes a font reached through a relative url() into /_astro/,
+ * which is the one path Caddy caches immutably. Under public/fonts/ it would match no cache rule
+ * at all — the same thing that was true of the images before they moved.
  *
  * @font-face {
  *   font-family: 'TT Interphases';
- *   src: url('/fonts/TTInterphases-Regular.woff2') format('woff2');
+ *   src: url('../assets/fonts/TTInterphases-Regular.woff2') format('woff2');
  *   font-weight: 400;
  *   font-style: normal;
  *   font-display: swap;
@@ -1533,7 +1537,10 @@ footer {
 }
 
 .flogo img {
-  height: 30px
+  height: 30px;
+  /* <Image /> emits width= too; with only the height pinned here, that presentational
+     hint has nothing overriding it and stretches the mark. See Footer.astro. */
+  width: auto
 }
 
 .foot-grid p {

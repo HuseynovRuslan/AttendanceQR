@@ -1,9 +1,16 @@
 ---
+import { Image, getImage } from "astro:assets";
 import { useTranslations, localizedPath, type Lang } from "../i18n/ui";
+import { LOGO_WORD } from "../data/brand";
+import qrPoster from "../assets/images/product/qrlog.png";
+import appShot from "../assets/images/product/qrlog-app.png";
 
 const { lang } = Astro.props as { lang: Lang };
 const t = useTranslations(lang);
 const home = localizedPath(lang, "/");
+
+// The same derivative the header preloads, so the poster wordmark costs no extra request.
+const logoWord = await getImage(LOGO_WORD);
 
 // The three figures under the rule: `n` the number, `l` what it counts.
 const stats = [
@@ -211,10 +218,10 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           <div class="flex items-center justify-between gap-1.5">
             <img
               class="h-3 w-auto @md:h-3.5"
-              src="/logo-word.png"
+              src={logoWord.src}
               alt=""
-              width="640"
-              height="192"
+              width={LOGO_WORD.width}
+              height={LOGO_WORD.height}
             />
             <!-- There is no room for it beside the wordmark while the poster is ~120px wide. -->
             <span class="hidden text-[10px] text-slate-400 @md:inline"
@@ -226,12 +233,22 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           >
             {t("hero.d.poster")}
           </p>
-          <img
+          <!--
+            512 = 2x of the widest this is ever painted, and there is a trap in getting to that
+            number. The figure caps at max-w-160 (640px) while @md fires at 28rem (448px), so AT THE
+            CAP it is the @md rules that govern: the poster is 44% wide minus 2.2cqw of padding
+            either side — 253 CSS px, not the 42%/3cqw of the narrow state. 2x of that is 507. A 3x
+            phone asks for less (404), so the desktop band is what sets the size.
+
+            quality is pushed up because this is a QR: webp's default is tuned for photographs and
+            rings the edges of hard black-and-white geometry.
+          -->
+          <Image
             class="mt-2 min-h-0 w-full flex-1 object-contain"
-            src="/images/qrlog.png"
+            src={qrPoster}
             alt=""
-            width="1024"
-            height="1024"
+            width={512}
+            quality={90}
             loading="eager"
             decoding="async"
           />
@@ -256,12 +273,16 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         <div
           class="absolute top-[4%] left-[44%] z-10 w-[52%] rotate-1 rounded-[7cqw] border-[1.7cqw] border-slate-900 bg-slate-900 shadow-[0_4cqw_9cqw_-3cqw_rgb(15_23_42/0.55)] ring-1 ring-white/20 transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:left-[42%] @md:w-[42%] @md:rotate-2 @md:rotate-y-3 @md:rounded-[5cqw] @md:border-[1.2cqw]"
         >
-          <img
+          <!--
+            640, not 512 like the poster: the widest DESKTOP paint is the same 253 CSS px (2x = 507),
+            but the phone is 52% wide in the narrow state where the poster is 42%, so a 430px
+            viewport at 3x asks for 545. The source is 1170 wide, so nothing is upscaled.
+          -->
+          <Image
             class="h-auto w-full rounded-[5.3cqw] @md:rounded-[3.8cqw]"
-            src="/images/qrlog-app.png"
+            src={appShot}
             alt={t("hero.d.shotAlt")}
-            width="1170"
-            height="2532"
+            width={640}
             loading="eager"
             decoding="async"
           />
