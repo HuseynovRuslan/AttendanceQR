@@ -1,7 +1,6 @@
 ---
 import { useTranslations, localizedPath, type Lang } from "../i18n/ui";
 
-const props = Astro.props;
 const { lang } = Astro.props as { lang: Lang };
 const t = useTranslations(lang);
 const home = localizedPath(lang, "/");
@@ -13,23 +12,31 @@ const stats = [
   { n: t("hero.s3n"), l: t("hero.s3l") },
 ];
 
-// The scene on the right is sample data, and the label in its corner says so. The name is invented;
-// the two pictures are real — the QR of a poster and a screen of the app itself.
-const person = { name: "Çingiz Hümbətov", initials: "ÇH", time: "09:01" };
+// The scene on the right is sample data, and the label in its corner says so. The person is the one
+// the app screenshot itself greets — "Salam, Əli Məmmədov", "Giriş 08:58" — so the floating note and
+// the screen behind it tell the same story. Change one and the other has to change with it.
+const person = { name: "Əli Məmmədov", initials: "ƏM", time: "08:58" };
 const team = ["CH", "NM", "RH"];
 const checks = [t("hero.d.c1"), t("hero.d.c2"), t("hero.d.c3"), t("hero.d.c4")];
 // The same 184 as the sentence in hero.d.liveD — if one moves the other has to move with it.
 const atWork = 184;
 
-// One card shape, four cards: glass over whatever is behind them, and a lift under the pointer.
-const cardBase =
-  "absolute z-30 rounded-[1.8cqw] shadow-[0_8px_30px_rgb(0_0_0/0.06)] backdrop-blur-xl transition-transform duration-300 will-change-transform hover:-translate-y-1";
-const card = `${cardBase} border border-white/60 bg-white/80 p-[1.8cqw]`;
-// The live card is the one that says the system is running, so it carries a green edge, a little
-// more glass and a little more room — the avatar stack and its badge need it.
-const cardLive = `${cardBase} border border-emerald-500/15 bg-white/90 p-[2.4cqw]`;
+// One skin for the notes over the scene: glass over whatever is behind them, a hairline edge and a
+// lift under the pointer. The border colour is NOT in here — two border-* utilities on one element
+// race in the stylesheet, and the live card needs a green edge — so each card brings its own.
+const cardSkin =
+  "rounded-2xl border p-2.5 shadow-[0_12px_30px_-14px_rgb(15_23_42/0.45)] backdrop-blur-md transition-transform duration-300 will-change-transform";
+const cardWhite = `${cardSkin} border-white/70 bg-white/90`;
+const card = `absolute z-20 ${cardWhite} hover:scale-105`;
+// The live card is the one that says the system is running, so it carries a green edge and a little
+// more glass.
+const cardLive = `absolute z-20 ${cardSkin} border-emerald-500/20 bg-white/95 hover:scale-105`;
+// The check-in note is the one card that is not always floating: while the scene is narrow it sits in
+// the flow underneath, and only takes the pointer lift once it floats.
+const cardFlow = `${cardWhite} @md:hover:scale-105`;
+// No text size in here either: the "+181" badge needs a smaller one than the initials do.
 const avatar =
-  "flex size-[4.8cqw] items-center justify-center rounded-full text-[1.7cqw] font-bold ring-[0.35cqw] ring-white";
+  "flex size-6 shrink-0 items-center justify-center rounded-full font-bold ring-2 ring-white @md:size-7";
 
 // The primary is the header's pill on the same brand blue, so the two CTAs read as one thing.
 const focusRing =
@@ -102,69 +109,125 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
     </div>
 
     <!--
-      The scene. Two pictures only — the QR of a printed poster and a real screen of the app; the
-      poster, the phone shell and the four cards are markup, so every word in them is translated and
-      every edge stays sharp at any size.
+      The scene, with no frame around it. A bordered panel turned the demo into a picture OF a
+      product; what is left is light and texture — two soft blooms behind, a dot field that fades out
+      before it reaches an edge — and the phone and the poster are the objects, at the full width of
+      the column. Nothing clips the notes; nothing boxes the device.
 
-      It scales as one piece. The box keeps a fixed aspect ratio, every position is a percentage of it
-      and every size that has to hold its proportion — the phone's bezel, its corner radius, the card
-      radii, the type — is in `cqw`, 1% of the box's own width (hence `@container` on the wrapper). A
-      9px bezel around a 120px-wide phone would read as a cartoon, so the numbers from the design hold
-      at the size the design was drawn at and shrink from there.
+      Two pictures only — the QR of a printed poster and a real screen of the app; the poster, the
+      phone shell and the four notes are markup, so every word in them is translated and every edge
+      stays sharp at any size.
+
+      Two sizing systems, on purpose:
+
+      · Geometry — the phone's bezel and corner radii, the poster's radius and padding, the shadows —
+        is in `cqw`, 1% of the scene's own width, so the whole thing scales as one piece. A 9px bezel
+        around a 120px-wide phone reads as a cartoon.
+      · Type is NOT. The scene is never wider than 640px, and at the `lg` breakpoint the right column
+        is only ~430px, so a font size in `cqw` lands between 4px and 9px — which is why the old scene
+        was unreadable on a desktop too, and not only on a phone. Everything carrying a word is in px.
+
+      And the breakpoints are the CONTAINER's, not the viewport's (`@container`, `@md:`, `@xl:`),
+      because what decides whether this scene fits is its own width — and that width does not grow
+      with the viewport: it is 640px at a 700px screen and drops to ~430px at 1024px, where the
+      two-column grid starts. Viewport breakpoints would size the scene for a screen it is not on.
+
+      Under 448px of its own width the scene is compact: a bigger phone, a poster peeking out from
+      behind it, two floating notes, and the check-in note dropped into the flow underneath where it
+      has the full width to be read. Over 448px the fourth note appears and that one floats too.
     -->
     <div
-      class="@container mx-auto w-full max-w-160 not-supports-[width:1cqw]:hidden lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mr-0 lg:ml-auto"
+      class="@container relative isolate mx-auto w-full max-w-160 not-supports-[width:1cqw]:hidden lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mr-0 lg:ml-auto"
     >
+      <!--
+        The colour the scene stands in. Two soft blooms in the brand blue and its indigo neighbour,
+        behind everything. `isolate` keeps their negative z-index inside this box — without it they
+        would fall through to the page's own stacking context and disappear under the section's
+        background. `.hero` is `overflow:hidden`, so nothing they spill can widen the page.
+      -->
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute -top-10 -right-10 -z-20 size-64 rounded-full bg-brand/30 blur-3xl sm:size-80"
+      >
+      </div>
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute -bottom-12 -left-10 -z-20 size-56 rounded-full bg-indigo-400/25 blur-3xl sm:size-72"
+      >
+      </div>
+
+      <!--
+        The dot field, over the blooms and under the scene. With no frame to end against it is masked
+        back to nothing well before its own edges, so it reads as the page's own texture rather than
+        as a rectangle of pattern someone dropped behind the phone.
+      -->
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute -inset-[6%] -z-10 bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] bg-size-[20px_20px] opacity-70 [mask-image:radial-gradient(ellipse_82%_76%_at_52%_45%,black_35%,transparent_88%)]"
+      >
+      </div>
+
+      <!--
+        This is the container being measured: `@md` means "the scene itself is 448px wide". It is also
+        the box the check-in note positions against once it floats — which is why the label lives
+        inside the figure and nothing else sits between the two.
+      -->
       <figure
-        class="relative aspect-[624/589] w-full [perspective:1000px] max-sm:origin-top max-sm:-mb-[14.16cqw] max-sm:scale-[0.85]"
+        class="relative aspect-5/7 w-full perspective-distant @md:aspect-square"
       >
         <!--
-          The dot field. It reaches past the scene on every side and is masked back to nothing, so it
-          fades into the page instead of ending on a straight line.
+          The halo. It sits over the phone's place and nowhere else, so the device lifts off the
+          panel instead of sitting on it, and it breathes on a seven-second cycle — slow enough to
+          be light rather than a notification. Two layers: a tight brand core and a wide indigo
+          bloom around it, because one gradient of one colour reads as a grey smudge at this size.
+          First child of the figure and with no z-index of its own, so everything else paints over
+          it; global.css stops the motion for anyone who asks for less of it.
         -->
         <div
           aria-hidden="true"
-          class="absolute inset-0 bg-[radial-gradient(circle,rgb(148_163_184/0.55)_1px,transparent_1px)] bg-[size:2.3cqw_2.3cqw] [mask-image:radial-gradient(ellipse_closest-side,black_85%,transparent_100%)]"
+          class="absolute top-[4%] left-[32%] aspect-square w-[76%] animate-halo rounded-full bg-[radial-gradient(circle,rgb(21_94_239/0.3)_0%,rgb(99_102_241/0.16)_42%,transparent_70%)] blur-[4cqw] @md:top-[2%] @md:left-[28%] @md:w-[70%]"
         >
         </div>
-
-        <!-- A breath of brand colour under the phone, so the scene has a middle and not just corners. -->
         <div
           aria-hidden="true"
-          class="absolute inset-[6%] rounded-[16cqw] bg-[radial-gradient(60%_55%_at_58%_50%,rgb(21_94_239/0.12),transparent_70%)] blur-[1.5cqw]"
+          class="absolute inset-[10%] rounded-[50%] bg-[radial-gradient(60%_55%_at_58%_50%,rgb(21_94_239/0.10),transparent_72%)] blur-[3cqw]"
         >
         </div>
 
         <figcaption
-          class="absolute top-[0.5%] left-[3%] text-[11px] font-semibold tracking-wider text-slate-400/80 uppercase"
+          class="absolute top-0 left-0 z-30 text-[10px] leading-none font-bold tracking-[0.18em] text-slate-400 uppercase @md:text-[11px]"
         >
           {t("hero.d.label")}
         </figcaption>
 
         <!--
-          The printed poster, turned a few degrees away from the reader and standing up again when the
-          pointer reaches it. The QR is the only picture in it; the words around it are the site's own.
+          The printed poster, turned a few degrees away from the reader and standing up again when
+          the pointer reaches it. The QR is the only picture in it; the words around it are the
+          site's own. It holds the back plane — z-0, under everything.
         -->
         <div
-          class="absolute top-[13%] bottom-[29%] left-[7%] z-10 flex w-[40%] flex-col -rotate-y-6 -rotate-2 rounded-[2cqw] border border-white/70 bg-white p-[2.2cqw] shadow-[0_2.6cqw_5cqw_-1.6cqw_rgb(15_23_42/0.25)] transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0"
+          class="absolute top-[13%] bottom-[30%] left-0 z-0 flex w-[42%] flex-col -rotate-3 rounded-[3cqw] border border-white/70 bg-white p-[3cqw] shadow-[0_3cqw_5cqw_-2cqw_rgb(15_23_42/0.28)] transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:top-[10%] @md:bottom-[26%] @md:left-0 @md:w-[44%] @md:-rotate-2 @md:-rotate-y-6 @md:rounded-[2cqw] @md:p-[2.2cqw]"
         >
-          <div class="flex items-center justify-between gap-[1cqw]">
+          <div class="flex items-center justify-between gap-1.5">
             <img
-              class="h-[2.4cqw] w-auto"
+              class="h-3 w-auto @md:h-3.5"
               src="/logo-word.png"
               alt=""
               width="640"
               height="192"
             />
-            <span class="text-[1.6cqw] text-slate-400">{t("hero.d.site")}</span>
+            <!-- There is no room for it beside the wordmark while the poster is ~120px wide. -->
+            <span class="hidden text-[10px] text-slate-400 @md:inline"
+              >{t("hero.d.site")}</span
+            >
           </div>
           <p
-            class="mt-[1.8cqw] text-[2.5cqw] leading-[1.15] font-semibold text-slate-900"
+            class="mt-2 text-[12px] leading-[1.2] font-semibold text-slate-900 @md:text-[13px] @xl:text-[15px]"
           >
             {t("hero.d.poster")}
           </p>
           <img
-            class="mt-[1.8cqw] min-h-0 w-full flex-1 object-contain"
+            class="mt-2 min-h-0 w-full flex-1 object-contain"
             src="/images/qrlog.png"
             alt=""
             width="1024"
@@ -173,7 +236,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             decoding="async"
           />
           <p
-            class="mt-[1.6cqw] line-clamp-2 text-[1.5cqw] leading-[1.35] text-slate-500"
+            class="mt-2 hidden text-[10px] leading-[1.35] text-slate-500 @md:line-clamp-2"
           >
             {t("hero.d.posterNote")}
           </p>
@@ -181,168 +244,146 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
 
         <!--
           The phone: a shell of hardware around the app's own screen — a dark bezel, a hairline of
-          light on its edge where a real phone catches it, and one deep shadow rather than a flat box.
+          light on its edge where a real phone catches it, and one deep shadow rather than a flat
+          box. It stands up straight under the pointer.
+
+          The bezel and the radius are given twice because they are proportions of the PHONE, and
+          the phone is 52% of the scene while the scene is narrow but 36% of it once it is wide —
+          a single `cqw` number would round the corners half again too far in the wide state.
+          The screenshot keeps its own ratio (h-auto, and the real 1170×2532 on the attributes),
+          so nothing is cropped and nothing shifts while it loads.
         -->
         <div
-          class="absolute top-[16%] left-[50%] z-20 w-[35%] rounded-[7.6cqw] border-[1.6cqw] border-slate-900 bg-slate-900 shadow-[0_3.5cqw_10cqw_-2.6cqw_rgb(15_23_42/1.90)] ring-1 ring-white/20"
+          class="absolute top-[4%] left-[44%] z-10 w-[52%] rotate-1 rounded-[7cqw] border-[1.7cqw] border-slate-900 bg-slate-900 shadow-[0_4cqw_9cqw_-3cqw_rgb(15_23_42/0.55)] ring-1 ring-white/20 transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:left-[42%] @md:w-[42%] @md:rotate-2 @md:rotate-y-3 @md:rounded-[5cqw] @md:border-[1.2cqw]"
         >
           <img
-            class="h-auto w-full rounded-[6cqw] text-[1.6cqw] leading-snug text-slate-300"
-            src="/images/mobile-app.jpg"
+            class="h-auto w-full rounded-[5.3cqw] @md:rounded-[3.8cqw]"
+            src="/images/qrlog-app.png"
             alt={t("hero.d.shotAlt")}
-            width="739"
-            height="1600"
+            width="1170"
+            height="2532"
             loading="eager"
             decoding="async"
           />
         </div>
 
+        <!-- The scan that starts it: the name on this note is the name on the screen behind it. -->
         <div
-          class={`${card} top-[9%] left-[58%] flex w-[38%] items-center gap-[1.6cqw]`}
+          class={`${card} top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[56%] @md:w-[40%]`}
         >
           <span
-            class="grid size-[5cqw] shrink-0 place-items-center rounded-full bg-blue-100 text-[1.7cqw] font-bold text-brand-600"
+            class="grid size-7 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-600 @md:size-8 @md:text-[11px]"
             aria-hidden="true"
           >
             {person.initials}
           </span>
           <div class="min-w-0">
-            <p class="text-[1.5cqw] font-semibold text-emerald-700">
+            <p
+              class="text-[10px] font-semibold text-emerald-700 @md:text-[11px]"
+            >
               {t("hero.d.scanned")}
             </p>
-            <p class="truncate text-[1.9cqw] font-semibold text-slate-900">
+            <p
+              class="truncate text-[12px] font-semibold text-slate-900 @md:text-[13px]"
+            >
               {person.name}
             </p>
-            <p class="text-[1.5cqw] text-slate-500">
+            <p class="text-[10px] text-slate-500 @md:text-[11px]">
               {t("demo.checkin")}, {person.time}
             </p>
           </div>
         </div>
 
+        <!--
+          The reassurance. It is the first thing to go when the scene is narrow: three notes over a
+          150px-wide phone leave nothing of the screen to look at, and this is the one the reader
+          can do without.
+        -->
         <div
-          class={`${card} top-[50%] left-[62%] flex w-[36%] items-start gap-[1.4cqw]`}
+          class={`${card} hidden items-start gap-2 @md:top-[26%] @md:left-[68%] @md:flex @md:w-[36%]`}
         >
           <span
-            class="grid size-[4.4cqw] shrink-0 place-items-center rounded-[1.2cqw] bg-slate-100 text-slate-500"
+            class="grid size-7 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"
             aria-hidden="true"
           >
             <svg
-              {...props}
+              class="size-4"
               xmlns="http://www.w3.org/2000/svg"
-              width="1em"
-              height="1em"
               viewBox="0 0 36 36"
-              ><title>no-wifi-solid</title><circle
-                cx="18"
-                cy="29.54"
-                r="3"
-                fill="currentColor"
-                class="clr-i-solid clr-i-solid-path-1"></circle><path
+              aria-hidden="true"
+              ><circle cx="18" cy="29.54" r="3" fill="currentColor"></circle><path
                 fill="currentColor"
                 d="m29.18 17.71l.11-.17a1.51 1.51 0 0 0-.47-2.1A20.57 20.57 0 0 0 18 12.37c-.56 0-1.11 0-1.65.07l3.21 3.21a17.4 17.4 0 0 1 7.6 2.52a1.49 1.49 0 0 0 2.02-.46"
-                class="clr-i-solid clr-i-solid-path-2"></path><path
+              ></path><path
                 fill="currentColor"
                 d="M32.76 9.38a27.9 27.9 0 0 0-22.58-3.11l2.63 2.63a24.68 24.68 0 0 1 18.29 3.22a1.49 1.49 0 0 0 2-.46l.11-.17a1.51 1.51 0 0 0-.45-2.11"
-                class="clr-i-solid clr-i-solid-path-3"></path><path
+              ></path><path
                 fill="currentColor"
                 d="m3 4.75l3.1 3.1a27 27 0 0 0-2.92 1.57a1.51 1.51 0 0 0-.48 2.11l.11.17a1.49 1.49 0 0 0 2 .46a24.7 24.7 0 0 1 3.67-1.9l3.14 3.14a20.6 20.6 0 0 0-4.53 2.09a1.51 1.51 0 0 0-.46 2.1l.11.17a1.49 1.49 0 0 0 2 .46A17.5 17.5 0 0 1 14.25 16l3.6 3.6a13.4 13.4 0 0 0-6.79 1.93a1.5 1.5 0 0 0-.46 2.09l.1.16a1.52 1.52 0 0 0 2.06.44a10.2 10.2 0 0 1 9-.7L29 30.75l1.41-1.41l-26-26Z"
-                class="clr-i-solid clr-i-solid-path-4"></path><path
-                fill="none"
-                d="M0 0h36v36H0z"></path></svg
+              ></path></svg
             >
           </span>
-          <div>
-            <p class="text-[1.95cqw] font-semibold text-slate-900">
+          <div class="min-w-0">
+            <p
+              class="text-[12px] font-semibold text-slate-900 @md:text-[13px]"
+            >
               {t("hero.d.offlineT")}
             </p>
-            <p class="mt-[0.4cqw] text-[1.65cqw] leading-[1.35] text-slate-600">
+            <p
+              class="mt-0.5 text-[10px] leading-[1.35] text-slate-600 @md:text-[11px]"
+            >
               {t("hero.d.offlineD")}
             </p>
           </div>
         </div>
 
-        <div class={`${card} top-[66%] left-[48%] w-[37%]`}>
-          <div class="flex items-center gap-[1.4cqw]">
+        <!--
+          The live board. The dot pings the way a status light does — one ring going out, nothing
+          else moving — and global.css stops it for anyone who asks for less motion. The stack
+          shows three of the people at work and counts the rest on the badge at its end; it drops
+          under the sentence while the card is narrow rather than squeezing it to two words a line.
+        -->
+        <div
+          class={`${cardLive} bottom-[2%] left-[-1%] w-[70%] @md:top-[72%] @md:bottom-auto @md:left-[-2%] @md:w-[40%]`}
+        >
+          <p
+            class="flex items-center gap-2 text-[11px] font-semibold text-slate-900 @md:text-[12px]"
+          >
             <span
-              class="grid size-[4.6cqw] shrink-0 place-items-center rounded-full bg-emerald-500 text-white"
+              class="relative flex size-2 shrink-0 @md:size-2.5"
               aria-hidden="true"
             >
-              <svg
-                class="size-[2.6cqw]"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="m5 13 4 4L19 7"></path>
-              </svg>
+              <span
+                class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75"
+              ></span>
+              <span
+                class="relative inline-flex size-full rounded-full bg-emerald-500"
+              ></span>
             </span>
-            <div class="min-w-0">
-              <p class="text-[1.8cqw] font-semibold text-slate-900">
-                {t("hero.d.recorded")}
-              </p>
-              <p class="text-[1.45cqw] text-slate-500">
-                {person.time}, {t("hero.d.site")}
-              </p>
-            </div>
-          </div>
-          <ul
-            role="list"
-            class="mt-[1.4cqw] grid list-none grid-cols-2 gap-[0.9cqw]"
-          >
-            {
-              checks.map((c) => (
-                <li class="flex items-center gap-[0.7cqw] rounded-[1cqw] bg-emerald-50/80 px-[1cqw] py-[0.8cqw] text-[1.35cqw] leading-[1.2] font-medium text-emerald-700">
-                  <svg
-                    class="size-[1.6cqw] shrink-0"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="m5 13 4 4L19 7" />
-                  </svg>
-                  {c}
-                </li>
-              ))
-            }
-          </ul>
-        </div>
-        
-        <!-- Live Status Card -->
-        <!--
-          The live card. The dot pings the way a status light does — one ring going out, nothing
-          else moving — and global.css stops it for anyone who asks for less motion. The stack shows
-          three of the people at work and counts the rest on the badge at its end.
-        -->
-        <div class={`${cardLive} top-[70.5%] left-[1%] w-[42%]`}>
-          <p class="flex items-center gap-[1.4cqw] text-[1.7cqw] font-semibold text-slate-900">
-            <span class="relative flex w-[7px] h-[7px] md:w-[12px] md:h-[12px] shrink-0" aria-hidden="true">
-              <span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300 opacity-75"></span>
-              <span class="relative inline-flex size-full rounded-full bg-emerald-500"></span>
-            </span>
-            {t("hero.d.liveT")}:
-            <span class="font-semibold text-emerald-700">{t("hero.d.liveOn")}</span>
+            <span
+              >{t("hero.d.liveT")}: <span class="text-emerald-700"
+                >{t("hero.d.liveOn")}</span
+              ></span
+            >
           </p>
-          <div class="mt-[1.8cqw] flex items-center justify-between gap-[1.2cqw]">
-            <span class="text-[1.55cqw] leading-[1.35] text-slate-500">
+          <div
+            class="mt-2 flex flex-col gap-2 @md:flex-row @md:items-center @md:justify-between @md:gap-1.5"
+          >
+            <span
+              class="text-[10px] leading-[1.35] text-slate-500"
+            >
               {t("hero.d.liveD")}
             </span>
-            <span class="flex shrink-0 -space-x-[0.8cqw]" aria-hidden="true">
+            <span class="flex shrink-0 -space-x-1" aria-hidden="true">
               {
                 team.map((i) => (
-                  <span class={`${avatar} border border-emerald-100 bg-emerald-50 text-emerald-700`}>
+                  <span class={`${avatar} bg-emerald-50 text-[10px] text-emerald-700 @md:text-[11px]`}>
                     {i}
                   </span>
                 ))
               }
               <span
-                class={`${avatar} border border-slate-200 bg-slate-100 text-[1.5cqw] text-slate-600`}
+                class={`${avatar} bg-slate-100 text-[9px] text-slate-600 @md:text-[10px]`}
               >
                 +{atWork - team.length}
               </span>
@@ -350,6 +391,67 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           </div>
         </div>
       </figure>
+
+      <!--
+        What the check-in was actually checked against — those four are the product, so this note
+        is never dropped. It is in the flow under the scene while the box is narrow, where it has
+        the full width and the pills sit on two comfortable rows, and it floats over the phone once
+        there is room. The pills wrap rather than filling a rigid two-column grid: "Совпадение
+        лица" is half again as wide as "Üz uyğunluğu", and a cell sized for one truncates the other.
+      -->
+      <div
+        class={`${cardFlow} relative z-20 mt-3 w-full @md:absolute @md:top-[67%] @md:left-[46%] @md:mt-0 @md:w-[42%]`}
+      >
+        <div class="flex items-center gap-2">
+          <span
+            class="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-white @md:size-7"
+            aria-hidden="true"
+          >
+            <svg
+              class="size-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m5 13 4 4L19 7"></path>
+            </svg>
+          </span>
+          <div class="min-w-0">
+            <p
+              class="text-[12px] font-semibold text-slate-900 @md:text-[13px]"
+            >
+              {t("hero.d.recorded")}
+            </p>
+            <p class="text-[10px] text-slate-500 @md:text-[11px]">
+              {person.time}, {t("hero.d.site")}
+            </p>
+          </div>
+        </div>
+        <ul role="list" class="mt-2 flex list-none flex-wrap gap-1">
+          {
+            checks.map((c) => (
+              <li class="inline-flex items-center gap-1 rounded-lg bg-emerald-50/90 px-1.5 py-1 text-[10px] leading-[1.2] font-medium text-emerald-700 @md:text-[11px]">
+                <svg
+                  class="size-3 shrink-0"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m5 13 4 4L19 7" />
+                </svg>
+                {c}
+              </li>
+            ))
+          }
+        </ul>
+      </div>
     </div>
 
     <!-- The role is set by hand: list-none drops the list semantics in Safari. -->
