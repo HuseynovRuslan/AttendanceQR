@@ -69,7 +69,7 @@ const contactHref = localizedPath(lang, "/elaqe/");
 // against them. `brand` is the site's blue (#155EEF, the "Log" in the logo) — see tailwind.css.
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const btnBase = `items-center justify-center whitespace-nowrap rounded-full text-sm font-semibold transition-all duration-200 ${focusRing}`;
+const btnBase = `items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-200 ${focusRing}`;
 const btnGhost = `${btnBase} text-stone-700 hover:bg-stone-100 hover:text-stone-900`;
 const btnPrimary = `${btnBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
 const flagBox =
@@ -210,7 +210,7 @@ const flagBox =
 
         <button
           type="button"
-          class={`group/burger relative flex size-10 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-stone-800 transition-colors duration-200 hover:bg-stone-100 lg:hidden ${focusRing}`}
+          class={`group/burger relative flex size-10 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-stone-800 transition-colors duration-200 hover:bg-stone-100 lg:hidden ${focusRing}`}
           aria-expanded="false"
           aria-controls="mobile-menu"
           aria-label={t("nav.menu")}
