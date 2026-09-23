@@ -37,14 +37,17 @@ describe('readCode', () => {
 })
 
 describe('readReturnUrl', () => {
-  it('accepts only https on the app’s own host', () => {
+  it('accepts only https on one of the app’s own hosts', () => {
+    // Where the platform lives now, and the address it moved from: both are ours, and the old one redirects here.
+    expect(readReturnUrl('https://prizma.qrlog.az/login/qrlog', meydan)).toBe('https://prizma.qrlog.az/login/qrlog')
     expect(readReturnUrl('https://meydan.qrlog.az/login/qrlog', meydan)).toBe('https://meydan.qrlog.az/login/qrlog')
-    expect(readReturnUrl('http://meydan.qrlog.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('http://prizma.qrlog.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('https://prizma.qrlog.az.evil.example/', meydan)).toBeNull()
     expect(readReturnUrl('https://meydan.qrlog.az.evil.example/', meydan)).toBeNull()
     expect(readReturnUrl('https://evil.example/?x=meydan.qrlog.az', meydan)).toBeNull()
     expect(readReturnUrl('https://book.qrlog.az/', meydan)).toBeNull()
     expect(readReturnUrl('javascript:alert(1)', meydan)).toBeNull()
-    expect(readReturnUrl('https://meydan.qrlog.az/', null)).toBeNull()
+    expect(readReturnUrl('https://prizma.qrlog.az/', null)).toBeNull()
   })
 
   it('adds cancelled=1 without losing the rest', () => {
