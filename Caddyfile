@@ -311,3 +311,40 @@ https:// {
 	}
 	import patient_proxy frontend:80
 }
+
+# ==================== MenyuQR (moved from Coolify box 89.167.122.64, 2026-09-21) ====================
+# Six apps behind this Caddy on the shared attendanceqr_default network. Domains unchanged
+# (menyuqr.com @ Hostinger, *.bahram.site @ Namecheap); only the DNS A records move to this server.
+# Excluded on purpose: p109 (.NET) + k4nx — abandoned uuid.bahram.site deploys.
+# FOLLOW-UP: mirror these blocks into the AttendanceQR repo Caddyfile so a future redeploy keeps them.
+menyuqr.com, www.menyuqr.com {
+	handle /gardenmarket* {
+		reverse_proxy gardenmarket-web:3000
+	}
+	handle /driver-game-center* {
+		reverse_proxy gamecenter-web:3000
+	}
+	handle {
+		reverse_proxy menyuqr-web:3000
+	}
+}
+
+gardenmarket-react.bahram.site {
+	reverse_proxy gardenmarket-web:3000
+}
+
+gardenmarket-api.bahram.site {
+	reverse_proxy gardenmarket-api:3000
+}
+
+game-center.bahram.site {
+	reverse_proxy gamecenter-web:3000
+}
+
+coffee-menu.bahram.site {
+	reverse_proxy coffee-api:3000
+}
+
+multiposting.bahram.site {
+	reverse_proxy multiposting:4000
+}
