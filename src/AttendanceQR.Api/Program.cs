@@ -45,6 +45,13 @@ builder.Services.Configure<MinioOptions>(
 builder.Services.Configure<RekognitionOptions>(
     builder.Configuration.GetSection(RekognitionOptions.SectionName));
 
+// The wall clock, so a test can pin it. TimeProvider.System reads exactly what DateTime.UtcNow does,
+// so nothing about how the app behaves changes — this only makes the clock an argument instead of an
+// ambient read. AttendanceController takes it optionally and falls back to TimeProvider.System, but
+// the registration is here so the container answers rather than the fallback: an app that resolves a
+// clock explicitly cannot be left wondering which one a controller got.
+builder.Services.AddSingleton(TimeProvider.System);
+
 // Security services.
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IQrTokenService, QrTokenService>();

@@ -83,6 +83,9 @@ public class AttendanceController : ControllerBase
     private readonly IFaceMatchService _faceMatch;
     private readonly DeviceBindingOptions _deviceOptions;
     private readonly TimeZoneInfo _timeZone;
+    // Divar saatı. İstehsalda TimeProvider.System-dir, yəni DateTime.UtcNow ilə eyni dəyər;
+    // testlər onu sabitləyə bilsin deyə inject olunur — bax aşağıda Scan-ın serverNow-u.
+    private readonly TimeProvider _clock;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AttendanceController> _logger;
 
@@ -98,9 +101,11 @@ public class AttendanceController : ControllerBase
         AppOptions appOptions,
         IMemoryCache cache,
         ILogger<AttendanceController> logger,
-        ISummaryRebuildQueue? summaryRebuild = null)
+        ISummaryRebuildQueue? summaryRebuild = null,
+        TimeProvider? clock = null)
     {
         _summaryRebuild = summaryRebuild;
+        _clock = clock ?? TimeProvider.System;
         _db = db;
         _qrTokenService = qrTokenService;
         _attendanceQuery = attendanceQuery;
@@ -794,7 +799,7 @@ public class AttendanceController : ControllerBase
         // An offline scan carries the phone's clock; trust it only within a sane window, otherwise fall
         // back to server time so a rolled-back clock can't fake an on-time arrival. Online scans (the
         // overwhelming majority) always use server time — Offline is false, so this is a no-op for them.
-        var serverNow = DateTime.UtcNow;
+        var serverNow = _clock.GetUtcNow().UtcDateTime;
         var nowUtc = serverNow;
         if (request.Offline && request.ClientTimestampUtc is DateTime clientTs)
         {
@@ -1310,7 +1315,7 @@ public class AttendanceController : ControllerBase
     /// </summary>
     private void RebuildIfPast(DateOnly date)
     {
-        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(_clock.GetUtcNow().UtcDateTime, _timeZone));
         if (date < localToday)
             _summaryRebuild?.Request(_db.CurrentTenantId, date);
     }
