@@ -1,6 +1,8 @@
 ---
+import { Image } from 'astro:assets'
 import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
 import { SITE, PRICING } from '../data/site'
+import logoMarkWhite from '../assets/images/brand/logo-mark-white.png'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
@@ -13,7 +15,8 @@ const home = localizedPath(lang, '/')
     <div class="foot-grid">
       <div>
         <div class="flogo">
-          <img src="/logo-mark-white.png" alt={SITE.name} height="30" />
+          <!-- .flogo img in global.css pins the height at 30px and lets width follow; 2x of that. -->
+          <Image src={logoMarkWhite} alt={SITE.name} width={79} />
           <span class="fword">QR<span>Log</span></span>
         </div>
         <p>{t('foot.tag')}</p>

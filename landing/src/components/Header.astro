@@ -7,6 +7,11 @@ import {
   type Lang,
 } from "../i18n/ui";
 import { SITE } from "../data/site";
+import { getImage } from "astro:assets";
+import { LOGO_WORD } from "../data/brand";
+
+// The one wordmark derivative BaseLayout preloads and the hero poster reuses — src/data/brand.ts.
+const logoWord = await getImage(LOGO_WORD);
 
 interface Props {
   lang: Lang;
@@ -93,10 +98,10 @@ const flagBox =
       <a class={`shrink-0 rounded-md ${focusRing}`} href={home} aria-label={SITE.name}>
         <img
           class="h-6.5 w-auto sm:h-7"
-          src="/logo-word.png"
+          src={logoWord.src}
           alt={SITE.name}
-          width="150"
-          height="30"
+          width={LOGO_WORD.width}
+          height={LOGO_WORD.height}
         />
       </a>
 

@@ -1,39 +1,274 @@
 ---
-import { useTranslations, type Lang } from '../i18n/ui'
+import { Image } from 'astro:assets'
+import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
+import imgControl from '../assets/images/problem/nezaret.png'
+import imgCost from '../assets/images/problem/elave-xerc.png'
+import imgLate from '../assets/images/problem/gecikme.png'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
+const home = localizedPath(lang, '/')
 
 // The "before" of the story — PAS's Problem/Agitate. It sits right after the customer band and
 // before the product screens: name the pains of the old way (buddy-punching, per-site hardware,
 // manual/late records) so the sections that follow read as the answer to each one. Every pain
 // here maps to a control the product actually has — anti-fraud, no hardware, the live board.
 // Deliberately measured, not fear-mongering: three real costs, stated plainly.
+//
+// Two columns that say the same thing from two ends. On the left the three COSTS the old way
+// carries; on the right the three SITUATIONS that produce them. The kicker over each card is the
+// label of the cost it creates, and it is the same string as the pill on the left — so the reader
+// who reads only one column still gets the whole argument, and the two never drift apart.
 const pains = [
-  // identity / buddy-punching
-  { t: 'prob.p1t', d: 'prob.p1d', p: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.7 5.7 0 0 1 11 0"/><path d="m16.5 8 4 4M20.5 8l-4 4"/>' },
-  // per-site hardware
-  { t: 'prob.p2t', d: 'prob.p2d', p: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5"/><path d="m5 5 14 14"/>' },
-  // manual / late
-  { t: 'prob.p3t', d: 'prob.p3d', p: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M18 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h4M9 17h2"/>' },
+  // identity / buddy-punching → weak control
+  { n: '01', k: 'prob.m3t', t: 'prob.p1t', d: 'prob.p1d', img: imgControl },
+  // per-site hardware → extra cost
+  { n: '02', k: 'prob.m2t', t: 'prob.p2t', d: 'prob.p2d', img: imgCost },
+  // manual / late → time lost
+  { n: '03', k: 'prob.m1t', t: 'prob.p3t', d: 'prob.p3d', img: imgLate },
 ]
+
+// Lucide, drawn on the same 24×24 grid as every other icon here: clock, coins, shield-alert. Taken
+// from the set rather than drawn by hand — a hand-rolled path at 18px is where icons stop matching.
+const costs = [
+  {
+    t: 'prob.m1t',
+    d: 'prob.m1d',
+    p: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  },
+  {
+    t: 'prob.m2t',
+    d: 'prob.m2d',
+    p: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
+  },
+  {
+    t: 'prob.m3t',
+    d: 'prob.m3d',
+    p: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+  },
+]
+
+const iconBox =
+  'grid size-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-brand ring-1 ring-brand/10'
 ---
 
-<section class="problem" id="problem">
-  <div class="wrap">
-    <div class="sec-head rv">
-      <span class="eyebrow">{t('prob.eyebrow')}</span>
-      <h2>{t('prob.title')}</h2>
-      <p>{t('prob.sub')}</p>
+<!--
+  The section keeps global.css's own vertical rhythm (`section { padding: 112px 0 }`) and its `.wrap`;
+  everything inside is Tailwind. The old `.problem` class is gone with the three-across grid it
+  styled: it painted the band #F6F5F1, a warm grey that fought the blue this section is now lit with.
+-->
+<section
+  id="problem"
+  class="relative overflow-hidden bg-linear-to-b from-slate-50 via-white to-slate-50/70"
+>
+  <!-- The same brand light the hero stands in, so the two sections belong to one page. -->
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute top-1/3 -right-24 -z-10 size-96 rounded-full bg-brand/10 blur-3xl"
+  >
+  </div>
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute -bottom-24 -left-20 -z-10 size-80 rounded-full bg-indigo-400/10 blur-3xl"
+  >
+  </div>
+
+  <div class="wrap relative">
+    <div
+      class="grid items-start gap-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16"
+    >
+      <!-- The argument. The three cards on the right are three instances of the claim it makes. -->
+      <div class="rv">
+        <span
+          class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        >
+          <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+          {t('prob.eyebrow')}
+        </span>
+
+        <h2
+          class="mt-5 text-[clamp(30px,3.4vw,46px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance"
+        >
+          {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span
+          >{t('prob.title.b')}
+        </h2>
+
+        <p
+          class="mt-5 max-w-135 text-[16px] leading-[1.7] text-stone-600 sm:text-[17px]"
+        >
+          {t('prob.sub')}
+        </p>
+
+        <!--
+          The three costs. One under the other while there is a column to hold them, three across on
+          the one-column stage in between, where a stack of three would leave the left half empty.
+          `divide-*` draws the rule between them and swaps axis with the layout, so no item needs to
+          know whether it is first or last.
+        -->
+        <ul
+          role="list"
+          class="mt-9 grid list-none divide-y divide-stone-300/60 border-y border-stone-300/60 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:grid-cols-1 lg:divide-x-0 lg:divide-y"
+        >
+          {
+            costs.map((c) => (
+              <li class="flex items-center gap-3 py-3.5 sm:px-4 sm:py-4 lg:px-0">
+                <span class={iconBox} aria-hidden="true">
+                  <svg
+                    class="size-[18px]"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={c.p}
+                  />
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-[14px] font-semibold text-slate-900">
+                    {t(c.t as any)}
+                  </span>
+                  <span class="block text-[13px] leading-snug text-stone-500">
+                    {t(c.d as any)}
+                  </span>
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <!--
+        The three situations, one card each. The illustration sits beside the words from `sm` up and
+        above them on a phone, where 38% of a 320px column would be a thumbnail of nothing.
+
+        The pictures come through `astro:assets`, not from /public: as shipped they are 1.0–1.2MB
+        PNGs, about 1800px wide, for a slot 240px wide. Imported, Astro re-encodes each one to the
+        sizes actually used and serves webp — three files that came to 3.3MB land under 100KB — and
+        it writes the width and height on the tag, so nothing jumps while they load.
+      -->
+      <ul role="list" class="grid list-none gap-4 sm:gap-5">
+        {
+          pains.map((p, i) => (
+            <li
+              class={`rv d${i + 1} group relative rounded-3xl border border-white/80 bg-white/70 p-5 shadow-[0_18px_44px_-30px_rgb(30_58_138/0.5)] ring-1 ring-slate-900/5 backdrop-blur-sm transition-transform duration-300 will-change-transform hover:-translate-y-1 sm:p-6`}
+            >
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
+                <div class="flex min-w-0 flex-1 items-start gap-4">
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-[13px] font-bold text-brand ring-1 ring-brand/10 sm:size-11 sm:text-[14px]"
+                    aria-hidden="true"
+                  >
+                    {p.n}
+                  </span>
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-bold tracking-[0.16em] text-slate-400 uppercase">
+                      {t(p.k as any)}
+                    </p>
+                    <h3 class="mt-1.5 text-[17px] leading-snug font-semibold tracking-[-0.01em] text-slate-900 sm:text-[19px]">
+                      {t(p.t as any)}
+                    </h3>
+                    <p class="mt-2 text-[14px] leading-[1.6] text-stone-600 sm:text-[15px]">
+                      {t(p.d as any)}
+                    </p>
+                  </div>
+                </div>
+                <Image
+                  src={p.img}
+                  alt=""
+                  width={240}
+                  densities={[1, 2]}
+                  loading="lazy"
+                  decoding="async"
+                  class="mx-auto h-auto w-full max-w-[260px] shrink-0 object-contain sm:mx-0 sm:w-[36%] sm:max-w-[240px]"
+                />
+              </div>
+            </li>
+          ))
+        }
+      </ul>
     </div>
-    <div class="pain-grid">
-      {pains.map((p, i) => (
-        <div class={`pain rv d${i + 1}`}>
-          <div class="ic"><svg viewBox="0 0 24 24" set:html={p.p} /></div>
-          <h3>{t(p.t as any)}</h3>
-          <p>{t(p.d as any)}</p>
-        </div>
-      ))}
+
+    <!--
+      The hinge between this section and the answer. It is a link and not a line of text: the reader
+      who has just agreed with three complaints wants the next section, not a scroll.
+
+      It points at `#app`, the section that comes next, and not at `#how` further down: an arrow
+      pointing down that skips a whole section is a promise it does not keep, and the admin panel IS
+      the first half of the answer to "so what is the fix". global.css already sets
+      `scroll-padding-top: var(--header-h)`, so the target does not land under the fixed header.
+    -->
+    <div class="mt-14 flex items-center gap-5 sm:mt-16">
+      <span
+        aria-hidden="true"
+        class="hidden h-px flex-1 bg-linear-to-r from-transparent to-stone-300 sm:block"
+      >
+      </span>
+      <a
+        class="group inline-flex items-center gap-3 rounded-full px-4 py-2.5 transition-all duration-300 hover:shadow-brand/15 focus-visible:outline-2 focus-visible:outline-offset-4 "
+        href={`${home}#app`}
+      >
+        <!--
+          The arrow drifts down and back on its own so the hinge reads as "keep going" before anyone
+          touches it, and it stops drifting under the pointer — otherwise the float and the hover
+          nudge fight each other and the arrow lands somewhere between the two. The drift is a
+          `transform` and the nudge is Tailwind's `translate`, two different properties, so they add
+          up instead of overwriting one another. global.css stops the drift under
+          prefers-reduced-motion: its `animation: none !important` outranks this, layer or no layer.
+        -->
+        <span
+          class="arrow-drift grid size-9 place-items-center rounded-full border border-brand/20 bg-white text-brand shadow-sm transition-[translate,border-color,background-color] duration-300 group-hover:translate-y-1 group-hover:border-brand/60 group-hover:[animation-play-state:paused]"
+          aria-hidden="true"
+        >
+          <svg
+            class="size-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 5v14"></path>
+            <path d="m19 12-7 7-7-7"></path>
+          </svg>
+        </span>
+        <span
+          class="text-[15px] font-semibold text-brand underline-offset-4 group-hover:underline sm:text-[16px]"
+        >
+          {t('prob.next')}
+        </span>
+      </a>
+      <span
+        aria-hidden="true"
+        class="hidden h-px flex-1 bg-linear-to-l from-transparent to-stone-300 sm:block"
+      >
+      </span>
     </div>
   </div>
 </section>
+
+<style>
+  /*
+    Five pixels down and back, on a slow curve: the hinge has to be noticed without being watched.
+    Tailwind's own `animate-bounce` is a quarter of the element's height on a hard ease — right for a
+    scroll cue on a hero, far too loud for a 36px button at the end of a section.
+
+    The keyframe name carries a prefix on purpose. Astro scopes the selectors in this block but not
+    the `@keyframes` name, and global.css already owns some thirty keyframe names on this page —
+    including `pulse`, `spin` and `ping`, which is why tailwind.css renames Tailwind's three.
+  */
+  @keyframes qr-arrow-drift {
+    0%,
+    100% {
+      transform: translateY(-4px);
+    }
+    50% {
+      transform: translateY(4px);
+    }
+  }
+
+  .arrow-drift {
+    animation: qr-arrow-drift 1.9s ease-in-out infinite;
+  }
+</style>

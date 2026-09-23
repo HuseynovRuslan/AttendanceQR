@@ -81,7 +81,9 @@ export const ui = {
     'hero.d.shotAlt': 'QRLog tətbiqinin ekranı: işçinin növbəsi və çıxış düyməsi',
 
     'prob.eyebrow': 'Problem',
-    'prob.title': 'Köhnə üsulla davamiyyət vaxt aparır və saxtaya açıqdır',
+    'prob.title.a': 'Köhnə üsulla davamiyyət vaxt aparır və ',
+    'prob.title.hl': 'saxtaya',
+    'prob.title.b': ' açıqdır',
     'prob.sub':
       'Kağız jurnal, bahalı terminal və “söz”lə uçot — hər filialda ayrıca dərd, hər ay yenidən.',
     'prob.p1t': 'Başqasının yerinə giriş',
@@ -93,6 +95,13 @@ export const ui = {
     'prob.p3t': 'Əl ilə uçot, gec görünüş',
     'prob.p3d':
       'Kağız jurnal və Excel tabel saatlar aparır; kim işdə, kim yox — yalnız günün sonunda bilinir.',
+    'prob.m1t': 'Zaman itkisi',
+    'prob.m1d': 'gündə saatlarla',
+    'prob.m2t': 'Əlavə xərc',
+    'prob.m2d': 'avadanlıq, servis',
+    'prob.m3t': 'Zəif nəzarət',
+    'prob.m3d': 'saxtaya açıq',
+    'prob.next': 'Problem aydındır. Bəs həlli?',
     'scan.live': 'CANLI',
     'scan.feed': 'Son qeydiyyatlar',
     'scan.status': 'Qeyd olundu',
@@ -410,7 +419,9 @@ export const ui = {
     'hero.d.shotAlt': 'Экран приложения QRLog: смена сотрудника и кнопка выхода',
 
     'prob.eyebrow': 'Проблема',
-    'prob.title': 'Старый способ учёта отнимает время и открыт для подлога',
+    'prob.title.a': 'Старый способ учёта отнимает время и открыт для ',
+    'prob.title.hl': 'подлога',
+    'prob.title.b': '',
     'prob.sub':
       'Бумажный журнал, дорогие терминалы и учёт «со слов» — отдельная головная боль на каждом филиале, каждый месяц.',
     'prob.p1t': 'Отметка за другого',
@@ -422,6 +433,13 @@ export const ui = {
     'prob.p3t': 'Ручной учёт, запоздалая картина',
     'prob.p3d':
       'Бумажный журнал и Excel-табель отнимают часы; кто на месте, а кого нет — видно только к концу дня.',
+    'prob.m1t': 'Потеря времени',
+    'prob.m1d': 'часы каждый день',
+    'prob.m2t': 'Лишние расходы',
+    'prob.m2d': 'оборудование и сервис',
+    'prob.m3t': 'Слабый контроль',
+    'prob.m3d': 'открыт для подлога',
+    'prob.next': 'С проблемой ясно. А решение?',
     'scan.live': 'В ЭФИРЕ',
     'scan.feed': 'Последние отметки',
     'scan.status': 'Отмечен',
@@ -738,7 +756,9 @@ export const ui = {
     'hero.d.shotAlt': 'The QRLog app screen: an employee shift and the check-out button',
 
     'prob.eyebrow': 'The problem',
-    'prob.title': 'The old way to track attendance is slow and easy to fake',
+    'prob.title.a': 'The old way to track attendance is slow and easy to ',
+    'prob.title.hl': 'fake',
+    'prob.title.b': '',
     'prob.sub':
       'Paper logs, expensive terminals and attendance “on trust” — a separate headache at every site, every month.',
     'prob.p1t': 'Checking in for someone else',
@@ -750,6 +770,13 @@ export const ui = {
     'prob.p3t': 'Manual records, a late picture',
     'prob.p3d':
       'Paper logs and Excel timesheets eat hours; who is in and who is out only becomes clear at the end of the day.',
+    'prob.m1t': 'Time lost',
+    'prob.m1d': 'hours every day',
+    'prob.m2t': 'Extra cost',
+    'prob.m2d': 'hardware and service',
+    'prob.m3t': 'Weak control',
+    'prob.m3d': 'open to fraud',
+    'prob.next': 'That is the problem. What is the fix?',
     'scan.live': 'LIVE',
     'scan.feed': 'Recent check-ins',
     'scan.status': 'Recorded',

@@ -14,7 +14,11 @@
 @import 'tailwindcss/theme.css' layer(theme);
 /* Classes are looked for in src/ only. Left to find files on its own, Tailwind skips what .gitignore
    lists — and the Docker build has no .gitignore, so the server would build different CSS than a
-   local build does. */
+   local build does.
+
+   source() is resolved against THIS FILE and has to land on src/. Move this stylesheet and the
+   path moves with it — and getting it wrong does not fail the build, it silently empties the
+   utilities layer. */
 @import 'tailwindcss/utilities.css' layer(utilities) source('..');
 
 @theme {
@@ -45,6 +49,11 @@
   --animate-ping: tw-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
   --animate-pulse: tw-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
+  /* The halo behind the phone in the hero. Seven seconds because it is ambient light and not a
+     status light: at Tailwind's own two-second pulse it reads as something blinking for attention,
+     which the live dot beside it already does. global.css stops it under prefers-reduced-motion. */
+  --animate-halo: qr-halo 7s ease-in-out infinite;
+
   @keyframes tw-spin {
     to {
       transform: rotate(360deg);
@@ -60,6 +69,17 @@
   @keyframes tw-pulse {
     50% {
       opacity: 0.5;
+    }
+  }
+  @keyframes qr-halo {
+    0%,
+    100% {
+      opacity: 0.7;
+      transform: scale(0.96);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.04);
     }
   }
 }
