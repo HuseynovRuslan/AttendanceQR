@@ -10,13 +10,13 @@ using Microsoft.EntityFrameworkCore;
 namespace AttendanceQR.Api.Controllers;
 
 /// <summary>
-/// "QRLog ilə daxil ol" for other applications of ours (today: MEYDAN, meydan.qrlog.az). QRLog is not an OpenID
+/// "QRLog ilə daxil ol" for other applications of ours (today: PRIZMA, prizma.qrlog.az). QRLog is not an OpenID
 /// provider; this is the same shape as the Kitabxana sign-in, generalised: the other app opens a ticket and sends
 /// the person here with its code, the person approves on this signed-in phone with one tap, and THIS SERVER posts
 /// the identity to the app over a back channel, signed with the secret the two share. The phone never holds the
 /// secret and the browser never carries a token — only the random ticket code travels through the address bar.
 ///
-/// What is vouched for is deliberately small: a stable identifier (the employee id — never a MEYDAN key), the name
+/// What is vouched for is deliberately small: a stable identifier (the employee id — never a PRIZMA key), the name
 /// and, if the record has one, the e-mail address, flagged as unverified because this system does not verify
 /// addresses. Never the phone number, the company, the role or anything else on the staff record.
 ///

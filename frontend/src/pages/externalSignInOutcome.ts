@@ -10,8 +10,12 @@ export interface ExternalApp {
   name: string
   /** What the person is told they are signing in to. */
   description: string
-  /** The only host a `return` address may point at. A link can be sent by anyone. */
-  returnHost: string
+  /**
+   * The hosts a `return` address may point at, the one the app calls itself by first. A link can be sent by
+   * anyone, so this stays a fixed list; an app that has moved keeps the host it moved from until nothing aims
+   * there any more.
+   */
+  returnHosts: readonly string[]
   homeUrl: string
   /** How the app is listed under Xidmətlər, and the one line that says what it is for. */
   serviceName: string
@@ -19,13 +23,17 @@ export interface ExternalApp {
 }
 
 export const EXTERNAL_APPS: Record<string, ExternalApp> = {
+  // Keyed by the code name it was built under: the key is the path segment here and the configuration key on
+  // the server (ExternalSignIn:Apps:meydan), so it stays put while the name people read changes.
   meydan: {
     key: 'meydan',
-    name: 'MEYDAN',
+    name: 'PRIZMA',
     description: 'Yaradıcı layihələr və açıq müsabiqələr platforması',
-    returnHost: 'meydan.qrlog.az',
-    homeUrl: 'https://meydan.qrlog.az',
-    serviceName: 'MEYDAN v1',
+    // Renamed to PRIZMA and moved to prizma.qrlog.az; meydan.qrlog.az still answers there with a redirect, so a
+    // build made before the move is sent somewhere that still works.
+    returnHosts: ['prizma.qrlog.az', 'meydan.qrlog.az'],
+    homeUrl: 'https://prizma.qrlog.az',
+    serviceName: 'PRIZMA',
     serviceLine: 'Müsabiqələrdə iştirak etmək üçün QRLog hesabınızla daxil olun.',
   },
 }
@@ -42,14 +50,14 @@ export function readCode(raw: string | null | undefined): string | null {
 }
 
 /**
- * Where to send the person once they have approved (or declined): only an https address on the app's own host.
+ * Where to send the person once they have approved (or declined): only an https address on one of the app's own hosts.
  * An unchecked one would turn this page into a redirect somebody else gets to aim.
  */
 export function readReturnUrl(raw: string | null | undefined, app: ExternalApp | null): string | null {
   if (!raw || !app) return null
   try {
     const url = new URL(raw)
-    return url.protocol === 'https:' && url.hostname === app.returnHost ? url.toString() : null
+    return url.protocol === 'https:' && app.returnHosts.includes(url.hostname) ? url.toString() : null
   } catch {
     return null
   }

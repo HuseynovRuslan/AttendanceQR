@@ -16,8 +16,8 @@ import {
 const meydan = readApp('meydan')!
 
 describe('readApp', () => {
-  it('knows MEYDAN and nothing that is not registered', () => {
-    expect(meydan.name).toBe('MEYDAN')
+  it('knows PRIZMA and nothing that is not registered', () => {
+    expect(meydan.name).toBe('PRIZMA')
     expect(readApp('kitabxana')).toBeNull()
     expect(readApp('constructor')).toBeNull()
     expect(readApp('__proto__')).toBeNull()
@@ -37,14 +37,17 @@ describe('readCode', () => {
 })
 
 describe('readReturnUrl', () => {
-  it('accepts only https on the app’s own host', () => {
+  it('accepts only https on one of the app’s own hosts', () => {
+    // Where the platform lives now, and the address it moved from: both are ours, and the old one redirects here.
+    expect(readReturnUrl('https://prizma.qrlog.az/login/qrlog', meydan)).toBe('https://prizma.qrlog.az/login/qrlog')
     expect(readReturnUrl('https://meydan.qrlog.az/login/qrlog', meydan)).toBe('https://meydan.qrlog.az/login/qrlog')
-    expect(readReturnUrl('http://meydan.qrlog.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('http://prizma.qrlog.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('https://prizma.qrlog.az.evil.example/', meydan)).toBeNull()
     expect(readReturnUrl('https://meydan.qrlog.az.evil.example/', meydan)).toBeNull()
     expect(readReturnUrl('https://evil.example/?x=meydan.qrlog.az', meydan)).toBeNull()
     expect(readReturnUrl('https://book.qrlog.az/', meydan)).toBeNull()
     expect(readReturnUrl('javascript:alert(1)', meydan)).toBeNull()
-    expect(readReturnUrl('https://meydan.qrlog.az/', null)).toBeNull()
+    expect(readReturnUrl('https://prizma.qrlog.az/', null)).toBeNull()
   })
 
   it('adds cancelled=1 without losing the rest', () => {
@@ -55,22 +58,22 @@ describe('readReturnUrl', () => {
 
 describe('classifySignIn', () => {
   it('only 204 is a sign-in; every refusal names a way out', () => {
-    expect(classifySignIn(204, null, 'MEYDAN')).toEqual({ kind: 'signed-in' })
-    expect(classifySignIn(409, { error: 'CodeExpired' }, 'MEYDAN')).toEqual({ kind: 'refused', message: EXPIRED_MESSAGE('MEYDAN') })
-    expect(classifySignIn(400, { error: 'InvalidCode' }, 'MEYDAN')).toEqual({ kind: 'refused', message: EXPIRED_MESSAGE('MEYDAN') })
-    expect(classifySignIn(403, { error: 'NotEligible' }, 'MEYDAN')).toEqual({ kind: 'refused', message: NOT_ELIGIBLE_MESSAGE })
-    expect(classifySignIn(403, { error: 'NotDuringImpersonation' }, 'MEYDAN')).toEqual({ kind: 'refused', message: IMPERSONATION_MESSAGE })
-    expect(classifySignIn(503, { error: 'NotConfigured' }, 'MEYDAN')).toEqual({ kind: 'refused', message: NOT_CONFIGURED_MESSAGE })
-    expect(classifySignIn(404, { error: 'UnknownApp' }, 'MEYDAN')).toEqual({ kind: 'refused', message: NOT_CONFIGURED_MESSAGE })
-    expect(classifySignIn(502, { error: 'AppUnreachable' }, 'MEYDAN')).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
-    expect(classifySignIn(500, 'garbage', 'MEYDAN')).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
+    expect(classifySignIn(204, null, 'PRIZMA')).toEqual({ kind: 'signed-in' })
+    expect(classifySignIn(409, { error: 'CodeExpired' }, 'PRIZMA')).toEqual({ kind: 'refused', message: EXPIRED_MESSAGE('PRIZMA') })
+    expect(classifySignIn(400, { error: 'InvalidCode' }, 'PRIZMA')).toEqual({ kind: 'refused', message: EXPIRED_MESSAGE('PRIZMA') })
+    expect(classifySignIn(403, { error: 'NotEligible' }, 'PRIZMA')).toEqual({ kind: 'refused', message: NOT_ELIGIBLE_MESSAGE })
+    expect(classifySignIn(403, { error: 'NotDuringImpersonation' }, 'PRIZMA')).toEqual({ kind: 'refused', message: IMPERSONATION_MESSAGE })
+    expect(classifySignIn(503, { error: 'NotConfigured' }, 'PRIZMA')).toEqual({ kind: 'refused', message: NOT_CONFIGURED_MESSAGE })
+    expect(classifySignIn(404, { error: 'UnknownApp' }, 'PRIZMA')).toEqual({ kind: 'refused', message: NOT_CONFIGURED_MESSAGE })
+    expect(classifySignIn(502, { error: 'AppUnreachable' }, 'PRIZMA')).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
+    expect(classifySignIn(500, 'garbage', 'PRIZMA')).toEqual({ kind: 'refused', message: SERVER_MESSAGE })
   })
 })
 
 describe('readSignInQr', () => {
   const code = '0123456789abcdef0123456789abcdef'
 
-  it("takes MEYDAN's sign-in QR — QRLog's approval page with the ticket code — and returns only the code", () => {
+  it("takes PRIZMA's sign-in QR — QRLog's approval page with the ticket code — and returns only the code", () => {
     expect(readSignInQr(`https://app.qrlog.az/signin/meydan?code=${code}`, meydan)).toBe(code)
     expect(readSignInQr(`  https://app.qrlog.az/signin/meydan?code=${code.toUpperCase()}\n`, meydan)).toBe(code)
   })
@@ -101,8 +104,8 @@ describe('readSignInQr', () => {
     expect(readSignInQr(`https://app.qrlog.az/signin/meydan?code=${code}`, null)).toBeNull()
   })
 
-  it('knows how MEYDAN is listed under Xidmətlər', () => {
-    expect(meydan.serviceName).toBe('MEYDAN v1')
+  it('knows how PRIZMA is listed under Xidmətlər', () => {
+    expect(meydan.serviceName).toBe('PRIZMA')
     expect(meydan.serviceLine).toBe('Müsabiqələrdə iştirak etmək üçün QRLog hesabınızla daxil olun.')
   })
 })
