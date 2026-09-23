@@ -75,6 +75,9 @@ export function ManagerEmployeesPage() {
   // person's name in turn. Eleven people, eleven searches, for a two-click action. The admin roster
   // has had this filter since it existed.
   const [filterLoc, setFilterLoc] = useState('')
+  // People who have left stay in the database — their days are still in last month's tabel and pay —
+  // but not in the list a manager works from every day. «Deaktiv etdim, amma adlar qalır.»
+  const [showLeft, setShowLeft] = useState(false)
 
   /** Grant or withdraw a capability across this manager's whole list. The server narrows it to their
    *  branches' plain staff, so a name they may not act on is skipped rather than failing the call —
@@ -166,6 +169,33 @@ export function ManagerEmployeesPage() {
     }
   }
 
+  /** «İşdən çıxart»: the full form goes back with isActive off — the update blanks what it omits. */
+  async function removeFromList() {
+    if (!window.confirm(`${form.fullName} işdən çıxarılsın?
+
+Girişi bağlanacaq və siyahıdan çıxacaq. Keçmiş günləri tabeldə qalır.`)) return
+    await saveActive(false)
+  }
+
+  async function restore() {
+    await saveActive(true)
+  }
+
+  async function saveActive(isActive: boolean) {
+    setBusy(true)
+    setErr(null)
+    const payload = { ...form, isActive, fullName: `${(form.firstName ?? '').trim()} ${(form.lastName ?? '').trim()}`.trim() }
+    const res = await updateManagerEmployee(editing!, payload)
+    setBusy(false)
+    if (res.status === 200 && res.data && 'id' in res.data) {
+      setEditing(null)
+      void load()
+    } else {
+      const code = res.data && 'error' in res.data ? res.data.error : ''
+      setErr(ERRORS[code] ?? 'Yadda saxlanılmadı')
+    }
+  }
+
   async function resetPin(id: string, name: string) {
     if (!window.confirm(`${name} üçün yeni müvəqqəti PIN yaradılsın?
 
@@ -175,7 +205,9 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
   }
 
   const q = search.trim().toLowerCase()
+  const leftCount = rows.filter((r) => !r.isActive).length
   const visible = rows.filter((r) => {
+    if (showLeft ? r.isActive : !r.isActive) return false
     if (filterLoc && r.locationId !== filterLoc) return false
     if (!q) return true
     return `${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.locationName ?? ''}`
@@ -275,8 +307,13 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           {(search || filterLoc) && (
             <button className="btn btn-sm" onClick={() => { setSearch(''); setFilterLoc('') }}>Təmizlə</button>
           )}
+          {(leftCount > 0 || showLeft) && (
+            <button className={`btn btn-sm ${showLeft ? 'btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
+              {showLeft ? '← Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
+            </button>
+          )}
           <span className="muted" style={{ fontSize: 13 }}>
-            {q || filterLoc ? `${visible.length} / ${rows.length}` : `${rows.length} işçi`}
+            {`${visible.length} ${showLeft ? 'işdən çıxan' : 'işçi'}`}
           </span>
         </div>
       )}
@@ -433,6 +470,25 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
             </button>
             <button className="btn" onClick={() => setEditing(null)}>Ləğv et</button>
           </div>
+
+          {/* One step for somebody who has left: access closed, name off the list. Not a delete —
+              their days stay in the tabel and the payroll of the months they worked, and «Aktiv et»
+              under «İşdən çıxanlar» brings them back. A fellow manager is the admin's to remove. */}
+          {editing !== 'new' && !editingColleague && form.isActive && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c100)' }}>
+              <button className="btn btn-sm btn-outline-danger" disabled={busy} onClick={() => void removeFromList()}>
+                İşdən çıxart
+              </button>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Girişi bağlanır və siyahıdan çıxır. Keçmiş günləri tabeldə və maaşda qalır.
+              </div>
+            </div>
+          )}
+          {editing !== 'new' && !editingColleague && !form.isActive && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c100)' }}>
+              <button className="btn btn-sm" disabled={busy} onClick={() => void restore()}>Geri qaytar (aktiv et)</button>
+            </div>
+          )}
 
           {/* Reset-PIN lives inside the edit screen, not on every list row — it is destructive (the
               employee's current PIN stops working), so it must be a deliberate step, not a tap next
