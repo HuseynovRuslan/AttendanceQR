@@ -13,7 +13,7 @@ function loadScanner(): Promise<typeof import('html5-qrcode')> {
 }
 
 /**
- * Xidmətlər → an application of ours that signs people in with QRLog (MEYDAN v1). The app's page on a computer shows a
+ * Xidmətlər → an application of ours that signs people in with QRLog (PRIZMA). The app's page on a computer shows a
  * QR; this screen scans it — that QR and nothing else — and hands its code to the same approval screen a phone reaches
  * from the app's "QRLog ilə daxil ol" link. Nothing is approved here: the person still decides there, with one tap.
  *

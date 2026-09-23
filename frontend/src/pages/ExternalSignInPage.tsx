@@ -9,7 +9,7 @@ import { NETWORK_MESSAGE, cancelUrl, classifySignIn, readApp, readCode, readRetu
 const LEAVE_AFTER_MS = 1200
 
 /**
- * Approving a sign-in to another application of ours (MEYDAN) from this phone — the Kitabxana approval, for any
+ * Approving a sign-in to another application of ours (PRIZMA) from this phone — the Kitabxana approval, for any
  * registered app. The app sends the person here with a ticket code in the address; one deliberate tap, and the
  * server (which holds the shared secret and reads the name from the staff record) vouches for whoever is signed
  * in here. Asking is the point: the code arrives in a link, and a link can be sent by anyone, so signing in on

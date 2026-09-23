@@ -23,15 +23,17 @@ export interface ExternalApp {
 }
 
 export const EXTERNAL_APPS: Record<string, ExternalApp> = {
+  // Keyed by the code name it was built under: the key is the path segment here and the configuration key on
+  // the server (ExternalSignIn:Apps:meydan), so it stays put while the name people read changes.
   meydan: {
     key: 'meydan',
-    name: 'MEYDAN',
+    name: 'PRIZMA',
     description: 'Yaradıcı layihələr və açıq müsabiqələr platforması',
     // Renamed to PRIZMA and moved to prizma.qrlog.az; meydan.qrlog.az still answers there with a redirect, so a
     // build made before the move is sent somewhere that still works.
     returnHosts: ['prizma.qrlog.az', 'meydan.qrlog.az'],
     homeUrl: 'https://prizma.qrlog.az',
-    serviceName: 'MEYDAN v1',
+    serviceName: 'PRIZMA',
     serviceLine: 'Müsabiqələrdə iştirak etmək üçün QRLog hesabınızla daxil olun.',
   },
 }
