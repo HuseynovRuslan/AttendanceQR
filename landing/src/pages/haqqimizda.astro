@@ -6,7 +6,7 @@ import { useTranslations } from '../i18n/ui'
 const lang = 'az' as const
 const t = useTranslations(lang)
 ---
-<BaseLayout lang={lang} path="/haqqimizda/" title={t('about.metaTitle')} description={t('about.metaDesc')}>
+<BaseLayout lang={lang} path="/haqqimizda/" title={t('about.metaTitle')} description={t('about.metaDesc')} heroTone="white">
   <PageHero title={t('about.title')} subtitle={t('about.sub')} />
   <AboutBody lang={lang} />
 </BaseLayout>

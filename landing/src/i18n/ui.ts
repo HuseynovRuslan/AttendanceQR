@@ -376,6 +376,13 @@ export const ui = {
     'a11y.skip': 'Keçid: əsas məzmun',
     'a11y.lang': 'Dil',
     'a11y.nav': 'Əsas menyu',
+
+    // PageLoader — səhifənin ilk kadrında görünən vizör. `aria` yalnız ekran oxuyucu üçündür,
+    // `scanning` və `done` isə alt yazının iki halıdır: yüklənərkən və "oxundu" anında.
+    // Yazı CSS-də uppercase-ə çevrilir, ona görə mətnlər normal registrdə qalır.
+    'loader.aria': 'Səhifə yüklənir',
+    'loader.scanning': 'Skan edilir',
+    'loader.done': 'Qeydə alındı',
   },
 
   ru: {
@@ -720,6 +727,9 @@ export const ui = {
     'a11y.skip': 'Перейти к содержимому',
     'a11y.lang': 'Язык',
     'a11y.nav': 'Основное меню',
+    'loader.aria': 'Страница загружается',
+    'loader.scanning': 'Сканирование',
+    'loader.done': 'Записано',
   },
 
   en: {
@@ -1066,6 +1076,9 @@ export const ui = {
     'a11y.skip': 'Skip to main content',
     'a11y.lang': 'Language',
     'a11y.nav': 'Main navigation',
+    'loader.aria': 'Page is loading',
+    'loader.scanning': 'Scanning',
+    'loader.done': 'Recorded',
   },
 } as const
 
