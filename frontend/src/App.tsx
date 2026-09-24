@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
+import { mayReloadOnce } from './lib/staleBundle'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, PanelPage } from './components/AdminRoute'
@@ -95,10 +96,9 @@ function AutoUpdater() {
     if (pathname === '/scan' || pathname === '/activate') return
 
     // Belt and braces: if a reload somehow served the same stale bundle again (a cached index.html
-    // would do it), we would spin forever. One attempt per published build, per tab.
-    const key = 'attendanceqr.reloadedFor'
-    if (sessionStorage.getItem(key) === newBuildId) return
-    sessionStorage.setItem(key, newBuildId)
+    // would do it), we would spin forever. One attempt per published build, per tab — the same key
+    // and rule the scan page uses (lib/staleBundle).
+    if (!mayReloadOnce('attendanceqr.reloadedFor', newBuildId)) return
     window.location.reload()
   }, [newBuildId, pathname])
 
