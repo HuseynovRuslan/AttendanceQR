@@ -28,7 +28,8 @@ import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
-import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { distanceMeters, FAILURE_REASON, getPosition, looksApproximate, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { PreciseLocationHelp } from '../components/PreciseLocationHelp'
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, CAMERA_FAIL_REASON, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
@@ -1196,6 +1197,10 @@ export function ScanPage() {
           <GpsHelp kind={geo.fail} onRetry={() => void runChecks()} />
         )}
 
+        {radiusFail && geo.kind === 'ready' && looksApproximate(geo.accuracy) && (
+          <PreciseLocationHelp onRetry={() => void runChecks()} />
+        )}
+
         {radiusFail && (
           <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-rose-500/30 bg-gradient-to-b from-rose-950/70 to-slate-900/90 p-6 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/20 text-2xl text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
@@ -1211,9 +1216,13 @@ export function ScanPage() {
               {geo.kind === 'ready' && <> · GPS dəqiqliyi ±{geo.accuracy} m</>}.
             </p>
             <p className="mt-2 text-xs font-medium text-slate-400 leading-relaxed">
-              {geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS
-                ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxıb 10–15 saniyə gözləyin.'
-                : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən yoxlayın.'}
+              {geo.kind === 'ready' && looksApproximate(geo.accuracy)
+                // ±2000 m is the OS blurring the fix on purpose — see looksApproximate. The steps are
+                // below; repeating «go outside» here would send them out for nothing.
+                ? 'Telefon dəqiq yeri vermir — aşağıdakı ayarı açın.'
+                : geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS
+                  ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxıb 10–15 saniyə gözləyin.'
+                  : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən yoxlayın.'}
             </p>
             <button
               onClick={() => void runChecks()}
@@ -1295,7 +1304,9 @@ export function ScanPage() {
             still allowed — this only nudges the employee somewhere with a clearer view of the sky. */}
         {showCamera && geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS && (
           <div className="w-full max-w-sm rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs font-medium text-amber-200 backdrop-blur-md">
-            GPS dəqiqliyi zəifdir (±{geo.accuracy} m). Skan işləyəcək, amma açıq yerdə daha dəqiq olar.
+            {looksApproximate(geo.accuracy)
+              ? <>Telefonda «dəqiq məkan» söndürülüb (±{geo.accuracy} m) — skan rədd edilə bilər. Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan.</>
+              : <>GPS dəqiqliyi zəifdir (±{geo.accuracy} m). Skan işləyəcək, amma açıq yerdə daha dəqiq olar.</>}
           </div>
         )}
 
@@ -1880,7 +1891,9 @@ function locationCard(distance: number | null | undefined, accuracy?: number): C
     tone: 'red',
     title: 'Yeriniz təsdiqlənmədi',
     detail: parts.join(' · '),
-    note: vague
+    note: looksApproximate(accuracy)
+      ? 'Telefonda «dəqiq məkan» söndürülüb: Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan → «Dəqiq məkandan istifadə». Açıq havada gözləmək kömək etmir.'
+      : vague
       ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxın, 10–15 saniyə gözləyin, sonra yenidən cəhd edin.'
       : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən cəhd edin. Yenə alınmasa, rəhbərinizə bildirin — filialın xəritədəki yeri düzəldilməlidir.',
   }
