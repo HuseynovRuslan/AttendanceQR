@@ -30,6 +30,21 @@
   --color-brand-600: #0F4FD1;
   --color-brand-700: #0B3CA8;
 
+  /* The neutral half of the newer section design (Header, Hero, Trust, Problem, HowItWorks): one
+     near-black for headings, one warm grey for body copy, one hairline for the 1px rules, and the
+     off-white the illustration stages sit on. They are tokens and not hex literals precisely
+     because the same four values appear in class names AND inside inline SVG fills — a section
+     half in tokens and half in hex drifts the first time one of them is nudged.
+
+     Not the same thing as global.css's --ink / --line / --paper: those are the older navy-tinted
+     palette (#0B1726, #E1E7F0, #F6F8FC) the rest of the page still runs on. Do not merge them —
+     the two sets belong to two different generations of the design and are being replaced section
+     by section. */
+  --color-ink: #111211;
+  --color-ink2: #78716C;
+  --color-hair: #E3E1E1;
+  --color-page: #F5F6FA;
+
   /* The site's typeface, and the only place one is named. global.css asks for var(--font-sans) and
      var(--font-mono); components use `font-sans` / `font-mono` or nothing at all, because <body>
      carries the sans stack and everything inherits it.

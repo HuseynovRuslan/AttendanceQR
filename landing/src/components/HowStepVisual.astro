@@ -1,0 +1,213 @@
+---
+/**
+ * "Necə işləyir" bölməsinin üç səhnəsi. Hər səhnə eyni 420×320 sahədə qurulub, ona görə
+ * desktopdakı sabit hündürlüklü səhnə ilə mobil kartın 220px-lik sahəsi arasında keçəndə heç nə
+ * yerini dəyişmir və CLS sıfır qalır.
+ *
+ * Markup burada BİR dəfə yazılıb: desktopdakı tabpanel də, mobil kart da eyni komponenti çağırır.
+ * Prototipdə bu iki nüsxə ayrı-ayrı yazılmışdı və artıq bir-birindən aralanmağa başlamışdı.
+ *
+ * Yalnız inline SVG — nə PNG, nə ikon kitabxanası, nə də SVG içində mətn (mətn tərcümə olunmalıdır,
+ * səhnə isə üç dildə eynidir). Palitra: boz tonlar + brand mavisi.
+ *
+ * Rəngin yarısı token, yarısı hex olmasın deyə brand mavisi və əsas mürəkkəb rəngi
+ * `var(--color-brand)` / `var(--color-ink)` kimi yazılıb — bunlar styles/tailwind.css-dəki
+ * @theme tokenləridir, SVG atributu da adi CSS dəyəri qəbul edir. Qalan bozlar səhnənin öz
+ * illüstrasiya rəngləridir (kağız, kölgə, zolaq) və tokenə çevrilmir.
+ *
+ * VACİB: CSS transform animasiyası SVG-nin `transform="..."` atributunu əvəz edir. Ona görə
+ * `an-*` sinfi heç vaxt transform atributu olan <g>-yə verilmir — həmişə xarici <g> ilə sarınır:
+ * <g class="an-row"><g transform="translate(0 110)">…</g></g>. Animasiyaların özü
+ * HowItWorks.astro-dadır (bir yerdə bir hərəkət lüğəti).
+ */
+interface Props {
+  /** Hansı addımın səhnəsi. */
+  step: 1 | 2 | 3
+  /**
+   * Kölgə filtrinin id-sinə əlavə olunur. Hər səhnə səhifədə İKİ dəfə çıxır — desktop panelində və
+   * mobil kartda — eyni id-li iki <filter> isə yararsız HTML-dir: `url(#…)` birinciyə düşür və
+   * layout dəyişəndə səhv nüsxəyə bağlanır. Çağıran tərəf 'd' / 'm' verir.
+   */
+  idSuffix?: string
+}
+const { step, idSuffix = '' } = Astro.props
+const shadowId = `how-sh${step}${idSuffix}`
+const shadow = `url(#${shadowId})`
+---
+
+{/* Divarda duran QR poster: çap olunmuş vərəq, filial nişanı və "bir dəfə qurulur" nişanı. */}
+{step === 1 && (
+  <svg viewBox="0 0 420 320" fill="none" aria-hidden="true" class="h-auto w-full">
+  <defs>
+    <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#0F172A" flood-opacity=".12"/>
+    </filter>
+  </defs>
+  {/* divar kölgəsi */}
+  <ellipse cx="210" cy="286" rx="118" ry="12" fill="#0F172A" opacity=".06"/>
+  <g class="an-poster"><g transform="rotate(-1.5 210 150)" filter={shadow}>
+    <rect x="128" y="26" width="164" height="230" rx="12" fill="#fff" stroke="#E7EAF0"/>
+    {/* başlıq zolağı */}
+    <rect x="150" y="48" width="46" height="8" rx="4" fill="var(--color-brand)"/>
+    <rect x="202" y="48" width="26" height="8" rx="4" fill="#C7D2E6"/>
+    {/* QR */}
+    <rect x="150" y="74" width="120" height="120" rx="10" fill="#F7F9FD"/>
+    <g transform="translate(158 82)" fill="var(--color-ink)"><rect x="0" y="0" width="35" height="5"/><rect x="70" y="0" width="35" height="5"/><rect x="0" y="5" width="5" height="5"/><rect x="30" y="5" width="5" height="5"/><rect x="45" y="5" width="5" height="5"/><rect x="70" y="5" width="5" height="5"/><rect x="100" y="5" width="5" height="5"/><rect x="0" y="10" width="5" height="5"/><rect x="10" y="10" width="15" height="5"/><rect x="30" y="10" width="5" height="5"/><rect x="40" y="10" width="15" height="5"/><rect x="70" y="10" width="5" height="5"/><rect x="80" y="10" width="15" height="5"/><rect x="100" y="10" width="5" height="5"/><rect x="0" y="15" width="5" height="5"/><rect x="10" y="15" width="15" height="5"/><rect x="30" y="15" width="5" height="5"/><rect x="40" y="15" width="5" height="5"/><rect x="70" y="15" width="5" height="5"/><rect x="80" y="15" width="15" height="5"/><rect x="100" y="15" width="5" height="5"/><rect x="0" y="20" width="5" height="5"/><rect x="10" y="20" width="15" height="5"/><rect x="30" y="20" width="5" height="5"/><rect x="40" y="20" width="10" height="5"/><rect x="55" y="20" width="10" height="5"/><rect x="70" y="20" width="5" height="5"/><rect x="80" y="20" width="15" height="5"/><rect x="100" y="20" width="5" height="5"/><rect x="0" y="25" width="5" height="5"/><rect x="30" y="25" width="5" height="5"/><rect x="40" y="25" width="10" height="5"/><rect x="55" y="25" width="5" height="5"/><rect x="70" y="25" width="5" height="5"/><rect x="100" y="25" width="5" height="5"/><rect x="0" y="30" width="35" height="5"/><rect x="70" y="30" width="35" height="5"/><rect x="40" y="35" width="5" height="5"/><rect x="0" y="40" width="20" height="5"/><rect x="25" y="40" width="5" height="5"/><rect x="35" y="40" width="5" height="5"/><rect x="50" y="40" width="10" height="5"/><rect x="75" y="40" width="10" height="5"/><rect x="95" y="40" width="10" height="5"/><rect x="0" y="45" width="5" height="5"/><rect x="15" y="45" width="20" height="5"/><rect x="40" y="45" width="5" height="5"/><rect x="50" y="45" width="10" height="5"/><rect x="65" y="45" width="5" height="5"/><rect x="75" y="45" width="20" height="5"/><rect x="0" y="50" width="5" height="5"/><rect x="10" y="50" width="10" height="5"/><rect x="30" y="50" width="5" height="5"/><rect x="40" y="50" width="10" height="5"/><rect x="55" y="50" width="20" height="5"/><rect x="80" y="50" width="5" height="5"/><rect x="90" y="50" width="5" height="5"/><rect x="15" y="55" width="10" height="5"/><rect x="35" y="55" width="10" height="5"/><rect x="55" y="55" width="5" height="5"/><rect x="75" y="55" width="15" height="5"/><rect x="95" y="55" width="5" height="5"/><rect x="0" y="60" width="5" height="5"/><rect x="15" y="60" width="10" height="5"/><rect x="30" y="60" width="10" height="5"/><rect x="55" y="60" width="5" height="5"/><rect x="65" y="60" width="35" height="5"/><rect x="40" y="65" width="10" height="5"/><rect x="75" y="65" width="15" height="5"/><rect x="0" y="70" width="35" height="5"/><rect x="40" y="70" width="5" height="5"/><rect x="60" y="70" width="5" height="5"/><rect x="70" y="70" width="5" height="5"/><rect x="0" y="75" width="5" height="5"/><rect x="30" y="75" width="5" height="5"/><rect x="45" y="75" width="5" height="5"/><rect x="65" y="75" width="5" height="5"/><rect x="90" y="75" width="5" height="5"/><rect x="0" y="80" width="5" height="5"/><rect x="10" y="80" width="15" height="5"/><rect x="30" y="80" width="5" height="5"/><rect x="40" y="80" width="5" height="5"/><rect x="65" y="80" width="5" height="5"/><rect x="80" y="80" width="5" height="5"/><rect x="90" y="80" width="5" height="5"/><rect x="100" y="80" width="5" height="5"/><rect x="0" y="85" width="5" height="5"/><rect x="10" y="85" width="15" height="5"/><rect x="30" y="85" width="5" height="5"/><rect x="50" y="85" width="5" height="5"/><rect x="75" y="85" width="15" height="5"/><rect x="95" y="85" width="10" height="5"/><rect x="0" y="90" width="5" height="5"/><rect x="10" y="90" width="15" height="5"/><rect x="30" y="90" width="5" height="5"/><rect x="50" y="90" width="5" height="5"/><rect x="60" y="90" width="5" height="5"/><rect x="70" y="90" width="10" height="5"/><rect x="95" y="90" width="5" height="5"/><rect x="0" y="95" width="5" height="5"/><rect x="30" y="95" width="5" height="5"/><rect x="40" y="95" width="10" height="5"/><rect x="75" y="95" width="10" height="5"/><rect x="90" y="95" width="15" height="5"/><rect x="0" y="100" width="35" height="5"/><rect x="50" y="100" width="5" height="5"/><rect x="70" y="100" width="10" height="5"/><rect x="85" y="100" width="5" height="5"/><rect x="100" y="100" width="5" height="5"/></g>
+    {/* alt mətn zolaqları */}
+    <rect x="150" y="206" width="88" height="7" rx="3.5" fill="#DDE3EC"/>
+    <rect x="150" y="221" width="62" height="7" rx="3.5" fill="#E8ECF3"/>
+  </g>
+  </g>
+  {/* filial nişanı */}
+  <g class="an-badge"><g transform="translate(298 68)">
+    <rect x="0" y="0" width="86" height="38" rx="12" fill="#fff" stroke="#E7EAF0"/>
+    <circle cx="21" cy="19" r="9" fill="#EAF0FC"/>
+    <path d="M21 14.4c2.2 0 4 1.8 4 4 0 3-4 6.2-4 6.2s-4-3.2-4-6.2c0-2.2 1.8-4 4-4Z" fill="var(--color-brand)"/>
+    <rect x="38" y="13" width="34" height="5" rx="2.5" fill="#D7DEEA"/>
+    <rect x="38" y="22" width="22" height="5" rx="2.5" fill="#E6EAF1"/>
+  </g></g>
+  {/* "bir dəfə" nişanı */}
+  <g class="an-badge an-badge-2"><g transform="translate(40 190)">
+    <rect x="0" y="0" width="96" height="38" rx="12" fill="#fff" stroke="#E7EAF0"/>
+    <circle cx="21" cy="19" r="9" fill="#EAF0FC"/>
+    <path d="M17.4 19.2l2.6 2.6 5-5.2" stroke="var(--color-brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect x="38" y="13" width="42" height="5" rx="2.5" fill="#D7DEEA"/>
+    <rect x="38" y="22" width="28" height="5" rx="2.5" fill="#E6EAF1"/>
+  </g></g>
+              </svg>
+)}
+
+{/* Skan anı: işçinin telefonu posterin qarşısında, skan xətti gəzir, yanında təsdiq kartı. */}
+{step === 2 && (
+  <svg viewBox="0 0 420 320" fill="none" aria-hidden="true" class="h-auto w-full">
+  <defs>
+    <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#0F172A" flood-opacity=".14"/>
+    </filter>
+  </defs>
+  <ellipse cx="210" cy="292" rx="96" ry="11" fill="#0F172A" opacity=".06"/>
+  {/* arxa fonda poster */}
+  <g opacity=".55">
+    <rect x="92" y="54" width="92" height="128" rx="9" fill="#fff" stroke="#E7EAF0"/>
+    <rect x="104" y="68" width="28" height="6" rx="3" fill="#C7D2E6"/>
+    <rect x="104" y="84" width="68" height="68" rx="8" fill="#F1F4FA"/>
+    <g transform="translate(110 90)" fill="#C2CCDE"><rect x="0.0" y="0.0" width="23.8" height="3.4"/><rect x="34.0" y="0.0" width="23.8" height="3.4"/><rect x="0.0" y="3.4" width="3.4" height="3.4"/><rect x="20.4" y="3.4" width="3.4" height="3.4"/><rect x="34.0" y="3.4" width="3.4" height="3.4"/><rect x="54.4" y="3.4" width="3.4" height="3.4"/><rect x="0.0" y="6.8" width="3.4" height="3.4"/><rect x="6.8" y="6.8" width="10.2" height="3.4"/><rect x="20.4" y="6.8" width="3.4" height="3.4"/><rect x="34.0" y="6.8" width="3.4" height="3.4"/><rect x="40.8" y="6.8" width="10.2" height="3.4"/><rect x="54.4" y="6.8" width="3.4" height="3.4"/><rect x="0.0" y="10.2" width="3.4" height="3.4"/><rect x="6.8" y="10.2" width="10.2" height="3.4"/><rect x="20.4" y="10.2" width="3.4" height="3.4"/><rect x="34.0" y="10.2" width="3.4" height="3.4"/><rect x="40.8" y="10.2" width="10.2" height="3.4"/><rect x="54.4" y="10.2" width="3.4" height="3.4"/><rect x="0.0" y="13.6" width="3.4" height="3.4"/><rect x="6.8" y="13.6" width="10.2" height="3.4"/><rect x="20.4" y="13.6" width="3.4" height="3.4"/><rect x="34.0" y="13.6" width="3.4" height="3.4"/><rect x="40.8" y="13.6" width="10.2" height="3.4"/><rect x="54.4" y="13.6" width="3.4" height="3.4"/><rect x="0.0" y="17.0" width="3.4" height="3.4"/><rect x="20.4" y="17.0" width="3.4" height="3.4"/><rect x="34.0" y="17.0" width="3.4" height="3.4"/><rect x="54.4" y="17.0" width="3.4" height="3.4"/><rect x="0.0" y="20.4" width="23.8" height="3.4"/><rect x="27.2" y="20.4" width="3.4" height="3.4"/><rect x="34.0" y="20.4" width="23.8" height="3.4"/><rect x="10.2" y="27.2" width="3.4" height="3.4"/><rect x="17.0" y="27.2" width="3.4" height="3.4"/><rect x="27.2" y="27.2" width="10.2" height="3.4"/><rect x="44.199999999999996" y="27.2" width="3.4" height="3.4"/><rect x="51.0" y="27.2" width="3.4" height="3.4"/><rect x="27.2" y="30.599999999999998" width="6.8" height="3.4"/><rect x="37.4" y="30.599999999999998" width="6.8" height="3.4"/><rect x="51.0" y="30.599999999999998" width="3.4" height="3.4"/><rect x="0.0" y="34.0" width="23.8" height="3.4"/><rect x="34.0" y="34.0" width="3.4" height="3.4"/><rect x="51.0" y="34.0" width="6.8" height="3.4"/><rect x="0.0" y="37.4" width="3.4" height="3.4"/><rect x="20.4" y="37.4" width="3.4" height="3.4"/><rect x="27.2" y="37.4" width="13.6" height="3.4"/><rect x="44.199999999999996" y="37.4" width="3.4" height="3.4"/><rect x="51.0" y="37.4" width="6.8" height="3.4"/><rect x="0.0" y="40.8" width="3.4" height="3.4"/><rect x="6.8" y="40.8" width="10.2" height="3.4"/><rect x="20.4" y="40.8" width="3.4" height="3.4"/><rect x="34.0" y="40.8" width="3.4" height="3.4"/><rect x="44.199999999999996" y="40.8" width="3.4" height="3.4"/><rect x="51.0" y="40.8" width="3.4" height="3.4"/><rect x="0.0" y="44.199999999999996" width="3.4" height="3.4"/><rect x="6.8" y="44.199999999999996" width="10.2" height="3.4"/><rect x="20.4" y="44.199999999999996" width="3.4" height="3.4"/><rect x="30.599999999999998" y="44.199999999999996" width="3.4" height="3.4"/><rect x="37.4" y="44.199999999999996" width="3.4" height="3.4"/><rect x="44.199999999999996" y="44.199999999999996" width="10.2" height="3.4"/><rect x="0.0" y="47.6" width="3.4" height="3.4"/><rect x="6.8" y="47.6" width="10.2" height="3.4"/><rect x="20.4" y="47.6" width="3.4" height="3.4"/><rect x="27.2" y="47.6" width="3.4" height="3.4"/><rect x="40.8" y="47.6" width="6.8" height="3.4"/><rect x="54.4" y="47.6" width="3.4" height="3.4"/><rect x="0.0" y="51.0" width="3.4" height="3.4"/><rect x="20.4" y="51.0" width="3.4" height="3.4"/><rect x="37.4" y="51.0" width="3.4" height="3.4"/><rect x="44.199999999999996" y="51.0" width="6.8" height="3.4"/><rect x="0.0" y="54.4" width="23.8" height="3.4"/><rect x="27.2" y="54.4" width="3.4" height="3.4"/><rect x="37.4" y="54.4" width="17.0" height="3.4"/></g>
+  </g>
+  {/* telefon */}
+  <g class="an-phone"><g filter={shadow} transform="translate(150 28)">
+    <rect x="0" y="0" width="150" height="264" rx="26" fill="#fff" stroke="var(--color-hair)"/>
+    <rect x="8" y="8" width="134" height="248" rx="20" fill="#F7F9FD"/>
+    <rect x="58" y="14" width="34" height="5" rx="2.5" fill="#E1E6EF"/>
+    {/* skan çərçivəsi */}
+    <g stroke="var(--color-brand)" stroke-width="2.6" stroke-linecap="round" fill="none">
+      <path d="M38 78v-10a8 8 0 0 1 8-8h10"/>
+      <path d="M112 78v-10a8 8 0 0 0-8-8H94"/>
+      <path d="M38 150v10a8 8 0 0 0 8 8h10"/>
+      <path d="M112 150v10a8 8 0 0 1-8 8H94"/>
+    </g>
+    <rect x="50" y="72" width="50" height="50" rx="6" fill="#fff" stroke="#E7EAF0"/>
+    <g transform="translate(54 76)" fill="var(--color-ink)"><rect x="0.0" y="0.0" width="17.5" height="2.5"/><rect x="20.0" y="0.0" width="2.5" height="2.5"/><rect x="25.0" y="0.0" width="17.5" height="2.5"/><rect x="0.0" y="2.5" width="2.5" height="2.5"/><rect x="15.0" y="2.5" width="2.5" height="2.5"/><rect x="25.0" y="2.5" width="2.5" height="2.5"/><rect x="40.0" y="2.5" width="2.5" height="2.5"/><rect x="0.0" y="5.0" width="2.5" height="2.5"/><rect x="5.0" y="5.0" width="7.5" height="2.5"/><rect x="15.0" y="5.0" width="2.5" height="2.5"/><rect x="20.0" y="5.0" width="2.5" height="2.5"/><rect x="25.0" y="5.0" width="2.5" height="2.5"/><rect x="30.0" y="5.0" width="7.5" height="2.5"/><rect x="40.0" y="5.0" width="2.5" height="2.5"/><rect x="0.0" y="7.5" width="2.5" height="2.5"/><rect x="5.0" y="7.5" width="7.5" height="2.5"/><rect x="15.0" y="7.5" width="2.5" height="2.5"/><rect x="25.0" y="7.5" width="2.5" height="2.5"/><rect x="30.0" y="7.5" width="7.5" height="2.5"/><rect x="40.0" y="7.5" width="2.5" height="2.5"/><rect x="0.0" y="10.0" width="2.5" height="2.5"/><rect x="5.0" y="10.0" width="7.5" height="2.5"/><rect x="15.0" y="10.0" width="2.5" height="2.5"/><rect x="25.0" y="10.0" width="2.5" height="2.5"/><rect x="30.0" y="10.0" width="7.5" height="2.5"/><rect x="40.0" y="10.0" width="2.5" height="2.5"/><rect x="0.0" y="12.5" width="2.5" height="2.5"/><rect x="15.0" y="12.5" width="2.5" height="2.5"/><rect x="20.0" y="12.5" width="2.5" height="2.5"/><rect x="25.0" y="12.5" width="2.5" height="2.5"/><rect x="40.0" y="12.5" width="2.5" height="2.5"/><rect x="0.0" y="15.0" width="17.5" height="2.5"/><rect x="20.0" y="15.0" width="2.5" height="2.5"/><rect x="25.0" y="15.0" width="17.5" height="2.5"/><rect x="0.0" y="20.0" width="5.0" height="2.5"/><rect x="17.5" y="20.0" width="2.5" height="2.5"/><rect x="32.5" y="20.0" width="2.5" height="2.5"/><rect x="40.0" y="20.0" width="2.5" height="2.5"/><rect x="20.0" y="22.5" width="2.5" height="2.5"/><rect x="37.5" y="22.5" width="2.5" height="2.5"/><rect x="0.0" y="25.0" width="17.5" height="2.5"/><rect x="20.0" y="25.0" width="2.5" height="2.5"/><rect x="27.5" y="25.0" width="7.5" height="2.5"/><rect x="37.5" y="25.0" width="2.5" height="2.5"/><rect x="0.0" y="27.5" width="2.5" height="2.5"/><rect x="15.0" y="27.5" width="2.5" height="2.5"/><rect x="20.0" y="27.5" width="2.5" height="2.5"/><rect x="25.0" y="27.5" width="5.0" height="2.5"/><rect x="0.0" y="30.0" width="2.5" height="2.5"/><rect x="5.0" y="30.0" width="7.5" height="2.5"/><rect x="15.0" y="30.0" width="2.5" height="2.5"/><rect x="27.5" y="30.0" width="2.5" height="2.5"/><rect x="0.0" y="32.5" width="2.5" height="2.5"/><rect x="5.0" y="32.5" width="7.5" height="2.5"/><rect x="15.0" y="32.5" width="2.5" height="2.5"/><rect x="20.0" y="32.5" width="2.5" height="2.5"/><rect x="27.5" y="32.5" width="5.0" height="2.5"/><rect x="37.5" y="32.5" width="2.5" height="2.5"/><rect x="0.0" y="35.0" width="2.5" height="2.5"/><rect x="5.0" y="35.0" width="7.5" height="2.5"/><rect x="15.0" y="35.0" width="2.5" height="2.5"/><rect x="20.0" y="35.0" width="7.5" height="2.5"/><rect x="32.5" y="35.0" width="2.5" height="2.5"/><rect x="37.5" y="35.0" width="2.5" height="2.5"/><rect x="0.0" y="37.5" width="2.5" height="2.5"/><rect x="15.0" y="37.5" width="2.5" height="2.5"/><rect x="20.0" y="37.5" width="2.5" height="2.5"/><rect x="32.5" y="37.5" width="5.0" height="2.5"/><rect x="40.0" y="37.5" width="2.5" height="2.5"/><rect x="0.0" y="40.0" width="17.5" height="2.5"/><rect x="20.0" y="40.0" width="5.0" height="2.5"/><rect x="27.5" y="40.0" width="5.0" height="2.5"/><rect x="35.0" y="40.0" width="2.5" height="2.5"/></g>
+    {/* skan xətti */}
+    <rect class="an-scan" x="40" y="112" width="70" height="2.5" rx="1.25" fill="var(--color-brand)" opacity=".5"/>
+    {/* mətn zolaqları */}
+    <rect x="40" y="190" width="70" height="7" rx="3.5" fill="#DDE3EC"/>
+    <rect x="52" y="204" width="46" height="6" rx="3" fill="#E8ECF3"/>
+    {/* düymə */}
+    <rect x="30" y="222" width="90" height="26" rx="13" fill="var(--color-brand)"/>
+    <rect x="52" y="232" width="46" height="6" rx="3" fill="#fff" opacity=".85"/>
+  </g></g>
+  {/* uğur kartı */}
+  <g class="an-ok"><g transform="translate(252 186)">
+    <rect x="0" y="0" width="140" height="56" rx="14" fill="#fff" stroke="#E7EAF0" filter={shadow}/>
+    <circle cx="28" cy="28" r="13" fill="#EAF0FC"/>
+    <path d="M22.6 28.4l3.6 3.6 7-7.4" stroke="var(--color-brand)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <rect x="50" y="18" width="62" height="6" rx="3" fill="#D7DEEA"/>
+    <rect x="50" y="32" width="42" height="6" rx="3" fill="#E6EAF1"/>
+  </g></g>
+              </svg>
+)}
+
+{/* Admin panel: canlı davamiyyət cədvəli və Excel hesabatı kartı. */}
+{step === 3 && (
+  <svg viewBox="0 0 420 320" fill="none" aria-hidden="true" class="h-auto w-full">
+  <defs>
+    <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#0F172A" flood-opacity=".14"/>
+    </filter>
+  </defs>
+  <g class="an-win"><g filter={shadow} transform="translate(34 36)">
+    <rect x="0" y="0" width="352" height="232" rx="16" fill="#fff" stroke="var(--color-hair)"/>
+    {/* sidebar */}
+    <path d="M0 16A16 16 0 0 1 16 0h58v232H16A16 16 0 0 1 0 216V16Z" fill="#F7F9FD"/>
+    <rect x="14" y="18" width="30" height="8" rx="4" fill="var(--color-brand)"/>
+    <g fill="#DDE3EC">
+      <rect x="14" y="48" width="46" height="7" rx="3.5"/>
+      <rect x="14" y="66" width="38" height="7" rx="3.5"/>
+      <rect x="14" y="84" width="42" height="7" rx="3.5"/>
+      <rect x="14" y="102" width="34" height="7" rx="3.5"/>
+    </g>
+    <rect x="8" y="42" width="58" height="19" rx="7" fill="#EAF0FC"/>
+    <rect x="14" y="48" width="46" height="7" rx="3.5" fill="var(--color-brand)" opacity=".55"/>
+    {/* header */}
+    <rect x="92" y="20" width="84" height="9" rx="4.5" fill="#C7D2E6"/>
+    <g transform="translate(250 14)">
+      <rect x="0" y="0" width="86" height="24" rx="8" fill="var(--color-brand)"/>
+      <rect x="16" y="9" width="54" height="6" rx="3" fill="#fff" opacity=".85"/>
+    </g>
+    {/* canlı nişan */}
+    <g transform="translate(92 40)">
+      <rect x="0" y="0" width="72" height="22" rx="8" fill="#EAF0FC"/>
+      <g class="an-pulse"><circle cx="14" cy="11" r="5" fill="var(--color-brand)"/></g>
+      <circle cx="14" cy="11" r="3.4" fill="var(--color-brand)"/>
+      <rect x="26" y="8" width="34" height="6" rx="3" fill="var(--color-brand)" opacity=".5"/>
+    </g>
+    <g transform="translate(174 40)">
+      <rect x="0" y="0" width="62" height="22" rx="8" fill="#F1F4FA"/>
+      <rect x="12" y="8" width="38" height="6" rx="3" fill="#C7D2E6"/>
+    </g>
+    {/* cədvəl */}
+    <g>
+      <rect x="92" y="74" width="244" height="26" rx="8" fill="#F7F9FD"/>
+      <g fill="#C7D2E6">
+        <rect x="104" y="84" width="46" height="6" rx="3"/>
+        <rect x="188" y="84" width="30" height="6" rx="3"/>
+        <rect x="248" y="84" width="30" height="6" rx="3"/>
+      </g>
+    </g>
+    <g>
+      <g class="an-row"><g transform="translate(0 110)">
+        <circle cx="104" cy="8" r="8" fill="#EAF0FC"/>
+        <rect x="120" y="5" width="54" height="6" rx="3" fill="#DDE3EC"/>
+        <rect x="188" y="5" width="30" height="6" rx="3" fill="#E6EAF1"/>
+        <rect x="248" y="5" width="30" height="6" rx="3" fill="#E6EAF1"/>
+        <rect x="292" y="0" width="44" height="16" rx="8" fill="#EAF0FC"/>
+        <rect x="300" y="5" width="28" height="6" rx="3" fill="var(--color-brand)" opacity=".55"/>
+      </g></g>
+      <g class="an-row an-row-2"><g transform="translate(0 142)">
+        <circle cx="104" cy="8" r="8" fill="#F1F4FA"/>
+        <rect x="120" y="5" width="46" height="6" rx="3" fill="#DDE3EC"/>
+        <rect x="188" y="5" width="30" height="6" rx="3" fill="#E6EAF1"/>
+        <rect x="248" y="5" width="30" height="6" rx="3" fill="#E6EAF1"/>
+        <rect x="292" y="0" width="44" height="16" rx="8" fill="#F1F4FA"/>
+        <rect x="300" y="5" width="28" height="6" rx="3" fill="#C7D2E6"/>
+      </g></g>
+      <g class="an-row an-row-3"><g transform="translate(0 174)">
+        <circle cx="104" cy="8" r="8" fill="#F1F4FA"/>
+        <rect x="120" y="5" width="58" height="6" rx="3" fill="#DDE3EC"/>
+        <rect x="188" y="5" width="30" height="6" rx="3" fill="#E6EAF1"/>
+        <rect x="248" y="5" width="30" height="6" rx="3" fill="#E6EAF1"/>
+        <rect x="292" y="0" width="44" height="16" rx="8" fill="#F1F4FA"/>
+        <rect x="300" y="5" width="28" height="6" rx="3" fill="#C7D2E6"/>
+      </g></g>
+    </g>
+  </g></g>
+  {/* Excel/hesabat kartı */}
+  <g class="an-ok an-ok-late"><g transform="translate(286 236)">
+    <rect x="0" y="0" width="112" height="46" rx="13" fill="#fff" stroke="#E7EAF0" filter={shadow}/>
+    <rect x="14" y="13" width="20" height="20" rx="6" fill="#EAF0FC"/>
+    <path d="M20 19h8M20 23h8M20 27h5" stroke="var(--color-brand)" stroke-width="1.8" stroke-linecap="round"/>
+    <rect x="44" y="15" width="52" height="6" rx="3" fill="#D7DEEA"/>
+    <rect x="44" y="27" width="34" height="6" rx="3" fill="#E6EAF1"/>
+  </g></g>
+              </svg>
+)}

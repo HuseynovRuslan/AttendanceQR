@@ -7,7 +7,6 @@ import imgLate from '../assets/images/problem/gecikme.png'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
-const home = localizedPath(lang, '/')
 
 // The "before" of the story — PAS's Problem/Agitate. It sits right after the customer band and
 // before the product screens: name the pains of the old way (buddy-punching, per-site hardware,
@@ -206,7 +205,7 @@ const iconBox =
       </span>
       <a
         class="group inline-flex items-center gap-3 rounded-full px-4 py-2.5 transition-all duration-300 hover:shadow-brand/15 focus-visible:outline-2 focus-visible:outline-offset-4 "
-        href={`${home}#app`}
+        href=#how
       >
         <!--
           The arrow drifts down and back on its own so the hinge reads as "keep going" before anyone

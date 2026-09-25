@@ -150,6 +150,17 @@ export const ui = {
     'how.s3t': 'Rəhbərlik canlı görür',
     'how.s3d':
       'Giriş-çıxış dərhal admin panelə düşür. Tarix üzrə filtrləyin, Excel hesabatı yükləyin, filial üzrə bölün.',
+    // Addımların yanındakı metrik çipləri. Bunlar Hero bölməsindəki eyni üç iddiadır
+    // (hero.s2n, hero.s1n, hero.s3l) — birini dəyişsən, o birini də dəyiş.
+    'how.s1m': '0 ₼ avadanlıq',
+    'how.s2m': '~10 saniyə',
+    'how.s3m': 'anlıq',
+    // 02-ci səhnədə skan anında eyni anda yoxlanan üç şey.
+    'how.c1': 'Məkan',
+    'how.c2': 'Cihaz',
+    'how.c3': 'Şəkil',
+    // Üç addımın tablist-inin adı — ekran oxuyucusu üçün, gözlə görünmür.
+    'how.tabs': 'Necə işləyir',
 
     'feat.eyebrow': 'İmkanlar',
     'feat.title': 'Davamiyyət üçün lazım olan hər şey',
@@ -365,6 +376,13 @@ export const ui = {
     'a11y.skip': 'Keçid: əsas məzmun',
     'a11y.lang': 'Dil',
     'a11y.nav': 'Əsas menyu',
+
+    // PageLoader — səhifənin ilk kadrında görünən vizör. `aria` yalnız ekran oxuyucu üçündür,
+    // `scanning` və `done` isə alt yazının iki halıdır: yüklənərkən və "oxundu" anında.
+    // Yazı CSS-də uppercase-ə çevrilir, ona görə mətnlər normal registrdə qalır.
+    'loader.aria': 'Səhifə yüklənir',
+    'loader.scanning': 'Skan edilir',
+    'loader.done': 'Qeydə alındı',
   },
 
   ru: {
@@ -488,6 +506,13 @@ export const ui = {
     'how.s3t': 'Руководство видит онлайн',
     'how.s3d':
       'Отметки сразу попадают в админ-панель. Фильтруйте по датам, выгружайте отчёт в Excel, разбивайте по филиалам.',
+    'how.s1m': '0 ₼ оборудование',
+    'how.s2m': '~10 секунд',
+    'how.s3m': 'сразу',
+    'how.c1': 'Локация',
+    'how.c2': 'Устройство',
+    'how.c3': 'Фото',
+    'how.tabs': 'Как это работает',
 
     'feat.eyebrow': 'Возможности',
     'feat.title': 'Всё, что нужно для учёта',
@@ -702,6 +727,9 @@ export const ui = {
     'a11y.skip': 'Перейти к содержимому',
     'a11y.lang': 'Язык',
     'a11y.nav': 'Основное меню',
+    'loader.aria': 'Страница загружается',
+    'loader.scanning': 'Сканирование',
+    'loader.done': 'Записано',
   },
 
   en: {
@@ -825,6 +853,13 @@ export const ui = {
     'how.s3t': 'Managers see it live',
     'how.s3d':
       'Check-ins land in the admin panel immediately. Filter by date, export to Excel, split by site.',
+    'how.s1m': '0 ₼ hardware',
+    'how.s2m': '~10 seconds',
+    'how.s3m': 'instant',
+    'how.c1': 'Location',
+    'how.c2': 'Device',
+    'how.c3': 'Photo',
+    'how.tabs': 'How it works',
 
     'feat.eyebrow': 'Features',
     'feat.title': 'Everything attendance needs',
@@ -1041,6 +1076,9 @@ export const ui = {
     'a11y.skip': 'Skip to main content',
     'a11y.lang': 'Language',
     'a11y.nav': 'Main navigation',
+    'loader.aria': 'Page is loading',
+    'loader.scanning': 'Scanning',
+    'loader.done': 'Recorded',
   },
 } as const
 

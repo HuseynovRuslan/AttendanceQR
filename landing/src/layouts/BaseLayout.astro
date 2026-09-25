@@ -2,6 +2,7 @@
 // In this order: tailwind.css declares the cascade layers that global-layered.css puts global.css in.
 import '../styles/tailwind.css'
 import '../styles/global-layered.css'
+import PageLoader from '../components/PageLoader.astro'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
@@ -17,11 +18,26 @@ interface Props {
   description?: string
   /** Home page only: emits SoftwareApplication + FAQPage structured data. */
   home?: boolean
+  /**
+   * The colour the page opens on, so the loading viewfinder can stand on the same one and the
+   * hand-over carries no colour jump. 'tinted' is the home page, whose Hero is on --paper;
+   * every page that opens with <PageHero> is on plain --white.
+   */
+  heroTone?: 'tinted' | 'white'
   noindex?: boolean
 }
 
-const { lang, path = '/', title, description, home = false, noindex = false } = Astro.props
+const { lang, path = '/', title, description, home = false, noindex = false, heroTone = 'tinted' } = Astro.props
 const t = useTranslations(lang)
+
+// The token, not the hex behind it: change --white or --paper in global.css and the loader
+// follows. undefined leaves the loader on its own default, which is --paper.
+const loaderBg = heroTone === 'white' ? 'var(--white, #fff)' : undefined
+
+// qrl-lock on <html>: the loading viewfinder (components/PageLoader.astro) covers the page, so the
+// scroll is closed while it is up. The class is served in the markup rather than set by a script, so
+// that it is already in force in the first frame; the loader's own script takes it off when it is
+// done, and its <noscript> block cancels it where scripting is off.
 
 const site = SITE.url
 const canonical = site + localizedPath(lang, path)
@@ -103,7 +119,7 @@ const websiteLd = {
 ---
 
 <!doctype html>
-<html lang={htmlLang[lang]} dir="ltr">
+<html lang={htmlLang[lang]} dir="ltr" class="qrl-lock">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -169,13 +185,15 @@ const websiteLd = {
     {home && <script is:inline type="application/ld+json" set:html={JSON.stringify(faqLd)} />}
   </head>
   <body>
+    <PageLoader lang={lang} bg={loaderBg} />
     <a class="skip" href="#main">{t('a11y.skip')}</a>
-    <Header lang={lang} path={path} />
-    <main id="main">
-      <slot />
-    </main>
-    <Footer lang={lang} />
-
+    <div class="qrl-page">
+      <Header lang={lang} path={path} />
+      <main id="main">
+        <slot />
+      </main>
+      <Footer lang={lang} />
+    </div>
     <script>
       // ---------- QR pattern (decorative, deterministic) ----------
       function paintQr(id: string, seed: number) {

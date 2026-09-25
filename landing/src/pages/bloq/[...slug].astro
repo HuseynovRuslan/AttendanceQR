@@ -23,6 +23,7 @@ const fmt = (d: Date) =>
   path={`/bloq/${post.id}/`}
   title={`${post.data.title} — QRLog`}
   description={post.data.description}
+  heroTone="white"
 >
   <PageHero title={post.data.title} subtitle={fmt(post.data.pubDate)} />
   <section class="prose-section">

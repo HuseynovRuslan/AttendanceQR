@@ -1,19 +1,669 @@
 ---
-import { useTranslations, type Lang } from '../i18n/ui';
-const { lang } = Astro.props as { lang: Lang };
-const t = useTranslations(lang);
+import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
+import HowStepVisual from './HowStepVisual.astro'
+
+/**
+ * "Necə işləyir" — üç addım, üç səhnə.
+ *
+ * Desktopda solda tablist, sağda sabit hündürlüklü səhnə: addımlar 7 saniyədən bir özü-özünə
+ * dəyişir, oxucu heç nəyə toxunmadan hekayənin hər üç kadrını görür. Mobil telefonda tab məntiqi
+ * yoxdur — eyni üç addım adi kart siyahısıdır, çünki kiçik ekranda sol sütun yoxdur və gizlənmiş
+ * iki kadrı barmaqla axtarmaq sadəcə aşağı sürüşdürməkdən pisdir.
+ *
+ * Köhnə variant — bej fonlu, üç bərabər sütunlu, üç quru abzas — buradan tamamilə çıxıb; ona
+ * baxan .how / .steps / .step stilləri də styles/global.css-dən silinib.
+ *
+ * Bölmədə CTA paneli və pause/play düyməsi yoxdur: bu bölmə izah edir, satmır — çağırış aşağıda,
+ * CTA bölməsindədir.
+ */
+interface Props {
+  lang: Lang
+  /**
+   * Fondakı dekorativ QR sahəsinin yeri. Bölmə başqa səhifədə işlənsə və ya qonşu bölmənin fonu
+   * ilə toqquşsa, 'right' / 'none' ilə sürüşdürülür. md-dən kiçikdə onsuz da gizlidir.
+   */
+  decoPosition?: 'left' | 'right' | 'none'
+}
+const { lang, decoPosition = 'left' } = Astro.props
+const t = useTranslations(lang)
+
+/**
+ * Metrik çipləri Hero bölməsindəki üç iddianın eynisidir (hero.s2n "0 ₼", hero.s1n "~10 san",
+ * hero.s3l "anlıq") — burada yeni rəqəm uydurulmur, eyni söz iki yerdə təkrarlanır ki, oxucu
+ * addımı yuxarıdakı vədlə eyniləşdirsin.
+ */
+const steps = [
+  { n: '01', title: 'how.s1t', desc: 'how.s1d', metric: 'how.s1m' },
+  { n: '02', title: 'how.s2t', desc: 'how.s2d', metric: 'how.s2m' },
+  { n: '03', title: 'how.s3t', desc: 'how.s3d', metric: 'how.s3m' },
+] satisfies { n: string; title: UIKey; desc: UIKey; metric: UIKey }[]
+
+/** Skan anında eyni anda yoxlanan üç şey — 02-ci səhnənin üstündəki çiplər. */
+const checks = ['how.c1', 'how.c2', 'how.c3'] satisfies UIKey[]
+
+// Prototipdən olduğu kimi götürülmüş sinif sətirləri. Bir dəfə yazılır, üç addım da onu işlədir —
+// belə olmasa üç düymənin sinifləri vaxt keçdikcə bir-birindən aralanır.
+// `bg-transparent text-ink cursor-pointer` prototipdə yoxdur, çünki orada Tailwind-in Preflight-ı
+// işləyirdi. Bu layihədə Preflight söndürülüb (bax styles/tailwind.css) və global.css düymələrə
+// yalnız şrift verir — qalanı brauzerin öz düymə görünüşüdür. Onsuz seçilməmiş iki addım boz
+// `buttonface` kartı kimi görünür və üçü də bir-birinə oxşayır.
+const tabClass =
+  'step group cursor-pointer rounded-2xl border border-transparent bg-transparent p-5 text-left text-ink transition-colors duration-300 hover:bg-[#FAFBFE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand aria-selected:border-hair aria-selected:bg-[#F7F9FD] aria-selected:shadow-[0_1px_2px_rgba(16,24,40,.04)]'
+const chipClass =
+  'flex h-10 w-10 font-bold shrink-0 items-center justify-center rounded-[9px] bg-[#EEF2FB] text-[14px] tracking-[0.06em] text-brand'
+const metricClass =
+  'shrink-0 rounded-full border border-hair px-2.5 py-1 font-mono text-[11px] text-slate-500'
 ---
-<section class="how" id="how">
-  <div class="wrap">
-    <div class="sec-head rv">
-      <span class="eyebrow">{t('how.eyebrow')}</span>
-      <h2>{t('how.title')}</h2>
-      <p>{t('how.sub')}</p>
+
+<section id="how" aria-labelledby="how-title" class="relative overflow-hidden bg-white py-20 lg:py-28">
+  <!-- Bölmənin üstü və altı: kənarlara doğru əriyən 1px xətt, ona görə maskalıdır. -->
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="glow pointer-events-none absolute inset-0" aria-hidden="true"></div>
+
+  {
+    decoPosition !== 'none' && (
+      <div
+        class:list={[
+          'deco pointer-events-none absolute -bottom-24 hidden w-105 md:block',
+          decoPosition === 'left' ? '-left-24' : '-right-24',
+        ]}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 336 336" width="100%" fill="currentColor" aria-hidden="true"><rect x="0" y="0" width="112" height="16" rx="1.5"/><rect x="176" y="0" width="16" height="16" rx="1.5"/><rect x="224" y="0" width="112" height="16" rx="1.5"/><rect x="0" y="16" width="16" height="16" rx="1.5"/><rect x="96" y="16" width="16" height="16" rx="1.5"/><rect x="128" y="16" width="16" height="16" rx="1.5"/><rect x="160" y="16" width="48" height="16" rx="1.5"/><rect x="224" y="16" width="16" height="16" rx="1.5"/><rect x="320" y="16" width="16" height="16" rx="1.5"/><rect x="0" y="32" width="16" height="16" rx="1.5"/><rect x="32" y="32" width="48" height="16" rx="1.5"/><rect x="96" y="32" width="16" height="16" rx="1.5"/><rect x="128" y="32" width="64" height="16" rx="1.5"/><rect x="224" y="32" width="16" height="16" rx="1.5"/><rect x="256" y="32" width="48" height="16" rx="1.5"/><rect x="320" y="32" width="16" height="16" rx="1.5"/><rect x="0" y="48" width="16" height="16" rx="1.5"/><rect x="32" y="48" width="48" height="16" rx="1.5"/><rect x="96" y="48" width="16" height="16" rx="1.5"/><rect x="128" y="48" width="16" height="16" rx="1.5"/><rect x="176" y="48" width="32" height="16" rx="1.5"/><rect x="224" y="48" width="16" height="16" rx="1.5"/><rect x="256" y="48" width="48" height="16" rx="1.5"/><rect x="320" y="48" width="16" height="16" rx="1.5"/><rect x="0" y="64" width="16" height="16" rx="1.5"/><rect x="32" y="64" width="48" height="16" rx="1.5"/><rect x="96" y="64" width="16" height="16" rx="1.5"/><rect x="224" y="64" width="16" height="16" rx="1.5"/><rect x="256" y="64" width="48" height="16" rx="1.5"/><rect x="320" y="64" width="16" height="16" rx="1.5"/><rect x="0" y="80" width="16" height="16" rx="1.5"/><rect x="96" y="80" width="16" height="16" rx="1.5"/><rect x="128" y="80" width="16" height="16" rx="1.5"/><rect x="160" y="80" width="16" height="16" rx="1.5"/><rect x="224" y="80" width="16" height="16" rx="1.5"/><rect x="320" y="80" width="16" height="16" rx="1.5"/><rect x="0" y="96" width="112" height="16" rx="1.5"/><rect x="128" y="96" width="32" height="16" rx="1.5"/><rect x="224" y="96" width="112" height="16" rx="1.5"/><rect x="128" y="112" width="16" height="16" rx="1.5"/><rect x="160" y="112" width="48" height="16" rx="1.5"/><rect x="16" y="128" width="80" height="16" rx="1.5"/><rect x="128" y="128" width="64" height="16" rx="1.5"/><rect x="224" y="128" width="32" height="16" rx="1.5"/><rect x="304" y="128" width="16" height="16" rx="1.5"/><rect x="48" y="144" width="16" height="16" rx="1.5"/><rect x="80" y="144" width="48" height="16" rx="1.5"/><rect x="256" y="144" width="16" height="16" rx="1.5"/><rect x="288" y="144" width="48" height="16" rx="1.5"/><rect x="16" y="160" width="16" height="16" rx="1.5"/><rect x="64" y="160" width="32" height="16" rx="1.5"/><rect x="112" y="160" width="16" height="16" rx="1.5"/><rect x="160" y="160" width="32" height="16" rx="1.5"/><rect x="208" y="160" width="32" height="16" rx="1.5"/><rect x="304" y="160" width="16" height="16" rx="1.5"/><rect x="32" y="176" width="48" height="16" rx="1.5"/><rect x="144" y="176" width="16" height="16" rx="1.5"/><rect x="176" y="176" width="16" height="16" rx="1.5"/><rect x="224" y="176" width="16" height="16" rx="1.5"/><rect x="256" y="176" width="16" height="16" rx="1.5"/><rect x="304" y="176" width="16" height="16" rx="1.5"/><rect x="16" y="192" width="16" height="16" rx="1.5"/><rect x="48" y="192" width="32" height="16" rx="1.5"/><rect x="96" y="192" width="16" height="16" rx="1.5"/><rect x="128" y="192" width="16" height="16" rx="1.5"/><rect x="160" y="192" width="64" height="16" rx="1.5"/><rect x="320" y="192" width="16" height="16" rx="1.5"/><rect x="144" y="208" width="16" height="16" rx="1.5"/><rect x="256" y="208" width="64" height="16" rx="1.5"/><rect x="0" y="224" width="112" height="16" rx="1.5"/><rect x="128" y="224" width="48" height="16" rx="1.5"/><rect x="224" y="224" width="80" height="16" rx="1.5"/><rect x="0" y="240" width="16" height="16" rx="1.5"/><rect x="96" y="240" width="16" height="16" rx="1.5"/><rect x="128" y="240" width="16" height="16" rx="1.5"/><rect x="160" y="240" width="16" height="16" rx="1.5"/><rect x="192" y="240" width="16" height="16" rx="1.5"/><rect x="224" y="240" width="16" height="16" rx="1.5"/><rect x="256" y="240" width="16" height="16" rx="1.5"/><rect x="304" y="240" width="16" height="16" rx="1.5"/><rect x="0" y="256" width="16" height="16" rx="1.5"/><rect x="32" y="256" width="48" height="16" rx="1.5"/><rect x="96" y="256" width="16" height="16" rx="1.5"/><rect x="128" y="256" width="48" height="16" rx="1.5"/><rect x="192" y="256" width="16" height="16" rx="1.5"/><rect x="224" y="256" width="16" height="16" rx="1.5"/><rect x="256" y="256" width="32" height="16" rx="1.5"/><rect x="320" y="256" width="16" height="16" rx="1.5"/><rect x="0" y="272" width="16" height="16" rx="1.5"/><rect x="32" y="272" width="48" height="16" rx="1.5"/><rect x="96" y="272" width="16" height="16" rx="1.5"/><rect x="160" y="272" width="32" height="16" rx="1.5"/><rect x="208" y="272" width="16" height="16" rx="1.5"/><rect x="0" y="288" width="16" height="16" rx="1.5"/><rect x="32" y="288" width="48" height="16" rx="1.5"/><rect x="96" y="288" width="16" height="16" rx="1.5"/><rect x="144" y="288" width="48" height="16" rx="1.5"/><rect x="208" y="288" width="48" height="16" rx="1.5"/><rect x="304" y="288" width="32" height="16" rx="1.5"/><rect x="0" y="304" width="16" height="16" rx="1.5"/><rect x="96" y="304" width="16" height="16" rx="1.5"/><rect x="176" y="304" width="16" height="16" rx="1.5"/><rect x="240" y="304" width="32" height="16" rx="1.5"/><rect x="304" y="304" width="32" height="16" rx="1.5"/><rect x="0" y="320" width="112" height="16" rx="1.5"/><rect x="176" y="320" width="80" height="16" rx="1.5"/><rect x="288" y="320" width="48" height="16" rx="1.5"/></svg>
+      </div>
+    )
+  }
+
+  <div class="wrap relative">
+    <div class="max-w-155">
+      <span
+        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('how.eyebrow')}
+      </span>
+      <h2
+        id="how-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('how.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('how.sub')}</p>
     </div>
-    <div class="steps">
-      <div class="step rv d1"><div class="n">01</div><h3>{t('how.s1t')}</h3><p>{t('how.s1d')}</p></div>
-      <div class="step rv d2"><div class="n">02</div><h3>{t('how.s2t')}</h3><p>{t('how.s2d')}</p></div>
-      <div class="step rv d3"><div class="n">03</div><h3>{t('how.s3t')}</h3><p>{t('how.s3d')}</p></div>
+
+    <!-- ══════════ DESKTOP ══════════ -->
+    <div
+      id="howDesk"
+      data-state="running"
+      class="mt-14 hidden lg:grid lg:grid-cols-[minmax(0,400px)_1fr] lg:gap-14"
+    >
+      <div class="rv d3 relative">
+        <!--
+          Ardıcıllıq relsi: nömrə çiplərinin mərkəzindən keçən şaquli xətt, üstündə aktiv addıma
+          qədər dolan brand qatı. Mövqeyi və hündürlüyü JS çip mərkəzlərindən ölçür — sərt yazılmış
+          piksel dəyəri şrift yüklənəndə və ya mətn iki sətrə düşəndə yerindən çıxır.
+          Üfüqi mövqe (left-10) isə çipin enindən asılıdır: p-5 (20px) + çipin yarısı (20px). Çipin
+          ölçüsü dəyişsə, bu rəqəm və aşağıdakı pl-13 / ml-13 də onunla birlikdə dəyişməlidir.
+        -->
+        <div data-rail class="pointer-events-none absolute left-10 z-1 w-px bg-hair" aria-hidden="true">
+          <div
+            data-rail-fill
+            class="w-full bg-brand transition-[height] duration-500 ease-[cubic-bezier(.22,.61,.36,1)]"
+            style="height:0"
+          >
+          </div>
+        </div>
+
+        <div role="tablist" aria-label={t('how.tabs')} aria-orientation="vertical" class="flex flex-col gap-2">
+          {
+            steps.map((s, i) => (
+              <button
+                type="button"
+                role="tab"
+                id={`how-tab-${i + 1}`}
+                aria-controls={`how-panel-${i + 1}`}
+                aria-selected={i === 0 ? 'true' : 'false'}
+                tabindex={i === 0 ? 0 : -1}
+                class={tabClass}
+              >
+                <span class="flex items-center gap-3">
+                  {/* Çip relsin ÜSTÜNDƏ durur: z-2 onu xəttin üstünə qaldırır, ring-4 isə
+                      ətrafında fon rəngində halqa çəkib xətti çipin altından kəsir. */}
+                  <span
+                    data-chip
+                    class={`${chipClass} relative z-2 ring-4 ring-white transition-colors group-aria-selected:bg-brand group-aria-selected:text-white group-aria-selected:ring-[#F7F9FD]`}
+                  >
+                    {s.n}
+                  </span>
+                  <span class="text-[17px] font-medium tracking-[-0.01em]">{t(s.title)}</span>
+                  <span
+                    class={`${metricClass} ml-auto transition-colors group-aria-selected:border-[#D7E0F7] group-aria-selected:bg-white group-aria-selected:text-brand`}
+                  >
+                    {t(s.metric)}
+                  </span>
+                </span>
+                <span class="mt-3 block pl-13 text-[14.5px] leading-[1.7] text-ink2">{t(s.desc)}</span>
+                {/* Növbəti addıma keçid bu xəttin animationend hadisəsi ilə olur — setInterval yox. */}
+                <span class="hw-bar mt-4 ml-13 block h-0.5 overflow-hidden rounded-full bg-hair opacity-0 transition-opacity duration-300 group-aria-selected:opacity-100">
+                  <i />
+                </span>
+              </button>
+            ))
+          }
+        </div>
+      </div>
+
+      <div class="rv d4">
+        <div class="relative h-105 overflow-hidden rounded-2xl border border-hair bg-page">
+          <div class="stage-grid pointer-events-none absolute inset-0"></div>
+
+          {
+            steps.map((_, i) => (
+              <div
+                id={`how-panel-${i + 1}`}
+                role="tabpanel"
+                aria-labelledby={`how-tab-${i + 1}`}
+                tabindex={i === 0 ? 0 : -1}
+                data-active={i === 0 ? 'true' : 'false'}
+                aria-hidden={i === 0 ? undefined : 'true'}
+                class="scene stage absolute inset-0 flex items-center justify-center"
+              >
+                <div class="w-full max-w-135 px-4">
+                  <HowStepVisual step={(i + 1) as 1 | 2 | 3} idSuffix="d" />
+                </div>
+                {i === 1 && (
+                  <div class="pointer-events-none absolute top-1/2 left-6 flex -translate-y-1/2 flex-col gap-2">
+                    {checks.map((c) => (
+                      <span class="hchip inline-flex items-center gap-1.5 rounded-full border border-hair bg-white px-3 py-1.5 text-[12px] font-medium shadow-[0_1px_2px_rgba(16,24,40,.05)]">
+                        <span class="flex h-4 w-4 items-center justify-center rounded-full bg-[#EAF0FC] text-brand">
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 12 12"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M2.4 6.4 4.8 8.8 9.6 3.6" />
+                          </svg>
+                        </span>
+                        {t(c)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          }
+        </div>
+      </div>
     </div>
+
+    <!-- ══════════ MOBİL ══════════ -->
+    <ol role="list" class="mt-10 flex flex-col gap-5 lg:hidden">
+      {
+        steps.map((s, i) => (
+          <li
+            data-active="false"
+            class={`scene rv d${i + 1} overflow-hidden rounded-2xl border border-hair bg-white`}
+          >
+            <div class="relative flex h-55 items-center justify-center bg-page">
+              <div class="w-full max-w-72.5 px-2">
+                <HowStepVisual step={(i + 1) as 1 | 2 | 3} idSuffix="m" />
+              </div>
+            </div>
+            <div class="p-5">
+              <div class="flex items-center gap-3">
+                <span class={chipClass}>{s.n}</span>
+                <h3 class="text-[17px] font-medium tracking-[-0.01em] text-ink">{t(s.title)}</h3>
+              </div>
+              <p class="mt-3 text-[14.5px] leading-[1.7] text-ink2">{t(s.desc)}</p>
+              {i === 1 && (
+                <div class="mt-4 flex flex-wrap gap-1.5">
+                  {checks.map((c) => (
+                    <span class="hchip inline-flex items-center gap-1.5 rounded-full border border-hair bg-white px-2.5 py-1 text-[12px] font-medium">
+                      <span class="text-brand">
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 12 12"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M2.4 6.4 4.8 8.8 9.6 3.6" />
+                        </svg>
+                      </span>
+                      {t(c)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <span class={`${metricClass} mt-4 inline-flex`}>{t(s.metric)}</span>
+            </div>
+          </li>
+        ))
+      }
+    </ol>
   </div>
+</section>
+
+<style>
+  /*
+    Bölmənin bütün stili burada. Səhnələrin `.an-*` qarmaqları HowStepVisual.astro-dadır, amma
+    onları hərəkətə gətirən qaydalar da buradadır: @keyframes adı Astro-da scope olunmur (bax
+    Problem.astro-dakı qeyd), ona görə eyni keyframe-i iki komponentdə yazmaqdansa bir hərəkət
+    lüğətini bir faylda saxlamaq daha təhlükəsizdir. Başqa komponentdəki elementə çatmaq üçün
+    :global() işlənir — ana seçici (`.scene`) bu komponentdə olduğuna görə qayda kənara sızmır.
+
+    Ad prefiksi qəsdəndir: styles/global.css-də otuza yaxın keyframe var və onlardan biri elə
+    `fill` adlanır.
+  */
+  :root {
+    --how-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  /* Kənarlara doğru əriyən üst/alt xətt. */
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+
+  /* Hero və Problem bölmələrindəki eyni brand işığı — rəng tokendən gəlir, hex təkrarlanmır. */
+  .glow {
+    background: radial-gradient(
+      760px 360px at 14% -10%,
+      color-mix(in oklab, var(--color-brand) 6%, transparent),
+      transparent 70%
+    );
+  }
+
+  .deco {
+    color: #dce3ef;
+    opacity: 0.6;
+    -webkit-mask-image: radial-gradient(72% 72% at 55% 52%, #000, transparent);
+    mask-image: radial-gradient(72% 72% at 55% 52%, #000, transparent);
+  }
+
+  /* Səhnənin arxasındakı nöqtə şəbəkəsi. */
+  .stage-grid {
+    background-image: radial-gradient(#d7deea 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: 0.6;
+    -webkit-mask-image: radial-gradient(70% 70% at 50% 45%, #000, transparent);
+    mask-image: radial-gradient(70% 70% at 50% 45%, #000, transparent);
+  }
+
+  /* ---------- Səhnə keçidi (yalnız desktop paneli) ---------- */
+  .stage {
+    opacity: 0;
+    transform: scale(0.985);
+    transition:
+      opacity 0.5s ease,
+      transform 0.5s ease;
+  }
+
+  .stage[data-active='true'] {
+    opacity: 1;
+    transform: none;
+  }
+
+  /*
+    ---------- Progress xətti ----------
+    Növbəti addıma keçidi bu animasiyanın `animationend` hadisəsi verir, setInterval yox: belə
+    olanda gözün gördüyü xətt ilə keçid heç vaxt bir-birindən aralanmır — fon tabında brauzer
+    animasiyanı dayandırırsa, keçid də dayanır.
+  */
+  .hw-bar > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--color-brand);
+    border-radius: 999px;
+  }
+
+  .step[aria-selected='true'] .hw-bar > i {
+    animation: hw-fill 7s linear forwards;
+  }
+
+  [data-state='paused'] .step[aria-selected='true'] .hw-bar > i {
+    animation-play-state: paused;
+  }
+
+  /* Nəzarət istifadəçiyə keçəndə xətt tamam yox olur — daha heç nə saymır. */
+  [data-state='manual'] .hw-bar {
+    opacity: 0 !important;
+  }
+
+  @keyframes hw-fill {
+    to {
+      width: 100%;
+    }
+  }
+
+  /* ---------- Səhnə animasiyaları ---------- */
+  /* Yalnız aktiv səhnədə işləyir; addım dəyişəndə element yenidən görünür və animasiya sıfırdan
+     başlayır. Nə sıçrayış, nə yay effekti — hamısı eyni əyri üzərindədir. */
+  .scene[data-active='true'] :global(.an-poster),
+  .scene[data-active='true'] :global(.an-phone),
+  .scene[data-active='true'] :global(.an-win) {
+    animation: hw-rise 0.85s var(--how-ease) both;
+  }
+
+  .scene[data-active='true'] :global(.an-badge) {
+    animation: hw-pop 0.55s var(--how-ease) 0.35s both;
+  }
+
+  .scene[data-active='true'] :global(.an-badge-2) {
+    animation-delay: 0.6s;
+  }
+
+  .scene[data-active='true'] :global(.an-ok) {
+    animation: hw-pop 0.55s var(--how-ease) 1.5s both;
+  }
+
+  .scene[data-active='true'] :global(.an-scan) {
+    animation: hw-sweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) 0.4s infinite;
+  }
+
+  .scene[data-active='true'] :global(.an-row) {
+    animation: hw-row 0.5s var(--how-ease) 0.55s both;
+  }
+
+  .scene[data-active='true'] :global(.an-row-2) {
+    animation-delay: 0.8s;
+  }
+
+  .scene[data-active='true'] :global(.an-row-3) {
+    animation-delay: 1.05s;
+  }
+
+  .scene[data-active='true'] :global(.an-pulse) {
+    animation: hw-pulse 2.4s ease-out infinite;
+  }
+
+  /* Məkan / Cihaz / Şəkil — SVG-nin içində deyil, üstündə HTML çipləridir, çünki onlar tərcümə
+     olunan mətndir. 0.4s / 0.7s / 1.0s: skan xətti gəzərkən bir-bir yanır. */
+  .scene[data-active='true'] .hchip {
+    animation: hw-pop 0.5s var(--how-ease) both;
+  }
+
+  .scene[data-active='true'] .hchip:nth-child(1) {
+    animation-delay: 0.4s;
+  }
+
+  .scene[data-active='true'] .hchip:nth-child(2) {
+    animation-delay: 0.7s;
+  }
+
+  .scene[data-active='true'] .hchip:nth-child(3) {
+    animation-delay: 1s;
+  }
+
+  /* SVG elementinin transform başlanğıcı öz sərhədindən ölçülsün, bütün rəsmin deyil. */
+  .scene :global(.an-poster),
+  .scene :global(.an-phone),
+  .scene :global(.an-win),
+  .scene :global(.an-badge),
+  .scene :global(.an-ok),
+  .scene :global(.an-row),
+  .scene :global(.an-pulse) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @keyframes hw-rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes hw-pop {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.94);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes hw-row {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes hw-sweep {
+    0% {
+      transform: translateY(-17px);
+      opacity: 0;
+    }
+    12% {
+      opacity: 0.85;
+    }
+    50% {
+      transform: translateY(17px);
+      opacity: 0.85;
+    }
+    62% {
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(-17px);
+      opacity: 0;
+    }
+  }
+
+  @keyframes hw-pulse {
+    0% {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+    70% {
+      opacity: 0;
+      transform: scale(2.6);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(2.6);
+    }
+  }
+
+  /*
+    global.css onsuz da `* { animation:none !important; transition:none !important }` yazır, ona
+    görə burada yalnız onun görmədiyi şey qalır: `both` doldurma rejimi işləmədiyinə görə bütün
+    elementlər öz təbii halında görünür, amma sayğac kimi oxunan progress xətti mənasız qalır —
+    gizlədilir.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    .hw-bar {
+      display: none;
+    }
+
+    .stage[data-active='true'] {
+      opacity: 1;
+    }
+  }
+</style>
+
+<script>
+  /*
+    İki müstəqil parça: desktop tab maşını və mobil kartların bir dəfəlik animasiyası. Xarici
+    kitabxana yoxdur, şəbəkə sorğusu yoxdur.
+
+    Layihədə Astro View Transitions (ClientRouter) işlənmir — BaseLayout onu idxal etmir — ona görə
+    bu skript səhifə başına bir dəfə işləyir. ClientRouter əlavə olunsa, hər iki parçanı `init()`
+    içinə yığıb `astro:page-load`-a bağlamaq və `astro:before-swap`-da observer-ləri
+    `disconnect()` etmək lazımdır.
+  */
+  const root = document.getElementById('howDesk')
+
+  if (root) {
+    const list = root.querySelector('[role="tablist"]') as HTMLElement
+    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+    const panels = Array.from(root.querySelectorAll<HTMLElement>('[role="tabpanel"]'))
+    const rail = root.querySelector('[data-rail]') as HTMLElement
+    const fill = root.querySelector('[data-rail-fill]') as HTMLElement
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    // manual: istifadəçi idarəni götürüb — avtomatik keçid bir daha başlamır.
+    // hold: hover və ya fokus; visible: bölmə ekrandadır. Hər ikisi müvəqqəti dayandırır.
+    let cur = 0
+    let manual = reduce
+    let hold = false
+    let visible = false
+
+    // Saytda analitika qoşulsa, bu hadisəni dinləmək kifayətdir. Burada kitabxana əlavə edilmir.
+    const track = (step: number, source: 'click' | 'keyboard' | 'auto') => {
+      window.dispatchEvent(
+        new CustomEvent('qrlog:track', { detail: { event: 'how_step', step, source } })
+      )
+    }
+
+    // Relsin başı, sonu və dolğunluğu çip mərkəzlərindən ölçülür — sərt yazılmış piksel dəyəri
+    // şrift yüklənəndə və ya başlıq iki sətrə düşəndə xətti çiplərdən qoparır.
+    const chipCenter = (i: number) => {
+      const c = tabs[i].querySelector('[data-chip]') as HTMLElement
+      const r = c.getBoundingClientRect()
+      return r.top - list.getBoundingClientRect().top + r.height / 2
+    }
+
+    const layoutRail = () => {
+      const a = chipCenter(0)
+      const b = chipCenter(tabs.length - 1)
+      rail.style.top = a + 'px'
+      rail.style.height = b - a + 'px'
+      fill.style.height = chipCenter(cur) - a + 'px'
+    }
+
+    const sync = () => {
+      root.dataset.state = manual ? 'manual' : visible && !hold ? 'running' : 'paused'
+    }
+
+    const show = (i: number, source?: 'click' | 'keyboard' | 'auto') => {
+      cur = i
+      tabs.forEach((tab, k) => {
+        const on = k === i
+        tab.setAttribute('aria-selected', on ? 'true' : 'false')
+        tab.tabIndex = on ? 0 : -1
+        // Animasiyanı sıfırdan başlatmaq: sinfi silib reflow oxumaq, sonra qaytarmaq.
+        const bar = tab.querySelector('.hw-bar > i') as HTMLElement | null
+        if (on && bar) {
+          bar.style.animation = 'none'
+          void bar.offsetWidth
+          bar.style.animation = ''
+        }
+      })
+      panels.forEach((p, k) => {
+        const on = k === i
+        p.dataset.active = on ? 'true' : 'false'
+        // Fokuslana bilən element aria-hidden-in içində qalmamalıdır, ona görə tabindex də dəyişir.
+        p.tabIndex = on ? 0 : -1
+        if (on) p.removeAttribute('aria-hidden')
+        else p.setAttribute('aria-hidden', 'true')
+      })
+      layoutRail()
+      if (source) track(i + 1, source)
+    }
+
+    const stopAuto = () => {
+      manual = true
+      sync()
+    }
+
+    tabs.forEach((tab, k) => {
+      tab.addEventListener('click', () => {
+        stopAuto()
+        show(k, 'click')
+      })
+      // Sonsuz dövr: 03 bitəndə yenidən 01.
+      tab.querySelector('.hw-bar > i')!.addEventListener('animationend', () => {
+       if (!manual) show((cur + 1) % tabs.length, 'auto')
+      })
+    })
+
+    list.addEventListener('keydown', (e: KeyboardEvent) => {
+      const n = tabs.length
+      let to: number | null = null
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') to = (cur + 1) % n
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') to = (cur - 1 + n) % n
+      else if (e.key === 'Home') to = 0
+      else if (e.key === 'End') to = n - 1
+      if (to === null) return
+      e.preventDefault()
+      stopAuto()
+      show(to, 'keyboard')
+      tabs[to].focus()
+    })
+
+    root.addEventListener('mouseenter', () => {
+      hold = true
+      sync()
+    })
+    root.addEventListener('mouseleave', () => {
+      hold = false
+      sync()
+    })
+    root.addEventListener('focusin', () => {
+      hold = true
+      sync()
+    })
+    root.addEventListener('focusout', (e) => {
+      if (!root.contains(e.relatedTarget as Node)) {
+        hold = false
+        sync()
+      }
+    })
+
+    // Ekranda olmayan bölmə saymır — nə CPU yandırır, nə də oxucunun görmədiyi kadrı keçir.
+    new IntersectionObserver(
+      (entries) => {
+        visible = entries[0].isIntersecting
+        sync()
+      },
+      { threshold: 0.3 }
+    ).observe(root)
+
+    addEventListener('resize', layoutRail)
+    if (document.fonts) document.fonts.ready.then(layoutRail)
+
+    show(0)
+    sync()
+  }
+
+  // Mobil: avtomatik keçid yoxdur. Hər kartın animasiyası kart ekrana girəndə bir dəfə işləyir.
+  const cards = document.querySelectorAll<HTMLElement>('#how ol .scene')
+  if (cards.length) {
+    const cardIo = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return
+          ;(e.target as HTMLElement).dataset.active = 'true'
+          cardIo.unobserve(e.target)
+        })
+      },
+      { threshold: 0.45 }
+    )
+    cards.forEach((c) => cardIo.observe(c))
+  }
+</script>
 </section>

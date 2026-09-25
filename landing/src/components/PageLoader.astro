@@ -1,0 +1,660 @@
+---
+/*
+  Sayta ilk girişdə və hər refresh-də görünən yüklənmə ekranı — kamera vizörü.
+
+*/
+import { useTranslations, type Lang } from '../i18n/ui'
+
+interface Props {
+  lang: Lang
+  /**
+   * Vizörün fonu — arxasındakı ilk ekranla eyni olmalıdır, yoxsa keçiddə rəng sıçrayır.
+   * Verilmirsə global.css-in --paper tokeni işləyir (#F5F6FA, ana səhifənin Hero fonu);
+   * ağ <PageHero> ilə açılan səhifələr BaseLayout vasitəsilə --white göndərir.
+   */
+  bg?: string
+}
+
+const { lang, bg } = Astro.props
+const t = useTranslations(lang)
+---
+
+<div id="qrl" role="status" aria-live="polite" style={bg ? `--qrl-page:${bg}` : undefined}>
+  <span class="qrl-sr">{t('loader.aria')}</span>
+  <div class="qrl-bg"></div>
+
+  <span class="qrl-b qrl-tl" aria-hidden="true"></span>
+  <span class="qrl-b qrl-tr" aria-hidden="true"></span>
+  <span class="qrl-b qrl-bl" aria-hidden="true"></span>
+  <span class="qrl-b qrl-br" aria-hidden="true"></span>
+
+  <div class="qrl-m" aria-hidden="true">
+    <svg viewBox="0 0 72 72">
+      <rect class="o" x="2" y="2" width="20" height="20" rx="5" style="--w:0"></rect>
+      <rect x="8" y="8" width="8" height="8" rx="2" style="--w:0"></rect>
+      <rect class="o" x="50" y="2" width="20" height="20" rx="5" style="--w:.45"></rect>
+      <rect x="56" y="8" width="8" height="8" rx="2" style="--w:.45"></rect>
+      <rect class="o" x="2" y="50" width="20" height="20" rx="5" style="--w:.45"></rect>
+      <rect x="8" y="56" width="8" height="8" rx="2" style="--w:.45"></rect>
+
+      <rect x="30" y="3" width="6" height="6" rx="1.5" style="--w:.22"></rect>
+      <rect x="39" y="12" width="6" height="6" rx="1.5" style="--w:.33"></rect>
+      <rect x="30" y="21" width="6" height="6" rx="1.5" style="--w:.33"></rect>
+      <rect x="3" y="30" width="6" height="6" rx="1.5" style="--w:.22"></rect>
+      <rect x="14" y="30" width="6" height="6" rx="1.5" style="--w:.3"></rect>
+      <rect x="30" y="30" width="6" height="6" rx="1.5" style="--w:.42"></rect>
+      <rect x="39" y="30" width="6" height="6" rx="1.5" style="--w:.48"></rect>
+      <rect x="55" y="30" width="6" height="6" rx="1.5" style="--w:.6"></rect>
+      <rect x="64" y="39" width="6" height="6" rx="1.5" style="--w:.72"></rect>
+      <rect x="30" y="41" width="6" height="6" rx="1.5" style="--w:.55"></rect>
+      <rect x="46" y="45" width="6" height="6" rx="1.5" style="--w:.66"></rect>
+      <rect x="30" y="55" width="6" height="6" rx="1.5" style="--w:.65"></rect>
+      <rect x="52" y="55" width="15" height="15" rx="3.5" style="--w:.95"></rect>
+      <rect x="39" y="64" width="6" height="6" rx="1.5" style="--w:.8"></rect>
+    </svg>
+  </div>
+
+  <div class="qrl-cap" aria-hidden="true">
+    <span class="qrl-scan">{t('loader.scanning')}</span>
+    <span class="qrl-ok"
+      ><svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"><path d="M2.2 6.3 4.8 8.9 9.8 3.4"></path></svg
+      >{t('loader.done')} · <time id="qrl-time">00:00</time></span
+    >
+  </div>
+</div>
+
+<style is:inline>
+  #qrl {
+    --qrl-page: var(--paper, #f5f6fa);
+    --qrl-ink: #111211;
+    --qrl-brand: #1d4ed8;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    /* JS ölsə vizör 4.5s-də özü gedir; finish() bunu söndürür. */
+    animation: qrl-failsafe 0s linear 4.5s forwards;
+  }
+
+  @keyframes qrl-failsafe {
+    to {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  .qrl-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .qrl-bg {
+    position: absolute;
+    inset: 0;
+    background: var(--qrl-page);
+    transition: opacity 0.42s cubic-bezier(0.4, 0, 0.2, 1) 0.16s;
+  }
+
+  #qrl.is-leaving {
+    pointer-events: none;
+  }
+
+  #qrl.is-leaving .qrl-bg {
+    opacity: 0;
+  }
+
+  /* ---------- Vizörün dörd küncü ---------- */
+  /* Baza transform burada, keyframe-də yox: reduce rejimində keyframe-lər söndürülür. */
+  .qrl-b {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 22px;
+    height: 22px;
+    border: 0 solid var(--qrl-ink);
+    transform: translate(var(--x), var(--y));
+    transition: border-color 0.18s ease;
+    animation:
+      qrl-b-in 0.62s cubic-bezier(0.16, 1, 0.3, 1) var(--d) both,
+      qrl-b-hunt 2.3s cubic-bezier(0.45, 0, 0.55, 1) calc(var(--d) + 0.62s) infinite;
+  }
+
+  .qrl-tl {
+    --x: -64px;
+    --y: -64px;
+    --d: 0s;
+    border-top-width: 2.5px;
+    border-left-width: 2.5px;
+    border-top-left-radius: 7px;
+  }
+
+  .qrl-tr {
+    --x: 64px;
+    --y: -64px;
+    --d: 0.09s;
+    border-top-width: 2.5px;
+    border-right-width: 2.5px;
+    border-top-right-radius: 7px;
+    margin-left: -22px;
+  }
+
+  .qrl-bl {
+    --x: -64px;
+    --y: 64px;
+    --d: 0.13s;
+    border-bottom-width: 2.5px;
+    border-left-width: 2.5px;
+    border-bottom-left-radius: 7px;
+    margin-top: -22px;
+  }
+
+  .qrl-br {
+    --x: 64px;
+    --y: 64px;
+    --d: 0.04s;
+    border-bottom-width: 2.5px;
+    border-right-width: 2.5px;
+    border-bottom-right-radius: 7px;
+    margin-left: -22px;
+    margin-top: -22px;
+  }
+
+  /* Kənardan gəlir, bir az içəri keçir, yerinə oturur. */
+  @keyframes qrl-b-in {
+    0% {
+      opacity: 0;
+      transform: translate(calc(var(--x) * 1.9), calc(var(--y) * 1.9));
+    }
+    62% {
+      opacity: 1;
+      transform: translate(calc(var(--x) * 0.93), calc(var(--y) * 0.93));
+    }
+    100% {
+      opacity: 1;
+      transform: translate(var(--x), var(--y));
+    }
+  }
+
+  /* Fokus axtarışı — qəsdən qeyri-bərabər, kamera kimi. */
+  @keyframes qrl-b-hunt {
+    0% {
+      transform: translate(var(--x), var(--y));
+    }
+    23% {
+      transform: translate(calc(var(--x) * 0.955), calc(var(--y) * 0.955));
+    }
+    41% {
+      transform: translate(calc(var(--x) * 0.985), calc(var(--y) * 0.985));
+    }
+    58% {
+      transform: translate(calc(var(--x) * 0.94), calc(var(--y) * 0.94));
+    }
+    100% {
+      transform: translate(var(--x), var(--y));
+    }
+  }
+
+  /* ---------- QR nişanı: bulanıq başlayır, fokuslanır ---------- */
+  .qrl-m {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 72px;
+    height: 72px;
+    margin: -36px 0 0 -36px;
+    opacity: 0;
+    filter: blur(7px);
+    animation:
+      qrl-m-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.18s forwards,
+      qrl-m-hunt 2.3s cubic-bezier(0.45, 0, 0.55, 1) 0.9s infinite;
+  }
+
+  .qrl-m svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  @keyframes qrl-m-in {
+    to {
+      opacity: 1;
+      filter: blur(1.6px);
+    }
+  }
+
+  @keyframes qrl-m-hunt {
+    0% {
+      filter: blur(1.6px);
+    }
+    23% {
+      filter: blur(0.4px);
+    }
+    41% {
+      filter: blur(1.1px);
+    }
+    58% {
+      filter: blur(0px);
+    }
+    76% {
+      filter: blur(0.9px);
+    }
+    100% {
+      filter: blur(1.6px);
+    }
+  }
+
+  .qrl-m rect {
+    fill: var(--qrl-ink);
+    transition: fill 0.16s ease calc(var(--w, 0) * 190ms);
+  }
+
+  .qrl-m .o {
+    fill: none;
+    stroke: var(--qrl-ink);
+    stroke-width: 3.2;
+    transition: stroke 0.16s ease calc(var(--w, 0) * 190ms);
+  }
+
+  /* ---------- Alt yazı ---------- */
+  .qrl-cap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% + 96px);
+    display: flex;
+    justify-content: center;
+    padding: 0 16px;
+    /* font-family: 'IBM Plex Mono', ui-monospace, monospace; */
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-align: center;
+    color: #64748b;
+    opacity: 0;
+    animation: qrl-cap-in 0.4s ease 0.55s forwards;
+  }
+
+  @keyframes qrl-cap-in {
+    to {
+      opacity: 1;
+    }
+  }
+
+  .qrl-cap .qrl-scan::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 11px;
+    margin-left: 6px;
+    vertical-align: -1px;
+    background: currentColor;
+    animation: qrl-caret 1s steps(1) infinite;
+  }
+
+  @keyframes qrl-caret {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  .qrl-cap .qrl-ok {
+    display: none;
+    max-width: 100%;
+    color: var(--qrl-brand);
+  }
+
+  .qrl-cap .qrl-ok svg {
+    vertical-align: -2px;
+    margin-right: 6px;
+  }
+
+  /* ---------- Desktop: vizör ~1.35x böyük (mobil olduğu kimi qalır) ---------- */
+  /* Yalnız ölçülər: keyframe-lər --x/--y-dən hesablanır, çıxış isə vw/vh ilə. */
+  @media (min-width: 1024px) {
+    .qrl-b {
+      width: 30px;
+      height: 30px;
+    }
+
+    .qrl-tl {
+      --x: -86px;
+      --y: -86px;
+      border-top-width: 3px;
+      border-left-width: 3px;
+      border-top-left-radius: 9px;
+    }
+
+    .qrl-tr {
+      --x: 86px;
+      --y: -86px;
+      border-top-width: 3px;
+      border-right-width: 3px;
+      border-top-right-radius: 9px;
+      margin-left: -30px;
+    }
+
+    .qrl-bl {
+      --x: -86px;
+      --y: 86px;
+      border-bottom-width: 3px;
+      border-left-width: 3px;
+      border-bottom-left-radius: 9px;
+      margin-top: -30px;
+    }
+
+    .qrl-br {
+      --x: 86px;
+      --y: 86px;
+      border-bottom-width: 3px;
+      border-right-width: 3px;
+      border-bottom-right-radius: 9px;
+      margin-left: -30px;
+      margin-top: -30px;
+    }
+
+    .qrl-m {
+      width: 96px;
+      height: 96px;
+      margin: -48px 0 0 -48px;
+    }
+
+    .qrl-cap {
+      top: calc(50% + 128px);
+      font-size: 12px;
+      letter-spacing: 0.16em;
+    }
+
+    .qrl-cap .qrl-scan::after {
+      width: 7px;
+      height: 12px;
+    }
+  }
+
+  /* ---------- UĞUR: kod oxundu ---------- */
+  #qrl.is-success .qrl-b {
+    border-color: var(--qrl-brand);
+    animation: qrl-b-snap 0.34s cubic-bezier(0.3, 1.5, 0.5, 1) forwards;
+  }
+
+  @keyframes qrl-b-snap {
+    0% {
+      transform: translate(var(--x), var(--y));
+    }
+    45% {
+      transform: translate(calc(var(--x) * 0.86), calc(var(--y) * 0.86));
+    }
+    100% {
+      transform: translate(calc(var(--x) * 0.92), calc(var(--y) * 0.92));
+    }
+  }
+
+  #qrl.is-success .qrl-m {
+    animation: none;
+    opacity: 1;
+    filter: blur(0);
+    transition: filter 0.12s ease;
+  }
+
+  #qrl.is-success .qrl-m rect {
+    fill: var(--qrl-brand);
+  }
+
+  /* fill:none TƏKRAR DEYİL: yuxarıdakı `.is-success .qrl-m rect` qaydası daha spesifikdir və
+     halqaları da doldurardı — finder-lər dolu kvadrata çevrilərdi. */
+  #qrl.is-success .qrl-m .o {
+    fill: none;
+    stroke: var(--qrl-brand);
+  }
+
+  #qrl.is-success .qrl-scan {
+    display: none;
+  }
+
+  #qrl.is-success .qrl-ok {
+    display: inline;
+  }
+
+  /* ---------- ÇIXIŞ: vizör ekranın kənarlarına açılır ---------- */
+  #qrl.is-leaving .qrl-b {
+    animation: qrl-b-out 0.62s cubic-bezier(0.7, 0, 0.18, 1) forwards;
+  }
+
+  #qrl.is-leaving .qrl-tl {
+    --ex: calc(-50vw + 18px);
+    --ey: calc(-50vh + 18px);
+  }
+
+  #qrl.is-leaving .qrl-tr {
+    --ex: calc(50vw - 18px);
+    --ey: calc(-50vh + 18px);
+  }
+
+  #qrl.is-leaving .qrl-bl {
+    --ex: calc(-50vw + 18px);
+    --ey: calc(50vh - 18px);
+  }
+
+  #qrl.is-leaving .qrl-br {
+    --ex: calc(50vw - 18px);
+    --ey: calc(50vh - 18px);
+  }
+
+  @keyframes qrl-b-out {
+    0% {
+      transform: translate(calc(var(--x) * 0.92), calc(var(--y) * 0.92));
+      opacity: 1;
+    }
+    78% {
+      opacity: 1;
+    }
+    100% {
+      transform: translate(var(--ex), var(--ey));
+      opacity: 0;
+    }
+  }
+
+  #qrl.is-leaving .qrl-m {
+    transition:
+      opacity 0.22s ease,
+      transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  #qrl.is-leaving .qrl-cap {
+    transition: opacity 0.18s ease;
+    opacity: 0;
+  }
+
+  /* ---------- Səhifə: kilid, sonra oturma ---------- */
+  /* html və body birlikdə, yoxsa kiliddə en 15px daralır. */
+  html.qrl-lock {
+    overflow: hidden;
+    scrollbar-gutter: stable;
+  }
+
+  html.qrl-lock body {
+    overflow: hidden;
+  }
+
+  /* Sarğı loader-dən kənardadır (BaseLayout); opacity qəsdən yoxdur — LCP. */
+  html.qrl-reveal .qrl-page {
+    transform-origin: 50% 40vh;
+    animation: qrl-page-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+  }
+
+  @keyframes qrl-page-in {
+    from {
+      transform: scale(1.018);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  /* global.css onsuz da dondurur; burada yalnız statik hal. */
+  @media (prefers-reduced-motion: reduce) {
+    .qrl-m {
+      opacity: 1;
+      filter: none;
+    }
+
+    .qrl-cap {
+      opacity: 1;
+    }
+  }
+
+  /* `theme` `base`-dən əvvəldir: important-da layer sırası tərsinədir. */
+  @layer theme {
+    @media (prefers-reduced-motion: reduce) {
+      #qrl {
+        animation: qrl-failsafe 0s linear 4.5s forwards !important;
+      }
+    }
+  }
+</style>
+
+<noscript
+  ><style>
+    #qrl {
+      display: none;
+    }
+    html.qrl-lock {
+      overflow: visible;
+      scrollbar-gutter: auto;
+    }
+    html.qrl-lock body {
+      overflow-x: hidden;
+      overflow-y: visible;
+    }
+  </style></noscript
+>
+
+<script is:inline>
+  /* 1400 + 2050 + 800 + 640 → vizör ekranda ən çox 3.49 saniyə. */
+  ;(function () {
+    if (window.__qrl) return
+    window.__qrl = 1
+
+    var MIN = 1400,
+      MAX = 2050,
+      SUCCESS = 800,
+      LEAVE = 640,
+      REVEAL = 900
+    var root = document.documentElement
+    var el = document.getElementById('qrl')
+    if (!el) return
+    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    var done = false
+    var timers = []
+
+    function noop() {}
+    function later(fn, ms) {
+      timers.push(setTimeout(fn, ms))
+    }
+
+    /* bfcache və astro:after-swap; id ilə yenidən tapılır. */
+    function kill() {
+      done = true
+      for (var i = 0; i < timers.length; i++) clearTimeout(timers[i])
+      timers = []
+      var n = document.getElementById('qrl')
+      if (n) n.remove()
+      root.classList.remove('qrl-lock')
+      root.classList.remove('qrl-reveal')
+    }
+
+    function stamp() {
+      var d = new Date()
+      var p = function (n) {
+        return (n < 10 ? '0' : '') + n
+      }
+      var f = el.querySelector('#qrl-time')
+      if (f) f.textContent = p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+
+    function finish() {
+      if (done) return
+      done = true
+      el.style.setProperty('animation', 'none', 'important') /* failsafe söndü */
+      stamp()
+      el.classList.add('is-success')
+      later(leave, reduce ? 150 : SUCCESS)
+    }
+
+    function leave() {
+      /* Sarğı bütün sənəddir — mərkəz ekrana görə. */
+      var pg = document.querySelector('.qrl-page')
+      if (pg) pg.style.transformOrigin = '50% ' + Math.round(scrollY + innerHeight * 0.4) + 'px'
+
+      root.classList.remove('qrl-lock')
+      root.classList.add('qrl-reveal')
+      later(function () {
+        root.classList.remove('qrl-reveal')
+      }, REVEAL)
+
+      if (reduce) {
+        /* reduce: transition ölüdür, WAAPI deyil. */
+        if (el.animate) {
+          el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).finished.then(gone, gone)
+        } else {
+          gone()
+        }
+        return
+      }
+
+      el.classList.add('is-leaving')
+      later(gone, LEAVE)
+    }
+
+    function gone() {
+      el.remove()
+    }
+
+    /* DOM + şriftlər + Hero-nun böyük şəkilləri; window.load QƏSDƏN yox. */
+    function whenReady() {
+      return new Promise(function (r) {
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', r, { once: true })
+        else r()
+      }).then(function () {
+        var jobs = []
+        if (document.fonts) jobs.push(document.fonts.ready)
+        var imgs = document.querySelectorAll('img[fetchpriority="high"], .hero img[loading="eager"]')
+        for (var i = 0; i < imgs.length; i++) {
+          if (imgs[i].decode) jobs.push(imgs[i].decode().catch(noop))
+        }
+        return Promise.all(jobs)
+      })
+    }
+
+    addEventListener('pageshow', function (e) {
+      if (e.persisted) kill()
+    })
+    document.addEventListener('astro:after-swap', kill)
+
+    function schedule() {
+      later(finish, Math.max(0, (reduce ? 300 : MIN) - performance.now()))
+    }
+
+    Promise.race([
+      whenReady(),
+      new Promise(function (r) {
+        setTimeout(r, Math.max(0, MAX - performance.now()))
+      }),
+    ]).then(schedule, schedule)
+  })()
+</script>
