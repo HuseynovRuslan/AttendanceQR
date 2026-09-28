@@ -312,14 +312,15 @@ https:// {
 	import patient_proxy frontend:80
 }
 
-# IdeaFlow (ideaflow.qrlog.az) — statik sayt, ayrı layihə: github.com/HuseynovRuslan/ideaflow-site.
-# Faylları /opt/ideaflow/deploy.sh yayımlayır (repodan çəkib /srv/ideaflow-a köçürür); compose isə həmin
-# qovluğu bu konteynerə bağlayır. Landing kimi, bu da compose xidməti DEYİL — yalnız fayl verilir.
+# IdeaFlow (ideaflow.qrlog.az) — ayrı layihə: github.com/HuseynovRuslan/ideaflow-site.
+# Artıq statik fayl deyil: öz stack-i (backend + Postgres) /opt/ideaflow/app-da qalxır və yalnız
+# 127.0.0.1:8100-ə bağlanır — xaricə yeganə yol buradır. Konteyner paylaşılan şəbəkəyə «ideaflow-app»
+# adı ilə qoşulur; `reverse_proxy 127.0.0.1:8100` İŞLƏMƏZDİ, o ünvan Caddy-nin öz konteyneridir.
+# CSP burada yoxdur — tətbiq öz siyasətini özü göndərir, versiyası kodu ilə birlikdə gedir.
 ideaflow.qrlog.az {
 	import security_headers
-	root * /srv/ideaflow
-	file_server
 	encode zstd gzip
+	reverse_proxy ideaflow-app:8080
 }
 
 # ==================== MenyuQR (moved from Coolify box 89.167.122.64, 2026-09-21) ====================

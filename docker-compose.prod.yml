@@ -132,9 +132,6 @@ services:
       # The marketing site is a static build, not a service. Compose never produces it —
       # ops/build-landing.sh does, into this directory. See landing/README.md.
       - ./landing-dist:/srv/qrlog:ro
-      # IdeaFlow's published site. Written by /opt/ideaflow/deploy.sh (its own repo), read-only here —
-      # the same arrangement as the landing build above: a static directory, not a service.
-      - /srv/ideaflow:/srv/ideaflow:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
