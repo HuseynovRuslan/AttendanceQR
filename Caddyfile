@@ -312,6 +312,16 @@ https:// {
 	import patient_proxy frontend:80
 }
 
+# IdeaFlow (ideaflow.qrlog.az) — statik sayt, ayrı layihə: github.com/HuseynovRuslan/ideaflow-site.
+# Faylları /opt/ideaflow/deploy.sh yayımlayır (repodan çəkib /srv/ideaflow-a köçürür); compose isə həmin
+# qovluğu bu konteynerə bağlayır. Landing kimi, bu da compose xidməti DEYİL — yalnız fayl verilir.
+ideaflow.qrlog.az {
+	import security_headers
+	root * /srv/ideaflow
+	file_server
+	encode zstd gzip
+}
+
 # ==================== MenyuQR (moved from Coolify box 89.167.122.64, 2026-09-21) ====================
 # Six apps behind this Caddy on the shared attendanceqr_default network. Domains unchanged
 # (menyuqr.com @ Hostinger, *.bahram.site @ Namecheap); only the DNS A records move to this server.
