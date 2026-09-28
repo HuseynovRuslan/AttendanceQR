@@ -28,6 +28,64 @@ export const localePrefix: Record<Lang, string> = {
   en: '/en',
 }
 
+/**
+ * The text inside the product screens of the «Rəhbərin bir günü» section (AdminPanel*.astro).
+ * Those screens are the QRLog admin panel itself, and the panel is Azerbaijani only — so these
+ * strings are the same in all three languages: written once here and spread into every block below.
+ * On /ru/ and /en/ the screens carry lang="az" (see AdminPanel.astro) and panel.note says in words
+ * that the interface is Azerbaijani. Translate them only when the product itself is translated.
+ *
+ * The labels are the product's own (frontend/src/pages/admin) — keep them in step with it.
+ * {n} {b} {t} {r} are filled by fmt(): a number, a branch, a time, a reason.
+ */
+const panelUi = {
+  'panel.ui.total': 'Ümumi işçi',
+  'panel.ui.in': 'İşdə',
+  'panel.ui.absent': 'Qayıb',
+  'panel.ui.done': 'Tamamlayıb',
+  'panel.ui.rest': 'İstirahət',
+  'panel.ui.dayOff': 'Həftəlik istirahət',
+  'panel.ui.live': 'CANLI',
+  // 08:15 — İdarəetmə paneli
+  'panel.ui.m1.title': 'İdarəetmə paneli',
+  'panel.ui.m1.sub': 'Bütün filiallar · canlı davamiyyət',
+  'panel.ui.m1.now': 'İndi iş başında',
+  'panel.ui.m1.people': 'nəfər',
+  'panel.ui.m1.count': 'Cəmi {n} işçi · {b} filial',
+  'panel.ui.m1.rate': 'bugünkü iştirak',
+  'panel.ui.m1.feed': 'Son fəaliyyət',
+  'panel.ui.m1.today': 'bu gün',
+  'panel.ui.m1.checkIn': 'giriş',
+  // 12:40 — Problemlər
+  'panel.ui.m2.title': 'Problemlər',
+  'panel.ui.m2.sub': 'Rədd edilmiş skanlar — kim, nə vaxt, niyə',
+  'panel.ui.m2.failed': 'Problemli skan',
+  'panel.ui.m2.ok': 'Uğurlu skan',
+  'panel.ui.m2.alert': 'Bu filialda təkrarlanan problem var',
+  'panel.ui.m2.alertTag': '{b} · {n} problem',
+  'panel.ui.m2.alertText':
+    'Bir filialda təkrarlanan «{r}» adətən geofence radiusunun və ya poster yerinin problemidir — işçinin deyil.',
+  'panel.ui.m2.list': 'Bu günkü problemlər',
+  'panel.ui.m2.last': 'son {t}',
+  'panel.ui.m2.times': '{n} dəfə',
+  'panel.ui.m2.outside': 'İş yerindən kənarda',
+  'panel.ui.m2.noLocation': 'Məkan icazəsi verilməyib',
+  // 18:30 — Davamiyyət
+  'panel.ui.m3.title': 'Davamiyyət',
+  'panel.ui.m3.sub': 'Bugün · canlı',
+  'panel.ui.m3.export': 'Excel-ə çıxar',
+  'panel.ui.m3.all': 'Bütün işçilər',
+  'panel.ui.m3.faceMismatch': 'Üzü uyğun gəlməyənlər',
+  'panel.ui.m3.noPhoto': 'Şəkilsizlər',
+  'panel.ui.m3.finished': 'Tamamlandı',
+  'panel.ui.m3.thName': 'İşçi',
+  'panel.ui.m3.thRole': 'Vəzifə',
+  'panel.ui.m3.thStatus': 'Status',
+  'panel.ui.m3.thIn': 'Giriş',
+  'panel.ui.m3.thOut': 'Çıxış',
+  'panel.ui.m3.thFace': 'Üz',
+} as const
+
 export const ui = {
   az: {
     'meta.title': 'QRLog — QR ilə işçi davamiyyəti sistemi | Azərbaycan',
@@ -178,14 +236,38 @@ export const ui = {
     'feat.f6t': 'Quraşdırma yoxdur (PWA)',
     'feat.f6d': 'Brauzerdən açılır, ana ekrana tətbiq kimi əlavə olunur. Mağazadan yükləmək lazım deyil.',
 
-    'dash.eyebrow': 'Admin panel',
-    'dash.title': 'Bütün davamiyyət bir ekranda',
-    'dash.sub': 'Panel canlı yenilənir. Aşağıdakı ekran nümunəvi məlumatla göstərilib.',
-    'dash.present': 'İşdə',
-    'dash.out': 'Çıxış edib',
-    'dash.absent': 'Gəlməyib',
-    'dash.rate': 'iştirak',
-    'dash.demo': 'nümunə',
+    // «Rəhbərin bir günü» (AdminPanel.astro). Tabların saatları — 08:15, 12:40, 18:30 — dil mətni
+    // deyil, komponentdə data kimi durur. Panel ekranlarının içindəki mətn panelUi-dədir (yuxarıda).
+    'panel.eyebrow': 'Admin panel',
+    'panel.title': 'Rəhbərin bir günü',
+    'panel.sub':
+      'Səhər kim gəlib, günorta nə diqqət istəyir, axşam gün necə bağlanıb. QRLog panelində hər biri bir baxışdır.',
+    'panel.m1.label': 'Kim gəlib',
+    'panel.m1.head': 'Qapıdan keçən hər kəs artıq burdadır.',
+    'panel.m1.text':
+      'Zəng etməyə, jurnal açmağa ehtiyac yoxdur — panel özü sayır və filiallar üzrə bölür.',
+    'panel.m1.meta1': 'Canlı yenilənir',
+    'panel.m1.meta2': 'Bütün filiallar bir yerdə',
+    'panel.m2.label': 'Nə diqqət istəyir',
+    'panel.m2.head': 'Problem gələndə səbəbi də gəlir.',
+    'panel.m2.text':
+      'Bir filialda təkrarlanırsa, sistem onu işçiyə yox, yerə bağlayır — geofence radiusu, ya da posterin yeri.',
+    'panel.m2.meta1': 'Rədd edilən skan · səbəbi ilə',
+    'panel.m2.meta2': 'Filial üzrə xəbərdarlıq',
+    'panel.m3.label': 'Gün bağlandı',
+    'panel.m3.head': 'Gün bir cədvəldə bağlanır.',
+    'panel.m3.text':
+      'Kim neçədə gəlib-gedib, kimin üzü uyğun gəlməyib — hamısı bir yerdə. Mühasibə göndərmək üçün bir klik.',
+    'panel.m3.meta1': 'Excel-ə çıxarış',
+    'panel.m3.meta2': 'İstənilən gün üçün',
+    // Ekran oxuyucusu üçün — gözlə görünmür.
+    'panel.tablist': 'Günün anları',
+    'panel.prev': 'Əvvəlki an',
+    'panel.next': 'Növbəti an',
+    'panel.carousel': 'karusel',
+    'panel.slide': 'slayd',
+    'panel.note': 'Ekranlar QRLog panelindəndir · məlumat nümunədir',
+    ...panelUi,
 
     'aud.eyebrow': 'Kimlər üçün',
     'aud.title': 'İşçisi olan hər təşkilat üçün',
@@ -531,14 +613,37 @@ export const ui = {
     'feat.f6t': 'Без установки (PWA)',
     'feat.f6d': 'Открывается в браузере и добавляется на главный экран. Магазин приложений не нужен.',
 
-    'dash.eyebrow': 'Админ-панель',
-    'dash.title': 'Вся посещаемость на одном экране',
-    'dash.sub': 'Панель обновляется в реальном времени. Экран ниже показан с примерными данными.',
-    'dash.present': 'На месте',
-    'dash.out': 'Ушли',
-    'dash.absent': 'Не пришли',
-    'dash.rate': 'явка',
-    'dash.demo': 'пример',
+    'panel.eyebrow': 'Панель управления',
+    'panel.title': 'Один день руководителя',
+    'panel.sub':
+      'Утром — кто пришёл, днём — что требует внимания, вечером — как закрылся день. В панели QRLog всё это видно с одного взгляда.',
+    'panel.m1.label': 'Кто пришёл',
+    'panel.m1.head': 'Каждый, кто прошёл через дверь, уже здесь.',
+    'panel.m1.text':
+      'Не нужно звонить и открывать журнал — панель сама считает и делит по филиалам.',
+    'panel.m1.meta1': 'Обновляется в реальном времени',
+    'panel.m1.meta2': 'Все филиалы в одном месте',
+    'panel.m2.label': 'Что требует внимания',
+    'panel.m2.head': 'Вместе с проблемой приходит и причина.',
+    'panel.m2.text':
+      'Если проблема повторяется в одном филиале, система связывает её не с сотрудником, а с местом — радиусом геозоны или расположением постера.',
+    'panel.m2.meta1': 'Отклонённый скан · с причиной',
+    'panel.m2.meta2': 'Оповещение по филиалу',
+    'panel.m3.label': 'День закрыт',
+    'panel.m3.head': 'День закрывается одной таблицей.',
+    'panel.m3.text':
+      'Кто во сколько пришёл и ушёл, у кого не совпало лицо — всё в одном месте. Отправить бухгалтеру — один клик.',
+    'panel.m3.meta1': 'Выгрузка в Excel',
+    'panel.m3.meta2': 'За любой день',
+    'panel.tablist': 'Моменты дня',
+    'panel.prev': 'Предыдущий момент',
+    'panel.next': 'Следующий момент',
+    'panel.carousel': 'карусель',
+    'panel.slide': 'слайд',
+    // The screens are the product, which is Azerbaijani only (see panelUi): the caption says so,
+    // so that Azerbaijani text on /ru/ does not read as a bug.
+    'panel.note': 'Экраны из панели QRLog (интерфейс на азербайджанском) · данные условные',
+    ...panelUi,
 
     'aud.eyebrow': 'Для кого',
     'aud.title': 'Для любой организации с сотрудниками',
@@ -879,14 +984,36 @@ export const ui = {
     'feat.f6t': 'Nothing to install (PWA)',
     'feat.f6d': 'It opens in the browser and can be added to the home screen. No app store needed.',
 
-    'dash.eyebrow': 'Admin panel',
-    'dash.title': 'All attendance on one screen',
-    'dash.sub': 'The board updates live. The screen below is shown with sample data.',
-    'dash.present': 'On site',
-    'dash.out': 'Checked out',
-    'dash.absent': 'Absent',
-    'dash.rate': 'attendance',
-    'dash.demo': 'sample',
+    'panel.eyebrow': 'Admin panel',
+    'panel.title': "A manager's day",
+    'panel.sub':
+      'Who arrived in the morning, what needs attention at noon, how the day closed in the evening. In the QRLog panel, each takes a single glance.',
+    'panel.m1.label': "Who's in",
+    'panel.m1.head': 'Everyone who walked in is already here.',
+    'panel.m1.text': 'No calls, no logbook — the panel counts on its own and splits by branch.',
+    'panel.m1.meta1': 'Updates live',
+    'panel.m1.meta2': 'All branches in one place',
+    'panel.m2.label': 'What needs attention',
+    'panel.m2.head': 'Every problem comes with its reason.',
+    'panel.m2.text':
+      'If it keeps happening at one branch, the system ties it to the place, not the person — the geofence radius or where the poster hangs.',
+    'panel.m2.meta1': 'Rejected scans · with reasons',
+    'panel.m2.meta2': 'Branch-level alerts',
+    'panel.m3.label': 'Day closed',
+    'panel.m3.head': 'The day closes in one table.',
+    'panel.m3.text':
+      "Who came and left when, whose face didn't match — all in one place. One click to send it to accounting.",
+    'panel.m3.meta1': 'Export to Excel',
+    'panel.m3.meta2': 'For any day',
+    'panel.tablist': 'Moments of the day',
+    'panel.prev': 'Previous moment',
+    'panel.next': 'Next moment',
+    'panel.carousel': 'carousel',
+    'panel.slide': 'slide',
+    // The screens are the product, which is Azerbaijani only (see panelUi): the caption says so,
+    // so that Azerbaijani text on /en/ does not read as a bug.
+    'panel.note': 'Screens from the QRLog panel (interface in Azerbaijani) · sample data',
+    ...panelUi,
 
     'aud.eyebrow': "Who it's for",
     'aud.title': 'For any organisation with staff',
@@ -1090,6 +1217,20 @@ export function useTranslations(lang: Lang) {
       (ui[lang] as Record<string, string>)[key] ?? (ui[defaultLang] as Record<string, string>)[key]
     )
   }
+}
+
+/**
+ * Fills the `{name}` slots of a translated string: fmt(t('panel.ui.m2.times'), { n: 3 }) → '3 dəfə'.
+ * A slot with no value is left as it is, so a typo shows on the page instead of vanishing.
+ *
+ * A number stands free in the template ('{n} dəfə', 'son {t}') — never with a suffix glued to it
+ * ('{n}-si'). The Azerbaijani suffix follows the last sound of the number (48-i, 43-ü, 40-ı), so a
+ * fixed string turns wrong the moment the number changes.
+ */
+export function fmt(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (slot, name: string) =>
+    name in values ? String(values[name]) : slot
+  )
 }
 
 // Build a localized URL for a given path. Slugs stay Azerbaijani in every language on purpose:

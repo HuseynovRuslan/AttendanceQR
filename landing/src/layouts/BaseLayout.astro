@@ -247,7 +247,7 @@ const websiteLd = {
         },
         { threshold: 0.14 }
       )
-      document.querySelectorAll('.rv, .bars, .donut').forEach((el) => io.observe(el))
+      document.querySelectorAll('.rv').forEach((el) => io.observe(el))
 
       // ---------- Count-up counters ----------
       const easeOut = (x: number) => 1 - Math.pow(1 - x, 3)
