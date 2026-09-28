@@ -812,199 +812,6 @@ section {
   font-size: 14.5px
 }
 
-/* ---------- Dashboard ---------- */
-.dash {
-  background: var(--ink);
-  color: #fff;
-  overflow: hidden;
-  position: relative
-}
-
-.dash .sec-head h2 {
-  color: #fff
-}
-
-.dash .sec-head p {
-  color: #93A4BC
-}
-
-.dash .eyebrow {
-  color: #6E9BFF
-}
-
-.board {
-  max-width: 940px;
-  margin: 0 auto;
-  background: var(--ink-2);
-  border: 1px solid rgba(255, 255, 255, .08);
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, .7)
-}
-
-.board-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, .08)
-}
-
-.board-bar i {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #33455C
-}
-
-.board-bar .title {
-  margin-left: 14px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: #8CA0BC
-}
-
-.board-body {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 26px;
-  padding: 26px
-}
-
-.kpis {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 22px
-}
-
-.kpi {
-  background: rgba(255, 255, 255, .04);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 14px;
-  padding: 14px
-}
-
-.kpi .v {
-  font-family: var(--font-sans);
-  font-size: 24px;
-  font-weight: 700
-}
-
-.kpi .k {
-  font-size: 12px;
-  color: #93A4BC;
-  margin-top: 2px
-}
-
-.kpi.green .v {
-  color: #4ADE80
-}
-
-.kpi.blue .v {
-  color: #6E9BFF
-}
-
-.kpi.amber .v {
-  color: #FBBF24
-}
-
-.bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  height: 130px;
-  padding: 8px 4px 0
-}
-
-.bar {
-  flex: 1;
-  background: linear-gradient(180deg, #2E6BF0, #1E63E9);
-  border-radius: 7px 7px 0 0;
-  position: relative;
-  height: 0;
-  transition: height 1s cubic-bezier(.2, .8, .2, 1)
-}
-
-.bars.in .bar {
-  height: var(--h)
-}
-
-.bar span {
-  position: absolute;
-  bottom: -22px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: #7E92AE
-}
-
-.donut-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, .04);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 16px;
-  padding: 22px
-}
-
-.donut {
-  position: relative;
-  width: 150px;
-  height: 150px
-}
-
-.donut .lab {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center
-}
-
-.donut .lab b {
-  font-family: var(--font-sans);
-  font-size: 30px;
-  font-weight: 700
-}
-
-.donut .lab small {
-  font-size: 12px;
-  color: #93A4BC
-}
-
-.donut .arc {
-  stroke-dasharray: 314;
-  stroke-dashoffset: 314;
-  transition: stroke-dashoffset 1.4s cubic-bezier(.3, .7, .3, 1)
-}
-
-.donut.in .arc {
-  stroke-dashoffset: 25
-}
-
-.legend {
-  display: flex;
-  gap: 16px;
-  margin-top: 16px;
-  font-size: 12px;
-  color: #B7C4D6
-}
-
-.legend i {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-  margin-right: 6px;
-  vertical-align: middle
-}
-
 /* ---------- Audience ---------- */
 .aud-grid {
   display: grid;
@@ -1583,10 +1390,6 @@ footer {
     grid-template-columns: 1fr 1fr
   }
 
-  .board-body {
-    grid-template-columns: 1fr
-  }
-
   .foot-grid {
     grid-template-columns: 1fr 1fr
   }
@@ -1601,10 +1404,6 @@ footer {
   .stat-grid,
   .sec-grid {
     grid-template-columns: 1fr
-  }
-
-  .kpis {
-    grid-template-columns: 1fr 1fr
   }
 
   .stats {
@@ -1623,14 +1422,6 @@ footer {
   .fade-up {
     opacity: 1 !important;
     transform: none !important
-  }
-
-  .bars .bar {
-    height: var(--h) !important
-  }
-
-  .donut .arc {
-    stroke-dashoffset: 25 !important
   }
 }
 
@@ -2838,7 +2629,6 @@ h4,
 .display,
 .stat .num,
 .stat-card .big,
-.kpi .v,
 .plan .amt,
 .done-title,
 .fword {
@@ -3731,80 +3521,6 @@ h1.hero-title .hl::after {
   }
 }
 
-/* Product dashboard — brought up immediately after customer proof */
-.dash {
-  padding: 124px 0;
-  background: #fff;
-  color: var(--ink)
-}
-
-.dash::before {
-  content: "";
-  display: block;
-  position: absolute
-}
-
-.dash .wrap {
-  display: grid;
-  grid-template-columns: .68fr 1.32fr;
-  gap: 70px;
-  align-items: center
-}
-
-.dash .sec-head {
-  margin: 0
-}
-
-.dash .sec-head h2 {
-  color: var(--ink);
-  font-size: clamp(38px, 4.3vw, 57px)
-}
-
-.dash .sec-head p {
-  color: var(--muted)
-}
-
-.dash .eyebrow {
-  color: var(--blue)
-}
-
-.board {
-  width: 100%;
-  margin: 0;
-  border: 1px solid #1E3444;
-  border-radius: 15px;
-  background: #0B1B28;
-  box-shadow: 0 42px 90px -42px rgba(3, 20, 32, .68);
-}
-
-.board-bar {
-  background: #0A1824;
-  padding: 12px 15px
-}
-
-.board-body {
-  gap: 20px;
-  padding: 21px
-}
-
-.kpis {
-  margin-bottom: 19px
-}
-
-.kpi,
-.donut-wrap {
-  border-color: rgba(255, 255, 255, .08);
-  background: rgba(255, 255, 255, .04)
-}
-
-.kpi .v {
-  font-size: 21px
-}
-
-.bars {
-  height: 116px
-}
-
 /* Phone product walkthrough */
 .pdemo {
   padding: 124px 0;
@@ -4554,11 +4270,6 @@ footer {
     right: -10px
   }
 
-  .dash .wrap {
-    grid-template-columns: .78fr 1.22fr;
-    gap: 42px
-  }
-
   .plans {
     grid-template-columns: 1fr 1fr;
     gap: 14px
@@ -4610,15 +4321,6 @@ footer {
 
   .hero-orbit {
     margin: 0 auto
-  }
-
-  .dash .wrap {
-    grid-template-columns: 1fr;
-    gap: 42px
-  }
-
-  .dash .sec-head {
-    max-width: 650px
   }
 
   .pdemo-grid {
@@ -4875,27 +4577,6 @@ footer {
     grid-template-columns: auto 1fr
   }
 
-  .dash {
-    padding: 82px 0
-  }
-
-  .board-body {
-    grid-template-columns: 1fr;
-    padding: 14px
-  }
-
-  .kpis {
-    grid-template-columns: 1fr 1fr
-  }
-
-  .kpi:last-child {
-    grid-column: 1/-1
-  }
-
-  .donut-wrap {
-    margin-top: 26px
-  }
-
   .pdemo-grid {
     gap: 65px
   }
@@ -5073,7 +4754,6 @@ h4,
 .display,
 .stat .num,
 .stat-card .big,
-.kpi .v,
 .plan .amt,
 .done-title,
 .fword {
@@ -5549,42 +5229,6 @@ h1.hero-title .hl::before {
   72% {
     color: #42CF7E
   }
-}
-
-/* Product panel. */
-.dash {
-  padding: 116px 0;
-  background: #171917;
-  color: #F6F5F1
-}
-
-.dash .sec-head h2 {
-  color: #F6F5F1
-}
-
-.dash .sec-head p {
-  color: #A6ABA2
-}
-
-.board {
-  border: 1px solid #454941;
-  border-radius: 0;
-  background: #20231F;
-  box-shadow: none
-}
-
-.board-bar {
-  background: #1B1D1B
-}
-
-.kpi,
-.donut-wrap {
-  border-radius: 0
-}
-
-.bar {
-  border-radius: 0;
-  background: #3E78F2
 }
 
 /* Walkthrough — telefon demosu. */

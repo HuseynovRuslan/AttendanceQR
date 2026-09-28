@@ -1,0 +1,603 @@
+---
+import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
+import AdminPanelDashboard from './AdminPanelDashboard.astro'
+import AdminPanelProblems from './AdminPanelProblems.astro'
+import AdminPanelToday from './AdminPanelToday.astro'
+
+/**
+ * «Rəhbərin bir günü» — admin panel bölməsi: günün üç anı, QRLog panelinin üç ekranı.
+ *
+ * Yuxarıda günün xətkeşi (08:15, 12:40, 18:30), altında həmin anın slaydı: solda cümlə, sağda
+ * panelin real parçası. Slayd hər açılanda ekranda kiçik bir hadisə baş verir — yeni giriş düşür,
+ * problem təkrarlanır, gün bağlanır. Desktopda anlar 8 saniyədən bir özü dəyişir; lg-dən kiçik
+ * ekranda avto-keçid yoxdur (oxuyarkən ekran dəyişməsin), keçid tablar və sürüşdürmə ilədir.
+ *
+ * Saat səhifədə yalnız tablardadır. Prototipdə 08:15 ekranının başlığında "08:15:42" saatı var idi —
+ * burada yoxdur, "CANLI" nişanı qalıb.
+ *
+ * Bölmə qəsdən sakitdir: xəritə, brauzer çərçivəsi, özü gəzən kursor, toast yoxdur.
+ *
+ * Köhnə variant — tünd fonlu "Bütün davamiyyət bir ekranda" lövhəsi (Dashboard.astro) — tamamilə
+ * çıxıb; ona baxan .dash / .board / .kpi / .bars / .donut stilləri də styles/global.css-dən silinib.
+ */
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+/**
+ * Panel ekranları məhsulun özüdür, məhsul isə yalnız azərbaycancadır — panel.ui.* açarları üç dildə
+ * eynidir (i18n/ui.ts → panelUi). RU/EN səhifəsində ekran lang="az" daşıyır: onsuz `uppercase`
+ * başlıqlar "İŞÇİ" yox, "İŞÇI" yazılır, ekran oxuyucusu da mətni rus və ya ingilis kimi oxuyur.
+ */
+const PANEL_LANG: Lang = 'az'
+const screenLang = lang === PANEL_LANG ? undefined : PANEL_LANG
+
+/**
+ * Günün üç anı. `at` — slayd açılandan neçə ms sonra ekranda canlı hadisə baş verir. Saatlar dil
+ * mətni deyil, data kimi burada durur: üç dildə eynidir.
+ */
+const moments = [
+  {
+    time: '08:15',
+    label: 'panel.m1.label',
+    head: 'panel.m1.head',
+    text: 'panel.m1.text',
+    meta: ['panel.m1.meta1', 'panel.m1.meta2'],
+    at: 1700,
+    Screen: AdminPanelDashboard,
+  },
+  {
+    time: '12:40',
+    label: 'panel.m2.label',
+    head: 'panel.m2.head',
+    text: 'panel.m2.text',
+    meta: ['panel.m2.meta1', 'panel.m2.meta2'],
+    at: 1100,
+    Screen: AdminPanelProblems,
+  },
+  {
+    time: '18:30',
+    label: 'panel.m3.label',
+    head: 'panel.m3.head',
+    text: 'panel.m3.text',
+    meta: ['panel.m3.meta1', 'panel.m3.meta2'],
+    at: 1100,
+    Screen: AdminPanelToday,
+  },
+] satisfies {
+  time: string
+  label: UIKey
+  head: UIKey
+  text: UIKey
+  meta: UIKey[]
+  at: number
+  Screen: unknown
+}[]
+
+// Prototipdən götürülmüş sinif sətirləri — bir dəfə yazılır, üç tab da onu işlədir.
+// `border-0 bg-transparent p-0` və `list-none` prototipdə yoxdur: orada bunu Tailwind-in Preflight-ı
+// edirdi, bu layihədə isə o söndürülüb (bax styles/tailwind.css). Focus halqası HowItWorks-dakı kimi
+// outline-dır, ring yox: forced-colors rejimində box-shadow görünmür.
+// `flex flex-col`: brauzer düymənin məzmununu şaquli mərkəzləyir. 320px-də "Nə diqqət istəyir" iki
+// sətrə düşəndə üç tab eyni hündürlükdə uzanır və qonşu vaxtlar 9px aşağı enirdi. Flex ilə məzmun
+// yuxarıdan başlayır, xətt isə yenə hər tabın altındadır.
+const tabClass =
+  'group relative flex min-w-0 cursor-pointer flex-col border-0 bg-transparent p-0 pb-4 text-left focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand'
+const arrowClass =
+  'flex size-10 cursor-pointer items-center justify-center rounded-full border border-[#E7E9EE] bg-white p-0 text-ink transition-colors hover:border-[#C9D3E6] hover:bg-[#F7F9FD] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
+const chipClass =
+  'inline-flex items-center gap-2 rounded-full border border-[#E7E9EE] bg-white px-3 py-1.5'
+---
+
+<section id="panel" aria-labelledby="panel-title" class="relative overflow-hidden bg-page py-20 lg:py-28">
+  <!-- Qabıq HowItWorks-dakı kimidir, yalnız fon fərqlidir: üstündəki "Necə işləyir" ağdır. -->
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
+
+  <div class="wrap relative">
+    <!-- Başlıq HowItWorks-dakı ilə eyni siniflərlədir: iki bölmə yan-yanadır. -->
+    <div class="max-w-155">
+      <span
+        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('panel.eyebrow')}
+      </span>
+      <h2
+        id="panel-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('panel.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('panel.sub')}</p>
+    </div>
+
+    <div
+      id="panelSlider"
+      data-state="static"
+      role="region"
+      aria-roledescription={t('panel.carousel')}
+      aria-label={t('panel.title')}
+      class="rv d3 mt-10 text-ink lg:mt-14"
+    >
+      <!-- Günün xətkeşi + oxlar -->
+      <div class="flex items-end gap-6">
+        <div role="tablist" aria-label={t('panel.tablist')} class="grid flex-1 grid-cols-3 gap-4 sm:gap-8">
+          {
+            moments.map((m, i) => {
+              const [hh, mm] = m.time.split(':')
+              return (
+                <button
+                  type="button"
+                  role="tab"
+                  id={`panel-tab-${i + 1}`}
+                  aria-controls={`panel-slide-${i + 1}`}
+                  aria-selected={i === 0 ? 'true' : 'false'}
+                  tabindex={i === 0 ? 0 : -1}
+                  class={tabClass}
+                >
+                  {/* Bir sətirdə: aradakı sətir sonu "08 : 15" kimi boşluq verərdi. */}
+                  <span class="block text-[30px] leading-none font-medium tracking-[-0.04em] text-[#B9BFCA] tabular-nums transition-colors duration-300 group-hover:text-slate-500 group-aria-selected:text-ink sm:text-[44px] lg:text-[56px]">
+                    {hh}<span class="transition-colors duration-300 group-aria-selected:text-brand">:</span>{mm}
+                  </span>
+                  <span class="mt-2 block text-[12.5px] leading-snug font-medium text-slate-400 transition-colors duration-300 group-aria-selected:text-ink sm:mt-3 sm:text-[15px]">
+                    {t(m.label)}
+                  </span>
+                  {/* Növbəti ana keçidi bu xəttin animationend hadisəsi verir — setInterval yox. */}
+                  <span class="pbar absolute inset-x-0 bottom-0 h-0.5 overflow-hidden rounded-full bg-[#E3E6EC]">
+                    <i />
+                  </span>
+                </button>
+              )
+            })
+          }
+        </div>
+        <div class="mb-4 hidden shrink-0 gap-2 lg:flex">
+          <button type="button" data-step="-1" aria-controls="panelStage" aria-label={t('panel.prev')} class={arrowClass}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12.8 8H3.2M7 4.2 3.2 8 7 11.8"></path>
+            </svg>
+          </button>
+          <button type="button" data-step="1" aria-controls="panelStage" aria-label={t('panel.next')} class={arrowClass}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3.2 8h9.6M9 4.2 12.8 8 9 11.8"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!--
+        Üç slayd eyni grid xanasındadır: konteyner ən hündür slaydın ölçüsünü özü alır, sabit
+        hündürlük yoxdur, keçiddə heç nə yerindən oynamır. Slaydın iki uşağı var — mətn və panel —
+        keçid və sürüşdürmə onları bu sıra ilə tapır.
+      -->
+      <div id="panelStage" class="stage mt-10 grid touch-pan-y data-drag:select-none lg:mt-14">
+        {
+          moments.map(({ Screen, ...m }, i) => (
+            <div
+              id={`panel-slide-${i + 1}`}
+              role="tabpanel"
+              aria-roledescription={t('panel.slide')}
+              aria-label={`${i + 1} / ${moments.length}`}
+              aria-hidden={i === 0 ? undefined : 'true'}
+              tabindex={i === 0 ? 0 : -1}
+              data-at={m.at}
+              class="col-start-1 row-start-1 grid content-start gap-8 rounded-[20px] aria-hidden:invisible focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-14"
+            >
+              <div>
+                <h3 class="max-w-[18ch] text-[26px] leading-[1.15] font-semibold tracking-[-0.025em] sm:text-[32px]">
+                  {t(m.head)}
+                </h3>
+                <p class="mt-4 max-w-[42ch] text-[16px] leading-[1.7] text-ink2">{t(m.text)}</p>
+                <ul class="mt-6 flex list-none flex-wrap gap-2 font-mono text-[11.5px] text-slate-500">
+                  {m.meta.map((k) => (
+                    <li class={chipClass}>
+                      <i class="size-1 rounded-full bg-brand" />
+                      {t(k)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div
+                lang={screenLang}
+                class="crop-b @container h-140 overflow-hidden rounded-[20px] border border-[#E7E9EE] bg-[#F3F4F7] p-5 sm:h-120"
+              >
+                <Screen lang={lang} />
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <p class="mt-10 font-mono text-[11px] tracking-[0.12em] text-slate-400 uppercase">{t('panel.note')}</p>
+  </div>
+</section>
+
+<style>
+  /*
+    Bölmənin bütün stili burada. Ekran komponentlərindəki qarmaqlara (.ap-live, [hidden]) :global()
+    ilə çatılır — ana seçici (.stage) bu komponentdədir, qayda kənara sızmır. Keyframe adları
+    prefikslidir: Astro @keyframes adını scope etmir, global.css-də isə otuza yaxın keyframe var.
+  */
+
+  /* HowItWorks-dakı qabığın eyni qaydası — orada scoped-dur, ona görə burada təkrarlanır. */
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+
+  /* Panel parçası ekran görüntüsü kimi aşağıdan kəsilir: son 72px şəffaflığa əriyir. */
+  .crop-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
+  }
+
+  /*
+    ---------- Progress xətti ----------
+    Növbəti ana keçidi bu animasiyanın animationend hadisəsi verir: gözün gördüyü xətt ilə keçid heç
+    vaxt aralanmır, fon tabında brauzer animasiyanı dayandıranda keçid də dayanır.
+  */
+  .pbar > i {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-brand);
+  }
+
+  [aria-selected='true'] .pbar > i {
+    animation: ap-fill 8s linear forwards;
+  }
+
+  [data-state='paused'] [aria-selected='true'] .pbar > i {
+    animation-play-state: paused;
+  }
+
+  /* Mobil və reduced motion: avto-keçid yoxdur, aktiv tabın xətti sadəcə doludur. */
+  [data-state='static'] [aria-selected='true'] .pbar > i {
+    animation: none;
+    width: 100%;
+  }
+
+  @keyframes ap-fill {
+    to {
+      width: 100%;
+    }
+  }
+
+  /* Canlı hadisədə əvəzlənən variantlar (data-swap: feed sətirləri, status nişanı). Preflight yoxdur,
+     `flex` sinfi isə brauzerin öz [hidden] { display: none } qaydasını üstələyir — ona görə burada. */
+  .stage :global([hidden]) {
+    display: none;
+  }
+
+  /* "CANLI" nişanının nöqtəsi. global.css reduced motion-da bütün animasiyaları özü söndürür. */
+  .stage :global(.ap-live) {
+    animation: ap-blink 1.8s ease-in-out infinite;
+  }
+
+  @keyframes ap-blink {
+    50% {
+      opacity: 0.25;
+    }
+  }
+</style>
+
+<script>
+  /*
+    «Rəhbərin bir günü» slayderi. Xarici kitabxana, şəbəkə sorğusu yoxdur.
+
+    Vəziyyət root-un data-state atributundadır:
+      running — desktop, bölmə ekrandadır, heç kim oxumur: aktiv xətt 8 s-də dolur, sonra növbəti an
+      paused  — siçan üstündədir, klaviatura fokusu içəridədir, barmaq sürüşdürür və ya bölmə
+                ekranda deyil: xətt olduğu yerdə donur
+      static  — lg-dən kiçik ekran və ya reduced motion: avto-keçid yoxdur, aktiv xətt tam dolu
+
+    İşə salma. astro:page-load-u yalnız <ClientRouter /> göndərir, BaseLayout isə onu qoşmur — ona
+    görə init() elə burada çağırılır. ClientRouter əlavə olunsa, init() astro:page-load-da yeni
+    səhifənin DOM-u üçün yenidən işləyir (data-ready eyni DOM-a ikinci dəfə bağlanmağa qoymur), köhnə
+    səhifənin listener-ləri, observer-i və taymerləri isə astro:before-swap-da təmizlənir.
+  */
+  const EASE = 'cubic-bezier(.22,.61,.36,1)'
+  // Keçiddə mətn və panel eyni anda, amma fərqli məsafə ilə gedir — dərinlik hissi. [mətn, panel]
+  const TRAVEL = [18, 40]
+  // Sürüşdürəndə slayd barmağın arxasınca müqavimətlə gedir. [mətn, panel]
+  const FOLLOW = [0.18, 0.32]
+
+  let dispose: (() => void) | undefined
+
+  function init() {
+    const root = document.getElementById('panelSlider')
+    const stage = root?.querySelector<HTMLElement>('.stage')
+    if (!root || !stage || root.dataset.ready) return
+    root.dataset.ready = '1'
+
+    const each = (scope: ParentNode, sel: string, fn: (el: HTMLElement) => void) =>
+      scope.querySelectorAll<HTMLElement>(sel).forEach(fn)
+    const kids = (el: Element) => [...el.children] as HTMLElement[]
+    const cancel = (el: Element) => el.getAnimations().forEach((a) => a.cancel())
+
+    const tabs = [...root.querySelectorAll<HTMLElement>('[role=tab]')]
+    const slides = kids(stage)
+    const n = slides.length
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const desk = matchMedia('(min-width: 64rem)') // Tailwind-in lg nöqtəsi
+    const ac = new AbortController()
+    const on = <E extends Event>(el: EventTarget, type: string, fn: (e: E) => void) =>
+      el.addEventListener(type, fn as EventListener, { signal: ac.signal })
+
+    let cur = 0
+    let gen = 0 // canlı anın nəsli: yeni an başlayanda köhnəsinin sayğacları dayanır
+    let timer: ReturnType<typeof setTimeout> | undefined // canlı hadisənin taymeri
+    let hideTimer: ReturnType<typeof setTimeout> | undefined // çıxan slaydı çıxış animasiyasından sonra gizlədir
+    let visible = false
+    let over = false
+    let focused = false
+    let drag = false
+
+    const sync = () => {
+      root.dataset.state =
+        reduce || !desk.matches ? 'static' : visible && !over && !focused && !drag ? 'running' : 'paused'
+    }
+
+    /* ---------- Canlı an: slayd hər açılanda əvvəlcə ilkin hala qayıdır, sonra hadisə təkrarlanır ---------- */
+    const base = new Map<Element, string>()
+    each(stage, '[data-a],[data-up]', (el) => base.set(el, el.textContent!))
+
+    // İştirak dairəsi: data-ring="73 75", dairə pathLength="100" ilə çəkilib — dashoffset = 100 − faiz.
+    // step 0: 0 → 73 (slayd açılanda), step 1: 73 → 75 (hadisədə). Web Animations API ilə, çünki CSS
+    // transition-u yarıda geri çevirəndə dairə 0-dan dolmur, 73%-dən enib qayıdır.
+    const ring = (s: Element, step: 0 | 1, animate: boolean) =>
+      each(s, '[data-ring]', (el) => {
+        const o = [100, ...el.dataset.ring!.split(' ').map((p) => 100 - +p)] // dashoffset: 0%, 73%, 75%
+        cancel(el)
+        el.style.strokeDashoffset = `${o[step + 1]}`
+        if (animate) el.animate({ strokeDashoffset: [o[step], o[step + 1]] }, { duration: 900, easing: EASE })
+      })
+
+    const count = (el: Element, to: number, g: number) => {
+      const raf = requestAnimationFrame
+      let t0 = 0
+      const step = (now: number) => {
+        if (g !== gen) return
+        t0 ||= now
+        const k = Math.min((now - t0) / 900, 1)
+        el.textContent = `${Math.round(to * (1 - (1 - k) ** 3))}`
+        if (k < 1) raf(step)
+      }
+      raf(step)
+    }
+
+    // Köhnə sətir/rəng animasiyaları dayanır; data-swap="in" hadisədə görünür, "out" gizlənir.
+    const swap = (s: HTMLElement, after: boolean) =>
+      each(s, '[data-swap],[data-flash],[data-enter]', (el) => {
+        cancel(el)
+        if (el.dataset.swap) el.hidden = el.dataset.swap === (after ? 'out' : 'in')
+      })
+
+    // Hadisənin son halı. live=false (reduced motion): eyni son hal, amma heç nə hərəkət etmir.
+    const happen = (s: HTMLElement, live: boolean) => {
+      each(s, '[data-a]', (el) => (el.textContent = el.dataset.a!))
+      swap(s, true)
+      ring(s, 1, live)
+      if (!live) return
+      each(s, '[data-enter]', (el) =>
+        el.animate({ opacity: [0, 1], transform: ['translateY(-6px)', 'none'] }, { duration: 550, easing: EASE })
+      )
+      // 0.8 s-də rəng gəlir, 1 s qalır, 0.8 s-də gedir.
+      each(s, '[data-flash]', (el) =>
+        el.animate({ backgroundColor: [el.dataset.flash!, el.dataset.flash!], offset: [0.31, 0.69] }, 2600)
+      )
+    }
+
+    const moment = (i: number) => {
+      const s = slides[i]
+      const g = ++gen
+      clearTimeout(timer)
+      base.forEach((text, el) => s.contains(el) && (el.textContent = text))
+      swap(s, false)
+      if (reduce) return happen(s, false)
+      each(s, '[data-up]', (el) => count(el, +base.get(el)!, g))
+      ring(s, 0, true)
+      timer = setTimeout(() => happen(s, true), +s.dataset.at!)
+    }
+
+    /* ---------- Keçid ---------- */
+    const show = (s: HTMLElement, open: boolean) => {
+      s.tabIndex = open ? 0 : -1
+      if (open) return s.removeAttribute('aria-hidden')
+      s.setAttribute('aria-hidden', 'true')
+      // Çıxış animasiyası `fill: 'forwards'` ilə elementi opacity:0-da saxlayır. Slayd gizlənəndə
+      // ləğv edilməsə, bu slayda qayıdanda məzmun görünməz qalır.
+      kids(s).forEach((el) => {
+        cancel(el)
+        el.style.transform = ''
+      })
+    }
+
+    // Slaydın mətni və paneli: çıxan (leaving) x istiqamətinə gedir, gələn x tərəfdən gəlir. Çıxan
+    // olduğu yerdən çıxır — yarımçıq keçiddən və ya barmağın saxladığı yerdən, sıçrayışsız; ona görə
+    // başlanğıc kadr köhnə animasiya ləğv olunmamış oxunur. Hər yeni animasiyadan əvvəl köhnələri
+    // ləğv olunur ki, yarımçıq keçiddən qalan "fill" elementi görünməz saxlamasın.
+    const move = (s: HTMLElement, x: number, leaving: boolean) =>
+      kids(s).forEach((el, k) => {
+        const c = getComputedStyle(el)
+        const aside = { opacity: 0, transform: `translateX(${x * TRAVEL[k]}px)` }
+        const frames = leaving
+          ? [{ opacity: c.opacity, transform: c.transform }, aside]
+          : [aside, { opacity: 1, transform: 'none' }]
+        cancel(el)
+        el.style.transform = ''
+        el.animate(
+          frames,
+          leaving
+            ? { duration: 280, easing: 'ease-in', fill: 'forwards' }
+            : { duration: 560, delay: 160 + k * 60, easing: EASE, fill: 'backwards' }
+        )
+      })
+
+    // Cari slayddan başqa hamısı. Tez-tez keçiddə (A → B → C) taymer yenidən qurulur və A ilə B
+    // birlikdə gizlənir; çıxış animasiyası onları onsuz da opacity:0-da saxlayır.
+    const hideOthers = () => slides.forEach((s, k) => k !== cur && show(s, false))
+
+    const go = (to: number, dir?: number) => {
+      const i = (to + n) % n
+      if (i === cur) return
+      const d = dir ?? (i > cur ? 1 : -1)
+      if (!reduce) {
+        move(slides[cur], -d, true)
+        move(slides[i], d, false)
+      }
+      show(slides[i], true)
+      cur = i
+      clearTimeout(hideTimer)
+      if (reduce) hideOthers()
+      else hideTimer = setTimeout(hideOthers, 300)
+      // Taymer sıfırlanır özü-özünə: aria-selected dəyişəndə yeni tabın xəttinə CSS animasiyası
+      // sıfırdan qoşulur, köhnəninki sökülür.
+      tabs.forEach((tab, k) => {
+        tab.setAttribute('aria-selected', `${k === i}`)
+        tab.tabIndex = k === i ? 0 : -1
+      })
+      moment(i)
+    }
+
+    /* ---------- Tab, ox, klaviatura ---------- */
+    tabs.forEach((tab, k) => {
+      on(tab, 'click', () => go(k))
+      // Xəttin animationend-i tab-a qədər qalxır. Sonsuz dövr: 18:30-dan sonra yenidən 08:15.
+      on(tab, 'animationend', () => k === cur && go(k + 1, 1))
+    })
+    each(root, '[data-step]', (btn) => {
+      const d = +btn.dataset.step!
+      on(btn, 'click', () => go(cur + d, d))
+    })
+    // [hara, istiqamət]: 18:30-da → yenidən 08:15-ə gedir, amma məzmun yenə sağdan gəlir.
+    on(root.querySelector('[role=tablist]')!, 'keydown', (e: KeyboardEvent) => {
+      const target = ({ ArrowRight: [cur + 1, 1], ArrowLeft: [cur - 1, -1], Home: [0, -1], End: [n - 1, 1] } as Record<string, number[]>)[e.key]
+      if (!target) return
+      e.preventDefault()
+      go(target[0], target[1])
+      tabs[cur].focus()
+    })
+
+    /* ---------- Donma: siçan, klaviatura fokusu, ekrandan çıxma ---------- */
+    // Yalnız siçan: toxunuşda "üstündə olmaq" yoxdur.
+    const hover = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      over = e.type === 'pointerenter'
+      sync()
+    }
+    on(root, 'pointerenter', hover)
+    on(root, 'pointerleave', hover)
+    // Siçanla kliklənən düymə də fokus alır. Onu "oxuyur" saymırıq — yoxsa xətt siçan gedəndən sonra
+    // da donmuş qalardı; klaviatura fokusu (:focus-visible) isə saxlayır.
+    on(root, 'focusin', (e: FocusEvent) => {
+      focused = (e.target as Element).matches(':focus-visible')
+      sync()
+    })
+    on(root, 'focusout', (e: FocusEvent) => {
+      if (root.contains(e.relatedTarget as Node | null)) return
+      focused = false
+      sync()
+    })
+
+    /* ---------- Sürüşdürmə ---------- */
+    // touch-action: pan-y — şaquli scroll brauzerindir. Üfüqi niyyət bilinəndə slayd barmağın
+    // arxasınca gedir; buraxanda |dx| > 60 növbəti/əvvəlki an, əks halda 280ms-də yerinə qayıdır.
+    let down = false
+    let x0 = 0
+    let y0 = 0
+    let dx = 0
+    on(stage, 'pointerdown', (e: PointerEvent) => {
+      if (e.button) return
+      down = true
+      x0 = e.clientX
+      y0 = e.clientY
+      dx = 0
+    })
+    on(stage, 'pointermove', (e: PointerEvent) => {
+      if (!down) return
+      dx = e.clientX - x0
+      const ax = Math.abs(dx)
+      if (!drag && ax > 10 && ax > Math.abs(e.clientY - y0) * 1.3) {
+        drag = true
+        stage.setPointerCapture(e.pointerId)
+        stage.dataset.drag = ''
+        getSelection()?.empty()
+        sync()
+      }
+      // Reduced motion: jest işləyir, amma məzmun barmağın arxasınca getmir.
+      if (drag && !reduce) kids(slides[cur]).forEach((el, k) => (el.style.transform = `translateX(${dx * FOLLOW[k]}px)`))
+    })
+    const release = () => {
+      const was = drag
+      down = drag = false
+      if (!was) return
+      delete stage.dataset.drag
+      sync()
+      if (Math.abs(dx) > 60) return go(cur - Math.sign(dx), -Math.sign(dx))
+      if (!reduce)
+        kids(slides[cur]).forEach((el) => {
+          const from = el.style.transform
+          el.style.transform = ''
+          el.animate({ transform: [from, 'none'] }, { duration: 280, easing: EASE })
+        })
+    }
+    on(stage, 'pointerup', release)
+    on(stage, 'pointercancel', release)
+
+    /* ---------- Başlanğıc ---------- */
+    // isIntersecting 1px görünəndə də true olur, ona görə 0.35 həddini intersectionRatio yoxlayır.
+    const io = new IntersectionObserver(
+      ([e]) => {
+        visible = e.intersectionRatio >= 0.35
+        // Canlı an və taymer bölmə ilk dəfə ekrana girəndə başlayır (gen 0 — hələ heç bir an olmayıb).
+        if (visible && !gen) moment(cur)
+        sync()
+      },
+      { threshold: 0.35 }
+    )
+    io.observe(root)
+    on(desk, 'change', sync)
+    sync()
+
+    dispose = () => {
+      ac.abort()
+      io.disconnect()
+      clearTimeout(timer)
+      clearTimeout(hideTimer)
+      gen++
+    }
+  }
+
+  init()
+  document.addEventListener('astro:page-load', init)
+  document.addEventListener('astro:before-swap', () => {
+    dispose?.()
+    dispose = undefined
+  })
+</script>
