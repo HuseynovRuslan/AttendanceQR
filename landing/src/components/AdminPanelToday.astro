@@ -1,0 +1,169 @@
+---
+import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
+
+/**
+ * 18:30 — "Davamiyyət". «Rəhbərin bir günü» bölməsinin (AdminPanel.astro) üçüncü ekranı.
+ *
+ * Canlı hadisə: 1.1 s sonra Orxan çıxış edir — "İşdə" → "Tamamlandı", çıxış 18:31, "İşdə" 5 → 4,
+ * "Tamamlayıb" 43 → 44; sətir və kart qısa müddət yaşıl fonla yanır. Qarmaqlar
+ * AdminPanelDashboard.astro və AdminPanelProblems.astro-dakı kimidir, üstəlik:
+ *   data-swap   in: hadisədə görünür, out: hadisədə gizlənir (status nişanı; sütunun eni dəyişmir —
+ *               eyni sütunda daha enli "Həftəlik istirahət" var)
+ *
+ * Cədvəlin sütunları ekranın yox, panel parçasının öz enindən asılıdır (@container): 1024–1280px-də
+ * panel dar sütundadır və altı sütun ora sığmır, planşetdə isə panel tam endədir.
+ */
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+const OK = '#EDFBF2'
+
+const tiles = [
+  { n: 5, after: 4, label: 'panel.ui.in', accent: 'border-t-brand' },
+  { n: 2, label: 'panel.ui.absent', accent: 'border-t-[#E4572E]' },
+  { n: 43, after: 44, label: 'panel.ui.done', accent: 'border-t-brand', flash: OK },
+  { n: 12, label: 'panel.ui.rest', accent: 'border-t-[#8B5CF6]' },
+] satisfies { n: number; after?: number; label: UIKey; accent: string; flash?: string }[]
+
+const badges = {
+  done: { label: 'panel.ui.m3.finished', icon: '✓', tone: 'bg-[#E9F7EF] text-[#15803D]' },
+  in: { label: 'panel.ui.in', icon: '◷', tone: 'bg-[#FFF1E6] text-[#C2410C]' },
+  dayOff: { label: 'panel.ui.dayOff', icon: '', tone: 'bg-brand/10 text-brand' },
+} satisfies Record<string, { label: UIKey; icon: string; tone: string }>
+
+const faces = {
+  ok: { icon: '✓', tone: 'bg-[#E9F7EF] text-[#15803D]' },
+  low: { icon: '⚠', tone: 'border border-[#FDE3A7] bg-[#FEF6E1] text-[#B45309]' },
+}
+
+// Canlı hadisədə dəyişən xanada [əvvəl, sonra] durur — yalnız Orxanın sətrində iki dəyər var.
+const rows: {
+  name: string
+  role: string
+  status: (keyof typeof badges)[]
+  in?: string
+  out?: string[]
+  face?: [keyof typeof faces, number]
+}[] = [
+  { name: 'Aysel Hüseynova', role: 'Mühasib', status: ['done'], in: '08:11', out: ['18:04'], face: ['ok', 99] },
+  { name: 'Rəşad Quliyev', role: 'Anbardar', status: ['done'], in: '08:15', out: ['18:20'], face: ['low', 41] },
+  { name: 'Orxan Səfərov', role: 'Sürücü', status: ['in', 'done'], in: '08:13', out: ['—', '18:31'], face: ['ok', 98] },
+  { name: 'Səbinə Əliyeva', role: 'Ofis meneceri', status: ['dayOff'] },
+  { name: 'Kamran Rzayev', role: 'Satış meneceri', status: ['done'], in: '08:05', out: ['18:12'], face: ['ok', 97] },
+]
+
+// Container sorğuları: @min-[30rem] — prototipdəki sm (Çıxış, Üz), @min-[40rem] — md (Vəzifə).
+// @min-[18.25rem] — Giriş: İşçi + Status + Giriş ən azı 290px istəyir (ölçülüb), kartın çərçivəsi
+// ilə 292px. 320–360px telefonda panel bundan dardır və sütun kənardan kəsilirdi.
+const cell = 'px-3.5 py-2.5'
+const narrow = 'hidden @min-[18.25rem]:table-cell'
+const wide = 'hidden @min-[30rem]:table-cell'
+const wider = 'hidden @min-[40rem]:table-cell'
+const time = 'font-mono text-[12px] tabular-nums'
+const chip = 'rounded-full border border-[#E3E5EA] bg-white px-3 py-1 text-[11.5px]'
+---
+
+<div class="flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <p class="text-[17px] font-semibold tracking-[-0.02em]">{t('panel.ui.m3.title')}</p>
+    <p class="mt-0.5 text-[12px] text-slate-500">{t('panel.ui.m3.sub')}</p>
+  </div>
+  <span
+    class="inline-flex items-center gap-1.5 rounded-lg border border-brand/20 bg-white px-3 py-1.5 text-[12.5px] font-medium text-brand"
+  >
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.7"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2.5v8M4.8 7.6 8 10.8l3.2-3.2M3 13.5h10"></path>
+    </svg>
+    {t('panel.ui.m3.export')}
+  </span>
+</div>
+
+<div class="mt-3 flex flex-wrap gap-1.5">
+  <span class="rounded-full bg-ink px-3 py-1 text-[11.5px] font-medium text-white">{t('panel.ui.m3.all')}</span>
+  <span class={chip}><span aria-hidden="true">⚠</span> {t('panel.ui.m3.faceMismatch')}</span>
+  <span class={`${chip} hidden @min-[30rem]:inline`}>{t('panel.ui.m3.noPhoto')}</span>
+</div>
+
+<div class="mt-3 grid grid-cols-2 gap-2 @min-[30rem]:grid-cols-4">
+  {
+    tiles.map((tile) => (
+      <div
+        data-flash={tile.flash}
+        class:list={['rounded-lg border border-t-[3px] border-[#E7E9EE] bg-white px-3 py-2', tile.accent]}
+      >
+        <p class="flex items-baseline justify-between gap-2">
+          <span class="text-[11px] text-slate-500">{t(tile.label)}</span>
+          <span data-a={tile.after} class="text-[17px] font-semibold tabular-nums">{tile.n}</span>
+        </p>
+      </div>
+    ))
+  }
+</div>
+
+<div class="mt-3 overflow-hidden rounded-xl border border-[#E7E9EE] bg-white">
+  <table class="w-full border-collapse text-left">
+    <thead>
+      <tr class="text-[10.5px] font-semibold tracking-[0.1em] text-slate-400 uppercase">
+        <th class={`${cell} font-semibold`}>{t('panel.ui.m3.thName')}</th>
+        <th class={`${cell} ${wider} font-semibold`}>{t('panel.ui.m3.thRole')}</th>
+        <th class={`${cell} font-semibold`}>{t('panel.ui.m3.thStatus')}</th>
+        <th class={`${cell} ${narrow} font-semibold`}>{t('panel.ui.m3.thIn')}</th>
+        <th class={`${cell} ${wide} font-semibold`}>{t('panel.ui.m3.thOut')}</th>
+        <th class={`${cell} ${wide} font-semibold`}>{t('panel.ui.m3.thFace')}</th>
+      </tr>
+    </thead>
+    <tbody class="text-[13px]">
+      {
+        rows.map((row) => {
+          const live = row.status.length > 1
+          const face = row.face && faces[row.face[0]]
+          return (
+            <tr data-flash={live ? OK : undefined} class="border-t border-[#F0F1F4]">
+              <td class={`${cell} font-semibold`}>{row.name}</td>
+              <td class={`${cell} ${wider} text-slate-500`}>{row.role}</td>
+              <td class={cell}>
+                {row.status.map((key, k) => (
+                  <span
+                    data-swap={live ? (k === 0 ? 'out' : 'in') : undefined}
+                    hidden={k > 0}
+                    class:list={[
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap',
+                      badges[key].tone,
+                    ]}
+                  >
+                    {badges[key].icon && <span aria-hidden="true">{badges[key].icon}</span>}
+                    {t(badges[key].label)}
+                  </span>
+                ))}
+              </td>
+              <td class:list={[cell, narrow, time, !row.in && 'text-slate-400']}>{row.in ?? '—'}</td>
+              <td data-a={row.out?.[1]} class:list={[cell, wide, time, !row.out && 'text-slate-400']}>
+                {row.out?.[0] ?? '—'}
+              </td>
+              <td class={`${cell} ${wide}`}>
+                {face && row.face && (
+                  <span class:list={['rounded-full px-2 py-0.5 font-mono text-[11px] whitespace-nowrap', face.tone]}>
+                    <span aria-hidden="true">{face.icon}</span> {row.face[1]}%
+                  </span>
+                )}
+              </td>
+            </tr>
+          )
+        })
+      }
+    </tbody>
+  </table>
+</div>
