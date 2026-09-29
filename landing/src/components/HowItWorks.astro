@@ -38,8 +38,8 @@ const steps = [
   { n: '03', title: 'how.s3t', desc: 'how.s3d', metric: 'how.s3m' },
 ] satisfies { n: string; title: UIKey; desc: UIKey; metric: UIKey }[]
 
-/** Skan anında eyni anda yoxlanan üç şey — 02-ci səhnənin üstündəki çiplər. */
-const checks = ['how.c1', 'how.c2', 'how.c3'] satisfies UIKey[]
+/** Skan anında eyni anda yoxlanan dörd şey — 02-ci səhnənin üstündəki çiplər. */
+const checks = ['how.c1', 'how.c2', 'how.c3', 'how.c4'] satisfies UIKey[]
 
 // Prototipdən olduğu kimi götürülmüş sinif sətirləri. Bir dəfə yazılır, üç addım da onu işlədir —
 // belə olmasa üç düymənin sinifləri vaxt keçdikcə bir-birindən aralanır.
@@ -389,8 +389,8 @@ const metricClass =
     animation: hw-pulse 2.4s ease-out infinite;
   }
 
-  /* Məkan / Cihaz / Şəkil — SVG-nin içində deyil, üstündə HTML çipləridir, çünki onlar tərcümə
-     olunan mətndir. 0.4s / 0.7s / 1.0s: skan xətti gəzərkən bir-bir yanır. */
+  /* QR imzası / Məkan / Cihaz / Üz — SVG-nin içində deyil, üstündə HTML çipləridir, çünki onlar
+     tərcümə olunan mətndir. 0.4s / 0.7s / 1.0s / 1.3s: skan xətti gəzərkən bir-bir yanır. */
   .scene[data-active='true'] .hchip {
     animation: hw-pop 0.5s var(--how-ease) both;
   }
@@ -405,6 +405,10 @@ const metricClass =
 
   .scene[data-active='true'] .hchip:nth-child(3) {
     animation-delay: 1s;
+  }
+
+  .scene[data-active='true'] .hchip:nth-child(4) {
+    animation-delay: 1.3s;
   }
 
   /* SVG elementinin transform başlanğıcı öz sərhədindən ölçülsün, bütün rəsmin deyil. */

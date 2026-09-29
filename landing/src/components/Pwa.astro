@@ -1,11 +1,13 @@
 ---
 import { useTranslations, type Lang } from '../i18n/ui'
+import GooglePlayBadge from './GooglePlayBadge.astro'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// This replaced the template's "coming soon to the App Store / Google Play" badges. There is no
-// store app and none is planned — QRLog is a PWA, which is the actual selling point here.
+// Two ways onto a phone: Android installs the app from Google Play (the badge), iPhone opens QRLog
+// in the browser and adds it to the home screen — the three steps below are the iPhone route only,
+// and the small label above them says so. There is no App Store app.
 const steps = [
   { l: 'pwa.b1', p: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/>' },
   { l: 'pwa.b2', p: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 7v6M9 10h6"/>' },
@@ -19,7 +21,11 @@ const steps = [
       <span class="eyebrow">{t('pwa.eyebrow')}</span>
       <h2>{t('pwa.title')}</h2>
       <p>{t('pwa.sub')}</p>
+      <div class="pwa-store">
+        <GooglePlayBadge lang={lang} height={48} />
+      </div>
     </div>
+    <p class="pwa-for rv">{t('pwa.steps')}</p>
     <div class="pwa-steps rv">
       {steps.map((s, i) => (
         <div class="pwa-step">
@@ -31,3 +37,22 @@ const steps = [
     </div>
   </div>
 </section>
+
+<style>
+  .pwa-store {
+    margin-top: 18px;
+  }
+
+  /* The steps' own number labels (.pwa-step .n) are the model: same mono face, same grey.
+     Deliberately NOT uppercase: on an Azerbaijani page the browser uppercases i to İ, and the label
+     came out as "İPHONE ÜÇÜN" — the brand name has to stay "iPhone". */
+  .pwa-for {
+    margin: 0 auto 12px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #8b9aa3;
+  }
+</style>

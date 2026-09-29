@@ -1,13 +1,19 @@
 ---
 import { Image } from 'astro:assets'
 import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
-import { SITE, PRICING } from '../data/site'
+import { SITE, PRICING, whatsappUrl } from '../data/site'
+import GooglePlayBadge from './GooglePlayBadge.astro'
 import logoMarkWhite from '../assets/images/brand/logo-mark-white.png'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 const year = new Date().getFullYear()
 const home = localizedPath(lang, '/')
+
+// The two legal pages exist in Azerbaijani only (Google Play links to them), so every language links
+// to the AZ page. On /ru/ and /en/ the link text stays in the page's language and hreflang says what
+// the reader will land on.
+const legalHreflang = lang === 'az' ? undefined : 'az'
 ---
 
 <footer>
@@ -20,6 +26,7 @@ const home = localizedPath(lang, '/')
           <span class="fword">QR<span>Log</span></span>
         </div>
         <p>{t('foot.tag')}</p>
+        <GooglePlayBadge lang={lang} height={40} align="start" class="fbadge" />
       </div>
       <div class="fcol">
         <h4>{t('foot.product')}</h4>
@@ -31,16 +38,32 @@ const home = localizedPath(lang, '/')
       <div class="fcol">
         <h4>{t('foot.company')}</h4>
         <a href={localizedPath(lang, '/haqqimizda/')}>{t('foot.about')}</a>
-        <!-- The blog is written in Azerbaijani only, so every language points at the AZ index. -->
-        <a href="/bloq/">{t('foot.blog')}</a>
+        {/*
+          Bloq linki müvəqqəti gizlidir: bloqda hələ bir məqalə var və tək məqaləyə aparan link saytı
+          yarımçıq göstərir. Səhifə və məqalə yerindədir — 3 məqalə olanda bu sətri qaytar.
+          <a href="/bloq/">{t('foot.blog')}</a>
+        */}
         <a href={localizedPath(lang, '/elaqe/')}>{t('nav.contact')}</a>
-        <!-- Privacy policy is Azerbaijani-only (Google Play requirement); every language links to it. -->
-        <a href="/mexfilik/">{lang === 'ru' ? 'Конфиденциальность' : lang === 'en' ? 'Privacy' : 'Məxfilik'}</a>
       </div>
       <div class="fcol">
+        <h4>{t('foot.legal')}</h4>
+        <a href="/mexfilik/" hreflang={legalHreflang}>{t('foot.privacy')}</a>
+        <a href="/hesab-silinmesi/" hreflang={legalHreflang}>{t('foot.deletion')}</a>
+      </div>
+      <div class="fcol fcontact">
         <h4>{t('foot.contact')}</h4>
-        <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
-        {SITE.phone && <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>{SITE.phone}</a>}
+        <!-- Labelled, because there are two numbers: the phone line and a separate WhatsApp line. -->
+        {SITE.phone && (
+          <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>
+            {t('contact.phone')} <span>{SITE.phone}</span>
+          </a>
+        )}
+        <a href={whatsappUrl()} target="_blank" rel="noopener noreferrer">
+          {t('contact.whatsapp')} <span>{SITE.whatsapp}</span>
+        </a>
+        <a href={`mailto:${SITE.email}`}>
+          {t('contact.email')} <span>{SITE.email}</span>
+        </a>
       </div>
     </div>
     <div class="foot-bot">

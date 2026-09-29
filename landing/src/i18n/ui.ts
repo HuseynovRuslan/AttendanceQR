@@ -2,7 +2,8 @@
 // calls t('some.key'), so adding a language means adding a block here and nothing else.
 //
 // The copy describes the product as it actually ships: a printed, permanent QR poster per site,
-// GPS + bound device + selfie on scan, an Azerbaijani admin panel with Excel reports, and a PWA.
+// four checks on scan (QR signature, GPS, bound device, face), an Azerbaijani admin panel with Excel
+// reports, a Google Play app on Android and a PWA on iPhone.
 // Please keep it that way — a claim on this page is a promise the app has to keep.
 
 export const languages = ['az', 'ru', 'en'] as const
@@ -90,7 +91,7 @@ export const ui = {
   az: {
     'meta.title': 'QRLog — QR ilə işçi davamiyyəti sistemi | Azərbaycan',
     'meta.description':
-      'QRLog — işçilərin telefonu ilə QR kodu skan edərək giriş-çıxışını qeydə alan davamiyyət sistemi. Hər giriş GPS məkanı, cihaz bağlaması və foto ilə yoxlanılır.',
+      'QRLog — işçilərin telefonu ilə QR kodu skan edərək giriş-çıxışını qeydə alan davamiyyət sistemi. Hər giriş imzalı QR, GPS məkanı, cihaz və üz yoxlaması ilə təsdiqlənir.',
     'meta.keywords':
       'işçi davamiyyəti, QR davamiyyət, giriş çıxış sistemi, davamiyyət proqramı, GPS davamiyyət, iş vaxtı uçotu, QRLog, Azərbaycan',
 
@@ -108,7 +109,7 @@ export const ui = {
     'hero.title.hl': 'skan',
     'hero.title.b': ' ilə idarə edin',
     'hero.sub':
-      'İşçi iş yerindəki QR posteri telefonu ilə skan edir; sistem məkanı, cihazı və şəkli yoxlayıb giriş-çıxışı qeydə alır. Turniket, barmaq izi cihazı və ya kağız jurnal lazım deyil.',
+      'İşçi iş yerindəki QR posteri telefonu ilə skan edir; sistem QR imzasını, məkanı, cihazı və üzü yoxlayıb giriş-çıxışı qeydə alır. Turniket, barmaq izi cihazı və ya kağız jurnal lazım deyil.',
     'hero.cta2': 'Necə işləyir →',
     'hero.s1n': '~10 san',
     'hero.s1l': 'bir girişin qeydə alınması',
@@ -192,8 +193,8 @@ export const ui = {
     'stats.sub': 'Bahalı avadanlıq yox, mürəkkəb quraşdırma yox.',
     'stats.s1': 'saniyəyə bir giriş qeydə alınır',
     'stats.s2': 'manat avadanlıq xərci — telefon kifayətdir',
-    'stats.s3': 'qat yoxlama: məkan, cihaz, şəkil',
-    'stats.s4': 'filial və işçi limiti',
+    'stats.s3': 'qat yoxlama: QR imzası, məkan, cihaz, üz',
+    'stats.s4': 'filial və işçi sayı',
     'stats.s4v': 'Limitsiz',
 
     'how.eyebrow': 'İş prinsipi',
@@ -204,7 +205,7 @@ export const ui = {
       'Hər filial üçün bir dəfə sabit QR poster çap edib divara asırsınız. Kod dəyişmir — posteri təzələmək lazım gəlmir.',
     'how.s2t': 'İşçi telefonla skan edir',
     'how.s2d':
-      'Gələndə və gedəndə işçi öz telefonu ilə QR-ı skan edir. Məkan, cihaz və şəkil eyni anda yoxlanılır.',
+      'Gələndə və gedəndə işçi öz telefonu ilə QR-ı skan edir. QR imzası, məkan, cihaz və üz eyni anda yoxlanılır.',
     'how.s3t': 'Rəhbərlik canlı görür',
     'how.s3d':
       'Giriş-çıxış dərhal admin panelə düşür. Tarix üzrə filtrləyin, Excel hesabatı yükləyin, filial üzrə bölün.',
@@ -213,10 +214,12 @@ export const ui = {
     'how.s1m': '0 ₼ avadanlıq',
     'how.s2m': '~10 saniyə',
     'how.s3m': 'anlıq',
-    // 02-ci səhnədə skan anında eyni anda yoxlanan üç şey.
-    'how.c1': 'Məkan',
-    'how.c2': 'Cihaz',
-    'how.c3': 'Şəkil',
+    // 02-ci səhnədə skan anında eyni anda yoxlanan dörd şey — Hero-dakı hero.d.c1–c4 ilə eyni
+    // yoxlamalar, eyni terminlə ("Üz", "Şəkil" yox). Birini dəyişsən, o birini də dəyiş.
+    'how.c1': 'QR imzası',
+    'how.c2': 'Məkan',
+    'how.c3': 'Cihaz',
+    'how.c4': 'Üz',
     // Üç addımın tablist-inin adı — ekran oxuyucusu üçün, gözlə görünmür.
     'how.tabs': 'Necə işləyir',
 
@@ -233,8 +236,8 @@ export const ui = {
     'feat.f4d': 'Hər işçi öz telefonuna bağlanır; tanınmayan cihazdan giriş nəzarət altındadır.',
     'feat.f5t': 'Rollar və filial əhatəsi',
     'feat.f5d': 'İşçi, menecer, admin. Menecer yalnız öz filiallarını görür — artıq bir sətir də yox.',
-    'feat.f6t': 'Quraşdırma yoxdur (PWA)',
-    'feat.f6d': 'Brauzerdən açılır, ana ekrana tətbiq kimi əlavə olunur. Mağazadan yükləmək lazım deyil.',
+    'feat.f6t': 'Android və iPhone',
+    'feat.f6d': 'Android-də Google Play-dən yüklənir. iPhone-da brauzerdən açılır və ana ekrana tətbiq kimi əlavə olunur.',
 
     // «Rəhbərin bir günü» (AdminPanel.astro). Tabların saatları — 08:15, 12:40, 18:30 — dil mətni
     // deyil, komponentdə data kimi durur. Panel ekranlarının içindəki mətn panelUi-dədir (yuxarıda).
@@ -374,7 +377,7 @@ export const ui = {
       'Hər filialın GPS koordinatı və radiusu təyin olunur; skan yalnız o ərazidə qəbul edilir. Bundan əlavə hər işçi öz cihazına bağlıdır və girişdə şəkil çəkilib referansla müqayisə edilir.',
     'faq.q3': 'Telefona tətbiq yükləmək lazımdırmı?',
     'faq.a3':
-      'Mağazadan yükləmək lazım deyil. QRLog PWA-dır — brauzerdən açılır və istəyə görə telefonun ana ekranına tətbiq kimi əlavə edilir.',
+      'Android-də QRLog tətbiqini Google Play-dən yükləyə bilərsiniz. iPhone-da mağaza lazım deyil — sistem brauzerdən açılır və istəyə görə ana ekrana tətbiq kimi əlavə edilir.',
     'faq.q4': 'İşçi sistemə necə daxil olur?',
     'faq.a4':
       'Telefon nömrəsi və 4 rəqəmli PIN ilə. E-poçt tələb olunmur. İşçiləri Excel-dən toplu əlavə edə bilərsiniz — hər kəsə müvəqqəti PIN yaranır, ilk girişdə özü dəyişir.',
@@ -386,12 +389,16 @@ export const ui = {
       'Bəli. Tarix aralığı və filial üzrə hesabatlar bir kliklə Excel faylı kimi yüklənir. Maaş hesablaması da eyni paneldədir.',
 
     'pwa.eyebrow': 'Telefonda',
-    'pwa.title': 'Ana ekrana əlavə edin',
+    'pwa.title': 'Telefona quraşdırın',
     'pwa.sub':
-      'QRLog PWA-dır: brauzerdə açılır, sonra “Ana ekrana əlavə et” ilə tətbiq kimi işləyir. App Store və ya Google Play lazım deyil — yeniləmə də özü gəlir.',
+      'Android-də Google Play-dən yükləyin. iPhone-da brauzerdə açın və paylaş menyusundan «Ana ekrana əlavə et» seçin — tətbiq kimi işləyir, yeniləmə də özü gəlir.',
+    // Aşağıdakı üç addım yalnız iPhone üçündür — Android-də tətbiq Google Play-dən gəlir.
+    'pwa.steps': 'iPhone üçün',
     'pwa.b1': 'Brauzerdə açın',
     'pwa.b2': 'Ana ekrana əlavə edin',
     'pwa.b3': 'Tətbiq kimi işlədin',
+    // Google Play nişanının alt mətni (GooglePlayBadge.astro) — linkin yeganə adıdır.
+    'gplay.alt': 'Google Play-də yükləyin',
 
     'cta.title': 'Davamiyyəti bu gün rəqəmsallaşdırın',
     'cta.sub': 'Filialı və işçiləri əlavə edin, QR posteri asın — həmin gün işə düşür.',
@@ -402,12 +409,14 @@ export const ui = {
     'foot.tag': 'QR əsaslı işçi davamiyyəti sistemi. Telefonla işləyir, avadanlıq tələb etmir.',
     'foot.product': 'Məhsul',
     'foot.company': 'Şirkət',
-    'foot.contact': 'Əlaqə',
+    'foot.legal': 'Hüquqi',
+    'foot.contact': 'Bizimlə əlaqə',
     'foot.about': 'Haqqımızda',
     'foot.blog': 'Bloq',
     'foot.support': 'Dəstək',
     'foot.rights': 'Bütün hüquqlar qorunur.',
     'foot.privacy': 'Məxfilik',
+    'foot.deletion': 'Hesabın silinməsi',
     'foot.terms': 'Şərtlər',
 
     'about.title': 'Haqqımızda',
@@ -418,7 +427,7 @@ export const ui = {
     'about.p1':
       'QRLog işçi davamiyyətinin uçotunu sadə, sürətli və etibarlı etmək üçün yaradılıb. Turniket və bahalı terminallar əvəzinə işçilər öz telefonları ilə iş yerindəki QR posteri skan edir.',
     'about.p2':
-      'Sistem eyni anda üç şeyi yoxlayır: işçinin filial ərazisində olduğunu (GPS), tanınmış cihazdan skan etdiyini və girişdəki şəklin referansla uyğunluğunu. Bu yoxlamalar saxta girişi çətinləşdirir, amma heç biri girişi dayandırmır — kamera işləməsə belə işçi gəldiyini qeydə ala bilir, çünki əmək haqqı həmin qeydə bağlıdır.',
+      'Sistem hər girişdə dörd şeyi yoxlayır: posterdəki QR kodun imzasını, işçinin filial ərazisində olduğunu (GPS), tanınmış cihazdan skan etdiyini və girişdəki şəklin referansla uyğunluğunu. Radiusdan kənar skan qəbul edilmir. Şəkil alınmasa və ya üz uyğun gəlməsə isə giriş bloklanmır — yazılır və rəhbərin panelində işarələnir, çünki əmək haqqı həmin qeydə bağlıdır.',
     'about.p3':
       'Məhsul Azərbaycanda hazırlanır və istifadə olunur; tətbiqin interfeysi tam Azərbaycan dilindədir. Təmizlik, ictimai iaşə və ticarət sahələrində real şirkətlərin gündəlik davamiyyəti QRLog ilə aparılır.',
     'about.h2': 'Necə qurulur',
@@ -433,10 +442,11 @@ export const ui = {
     'contact.infoTitle': 'Əlaqə məlumatları',
     'contact.email': 'E-poçt',
     'contact.phone': 'Telefon',
-    'contact.address': 'Ünvan',
+    'contact.whatsapp': 'WhatsApp',
     'contact.writeTitle': 'Bizə yazın',
     'contact.writeText':
       'Şirkətin adını, filial sayını və təxmini işçi sayını yazsanız, sizə uyğun təklifi bir cavabda göndərərik.',
+    'contact.whatsappCta': 'WhatsApp-da yazın',
     'contact.writeBtn': 'E-poçt göndər',
 
     'pricing.metaTitle': 'Qiymət — QRLog',
@@ -465,12 +475,17 @@ export const ui = {
     'loader.aria': 'Səhifə yüklənir',
     'loader.scanning': 'Skan edilir',
     'loader.done': 'Qeydə alındı',
+
+    // WhatsAppButton — sağ aşağı küncdəki üzən düymə. `message` WhatsApp-da hazır yazılmış gəlir.
+    'wa.aria': 'WhatsApp-da yazın',
+    'wa.tooltip': 'WhatsApp-da yazın',
+    'wa.message': 'Salam! QRLog haqqında məlumat almaq istəyirəm.',
   },
 
   ru: {
     'meta.title': 'QRLog — учёт посещаемости сотрудников по QR | Азербайджан',
     'meta.description':
-      'QRLog — система учёта прихода и ухода сотрудников: сотрудник сканирует QR-постер телефоном, система проверяет геолокацию, устройство и фото. Без турникетов и бумажных журналов.',
+      'QRLog — система учёта посещаемости: сотрудник сканирует QR-код своим телефоном, и вход-выход фиксируется. Каждая отметка подтверждается подписью QR, GPS, устройством и проверкой лица.',
     'meta.keywords':
       'учёт посещаемости, посещаемость сотрудников, QR учёт рабочего времени, приход уход сотрудников, GPS контроль, QRLog, Азербайджан',
 
@@ -488,7 +503,7 @@ export const ui = {
     'hero.title.hl': 'сканом',
     'hero.title.b': '',
     'hero.sub':
-      'Сотрудник сканирует QR-постер на рабочем месте своим телефоном; система проверяет локацию, устройство и фото — и записывает приход или уход. Турникеты, сканеры отпечатков и бумажные журналы не нужны.',
+      'Сотрудник сканирует QR-постер на рабочем месте своим телефоном; система проверяет подпись QR, локацию, устройство и лицо — и записывает приход или уход. Турникеты, сканеры отпечатков и бумажные журналы не нужны.',
     'hero.cta2': 'Как это работает →',
     'hero.s1n': '~10 сек',
     'hero.s1l': 'на одну отметку',
@@ -572,8 +587,8 @@ export const ui = {
     'stats.sub': 'Без дорогого оборудования и сложного внедрения.',
     'stats.s1': 'секунд на одну отметку',
     'stats.s2': 'манатов на оборудование — хватает телефона',
-    'stats.s3': 'слоя проверки: локация, устройство, фото',
-    'stats.s4': 'лимит филиалов и сотрудников',
+    'stats.s3': 'уровня проверки: подпись QR, место, устройство, лицо',
+    'stats.s4': 'на число филиалов и сотрудников',
     'stats.s4v': 'Без лимита',
 
     'how.eyebrow': 'Принцип работы',
@@ -584,16 +599,17 @@ export const ui = {
       'Для каждого филиала один раз печатается постоянный QR-постер. Код не меняется — перепечатывать не нужно.',
     'how.s2t': 'Сотрудник сканирует',
     'how.s2d':
-      'Приходя и уходя, сотрудник сканирует QR своим телефоном. Локация, устройство и фото проверяются одновременно.',
+      'Приходя и уходя, сотрудник сканирует QR своим телефоном. Подпись QR, место, устройство и лицо проверяются одновременно.',
     'how.s3t': 'Руководство видит онлайн',
     'how.s3d':
       'Отметки сразу попадают в админ-панель. Фильтруйте по датам, выгружайте отчёт в Excel, разбивайте по филиалам.',
     'how.s1m': '0 ₼ оборудование',
     'how.s2m': '~10 секунд',
     'how.s3m': 'сразу',
-    'how.c1': 'Локация',
-    'how.c2': 'Устройство',
-    'how.c3': 'Фото',
+    'how.c1': 'Подпись QR',
+    'how.c2': 'Место',
+    'how.c3': 'Устройство',
+    'how.c4': 'Лицо',
     'how.tabs': 'Как это работает',
 
     'feat.eyebrow': 'Возможности',
@@ -610,8 +626,8 @@ export const ui = {
       'Каждый сотрудник привязан к своему телефону; вход с чужого устройства контролируется.',
     'feat.f5t': 'Роли и охват филиалов',
     'feat.f5d': 'Сотрудник, менеджер, админ. Менеджер видит только свои филиалы — ни строкой больше.',
-    'feat.f6t': 'Без установки (PWA)',
-    'feat.f6d': 'Открывается в браузере и добавляется на главный экран. Магазин приложений не нужен.',
+    'feat.f6t': 'Android и iPhone',
+    'feat.f6d': 'На Android устанавливается из Google Play. На iPhone открывается в браузере и добавляется на главный экран как приложение.',
 
     'panel.eyebrow': 'Панель управления',
     'panel.title': 'Один день руководителя',
@@ -749,7 +765,7 @@ export const ui = {
       'Для каждого филиала задаются координаты и радиус; скан принимается только там. Кроме того, сотрудник привязан к своему устройству, а при отметке делается фото и сверяется с эталоном.',
     'faq.q3': 'Нужно ли устанавливать приложение?',
     'faq.a3':
-      'Из магазина — нет. QRLog это PWA: открывается в браузере и при желании добавляется на главный экран телефона как приложение.',
+      'На Android приложение QRLog можно установить из Google Play. На iPhone магазин не нужен — система открывается в браузере и при желании добавляется на главный экран как приложение.',
     'faq.q4': 'Как сотрудник входит в систему?',
     'faq.a4':
       'По номеру телефона и 4-значному PIN. Email не требуется. Сотрудников можно загрузить списком из Excel — каждому создаётся временный PIN, который он меняет при первом входе.',
@@ -761,12 +777,14 @@ export const ui = {
       'Да. Отчёты по периоду и филиалу выгружаются в Excel одним кликом. Расчёт зарплаты — в той же панели.',
 
     'pwa.eyebrow': 'На телефоне',
-    'pwa.title': 'Добавьте на главный экран',
+    'pwa.title': 'Установите на телефон',
     'pwa.sub':
-      'QRLog это PWA: открывается в браузере, а затем через «Добавить на главный экран» работает как приложение. App Store и Google Play не нужны — обновления приходят сами.',
+      'На Android — скачайте из Google Play. На iPhone откройте в браузере и в меню «Поделиться» выберите «На экран Домой» — работает как приложение, обновления приходят сами.',
+    'pwa.steps': 'Для iPhone',
     'pwa.b1': 'Откройте в браузере',
     'pwa.b2': 'Добавьте на главный экран',
     'pwa.b3': 'Пользуйтесь как приложением',
+    'gplay.alt': 'Доступно в Google Play',
 
     'cta.title': 'Оцифруйте посещаемость уже сегодня',
     'cta.sub': 'Добавьте филиалы и сотрудников, повесьте QR-постер — заработает в тот же день.',
@@ -777,12 +795,14 @@ export const ui = {
     'foot.tag': 'Система учёта посещаемости по QR. Работает с телефона, оборудование не нужно.',
     'foot.product': 'Продукт',
     'foot.company': 'Компания',
-    'foot.contact': 'Контакты',
+    'foot.legal': 'Правовая информация',
+    'foot.contact': 'Связаться с нами',
     'foot.about': 'О нас',
     'foot.blog': 'Блог',
     'foot.support': 'Поддержка',
     'foot.rights': 'Все права защищены.',
     'foot.privacy': 'Конфиденциальность',
+    'foot.deletion': 'Удаление аккаунта',
     'foot.terms': 'Условия',
 
     'about.title': 'О нас',
@@ -793,7 +813,7 @@ export const ui = {
     'about.p1':
       'QRLog создан, чтобы сделать учёт посещаемости простым, быстрым и надёжным. Вместо турникетов и дорогих терминалов сотрудники сканируют QR-постер на рабочем месте своим телефоном.',
     'about.p2':
-      'Система одновременно проверяет три вещи: находится ли сотрудник на территории филиала (GPS), сканирует ли он со знакомого устройства и совпадает ли фото с эталоном. Эти проверки усложняют подлог, но ни одна из них не блокирует отметку — даже если камера не работает, сотрудник может зафиксировать приход, потому что от этой записи зависит его зарплата.',
+      'При каждом входе система проверяет четыре вещи: подпись QR-кода на постере, нахождение сотрудника на территории филиала (GPS), вход с привязанного устройства и совпадение фото с эталоном. Скан за пределами радиуса не принимается. Если же фото не получилось или лицо не совпало, вход не блокируется — он записывается и отмечается в панели руководителя, потому что от этой записи зависит зарплата.',
     'about.p3':
       'Продукт разрабатывается и используется в Азербайджане; интерфейс приложения полностью на азербайджанском. Реальные компании в клининге, общепите и рознице ведут ежедневный учёт в QRLog.',
     'about.h2': 'Как всё настраивается',
@@ -808,10 +828,11 @@ export const ui = {
     'contact.infoTitle': 'Контактные данные',
     'contact.email': 'E-mail',
     'contact.phone': 'Телефон',
-    'contact.address': 'Адрес',
+    'contact.whatsapp': 'WhatsApp',
     'contact.writeTitle': 'Напишите нам',
     'contact.writeText':
       'Укажите название компании, количество филиалов и примерное число сотрудников — пришлём подходящее предложение одним письмом.',
+    'contact.whatsappCta': 'Написать в WhatsApp',
     'contact.writeBtn': 'Написать письмо',
 
     'pricing.metaTitle': 'Цены — QRLog',
@@ -835,12 +856,16 @@ export const ui = {
     'loader.aria': 'Страница загружается',
     'loader.scanning': 'Сканирование',
     'loader.done': 'Записано',
+
+    'wa.aria': 'Написать в WhatsApp',
+    'wa.tooltip': 'Написать в WhatsApp',
+    'wa.message': 'Здравствуйте! Хочу узнать подробнее о QRLog.',
   },
 
   en: {
     'meta.title': 'QRLog — QR-based staff attendance system | Azerbaijan',
     'meta.description':
-      'QRLog records staff check-in and check-out from a phone: the employee scans a printed QR poster and the system verifies location, device and photo. No turnstiles, no paper registers.',
+      'QRLog is an attendance system: employees scan a QR code with their own phone to log check-in and check-out. Every entry is verified by a signed QR, GPS location, device and face check.',
     'meta.keywords':
       'staff attendance, employee attendance system, QR attendance, time tracking, GPS check-in, workforce attendance, QRLog, Azerbaijan',
 
@@ -858,7 +883,7 @@ export const ui = {
     'hero.title.hl': 'scan',
     'hero.title.b': '',
     'hero.sub':
-      'An employee scans the QR poster at their site with their own phone; the system checks the location, the device and the photo, then records the check-in or check-out. No turnstiles, no fingerprint readers, no paper register.',
+      'An employee scans the QR poster at their site with their own phone; the system checks the QR signature, the location, the device and the face, then records the check-in or check-out. No turnstiles, no fingerprint readers, no paper register.',
     'hero.cta2': 'How it works →',
     'hero.s1n': '~10 sec',
     'hero.s1l': 'to record one check-in',
@@ -942,9 +967,9 @@ export const ui = {
     'stats.sub': 'No expensive hardware, no complicated rollout.',
     'stats.s1': 'seconds to record a check-in',
     'stats.s2': 'manat of hardware cost — a phone is enough',
-    'stats.s3': 'layers of checking: location, device, photo',
-    'stats.s4': 'limit on sites and employees',
-    'stats.s4v': 'None',
+    'stats.s3': 'layers of checks: QR signature, location, device, face',
+    'stats.s4': 'branches and employees',
+    'stats.s4v': 'Unlimited',
 
     'how.eyebrow': 'How it works',
     'how.title': 'Ready in three steps',
@@ -954,16 +979,17 @@ export const ui = {
       'Each site gets one permanent printed QR poster on the wall. The code does not rotate, so the poster never needs reprinting.',
     'how.s2t': 'Staff scan with their phone',
     'how.s2d':
-      'On arrival and on leaving, the employee scans the QR with their own phone. Location, device and photo are checked at the same time.',
+      'On arrival and departure, the employee scans the QR with their own phone. The QR signature, location, device and face are checked at once.',
     'how.s3t': 'Managers see it live',
     'how.s3d':
       'Check-ins land in the admin panel immediately. Filter by date, export to Excel, split by site.',
     'how.s1m': '0 ₼ hardware',
     'how.s2m': '~10 seconds',
     'how.s3m': 'instant',
-    'how.c1': 'Location',
-    'how.c2': 'Device',
-    'how.c3': 'Photo',
+    'how.c1': 'QR signature',
+    'how.c2': 'Location',
+    'how.c3': 'Device',
+    'how.c4': 'Face',
     'how.tabs': 'How it works',
 
     'feat.eyebrow': 'Features',
@@ -981,8 +1007,8 @@ export const ui = {
       'Each employee is bound to their own phone; a scan from an unknown device is controlled.',
     'feat.f5t': 'Roles and site scope',
     'feat.f5d': 'Employee, manager, admin. A manager sees only their own sites — not one row more.',
-    'feat.f6t': 'Nothing to install (PWA)',
-    'feat.f6d': 'It opens in the browser and can be added to the home screen. No app store needed.',
+    'feat.f6t': 'Android and iPhone',
+    'feat.f6d': 'On Android, install it from Google Play. On iPhone, open it in the browser and add it to the home screen like an app.',
 
     'panel.eyebrow': 'Admin panel',
     'panel.title': "A manager's day",
@@ -1120,7 +1146,7 @@ export const ui = {
       'Every site has its own coordinates and radius; a scan is only accepted there. On top of that each employee is bound to their own device, and a photo is taken at check-in and compared with the reference.',
     'faq.q3': 'Does everyone need to install an app?',
     'faq.a3':
-      'Not from a store. QRLog is a PWA — it opens in the browser and can optionally be added to the phone home screen like an app.',
+      'On Android, you can install the QRLog app from Google Play. On iPhone, no store is needed — it opens in the browser and can be added to the home screen like an app.',
     'faq.q4': 'How do employees sign in?',
     'faq.a4':
       'With a phone number and a 4-digit PIN. No email required. Employees can be imported from Excel in bulk — each one gets a temporary PIN and sets their own on first sign-in.',
@@ -1132,12 +1158,14 @@ export const ui = {
       'Yes. Reports by date range and site download as an Excel file in one click. Payroll lives in the same panel.',
 
     'pwa.eyebrow': 'On the phone',
-    'pwa.title': 'Add it to the home screen',
+    'pwa.title': 'Install on your phone',
     'pwa.sub':
-      'QRLog is a PWA: it opens in the browser, and "Add to home screen" makes it behave like an app. No App Store or Google Play — and updates arrive on their own.',
+      'On Android, get it from Google Play. On iPhone, open it in the browser and choose “Add to Home Screen” from the share menu — it works like an app and updates itself.',
+    'pwa.steps': 'On iPhone',
     'pwa.b1': 'Open it in the browser',
     'pwa.b2': 'Add to home screen',
     'pwa.b3': 'Use it like an app',
+    'gplay.alt': 'Get it on Google Play',
 
     'cta.title': 'Digitise attendance today',
     'cta.sub': 'Add your sites and employees, put up the QR poster — it works the same day.',
@@ -1148,12 +1176,14 @@ export const ui = {
     'foot.tag': 'QR-based staff attendance. Runs on a phone, needs no hardware.',
     'foot.product': 'Product',
     'foot.company': 'Company',
-    'foot.contact': 'Contact',
+    'foot.legal': 'Legal',
+    'foot.contact': 'Contact us',
     'foot.about': 'About',
     'foot.blog': 'Blog',
     'foot.support': 'Support',
     'foot.rights': 'All rights reserved.',
     'foot.privacy': 'Privacy',
+    'foot.deletion': 'Account deletion',
     'foot.terms': 'Terms',
 
     'about.title': 'About us',
@@ -1164,7 +1194,7 @@ export const ui = {
     'about.p1':
       'QRLog exists to make attendance records simple, fast and reliable. Instead of turnstiles and expensive terminals, employees scan the QR poster at their workplace with their own phone.',
     'about.p2':
-      'The system checks three things at once: that the employee is inside the site radius (GPS), that they are scanning from a known device, and that the check-in photo matches the reference. Those checks make a fake check-in hard, but none of them blocks one — even with a broken camera an employee can still record that they came to work, because their pay depends on that record.',
+      "On every check-in the system verifies four things: the signature of the QR code on the poster, that the employee is within the branch area (GPS), that the scan comes from their registered device, and that the photo matches the reference. Scans outside the radius are rejected. If the photo fails or the face doesn't match, the check-in isn't blocked — it's recorded and flagged in the manager's panel, because payroll depends on that record.",
     'about.p3':
       'The product is built and used in Azerbaijan; the app interface is entirely in Azerbaijani. Real companies in cleaning, hospitality and retail run their daily attendance on QRLog.',
     'about.h2': 'Getting set up',
@@ -1179,10 +1209,11 @@ export const ui = {
     'contact.infoTitle': 'Contact details',
     'contact.email': 'Email',
     'contact.phone': 'Phone',
-    'contact.address': 'Address',
+    'contact.whatsapp': 'WhatsApp',
     'contact.writeTitle': 'Write to us',
     'contact.writeText':
       'Tell us the company name, how many sites you have and roughly how many employees, and we will send a matching quote in one reply.',
+    'contact.whatsappCta': 'Message on WhatsApp',
     'contact.writeBtn': 'Send an email',
 
     'pricing.metaTitle': 'Pricing — QRLog',
@@ -1206,6 +1237,10 @@ export const ui = {
     'loader.aria': 'Page is loading',
     'loader.scanning': 'Scanning',
     'loader.done': 'Recorded',
+
+    'wa.aria': 'Message us on WhatsApp',
+    'wa.tooltip': 'Message us on WhatsApp',
+    'wa.message': "Hello! I'd like to learn more about QRLog.",
   },
 } as const
 
@@ -1239,12 +1274,13 @@ export function fmt(template: string, values: Record<string, string | number>): 
  * Routes that exist in Azerbaijani only.
  *
  * The blog is written in Azerbaijani and 404.html is generated once, so there is no /ru/bloq/ and no
- * /en/404/. Offering those languages anyway is not a cosmetic slip: the switcher sends the reader to
- * a 404, and the hreflang tags point search engines at URLs that were never built.
+ * /en/404/. The privacy policy and the account-deletion page are the texts Google Play links to, and
+ * they are Azerbaijani-only too. Offering those languages anyway is not a cosmetic slip: the switcher
+ * sends the reader to a 404, and the hreflang tags point search engines at URLs that were never built.
  *
  * Add a route here the moment it stops being translated, or remove it when translations land.
  */
-const azOnlyRoutes = ['/bloq/', '/404/'] as const
+const azOnlyRoutes = ['/bloq/', '/404/', '/mexfilik/', '/hesab-silinmesi/'] as const
 
 /**
  * Which languages a given route is actually available in. Everything not listed above exists in all

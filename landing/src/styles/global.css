@@ -2513,6 +2513,25 @@ footer {
   text-decoration: underline
 }
 
+.contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px
+}
+
+/* .btn-ghost is redefined further down as white-on-dark for the hero; on the light contact card it
+   would vanish. Inside the card it keeps the original light version: ink text, hairline border. */
+.contact-card .btn-ghost {
+  color: var(--ink);
+  background: #fff;
+  border-color: var(--line)
+}
+
+.contact-card .btn-ghost:hover {
+  border-color: var(--ink);
+  background: #fff
+}
+
 @media(max-width:900px) {
   .contact-grid {
     grid-template-columns: 1fr
@@ -4207,10 +4226,20 @@ footer {
   background: #06111A
 }
 
+/* Brand + four link columns: Məhsul, Şirkət, Hüquqi, Bizimlə əlaqə. */
 .foot-grid {
-  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  grid-template-columns: 1.6fr repeat(4, 1fr);
   gap: 54px;
   margin-bottom: 58px
+}
+
+.foot-grid .fbadge {
+  margin-top: 22px
+}
+
+/* "Telefon +994 …": the label may wrap above the number in a narrow column, the number never breaks. */
+.fcontact a span {
+  white-space: nowrap
 }
 
 .flogo {
@@ -4234,6 +4263,9 @@ footer {
 
 .foot-bot {
   padding-top: 25px;
+  /* Room for the floating WhatsApp button (WhatsAppButton.astro): at the very end of the page it
+     sits over this line's right-hand corner, where the address is. */
+  padding-right: 76px;
   font-size: 11px;
   color: #5E7482
 }
@@ -4403,7 +4435,7 @@ footer {
   }
 
   .foot-grid {
-    grid-template-columns: 1.4fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 36px
   }
 

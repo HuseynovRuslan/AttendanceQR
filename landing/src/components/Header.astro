@@ -39,6 +39,8 @@ const langMeta: Record<Lang, { name: string; flag: string }> = {
 
 // Section links are absolute (home + hash) so the same header works on /elaqe/ and /bloq/ too.
 // `page` marks the links that are pages of their own, so the one you are on can say so.
+// No "Əlaqə" link here: the "Əlaqə saxlayın" button below goes to the same page, and two controls
+// with different words for one destination read as two places. The footer still links it.
 const home = localizedPath(lang, "/");
 const links = [
   { href: `${home}#how`, label: t("nav.how") },
@@ -51,11 +53,6 @@ const links = [
     page: "/qiymet/",
   },
   { href: `${home}#faq`, label: t("nav.faq") },
-  {
-    href: localizedPath(lang, "/elaqe/"),
-    label: t("nav.contact"),
-    page: "/elaqe/",
-  },
 ];
 
 const appUrl = "https://app.qrlog.az";

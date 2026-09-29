@@ -5,6 +5,7 @@ import '../styles/global-layered.css'
 import PageLoader from '../components/PageLoader.astro'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
+import WhatsAppButton from '../components/WhatsAppButton.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
 import { getImage } from 'astro:assets'
@@ -49,6 +50,9 @@ const logoWord = await getImage(LOGO_WORD)
 
 const pageTitle = title ?? t('meta.title')
 const pageDesc = description ?? t('meta.description')
+// Alt text for the share image: the description, led by the name — but only once. Most descriptions
+// already open with "QRLog — …" (or "QRLog is …"), and prefixing those gave "QRLog — QRLog — …".
+const imageAlt = pageDesc.startsWith(SITE.name) ? pageDesc : `${SITE.name} — ${pageDesc}`
 
 // hreflang: the same page in the other languages IT EXISTS IN, plus x-default on Azerbaijani.
 // A route that is Azerbaijani-only (the blog, 404) gets no alternates at all — a single hreflang
@@ -147,7 +151,7 @@ const websiteLd = {
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content={`${SITE.name} — ${pageDesc}`} />
+    <meta property="og:image:alt" content={imageAlt} />
     <meta property="og:locale" content={localeMap[lang]} />
     {routeLangs
       .filter((l) => l !== lang)
@@ -158,7 +162,7 @@ const websiteLd = {
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={pageDesc} />
     <meta name="twitter:image" content={ogImage} />
-    <meta name="twitter:image:alt" content={`${SITE.name} — ${pageDesc}`} />
+    <meta name="twitter:image:alt" content={imageAlt} />
 
     <!-- Icons -->
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -194,6 +198,9 @@ const websiteLd = {
       </main>
       <Footer lang={lang} />
     </div>
+    <!-- Outside .qrl-page on purpose: the reveal animation transforms that wrapper, and a transformed
+         ancestor would pin this fixed button to the wrapper instead of the screen. -->
+    <WhatsAppButton lang={lang} />
     <script>
       // ---------- QR pattern (decorative, deterministic) ----------
       function paintQr(id: string, seed: number) {

@@ -1,0 +1,72 @@
+---
+/**
+ * Google-un rəsmi "Google Play" nişanı — Pwa bölməsində və footer-də.
+ *
+ * Fayllar play.google.com/intl/en_us/badges/-dən olduğu kimi götürülüb (2026-09): nə kəsilib, nə
+ * rəngi dəyişib — Google-un qaydası budur. AZ və EN ingiliscə nişanı işlədir. Google-un
+ * azərbaycanca nişanı da var, amma o hələ köhnə Play loqosu ilə çəkilib; RU nişanı isə yenidir.
+ *
+ * Hər iki PNG 646×250-dir, amma içindəki qara nişan fərqli yer tutur: ingiliscədə ətrafda şəffaf
+ * boşluq var (Google-un tələb etdiyi clear space), rusca faylda demək olar yoxdur. `height` qara
+ * nişanın ÖZÜNÜN hündürlüyüdür — şəkil elə ölçülür ki, iki dildə nişan eyni boyda görünsün, şəffaf
+ * boşluq isə olduğu kimi qalsın. Aşağıdakı rəqəmlər piksellərin alfa kanalından ölçülüb; fayl
+ * dəyişsə, onları da yenidən ölç.
+ */
+import { Image } from 'astro:assets'
+import { useTranslations, type Lang } from '../i18n/ui'
+import { SITE } from '../data/site'
+import en from '../assets/images/badges/google-play-en.png'
+import ru from '../assets/images/badges/google-play-ru.png'
+
+interface Props {
+  lang: Lang
+  /** Qara nişanın görünən hündürlüyü, px. */
+  height?: number
+  /**
+   * 'start' — sol kənarı mətnlə bir xəttə düşsün deyə faylın sol şəffaf boşluğu mənfi margin ilə
+   * kompensasiya olunur (fayl kəsilmir). 'center' — mərkəzdə, boşluq iki tərəfdə bərabərdir.
+   */
+  align?: 'start' | 'center'
+  class?: string
+}
+
+const { lang, height = 48, align = 'center', class: className } = Astro.props
+const t = useTranslations(lang)
+
+// left: qara nişanın faylın sol kənarından məsafəsi; h: onun hündürlüyü (ikisi də 250px-lik faylda).
+const badge = lang === 'ru' ? { src: ru, left: 0, h: 192 } : { src: en, left: 41, h: 168 }
+
+const fileH = badge.src.height
+const imgH = Math.round((height * fileH) / badge.h)
+const imgW = Math.round((imgH * badge.src.width) / fileH)
+const shift = align === 'start' ? Math.round((badge.left / fileH) * imgH) : 0
+---
+
+<a
+  class:list={['gplay', className]}
+  href={SITE.playStore}
+  target="_blank"
+  rel="noopener noreferrer"
+  style={shift ? `margin-left:-${shift}px` : undefined}
+>
+  <Image src={badge.src} alt={t('gplay.alt')} width={imgW} height={imgH} densities={[1, 2]} />
+</a>
+
+<style>
+  .gplay {
+    display: inline-block;
+    line-height: 0;
+    border-radius: 12px;
+  }
+
+  .gplay img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .gplay:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+</style>

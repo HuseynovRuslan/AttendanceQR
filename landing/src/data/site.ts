@@ -21,15 +21,21 @@ export const SITE = {
   // Written in international form because the site is also served in Russian and English. The tel:
   // link strips everything but digits and the +, so the spacing here is purely for reading.
   phone: '+994 50 600 16 55',
-  // e.g. 'https://wa.me/994506001655' — empty hides the WhatsApp button. Left empty until someone
-  // has confirmed the number actually answers on WhatsApp: a dead button costs more than no button.
-  //
-  // `as string` is load-bearing: SITE is `as const`, so without it this field's type is the literal
-  // '' — always falsy — and ContactBody's `{SITE.whatsapp && …}` guard narrows it to `never`, which
-  // makes .replace() a type error. Drop it only when a real URL is written here.
-  whatsapp: '' as string,
+  // A DIFFERENT number from `phone`, on purpose: this is the one that answers on WhatsApp (confirmed
+  // by the owner, 2026-09). Written for reading, like `phone`; the wa.me link is built from its
+  // digits by whatsappUrl() below. Shown on /elaqe/, in the footer and on the floating button.
+  whatsapp: '+994 51 240 97 67',
   address: 'Bakı, Azərbaycan',
+  // The Android app (frontend/android, package az.qrlog.app). iPhone has no store app — it runs as
+  // a PWA from the browser. See GooglePlayBadge.astro.
+  playStore: 'https://play.google.com/store/apps/details?id=az.qrlog.app',
 } as const
+
+/** A wa.me link to SITE.whatsapp, optionally with a message already typed into the chat. */
+export function whatsappUrl(text?: string): string {
+  const base = `https://wa.me/${SITE.whatsapp.replace(/\D/g, '')}`
+  return text ? `${base}?text=${encodeURIComponent(text)}` : base
+}
 
 // ---------------------------------------------------------------------------------------------
 // PRICING
