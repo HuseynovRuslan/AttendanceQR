@@ -1,18 +1,9 @@
 ---
 /**
- * Sağ aşağı küncdə üzən WhatsApp düyməsi — BaseLayout onu hər səhifəyə qoyur.
- *
- * BaseLayout-da `.qrl-page`-dən KƏNARDA durmalıdır: loader bitəndə `.qrl-page`-ə transform animasiyası
- * verilir, transformlu valideynin içində isə `position: fixed` ekrana yox, həmin valideynə bağlanır.
- *
- * Görünmə anı üçün öz taymeri yoxdur. Loader (PageLoader.astro) işini bitirəndə <html>-dən
- * `qrl-lock`-u götürür — giriş animasiyası (0.6s gözləyib 0.4s) və ondan sonrakı üç nəbz o an
- * başlayır. Loader yoxdursa (bfcache-dən qayıdış), `qrl-lock` da yoxdur və düymə dərhal görünür.
- * Nəbz qəsdən üç dəfədir: daim yanıb-sönən element oxumağa mane olur (WCAG 2.2.2).
- *
- * İkon: Font Awesome Free 7.3.1, brands/whatsapp.svg (github.com/FortAwesome/Font-Awesome, 7.x),
- * olduğu kimi — kitabxana qoşulmur. İçindəki lisenziya şərhi CC BY 4.0-ın şərtidir, silinməməlidir.
- * WhatsApp-ın brend qaydasına görə ikon dəyişdirilmir, rəngi ağdır, fon rəsmi #25D366-dır.
+ * Sağ aşağı küncdə üzən WhatsApp düyməsi: klikləyəndə WhatsApp hazır yazılmış mesajla açılır.
+ * Harada: BaseLayout onu hər səhifəyə qoyur. Props: lang — mətnlərin dili (ui.ts-dəki wa.* açarları).
+ * Necə işləyir: görünmə və nəbz yalnız CSS-dədir — loader bitib <html>-dən qrl-lock götürüləndə
+ * düymə görünür, sonra fasiləli sonsuz nəbz başlayır. Skript yalnız klikdə analitika hadisəsi göndərir.
  */
 import { useTranslations, type Lang } from '../i18n/ui'
 import { whatsappUrl } from '../data/site'
@@ -33,22 +24,41 @@ const t = useTranslations(lang)
   aria-label={t('wa.aria')}
   data-wa
 >
+  <!-- İkon: Font Awesome Free 7.3.1, brands/whatsapp.svg (github.com/FortAwesome/Font-Awesome, 7.x
+       budağı), faylın özü olduğu kimi köçürülüb — kitabxana qoşulmur. İçindəki "Font Awesome"
+       lisenziya şərhi CC BY 4.0-ın şərtidir, silmə. WhatsApp-ın brend qaydasına görə ikonun
+       formasını dəyişmə; rəngi ağdır (currentColor → .wa-fab-dakı color). -->
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" aria-hidden="true" focusable="false"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc. --><path fill="currentColor" d="M380.9 97.1c-41.9-42-97.7-65.1-157-65.1-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480 117.7 449.1c32.4 17.7 68.9 27 106.1 27l.1 0c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3 18.6-68.1-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1s56.2 81.2 56.1 130.5c0 101.8-84.9 184.6-186.6 184.6zM325.1 300.5c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8s-14.3 18-17.6 21.8c-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7 .9-6.9-.5-9.7s-12.5-30.1-17.1-41.2c-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2s-9.7 1.4-14.8 6.9c-5.1 5.6-19.4 19-19.4 46.3s19.9 53.7 22.6 57.4c2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4s4.6-24.1 3.2-26.4c-1.3-2.5-5-3.9-10.5-6.6z"/></svg>
-  <!-- aria-hidden: the same words are already the link's aria-label; read once, not twice. -->
+  <!-- aria-hidden: eyni sözlər artıq linkin aria-label-ındadır — ekran oxuyucu onları iki dəfə yox,
+       bir dəfə oxusun. -->
   <span class="wa-tip" aria-hidden="true">{t('wa.tooltip')}</span>
 </a>
 
-<!-- Without JavaScript the loader never takes qrl-lock off, so the button would stay hidden. -->
+<!-- JavaScript söndürülübsə, loader-in skripti işləmir və qrl-lock sinfi html-dən heç vaxt götürülmür —
+     bu qayda olmasa, düymə həmişəlik gizli qalardı. -->
 <noscript><style>html.qrl-lock .wa-fab{opacity:1;visibility:visible}</style></noscript>
 
 <style is:global>
-  /* Global, not scoped: the rules below key off classes on <html> (qrl-lock) and on the header
-     (data-open), which are outside this component. Every name carries the wa- prefix. */
+  /* is:global, scoped yox: aşağıdakı qaydalar bu komponentdən kənardakı elementlərə baxır —
+     <html>-dəki qrl-lock sinfinə və header-dəki data-open atributuna. Başqa stillərlə toqquşmasın
+     deyə buradakı hər ad wa- ilə başlayır. */
   .wa-fab {
+    /* Bütün vaxtlar bir yerdə. ::after (nəbz halqası) bu dəyişənləri düymədən miras alır. */
+    --wa-appear-delay: 0.6s; /* loader bitəndən sonra düymə bu qədər gözləyir */
+    --wa-appear-duration: 0.4s; /* düymənin böyüyüb görünməsi */
+    --wa-pulse-cycle: 2.5s; /* bir nəbz dövrü: ~1.6s halqa + ~0.9s sakitlik (bax @keyframes wa-ring) */
+
+    /* position: fixed düyməni ekrana bağlayır — amma yalnız valideynlərin heç birində transform
+       yoxdursa. Ona görə BaseLayout düyməni .qrl-page-dən KƏNARA qoyur: loader bitəndə .qrl-page-ə
+       transform animasiyası verilir; düymə onun içində olsaydı, ekrana yox, bu sarğıya bağlanardı. */
     position: fixed;
     right: 20px;
+    /* env(safe-area-inset-bottom): iPhone-un aşağı kənarındakı sistem zolağı düyməni örtməsin deyə
+       əlavə boşluq; belə zolaq olmayan ekranda 0px-dir. Brauzer bu dəyəri adətən yalnız viewport
+       meta-da viewport-fit=cover olanda verir (BaseLayout-da hələ yoxdur) — o vaxta qədər zərərsiz
+       ehtiyatdır. https://developer.mozilla.org/en-US/docs/Web/CSS/env */
     bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    /* Under the loader (#qrl, 1000), over everything else — the header is 50. */
+    /* Loader-in (#qrl, z-index 1000) altında, qalan hər şeyin üstündə — header-inki 50-dir. */
     z-index: 900;
     display: flex;
     align-items: center;
@@ -56,6 +66,7 @@ const t = useTranslations(lang)
     width: 56px;
     height: 56px;
     border-radius: 50%;
+    /* WhatsApp-ın brend qaydası: fon rəsmi yaşıl #25D366, ikon ağ. */
     background: #25d366;
     color: #fff;
     box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);
@@ -78,14 +89,19 @@ const t = useTranslations(lang)
     height: 28px;
   }
 
-  /* ---------- Entrance: waits for the loader ---------- */
+  /* ---------- Görünmə: loader-i gözləyir ----------
+     Düymənin öz taymeri yoxdur. Loader (PageLoader.astro) işini bitirəndə <html>-dən qrl-lock-u
+     götürür — aşağıdakı html:not(.qrl-lock) qaydaları o an işə düşür, giriş animasiyası da, nəbz də
+     oradan sayılır. "Geri" düyməsi ilə bfcache-dən qayıdanda loader-in skripti qrl-lock-u dərhal
+     götürür, düymə loader-i gözləmir. https://developer.mozilla.org/en-US/docs/Glossary/bfcache */
   html.qrl-lock .wa-fab {
     opacity: 0;
     visibility: hidden;
   }
 
   html:not(.qrl-lock) .wa-fab {
-    animation: wa-in 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) 0.6s both;
+    animation: wa-in var(--wa-appear-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--wa-appear-delay)
+      both;
   }
 
   @keyframes wa-in {
@@ -99,7 +115,9 @@ const t = useTranslations(lang)
     }
   }
 
-  /* ---------- Three soft pulses once it is in, then still ---------- */
+  /* ---------- Nəbz: sonsuz, amma hər dövrdə fasilə ilə ----------
+     Halqa böyüyüb itir, sonra düymə bir müddət sakit durur — dayanmadan fırlanan halqa gözü yorur.
+     Vaxtlar yuxarıda, .wa-fab-dakı --wa-* dəyişənlərindədir. */
   .wa-fab::after {
     content: '';
     position: absolute;
@@ -111,23 +129,31 @@ const t = useTranslations(lang)
     pointer-events: none;
   }
 
-  /* 1s = the 0.6s wait + the 0.4s entrance. */
+  /* Nəbz düymə tam görünəndən sonra başlayır: gözləmə + görünmə müddəti. */
   html:not(.qrl-lock) .wa-fab::after {
-    animation: wa-ring 1.6s ease-out 1s 3;
+    animation: wa-ring var(--wa-pulse-cycle) ease-out
+      calc(var(--wa-appear-delay) + var(--wa-appear-duration)) infinite;
   }
 
+  /* 64% = 1.6s / 2.5s: dövrün ilk 1.6 saniyəsində halqa böyüyüb itir, qalan 0.9 saniyə sakitdir.
+     --wa-pulse-cycle-ı dəyişsən, bu faizi də yenidən hesabla (keyframe faizinə CSS dəyişəni
+     yazmaq olmur). */
   @keyframes wa-ring {
-    from {
+    0% {
       opacity: 0.5;
       transform: scale(1);
     }
-    to {
+    64% {
+      opacity: 0;
+      transform: scale(1.6);
+    }
+    100% {
       opacity: 0;
       transform: scale(1.6);
     }
   }
 
-  /* ---------- Tooltip: desktop pointer only ---------- */
+  /* ---------- İpucu (tooltip): yalnız siçanla işləyən kompüterdə ---------- */
   .wa-tip {
     position: absolute;
     top: 50%;
@@ -148,12 +174,16 @@ const t = useTranslations(lang)
     visibility: hidden;
     pointer-events: none;
     transform: translate(4px, -50%);
+    /* Gizlənəndə visibility 0.15s gec dəyişir ki, opacity-nin sönməsi görünsün. Göstərəndə aşağıdakı
+       transition-delay: 0s onu dərhal açır. */
     transition:
       opacity 0.15s ease,
       transform 0.15s ease,
       visibility 0s linear 0.15s;
   }
 
+  /* Toxunma ekranında hover yoxdur — toxunuşdan sonra ipucu "ilişib" qalardı. Ona görə yalnız
+     siçan olan və telefondan geniş (641px+) ekranda göstəririk. */
   @media (hover: hover) and (pointer: fine) and (min-width: 641px) {
     .wa-fab:hover .wa-tip,
     .wa-fab:focus-visible .wa-tip {
@@ -164,7 +194,7 @@ const t = useTranslations(lang)
     }
   }
 
-  /* ---------- Phone ---------- */
+  /* ---------- Telefon ---------- */
   @media (max-width: 640px) {
     .wa-fab {
       right: 16px;
@@ -178,11 +208,15 @@ const t = useTranslations(lang)
     }
   }
 
-  /* The open mobile menu can reach the bottom of the screen; the button steps aside. */
+  /* Açıq mobil menyu ekranın aşağısına qədər uzana bilər — düymə menyunun üstünə düşməsin deyə
+     gizlənir. :has() lazımdır, çünki header bu komponentdən kənardadır: "səhifədə açıq menyu varmı?"
+     sualını <html>-dən soruşuruq. https://developer.mozilla.org/en-US/docs/Web/CSS/:has */
   html:has([data-header-bar][data-open]) .wa-fab {
     visibility: hidden;
   }
 
+  /* Sistemdə "hərəkəti azalt" seçilibsə: giriş animasiyası, nəbz və keçidlər (transition) yoxdur —
+     düymə sadəcə görünür. */
   @media (prefers-reduced-motion: reduce) {
     html:not(.qrl-lock) .wa-fab,
     html:not(.qrl-lock) .wa-fab::after {
@@ -203,13 +237,21 @@ const t = useTranslations(lang)
 </style>
 
 <script>
-  // Analytics are not wired up on this site; whoever adds them listens for this event, as with the
-  // how_step event in HowItWorks.astro.
-  document.querySelector('[data-wa]')?.addEventListener('click', () => {
+  // Saytda hələ analitika qoşulmayıb. Kim qoşsa, window-da 'qrlog:track' hadisəsini dinləyəcək —
+  // HowItWorks.astro-dakı how_step hadisəsi də eyni yolla göndərilir.
+  // CustomEvent öz adımızla hadisə yaratmağa imkan verir, beləcə düymə konkret analitika xidmətindən
+  // asılı olmur: https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent
+  const whatsappButton = document.querySelector('[data-wa]')
+
+  function trackWhatsAppClick() {
     window.dispatchEvent(
       new CustomEvent('qrlog:track', {
         detail: { event: 'whatsapp_click', path: location.pathname },
       })
     )
-  })
+  }
+
+  if (whatsappButton) {
+    whatsappButton.addEventListener('click', trackWhatsAppClick)
+  }
 </script>

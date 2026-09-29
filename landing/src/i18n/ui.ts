@@ -1,28 +1,44 @@
-// Every translated string on the site. Three languages, one flat key space — a component only ever
-// calls t('some.key'), so adding a language means adding a block here and nothing else.
+// Saytdakı bütün tərcümə olunan mətnlər. Üç dil, bir düz açar siyahısı — komponent yalnız
+// t('some.key') çağırır, ona görə yeni dilin mətnləri üçün komponentlərə toxunmaq lazım deyil.
+// Yeni dil üçün: bu faylda languages, localeMap, htmlLang, localePrefix-ə və ui-yə yeni blok əlavə
+// et, astro.config.mjs-dəki iki locales siyahısına da yaz, səhifə fayllarını isə src/pages/<dil>/
+// qovluğunda yarat (src/pages/ru/ kimi).
+// Axın: ui.ts → useTranslations(lang) → komponentdə t('açar').
+// Yeni açarı əvvəl az blokuna yaz (UIKey tipi oradan yaranır), sonra ru və en-ə. RU/EN-də
+// unudulan açar səhifədə AZ mətni kimi görünür (aşağıda useTranslations-a bax).
 //
-// The copy describes the product as it actually ships: a printed, permanent QR poster per site,
-// four checks on scan (QR signature, GPS, bound device, face), an Azerbaijani admin panel with Excel
-// reports, a Google Play app on Android and a PWA on iPhone.
-// Please keep it that way — a claim on this page is a promise the app has to keep.
+// Mətnlər məhsulu olduğu kimi təsvir edir: hər filial üçün çap olunmuş, dəyişməyən QR poster; skan
+// zamanı dörd yoxlama (QR imzası, GPS, bağlı cihaz, üz); Excel hesabatlı, azərbaycanca admin panel;
+// Android-də Google Play tətbiqi, iPhone-da PWA.
+// Belə də qalsın — bu səhifədəki hər iddia tətbiqin yerinə yetirməli olduğu bir vəddir.
 
+// `as const` massivi dəyişməz edir, ona görə TypeScript dəyərləri ('az', 'ru', 'en') dəqiq bilir.
 export const languages = ['az', 'ru', 'en'] as const
+// Lang = 'az' | 'ru' | 'en' — yuxarıdakı massivdən avtomatik yaranır, ayrıca yazmağa ehtiyac yoxdur.
+// [number] "massivin istənilən elementinin tipi" deməkdir:
+// https://www.typescriptlang.org/docs/handbook/2/indexed-access-types.html
 export type Lang = (typeof languages)[number]
 export const defaultLang: Lang = 'az'
 
+// Record<Lang, string> — hər dilə bir mətn. Aşağıdakı üç cədvəldə bir dili yazmağı unutsan,
+// TypeScript dərhal xəta verir: https://www.typescriptlang.org/docs/handbook/utility-types.html#recordkeys-type
+//
+// og:locale meta teqi üçün (BaseLayout.astro). Bu teq alt xəttli formatı gözləyir: az_AZ.
 export const localeMap: Record<Lang, string> = {
   az: 'az_AZ',
   ru: 'ru_RU',
   en: 'en_US',
 }
 
+// <html lang="..."> atributu üçün (BaseLayout.astro). Burada format defislidir: az-AZ —
+// og:locale-dan fərqlidir, ona görə ayrıca cədvəldir.
 export const htmlLang: Record<Lang, string> = {
   az: 'az-AZ',
   ru: 'ru-RU',
   en: 'en-US',
 }
 
-// Path prefix per language ('' for default AZ)
+// Hər dilin URL prefiksi. AZ əsas dildir, ona görə prefiksi boşdur: /haqqimizda/ və /ru/haqqimizda/.
 export const localePrefix: Record<Lang, string> = {
   az: '',
   ru: '/ru',
@@ -30,14 +46,15 @@ export const localePrefix: Record<Lang, string> = {
 }
 
 /**
- * The text inside the product screens of the «Rəhbərin bir günü» section (AdminPanel*.astro).
- * Those screens are the QRLog admin panel itself, and the panel is Azerbaijani only — so these
- * strings are the same in all three languages: written once here and spread into every block below.
- * On /ru/ and /en/ the screens carry lang="az" (see AdminPanel.astro) and panel.note says in words
- * that the interface is Azerbaijani. Translate them only when the product itself is translated.
+ * «Rəhbərin bir günü» bölməsindəki məhsul ekranlarının içindəki mətn (AdminPanel*.astro).
+ * Bu ekranlar QRLog admin panelinin özüdür, panel isə yalnız azərbaycancadır — ona görə bu mətnlər
+ * üç dildə eynidir: burada bir dəfə yazılır və aşağıdakı hər dil blokuna `...panelUi` ilə köçürülür.
+ * /ru/ və /en/ səhifələrində ekranlar lang="az" daşıyır (AdminPanel.astro-ya bax), panel.note isə
+ * interfeysin azərbaycanca olduğunu sözlə deyir.
+ * Bunları yalnız məhsulun özü tərcümə olunanda tərcümə et.
  *
- * The labels are the product's own (frontend/src/pages/admin) — keep them in step with it.
- * {n} {b} {t} {r} are filled by fmt(): a number, a branch, a time, a reason.
+ * Etiketlər məhsulun öz etiketləridir (frontend/src/pages/admin) — onunla uyğun saxla.
+ * {n} {b} {t} {r} yer tutucularını fmt() doldurur: say, filial, saat, səbəb.
  */
 const panelUi = {
   'panel.ui.total': 'Ümumi işçi',
@@ -120,8 +137,8 @@ export const ui = {
     'hero.assure.a': 'Ayrıca cihaz almadan',
     'hero.assure.b': 'Həmin gün işə düşür',
     'hero.assure.c': 'Telefondan işləyir',
-    // The sample scene on the first screen: a poster on a wall, the app on a phone and the four cards
-    // floating over them. Sample data, and the label says so — the numbers are not a customer's.
+    // Birinci ekrandakı nümunə səhnə: divarda poster, telefonda tətbiq və onların üstündə üzən dörd
+    // kart. Məlumat nümunədir və etiket bunu açıq deyir — rəqəmlər heç bir müştərinin deyil.
     'hero.d.label': 'Nümunə məlumat',
     'hero.d.site': 'Baş ofis',
     'hero.d.poster': 'Giriş və çıxış üçün skan edin',
@@ -326,6 +343,8 @@ export const ui = {
     'price.popular': 'POPULYAR',
     'price.mo': ' / işçi / ay',
     'price.note': 'Bütün qiymətlər aylıqdır. Hər lokasiya (filial) üçün əlavə 5 ₼/ay tutulur. Gizli ödəniş yoxdur.',
+    // price.p1a–p4a yalnız src/data/site.ts-dəki PRICING həmin planın amount-unu null edəndə
+    // görünür (indi yalnız Enterprise-da — p4a). Qalan planlarda məbləğ site.ts-dən gəlir.
     'price.p1n': 'Start',
     'price.p1d': 'Kiçik komandalar üçün.',
     'price.p1a': '4 ₼',
@@ -335,7 +354,6 @@ export const ui = {
     'price.p1c': 'Əlaqə saxlayın',
     'price.p2n': 'Biznes',
     'price.p2d': 'Böyüyən şirkətlər üçün.',
-    // Used only if PRICING sets this plan's amount to null in src/data/site.ts.
     'price.p2a': '3.5 ₼',
     'price.p2f1': '11–50 işçi',
     'price.p2f2': 'Hər lokasiya: 5 ₼/ay',
@@ -514,8 +532,7 @@ export const ui = {
     'hero.assure.a': 'Без отдельных устройств',
     'hero.assure.b': 'Заработает в тот же день',
     'hero.assure.c': 'Работает с телефона',
-    // The sample scene on the first screen: a poster on a wall, the app on a phone and the four cards
-    // floating over them. Sample data, and the label says so — the numbers are not a customer's.
+    // Birinci ekrandakı nümunə səhnə (az blokundakı şərhə bax): rəqəmlər heç bir müştərinin deyil.
     'hero.d.label': 'Демонстрационные данные',
     'hero.d.site': 'Главный офис',
     'hero.d.poster': 'Сканируйте для входа и выхода',
@@ -656,8 +673,8 @@ export const ui = {
     'panel.next': 'Следующий момент',
     'panel.carousel': 'карусель',
     'panel.slide': 'слайд',
-    // The screens are the product, which is Azerbaijani only (see panelUi): the caption says so,
-    // so that Azerbaijani text on /ru/ does not read as a bug.
+    // Ekranlar məhsulun özüdür, məhsul isə yalnız azərbaycancadır (panelUi-yə bax). Alt yazı bunu
+    // açıq deyir ki, /ru/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
     'panel.note': 'Экраны из панели QRLog (интерфейс на азербайджанском) · данные условные',
     ...panelUi,
 
@@ -894,8 +911,7 @@ export const ui = {
     'hero.assure.a': 'No extra hardware',
     'hero.assure.b': 'Live the same day',
     'hero.assure.c': 'Works from a phone',
-    // The sample scene on the first screen: a poster on a wall, the app on a phone and the four cards
-    // floating over them. Sample data, and the label says so — the numbers are not a customer's.
+    // Birinci ekrandakı nümunə səhnə (az blokundakı şərhə bax): rəqəmlər heç bir müştərinin deyil.
     'hero.d.label': 'Sample data',
     'hero.d.site': 'Head office',
     'hero.d.poster': 'Scan to check in and out',
@@ -1036,8 +1052,8 @@ export const ui = {
     'panel.next': 'Next moment',
     'panel.carousel': 'carousel',
     'panel.slide': 'slide',
-    // The screens are the product, which is Azerbaijani only (see panelUi): the caption says so,
-    // so that Azerbaijani text on /en/ does not read as a bug.
+    // Ekranlar məhsulun özüdür, məhsul isə yalnız azərbaycancadır (panelUi-yə bax). Alt yazı bunu
+    // açıq deyir ki, /en/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
     'panel.note': 'Screens from the QRLog panel (interface in Azerbaijani) · sample data',
     ...panelUi,
 
@@ -1244,54 +1260,101 @@ export const ui = {
   },
 } as const
 
+// Mümkün açarların siyahısı az blokundan götürülür. Səhv açar yazsan (məs. t('nav.faqq')),
+// redaktor və `npm run check` xəta göstərir.
+// keyof obyektin açarlarının adlarını tip kimi götürür: https://www.typescriptlang.org/docs/handbook/2/keyof-types.html
 export type UIKey = keyof (typeof ui)['az']
 
+/**
+ * Verilən dil üçün t() funksiyasını qaytarır. Komponentdə belə işlənir:
+ *   const t = useTranslations(lang)
+ *   t('nav.faq') → 'Suallar'
+ * Açar bu dildə yoxdursa, AZ mətni qaytarılır — səhifədə boş yer qalmasın.
+ */
 export function useTranslations(lang: Lang) {
+  // `as Record<string, string>` TypeScript-ə bloka sadə «açar → mətn» cədvəli kimi baxmağı deyir.
+  // Beləcə hər dil blokunda eyni açarların olması tələb olunmur: çatışmayan açar sadəcə undefined olur.
+  // https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#type-assertions
+  const currentTexts = ui[lang] as Record<string, string>
+  const defaultTexts = ui[defaultLang] as Record<string, string>
+
   return function t(key: UIKey): string {
-    return (
-      (ui[lang] as Record<string, string>)[key] ?? (ui[defaultLang] as Record<string, string>)[key]
-    )
+    const text = currentTexts[key]
+    // Yalnız undefined yoxlanır: boş mətn ('') də düzgün dəyərdir (məs. ru/en-də 'hero.title.b'),
+    // onu AZ mətni ilə əvəz etmək olmaz.
+    if (text !== undefined) {
+      return text
+    }
+    return defaultTexts[key]
   }
 }
 
 /**
- * Fills the `{name}` slots of a translated string: fmt(t('panel.ui.m2.times'), { n: 3 }) → '3 dəfə'.
- * A slot with no value is left as it is, so a typo shows on the page instead of vanishing.
+ * Tərcümə mətnindəki {n} kimi yer tutucuları doldurur: fmt(t('panel.ui.m2.times'), { n: 3 }) → '3 dəfə'.
+ * Dəyəri verilməyən yer tutucu olduğu kimi qalır — yazı səhvi yox olmasın, səhifədə görünsün.
  *
- * A number stands free in the template ('{n} dəfə', 'son {t}') — never with a suffix glued to it
- * ('{n}-si'). The Azerbaijani suffix follows the last sound of the number (48-i, 43-ü, 40-ı), so a
- * fixed string turns wrong the moment the number changes.
+ * Şablonda rəqəm ayrıca durur ('{n} dəfə', 'son {t}') — heç vaxt şəkilçiyə yapışıq yox ('{n}-si').
+ * Azərbaycan dilində şəkilçi rəqəmin son səsinə uyğunlaşır (48-i, 43-ü, 40-ı), ona görə sabit
+ * şəkilçi rəqəm dəyişən kimi səhv olur.
  */
 export function fmt(template: string, values: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (slot, name: string) =>
-    name in values ? String(values[name]) : slot
-  )
+  // Axtarılan nümunə: "{", sonra bir və ya bir neçə latın hərfi / rəqəm / alt xətt, sonra "}".
+  // Mötərizədəki (\w+) hissə yer tutucunun adıdır — fillPlaceholder-ə `name` kimi gəlir.
+  // Sondakı `g` bütün yer tutucuları tapır, təkcə birincini yox.
+  const placeholderPattern = /\{(\w+)\}/g
+
+  // `placeholder` tapılan bütöv mətndir ('{n}'), `name` isə mötərizənin içidir ('n').
+  function fillPlaceholder(placeholder: string, name: string): string {
+    if (name in values) {
+      return String(values[name])
+    }
+    return placeholder
+  }
+
+  // replace hər tapılan yer tutucu üçün fillPlaceholder-i çağırır və onun qaytardığını yerinə qoyur.
+  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace
+  return template.replace(placeholderPattern, fillPlaceholder)
 }
 
-// Build a localized URL for a given path. Slugs stay Azerbaijani in every language on purpose:
-// /haqqimizda/ is already indexed, and translating the slug would have broken it for no gain.
 /**
- * Routes that exist in Azerbaijani only.
+ * Yalnız azərbaycanca olan səhifələr.
  *
- * The blog is written in Azerbaijani and 404.html is generated once, so there is no /ru/bloq/ and no
- * /en/404/. The privacy policy and the account-deletion page are the texts Google Play links to, and
- * they are Azerbaijani-only too. Offering those languages anyway is not a cosmetic slip: the switcher
- * sends the reader to a 404, and the hreflang tags point search engines at URLs that were never built.
+ * Bloq azərbaycanca yazılır, 404.html isə bir dəfə yaradılır — ona görə /ru/bloq/ və /en/404/ yoxdur.
+ * Məxfilik siyasəti və hesabın silinməsi səhifəsi Google Play-in link verdiyi mətnlərdir, onlar da
+ * yalnız azərbaycancadır. Bu səhifələr üçün başqa dil təklif etmək kiçik kosmetik səhv deyil: dil
+ * seçici oxucunu 404-ə göndərir, hreflang teqləri isə axtarış sistemlərini heç vaxt yaradılmamış
+ * ünvanlara yönəldir.
  *
- * Add a route here the moment it stops being translated, or remove it when translations land.
+ * Səhifənin tərcüməsi olmayan kimi onu bura əlavə et, tərcüməsi hazır olanda isə buradan sil.
  */
 const azOnlyRoutes = ['/bloq/', '/404/', '/mexfilik/', '/hesab-silinmesi/'] as const
 
 /**
- * Which languages a given route is actually available in. Everything not listed above exists in all
- * three, which is why this returns the full list rather than an empty one by default.
+ * Səhifənin həqiqətən hansı dillərdə olduğunu qaytarır. Yuxarıdakı siyahıda olmayan hər səhifə üç
+ * dildə var — ona görə standart cavab boş siyahı yox, tam siyahıdır.
+ * Header.astro (dil seçici) və BaseLayout.astro (hreflang teqləri) bunu işlədir.
  */
 export function availableLangs(path = '/'): Lang[] {
-  return azOnlyRoutes.some((p) => path.startsWith(p)) ? ['az'] : [...languages]
+  for (const route of azOnlyRoutes) {
+    // startsWith: '/bloq/' bloqun hər yazısını da tutur (məs. '/bloq/qrlog-ile-davamiyyet/').
+    if (path.startsWith(route)) {
+      return ['az']
+    }
+  }
+  // Surət qaytarırıq: `languages` dəyişməzdir (as const), çağıran isə adi massiv alır.
+  return [...languages]
 }
 
+/**
+ * Səhifənin verilən dildəki ünvanını qurur — sadəcə dil prefiksi + yol:
+ *   localizedPath('az', '/elaqe/') → '/elaqe/'
+ *   localizedPath('ru', '/elaqe/') → '/ru/elaqe/'
+ *   localizedPath('ru', '/')       → '/ru/'   (ana səhifə də eyni qaydaya düşür)
+ *
+ * Slug-lar (elaqe, haqqimizda) hər dildə azərbaycanca qalır — bilərəkdən: /haqqimizda/ artıq axtarış
+ * sistemlərində indekslənib, slug-ı tərcümə etmək onu heç bir fayda olmadan sındırardı.
+ */
 export function localizedPath(lang: Lang, path = '/'): string {
   const prefix = localePrefix[lang]
-  if (path === '/') return prefix === '' ? '/' : `${prefix}/`
   return `${prefix}${path}`
 }

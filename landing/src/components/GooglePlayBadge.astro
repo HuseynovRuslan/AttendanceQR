@@ -1,26 +1,22 @@
 ---
 /**
- * Google-un rəsmi "Google Play" nişanı — Pwa bölməsində və footer-də.
- *
- * Fayllar play.google.com/intl/en_us/badges/-dən olduğu kimi götürülüb (2026-09): nə kəsilib, nə
- * rəngi dəyişib — Google-un qaydası budur. AZ və EN ingiliscə nişanı işlədir. Google-un
- * azərbaycanca nişanı da var, amma o hələ köhnə Play loqosu ilə çəkilib; RU nişanı isə yenidir.
- *
- * Hər iki PNG 646×250-dir, amma içindəki qara nişan fərqli yer tutur: ingiliscədə ətrafda şəffaf
- * boşluq var (Google-un tələb etdiyi clear space), rusca faylda demək olar yoxdur. `height` qara
- * nişanın ÖZÜNÜN hündürlüyüdür — şəkil elə ölçülür ki, iki dildə nişan eyni boyda görünsün, şəffaf
- * boşluq isə olduğu kimi qalsın. Aşağıdakı rəqəmlər piksellərin alfa kanalından ölçülüb; fayl
- * dəyişsə, onları da yenidən ölç.
+ * Google-un rəsmi "Google Play" nişanı — Android tətbiqinə link.
+ * Harada: Pwa.astro (mərkəzdə, 48px) və Footer.astro (sola düzülmüş, 40px).
+ * Props: lang, height (qara nişanın görünən hündürlüyü), align ('start' | 'center'), class.
+ * Necə işləyir: dilə görə PNG seçilir, sonra şəkil elə ölçülür ki, içindəki qara nişan düz
+ * `height` px görünsün — faylın şəffaf kənarları isə olduğu kimi qalsın.
  */
 import { Image } from 'astro:assets'
 import { useTranslations, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
-import en from '../assets/images/badges/google-play-en.png'
-import ru from '../assets/images/badges/google-play-ru.png'
+// Fayllar play.google.com/intl/en_us/badges/-dən olduğu kimi götürülüb (2026-09): nə kəsilib, nə
+// rəngi dəyişib — Google-un qaydası budur.
+import googlePlayEn from '../assets/images/badges/google-play-en.png'
+import googlePlayRu from '../assets/images/badges/google-play-ru.png'
 
 interface Props {
   lang: Lang
-  /** Qara nişanın görünən hündürlüyü, px. */
+  /** Qara nişanın ÖZÜNÜN görünən hündürlüyü, px (şəffaf boşluq daxil deyil). Verilməsə — 48. */
   height?: number
   /**
    * 'start' — sol kənarı mətnlə bir xəttə düşsün deyə faylın sol şəffaf boşluğu mənfi margin ilə
@@ -33,13 +29,41 @@ interface Props {
 const { lang, height = 48, align = 'center', class: className } = Astro.props
 const t = useTranslations(lang)
 
-// left: qara nişanın faylın sol kənarından məsafəsi; h: onun hündürlüyü (ikisi də 250px-lik faylda).
-const badge = lang === 'ru' ? { src: ru, left: 0, h: 192 } : { src: en, left: 41, h: 168 }
+// Hər iki PNG 646×250-dir, amma içindəki qara nişan fərqli yer tutur: ingiliscədə ətrafda şəffaf
+// boşluq var (Google-un tələb etdiyi "clear space"), rusca faylda demək olar yoxdur. Rəqəmlər
+// piksellərin alfa kanalından ölçülüb — fayl dəyişsə, onları da yenidən ölç.
+const EN_BADGE = {
+  file: googlePlayEn,
+  leftGapInFile: 41, // qara nişanın faylın sol kənarından məsafəsi, px
+  heightInFile: 168, // qara nişanın öz hündürlüyü, px
+}
+const RU_BADGE = {
+  file: googlePlayRu,
+  leftGapInFile: 0, // rusca faylda qara nişan düz sol kənardan başlayır — sol boşluq yoxdur
+  heightInFile: 192, // qara nişanın öz hündürlüyü, px
+}
 
-const fileH = badge.src.height
-const imgH = Math.round((height * fileH) / badge.h)
-const imgW = Math.round((imgH * badge.src.width) / fileH)
-const shift = align === 'start' ? Math.round((badge.left / fileH) * imgH) : 0
+// AZ və EN ingiliscə nişanı işlədir. Google-un azərbaycanca nişanı da var, amma o hələ köhnə Play
+// loqosu ilə çəkilib; rusca nişan isə yenidir.
+let badge = EN_BADGE
+if (lang === 'ru') {
+  badge = RU_BADGE
+}
+
+// Ölçü hesabı: qara nişanın istədiyimiz hündürlüyündən bütöv şəklin ölçüsünə keçirik. Belə olanda
+// iki dildə nişan eyni boyda görünür, halbuki fayllardakı şəffaf boşluq fərqlidir.
+const fileHeight = badge.file.height
+// 1) Şəkil nə qədər hündür olmalıdır ki, içindəki qara nişan düz `height` px görünsün.
+const imageHeight = Math.round((height * fileHeight) / badge.heightInFile)
+// 2) En də eyni nisbətdə dəyişir — şəkil dartılmasın.
+const imageWidth = Math.round((imageHeight * badge.file.width) / fileHeight)
+// 3) Yalnız align="start": sol şəffaf boşluq ekranda neçə px tutursa, linki o qədər sola çəkirik.
+let leftShift = 0
+if (align === 'start') {
+  leftShift = Math.round((badge.leftGapInFile / fileHeight) * imageHeight)
+}
+// Aşağıda <Image>-ə verilən densities={[1, 2]}: Astro bu ölçüdə adi və iki qat böyük (retina
+// ekran üçün) şəkil yaradır, brauzer ekrana uyğun olanı seçir.
 ---
 
 <a
@@ -47,15 +71,17 @@ const shift = align === 'start' ? Math.round((badge.left / fileH) * imgH) : 0
   href={SITE.playStore}
   target="_blank"
   rel="noopener noreferrer"
-  style={shift ? `margin-left:-${shift}px` : undefined}
+  style={leftShift ? `margin-left:-${leftShift}px` : undefined}
 >
-  <Image src={badge.src} alt={t('gplay.alt')} width={imgW} height={imgH} densities={[1, 2]} />
+  <Image src={badge.file} alt={t('gplay.alt')} width={imageWidth} height={imageHeight} densities={[1, 2]} />
 </a>
 
 <style>
   .gplay {
     display: inline-block;
     line-height: 0;
+    /* Linkin fonu və çərçivəsi yoxdur, ona görə bu radius yalnız fokus halqasında (outline) və
+       mobil toxunuş işığında (tap highlight) görünür. */
     border-radius: 12px;
   }
 

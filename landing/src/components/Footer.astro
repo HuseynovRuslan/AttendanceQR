@@ -1,19 +1,42 @@
 ---
+// Footer — hər səhifənin ən aşağısı: loqo, qısa təsvir, Google Play nişanı, dörd keçid sütunu
+// (Məhsul, Şirkət, Hüquqi, Bizimlə əlaqə) və müəllif hüququ sətri.
+// Harada işlənir: BaseLayout.astro onu hər səhifənin sonuna qoyur.
+// Props: lang — səhifənin dili ('az' | 'ru' | 'en').
+// Necə işləyir: mətnlər t('açar') ilə i18n/ui.ts-dən, telefon/WhatsApp/e-poçt isə data/site.ts-dəki
+// SITE-dan gəlir. Burada yalnız HTML var — stillər global.css-dədir (.foot-grid, .fcol, .foot-bot).
 import { Image } from 'astro:assets'
 import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
 import { SITE, PRICING, whatsappUrl } from '../data/site'
 import GooglePlayBadge from './GooglePlayBadge.astro'
 import logoMarkWhite from '../assets/images/brand/logo-mark-white.png'
 
+// <Image>-in yaratdığı faylın eni (px). Astro bu rəqəmi <img>-ə width="79" height="60" atributu kimi
+// də yazır. Ekrandakı ölçünü global.css-dəki .flogo img { height: 30px; width: auto } verir: loqo 30px
+// hündürlükdə, ~40px enində görünür. Oradakı width: auto-nu silsən, loqo 79px enə uzanar.
+// 79 ekrandakı enin 2 qatıdır — retina ekranda loqo bulanıq görünməsin deyə.
+const LOGO_WIDTH_PX = 79
+// Google Play nişanının hündürlüyü (px) — qara nişanın özünün, ətrafdakı şəffaf boşluq sayılmır.
+const BADGE_HEIGHT_PX = 40
+
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
-const year = new Date().getFullYear()
-const home = localizedPath(lang, '/')
+const homePath = localizedPath(lang, '/')
 
-// The two legal pages exist in Azerbaijani only (Google Play links to them), so every language links
-// to the AZ page. On /ru/ and /en/ the link text stays in the page's language and hreflang says what
-// the reader will land on.
+// Sayt statik qurulur: il brauzerdə yox, build zamanı hesablanır. Yeni ildə sayt yenidən build
+// olunmasa, footer köhnə ili göstərəcək.
+const currentYear = new Date().getFullYear()
+
+// Hüquqi səhifələr (Məxfilik, Hesabın silinməsi) yalnız azərbaycancadır — Google Play onlara link
+// verir. Ona görə hər dildə link AZ səhifəsinə aparır. /ru/ və /en/-də linkin mətni səhifənin öz
+// dilində qalır, hreflang="az" isə oxucuya hansı dildə səhifə açılacağını bildirir. AZ səhifədə
+// hreflang lazım deyil: dəyəri undefined olan atributu Astro HTML-ə heç yazmır.
 const legalHreflang = lang === 'az' ? undefined : 'az'
+
+// Zəng linkinə (tel:) yalnız rəqəmlər və + lazımdır. /[^+\d]/g — "rəqəm və + olmayan hər simvol"
+// (g — hamısı), yəni '+994 50 600 16 55' → 'tel:+994506001655'.
+// Eyni sətir ContactBody.astro-da da var — linkin qurulma qaydasını dəyişsən, ikisini də dəyiş.
+const phoneHref = `tel:${SITE.phone.replace(/[^+\d]/g, '')}`
 ---
 
 <footer>
@@ -21,19 +44,18 @@ const legalHreflang = lang === 'az' ? undefined : 'az'
     <div class="foot-grid">
       <div>
         <div class="flogo">
-          <!-- .flogo img in global.css pins the height at 30px and lets width follow; 2x of that. -->
-          <Image src={logoMarkWhite} alt={SITE.name} width={79} />
+          <Image src={logoMarkWhite} alt={SITE.name} width={LOGO_WIDTH_PX} />
           <span class="fword">QR<span>Log</span></span>
         </div>
         <p>{t('foot.tag')}</p>
-        <GooglePlayBadge lang={lang} height={40} align="start" class="fbadge" />
+        <GooglePlayBadge lang={lang} height={BADGE_HEIGHT_PX} align="start" class="fbadge" />
       </div>
       <div class="fcol">
         <h4>{t('foot.product')}</h4>
-        <a href={`${home}#features`}>{t('nav.features')}</a>
-        <a href={`${home}#how`}>{t('nav.how')}</a>
+        <a href={`${homePath}#features`}>{t('nav.features')}</a>
+        <a href={`${homePath}#how`}>{t('nav.how')}</a>
         {PRICING.enabled && <a href={localizedPath(lang, '/qiymet/')}>{t('nav.pricing')}</a>}
-        <a href={`${home}#faq`}>{t('nav.faq')}</a>
+        <a href={`${homePath}#faq`}>{t('nav.faq')}</a>
       </div>
       <div class="fcol">
         <h4>{t('foot.company')}</h4>
@@ -52,9 +74,12 @@ const legalHreflang = lang === 'az' ? undefined : 'az'
       </div>
       <div class="fcol fcontact">
         <h4>{t('foot.contact')}</h4>
-        <!-- Labelled, because there are two numbers: the phone line and a separate WhatsApp line. -->
+        {/*
+          Hər linkin öz yazısı var ("Telefon", "WhatsApp"), çünki iki ayrı nömrə var:
+          zəng xətti və WhatsApp xətti.
+        */}
         {SITE.phone && (
-          <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>
+          <a href={phoneHref}>
             {t('contact.phone')} <span>{SITE.phone}</span>
           </a>
         )}
@@ -67,7 +92,7 @@ const legalHreflang = lang === 'az' ? undefined : 'az'
       </div>
     </div>
     <div class="foot-bot">
-      <span>© {year} {SITE.name}. {t('foot.rights')}</span>
+      <span>© {currentYear} {SITE.name}. {t('foot.rights')}</span>
       <span>{SITE.address}</span>
     </div>
   </div>

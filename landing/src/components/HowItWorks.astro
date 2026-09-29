@@ -1,26 +1,20 @@
 ---
+/*
+ * "Necə işləyir" bölməsi: davamiyyətin üç addımı — poster asılır, işçi skan edir, rəhbərlik görür.
+ * Harada işlənir: Landing.astro-da, yəni AZ/RU/EN ana səhifələrində.
+ * Props: lang — səhifənin dili; decoPosition — fondakı dekorativ QR-in yeri (default 'left').
+ * Desktopda solda üç tab, sağda səhnə: addımlar 7 saniyədən bir özü dəyişir (faylın sonundakı skript).
+ * Mobildə eyni üç addım adi kart siyahısıdır; hər kart ekrana girəndə bir dəfə canlanır.
+ */
 import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
 import HowStepVisual from './HowStepVisual.astro'
 
-/**
- * "Necə işləyir" — üç addım, üç səhnə.
- *
- * Desktopda solda tablist, sağda sabit hündürlüklü səhnə: addımlar 7 saniyədən bir özü-özünə
- * dəyişir, oxucu heç nəyə toxunmadan hekayənin hər üç kadrını görür. Mobil telefonda tab məntiqi
- * yoxdur — eyni üç addım adi kart siyahısıdır, çünki kiçik ekranda sol sütun yoxdur və gizlənmiş
- * iki kadrı barmaqla axtarmaq sadəcə aşağı sürüşdürməkdən pisdir.
- *
- * Köhnə variant — bej fonlu, üç bərabər sütunlu, üç quru abzas — buradan tamamilə çıxıb; ona
- * baxan .how / .steps / .step stilləri də styles/global.css-dən silinib.
- *
- * Bölmədə CTA paneli və pause/play düyməsi yoxdur: bu bölmə izah edir, satmır — çağırış aşağıda,
- * CTA bölməsindədir.
- */
 interface Props {
   lang: Lang
   /**
    * Fondakı dekorativ QR sahəsinin yeri. Bölmə başqa səhifədə işlənsə və ya qonşu bölmənin fonu
-   * ilə toqquşsa, 'right' / 'none' ilə sürüşdürülür. md-dən kiçikdə onsuz da gizlidir.
+   * ilə toqquşsa, 'right' ilə sağ tərəfə keçirmək, 'none' ilə isə tamam söndürmək olar. md-dən
+   * kiçik ekranda onsuz da gizlidir.
    */
   decoPosition?: 'left' | 'right' | 'none'
 }
@@ -31,22 +25,27 @@ const t = useTranslations(lang)
  * Metrik çipləri Hero bölməsindəki üç iddianın eynisidir (hero.s2n "0 ₼", hero.s1n "~10 san",
  * hero.s3l "anlıq") — burada yeni rəqəm uydurulmur, eyni söz iki yerdə təkrarlanır ki, oxucu
  * addımı yuxarıdakı vədlə eyniləşdirsin.
+ *
+ * `satisfies` hər açarın ui.ts-də həqiqətən olduğunu yoxlayır: açarda hərf səhvi olsa, redaktor
+ * və `astro check` xəta göstərir. (TypeScript operatorudur, MDN-də yoxdur:
+ * https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html#the-satisfies-operator)
  */
 const steps = [
-  { n: '01', title: 'how.s1t', desc: 'how.s1d', metric: 'how.s1m' },
-  { n: '02', title: 'how.s2t', desc: 'how.s2d', metric: 'how.s2m' },
-  { n: '03', title: 'how.s3t', desc: 'how.s3d', metric: 'how.s3m' },
-] satisfies { n: string; title: UIKey; desc: UIKey; metric: UIKey }[]
+  { number: '01', title: 'how.s1t', desc: 'how.s1d', metric: 'how.s1m' },
+  { number: '02', title: 'how.s2t', desc: 'how.s2d', metric: 'how.s2m' },
+  { number: '03', title: 'how.s3t', desc: 'how.s3d', metric: 'how.s3m' },
+] satisfies { number: string; title: UIKey; desc: UIKey; metric: UIKey }[]
 
 /** Skan anında eyni anda yoxlanan dörd şey — 02-ci səhnənin üstündəki çiplər. */
 const checks = ['how.c1', 'how.c2', 'how.c3', 'how.c4'] satisfies UIKey[]
+const CHECKS_STEP_INDEX = 1 // yoxlama çipləri (QR/Məkan/Cihaz/Üz) yalnız 02-ci addımda (skan) görünür
 
 // Prototipdən olduğu kimi götürülmüş sinif sətirləri. Bir dəfə yazılır, üç addım da onu işlədir —
 // belə olmasa üç düymənin sinifləri vaxt keçdikcə bir-birindən aralanır.
 // `bg-transparent text-ink cursor-pointer` prototipdə yoxdur, çünki orada Tailwind-in Preflight-ı
 // işləyirdi. Bu layihədə Preflight söndürülüb (bax styles/tailwind.css) və global.css düymələrə
-// yalnız şrift verir — qalanı brauzerin öz düymə görünüşüdür. Onsuz seçilməmiş iki addım boz
-// `buttonface` kartı kimi görünür və üçü də bir-birinə oxşayır.
+// yalnız şrift verir — qalanı brauzerin öz düymə görünüşüdür. Bu siniflər olmasa, seçilməmiş iki
+// addım boz `buttonface` kartı kimi görünür və üçü də bir-birinə oxşayır.
 const tabClass =
   'step group cursor-pointer rounded-2xl border border-transparent bg-transparent p-5 text-left text-ink transition-colors duration-300 hover:bg-[#FAFBFE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand aria-selected:border-hair aria-selected:bg-[#F7F9FD] aria-selected:shadow-[0_1px_2px_rgba(16,24,40,.04)]'
 const chipClass =
@@ -92,7 +91,12 @@ const metricClass =
       <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('how.sub')}</p>
     </div>
 
-    <!-- ══════════ DESKTOP ══════════ -->
+    <!--
+      ══════════ DESKTOP ══════════
+      Solda tablist, sağda sabit hündürlüklü səhnə — oxucu heç nəyə toxunmadan hər üç kadrı görür.
+      data-state (running / paused / manual) aşağıdakı skriptdən yazılır, CSS ona baxır.
+      Pause/play düyməsi və CTA qəsdən yoxdur: bu bölmə izah edir, satmır — çağırış CTA bölməsindədir.
+    -->
     <div
       id="howDesk"
       data-state="running"
@@ -117,14 +121,14 @@ const metricClass =
 
         <div role="tablist" aria-label={t('how.tabs')} aria-orientation="vertical" class="flex flex-col gap-2">
           {
-            steps.map((s, i) => (
+            steps.map((step, index) => (
               <button
                 type="button"
                 role="tab"
-                id={`how-tab-${i + 1}`}
-                aria-controls={`how-panel-${i + 1}`}
-                aria-selected={i === 0 ? 'true' : 'false'}
-                tabindex={i === 0 ? 0 : -1}
+                id={`how-tab-${index + 1}`}
+                aria-controls={`how-panel-${index + 1}`}
+                aria-selected={index === 0 ? 'true' : 'false'}
+                tabindex={index === 0 ? 0 : -1}
                 class={tabClass}
               >
                 <span class="flex items-center gap-3">
@@ -134,17 +138,18 @@ const metricClass =
                     data-chip
                     class={`${chipClass} relative z-2 ring-4 ring-white transition-colors group-aria-selected:bg-brand group-aria-selected:text-white group-aria-selected:ring-[#F7F9FD]`}
                   >
-                    {s.n}
+                    {step.number}
                   </span>
-                  <span class="text-[17px] font-medium tracking-[-0.01em]">{t(s.title)}</span>
+                  <span class="text-[17px] font-medium tracking-[-0.01em]">{t(step.title)}</span>
                   <span
                     class={`${metricClass} ml-auto transition-colors group-aria-selected:border-[#D7E0F7] group-aria-selected:bg-white group-aria-selected:text-brand`}
                   >
-                    {t(s.metric)}
+                    {t(step.metric)}
                   </span>
                 </span>
-                <span class="mt-3 block pl-13 text-[14.5px] leading-[1.7] text-ink2">{t(s.desc)}</span>
-                {/* Növbəti addıma keçid bu xəttin animationend hadisəsi ilə olur — setInterval yox. */}
+                <span class="mt-3 block pl-13 text-[14.5px] leading-[1.7] text-ink2">{t(step.desc)}</span>
+                {/* Progress xətti. Növbəti addıma keçid bu xəttin animationend hadisəsi ilə olur —
+                    setInterval yox (səbəbi aşağıda, stil blokundakı "Progress xətti" qeydindədir). */}
                 <span class="hw-bar mt-4 ml-13 block h-0.5 overflow-hidden rounded-full bg-hair opacity-0 transition-opacity duration-300 group-aria-selected:opacity-100">
                   <i />
                 </span>
@@ -159,22 +164,22 @@ const metricClass =
           <div class="stage-grid pointer-events-none absolute inset-0"></div>
 
           {
-            steps.map((_, i) => (
+            steps.map((_, index) => (
               <div
-                id={`how-panel-${i + 1}`}
+                id={`how-panel-${index + 1}`}
                 role="tabpanel"
-                aria-labelledby={`how-tab-${i + 1}`}
-                tabindex={i === 0 ? 0 : -1}
-                data-active={i === 0 ? 'true' : 'false'}
-                aria-hidden={i === 0 ? undefined : 'true'}
+                aria-labelledby={`how-tab-${index + 1}`}
+                tabindex={index === 0 ? 0 : -1}
+                data-active={index === 0 ? 'true' : 'false'}
+                aria-hidden={index === 0 ? undefined : 'true'}
                 class="scene stage absolute inset-0 flex items-center justify-center"
               >
                 <div class="w-full max-w-135 px-4">
-                  <HowStepVisual step={(i + 1) as 1 | 2 | 3} idSuffix="d" />
+                  <HowStepVisual step={(index + 1) as 1 | 2 | 3} idSuffix="d" />
                 </div>
-                {i === 1 && (
+                {index === CHECKS_STEP_INDEX && (
                   <div class="pointer-events-none absolute top-1/2 left-6 flex -translate-y-1/2 flex-col gap-2">
-                    {checks.map((c) => (
+                    {checks.map((checkKey) => (
                       <span class="hchip inline-flex items-center gap-1.5 rounded-full border border-hair bg-white px-3 py-1.5 text-[12px] font-medium shadow-[0_1px_2px_rgba(16,24,40,.05)]">
                         <span class="flex h-4 w-4 items-center justify-center rounded-full bg-[#EAF0FC] text-brand">
                           <svg
@@ -191,7 +196,7 @@ const metricClass =
                             <path d="M2.4 6.4 4.8 8.8 9.6 3.6" />
                           </svg>
                         </span>
-                        {t(c)}
+                        {t(checkKey)}
                       </span>
                     ))}
                   </div>
@@ -203,28 +208,32 @@ const metricClass =
       </div>
     </div>
 
-    <!-- ══════════ MOBİL ══════════ -->
+    <!--
+      ══════════ MOBİL ══════════
+      Tab məntiqi yoxdur — eyni üç addım adi kart siyahısıdır: kiçik ekranda sol sütuna yer yoxdur,
+      gizlənmiş iki kadrı barmaqla axtarmaq isə sadəcə aşağı sürüşdürməkdən pisdir.
+    -->
     <ol role="list" class="mt-10 flex flex-col gap-5 lg:hidden">
       {
-        steps.map((s, i) => (
+        steps.map((step, index) => (
           <li
             data-active="false"
-            class={`scene rv d${i + 1} overflow-hidden rounded-2xl border border-hair bg-white`}
+            class={`scene rv d${index + 1} overflow-hidden rounded-2xl border border-hair bg-white`}
           >
             <div class="relative flex h-55 items-center justify-center bg-page">
               <div class="w-full max-w-72.5 px-2">
-                <HowStepVisual step={(i + 1) as 1 | 2 | 3} idSuffix="m" />
+                <HowStepVisual step={(index + 1) as 1 | 2 | 3} idSuffix="m" />
               </div>
             </div>
             <div class="p-5">
               <div class="flex items-center gap-3">
-                <span class={chipClass}>{s.n}</span>
-                <h3 class="text-[17px] font-medium tracking-[-0.01em] text-ink">{t(s.title)}</h3>
+                <span class={chipClass}>{step.number}</span>
+                <h3 class="text-[17px] font-medium tracking-[-0.01em] text-ink">{t(step.title)}</h3>
               </div>
-              <p class="mt-3 text-[14.5px] leading-[1.7] text-ink2">{t(s.desc)}</p>
-              {i === 1 && (
+              <p class="mt-3 text-[14.5px] leading-[1.7] text-ink2">{t(step.desc)}</p>
+              {index === CHECKS_STEP_INDEX && (
                 <div class="mt-4 flex flex-wrap gap-1.5">
-                  {checks.map((c) => (
+                  {checks.map((checkKey) => (
                     <span class="hchip inline-flex items-center gap-1.5 rounded-full border border-hair bg-white px-2.5 py-1 text-[12px] font-medium">
                       <span class="text-brand">
                         <svg
@@ -241,12 +250,12 @@ const metricClass =
                           <path d="M2.4 6.4 4.8 8.8 9.6 3.6" />
                         </svg>
                       </span>
-                      {t(c)}
+                      {t(checkKey)}
                     </span>
                   ))}
                 </div>
               )}
-              <span class={`${metricClass} mt-4 inline-flex`}>{t(s.metric)}</span>
+              <span class={`${metricClass} mt-4 inline-flex`}>{t(step.metric)}</span>
             </div>
           </li>
         ))
@@ -257,15 +266,21 @@ const metricClass =
 
 <style>
   /*
-    Bölmənin bütün stili burada. Səhnələrin `.an-*` qarmaqları HowStepVisual.astro-dadır, amma
-    onları hərəkətə gətirən qaydalar da buradadır: @keyframes adı Astro-da scope olunmur (bax
-    Problem.astro-dakı qeyd), ona görə eyni keyframe-i iki komponentdə yazmaqdansa bir hərəkət
-    lüğətini bir faylda saxlamaq daha təhlükəsizdir. Başqa komponentdəki elementə çatmaq üçün
-    :global() işlənir — ana seçici (`.scene`) bu komponentdə olduğuna görə qayda kənara sızmır.
+    Bölmənin bütün stili burada. Köhnə variantın .how / .steps / .step stilləri global.css-dən
+    silinib — `.step` sinfi indi yalnız bu faylın qaydaları üçündür.
 
-    Ad prefiksi qəsdəndir: styles/global.css-də otuza yaxın keyframe var və onlardan biri elə
-    `fill` adlanır.
+    Səhnələrin `.an-*` qarmaqları HowStepVisual.astro-dadır, amma onları hərəkətə gətirən qaydalar
+    da buradadır: @keyframes adı Astro-da scope olunmur (bax Problem.astro-dakı qeyd), ona görə eyni
+    keyframe-i iki komponentdə yazmaqdansa bütün hərəkətləri bir faylda saxlamaq daha təhlükəsizdir.
+    Başqa komponentdəki elementə çatmaq üçün :global() işlənir — ana seçici (`.scene`) bu
+    komponentdə olduğuna görə qayda kənara sızmır.
+    https://docs.astro.build/en/guides/styling/#global-styles
+
+    Keyframe adlarındakı `hw-` prefiksi qəsdəndir: styles/global.css-də otuza yaxın keyframe var
+    və onlardan biri elə `fill` adlanır.
   */
+
+  /* Səhnədə elementlərin görünmə animasiyalarının (hw-rise / hw-pop / hw-row) ortaq əyrisi. */
   :root {
     --how-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   }
@@ -276,7 +291,9 @@ const metricClass =
     mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
   }
 
-  /* Hero və Problem bölmələrindəki eyni brand işığı — rəng tokendən gəlir, hex təkrarlanmır. */
+  /* Hero və Problem bölmələrindəki eyni brand işığı — rəng tokendən gəlir, hex təkrarlanmır.
+     color-mix() brand rənginin 6%-lik şəffaf variantını CSS-in özündə düzəldir:
+     https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color-mix */
   .glow {
     background: radial-gradient(
       760px 360px at 14% -10%,
@@ -329,10 +346,13 @@ const metricClass =
     border-radius: 999px;
   }
 
+  /* 7s — bir addımın ekranda qalma müddəti. JS-də ayrıca taymer yoxdur: bu rəqəmi dəyişsən,
+     avtomatik keçid də o qədər tez / gec olacaq. */
   .step[aria-selected='true'] .hw-bar > i {
     animation: hw-fill 7s linear forwards;
   }
 
+  /* Siçan bölmənin üstündədirsə, fokus içindədirsə və ya bölmə ekranda deyilsə — xətt dayanır. */
   [data-state='paused'] .step[aria-selected='true'] .hw-bar > i {
     animation-play-state: paused;
   }
@@ -349,8 +369,9 @@ const metricClass =
   }
 
   /* ---------- Səhnə animasiyaları ---------- */
-  /* Yalnız aktiv səhnədə işləyir; addım dəyişəndə element yenidən görünür və animasiya sıfırdan
-     başlayır. Nə sıçrayış, nə yay effekti — hamısı eyni əyri üzərindədir. */
+  /* Yalnız aktiv səhnədə (data-active='true') işləyir: addım dəyişəndə seçici yenidən uyğun gəlir
+     və animasiya sıfırdan başlayır. Nə sıçrayış, nə yay effekti — görünmə animasiyaları eyni əyri
+     (--how-ease) üzərindədir; skan xətti (hw-sweep) və nəbz (hw-pulse) isə sonsuz təkrarlanır. */
   .scene[data-active='true'] :global(.an-poster),
   .scene[data-active='true'] :global(.an-phone),
   .scene[data-active='true'] :global(.an-win) {
@@ -411,7 +432,9 @@ const metricClass =
     animation-delay: 1.3s;
   }
 
-  /* SVG elementinin transform başlanğıcı öz sərhədindən ölçülsün, bütün rəsmin deyil. */
+  /* SVG elementinin transform başlanğıcı öz sərhədindən ölçülsün, bütün rəsmin deyil — yoxsa
+     scale() elementi öz mərkəzi ətrafında yox, bütün rəsmə görə böyüdür və element yerindən sürüşür.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/transform-box */
   .scene :global(.an-poster),
   .scene :global(.an-phone),
   .scene :global(.an-win),
@@ -511,33 +534,56 @@ const metricClass =
 
 <script>
   /*
-    İki müstəqil parça: desktop tab maşını və mobil kartların bir dəfəlik animasiyası. Xarici
-    kitabxana yoxdur, şəbəkə sorğusu yoxdur.
+    Bu skriptin iki müstəqil hissəsi var:
+      1) Desktop tab maşını — addımlar özü dəyişir, klik və klaviatura ilə idarə olunur.
+      2) Mobil kartlar — hər kartın animasiyası kart ekrana girəndə bir dəfə işləyir.
+    Bir addımın müddəti (7s) burada deyil, <style>-dakı hw-fill animasiyasındadır.
+    Xarici kitabxana və şəbəkə sorğusu yoxdur.
 
     Layihədə Astro View Transitions (ClientRouter) işlənmir — BaseLayout onu idxal etmir — ona görə
-    bu skript səhifə başına bir dəfə işləyir. ClientRouter əlavə olunsa, hər iki parçanı `init()`
+    bu skript səhifə başına bir dəfə işləyir. ClientRouter əlavə olunsa, hər iki hissəni `init()`
     içinə yığıb `astro:page-load`-a bağlamaq və `astro:before-swap`-da observer-ləri
     `disconnect()` etmək lazımdır.
   */
-  const root = document.getElementById('howDesk')
 
-  if (root) {
-    const list = root.querySelector('[role="tablist"]') as HTMLElement
-    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    const panels = Array.from(root.querySelectorAll<HTMLElement>('[role="tabpanel"]'))
-    const rail = root.querySelector('[data-rail]') as HTMLElement
-    const fill = root.querySelector('[data-rail-fill]') as HTMLElement
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+  // Desktop blokunun neçə hissəsi görünəndə "ekrandadır" sayılır (0.3 = 30%).
+  const DESKTOP_VISIBLE_THRESHOLD = 0.3
+  // Mobil kartın neçə hissəsi görünəndə onun animasiyası başlayır (0.45 = 45%).
+  const CARD_VISIBLE_THRESHOLD = 0.45
 
-    // manual: istifadəçi idarəni götürüb — avtomatik keçid bir daha başlamır.
-    // hold: hover və ya fokus; visible: bölmə ekrandadır. Hər ikisi müvəqqəti dayandırır.
-    let cur = 0
-    let manual = reduce
-    let hold = false
-    let visible = false
+  // Addım nəyə görə dəyişdi — analitika hadisəsinə bu yazılır.
+  type StepSource = 'click' | 'keyboard' | 'auto'
 
-    // Saytda analitika qoşulsa, bu hadisəni dinləmək kifayətdir. Burada kitabxana əlavə edilmir.
-    const track = (step: number, source: 'click' | 'keyboard' | 'auto') => {
+  // ══════════ 1) DESKTOP ══════════
+  const desktop = document.getElementById('howDesk')
+
+  if (desktop) {
+    const tablist = desktop.querySelector('[role="tablist"]') as HTMLElement
+    // <HTMLButtonElement> yalnız TypeScript üçündür: tapılan elementlərin düymə olduğunu bildirir.
+    // https://www.typescriptlang.org/docs/handbook/2/generics.html
+    const tabs = Array.from(desktop.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+    const panels = Array.from(desktop.querySelectorAll<HTMLElement>('[role="tabpanel"]'))
+    const rail = desktop.querySelector('[data-rail]') as HTMLElement
+    const railFill = desktop.querySelector('[data-rail-fill]') as HTMLElement
+    // Sistemdə "hərəkəti azalt" seçilibsə, addımlar özü-özünə dəyişmir — yalnız klik və ya klaviatura ilə.
+    // matchMedia CSS media sorğusunu JS-dən yoxlamağa imkan verir:
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+    const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    let currentIndex = 0
+    // true olanda avtomatik keçid işləmir: ya istifadəçi addımı özü seçib (bir daha başlamır),
+    // ya da sistemdə "hərəkəti azalt" açıqdır.
+    let isManual = prefersReducedMotion
+    // Siçan bölmənin üstündədir və ya fokus onun içindədir — keçid müvəqqəti dayanır.
+    let isUserInside = false
+    // Bölmə ekrandadır. Ekranda deyilsə, keçid müvəqqəti dayanır.
+    let isOnScreen = false
+
+    // Saytda analitika qoşulsa, window-da 'qrlog:track' hadisəsini dinləmək kifayətdir
+    // (WhatsAppButton da eyni hadisəni göndərir). Burada kitabxana əlavə edilmir.
+    // CustomEvent — öz adımız və öz məlumatımızla (detail) hadisə yaratmaq üçün:
+    // https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent/CustomEvent
+    const trackStep = (step: number, source: StepSource) => {
       window.dispatchEvent(
         new CustomEvent('qrlog:track', { detail: { event: 'how_step', step, source } })
       )
@@ -545,129 +591,197 @@ const metricClass =
 
     // Relsin başı, sonu və dolğunluğu çip mərkəzlərindən ölçülür — sərt yazılmış piksel dəyəri
     // şrift yüklənəndə və ya başlıq iki sətrə düşəndə xətti çiplərdən qoparır.
-    const chipCenter = (i: number) => {
-      const c = tabs[i].querySelector('[data-chip]') as HTMLElement
-      const r = c.getBoundingClientRect()
-      return r.top - list.getBoundingClientRect().top + r.height / 2
+    // Qaytarılan rəqəm tablist-in yuxarı kənarından çipin mərkəzinə qədər olan məsafədir (px).
+    const getChipCenter = (index: number) => {
+      const chip = tabs[index].querySelector('[data-chip]') as HTMLElement
+      const chipRect = chip.getBoundingClientRect()
+      const tablistTop = tablist.getBoundingClientRect().top
+      return chipRect.top - tablistTop + chipRect.height / 2
     }
 
+    // Boz relsi birinci çipdən sonuncuya qədər, brand rəngli dolğunu isə aktiv çipə qədər çəkir.
     const layoutRail = () => {
-      const a = chipCenter(0)
-      const b = chipCenter(tabs.length - 1)
-      rail.style.top = a + 'px'
-      rail.style.height = b - a + 'px'
-      fill.style.height = chipCenter(cur) - a + 'px'
+      const firstCenter = getChipCenter(0)
+      const lastCenter = getChipCenter(tabs.length - 1)
+      rail.style.top = firstCenter + 'px'
+      rail.style.height = lastCenter - firstCenter + 'px'
+      railFill.style.height = getChipCenter(currentIndex) - firstCenter + 'px'
     }
 
-    const sync = () => {
-      root.dataset.state = manual ? 'manual' : visible && !hold ? 'running' : 'paused'
+    // CSS [data-state] dəyərinə baxıb progress xəttini işlədir, dayandırır və ya gizlədir.
+    const getState = () => {
+      if (isManual) return 'manual'
+      if (isOnScreen && !isUserInside) return 'running'
+      return 'paused'
     }
 
-    const show = (i: number, source?: 'click' | 'keyboard' | 'auto') => {
-      cur = i
-      tabs.forEach((tab, k) => {
-        const on = k === i
-        tab.setAttribute('aria-selected', on ? 'true' : 'false')
-        tab.tabIndex = on ? 0 : -1
-        // Animasiyanı sıfırdan başlatmaq: sinfi silib reflow oxumaq, sonra qaytarmaq.
-        const bar = tab.querySelector('.hw-bar > i') as HTMLElement | null
-        if (on && bar) {
-          bar.style.animation = 'none'
-          void bar.offsetWidth
-          bar.style.animation = ''
+    const updateState = () => {
+      desktop.dataset.state = getState()
+    }
+
+    // Progress xəttinin animasiyasını sıfırdan başladır: inline `animation: none` yazırıq,
+    // offsetWidth-i oxuyub brauzeri bu halı dərhal hesablamağa məcbur edirik (reflow), sonra
+    // inline dəyəri silirik — CSS-dəki hw-fill yenidən 0-dan başlayır.
+    // `void` — oxunan rəqəm lazım deyil, vacib olan oxumağın özüdür.
+    const restartBarAnimation = (bar: HTMLElement) => {
+      bar.style.animation = 'none'
+      void bar.offsetWidth
+      bar.style.animation = ''
+    }
+
+    const updateTab = (tab: HTMLButtonElement, isActive: boolean) => {
+      tab.setAttribute('aria-selected', isActive ? 'true' : 'false')
+      // Klaviaturadakı Tab düyməsi ilə yalnız aktiv taba gəlmək olur; digər tablara oxlarla
+      // keçilir (bax handleKeydown).
+      tab.tabIndex = isActive ? 0 : -1
+      const bar = tab.querySelector('.hw-bar > i') as HTMLElement | null
+      if (isActive && bar) {
+        restartBarAnimation(bar)
+      }
+    }
+
+    const updatePanel = (panel: HTMLElement, isActive: boolean) => {
+      panel.dataset.active = isActive ? 'true' : 'false'
+      // Fokuslana bilən element aria-hidden-in içində qalmamalıdır, ona görə tabindex də dəyişir.
+      panel.tabIndex = isActive ? 0 : -1
+      if (isActive) {
+        panel.removeAttribute('aria-hidden')
+      } else {
+        panel.setAttribute('aria-hidden', 'true')
+      }
+    }
+
+    // Addımı göstərir: tabları, panelləri və relsi yeniləyir. source yalnız klik, klaviatura və
+    // avtomatik keçiddə verilir — ilk açılışda (showStep(0)) analitika hadisəsi göndərilmir.
+    const showStep = (stepIndex: number, source?: StepSource) => {
+      currentIndex = stepIndex
+      tabs.forEach((tab, index) => updateTab(tab, index === stepIndex))
+      panels.forEach((panel, index) => updatePanel(panel, index === stepIndex))
+      layoutRail()
+      if (source) trackStep(stepIndex + 1, source)
+    }
+
+    const stopAutoPlay = () => {
+      isManual = true
+      updateState()
+    }
+
+    // Sonsuz dövr: 03 bitəndə yenidən 01. `%` (bölmədən qalıq) son indeksdən sonra 0 qaytarır.
+    const showNextStepAutomatically = () => {
+      if (!isManual) showStep((currentIndex + 1) % tabs.length, 'auto')
+    }
+
+    const bindTabEvents = () => {
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => {
+          stopAutoPlay()
+          showStep(index, 'click')
+        })
+        // animationend — CSS animasiyası bitəndə gələn hadisə. Keçidi setInterval yox, bu hadisə
+        // verir ki, keçid gözün gördüyü xətlə həmişə eyni anda olsun (bax <style>, "Progress xətti").
+        // https://developer.mozilla.org/en-US/docs/Web/API/Element/animationend_event
+        const bar = tab.querySelector('.hw-bar > i') as HTMLElement
+        bar.addEventListener('animationend', showNextStepAutomatically)
+      })
+    }
+
+    // Basılan düyməyə görə keçiləcək addımın indeksini qaytarır; başqa düymədirsə null.
+    // Ox düymələri, Home və End — tab siyahısı üçün standart klaviatura qaydası:
+    // https://www.w3.org/WAI/ARIA/apg/patterns/tabs/
+    const getKeyTargetIndex = (key: string): number | null => {
+      const stepCount = tabs.length
+      if (key === 'ArrowDown' || key === 'ArrowRight') {
+        return (currentIndex + 1) % stepCount // 03-dən sonra 01
+      }
+      if (key === 'ArrowUp' || key === 'ArrowLeft') {
+        return (currentIndex - 1 + stepCount) % stepCount // 01-dən əvvəl 03
+      }
+      if (key === 'Home') return 0
+      if (key === 'End') return stepCount - 1
+      return null
+    }
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      const targetIndex = getKeyTargetIndex(event.key)
+      if (targetIndex === null) return
+      // Bu düymələrin səhifəni sürüşdürməsinin qarşısını alırıq.
+      event.preventDefault()
+      stopAutoPlay()
+      showStep(targetIndex, 'keyboard')
+      tabs[targetIndex].focus()
+    }
+
+    const bindHoverAndFocus = () => {
+      desktop.addEventListener('mouseenter', () => {
+        isUserInside = true
+        updateState()
+      })
+      desktop.addEventListener('mouseleave', () => {
+        isUserInside = false
+        updateState()
+      })
+      desktop.addEventListener('focusin', () => {
+        isUserInside = true
+        updateState()
+      })
+      // Fokus bir tabdan digərinə keçəndə də focusout gəlir. relatedTarget — fokusun getdiyi
+      // element; o hələ bölmənin içindədirsə, fasilə davam edir.
+      // https://developer.mozilla.org/en-US/docs/Web/API/FocusEvent/relatedTarget
+      desktop.addEventListener('focusout', (event) => {
+        if (!desktop.contains(event.relatedTarget as Node)) {
+          isUserInside = false
+          updateState()
         }
       })
-      panels.forEach((p, k) => {
-        const on = k === i
-        p.dataset.active = on ? 'true' : 'false'
-        // Fokuslana bilən element aria-hidden-in içində qalmamalıdır, ona görə tabindex də dəyişir.
-        p.tabIndex = on ? 0 : -1
-        if (on) p.removeAttribute('aria-hidden')
-        else p.setAttribute('aria-hidden', 'true')
-      })
-      layoutRail()
-      if (source) track(i + 1, source)
     }
-
-    const stopAuto = () => {
-      manual = true
-      sync()
-    }
-
-    tabs.forEach((tab, k) => {
-      tab.addEventListener('click', () => {
-        stopAuto()
-        show(k, 'click')
-      })
-      // Sonsuz dövr: 03 bitəndə yenidən 01.
-      tab.querySelector('.hw-bar > i')!.addEventListener('animationend', () => {
-       if (!manual) show((cur + 1) % tabs.length, 'auto')
-      })
-    })
-
-    list.addEventListener('keydown', (e: KeyboardEvent) => {
-      const n = tabs.length
-      let to: number | null = null
-      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') to = (cur + 1) % n
-      else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') to = (cur - 1 + n) % n
-      else if (e.key === 'Home') to = 0
-      else if (e.key === 'End') to = n - 1
-      if (to === null) return
-      e.preventDefault()
-      stopAuto()
-      show(to, 'keyboard')
-      tabs[to].focus()
-    })
-
-    root.addEventListener('mouseenter', () => {
-      hold = true
-      sync()
-    })
-    root.addEventListener('mouseleave', () => {
-      hold = false
-      sync()
-    })
-    root.addEventListener('focusin', () => {
-      hold = true
-      sync()
-    })
-    root.addEventListener('focusout', (e) => {
-      if (!root.contains(e.relatedTarget as Node)) {
-        hold = false
-        sync()
-      }
-    })
 
     // Ekranda olmayan bölmə saymır — nə CPU yandırır, nə də oxucunun görmədiyi kadrı keçir.
-    new IntersectionObserver(
-      (entries) => {
-        visible = entries[0].isIntersecting
-        sync()
-      },
-      { threshold: 0.3 }
-    ).observe(root)
+    // IntersectionObserver elementin ekrana girib-çıxmasını scroll hadisəsi dinləmədən izləyir:
+    // https://developer.mozilla.org/en-US/docs/Web/API/IntersectionObserver
+    const watchVisibility = () => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          isOnScreen = entries[0].isIntersecting
+          updateState()
+        },
+        { threshold: DESKTOP_VISIBLE_THRESHOLD }
+      )
+      observer.observe(desktop)
+    }
 
-    addEventListener('resize', layoutRail)
+    // ---------- İşə salma ----------
+    bindTabEvents()
+    tablist.addEventListener('keydown', handleKeydown)
+    bindHoverAndFocus()
+    watchVisibility()
+
+    // Pəncərənin eni dəyişəndə mətn başqa cür bükülür və çiplər yerini dəyişir — relsi yenidən ölçürük.
+    window.addEventListener('resize', layoutRail)
+    // Veb-şrift gec yüklənib mətnin hündürlüyünü dəyişə bilər — yükləndikdən sonra relsi yenidən ölçürük.
+    // https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready
     if (document.fonts) document.fonts.ready.then(layoutRail)
 
-    show(0)
-    sync()
+    showStep(0)
+    updateState()
   }
 
-  // Mobil: avtomatik keçid yoxdur. Hər kartın animasiyası kart ekrana girəndə bir dəfə işləyir.
+  // ══════════ 2) MOBİL ══════════
+  // Avtomatik keçid yoxdur. Kart ekrana girəndə ona data-active="true" yazılır və CSS-dəki
+  // .scene[data-active='true'] animasiyaları bir dəfə işləyir.
   const cards = document.querySelectorAll<HTMLElement>('#how ol .scene')
   if (cards.length) {
-    const cardIo = new IntersectionObserver(
+    const cardObserver = new IntersectionObserver(
       (entries) => {
-        entries.forEach((e) => {
-          if (!e.isIntersecting) return
-          ;(e.target as HTMLElement).dataset.active = 'true'
-          cardIo.unobserve(e.target)
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return
+          const card = entry.target as HTMLElement
+          card.dataset.active = 'true'
+          // Animasiya bir dəfə oynanır — kartı daha izləməyə ehtiyac yoxdur.
+          cardObserver.unobserve(card)
         })
       },
-      { threshold: 0.45 }
+      { threshold: CARD_VISIBLE_THRESHOLD }
     )
-    cards.forEach((c) => cardIo.observe(c))
+    cards.forEach((card) => cardObserver.observe(card))
   }
 </script>
-</section>

@@ -1,5 +1,15 @@
 ---
-// In this order: tailwind.css declares the cascade layers that global-layered.css puts global.css in.
+/**
+ * Saytın bütün səhifələrinin ümumi qabığı: src/pages/ içindəki hər səhifə öz məzmununu bu layout-a
+ * bükür, məzmun <slot />-un yerinə düşür.
+ * Props: lang (dil), path (dil prefiksi olmadan marşrut), title və description (verilməsə ui.ts-dəki
+ * meta mətnləri), home (ana səhifə), heroTone (loader-in fonu), noindex (axtarışdan gizlət).
+ * Necə işləyir: <head>-də SEO, sosial kart, şriftlər və schema.org datası; <body>-də loader, Header,
+ * Footer, WhatsApp düyməsi; sondakı skript səhifədəki canlı hissələri (sayğac, demo, FAQ) işə salır.
+ */
+
+// Sıra vacibdir: qatların (cascade layers) sırasını tailwind.css elan edir, global-layered.css isə
+// global.css-i həmin qatlardan birinə (base) yerləşdirir. Əvvəl sıra elan olunmalıdır.
 import '../styles/tailwind.css'
 import '../styles/global-layered.css'
 import PageLoader from '../components/PageLoader.astro'
@@ -13,16 +23,16 @@ import { LOGO_WORD } from '../data/brand'
 
 interface Props {
   lang: Lang
-  /** Route without the language prefix, always with a trailing slash: '/', '/elaqe/', … */
+  /** Dil prefiksi olmadan marşrut, həmişə sonunda "/" ilə: '/', '/elaqe/', … */
   path?: string
   title?: string
   description?: string
-  /** Home page only: emits SoftwareApplication + FAQPage structured data. */
+  /** Yalnız ana səhifə: SoftwareApplication və FAQPage strukturlaşdırılmış datasını əlavə edir. */
   home?: boolean
   /**
-   * The colour the page opens on, so the loading viewfinder can stand on the same one and the
-   * hand-over carries no colour jump. 'tinted' is the home page, whose Hero is on --paper;
-   * every page that opens with <PageHero> is on plain --white.
+   * Səhifənin açıldığı fon rəngi. Loader-in vizörü də eyni fonda dayanır ki, loader çəkiləndə rəng
+   * sıçrayışı olmasın. 'tinted' — ana səhifə (Hero --paper fonundadır); <PageHero> ilə açılan hər
+   * səhifə sadə --white fonundadır.
    */
   heroTone?: 'tinted' | 'white'
   noindex?: boolean
@@ -31,45 +41,48 @@ interface Props {
 const { lang, path = '/', title, description, home = false, noindex = false, heroTone = 'tinted' } = Astro.props
 const t = useTranslations(lang)
 
-// The token, not the hex behind it: change --white or --paper in global.css and the loader
-// follows. undefined leaves the loader on its own default, which is --paper.
+// Hex yox, CSS dəyişəni: global.css-də --white və ya --paper dəyişsə, loader da onlarla dəyişir.
+// undefined olanda loader öz standart fonunda qalır, o da --paper-dir.
 const loaderBg = heroTone === 'white' ? 'var(--white, #fff)' : undefined
 
-// qrl-lock on <html>: the loading viewfinder (components/PageLoader.astro) covers the page, so the
-// scroll is closed while it is up. The class is served in the markup rather than set by a script, so
-// that it is already in force in the first frame; the loader's own script takes it off when it is
-// done, and its <noscript> block cancels it where scripting is off.
+// <html>-dəki qrl-lock: loader-in vizörü (components/PageLoader.astro) səhifəni örtür, ona görə o
+// ekranda olanda səhifə scroll olunmur. Sinif skriptlə yox, birbaşa HTML-də yazılır ki, ilk kadrdan
+// qüvvədə olsun. Loader bitəndə öz skripti sinfi götürür; JavaScript söndürülübsə, loader-in
+// <noscript> bloku onu ləğv edir.
 
 const site = SITE.url
 const canonical = site + localizedPath(lang, path)
-// public/, not src/assets/: a crawler holds this URL for as long as it caches the share card, so
-// it must not pick up a content hash or turn into webp. Same reason for the icons below.
+// src/assets/ yox, public/: axtarış botu paylaşım kartını keş etdiyi müddətdə bu URL-i saxlayır, ona
+// görə ünvana hash əlavə olunmamalı və şəkil webp-yə çevrilməməlidir. Aşağıdakı ikonlar da eyni səbəblə.
 const ogImage = site + '/og-image.png'
-// Preloaded in <head> and painted by Header — one derivative, see src/data/brand.ts.
+// <head>-də öncədən yüklənir (preload), Header onu çəkir — hər yerdə eyni fayl, bax src/data/brand.ts.
 const logoWord = await getImage(LOGO_WORD)
 
 const pageTitle = title ?? t('meta.title')
 const pageDesc = description ?? t('meta.description')
-// Alt text for the share image: the description, led by the name — but only once. Most descriptions
-// already open with "QRLog — …" (or "QRLog is …"), and prefixing those gave "QRLog — QRLog — …".
+// Paylaşım şəklinin alt mətni: təsvirin əvvəlində ad — amma yalnız bir dəfə. Təsvirlərin çoxu onsuz da
+// "QRLog — …" (və ya "QRLog is …") ilə başlayır; hər dəfə ad əlavə etsək, "QRLog — QRLog — …" alınardı.
 const imageAlt = pageDesc.startsWith(SITE.name) ? pageDesc : `${SITE.name} — ${pageDesc}`
 
-// hreflang: the same page in the other languages IT EXISTS IN, plus x-default on Azerbaijani.
-// A route that is Azerbaijani-only (the blog, 404) gets no alternates at all — a single hreflang
-// says nothing, and listing the other two would point Google at URLs that were never built.
+// hreflang: səhifənin MÖVCUD OLDUĞU BÜTÜN dillər (cari dil də daxil — Google hər versiyanın özünə də
+// istinad etməsini istəyir), üstəlik Azərbaycan dilinə x-default.
+// Yalnız Azərbaycan dilində olan marşrut (blog, 404) heç bir alternate almır: tək hreflang heç nə
+// demir, qalan iki dili yazsaq isə Google-u heç vaxt qurulmamış URL-lərə göndərərdik.
 const routeLangs = availableLangs(path)
-const alternates =
-  routeLangs.length < 2
-    ? []
-    : [
-        ...routeLangs.map((l) => ({ hreflang: l as string, href: site + localizedPath(l, path) })),
-        { hreflang: 'x-default', href: site + localizedPath('az', path) },
-      ]
+const alternates: { hreflang: string; href: string }[] = []
+if (routeLangs.length >= 2) {
+  for (const routeLang of routeLangs) {
+    alternates.push({ hreflang: routeLang, href: site + localizedPath(routeLang, path) })
+  }
+  alternates.push({ hreflang: 'x-default', href: site + localizedPath('az', path) })
+}
 
-// ---- Structured data ----
-// Organization is site-wide. There is deliberately no aggregateRating and no offers: we have no
-// collected reviews, and an invented rating in schema.org markup is both false and against
-// Google's structured-data policy.
+// og:locale:alternate üçün: səhifənin mövcud olduğu dillər, cari dil çıxılmaqla.
+const otherLangs = routeLangs.filter((routeLang) => routeLang !== lang)
+
+// ---- Strukturlaşdırılmış data (schema.org, JSON-LD) ----
+// Organization bütün saytda var. aggregateRating və offers qəsdən yoxdur: toplanmış rəyimiz yoxdur,
+// schema.org-da uydurma reytinq həm yalandır, həm də Google-un strukturlaşdırılmış data qaydalarına ziddir.
 const orgLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
@@ -85,17 +98,20 @@ const orgLd = {
   },
 }
 
+// FAQPage yalnız ana səhifədə (home) çıxır. Sual-cavablar ui.ts-dəki faq.q1…q6 və faq.a1…a6 açarlarıdır.
 const faqKeys = [1, 2, 3, 4, 5, 6] as const
 const faqLd = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
-  mainEntity: faqKeys.map((i) => ({
+  // Açar adı mətn kimi yığılır ("faq.q" + nömrə) — TypeScript onu yoxlaya bilmir, ona görə "as any".
+  mainEntity: faqKeys.map((faqNumber) => ({
     '@type': 'Question',
-    name: t(`faq.q${i}` as any),
-    acceptedAnswer: { '@type': 'Answer', text: t(`faq.a${i}` as any) },
+    name: t(`faq.q${faqNumber}` as any),
+    acceptedAnswer: { '@type': 'Answer', text: t(`faq.a${faqNumber}` as any) },
   })),
 }
 
+// Yalnız ana səhifədə (home) çıxır.
 const appLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -129,7 +145,7 @@ const websiteLd = {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
 
-    <!-- Primary SEO -->
+    <!-- Əsas SEO -->
     <title>{pageTitle}</title>
     <meta name="description" content={pageDesc} />
     <meta name="keywords" content={t('meta.keywords')} />
@@ -140,9 +156,9 @@ const websiteLd = {
     <meta name="format-detection" content="telephone=no" />
     <link rel="canonical" href={canonical} />
 
-    {!noindex && alternates.map((a) => <link rel="alternate" hreflang={a.hreflang} href={a.href} />)}
+    {!noindex && alternates.map((alternate) => <link rel="alternate" hreflang={alternate.hreflang} href={alternate.href} />)}
 
-    <!-- Open Graph -->
+    <!-- Open Graph: link paylaşılanda sosial şəbəkələrdə görünən kart -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />
     <meta property="og:title" content={pageTitle} />
@@ -153,9 +169,7 @@ const websiteLd = {
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content={imageAlt} />
     <meta property="og:locale" content={localeMap[lang]} />
-    {routeLangs
-      .filter((l) => l !== lang)
-      .map((l) => <meta property="og:locale:alternate" content={localeMap[l]} />)}
+    {otherLangs.map((otherLang) => <meta property="og:locale:alternate" content={localeMap[otherLang]} />)}
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -164,16 +178,16 @@ const websiteLd = {
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={imageAlt} />
 
-    <!-- Icons -->
+    <!-- İkonlar -->
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo-mark.png" />
     <link rel="preload" href={logoWord.src} as="image" type="image/webp" />
 
     <!--
-      The faces behind --font-sans and --font-mono (see styles/tailwind.css). Inter is the working
-      sans until the licensed TT Interphases files are self-hosted, and it is loaded in the five
-      weights the stylesheet uses; IBM Plex Mono carries the small mono labels. Both cover Azerbaijani
-      and Russian.
+      --font-sans və --font-mono-nun şriftləri (bax styles/tailwind.css). Onest əsas şriftdir: yoxlanan
+      pulsuz şriftlər içində Azərbaycan hərflərini (Ə, İ, Ğ, Ş), rus əlifbasını və ₼ işarəsini birlikdə
+      daşıyan yeganəsidir; beş qalınlıqda (400–800) yüklənir. IBM Plex Mono kiçik mono yazılar
+      üçündür.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -182,7 +196,7 @@ const websiteLd = {
       rel="stylesheet"
     />
 
-    <!-- Structured data -->
+    <!-- Strukturlaşdırılmış data (schema.org) -->
     <script is:inline type="application/ld+json" set:html={JSON.stringify(orgLd)} />
     <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteLd)} />
     {home && <script is:inline type="application/ld+json" set:html={JSON.stringify(appLd)} />}
@@ -198,178 +212,307 @@ const websiteLd = {
       </main>
       <Footer lang={lang} />
     </div>
-    <!-- Outside .qrl-page on purpose: the reveal animation transforms that wrapper, and a transformed
-         ancestor would pin this fixed button to the wrapper instead of the screen. -->
+    <!-- Qəsdən .qrl-page-dən kənardadır: loader bitəndə .qrl-page-ə transform animasiyası verilir, transform
+    olan valideyn isə position: fixed düyməni ekrana yox, özünə bağlayardı. -->
     <WhatsAppButton lang={lang} />
     <script>
-      // ---------- QR pattern (decorative, deterministic) ----------
-      function paintQr(id: string, seed: number) {
-        const svg = document.getElementById(id)
-        if (!svg) return
-        const N = 25
-        let s = seed
-        const rnd = () => {
-          s = (s * 1103515245 + 12345) & 0x7fffffff
-          return s / 0x7fffffff
-        }
+      // Bu skript saytın hər səhifəsində işləyir, amma hər hissə öz elementini axtarır: element
+      // səhifədə yoxdursa, həmin hissə heç nə etmir. Mobil menyu və dil seçimi Header.astro-dadır.
+
+      // ---------- Sabitlər ----------
+      // Dekorativ QR naxışı
+      const QR_SIZE = 25 // QR 25×25 xanadır (PhoneDemo-dakı svg-nin viewBox-u da "0 0 25 25"-dir)
+      // Təsadüfi ədəd (0…1) bundan BÖYÜK olanda xana dolur: 0.5 → təxminən yarısı dolu; kiçiltsən, QR sıxlaşar.
+      const QR_FILL_THRESHOLD = 0.5
+      const QR_FINDER_SIZE = 7 // künc "göz"ünün ölçüsü, xana ilə (buildFinderSquare-dəki 7×7 kvadrat)
+      const QR_FINDER_FAR_EDGE = QR_SIZE - QR_FINDER_SIZE // = 18: sağ və aşağı künc gözü kənara dayanır
+      // #qrsvg naxışının başlanğıc ədədi. Hazırda heç bir səhifədə #qrsvg yoxdur, ona görə
+      // aşağıdakı paintQr('qrsvg', …) çağırışı heç nə etmir.
+      const QRSVG_SEED = 1234567
+      const PHONE_QR_SEED = 987654 // #pqr (telefon demosu) naxışının başlanğıc ədədi
+      // LCG — ən sadə "təsadüfi" ədəd düsturu. Bunlar onun klassik sabitləridir; birini dəyişsən, naxış da dəyişər.
+      const LCG_MULTIPLIER = 1103515245
+      const LCG_INCREMENT = 12345
+      const LCG_MAX = 0x7fffffff // 2^31 - 1: "&" ilə yalnız aşağı 31 bit qalır, nəticə 0…LCG_MAX olur
+
+      // Canlı saat
+      const CLOCK_TICK_MS = 1000 // saat hər saniyə yenilənir
+
+      // Scroll ilə görünmə (.rv)
+      const REVEAL_THRESHOLD = 0.14 // elementin 14%-i ekrana girəndə "in" sinfini alır
+
+      // Sayğaclar ([data-count])
+      const COUNTER_DURATION_MS = 1600 // rəqəm 1.6 saniyəyə son dəyərinə çatır
+      const COUNTER_THRESHOLD = 0.5 // sayğacın yarısı ekrana girəndə sayma başlayır
+
+      // Telefon demosu: addımın adı #phone-un data-state atributuna yazılır, CSS də həmin ekranı göstərir.
+      // durationMs — addımın ekranda qalma müddəti, sonra növbəti addıma keçilir.
+      const PHONE_DEMO_STEPS = [
+        { state: 'scan', durationMs: 2400 }, // QR skan olunur
+        { state: 'verify', durationMs: 2600 }, // cihaz və məkan yoxlanır
+        { state: 'face', durationMs: 2400 }, // üz (selfi) yoxlanır
+        { state: 'done', durationMs: 2800 }, // gəliş qeydə alındı
+      ]
+      const PHONE_DEMO_THRESHOLD = 0.3 // telefonun 30%-i ekrana girəndə demo başlayır
+
+      // ---------- QR naxışı (dekorativ, həmişə eyni) ----------
+      // QR-ın kiçik xanalarını doldurur. Təsadüf saxtadır (LCG): eyni seed həmişə eyni ardıcıllığı
+      // verir, ona görə naxış hər yükləmədə eyni görünür. Real QR deyil, oxunmur.
+      function buildQrCells(seed: number) {
+        let randomState = seed
         let cells = ''
-        for (let y = 0; y < N; y++)
-          for (let x = 0; x < N; x++) {
-            if (rnd() > 0.5) cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`
+        for (let y = 0; y < QR_SIZE; y++) {
+          for (let x = 0; x < QR_SIZE; x++) {
+            randomState = (randomState * LCG_MULTIPLIER + LCG_INCREMENT) & LCG_MAX
+            const randomValue = randomState / LCG_MAX
+            if (randomValue > QR_FILL_THRESHOLD) {
+              cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`
+            }
           }
-        const finder = (ox: number, oy: number) =>
-          `<rect x="${ox}" y="${oy}" width="7" height="7"/>` +
-          `<rect x="${ox + 1}" y="${oy + 1}" width="5" height="5" fill="#0B1726"/>` +
-          `<rect x="${ox + 2}" y="${oy + 2}" width="3" height="3" fill="#fff"/>`
-        svg.innerHTML = cells + finder(0, 0) + finder(18, 0) + finder(0, 18)
+        }
+        return cells
       }
-      paintQr('qrsvg', 1234567)
-      paintQr('pqr', 987654)
 
-      // ---------- Live clock ----------
-      ;(function () {
-        const el = document.getElementById('clock')
-        if (!el) return
-        const tick = () => {
-          const d = new Date()
-          el.textContent = [d.getHours(), d.getMinutes(), d.getSeconds()]
-            .map((n) => String(n).padStart(2, '0'))
-            .join(':')
-        }
-        tick()
-        setInterval(tick, 1000)
-      })()
-
-      // The mobile menu and the language dropdown are wired up in Header.astro's own script.
-
-      // ---------- Scroll reveal ----------
-      const io = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((e) => {
-            if (e.isIntersecting) {
-              e.target.classList.add('in')
-              io.unobserve(e.target)
-            }
-          })
-        },
-        { threshold: 0.14 }
-      )
-      document.querySelectorAll('.rv').forEach((el) => io.observe(el))
-
-      // ---------- Count-up counters ----------
-      const easeOut = (x: number) => 1 - Math.pow(1 - x, 3)
-      function countUp(el: HTMLElement) {
-        const target = parseFloat(el.dataset.count || '0')
-        const dec = parseInt(el.dataset.dec || '0')
-        const suffix = el.dataset.suffix || ''
-        const prefix = el.dataset.prefix || ''
-        const dur = 1600
-        const start = performance.now()
-        function frame(now: number) {
-          const p = Math.min((now - start) / dur, 1)
-          const val = target * easeOut(p)
-          el.textContent =
-            prefix +
-            val.toLocaleString('en-US', {
-              minimumFractionDigits: dec,
-              maximumFractionDigits: dec,
-            }) +
-            suffix
-          if (p < 1) requestAnimationFrame(frame)
-        }
-        requestAnimationFrame(frame)
+      // QR-ın küncündəki böyük "göz": üst-üstə üç kvadrat — 7×7, 5×5 və 3×3.
+      // Xarici 7 QR_FINDER_SIZE ilə eyni olmalıdır: birini dəyişsən, o birini də dəyiş.
+      function buildFinderSquare(left: number, top: number) {
+        return (
+          `<rect x="${left}" y="${top}" width="7" height="7"/>` +
+          `<rect x="${left + 1}" y="${top + 1}" width="5" height="5" fill="#0B1726"/>` +
+          `<rect x="${left + 2}" y="${top + 2}" width="3" height="3" fill="#fff"/>`
+        )
       }
-      const cio = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((e) => {
-            if (e.isIntersecting) {
-              countUp(e.target as HTMLElement)
-              cio.unobserve(e.target)
-            }
-          })
-        },
-        { threshold: 0.5 }
-      )
-      document.querySelectorAll<HTMLElement>('[data-count]').forEach((el) => {
-        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          const dec = parseInt(el.dataset.dec || '0')
-          el.textContent =
-            (el.dataset.prefix || '') +
-            parseFloat(el.dataset.count || '0').toLocaleString('en-US', {
-              minimumFractionDigits: dec,
-              maximumFractionDigits: dec,
-            }) +
-            (el.dataset.suffix || '')
-        } else {
-          cio.observe(el)
-        }
-      })
 
-      // ---------- Phone demo state machine ----------
-      ;(function () {
-        const phone = document.getElementById('phone')
-        if (!phone) return
-        const steps = Array.from(document.querySelectorAll<HTMLElement>('#pdemoSteps .pstep'))
-        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        const seq: [string, number][] = [
-          ['scan', 2400],
-          ['verify', 2600],
-          ['face', 2400],
-          ['done', 2800],
-        ]
-        function paint(i: number) {
-          phone!.dataset.state = seq[i][0]
-          steps.forEach((st, k) => {
-            st.classList.toggle('active', k === i)
-            st.classList.toggle('done', k < i)
-          })
+      // Naxışı verilən id-li <svg>-nin içinə çəkir; belə element yoxdursa, heç nə etmir.
+      function paintQr(svgId: string, seed: number) {
+        const svg = document.getElementById(svgId)
+        if (!svg) return
+        const cells = buildQrCells(seed)
+        svg.innerHTML =
+          cells +
+          buildFinderSquare(0, 0) +
+          buildFinderSquare(QR_FINDER_FAR_EDGE, 0) +
+          buildFinderSquare(0, QR_FINDER_FAR_EDGE)
+      }
+
+      // ---------- Canlı saat (#clock) ----------
+      // Diqqət: hazırda heç bir səhifədə #clock yoxdur, ona görə startClock() heç nə etmir.
+
+      // Vaxtı "SS:DD:SS" formatında qaytarır: 9:05:03 → "09:05:03".
+      function formatTime(date: Date) {
+        const parts = [date.getHours(), date.getMinutes(), date.getSeconds()]
+        const paddedParts = parts.map((part) => String(part).padStart(2, '0'))
+        return paddedParts.join(':')
+      }
+
+      function startClock() {
+        const clock = document.getElementById('clock')
+        if (!clock) return
+        const showCurrentTime = () => {
+          clock.textContent = formatTime(new Date())
         }
-        if (reduce) {
-          paint(3)
-          return
-        }
-        let i = 0
-        paint(0)
-        function loop() {
-          setTimeout(() => {
-            i = (i + 1) % seq.length
-            paint(i)
-            loop()
-          }, seq[i][1])
-        }
-        // Only start once the phone is on screen, to save CPU on the rest of the page.
-        const dio = new IntersectionObserver(
-          (entries, obs) => {
-            entries.forEach((e) => {
-              if (e.isIntersecting) {
-                loop()
-                obs.disconnect()
+        showCurrentTime()
+        setInterval(showCurrentTime, CLOCK_TICK_MS)
+      }
+
+      // ---------- Scroll ilə görünmə (.rv) ----------
+      // .rv elementi ekrana girəndə ona "in" sinfi verilir. Necə görünəcəyini JS yox, CSS həll edir:
+      // global.css-dəki .rv və .rv.in qaydaları.
+      // Diqqət: hazırda global.css-in sonundakı .rv qaydası (məzmun JS-siz də görünsün deyə) bu effekti
+      // söndürür — "in" sinfi əlavə olunur, amma görünüş dəyişmir.
+      // IntersectionObserver elementin ekrana girdiyini scroll hadisəsini hər an dinləmədən xəbər verir.
+      // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+      function startScrollReveal() {
+        const revealObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('in')
+                // Bir dəfə görünən element bir daha izlənmir.
+                revealObserver.unobserve(entry.target)
               }
             })
           },
-          { threshold: 0.3 }
+          { threshold: REVEAL_THRESHOLD }
         )
-        dio.observe(phone)
-      })()
+        document.querySelectorAll('.rv').forEach((element) => revealObserver.observe(element))
+      }
 
-      // ---------- FAQ accordion ----------
-      document.querySelectorAll('.faq-q').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const item = btn.parentElement as HTMLElement
-          const ans = item.querySelector('.faq-a') as HTMLElement
-          const isOpen = item.classList.contains('open')
-          document.querySelectorAll('.faq-item.open').forEach((o) => {
-            o.classList.remove('open')
-            ;(o.querySelector('.faq-a') as HTMLElement).style.maxHeight = '0px'
-            o.querySelector('.faq-q')?.setAttribute('aria-expanded', 'false')
-          })
-          if (!isOpen) {
-            item.classList.add('open')
-            ans.style.maxHeight = ans.scrollHeight + 'px'
-            btn.setAttribute('aria-expanded', 'true')
+      // ---------- Sayğaclar ([data-count]) ----------
+      // Əvvəl sürətli, sonda yavaşlayan hərəkət (ease-out): progress 0…1 → nəticə 0…1.
+      function easeOut(progress: number) {
+        return 1 - Math.pow(1 - progress, 3)
+      }
+
+      // Rəqəmi 0-dan data-count dəyərinə qədər artırır. data-dec — onluq rəqəmlərin sayı,
+      // data-prefix və data-suffix — rəqəmin önünə və arxasına yazılan mətn ("~", " ₼").
+      // requestAnimationFrame funksiyanı ekranın növbəti yenilənməsində çağırır — hamar animasiya üçün.
+      // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
+      function countUp(counter: HTMLElement) {
+        const target = parseFloat(counter.dataset.count || '0')
+        const decimals = parseInt(counter.dataset.dec || '0')
+        const suffix = counter.dataset.suffix || ''
+        const prefix = counter.dataset.prefix || ''
+        const startTime = performance.now()
+        function drawFrame(now: number) {
+          const progress = Math.min((now - startTime) / COUNTER_DURATION_MS, 1)
+          const currentValue = target * easeOut(progress)
+          counter.textContent =
+            prefix +
+            currentValue.toLocaleString('en-US', {
+              minimumFractionDigits: decimals,
+              maximumFractionDigits: decimals,
+            }) +
+            suffix
+          if (progress < 1) requestAnimationFrame(drawFrame)
+        }
+        requestAnimationFrame(drawFrame)
+      }
+
+      // Hərəkət istəməyənlər üçün (prefers-reduced-motion): animasiyasız, dərhal son rəqəm.
+      function showFinalCount(counter: HTMLElement) {
+        const target = parseFloat(counter.dataset.count || '0')
+        const decimals = parseInt(counter.dataset.dec || '0')
+        const prefix = counter.dataset.prefix || ''
+        const suffix = counter.dataset.suffix || ''
+        counter.textContent =
+          prefix +
+          target.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+          }) +
+          suffix
+      }
+
+      function startCounters() {
+        const counterObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                countUp(entry.target as HTMLElement)
+                counterObserver.unobserve(entry.target)
+              }
+            })
+          },
+          { threshold: COUNTER_THRESHOLD }
+        )
+        // matchMedia JS-dən CSS media sorğusunu yoxlayır — istifadəçinin "hərəkəti azalt" ayarını bilmək üçün.
+        // https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        // <HTMLElement> TypeScript-ə deyir ki, tapılanlar HTML elementləridir — adi Element tipində dataset yoxdur.
+        // https://www.typescriptlang.org/docs/handbook/2/generics.html
+        document.querySelectorAll<HTMLElement>('[data-count]').forEach((counter) => {
+          if (reduceMotion) {
+            showFinalCount(counter)
+          } else {
+            counterObserver.observe(counter)
           }
         })
-      })
+      }
+
+      // ---------- Telefon demosu (#phone) ----------
+      // Telefonu verilən addıma keçirir, addım siyahısında (#pdemoSteps) cari addımı "active",
+      // keçilmişləri "done" edir.
+      function showPhoneStep(phone: HTMLElement, stepItems: HTMLElement[], stepIndex: number) {
+        phone.dataset.state = PHONE_DEMO_STEPS[stepIndex].state
+        stepItems.forEach((stepItem, index) => {
+          stepItem.classList.toggle('active', index === stepIndex)
+          stepItem.classList.toggle('done', index < stepIndex)
+        })
+      }
+
+      // Demonun hazırkı addımı. Bir ümumi dəyişəndir (funksiya parametri yox): demo nə qədər
+      // işə salınsa da, hamısı eyni sayğacı irəli aparır — köhnə kodda da belə idi.
+      let currentPhoneStep = 0
+
+      // Cari addım öz müddəti qədər ekranda qalır, sonra növbəti addım göstərilir.
+      // Sonuncu addımdan sonra yenidən birinciyə qayıdır — demo dayanmadan təkrarlanır.
+      function scheduleNextPhoneStep(phone: HTMLElement, stepItems: HTMLElement[]) {
+        const currentDuration = PHONE_DEMO_STEPS[currentPhoneStep].durationMs
+        setTimeout(() => {
+          currentPhoneStep = currentPhoneStep + 1
+          if (currentPhoneStep === PHONE_DEMO_STEPS.length) {
+            currentPhoneStep = 0
+          }
+          showPhoneStep(phone, stepItems, currentPhoneStep)
+          scheduleNextPhoneStep(phone, stepItems)
+        }, currentDuration)
+      }
+
+      // Demo yalnız telefon ekrana girəndə başlayır — səhifənin qalan hissəsində CPU-nu boş yerə yormamaq üçün.
+      function startPhoneDemoWhenVisible(phone: HTMLElement, stepItems: HTMLElement[]) {
+        const phoneObserver = new IntersectionObserver(
+          (entries, observer) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                scheduleNextPhoneStep(phone, stepItems)
+                observer.disconnect()
+              }
+            })
+          },
+          { threshold: PHONE_DEMO_THRESHOLD }
+        )
+        phoneObserver.observe(phone)
+      }
+
+      function startPhoneDemo() {
+        const phone = document.getElementById('phone')
+        if (!phone) return
+        const stepItems = Array.from(document.querySelectorAll<HTMLElement>('#pdemoSteps .pstep'))
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        if (reduceMotion) {
+          // Hərəkət istəməyənlərə dərhal son addım ("qeydə alındı") göstərilir, demo fırlanmır.
+          showPhoneStep(phone, stepItems, PHONE_DEMO_STEPS.length - 1)
+          return
+        }
+        showPhoneStep(phone, stepItems, 0)
+        startPhoneDemoWhenVisible(phone, stepItems)
+      }
+
+      // ---------- FAQ akkordeonu ----------
+      // Eyni anda yalnız bir cavab açıq qalır: yeni sual açılmazdan əvvəl açıq olanların hamısı bağlanır.
+      function closeAllFaqItems() {
+        document.querySelectorAll('.faq-item.open').forEach((openItem) => {
+          openItem.classList.remove('open')
+          const openAnswer = openItem.querySelector('.faq-a') as HTMLElement
+          openAnswer.style.maxHeight = '0px'
+          const openQuestion = openItem.querySelector('.faq-q')
+          if (openQuestion) {
+            openQuestion.setAttribute('aria-expanded', 'false')
+          }
+        })
+      }
+
+      // Kliklənən sual bağlıdırsa, açılır; açıqdırsa, bağlanır (closeAllFaqItems onu da bağlayır).
+      function toggleFaqItem(question: Element) {
+        const item = question.parentElement as HTMLElement
+        const answer = item.querySelector('.faq-a') as HTMLElement
+        const wasOpen = item.classList.contains('open')
+        closeAllFaqItems()
+        if (!wasOpen) {
+          item.classList.add('open')
+          // CSS "height: auto"-nu animasiya edə bilmir, max-height-i isə edə bilir (global.css-də
+          // transition). Ona görə cavabın real hündürlüyünü (scrollHeight) max-height-ə yazırıq.
+          answer.style.maxHeight = answer.scrollHeight + 'px'
+          question.setAttribute('aria-expanded', 'true')
+        }
+      }
+
+      function setupFaqAccordion() {
+        document.querySelectorAll('.faq-q').forEach((question) => {
+          question.addEventListener('click', () => toggleFaqItem(question))
+        })
+      }
+
+      // ---------- İşə salma ----------
+      // Hissələr bir-birindən asılı deyil: hər biri öz elementini tapıb işə düşür.
+      paintQr('qrsvg', QRSVG_SEED)
+      paintQr('pqr', PHONE_QR_SEED)
+      startClock()
+      startScrollReveal()
+      startCounters()
+      startPhoneDemo()
+      setupFaqAccordion()
     </script>
   </body>
 </html>

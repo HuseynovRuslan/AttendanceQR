@@ -1,16 +1,33 @@
 ---
+// ContactBody — Əlaqə səhifəsinin (/elaqe/) əsas hissəsi: solda telefon, WhatsApp və e-poçt
+// siyahısı, sağda "Bizə yazın" kartı iki düymə ilə (WhatsApp və e-poçt).
+// Harada işlənir: pages/elaqe.astro, pages/ru/elaqe.astro, pages/en/elaqe.astro.
+// Props: lang — səhifənin dili ('az' | 'ru' | 'en').
+// Necə işləyir: əlaqə məlumatları data/site.ts-dəki SITE-dan, mətnlər t('açar') ilə i18n/ui.ts-dən
+// gəlir. Stillər global.css-dədir (.contact-grid, .contact-card, .contact-list).
 import { useTranslations, type Lang } from '../i18n/ui'
 import { SITE, whatsappUrl } from '../data/site'
+
+// E-poçt düyməsi basılanda poçt proqramında mövzu sətri artıq bununla dolu olur (hər dildə eyni).
+const EMAIL_SUBJECT = 'QRLog — sorğu'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// Phone first, WhatsApp second, e-mail last: the order of how fast each one answers.
-// A mailto link, not a form. The landing page is a static build with no backend of its own, and the
-// old `<form action="mailto:">` silently dropped messages in most browsers — a contact form that
-// loses enquiries is worse than an honest link.
-// No street address: "Bakı, Azərbaycan" without a real one adds no trust here (the footer keeps it).
-const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('QRLog — sorğu')}`
+// HTML-dəki <ul class="contact-list"> haqqında: siyahının sırası (telefon → WhatsApp → e-poçt) ən
+// tez cavab verən kanaldan ən gecinə doğrudur. Küçə ünvanı yoxdur: real ünvan olmadan
+// "Bakı, Azərbaycan" burada etibar qazandırmır (footer-də qalır).
+
+// Zəng linkinə (tel:) yalnız rəqəmlər və + lazımdır. /[^+\d]/g — "rəqəm və + olmayan hər simvol"
+// (g — hamısı), yəni '+994 50 600 16 55' → 'tel:+994506001655'.
+// Eyni sətir Footer.astro-da da var — linkin qurulma qaydasını dəyişsən, ikisini də dəyiş.
+const phoneHref = `tel:${SITE.phone.replace(/[^+\d]/g, '')}`
+
+// Forma yox, mailto linki. Landing statik saytdır, öz backend-i yoxdur; köhnə
+// <form action="mailto:"> isə əksər brauzerlərdə mesajı səssizcə itirirdi — müraciəti itirən forma
+// dürüst bir linkdən pisdir.
+// encodeURIComponent: mövzudakı boşluq və "—" kimi simvollar URL-də kodlaşdırılmalıdır.
+const emailButtonHref = `mailto:${SITE.email}?subject=${encodeURIComponent(EMAIL_SUBJECT)}`
 ---
 
 <section class="prose-section">
@@ -21,7 +38,7 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('QRLog — sor
         {SITE.phone && (
           <li>
             <span>{t('contact.phone')}</span>
-            <a href={`tel:${SITE.phone.replace(/[^+\d]/g, '')}`}>{SITE.phone}</a>
+            <a href={phoneHref}>{SITE.phone}</a>
           </li>
         )}
         <li>
@@ -45,7 +62,7 @@ const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent('QRLog — sor
           target="_blank"
           rel="noopener noreferrer">{t('contact.whatsappCta')}</a
         >
-        <a class="btn btn-ghost" href={mailto}>{t('contact.writeBtn')}</a>
+        <a class="btn btn-ghost" href={emailButtonHref}>{t('contact.writeBtn')}</a>
       </div>
     </div>
   </div>
