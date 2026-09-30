@@ -38,10 +38,16 @@ describe('readCode', () => {
 
 describe('readReturnUrl', () => {
   it('accepts only https on one of the app’s own hosts', () => {
-    // Where the platform lives now, and the address it moved from: both are ours, and the old one redirects here.
+    // The platform's own domain, and the two it has answered at before: all three are ours, and the older two
+    // redirect to the current one.
+    expect(readReturnUrl('https://pryzma.az/login/qrlog', meydan)).toBe('https://pryzma.az/login/qrlog')
     expect(readReturnUrl('https://prizma.qrlog.az/login/qrlog', meydan)).toBe('https://prizma.qrlog.az/login/qrlog')
     expect(readReturnUrl('https://meydan.qrlog.az/login/qrlog', meydan)).toBe('https://meydan.qrlog.az/login/qrlog')
-    expect(readReturnUrl('http://prizma.qrlog.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('http://pryzma.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('https://pryzma.az.evil.example/', meydan)).toBeNull()
+    // A near-miss that is somebody else's domain entirely: prizma.az with an i is not ours.
+    expect(readReturnUrl('https://prizma.az/login/qrlog', meydan)).toBeNull()
+    expect(readReturnUrl('https://www.pryzma.az/login/qrlog', meydan)).toBeNull()
     expect(readReturnUrl('https://prizma.qrlog.az.evil.example/', meydan)).toBeNull()
     expect(readReturnUrl('https://meydan.qrlog.az.evil.example/', meydan)).toBeNull()
     expect(readReturnUrl('https://evil.example/?x=meydan.qrlog.az', meydan)).toBeNull()
