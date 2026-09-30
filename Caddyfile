@@ -265,13 +265,16 @@ book.qrlog.az {
 	reverse_proxy literature-millionaire-web:80
 }
 
-# PRIZMA (the creative-competition platform, prizma.qrlog.az) — separate project, own stack in /opt/meydan
+# PRIZMA (the creative-competition platform, pryzma.az) — separate project, own stack in /opt/meydan
 # (deploy/compose.yml in its repository; the container and directory names keep the platform's old name, MEYDAN,
 # because the rename was a product decision and not a rebuild). Only its nginx joins attendanceqr_default, as
 # meydan-web; its API and database stay on that project's private network. HSTS is set here at the edge; every
 # other header (the CSP included) comes from the app itself, whose policy is versioned with its code — so no
 # security_headers import.
-prizma.qrlog.az {
+#
+# This block belongs here and nowhere else: a site typed straight into the file on the server is erased by the
+# next deploy, which resets this repository to origin/main. pryzma.az was added that way once and lost exactly so.
+pryzma.az {
 	encode zstd gzip
 	header {
 		# Applied AFTER the upstream answered (defer), so this replaces the HSTS the API sends on /api rather than
@@ -283,11 +286,16 @@ prizma.qrlog.az {
 	reverse_proxy meydan-web:80
 }
 
-# The platform's former host. Everything that still knows the old name — printed QR codes, links people saved,
-# messages already sent — is sent to the same path on prizma.qrlog.az. 308 keeps the method and the body, so a
-# form post survives it. There is only ever one copy of the application running.
-meydan.qrlog.az {
-	redir https://prizma.qrlog.az{uri} permanent
+# The platform's own www, and the two hosts it answered at before it had a domain of its own. Everything that
+# still knows an old name — printed QR codes, links people saved, messages already sent — is sent to the same
+# path on pryzma.az. There is only ever one copy of the application running.
+#
+# 308 and not `permanent`: `permanent` is 301, and a client that meets a 301 on a POST is entitled to retry it as
+# a GET without the body. QRLog's server posts its signed sign-in confirmation to this application, so that one
+# would be lost silently. It posts straight to pryzma.az (ExternalSignIn__Apps__meydan__ConfirmUrl) and never
+# meets these redirects — but the next thing to post here should not have to know that.
+www.pryzma.az, prizma.qrlog.az, meydan.qrlog.az {
+	redir https://pryzma.az{uri} 308
 }
 
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
