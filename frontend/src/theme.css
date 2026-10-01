@@ -1307,6 +1307,53 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .emp-pager{display:flex;align-items:center;gap:6px}
 .emp-pager-n{font-size:11px;font-weight:700;color:var(--c600);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
 
+/* ── İdarəetmə paneli: «Diqqət tələb edir» + «Filial performansı» ───────────────────────────────
+   The action strip these replace was four flat rows of «label · number ·  ›». The numbers were
+   right and nobody read them, because a number with no sentence beside it does not say what to do.
+   Each row now names the job and opens the screen where it is done. */
+.lux-bottom{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px;align-items:start}
+.dash-attn,.dash-perf{padding:16px;display:flex;flex-direction:column;gap:14px}
+.dash-attn-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.dash-attn-t{font-size:16px;font-weight:700;color:var(--c900)}
+.dash-attn-s{margin-top:4px;font-size:10.5px;color:var(--c400);line-height:1.4}
+.dash-pri{flex:none;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap}
+.dash-pri.hot{background:var(--clay-bg);color:var(--clay)}
+.dash-pri.ok{background:var(--leaf-bg);color:var(--leaf-d)}
+.dash-pri.calm{background:var(--c50);border:1px solid var(--c100);color:var(--c600)}
+
+.dash-attn-l{display:flex;flex-direction:column;gap:10px}
+.dash-attn-i{display:flex;align-items:center;gap:12px;padding:12px;background:var(--c50);
+  border:1px solid var(--c100);border-radius:10px;font:inherit;text-align:left;cursor:pointer;width:100%}
+.dash-attn-i:hover{border-color:var(--c200);background:var(--white)}
+.dash-attn-ic{width:32px;height:32px;flex:none;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+.dash-attn-ic svg{width:16px;height:16px}
+.dash-attn-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.dash-attn-n{font-size:11.5px;font-weight:700;color:var(--c900)}
+.dash-attn-d{font-size:10px;color:var(--c400);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-attn-b{flex:none;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:700}
+.dash-attn-ok{display:flex;align-items:center;gap:8px;padding:14px;border-radius:10px;
+  background:var(--leaf-bg);color:var(--leaf-d);font-size:12px;font-weight:600}
+.dash-attn-ok svg{width:16px;height:16px;flex:none}
+
+.dash-perf-c{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.dash-perf-i{display:flex;flex-direction:column;gap:12px;padding:14px;background:var(--white);
+  border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh-sm);font:inherit;text-align:left;cursor:pointer}
+.dash-perf-i:hover{border-color:var(--c200)}
+.dash-perf-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dash-perf-k{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--c900)}
+.dash-perf-k i{width:7px;height:7px;border-radius:50%;display:block}
+.dash-perf-k i.ok{background:var(--leaf)}
+.dash-perf-k i.bad{background:var(--clay)}
+.dash-perf-nm{font-size:16px;font-weight:700;color:var(--c900);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-perf-m{display:flex;gap:10px}
+.dash-perf-m>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.dash-perf-ml{font-size:10px;color:var(--c400)}
+.dash-perf-mv{font-family:'Manrope',sans-serif;font-size:22px;font-weight:800;color:var(--c900);line-height:1;
+  font-variant-numeric:tabular-nums}
+.dash-perf-f{font-size:10px}
+.dash-perf-f.ok{color:var(--leaf-d)}
+.dash-perf-f.bad{color:var(--clay)}
+
 .att-act{display:flex;align-items:center;justify-content:flex-end;gap:4px}
 /* Belt and braces on the one cell whose icons carry their size as an ATTRIBUTE rather than from a
    rule: an icon that arrives without one fills the cell and turns a 32px row into a 200px one. */
