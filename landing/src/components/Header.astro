@@ -1,4 +1,12 @@
 ---
+/**
+ * Saytın yuxarısında üzən başlıq: loqo, bölmə linkləri, dil seçimi, "Daxil ol" və "Əlaqə saxlayın"
+ * düymələri; `lg`-dən dar ekranda burger və mobil menyu. Harada: BaseLayout onu hər səhifəyə qoyur.
+ * Props: lang — səhifənin dili; path — dil prefiksi olmadan cari ünvan (dil seçimi və açıq
+ * səhifənin linkini işarələmək — aria-current — üçün).
+ * Necə işləyir: HTML build zamanı hazırlanır; aşağıdakı <script> menyuları açıb-bağlayır, aşağı
+ * sürüşəndə zolağı gizlədir, yuxarı sürüşəndə geri gətirir.
+ */
 import { AZ, RU, US } from "country-flag-icons/string/3x2";
 import {
   useTranslations,
@@ -10,81 +18,92 @@ import { SITE } from "../data/site";
 import { getImage } from "astro:assets";
 import { LOGO_WORD } from "../data/brand";
 
-// The one wordmark derivative BaseLayout preloads and the hero poster reuses — src/data/brand.ts.
+// Loqo yazısının yeganə variantı: BaseLayout onu <head>-də əvvəlcədən yükləyir (preload), hero posteri
+// də eyni faylı işlədir. Niyə məhz bir variant — src/data/brand.ts-də izah olunub.
 const logoWord = await getImage(LOGO_WORD);
 
 interface Props {
   lang: Lang;
-  /** Current route without the language prefix — the language switcher keeps you on this page. */
+  /**
+   * Dil prefiksi olmadan cari ünvan — dil seçimi səni elə bu səhifədə saxlayır, menyuda isə açıq
+   * səhifənin linki buna görə işarələnir (aria-current).
+   */
   path?: string;
 }
 const { lang, path = "/" } = Astro.props;
 const t = useTranslations(lang);
 
-// The switcher only offers languages this route was actually built in, and disappears entirely on
-// an Azerbaijani-only page (the blog, 404) — a one-item dropdown is noise, and the missing
-// languages used to lead to 404s.
+// Dil seçimi yalnız bu səhifənin həqiqətən build olunduğu dilləri təklif edir. Yalnız Azərbaycan
+// dilində olan səhifədə (bloq, 404) isə ümumiyyətlə görünmür: bir elementli açılan siyahı mənasızdır,
+// olmayan dillərə keçid isə əvvəllər 404-ə aparırdı.
 const routeLangs = availableLangs(path);
-const otherLangs = routeLangs.filter((l) => l !== lang);
+const otherLangs = routeLangs.filter((routeLang) => routeLang !== lang);
 
-// Each language is named in itself, on every page: someone looking for Russian scans for "Русский",
-// not for the word for it in a language they may not read. The flags are inline SVG strings rendered
-// at build time — no React, no image requests. English takes the US flag because the site declares
-// en-US everywhere else (htmlLang, og:locale, the sitemap).
+// Hər dil öz dilində adlanır, hər səhifədə: rus dilini axtaran adam "Русский" sözünü axtarır, bəlkə
+// də oxuya bilmədiyi dildə yazılmış adını yox. Bayraqlar build zamanı hazırlanan inline SVG
+// sətirləridir — nə React, nə şəkil sorğusu. İngilis dili ABŞ bayrağını alır, çünki sayt başqa hər
+// yerdə en-US elan edir (htmlLang, og:locale, sitemap).
+// Record<Lang, ...> hər dil üçün mütləq bir yazı tələb edir: yeni dil əlavə edib burada unutsan,
+// redaktor və `npm run check` tip xətası göstərir.
+// https://www.typescriptlang.org/docs/handbook/utility-types.html#recordkeys-type
 const langMeta: Record<Lang, { name: string; flag: string }> = {
   az: { name: "Azərbaycan", flag: AZ },
   ru: { name: "Русский", flag: RU },
   en: { name: "English", flag: US },
 };
 
-// Section links are absolute (home + hash) so the same header works on /elaqe/ and /bloq/ too.
-// `page` marks the links that are pages of their own, so the one you are on can say so.
+// Bölmə linkləri tam ünvandır (ana səhifə + #hash), ona görə eyni header /elaqe/ və /bloq/
+// səhifələrində də işləyir. `page` ayrıca səhifə olan linkləri işarələyir ki, hazırda açıq olan
+// səhifənin linki bunu göstərə bilsin (aria-current="page").
+// Burada "Əlaqə" linki yoxdur: aşağıdakı "Əlaqə saxlayın" düyməsi elə həmin səhifəyə aparır, eyni
+// yerə fərqli sözlərlə aparan iki element isə iki ayrı yer kimi oxunur. Footer-də bu link qalır.
 const home = localizedPath(lang, "/");
 const links = [
   { href: `${home}#how`, label: t("nav.how") },
   { href: `${home}#features`, label: t("nav.features") },
-  // Always shown: /qiymet/ exists whether or not the plan table does. With plans off it answers the
-  // price question with an individual quote, which is still the page people came looking for.
+  // Həmişə görünür: /qiymet/ səhifəsi tarif cədvəli olsa da, olmasa da var. Tariflər söndürüləndə o,
+  // qiymət sualına fərdi təkliflə cavab verir — insanlar elə bu səhifəni axtarır.
   {
     href: localizedPath(lang, "/qiymet/"),
     label: t("nav.pricing"),
     page: "/qiymet/",
   },
   { href: `${home}#faq`, label: t("nav.faq") },
-  {
-    href: localizedPath(lang, "/elaqe/"),
-    label: t("nav.contact"),
-    page: "/elaqe/",
-  },
 ];
 
+// İşçilərin daxil olduğu tətbiq — bütün şirkətlər üçün eyni ünvan.
 const appUrl = "https://app.qrlog.az";
 const contactHref = localizedPath(lang, "/elaqe/");
 
-// Shared class strings: one definition per thing that appears twice (the bar and the mobile menu both
-// carry the two buttons, five controls share the focus ring, three places show a flag).
-// No Preflight on this site (see styles/tailwind.css), so every <button> and <ul> below resets the
-// browser's own border, background, font and list style itself. The neutrals are `stone`, not
-// `slate`: the site's own greys are warm (#F6F5F1 paper, #111211 ink) and slate reads lavender
-// against them. `brand` is the site's blue (#155EEF, the "Log" in the logo) — see tailwind.css.
+// Ortaq sinif (class) sətirləri: bir neçə yerdə təkrarlanan görünüş bir dəfə yazılır — iki düymə
+// həm zolaqda, həm mobil menyuda var, fokus halqası bir neçə elementdədir, bayraq qutusu isə həm
+// dil düyməsində, həm də açılan siyahıda.
+// Bu saytda Tailwind-in Preflight sıfırlaması yoxdur (styles/tailwind.css-ə bax), ona görə aşağıdakı
+// hər <button> və <ul> brauzerin standart border, fon, şrift və siyahı stilini özü sıfırlayır.
+// Neytral rənglər `slate` yox, `stone`-dur: saytın öz boz tonları istidir (#F6F5F1 kağız, #111211
+// mürəkkəb), slate isə onların yanında bənövşəyi görünür. `brand` saytın göy rəngidir (#155EEF,
+// loqodakı "Log") — tailwind.css-ə bax.
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const btnBase = `items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-200 ${focusRing}`;
-const btnGhost = `${btnBase} text-stone-700 hover:bg-stone-100 hover:text-stone-900`;
-const btnPrimary = `${btnBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
+const buttonBase = `items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-200 ${focusRing}`;
+// Sakit, fonsuz düymə — "Daxil ol"
+const buttonGhost = `${buttonBase} text-stone-700 hover:bg-stone-100 hover:text-stone-900`;
+// Əsas göy düymə — "Əlaqə saxlayın"
+const buttonPrimary = `${buttonBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
 const flagBox =
   "block h-3.5 w-[21px] shrink-0 overflow-hidden rounded-[3px] ring-1 ring-stone-900/10 [&>svg]:block [&>svg]:size-full";
 ---
 
 <!--
-  Floating header. The <header> itself is only the strip that holds the bar away from the screen
-  edges; it is fixed, so it takes no space in the page — the first section of every page starts at the
-  very top and the glass bar floats over it. global.css gives .hero and .page-hero that height back
-  (--header-h), and it lets clicks through (pointer-events-none) so the page under its transparent
-  margins stays clickable.
+  Üzən header. <header> elementinin özü yalnız zolağı ekranın kənarlarından aralı saxlayan
+  çərçivədir. O, fixed-dir, ona görə səhifədə yer tutmur: hər səhifənin birinci bölməsi ən
+  yuxarıdan başlayır və şüşə zolaq onun üstündə üzür. global.css .hero və .page-hero-ya bu
+  hündürlüyü geri verir (--header-h). <header> klikləri özündən keçirir (pointer-events-none),
+  ona görə onun şəffaf kənarlarının altındakı səhifə kliklənə bilir.
 
-  Scroll behaviour lives on this element: `data-hidden` slides the whole strip out of view with a
-  transform, which the compositor can animate without touching layout. The script below decides when.
+  Sürüşmə davranışı bu elementdədir: `data-hidden` bütün zolağı transform ilə ekrandan çıxarır,
+  brauzer isə bunu layout-a toxunmadan (compositor-da) canlandırır. Nə vaxt gizlənəcəyinə
+  aşağıdakı skript qərar verir.
 -->
 <header
   data-header
@@ -108,14 +127,14 @@ const flagBox =
       <nav class="hidden lg:block" aria-label={t("a11y.nav")}>
         <ul class="flex list-none items-center gap-1">
           {
-            links.map((l) => (
+            links.map((link) => (
               <li>
                 <a
                   class={`inline-flex h-10 items-center rounded-full px-3 text-[14.5px] font-medium text-stone-600 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 aria-[current=page]:text-brand ${focusRing}`}
-                  href={l.href}
-                  aria-current={l.page === path ? "page" : undefined}
+                  href={link.href}
+                  aria-current={link.page === path ? "page" : undefined}
                 >
-                  {l.label}
+                  {link.label}
                 </a>
               </li>
             ))
@@ -152,30 +171,31 @@ const flagBox =
               </button>
 
               {/*
-                `visibility` is in the transition list so the card stays on screen for the whole fade
-                out — but only on the way out: the open state drops it again, so on the way in the menu
-                is visible in the same frame and ArrowDown can move focus into it straight away.
+                `visibility` keçid (transition) siyahısındadır ki, kart bağlanarkən bütün sönmə
+                müddətində ekranda qalsın. Amma yalnız bağlananda: açıq vəziyyət onu siyahıdan yenidən
+                çıxarır, ona görə açılanda menyu elə həmin kadrda görünür və ↓ düyməsi fokusu dərhal
+                içəri keçirə bilir.
               */}
               <ul
                 id="lang-menu"
                 class="invisible absolute right-0 top-full z-10 mt-5 min-w-48 origin-top-right -translate-y-1 scale-95 list-none rounded-xl border border-stone-200/70 bg-white p-1.5 opacity-0 shadow-lg shadow-stone-900/10 transition-[opacity,translate,scale,visibility] duration-150 ease-out group-data-open/lang:visible group-data-open/lang:translate-y-0 group-data-open/lang:scale-100 group-data-open/lang:opacity-100 group-data-open/lang:transition-[opacity,translate,scale]"
                 data-lang-menu
               >
-                {otherLangs.map((l) => (
+                {otherLangs.map((otherLang) => (
                   <li>
                     <a
                       class={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 transition-colors duration-150 hover:bg-stone-100 hover:text-stone-900 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand`}
-                      href={localizedPath(l, path)}
-                      hreflang={l}
-                      lang={l}
+                      href={localizedPath(otherLang, path)}
+                      hreflang={otherLang}
+                      lang={otherLang}
                     >
-                      <span class={flagBox} aria-hidden="true" set:html={langMeta[l].flag} />
-                      <span class="flex-1 font-medium">{langMeta[l].name}</span>
+                      <span class={flagBox} aria-hidden="true" set:html={langMeta[otherLang].flag} />
+                      <span class="flex-1 font-medium">{langMeta[otherLang].name}</span>
                       <span
                         class="text-xs font-semibold tracking-wide text-stone-500"
                         aria-hidden="true"
                       >
-                        {l.toUpperCase()}
+                        {otherLang.toUpperCase()}
                       </span>
                     </a>
                   </li>
@@ -186,23 +206,23 @@ const flagBox =
         }
 
         <!--
-          Two calls to action, and they are for different people. "Əlaqə saxlayın" is for a company that
-          does not have QRLog yet — it stays the primary, because that is what this site is for. "Daxil
-          ol" is for the staff who already use it and land here by typing the name they remember; it goes
-          to app.qrlog.az, the one address that works for every company without knowing which company
-          they belong to. It is the quiet ghost button on purpose: it must not compete with sales.
-          (This site deliberately had no login link at all until 2026-08-24 — people were expected to
-          reach the app by its own address, and enough of them did not.)
-          Each moves into the mobile menu at the width where it stops fitting — the primary at 540px,
-          where the bar still holds the logo, the switcher, one pill and the burger, the quieter login
-          link a step earlier at `sm`. Exactly one copy of each is ever visible; the mobile menu's own
-          copies below carry the mirror-image breakpoints.
+          İki çağırış düyməsi var və onlar fərqli insanlar üçündür. "Əlaqə saxlayın" hələ QRLog-u olmayan
+          şirkət üçündür — əsas düymə odur, çünki bu sayt məhz bunun üçündür. "Daxil ol" isə QRLog-u
+          artıq işlədən və yadında qalan adı yazıb bura düşən işçilər üçündür. O, app.qrlog.az-a
+          aparır: işçinin hansı şirkətdən olduğunu bilmədən hər şirkət üçün işləyən yeganə ünvana.
+          Qəsdən sakit, fonsuz (ghost) düymədir: satışla rəqabət aparmamalıdır.
+          (2026-08-24-ə qədər saytda qəsdən heç bir giriş linki yox idi — insanların tətbiqə öz
+          ünvanı ilə girəcəyi gözlənirdi, amma çoxu belə etmədi.)
+          Hər düymə zolağa sığmadığı enlikdə mobil menyuya keçir: əsas düymə 540px-dən dar ekranda
+          (540px-də zolağa hələ loqo, dil seçimi, bir düymə və burger sığır), daha sakit giriş linki
+          isə bir addım tez — `sm`-dən dar ekranda. Hər düymənin eyni anda yalnız bir nüsxəsi görünür;
+          aşağıda mobil menyudakı nüsxələr bunun güzgü əksi olan breakpoint-lərlə işləyir.
         -->
-        <a class={`${btnGhost} hidden px-4 py-2.5 sm:inline-flex`} href={appUrl}>
+        <a class={`${buttonGhost} hidden px-4 py-2.5 sm:inline-flex`} href={appUrl}>
           {t("cta.login")}
         </a>
         <a
-          class={`${btnPrimary} hidden px-5 py-2.5 min-[540px]:inline-flex`}
+          class={`${buttonPrimary} hidden px-5 py-2.5 min-[540px]:inline-flex`}
           href={contactHref}
         >
           {t("cta.btn1")}
@@ -229,7 +249,7 @@ const flagBox =
       </div>
     </div>
 
-    <!-- Mobile menu: -->
+    <!-- Mobil menyu: -->
     <div
       id="mobile-menu"
       class="invisible grid grid-rows-[0fr] transition-[grid-template-rows,visibility] duration-300 ease-out group-data-open/header:visible group-data-open/header:grid-rows-[1fr] lg:hidden"
@@ -242,28 +262,28 @@ const flagBox =
           <nav aria-label={t("a11y.nav")}>
             <ul class="list-none">
               {
-                links.map((l) => (
+                links.map((link) => (
                   <li>
                     <a
                       class="block rounded-xl px-2 py-3 text-[15px] font-medium text-stone-700 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand aria-[current=page]:text-brand"
-                      href={l.href}
-                      aria-current={l.page === path ? "page" : undefined}
+                      href={link.href}
+                      aria-current={link.page === path ? "page" : undefined}
                     >
-                      {l.label}
+                      {link.label}
                     </a>
                   </li>
                 ))
               }
             </ul>
           </nav>
-          <!-- An employee reaching this site on a phone is exactly the person who wants the app. -->
+          <!-- Sayta telefondan gələn işçi elə tətbiqə girmək istəyən adamdır. -->
           <div class="mt-2 grid gap-2 border-t border-stone-200/70 pt-3 sm:hidden">
             <a
-              class={`${btnGhost} flex px-4 py-3 ring-1 ring-inset ring-stone-200`}
+              class={`${buttonGhost} flex px-4 py-3 ring-1 ring-inset ring-stone-200`}
               href={appUrl}>{t("cta.login")}</a
             >
             <a
-              class={`${btnPrimary} flex px-5 py-3 min-[540px]:hidden`}
+              class={`${buttonPrimary} flex px-5 py-3 min-[540px]:hidden`}
               href={contactHref}>{t("cta.btn1")}</a
             >
           </div>
@@ -274,199 +294,303 @@ const flagBox =
 </header>
 
 <script>
+  // Header-in davranışı dörd hissədir: dil menyusu, mobil menyu, onların bağlanması və sürüşəndə
+  // zolağın gizlənməsi. Hər hissə aşağıda öz setup...() funksiyasındadır; hamısı faylın sonunda
+  // çağırılır.
+
+  // Bu qədər (px) aşağı sürüşəndən sonra zolaq daha qatı fon və kölgə alır (data-scrolled).
+  const SCROLLED_AFTER_PX = 8;
+  // Bundan kiçik hərəkət (px) sürüşmə sayılmır: toxunuş, kənarda "rezin" sıçrayışı, trackpad titrəməsi.
+  const SCROLL_JITTER_PX = 6;
+  // "Oxu xətti" — səhifənin əslində oxunduğu yer: 0.5 = ekran hündürlüyünün yarısı, yəni ortası.
+  const READING_LINE_RATIO = 0.5;
+  // Tailwind-in `lg` sərhədi: bu enlikdən burger düyməsi və mobil menyu gizlənir (lg:hidden).
+  const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
+
+  // <HTMLElement> TypeScript-ə hansı növ element qayıtdığını deyir (yalnız tip üçündür, işləmə
+  // zamanı yoxlanmır) — onsuz nəticə sadəcə Element olur və .focus() kimi metodlar tip xətası verir.
+  // https://www.typescriptlang.org/docs/handbook/2/generics.html
   const header = document.querySelector<HTMLElement>("[data-header]");
   const bar = header?.querySelector<HTMLElement>("[data-header-bar]");
 
   if (header && bar) {
-    const menuBtn = bar.querySelector<HTMLButtonElement>("[data-menu-trigger]");
-    const menu = bar.querySelector<HTMLElement>("[data-menu]");
-    const lang = bar.querySelector<HTMLElement>("[data-lang]");
-    const langBtn = lang?.querySelector<HTMLButtonElement>("[data-lang-trigger]");
-    const langItems = lang
-      ? Array.from(lang.querySelectorAll<HTMLAnchorElement>("[data-lang-menu] a"))
+    const menuButton = bar.querySelector<HTMLButtonElement>("[data-menu-trigger]");
+    const mobileMenu = bar.querySelector<HTMLElement>("[data-menu]");
+    const langDropdown = bar.querySelector<HTMLElement>("[data-lang]");
+    const langButton = langDropdown?.querySelector<HTMLButtonElement>("[data-lang-trigger]");
+    const langLinks = langDropdown
+      ? Array.from(langDropdown.querySelectorAll<HTMLAnchorElement>("[data-lang-menu] a"))
       : [];
 
-    // State lives in three attributes and nowhere else: `data-open` drives the styling
-    // (group-data-open:*), aria-expanded tells assistive technology, and `data-hidden` on the strip
-    // drives the scroll animation. Everything below goes through these setters.
-    const menuOpen = () => bar.hasAttribute("data-open");
-    const langOpen = () => !!lang?.hasAttribute("data-open");
+    // ---------- Vəziyyət ----------
+    // Panelin açıq və ya bağlı olması JS dəyişənində yox, yalnız atributlarda saxlanır: `data-open`
+    // görünüşü idarə edir (group-data-open:* sinifləri), aria-expanded isə ekran oxuyucusuna xəbər
+    // verir. Onları əl ilə dəyişmə — setLangDropdownOpen() və setMobileMenuOpen() ikisini birlikdə
+    // yeniləyir.
+    // Aşağıdakı dəyişənlər zolağın sürüşəndə gizlənməsi üçündür, amma onlara yalnız sürüşmə hissəsi
+    // toxunmur: isHidden-i revealHeader() də dəyişir (onu panellərin açılması, focusin və pageshow
+    // çağırır), lastScrollY-ni isə pageshow da yeniləyir. isScrolled və lastScrollY-in əsl başlanğıc
+    // dəyəri setupScrollHide()-da oxunur.
+    let isHidden = false; // zolaq yuxarı çəkilib gizlənibmi — `data-hidden`-in kopyası
+    let isScrolled = false; // zolaq "sürüşdürülmüş" görünüşdədirmi — `data-scrolled`-in kopyası
+    let lastScrollY = 0; // son dəfə nəzərə alınan sürüşmə mövqeyi
+    let frameRequested = false; // növbəti kadr üçün yeniləmə artıq istənibmi
 
-    let hidden = false;
-    const reveal = () => {
-      if (!hidden) return;
-      hidden = false;
+    // ---------- Panelləri açıb-bağlamaq ----------
+    const isMobileMenuOpen = () => bar.hasAttribute("data-open");
+
+    const isLangDropdownOpen = () => {
+      if (!langDropdown) return false;
+      return langDropdown.hasAttribute("data-open");
+    };
+
+    // Gizlənmiş zolağı geri gətirir; zolaq artıq görünürsə, heç nə etmir.
+    const revealHeader = () => {
+      if (!isHidden) return;
+      isHidden = false;
       header.removeAttribute("data-hidden");
     };
 
-    const setLang = (open: boolean) => {
-      if (!lang || !langBtn) return;
-      lang.toggleAttribute("data-open", open);
-      langBtn.setAttribute("aria-expanded", String(open));
+    // Eyni anda yalnız bir panel açıq ola bilər, ona görə açılan panel o birini bağlayır. Zolaq
+    // gizlənibsə, onu da geri gətirir — açıq panel ekrandan kənarda qalmamalıdır.
+    const setLangDropdownOpen = (open: boolean) => {
+      if (!langDropdown || !langButton) return;
+      langDropdown.toggleAttribute("data-open", open);
+      langButton.setAttribute("aria-expanded", String(open));
       if (open) {
-        setMenu(false);
-        reveal();
+        setMobileMenuOpen(false);
+        revealHeader();
       }
     };
 
-    const setMenu = (open: boolean) => {
-      if (!menuBtn) return;
+    const setMobileMenuOpen = (open: boolean) => {
+      if (!menuButton) return;
       bar.toggleAttribute("data-open", open);
-      menuBtn.setAttribute("aria-expanded", String(open));
+      menuButton.setAttribute("aria-expanded", String(open));
       if (open) {
-        setLang(false);
-        reveal();
+        setLangDropdownOpen(false);
+        revealHeader();
       }
     };
 
-    // ---------- Language dropdown ----------
-    langBtn?.addEventListener("click", () => setLang(!langOpen()));
+    // ---------- Dil menyusu ----------
+    // Dil düyməsində ↓ və ya ↑: menyunu açır və fokusu birinci (↓) və ya sonuncu (↑) dilə keçirir.
+    const openLangDropdownFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault(); // ox düyməsi səhifəni sürüşdürməsin
+      setLangDropdownOpen(true);
+      const targetIndex = event.key === "ArrowDown" ? 0 : langLinks.length - 1;
+      langLinks[targetIndex]?.focus();
+    };
 
-    langBtn?.addEventListener("keydown", (e) => {
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      e.preventDefault();
-      setLang(true);
-      langItems[e.key === "ArrowDown" ? 0 : langItems.length - 1]?.focus();
-    });
-
-    // The item the key was pressed on, not document.activeElement: this same event bubbles up from
-    // the trigger, and reading the active element there would move the focus a second time.
-    lang?.addEventListener("keydown", (e) => {
-      const i = langItems.indexOf(e.target as HTMLAnchorElement);
-      if (i < 0) return;
-      const last = langItems.length - 1;
-      const next =
-        e.key === "ArrowDown"
-          ? (i + 1) % langItems.length
-          : e.key === "ArrowUp"
-            ? (i - 1 + langItems.length) % langItems.length
-            : e.key === "Home"
-              ? 0
-              : e.key === "End"
-                ? last
-                : -1;
-      if (next < 0) return;
-      e.preventDefault();
-      langItems[next].focus();
-    });
-
-    // ---------- Mobile menu ----------
-    menuBtn?.addEventListener("click", () => setMenu(!menuOpen()));
-
-    // A section link on the home page does not load a new page, so the menu has to fold itself.
-    menu
-      ?.querySelectorAll("a")
-      .forEach((a) => a.addEventListener("click", () => setMenu(false)));
-
-    // Rotating a tablet or widening the window past `lg` hides the menu button; an open menu would
-    // otherwise come back on its own the next time the window narrows.
-    window.matchMedia("(min-width: 1024px)").addEventListener("change", (e) => {
-      if (e.matches) setMenu(false);
-    });
-
-    // ---------- Shared: focus, outside click, Escape, back button ----------
-    // Tabbing out closes whatever is open, so the tab order never continues behind an open panel.
-    // Only when focus actually lands somewhere else: Safari does not focus a link on click, so a
-    // mouse click blurs to nothing (relatedTarget null) and closing then would pull the item out
-    // from under the click. Clicks outside are handled separately.
-    bar.addEventListener("focusout", (e) => {
-      const to = e.relatedTarget as Node | null;
-      if (!to || bar.contains(to)) return;
-      setLang(false);
-      setMenu(false);
-    });
-
-    document.addEventListener("click", (e) => {
-      const target = e.target as Node;
-      if (langOpen() && !lang?.contains(target)) setLang(false);
-      if (menuOpen() && !bar.contains(target)) setMenu(false);
-    });
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-      if (langOpen()) {
-        setLang(false);
-        langBtn?.focus();
-      } else if (menuOpen()) {
-        setMenu(false);
-        menuBtn?.focus();
+    // Basılan düyməyə görə fokusun keçəcəyi dilin indeksini qaytarır.
+    // -1 qaytarırsa, bu düymə siyahıda gəzmək üçün deyil.
+    const findNextLangIndex = (key: string, currentIndex: number) => {
+      const linkCount = langLinks.length;
+      if (key === "ArrowDown") {
+        return (currentIndex + 1) % linkCount; // sonuncudan sonra yenidən birinciyə
       }
-    });
+      if (key === "ArrowUp") {
+        return (currentIndex - 1 + linkCount) % linkCount; // birincidən əvvəl sonuncuya
+      }
+      if (key === "Home") {
+        return 0;
+      }
+      if (key === "End") {
+        return linkCount - 1;
+      }
+      return -1;
+    };
 
-    // Coming back with the browser's Back button restores the page exactly as it was left (bfcache),
-    // open dropdown and all.
-    window.addEventListener("pageshow", (e) => {
-      if (!e.persisted) return;
-      setLang(false);
-      setMenu(false);
-      reveal();
-      lastY = window.scrollY;
-    });
+    // Fokus dil siyahısının içindədirsə: ↓ ↑ Home End onu dillər arasında gəzdirir.
+    // Elementi event.target-dən götürürük, document.activeElement-dən yox. Dil düyməsində basılan ↓
+    // əvvəlcə yuxarıdakı funksiyada fokusu birinci dilə keçirir, sonra eyni hadisə bu konteynerə
+    // qalxır (bubbling). activeElement-i oxusaydıq, o artıq birinci dil olardı və fokus ikinci dəfə
+    // yerini dəyişərdi. event.target isə düymənin özüdür — siyahıda yoxdur, ona görə heç nə etmirik.
+    const moveFocusInLangDropdown = (event: KeyboardEvent) => {
+      const currentIndex = langLinks.indexOf(event.target as HTMLAnchorElement);
+      if (currentIndex < 0) return;
+      const nextIndex = findNextLangIndex(event.key, currentIndex);
+      if (nextIndex < 0) return;
+      event.preventDefault();
+      langLinks[nextIndex].focus();
+    };
 
-    // ---------- Scroll ----------
-    // The bar gets out of the way while you read downwards and comes straight back when you scroll
-    // up. `fromTop` is the middle of the viewport — the line the page is actually read at — so
-    // nothing hides while that line is still inside the first screen: at the top of a page the logo,
-    // the menu and both calls to action stay where a visitor expects them.
+    const setupLanguageMenu = () => {
+      langButton?.addEventListener("click", () => setLangDropdownOpen(!isLangDropdownOpen()));
+      langButton?.addEventListener("keydown", openLangDropdownFromKeyboard);
+      langDropdown?.addEventListener("keydown", moveFocusInLangDropdown);
+    };
+
+    // ---------- Mobil menyu ----------
+    const setupMobileMenu = () => {
+      menuButton?.addEventListener("click", () => setMobileMenuOpen(!isMobileMenuOpen()));
+
+      // Ana səhifədə bölmə linki (#how və s.) yeni səhifə yükləmir, ona görə menyu özü bağlanmalıdır.
+      if (mobileMenu) {
+        for (const link of mobileMenu.querySelectorAll("a")) {
+          link.addEventListener("click", () => setMobileMenuOpen(false));
+        }
+      }
+
+      // Planşeti çevirəndə və ya pəncərəni `lg`-dən genişləndirəndə burger düyməsi gizlənir; açıq
+      // qalmış menyu isə pəncərə növbəti dəfə daralanda öz-özünə yenidən görünərdi.
+      // matchMedia CSS media query-ni JavaScript-dən izləməyə imkan verir ("change" hadisəsi):
+      // https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+      window.matchMedia(DESKTOP_MEDIA_QUERY).addEventListener("change", (event) => {
+        if (event.matches) setMobileMenuOpen(false);
+      });
+    };
+
+    // ---------- Ortaq bağlanma: fokus, kənara klik, Escape, "Geri" düyməsi ----------
+    // Tab ilə zolaqdan çıxanda açıq panel bağlanır ki, Tab ardıcıllığı açıq panelin arxasında davam
+    // etməsin. Amma yalnız fokus həqiqətən başqa yerə düşəndə: Safari klikdə linkə fokus vermir, ona
+    // görə siçan kliki fokusu "heç yerə" aparır (relatedTarget null olur). O an bağlasaq, kliklənən
+    // element klikin altından çəkilərdi. Kənara kliklər ayrıca, aşağıda tutulur.
+    // relatedTarget — focusout-da fokusun keçdiyi element:
+    // https://developer.mozilla.org/en-US/docs/Web/API/FocusEvent/relatedTarget
+    const closePanelsWhenFocusLeaves = (event: FocusEvent) => {
+      const newFocus = event.relatedTarget as Node | null;
+      if (!newFocus || bar.contains(newFocus)) return;
+      setLangDropdownOpen(false);
+      setMobileMenuOpen(false);
+    };
+
+    // Kənara klik: dil menyusu öz qutusundan kənarda, mobil menyu isə zolaqdan kənarda edilən klikdə
+    // bağlanır.
+    const closePanelsOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (isLangDropdownOpen() && !langDropdown?.contains(target)) setLangDropdownOpen(false);
+      if (isMobileMenuOpen() && !bar.contains(target)) setMobileMenuOpen(false);
+    };
+
+    // Escape açıq paneli bağlayır və fokusu onu açan düyməyə qaytarır — klaviatura ilə gəzən adam
+    // yerini itirmir.
+    const closePanelOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (isLangDropdownOpen()) {
+        setLangDropdownOpen(false);
+        langButton?.focus();
+      } else if (isMobileMenuOpen()) {
+        setMobileMenuOpen(false);
+        menuButton?.focus();
+      }
+    };
+
+    // Brauzerin "Geri" düyməsi ilə qayıdanda səhifə tərk edildiyi kimi bərpa olunur (bfcache) — açıq
+    // menyu da daxil olmaqla. Ona görə panelləri bağlayırıq, gizlənmiş zolağı geri gətiririk və
+    // sürüşmə hesabını bərpa olunan mövqedən yenidən başladırıq.
+    // event.persisted yalnız səhifə bfcache-dən qayıdanda true olur:
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event
+    // https://developer.mozilla.org/en-US/docs/Glossary/bfcache
+    const resetAfterBackButton = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      setLangDropdownOpen(false);
+      setMobileMenuOpen(false);
+      revealHeader();
+      lastScrollY = window.scrollY; // sürüşmə hesabı bərpa olunan mövqedən yenidən başlasın
+    };
+
+    const setupClosing = () => {
+      bar.addEventListener("focusout", closePanelsWhenFocusLeaves);
+      document.addEventListener("click", closePanelsOnOutsideClick);
+      document.addEventListener("keydown", closePanelOnEscape);
+      window.addEventListener("pageshow", resetAfterBackButton);
+    };
+
+    // ---------- Sürüşmə (scroll) ----------
+    // Aşağı oxuyanda zolaq yoldan çəkilir, yuxarı sürüşəndə dərhal geri gəlir. "Oxu xətti" ekranın
+    // ortasıdır — səhifə əslində orada oxunur. Bu xətt hələ birinci ekranın içindədirsə, heç nə
+    // gizlənmir: səhifənin yuxarısında loqo, menyu və hər iki düymə ziyarətçinin gözlədiyi yerdə qalır.
     //
-    // Cost per scroll event: one rAF callback, two reads, and an attribute write only when the state
-    // actually changes. The strip then animates a transform, which the compositor does on its own —
-    // no layout, no repaint of the page behind it.
-    const keyboardInside = () => {
-      const el = document.activeElement;
-      if (!el || !header.contains(el)) return false;
-      // :focus-visible is what the browser itself calls "the focus you can see". Safari before 15.4
-      // throws on it, and there the safe answer is to keep the bar.
+    // Sürüşmə zamanı iş azdır: kadrda bir requestAnimationFrame çağırışı, bir neçə oxuma, atributa
+    // yazı isə yalnız vəziyyət həqiqətən dəyişəndə. Zolaq sonra transform ilə hərəkət edir və bunu
+    // brauzer özü (compositor) edir — nə layout, nə də arxadakı səhifənin yenidən çəkilməsi.
+
+    // Zolağın içində klaviatura fokusu varmı? Toxunuşla fokus almış düymə sayılmır.
+    const isKeyboardFocusInside = () => {
+      const focusedElement = document.activeElement;
+      if (!focusedElement || !header.contains(focusedElement)) return false;
+      // :focus-visible brauzerin özünün "görünən fokus" dediyi haldır (adətən klaviatura ilə gələn
+      // fokus). Safari 15.4-dən köhnə versiyalar bu seçicidə xəta atır; orada təhlükəsiz cavab
+      // zolağı yerində saxlamaqdır.
+      // https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible
       try {
-        return el.matches(":focus-visible");
+        return focusedElement.matches(":focus-visible");
       } catch {
         return true;
       }
     };
 
-    const JITTER = 6; // px — a tap, a rubber-band or a trackpad tremor is not a scroll
-    let lastY = window.scrollY;
-    let scrolled = false;
-    let ticking = false;
-
-    const paint = () => {
-      ticking = false;
-      const y = Math.max(window.scrollY, 0);
-      const fromTop = y + window.innerHeight / 2;
-      const delta = y - lastY;
-      if (Math.abs(delta) < JITTER) return; // lastY stays put, so small moves still add up
-      lastY = y;
-
-      const isScrolled = y > 8;
-      if (isScrolled !== scrolled) {
-        scrolled = isScrolled;
-        bar.toggleAttribute("data-scrolled", isScrolled);
-      }
-
-      // Never slide away from under an open panel, or from under the keyboard focus. A button that
-      // only holds focus because it was tapped does not count, or the bar would stay pinned for the
-      // rest of the visit after one tap on the burger.
-      const pinned = menuOpen() || langOpen() || keyboardInside();
-      const next = !pinned && delta > 0 && fromTop > window.innerHeight;
-      if (next !== hidden) {
-        hidden = next;
-        header.toggleAttribute("data-hidden", next);
+    // Zolağın "sürüşdürülmüş" görünüşünü (daha qatı fon və kölgə) yalnız vəziyyət dəyişəndə yeniləyir.
+    const updateScrolledLook = (scrollTop: number) => {
+      const nowScrolled = scrollTop > SCROLLED_AFTER_PX;
+      if (nowScrolled !== isScrolled) {
+        isScrolled = nowScrolled;
+        bar.toggleAttribute("data-scrolled", nowScrolled);
       }
     };
 
-    window.addEventListener(
-      "scroll",
-      () => {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(paint);
-      },
-      { passive: true },
-    );
+    // Zolaq yalnız aşağı sürüşəndə (scrollDelta > 0) və oxu xətti birinci ekranı keçəndə gizlənir.
+    // Açıq panelin və ya klaviatura fokusunun altından heç vaxt çəkilmir. Sadəcə toxunulduğu üçün
+    // fokusda qalan düymə sayılmır, yoxsa burgerə bir toxunuşdan sonra zolaq ziyarətin sonunadək
+    // yerində bərkiyib qalardı.
+    const updateHiddenState = (scrollDelta: number, readingLine: number) => {
+      const isPinned = isMobileMenuOpen() || isLangDropdownOpen() || isKeyboardFocusInside();
+      const shouldHide = !isPinned && scrollDelta > 0 && readingLine > window.innerHeight;
+      if (shouldHide !== isHidden) {
+        isHidden = shouldHide;
+        header.toggleAttribute("data-hidden", shouldHide);
+      }
+    };
 
-    // Reloading half way down a page starts in the scrolled state.
-    scrolled = window.scrollY > 8;
-    bar.toggleAttribute("data-scrolled", scrolled);
-    header.addEventListener("focusin", reveal);
+    // Kadrda bir dəfə işləyir: nə qədər və hansı istiqamətdə sürüşüldüyünü hesablayıb zolağı yeniləyir.
+    const updateOnScroll = () => {
+      frameRequested = false;
+      // Safari-də səhifənin yuxarısındakı "rezin" sıçrayışında scrollY mənfi ola bilər
+      const scrollTop = Math.max(window.scrollY, 0);
+      const readingLine = scrollTop + window.innerHeight * READING_LINE_RATIO;
+      const scrollDelta = scrollTop - lastScrollY;
+      // Kiçik hərəkətdə lastScrollY dəyişmir, ona görə bir neçə kiçik addım toplanıb sonda sayılır
+      if (Math.abs(scrollDelta) < SCROLL_JITTER_PX) return;
+      lastScrollY = scrollTop;
+
+      updateScrolledLook(scrollTop);
+      updateHiddenState(scrollDelta, readingLine);
+    };
+
+    // scroll hadisəsi çox tez-tez gəlir. requestAnimationFrame hesablamanı növbəti kadr çəkilməzdən
+    // dərhal əvvələ köçürür, frameRequested isə eyni kadr üçün ikinci çağırışın növbəyə düşməsinin
+    // qarşısını alır.
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
+    const requestScrollUpdate = () => {
+      if (frameRequested) return;
+      frameRequested = true;
+      requestAnimationFrame(updateOnScroll);
+    };
+
+    const setupScrollHide = () => {
+      lastScrollY = window.scrollY;
+      // passive: brauzerə deyir ki, bu dinləyici preventDefault() çağırmayacaq. scroll hadisəsini
+      // onsuz da ləğv etmək olmur, ona görə burada o, sadəcə niyyəti açıq göstərir; sürüşməni
+      // əslində sürətləndirdiyi yer touchmove və wheel dinləyiciləridir.
+      // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#passive
+      window.addEventListener("scroll", requestScrollUpdate, { passive: true });
+
+      // Səhifə ortadan yenidən yüklənəndə zolaq elə əvvəldən "sürüşdürülmüş" görünüşdə olur.
+      isScrolled = window.scrollY > SCROLLED_AFTER_PX;
+      bar.toggleAttribute("data-scrolled", isScrolled);
+
+      // Fokus zolağın içinə düşəndə (məsələn, Tab ilə) gizlənmiş zolaq geri çıxır — fokuslanan
+      // element ekrandan kənarda qalmamalıdır.
+      header.addEventListener("focusin", revealHeader);
+    };
+
+    // const ilə yazılmış funksiyanı təyin olunduğu sətirdən əvvəl çağırmaq olmur (xəta verir), ona görə
+    // çağırışlar ən sondadır.
+    setupLanguageMenu();
+    setupMobileMenu();
+    setupClosing();
+    setupScrollHide();
   }
 </script>

@@ -36,7 +36,9 @@ edir — Node 20.11-də `astro check` `ERR_REQUIRE_ESM` ilə düşür. Lokal Nod
 Səhifə slug-ları hər üç dildə azərbaycanca qalır (`/ru/qiymet/`, `/en/elaqe/`) — köhnə azərbaycanca
 URL-lər artıq indeksdədir və onları dəyişmək qazanc gətirmirdi.
 
-Bloq yalnız azərbaycancadır (`/bloq/`); hər dilin footer-i ora yönləndirir.
+Bloq (`/bloq/`), `/mexfilik/` və `/hesab-silinmesi/` yalnız azərbaycancadır — `src/i18n/ui.ts` →
+`azOnlyRoutes`. Hüquqi iki səhifəyə hər dilin footer-i link verir (`hreflang="az"` ilə). Bloq linki
+footer-dən müvəqqəti çıxarılıb — bloqda üç məqalə olanda `Footer.astro`-dakı şərhə alınmış sətri qaytarın.
 
 ## Struktur
 
@@ -44,6 +46,7 @@ Bloq yalnız azərbaycancadır (`/bloq/`); hər dilin footer-i ora yönləndirir
 src/
   assets/images/             # build-in hash-layıb /_astro/-ya yazdığı ikili fayllar
     brand/                   #   logo-word, logo-mark-white
+    badges/                  #   Google-un rəsmi Google Play nişanları (EN, RU) — dəyişdirilmir
     customers/               #   müştəri loqoları (site.ts → CUSTOMERS)
     product/                 #   poster QR-ı, tətbiq ekranı
     problem/                 #   Problem.astro illüstrasiyaları
@@ -120,8 +123,11 @@ utility class-ları birbaşa yazmaq olar.
   planlar təyin olunanda `amount` sahəsini və `price.p*f*` açarlarını dəyişin. `enabled: false`
   bütün qiymət bölməsini və naviqasiyadakı yerini birdən söndürür.
 - **Əlaqə (e-poçt, telefon, WhatsApp):** `src/data/site.ts` → `SITE`. `phone` boşdursa saytda heç
-  bir telefon linki görünmür — işləməyən nömrə göstərməkdənsə heç nə göstərməmək seçildi. Bütün
-  CTA düymələri (header, hero, qiymət planları, CTA zolağı) `/elaqe/` səhifəsinə yönəlir.
+  bir telefon linki görünmür — işləməyən nömrə göstərməkdənsə heç nə göstərməmək seçildi. WhatsApp
+  nömrəsi telefondan fərqlidir (qəsdən); `wa.me` linkini `whatsappUrl()` qurur. Onu `/elaqe/`,
+  footer və hər səhifədəki üzən düymə (`WhatsAppButton.astro`) işlədir. Bütün CTA düymələri
+  (header, hero, qiymət planları, CTA zolağı) `/elaqe/` səhifəsinə yönəlir.
+- **Google Play linki:** `SITE.playStore`; nişan `GooglePlayBadge.astro`-dadır (Pwa bölməsi, footer).
 - **Müştəri rəyləri:** `src/data/site.ts` → `TESTIMONIALS`. Siyahı boş olduğu müddətdə bölmə
   ümumiyyətlə render olunmur. Ora yalnız **adı və vəzifəsi ilə paylaşılmasına icazə verilmiş** real
   sitatlar əlavə edin.
@@ -134,8 +140,10 @@ utility class-ları birbaşa yazmaq olar.
 
 Saytdakı hər iddia tətbiqin yerinə yetirməli olduğu vədidir. Ona görə burada **yoxdur**: uydurma
 istifadə statistikası, uydurma reytinq (JSON-LD-də `aggregateRating` yoxdur), uydurma müştəri
-loqoları və rəyləri, GDPR/“uçtan-uca şifrələmə” iddiaları, App Store / Google Play vədi (məhsul
-PWA-dır) və “dinamik QR” (poster sabitdir — kod dəyişmir).
+loqoları və rəyləri, GDPR/“uçtan-uca şifrələmə” iddiaları, App Store vədi (iPhone-da məhsul
+PWA-dır; Android tətbiqi isə həqiqətən Google Play-dədir — `az.qrlog.app`) və “dinamik QR” (poster
+sabitdir — kod dəyişmir). Yoxlamalar dörddür — QR imzası, məkan (GPS), cihaz, üz — və sayı hər
+yerdə eyni olmalıdır (Hero, Stats, İş prinsipi, Haqqımızda, meta təsvir).
 
 ## Deploy
 
