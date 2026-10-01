@@ -1036,3 +1036,205 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .photo-audit-msg:focus { outline: none; border-color: var(--c400); }
 .photo-audit-msg::placeholder { color: var(--c400); }
 .photo-audit-count { align-self: center; font-size: 11px; color: var(--c400); font-variant-numeric: tabular-nums; }
+
+
+/* ══ Bugünkü davamiyyət — lövhənin yenidən dizaynı (Figma «Davamiyyət paneli») ═══════════════════
+   The board is the screen this company opens first every morning, and it had grown by accretion: a
+   row of date buttons, two rows of loose chips, a search box, twelve equal tiles, then the table —
+   five bands of controls competing for the same attention, none of them grouped. The redesign puts
+   the same controls into three blocks a reader takes in at a glance: what you are looking at
+   (filters), what the day looks like (four headline numbers and a quiet strip), and the people (one
+   bordered table with its own toolbar).
+
+   Deliberately built on the panel's OWN tokens rather than the mock's blue-and-slate palette: the
+   sidebar, the topbar and every other admin screen are leaf-green on warm grey, and one page in a
+   different accent reads as a different product rather than as a newer one. Shape, density and type
+   scale follow the design; the colours stay this product's. */
+
+/* ── Səhifə başlığı ──────────────────────────────────────────────────────────────────────────── */
+.att-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.att-title{font-family:'Manrope',sans-serif;font-size:26px;font-weight:800;color:var(--c900);line-height:1.18;margin:0}
+.att-sub{font-size:12px;color:var(--c500);margin-top:5px;line-height:1.5}
+.att-head-act{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* When the board last answered. Tabular, so the minute does not shove the Excel button sideways
+   every thirty seconds as the poll lands. */
+.att-stamp{font-size:11px;color:var(--c400);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ── Filtr paneli ────────────────────────────────────────────────────────────────────────────── */
+.att-filters{background:var(--white);border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh-sm);
+  padding:16px;display:flex;flex-direction:column;gap:12px;margin-bottom:16px}
+.att-f-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.att-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+.att-f-lbl{font-size:11px;font-weight:700;color:var(--c500)}
+.att-date{display:flex;gap:6px;align-items:center}
+.att-step{width:32px;height:32px;flex:none;border:1px solid var(--c200);border-radius:8px;background:var(--white);
+  display:inline-flex;align-items:center;justify-content:center;color:var(--c600);cursor:pointer;padding:0}
+.att-step svg{width:14px;height:14px}
+.att-step:hover:not(:disabled){background:var(--c50);color:var(--c900)}
+.att-step:disabled{opacity:.4;cursor:default}
+.att-date-inp{height:32px;border:1px solid var(--c200);border-radius:8px;padding:0 10px;background:var(--white);
+  font:inherit;font-size:12px;font-weight:600;color:var(--c900);width:152px}
+.att-date-inp:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 15%,transparent)}
+
+/* A field that holds a search icon, an input and a keyboard hint, and focuses as one box. */
+.att-search{display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;background:var(--white);
+  border:1px solid var(--c200);border-radius:8px;color:var(--c400)}
+.att-search:focus-within{border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 15%,transparent)}
+.att-search svg{width:14px;height:14px;flex:none}
+.att-search input{flex:1;min-width:0;border:none;outline:none;background:none;font:inherit;font-size:12px;color:var(--c900)}
+.att-search input::placeholder{color:var(--c400)}
+.att-kbd{flex:none;font-size:10px;font-weight:700;color:var(--c400);border:1px solid var(--c200);border-radius:4px;padding:1px 5px}
+.att-clear{flex:none;border:none;background:none;padding:2px;color:var(--c400);cursor:pointer;line-height:0;border-radius:4px}
+.att-clear:hover{color:var(--c900);background:var(--c100)}
+.att-clear svg{width:11px;height:11px}
+
+/* Ərazi — çoxlu seçim.
+   A chip row was right for three branches and is unusable at twenty-two: the chips wrapped to four
+   lines and pushed the table off the first screen, and only ONE could ever be on, so «the two parks»
+   was not a question this board could be asked. */
+.att-multi{position:relative;min-width:0}
+.att-multi-box{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:32px;padding:3px 8px;
+  background:var(--white);border:1px solid var(--c200);border-radius:8px;cursor:pointer;width:100%;
+  font:inherit;color:var(--c400);text-align:left}
+.att-multi-box:hover{border-color:var(--c400)}
+/* It is a div with role=button (it holds the tokens' own buttons), so the focus ring has to be
+   written out — a keyboard user would otherwise have no idea where they are. */
+.att-multi-box:focus-visible{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 15%,transparent)}
+.att-multi-box.open{border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 15%,transparent)}
+.att-multi-box>svg{width:14px;height:14px;flex:none}
+.att-multi-ph{font-size:12px;color:var(--c400)}
+.att-multi-sp{flex:1;min-width:8px}
+.att-tok{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;
+  background:var(--leaf-bg);color:var(--leaf-d);font-size:11px;font-weight:700;white-space:nowrap;max-width:170px}
+.att-tok span{overflow:hidden;text-overflow:ellipsis}
+.att-tok button{border:none;background:none;padding:0;color:inherit;cursor:pointer;line-height:0;opacity:.7;flex:none}
+.att-tok button:hover{opacity:1}
+.att-tok button svg{width:11px;height:11px}
+.att-tok.more{background:var(--c100);color:var(--c600)}
+.att-pop{position:absolute;z-index:40;top:calc(100% + 6px);left:0;min-width:280px;max-width:420px;
+  max-height:340px;overflow:auto;background:var(--white);border:1px solid var(--c200);border-radius:12px;
+  box-shadow:var(--sh);padding:6px}
+.att-pop-h{display:flex;align-items:center;gap:8px;padding:4px 4px 8px;border-bottom:1px solid var(--c100);margin-bottom:4px}
+.att-pop-h .att-search{flex:1}
+.att-opt{display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border:none;border-radius:8px;
+  background:none;font:inherit;font-size:12.5px;color:var(--c700);cursor:pointer;text-align:left}
+.att-opt:hover{background:var(--c50)}
+.att-opt input{accent-color:var(--leaf);flex:none;margin:0}
+.att-opt-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-opt-n{font-size:11px;color:var(--c400);font-variant-numeric:tabular-nums;flex:none}
+.att-pop-f{display:flex;gap:12px;padding:7px 9px 2px;border-top:1px solid var(--c100);margin-top:4px}
+.att-pop-f button{border:none;background:none;padding:2px 0;font:inherit;font-size:11px;font-weight:700;
+  color:var(--leaf-d);cursor:pointer}
+.att-pop-f button:hover{text-decoration:underline}
+.att-backdrop{position:fixed;inset:0;z-index:35}
+
+/* ── Seqment + süzgəc vəziyyəti ──────────────────────────────────────────────────────────────── */
+.att-f-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.att-seg{display:inline-flex;gap:2px;padding:3px;background:var(--c100);border-radius:10px;flex-wrap:wrap}
+.att-seg button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:none;border-radius:7px;
+  background:transparent;font:inherit;font-size:12px;font-weight:600;color:var(--c600);cursor:pointer}
+.att-seg button:hover{color:var(--c900)}
+.att-seg button.on{background:var(--white);color:var(--leaf-d);font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.att-seg-n{background:var(--c200);color:var(--c600);border-radius:999px;padding:2px 6px;font-size:10px;font-weight:800;
+  line-height:1;font-variant-numeric:tabular-nums}
+.att-seg button.on .att-seg-n{background:var(--leaf-bg);color:var(--leaf-d)}
+.att-f-state{display:flex;align-items:center;gap:12px;margin-left:auto;font-size:11px;color:var(--c500);flex-wrap:wrap}
+.att-f-state i{width:6px;height:6px;border-radius:50%;background:var(--leaf);display:inline-block;flex:none}
+.att-reset{border:none;background:none;padding:0;font:inherit;font-size:11px;font-weight:700;color:var(--leaf-d);cursor:pointer}
+.att-reset:hover{text-decoration:underline}
+
+/* ── Günün icmalı ────────────────────────────────────────────────────────────────────────────── */
+.att-stats-h{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.att-stats-t{font-size:16px;font-weight:700;color:var(--c900)}
+.att-stats-n{font-size:11px;color:var(--c400);margin-left:8px;font-weight:500}
+.att-live{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--c500)}
+.att-live i{width:7px;height:7px;border-radius:50%;background:var(--leaf);display:block;animation:att-pulse 2.4s ease-in-out infinite}
+@keyframes att-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.att-live i{animation:none}}
+
+.att-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:12px;margin-bottom:10px}
+.att-kpi{display:flex;flex-direction:column;gap:9px;padding:14px;background:var(--white);border:1px solid var(--c100);
+  border-radius:12px;box-shadow:var(--sh-sm);font:inherit;text-align:left;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s}
+.att-kpi:hover{border-color:var(--c200)}
+.att-kpi.on{border-color:var(--leaf);box-shadow:0 0 0 2px color-mix(in srgb,var(--leaf) 22%,transparent)}
+.att-kpi-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.att-kpi-ic{width:30px;height:30px;flex:none;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+.att-kpi-ic svg{width:16px;height:16px}
+.att-kpi-pct{font-size:11px;font-weight:600;color:var(--c400);font-variant-numeric:tabular-nums}
+.att-kpi-v{display:flex;align-items:baseline;gap:9px;min-width:0}
+.att-kpi-n{font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:var(--c900);line-height:1;
+  font-variant-numeric:tabular-nums}
+.att-kpi-l{font-size:13px;font-weight:700;color:var(--c600);min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* The colour families the badges on the rows below already use, so a tile and the rows it filters to
+   are visibly the same thing. */
+.att-t-leaf{background:var(--leaf-bg);color:var(--leaf-d)}
+.att-t-clay{background:var(--clay-bg);color:var(--clay)}
+.att-t-amber{background:var(--amber-bg);color:var(--amber)}
+.att-t-blue{background:var(--blue-bg);color:var(--blue)}
+.att-t-purple{background:var(--purple-bg);color:var(--purple)}
+.att-t-teal{background:var(--teal-bg);color:var(--teal)}
+.att-t-slate{background:var(--c100);color:var(--c600)}
+
+/* Hər gün olmayan statuslar: bir sətir, sakit. Twelve equal tiles made «Ezamiyyət 2» as loud as
+   «Qayıb 46», and the thing the morning is actually about stopped standing out. */
+.att-minor{display:flex;align-items:center;flex-wrap:wrap;padding:6px 8px;background:var(--white);
+  border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh-sm)}
+.att-minor-i{flex:1 1 140px;min-width:0;display:flex;align-items:center;gap:9px;padding:10px;border:none;
+  background:none;font:inherit;text-align:left;cursor:pointer;border-radius:10px}
+.att-minor-i:hover{background:var(--c50)}
+.att-minor-i.on{background:var(--c50);box-shadow:inset 0 0 0 1px var(--c200)}
+.att-minor-d{width:7px;height:7px;border-radius:50%;flex:none}
+.att-minor-t{min-width:0}
+.att-minor-l{font-size:11px;color:var(--c400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-minor-n{display:block;font-size:16px;font-weight:700;color:var(--c900);margin-top:3px;font-variant-numeric:tabular-nums}
+.att-minor-sep{width:1px;height:28px;background:var(--c100);flex:none;margin:0 2px}
+.att-more{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:7px 10px;background:var(--c50);
+  border:1px solid var(--c100);border-radius:8px;font:inherit;font-size:11px;font-weight:700;color:var(--c600);cursor:pointer}
+.att-more:hover{background:var(--c100);color:var(--c900)}
+.att-more svg{width:13px;height:13px;transition:transform .18s}
+.att-more.open svg{transform:rotate(180deg)}
+
+/* ── Cədvəl kartı ────────────────────────────────────────────────────────────────────────────── */
+.att-table{margin-top:16px;background:var(--white);border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh-sm)}
+.att-tbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;flex-wrap:wrap}
+.att-tbar-t{font-size:16px;font-weight:700;color:var(--c900)}
+.att-tbar-n{font-size:11px;color:var(--c400);margin-left:9px;font-weight:500;font-variant-numeric:tabular-nums}
+.att-tbar-a{display:flex;align-items:center;gap:8px;position:relative;flex-wrap:wrap}
+.att-tool{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 10px;border:1px solid var(--c200);
+  border-radius:8px;background:var(--white);font:inherit;font-size:11px;font-weight:600;color:var(--c600);cursor:pointer}
+.att-tool:hover{background:var(--c50);color:var(--c900)}
+.att-tool.on{border-color:var(--leaf);background:var(--leaf-bg);color:var(--leaf-d)}
+.att-tool svg{width:14px;height:14px}
+/* The card already draws the border and the rounding; the table inside must not draw them again. */
+.att-table .tbl-wrap{border:none;border-radius:0;background:transparent}
+.att-table thead tr{border-top:1px solid var(--c100)}
+.att-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;
+  border-top:1px solid var(--c100);font-size:11px;color:var(--c400);flex-wrap:wrap}
+.att-foot b{color:var(--c600);font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ── Sətir ───────────────────────────────────────────────────────────────────────────────────── */
+.att-emp{display:flex;align-items:center;gap:9px;min-width:0}
+/* Initials, not a photograph. The selfie is the audit control and opens on demand; a column of
+   thumbnails would pull two hundred signed URLs and put faces on a screen that is read in a room
+   with other people in it. */
+.att-av{width:28px;height:28px;flex:none;border-radius:999px;background:var(--leaf-bg);color:var(--leaf-d);
+  display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800}
+.att-emp-t{min-width:0}
+.att-emp-n{font-size:12.5px;font-weight:700;color:var(--c900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-emp-n a{color:inherit;text-decoration:none}
+.att-emp-n a:hover{text-decoration:underline}
+.att-emp-p{margin-top:1px;font-size:10.5px;color:var(--c400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  border:none;background:none;padding:0;font-family:inherit;cursor:pointer;max-width:100%;text-align:left;display:block}
+.att-emp-p:hover{color:var(--c600);text-decoration:underline}
+.att-sched{display:inline-flex;align-items:center;gap:6px;color:var(--c600);font-size:11.5px;white-space:nowrap}
+.att-sched svg{width:13px;height:13px;flex:none;color:var(--c400)}
+.att-worked{font-variant-numeric:tabular-nums;font-weight:700;color:var(--c900)}
+.att-worked.live{color:var(--leaf-d)}
+.att-none{color:var(--c400)}
+.att-act{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+/* Belt and braces on the one cell whose icons carry their size as an ATTRIBUTE rather than from a
+   rule: an icon that arrives without one fills the cell and turns a 32px row into a 200px one. */
+.att-act .tbl-icon svg{width:16px;height:16px}
+@media (max-width:640px){.att-act{justify-content:flex-start}}

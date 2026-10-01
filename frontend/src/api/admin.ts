@@ -70,6 +70,16 @@ export interface DayAttendanceRow {
   fieldCheckInLongitude?: number | null
   /** Who wrote this Qayıb by hand («Qayıb yaz»). Null when the scans decided the day by themselves. */
   absenceMarkedBy?: string | null
+  /** The hours this person is measured against ON THIS DATE ("HH:mm"), from the same EffectiveShift
+   *  the status was decided from — a crew whose Saturday starts later shows the later clock. */
+  shiftStart?: string | null
+  shiftEnd?: string | null
+  /** The named shift behind those hours («Gecə A»); null when they come from the employee's own
+   *  override or from the location. The board prefers the name — it is what an admin recognises. */
+  shiftName?: string | null
+  /** The second stretch of a split day (07:00–11:00 + 22:00–07:00). Null on every ordinary shift. */
+  secondShiftStart?: string | null
+  secondShiftEnd?: string | null
 }
 
 export interface EmployeeReportRow {

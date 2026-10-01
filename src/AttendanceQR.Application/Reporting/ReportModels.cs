@@ -263,7 +263,25 @@ public sealed record DayAttendanceRow(
     /// <summary>When the LAST stretch ended. The same as CheckOutAtUtc on an ordinary day; on a split
     /// day it is the night's departure, so the row reads «07:00 → 07:00» rather than stopping at the
     /// morning block and looking as though the night was never recorded.</summary>
-    DateTime? LastCheckOutAtUtc = null);
+    DateTime? LastCheckOutAtUtc = null,
+    /// <summary>
+    /// The hours this person is measured against ON THIS DATE — "HH:mm", the board's «İş qrafiki».
+    ///
+    /// Taken from the same <see cref="EffectiveShift"/> the status beside it was decided from, so the
+    /// two can never disagree. It is <see cref="EffectiveShift.HoursOn"/> rather than the shift's
+    /// ordinary Start/End, because a crew whose Saturday begins an hour later is judged by the later
+    /// clock and must be shown it.
+    /// </summary>
+    string? ShiftStart = null,
+    string? ShiftEnd = null,
+    /// <summary>The named shift this came from («Gecə A»), or null when the hours come from the
+    /// employee's own override or from the location. A name is what the admin recognises.</summary>
+    string? ShiftName = null,
+    /// <summary>The second stretch of a split day — 07:00–11:00 plus 22:00–07:00. Null on every
+    /// ordinary shift, and sent because printing the morning window alone would hide half the hours
+    /// on precisely the days where the schedule is the thing worth reading.</summary>
+    string? SecondShiftStart = null,
+    string? SecondShiftEnd = null);
 
 /// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
 /// check-out. Only ever sent for a day worked in more than one stretch.</summary>

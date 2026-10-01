@@ -326,3 +326,46 @@ export const IconGrid = (p: SVGProps<SVGSVGElement>) => (
     <rect x="14" y="14" width="7" height="7" rx="1.5" />
   </svg>
 )
+
+/** The search affordance on a filter field. Drawn rather than the 🔍 emoji, which renders at a
+ *  different size and colour in every browser and cannot take the field's own grey. */
+export const IconSearch = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <line x1="16" y1="16" x2="21" y2="21" />
+  </svg>
+)
+
+/** The two halves of a date stepper. IconArrowLeft is a full arrow and reads as "back to the list"
+ *  where these read as "one step" — the distinction matters on a control that sits beside a date. */
+export const IconChevronLeft = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} strokeWidth={2.5} {...p}>
+    <polyline points="15 6 9 12 15 18" />
+  </svg>
+)
+
+export const IconChevronRight = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} strokeWidth={2.5} {...p}>
+    <polyline points="9 6 15 12 9 18" />
+  </svg>
+)
+
+/** Choosing which columns a table shows. */
+export const IconColumns = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="9" y1="4" x2="9" y2="20" />
+    <line x1="15" y1="4" x2="15" y2="20" />
+  </svg>
+)
+
+/** Somebody who did not come. A person with a cross, not a bare cross: on a board of statuses the
+ *  bare one already means "dismiss this". */
+export const IconUserX = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <circle cx="10" cy="8" r="3.4" />
+    <path d="M3.5 20c0-3.6 2.9-6.5 6.5-6.5 1 0 2 .23 2.85.64" />
+    <line x1="16.5" y1="15" x2="21.5" y2="20" />
+    <line x1="21.5" y1="15" x2="16.5" y2="20" />
+  </svg>
+)

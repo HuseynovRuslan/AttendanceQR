@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
 import { areaOf, exportRow, uniqueAreas, type AreaView } from './exportRows'
+import { formatWorked, initials, shiftHours, shiftTitle, workedMinutes } from './todayShift'
 import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow } from '../../api/admin'
@@ -12,7 +13,10 @@ import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { StatusBadge, STATUS_MAP, dayLabel, dayVisual } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
-import { IconCamera, IconPencil, IconX } from '../../components/icons'
+import {
+  IconCalendar, IconCamera, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconClock,
+  IconColumns, IconDownload, IconPencil, IconSearch, IconTable, IconUserX, IconX,
+} from '../../components/icons'
 import { fmtLongDate, fmtTime, toCompanyInputValue } from '../../lib/format'
 
 function localDateISO(d: Date): string {
@@ -31,6 +35,23 @@ const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
   { type: 'Rest', label: 'İstirahət', dot: 'var(--c400)' },
   { type: 'BusinessTrip', label: 'Ezamiyyət', dot: 'var(--teal)' },
 ]
+
+/** Which optional columns are on. Remembered per browser: an admin who works branch by branch turns
+ *  Ərazi off once, and an HR reader who lives in the job titles turns Vəzifə on once. */
+type Cols = { location: boolean; position: boolean; schedule: boolean; worked: boolean }
+const COLS_KEY = 'qrlog.today.cols'
+const COLS_DEFAULT: Cols = { location: true, position: false, schedule: true, worked: true }
+
+function readCols(): Cols {
+  // Storage can be absent or throw outright (private window, blocked site data) — a board that fails
+  // to render because of a remembered column preference would be a poor trade.
+  try {
+    const raw = localStorage.getItem(COLS_KEY)
+    return raw ? { ...COLS_DEFAULT, ...JSON.parse(raw) as Partial<Cols> } : COLS_DEFAULT
+  } catch {
+    return COLS_DEFAULT
+  }
+}
 
 /** A heading that sorts. The arrow only appears on the column actually in use. */
 function Th({ col, label, sortBy, desc, onSort }: {
@@ -86,8 +107,15 @@ export function TodayPage() {
   const [rows, setRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadedOnce, setLoadedOnce] = useState(false)
-  const [filterLoc, setFilterLoc] = useState<string | null>(null)
-  const [flaggedOnly, setFlaggedOnly] = useState(false)
+  // Which branches the board is narrowed to — several at once.
+  //
+  // It used to be one id or none, drawn as a row of chips. That was right for three branches and
+  // unusable at twenty-two: the chips wrapped to four lines and pushed the table off the first
+  // screen, and because only one could be on, «the two parks» was a question the board could not be
+  // asked at all.
+  const [filterLocs, setFilterLocs] = useState<string[]>([])
+  const [locOpen, setLocOpen] = useState(false)
+  const [locQuery, setLocQuery] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse; recordId: string | null } | null>(null)
@@ -96,7 +124,15 @@ export function TodayPage() {
   const [searchParams] = useSearchParams()
   const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get('status'))
   const [search, setSearch] = useState('')
-  const [noPhotoOnly, setNoPhotoOnly] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  /**
+   * The audit lens: everybody, the faces that did not match, or the scans with no selfie.
+   *
+   * One of three rather than two independent toggles. They were never used together — «show me the
+   * flagged ones that also have no photo» is not a question anybody asks, and as separate switches
+   * the board could land in that empty intersection and look broken.
+   */
+  const [lens, setLens] = useState<'all' | 'flagged' | 'nophoto'>('all')
   /**
    * Sorting and the two value filters the table itself offers.
    *
@@ -109,6 +145,15 @@ export function TodayPage() {
   const [sortDesc, setSortDesc] = useState(false)
   const [filterPosition, setFilterPosition] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [groupByBranch, setGroupByBranch] = useState(true)
+  const [cols, setCols] = useState<Cols>(readCols)
+  const [colsOpen, setColsOpen] = useState(false)
+  // The statuses that are not every day's business, folded away until asked for.
+  const [moreOpen, setMoreOpen] = useState(false)
+  // When the board last answered, and the clock the live «İş vaxtı» column counts against. Both are
+  // set by the same poll, so a row never shows minutes the header has not admitted to loading.
+  const [loadedAt, setLoadedAt] = useState<string | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   // Which sites go into the workbook. Chosen explicitly before every export: the file is sent to the
   // leadership, and one that quietly carried whatever filter happened to be on screen is a report
   // nobody can tell apart from the whole company.
@@ -118,6 +163,14 @@ export function TodayPage() {
   // somebody else wants the branches. Both are the same people on the same day — only the shape of
   // the report differs — so it is one switch, not two exports to keep in step.
   const [exportView, setExportView] = useState<AreaView>('actual')
+
+  function toggleCol(key: keyof Cols) {
+    setCols((c) => {
+      const next = { ...c, [key]: !c[key] }
+      try { localStorage.setItem(COLS_KEY, JSON.stringify(next)) } catch { /* not worth a broken board */ }
+      return next
+    })
+  }
 
   async function viewPhoto(row: DayAttendanceRow) {
     if (!row.recordId) return
@@ -171,9 +224,6 @@ export function TodayPage() {
     setPhotoError(
       code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
         // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
-        // admin blocked by a rest day (two thirds of every record filed) or by an ezamiyyət went
-        // looking for a holiday that did not exist.
-        // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
         // admin blocked by a rest day — two thirds of every record ever filed — or by an ezamiyyət
         // went looking for a holiday that does not exist.
         : code === 'HasLeave' ? `Bu gün üçün ${blockingLabel(employeeId)} var — əvvəlcə onu silin`
@@ -204,6 +254,8 @@ export function TodayPage() {
     if (status === 200 && Array.isArray(data)) {
       setRows(data)
       setError(null)
+      setLoadedAt(new Date().toISOString())
+      setNowMs(Date.now())
     } else if (status === 403) {
       setError('İcazəniz yoxdur')
     } else {
@@ -221,6 +273,19 @@ export function TodayPage() {
     return () => clearInterval(id)
   }, [load, isToday])
 
+  // ⌘K / Ctrl-K puts the cursor in the name box. The board is opened to look one person up more
+  // often than for anything else, and the box is three blocks up the page from where the eye is.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   function shiftDate(delta: number) {
     const d = new Date(`${date}T00:00:00`)
     d.setDate(d.getDate() + delta)
@@ -229,12 +294,17 @@ export function TodayPage() {
   }
 
   const locations = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const r of rows) seen.set(r.locationId, r.locationName)
-    return Array.from(seen, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+    const seen = new Map<string, { name: string; count: number }>()
+    for (const r of rows) {
+      const hit = seen.get(r.locationId)
+      if (hit) hit.count++
+      else seen.set(r.locationId, { name: r.locationName, count: 1 })
+    }
+    return Array.from(seen, ([id, v]) => ({ id, name: v.name, count: v.count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'az'))
   }, [rows])
 
-  const locFiltered = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
+  const locFiltered = filterLocs.length ? rows.filter((r) => filterLocs.includes(r.locationId)) : rows
 
   // Counts reflect the LOCATION scope only (not the status/search/photo filters), so the cards keep
   // showing the day's real breakdown and stay usable as toggles.
@@ -246,20 +316,21 @@ export function TodayPage() {
   // 3d6ac7e. Twice is enough for it to belong somewhere a test can see it.
   const counts = countToday(locFiltered)
   const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+  const noPhotoCount = locFiltered.filter((r) => r.checkInAtUtc && !r.hasPhoto).length
   const incompleteLabel = isToday ? 'İşdə' : 'Çıxış yoxdur'
   const incompleteOverride = isToday ? undefined : { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
 
   const q = search.trim().toLowerCase()
   const visible = sortRows(locFiltered.filter((r) => {
-    if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
+    if (lens === 'flagged' && !faceIsFlagged(r.faceMatchStatus)) return false
+    // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
+    if (lens === 'nophoto' && !(r.checkInAtUtc && !r.hasPhoto)) return false
     // Sick / Ezamiyyət / Məzuniyyət all come from OnLeave, split by leaveType — so their filters
     // need the row, not just the status.
     if (statusFilter === 'sick' || statusFilter === 'trip' || statusFilter === 'onLeave' || statusFilter === 'unpaid') {
       if (!matchesLeaveCard(r, statusFilter)) return false
     } else if (statusFilter && bucketOf(r) !== statusFilter) return false
-    // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
     if (filterPosition && (r.position ?? '') !== filterPosition) return false
-    if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
     if (q && !r.employeeName.toLowerCase().includes(q)) return false
     return true
   }), sortBy, sortDesc)
@@ -269,10 +340,11 @@ export function TodayPage() {
    *
    * 221 rows in one run is not a board, it is a scroll — and the branch column was the same word
    * repeated forty times down the page while the reader looked for a name. Grouped, the word is said
-   * once as a heading and the column disappears; ungrouped (a single branch already picked) nothing
-   * changes, because there is nothing to say.
+   * once as a heading and the column disappears; with one branch on screen there is nothing to say,
+   * so the grouping switches itself off rather than printing a single heading over everything.
    */
-  const grouped = !filterLoc
+  const branchesOnScreen = new Set(visible.map((r) => r.locationName)).size
+  const grouped = groupByBranch && branchesOnScreen > 1
   const byBranch = grouped
     ? [...visible.reduce((m, r) => {
         const list = m.get(r.locationName)
@@ -288,10 +360,25 @@ export function TodayPage() {
   }
 
   const toggleStatus = (k: string) => setStatusFilter((f) => (f === k ? null : k))
-  const cardStyle = (k: string) =>
-    statusFilter === k
-      ? { cursor: 'pointer', boxShadow: '0 0 0 2px #1E70C8' }
-      : { cursor: 'pointer' }
+  const toggleLoc = (id: string) =>
+    setFilterLocs((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]))
+
+  const showLocCol = !grouped && cols.location
+  const colCount = 5 + (showLocCol ? 1 : 0) + (cols.position ? 1 : 0) + (cols.schedule ? 1 : 0) + (cols.worked ? 1 : 0)
+
+  // How many ways the board is narrowed right now — so «Filtrləri sıfırla» is offered only when it
+  // would do something, and the reader can see at a glance that a list is short for a reason.
+  const activeFilters =
+    (filterLocs.length ? 1 : 0) + (lens !== 'all' ? 1 : 0) + (statusFilter ? 1 : 0)
+    + (filterPosition ? 1 : 0) + (q ? 1 : 0)
+
+  function resetFilters() {
+    setFilterLocs([])
+    setLens('all')
+    setStatusFilter(null)
+    setFilterPosition(null)
+    setSearch('')
+  }
 
   // The exported Status must say EXACTLY what the badge beside it says.
   //
@@ -301,8 +388,6 @@ export function TodayPage() {
   // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
   // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
   // leave. The type is already on the row and was simply never read here.
-  // One call, and the file now says the same word the screen does — for rest days too, which the
-  // hand-rolled version above could not, because it only ever consulted the type for OnLeave.
   const statusLabel = (r: DayAttendanceRow) => dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
@@ -320,10 +405,10 @@ export function TodayPage() {
   }, [rows, exportView])
 
   function openExport() {
-    // Pre-tick what the reader is already looking at: the area they filtered to, or all of them.
-    const current = locations.find((l) => l.id === filterLoc)?.name
+    // Pre-tick what the reader is already looking at: the areas they filtered to, or all of them.
+    const picked = locations.filter((l) => filterLocs.includes(l.id)).map((l) => l.name)
     setExportView('actual')
-    setExportSites(current ? [current] : uniqueAreas(rows, 'actual'))
+    setExportSites(picked.length ? picked : uniqueAreas(rows, 'actual'))
     setExportOpen(true)
   }
 
@@ -394,179 +479,305 @@ export function TodayPage() {
   }
 
   const dateLabel = fmtLongDate(date)
+  const total = locFiltered.length
+
+  /**
+   * The four numbers the morning is actually about.
+   *
+   * Twelve equal tiles meant «Ezamiyyət 2» was drawn as loudly as «Qayıb 46», and the two or three
+   * that decide whether somebody has to make a phone call stopped standing out. These four carry the
+   * day; everything else moved to the quiet strip under them, where it is still a number and still a
+   * filter, just not a headline.
+   */
+  const KPIS = [
+    { key: 'incomplete', label: incompleteLabel, n: counts.incomplete, tint: isToday ? 'blue' : 'clay', Icon: IconClock },
+    { key: 'present', label: STATUS_MAP.OnTime.label, n: counts.present, tint: 'leaf', Icon: IconCheck },
+    { key: 'absent', label: STATUS_MAP.Absent.label, n: counts.absent, tint: 'clay', Icon: IconUserX },
+    { key: 'dayOff', label: 'Həftəlik istirahət', n: counts.dayOff, tint: 'purple', Icon: IconCalendar },
+  ]
+
+  const MINOR = [
+    { key: 'pending', label: STATUS_MAP.Pending.label, n: counts.pending, dot: 'var(--c400)' },
+    { key: 'onboarding', label: STATUS_MAP.Onboarding.label, n: counts.onboarding, dot: 'var(--c400)' },
+    { key: 'onLeave', label: STATUS_MAP.OnLeave.label, n: counts.onLeave, dot: 'var(--purple)' },
+    { key: 'permission', label: STATUS_MAP.Permission.label, n: counts.permission, dot: 'var(--amber)' },
+    { key: 'sick', label: 'Xəstəlik', n: counts.sick, dot: 'var(--blue)' },
+    { key: 'trip', label: 'Ezamiyyət', n: counts.trip, dot: 'var(--teal)' },
+    { key: 'unpaid', label: 'Ödənişsiz', n: counts.unpaid, dot: 'var(--clay)' },
+    { key: 'rest', label: 'İstirahət (təyin edilmiş)', n: counts.rest, dot: 'var(--c400)' },
+  ]
+  // Inline: the ones that happened today, up to four. A status with nobody in it is still reachable —
+  // it is behind «Digər statuslar», so a filter never disappears, it only stops taking up a row.
+  const minorShown = moreOpen ? MINOR : MINOR.filter((m) => m.n > 0 || m.key === statusFilter).slice(0, 4)
+
+  const locLabel = (id: string) => locations.find((l) => l.id === id)?.name ?? ''
+  const locMatches = locations.filter(
+    (l) => !locQuery.trim() || l.name.toLocaleLowerCase('az').includes(locQuery.toLocaleLowerCase('az')),
+  )
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <button className="btn btn-sm" onClick={() => shiftDate(-1)}>‹ Əvvəlki gün</button>
-        <input
-          type="date"
-          value={date}
-          max={todayISO}
-          onChange={(e) => { if (e.target.value && e.target.value <= todayISO) setDate(e.target.value) }}
-          className="inp"
-          style={{ width: 'auto', padding: '6px 10px' }}
-        />
-        <button className="btn btn-sm" disabled={isToday} onClick={() => shiftDate(1)}>Növbəti gün ›</button>
-        {!isToday && <button className="btn btn-sm" onClick={() => setDate(todayISO)}>Bugün</button>}
-      </div>
-      <div className="muted" style={{ fontSize: 13, marginBottom: 12, textTransform: 'capitalize' }}>
-        {isToday ? 'Bugün' : 'Tarix'}: {dateLabel}{isToday ? ' · canlı' : ''}
-      </div>
-
-      {locations.length > 1 && (
-        <div className="chip-row">
-          <span className={`chip${!filterLoc ? ' active' : ''}`} onClick={() => setFilterLoc(null)}>
-            Hamısı
-          </span>
-          {locations.map((l) => (
-            <span
-              key={l.id}
-              className={`chip${filterLoc === l.id ? ' active' : ''}`}
-              onClick={() => setFilterLoc(l.id)}
-            >
-              {l.name}
-            </span>
-          ))}
+      <div className="att-head">
+        <div>
+          <h1 className="att-title">Davamiyyət</h1>
+          {/* No `capitalize` here, which the old line had: fmtLongDate already returns proper
+              Azerbaijani, where the month and the weekday are lower case. The rule was turning every
+              morning into «1 Oktyabr 2026, Cümə Axşamı». */}
+          <div className="att-sub">
+            {isToday ? 'Bu gün' : 'Tarix'}: {dateLabel}{isToday ? ' · canlı' : ''}
+          </div>
         </div>
-      )}
+        <div className="att-head-act">
+          {loadedAt && <span className="att-stamp">Son yenilənmə: {fmtTime(loadedAt)}</span>}
+          <button className="btn btn-sm" disabled={exporting} onClick={openExport}>
+            <IconDownload />
+            {exporting ? 'Çıxarılır…' : 'Excel-ə çıxar'}
+          </button>
+        </div>
+      </div>
 
-      <div className="chip-row">
-        <span className={`chip${!flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(false)}>
-          Bütün işçilər
-        </span>
-        <span
-          className={`chip${flaggedOnly ? ' active' : ''}`}
-          onClick={() => setFlaggedOnly(true)}
-          title="Giriş şəklindəki üz referans şəkillə uyğun gəlməyən — yoxlanmalı girişlər"
-        >
-          ⚠ Üzü uyğun gəlməyənlər{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
-        </span>
-        {mayViewPhotos && (
-          <span className={`chip${noPhotoOnly ? ' active' : ''}`} onClick={() => setNoPhotoOnly((v) => !v)}>
-            📷 Şəkilsizlər
-          </span>
+      <div className="att-filters">
+        <div className="att-f-row">
+          <div className="att-f">
+            <span className="att-f-lbl">Tarix</span>
+            <div className="att-date">
+              <button className="att-step" onClick={() => shiftDate(-1)} title="Əvvəlki gün" aria-label="Əvvəlki gün">
+                <IconChevronLeft />
+              </button>
+              <input
+                type="date"
+                value={date}
+                max={todayISO}
+                onChange={(e) => { if (e.target.value && e.target.value <= todayISO) setDate(e.target.value) }}
+                className="att-date-inp"
+                aria-label="Tarix"
+              />
+              <button
+                className="att-step"
+                disabled={isToday}
+                onClick={() => shiftDate(1)}
+                title="Növbəti gün"
+                aria-label="Növbəti gün"
+              >
+                <IconChevronRight />
+              </button>
+              {!isToday && <button className="btn btn-sm" onClick={() => setDate(todayISO)}>Bu gün</button>}
+            </div>
+          </div>
+
+          {locations.length > 1 && (
+            <div className="att-f" style={{ flex: '1 1 320px', maxWidth: 440 }}>
+              <span className="att-f-lbl">Ərazi</span>
+              <div className="att-multi">
+                {/* A div, not a button: it holds the tokens' own «götür» buttons, and a button inside
+                    a button is invalid markup that browsers resolve by dropping one of them. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={locOpen}
+                  aria-label="Ərazi seç"
+                  className={`att-multi-box${locOpen ? ' open' : ''}`}
+                  onClick={() => { setLocOpen((v) => !v); setLocQuery('') }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return
+                    e.preventDefault()
+                    setLocOpen((v) => !v)
+                    setLocQuery('')
+                  }}
+                >
+                  <IconSearch />
+                  {filterLocs.length === 0 && <span className="att-multi-ph">Bütün ərazilər</span>}
+                  {filterLocs.slice(0, 2).map((id) => (
+                    <span key={id} className="att-tok">
+                      <span>{locLabel(id)}</span>
+                      <button
+                        type="button"
+                        aria-label={`${locLabel(id)} — seçimi götür`}
+                        onClick={(e) => { e.stopPropagation(); toggleLoc(id) }}
+                      >
+                        <IconX />
+                      </button>
+                    </span>
+                  ))}
+                  {filterLocs.length > 2 && <span className="att-tok more">+{filterLocs.length - 2}</span>}
+                  <span className="att-multi-sp" />
+                  <IconChevronDown />
+                </div>
+                {locOpen && (
+                  <>
+                    <div className="att-backdrop" onClick={() => setLocOpen(false)} />
+                    <div className="att-pop">
+                      <div className="att-pop-h">
+                        <span className="att-search">
+                          <IconSearch />
+                          <input
+                            autoFocus
+                            value={locQuery}
+                            onChange={(e) => setLocQuery(e.target.value)}
+                            placeholder="Ərazi axtar…"
+                            aria-label="Ərazi axtar"
+                          />
+                        </span>
+                      </div>
+                      {locMatches.map((l) => (
+                        <label key={l.id} className="att-opt">
+                          <input
+                            type="checkbox"
+                            checked={filterLocs.includes(l.id)}
+                            onChange={() => toggleLoc(l.id)}
+                          />
+                          <span className="att-opt-t">{l.name}</span>
+                          <span className="att-opt-n">{l.count}</span>
+                        </label>
+                      ))}
+                      {locMatches.length === 0 && (
+                        <div className="muted" style={{ padding: '10px 9px', fontSize: 12 }}>Tapılmadı</div>
+                      )}
+                      <div className="att-pop-f">
+                        <button type="button" onClick={() => setFilterLocs(locations.map((l) => l.id))}>Hamısı</button>
+                        <button type="button" onClick={() => setFilterLocs([])}>Təmizlə</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="att-f" style={{ flex: '1 1 260px' }}>
+            <span className="att-f-lbl">İşçi</span>
+            <span className="att-search">
+              <IconSearch />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Ad üzrə axtar…"
+                aria-label="Ad üzrə axtar"
+              />
+              {search
+                ? (
+                  <button className="att-clear" onClick={() => setSearch('')} title="Təmizlə" aria-label="Axtarışı təmizlə">
+                    <IconX />
+                  </button>
+                )
+                : <span className="att-kbd">⌘K</span>}
+            </span>
+          </div>
+        </div>
+
+        <div className="att-f-foot">
+          <div className="att-seg">
+            <button className={lens === 'all' ? 'on' : ''} onClick={() => setLens('all')}>
+              Bütün işçilər
+              <span className="att-seg-n">{total}</span>
+            </button>
+            <button
+              className={lens === 'flagged' ? 'on' : ''}
+              onClick={() => setLens('flagged')}
+              title="Giriş şəklindəki üz referans şəkillə uyğun gəlməyən — yoxlanmalı girişlər"
+            >
+              Üzü uyğun gəlməyənlər
+              <span className="att-seg-n">{flaggedCount}</span>
+            </button>
+            {mayViewPhotos && (
+              <button className={lens === 'nophoto' ? 'on' : ''} onClick={() => setLens('nophoto')}>
+                Şəkilsizlər
+                <span className="att-seg-n">{noPhotoCount}</span>
+              </button>
+            )}
+          </div>
+          <div className="att-f-state">
+            {activeFilters > 0 && (
+              <>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <i />
+                  {filterLocs.length > 0 && `${filterLocs.length} ərazi seçilib`}
+                  {filterLocs.length > 0 && activeFilters > 1 && ' · '}
+                  {activeFilters > (filterLocs.length > 0 ? 1 : 0)
+                    && `${activeFilters - (filterLocs.length > 0 ? 1 : 0)} süzgəc aktiv`}
+                </span>
+                <button className="att-reset" onClick={resetFilters}>Filtrləri sıfırla</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="att-stats-h">
+        <div>
+          <span className="att-stats-t">{isToday ? 'Bu günün icmalı' : 'Günün icmalı'}</span>
+          <span className="att-stats-n">{total} işçi</span>
+        </div>
+        {isToday && (
+          <span className="att-live"><i />Canlı məlumat</span>
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Ad üzrə axtar…"
-          className="inp"
-          style={{ width: 'auto', maxWidth: 220, padding: '6px 10px' }}
-        />
-        {search && (
-          <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>
+      <div className="att-kpis">
+        {KPIS.map(({ key, label, n, tint, Icon }) => (
+          <button
+            key={key}
+            className={`att-kpi${statusFilter === key ? ' on' : ''}`}
+            onClick={() => toggleStatus(key)}
+            title={`${label} — sətirləri süzmək üçün basın`}
+          >
+            <div className="att-kpi-h">
+              <span className={`att-kpi-ic att-t-${tint}`}><Icon /></span>
+              <span className="att-kpi-pct">{total > 0 ? `${Math.round((n / total) * 100)}% ümumi` : '—'}</span>
+            </div>
+            <div className="att-kpi-v">
+              <span className="att-kpi-n">{n}</span>
+              <span className="att-kpi-l">{label}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="att-minor">
+        {minorShown.map((m, i) => (
+          <Fragment key={m.key}>
+            {i > 0 && <span className="att-minor-sep" />}
+            <button
+              className={`att-minor-i${statusFilter === m.key ? ' on' : ''}`}
+              onClick={() => toggleStatus(m.key)}
+              title={`${m.label} — sətirləri süzmək üçün basın`}
+            >
+              <span className="att-minor-d" style={{ background: m.dot }} />
+              <span className="att-minor-t">
+                <span className="att-minor-l">{m.label}</span>
+                <span className="att-minor-n">{m.n}</span>
+              </span>
+            </button>
+          </Fragment>
+        ))}
+        {minorShown.length === 0 && (
+          <span className="muted" style={{ padding: '10px 10px', fontSize: 12 }}>
+            Bu gün başqa status yoxdur
+          </span>
         )}
-        <button className="btn btn-sm" disabled={exporting} onClick={openExport} style={{ marginLeft: 'auto' }}>
-          {exporting ? 'Çıxarılır…' : '⬇ Excel-ə çıxar'}
+        <button className={`att-more${moreOpen ? ' open' : ''}`} onClick={() => setMoreOpen((v) => !v)}>
+          {moreOpen ? 'Yığ' : 'Digər statuslar'}
+          <IconChevronDown />
         </button>
       </div>
 
-      <div className="stat-grid day-tiles">
-        <div
-          className={`stat-card ${isToday ? 'blue' : 'clay'}`}
-          style={cardStyle('incomplete')}
-          onClick={() => toggleStatus('incomplete')}
-        >
-          <div className="stat-lbl">{incompleteLabel}</div>
-          <div className="stat-val">{counts.incomplete}</div>
-        </div>
-        <div className="stat-card clay" style={cardStyle('absent')} onClick={() => toggleStatus('absent')}>
-          <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
-          <div className="stat-val">{counts.absent}</div>
-        </div>
-        {/* Shown only when someone is actually pending — an empty card on a day with no night shift
-            would be clutter. Neutral, next to Qayıb, so a not-yet-due worker never reads as a no-show. */}
-        {isToday && counts.pending > 0 && (
-          <div className="stat-card slate" style={cardStyle('pending')} onClick={() => toggleStatus('pending')}>
-            <div className="stat-lbl">{STATUS_MAP.Pending.label}</div>
-            <div className="stat-val">{counts.pending}</div>
-          </div>
-        )}
-        {/* Yalnız biri belə olanda görünür, Xəstəlik kimi. Qayıbdan QƏSDƏN ayrıdır: import olunmuş,
-            telefonu hələ qurulmamış adam gəlməyən adam deyil — və 290-ı bir səhər Qayıb sayılanda
-            əsl 67 qayıb səs-küydə itmişdi. */}
-        {counts.onboarding > 0 && (
-          <div className="stat-card slate" style={cardStyle('onboarding')} onClick={() => toggleStatus('onboarding')}>
-            <div className="stat-lbl">{STATUS_MAP.Onboarding.label}</div>
-            <div className="stat-val">{counts.onboarding}</div>
-          </div>
-        )}
-        <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
-          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
-          <div className="stat-val">{counts.present}</div>
-        </div>
-        {/* The roster's own day off. Kept grey-purple and quiet: on a Sunday this is most of the
-            company and nobody decided any of it. */}
-        <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
-          <div className="stat-lbl">Həftəlik istirahət</div>
-          <div className="stat-val">{counts.dayOff}</div>
-        </div>
-        {/* A rest day somebody GRANTED — shown only when there is one, because that is the number a
-            manager filed the record to be able to see. It used to be added into the card above and
-            was therefore invisible among two hundred ordinary Sundays. */}
-        {counts.rest > 0 && (
-          <div className="stat-card purple" style={cardStyle('rest')} onClick={() => toggleStatus('rest')}>
-            <div className="stat-lbl">İstirahət (təyin edilmiş)</div>
-            <div className="stat-val">{counts.rest}</div>
-          </div>
-        )}
-        <div className="stat-card purple" style={cardStyle('onLeave')} onClick={() => toggleStatus('onLeave')}>
-          <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
-          <div className="stat-val">{counts.onLeave}</div>
-        </div>
-        {/* Unpaid leave is not paid, and the dashboard already counted it on its own — folding it in
-            here made the two screens disagree about «Məzuniyyət» on the same morning. */}
-        {counts.unpaid > 0 && (
-          <div className="stat-card purple" style={cardStyle('unpaid')} onClick={() => toggleStatus('unpaid')}>
-            <div className="stat-lbl">Ödənişsiz</div>
-            <div className="stat-val">{counts.unpaid}</div>
-          </div>
-        )}
-        {counts.sick > 0 && (
-          <div className="stat-card blue" style={cardStyle('sick')} onClick={() => toggleStatus('sick')}>
-            <div className="stat-lbl">Xəstəlik</div>
-            <div className="stat-val">{counts.sick}</div>
-          </div>
-        )}
-        {/* Shown only when somebody is on one, like Xəstəlik — a permanent 0 is a tile you read and
-            discard every morning. The wording says the thing that matters about it: they are working. */}
-        {counts.trip > 0 && (
-          <div className="stat-card teal" style={cardStyle('trip')} onClick={() => toggleStatus('trip')}>
-            <div className="stat-lbl">Ezamiyyət</div>
-            <div className="stat-val">{counts.trip}</div>
-          </div>
-        )}
-        <div className="stat-card amber" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
-          <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
-          <div className="stat-val">{counts.permission}</div>
-        </div>
-      </div>
-      {statusFilter && (
-        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Süzgəc aktiv — kartı təkrar basıb ləğv edin.
-        </div>
-      )}
-
       {error && (
-        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+        <div className="fb fb-err" style={{ marginTop: 14 }}>
           <IconX />
           <span>{error}</span>
         </div>
       )}
       {photoError && (
-        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+        <div className="fb fb-err" style={{ marginTop: 14 }}>
           <IconX />
           <span>{photoError}</span>
         </div>
       )}
 
       {filterPosition && (
-        <div className="fb fb-info" style={{ marginBottom: 10 }}>
+        <div className="fb fb-info" style={{ marginTop: 14 }}>
           <span>
             Yalnız <b>{filterPosition}</b> vəzifəsindəkilər — {visible.length} nəfər.
           </span>
@@ -576,60 +787,143 @@ export function TodayPage() {
         </div>
       )}
 
-      <div className="tbl-wrap tbl-cards tbl-dense">
-        <table>
-          <thead>
-            <tr>
-              {/* Clicking a heading sorts by it; clicking it again reverses. The two columns that are
-                  really categories — branch and job — also filter when their VALUE is clicked, below. */}
-              <Th col="name" label="İşçi" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              {!grouped && <Th col="location" label="Filial" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
-              <Th col="position" label="Vəzifə" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="status" label="Status" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="in" label="Giriş" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="out" label="Çıxış" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <th>Foto</th>
-              <th>Üz</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byBranch.map(([branch, rows]) => (
-              <Fragment key={branch || 'all'}>
-                {grouped && (
-                  <tr className="tbl-group">
-                    <td colSpan={7}>
-                      <button
-                        className="tbl-filter"
-                        onClick={() => { const id = rows[0]?.locationId; if (id) setFilterLoc(id) }}
-                      >
-                        {branch}
-                      </button>
-                      <span className="tbl-group-n">{rows.length}</span>
-                    </td>
-                  </tr>
-                )}
-                {rows.map((r) => (
+      <div className="att-table">
+        <div className="att-tbar">
+          <div>
+            <span className="att-tbar-t">Davamiyyət qeydləri</span>
+            <span className="att-tbar-n">{visible.length} nəticə</span>
+          </div>
+          <div className="att-tbar-a">
+            <button
+              className={`att-tool${grouped ? ' on' : ''}`}
+              onClick={() => setGroupByBranch((v) => !v)}
+              disabled={branchesOnScreen < 2}
+              title={branchesOnScreen < 2 ? 'Ekranda bir ərazi var' : 'Əraziyə görə qruplaşdır'}
+            >
+              <IconTable />
+              Əraziyə görə
+            </button>
+            <button className={`att-tool${colsOpen ? ' on' : ''}`} onClick={() => setColsOpen((v) => !v)}>
+              <IconColumns />
+              Sütunlar
+            </button>
+            {colsOpen && (
+              <>
+                <div className="att-backdrop" onClick={() => setColsOpen(false)} />
+                <div className="att-pop" style={{ left: 'auto', right: 0, minWidth: 220 }}>
+                  {([
+                    ['location', 'Ərazi'],
+                    ['position', 'Vəzifə'],
+                    ['schedule', 'İş qrafiki'],
+                    ['worked', 'İş vaxtı'],
+                  ] as [keyof Cols, string][]).map(([key, label]) => (
+                    <label key={key} className="att-opt">
+                      <input type="checkbox" checked={cols[key]} onChange={() => toggleCol(key)} />
+                      <span className="att-opt-t">{label}</span>
+                      {key === 'location' && grouped && <span className="att-opt-n">qruplanıb</span>}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="tbl-wrap tbl-cards tbl-dense">
+          <table>
+            <thead>
+              <tr>
+                {/* Clicking a heading sorts by it; clicking it again reverses. The two columns that are
+                    really categories — branch and job — also filter when their VALUE is clicked, below. */}
+                <Th col="name" label="İşçi" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                {showLocCol && <Th col="location" label="Ərazi" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
+                {cols.position && <Th col="position" label="Vəzifə" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
+                {cols.schedule && <th>İş qrafiki</th>}
+                <Th col="status" label="Status" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                <Th col="in" label="Giriş" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                <Th col="out" label="Çıxış" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                {cols.worked && <th>İş vaxtı</th>}
+                <th style={{ textAlign: 'right' }}>Əməliyyat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byBranch.map(([branch, rows]) => (
+                <Fragment key={branch || 'all'}>
+                  {grouped && (
+                    <tr className="tbl-group">
+                      <td colSpan={colCount}>
+                        <button
+                          className="tbl-filter"
+                          onClick={() => { const id = rows[0]?.locationId; if (id) setFilterLocs([id]) }}
+                        >
+                          {branch}
+                        </button>
+                        <span className="tbl-group-n">{rows.length}</span>
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((r) => {
+                    const worked = cols.worked ? workedMinutes(r, nowMs, isToday) : null
+                    const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc)
+                      && !(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
+                    const hours = shiftHours(r)
+                    return (
                   <tr key={r.employeeId}>
-                <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                {!grouped && (
-                  <td data-label="Filial">
-                    <button className="tbl-filter" onClick={() => setFilterLoc((v) => (v === r.locationId ? '' : r.locationId))}>
+                <td data-label="İşçi">
+                  <span className="att-emp">
+                    {/* Initials, not a thumbnail: the selfie is the audit control and opens on demand,
+                        and a column of faces would be two hundred signed URLs on a screen that is read
+                        with other people in the room. */}
+                    <span className="att-av" aria-hidden="true">{initials(r.employeeName)}</span>
+                    <span className="att-emp-t">
+                      <span className="att-emp-n"><EmployeeLink id={r.employeeId} name={r.employeeName} /></span>
+                      {/* The job title sits under the name, where the design puts it — and stays the
+                          filter it was: one click narrows the board to that trade. */}
+                      {r.position && !cols.position && (
+                        <button
+                          className="att-emp-p"
+                          onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
+                          title={`Yalnız «${r.position}» vəzifəsi`}
+                        >
+                          {r.position}
+                        </button>
+                      )}
+                    </span>
+                  </span>
+                </td>
+                {showLocCol && (
+                  <td data-label="Ərazi">
+                    <button className="tbl-filter" onClick={() => setFilterLocs([r.locationId])}>
                       {r.locationName}
                     </button>
                   </td>
                 )}
-                <td data-label="Vəzifə">
-                  {r.position
-                    ? (
-                      <button
-                        className="tbl-filter"
-                        onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
-                      >
-                        {r.position}
-                      </button>
-                    )
-                    : null}
-                </td>
+                {cols.position && (
+                  <td data-label="Vəzifə">
+                    {r.position
+                      ? (
+                        <button
+                          className="tbl-filter"
+                          onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
+                        >
+                          {r.position}
+                        </button>
+                      )
+                      : null}
+                  </td>
+                )}
+                {cols.schedule && (
+                  <td data-label="İş qrafiki">
+                    {hours
+                      ? (
+                        <span className="att-sched" title={shiftTitle(r)}>
+                          <IconClock />
+                          {hours}
+                        </span>
+                      )
+                      : <span className="att-none">—</span>}
+                  </td>
+                )}
                 <td data-label="Status">
                   {/* Pencil next to the badge on a Qayıb row (to pin a reason) or an assigned single-day
                       leave (to change it, or revert to Qayıb). Menu is fixed so the table can't clip it. */}
@@ -762,40 +1056,67 @@ export function TodayPage() {
                     </div>
                   )}
                 </td>
-                <td data-label="Foto">
-                  {/* Şəkli olan HƏR sətirdə (sahibin qərarı, 2026-08-31). Əvvəl yalnız üz-uyğunsuzluğu
-                      flaqlı və ortaq telefonlu sətirlərdə göstərilirdi; səbəb R2-dən yüklənmə gecikməsi
-                      idi, o isə burada tətbiq olunmur — şəkil YALNIZ düyməyə basanda çəkilir, düymənin
-                      özü heç nə yükləmir. Yəni məhdudiyyət xərci azaltmırdı, sadəcə adminin baxa
-                      biləcəyi sətirləri azaldırdı. Menecerdə hələ də görünmür: `mayViewPhotos`. */}
-                  {mayViewPhotos && r.hasPhoto && r.recordId ? (
-                    <button
-                      className="tbl-icon"
-                      disabled={busyId === r.recordId}
-                      onClick={() => void viewPhoto(r)}
-                      title="Giriş şəklini gör"
-                      aria-label="Giriş şəklini gör"
-                    >
-                      {busyId === r.recordId ? '…' : <IconCamera />}
-                    </button>
-                  ) : null}
-                </td>
-                <td data-label="Üz">
-                  <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} compact />
+                {cols.worked && (
+                  <td className="mono" data-label="İş vaxtı">
+                    {worked === null
+                      ? <span className="att-none">—</span>
+                      : (
+                        <span
+                          className={`att-worked${running ? ' live' : ''}`}
+                          title={running ? 'İşdədir — indiyə qədər' : undefined}
+                        >
+                          {formatWorked(worked)}
+                        </span>
+                      )}
+                  </td>
+                )}
+                <td data-label="Əməliyyat">
+                  <span className="att-act">
+                    <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} compact />
+                    {/* Şəkli olan HƏR sətirdə (sahibin qərarı, 2026-08-31). Əvvəl yalnız üz-uyğunsuzluğu
+                        flaqlı və ortaq telefonlu sətirlərdə göstərilirdi; səbəb R2-dən yüklənmə gecikməsi
+                        idi, o isə burada tətbiq olunmur — şəkil YALNIZ düyməyə basanda çəkilir, düymənin
+                        özü heç nə yükləmir. Menecerdə hələ də görünmür: `mayViewPhotos`. */}
+                    {mayViewPhotos && r.hasPhoto && r.recordId ? (
+                      <button
+                        className="tbl-icon"
+                        disabled={busyId === r.recordId}
+                        onClick={() => void viewPhoto(r)}
+                        title="Giriş şəklini gör"
+                        aria-label="Giriş şəklini gör"
+                      >
+                        {busyId === r.recordId ? '…' : <IconCamera />}
+                      </button>
+                    ) : null}
+                  </span>
                 </td>
                   </tr>
-                ))}
-              </Fragment>
-            ))}
-            {loadedOnce && visible.length === 0 && !error && (
-              <tr>
-                <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Məlumat yoxdur
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                    )
+                  })}
+                </Fragment>
+              ))}
+              {loadedOnce && visible.length === 0 && !error && (
+                <tr>
+                  <td colSpan={colCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                    {activeFilters > 0 ? 'Seçilmiş süzgəclərə uyğun işçi yoxdur' : 'Məlumat yoxdur'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="att-foot">
+          <span>
+            <b>{visible.length}</b> / {total} nəticə
+            {grouped && <> · <b>{byBranch.length}</b> ərazi</>}
+          </span>
+          {visible.length > 25 && (
+            <button className="att-reset" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+              Yuxarı qayıt
+            </button>
+          )}
+        </div>
       </div>
 
       {exportOpen && (
