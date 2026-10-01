@@ -7,7 +7,7 @@ import {
   type AdminAnnouncement,
   type AnnouncementAudience,
 } from '../../api/announcements'
-import { getEmployees, type AdminEmployee } from '../../api/admin'
+import { getEmployeeSelection, type EmployeeSelectionRow } from '../../api/admin'
 import { sendTestPush } from '../../lib/push'
 import { IconSend, IconTrash, IconX } from '../../components/icons'
 import { fmtDateOfInstant, fmtFullDateTime } from '../../lib/format'
@@ -28,7 +28,7 @@ const AUDIENCE_LABEL: Record<AnnouncementAudience, string> = {
 
 export function AnnouncementsPage() {
   const [items, setItems] = useState<AdminAnnouncement[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<EmployeeSelectionRow[]>([])
 
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
@@ -45,7 +45,7 @@ export function AnnouncementsPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
 
   async function load() {
-    const [a, e] = await Promise.all([getAdminAnnouncements(), getEmployees()])
+    const [a, e] = await Promise.all([getAdminAnnouncements(), getEmployeeSelection()])
     if (a.status === 200 && Array.isArray(a.data)) setItems(a.data)
     if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data.filter((x) => x.isActive))
   }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LeaveForm } from '../../components/LeaveForm'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { addLeave, deleteLeave, getLeaves, type LeaveRecord, type LeaveType } from '../../api/leaves'
-import { getEmployees, type AdminEmployee } from '../../api/admin'
+import { getEmployeeSelection, type EmployeeSelectionRow } from '../../api/admin'
 import { useAuth } from '../../auth/AuthContext'
 import {
   createManagerLeave, deleteManagerLeave, getLeaveSubjects, getManagerLeaves,
@@ -23,7 +23,7 @@ export function LeavesPage() {
   const { role } = useAuth()
   const isManager = role === 'Manager'
   const [rows, setRows] = useState<LeaveRecord[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<EmployeeSelectionRow[]>([])
   const [filterType, setFilterType] = useState<LeaveType | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -39,14 +39,14 @@ export function LeavesPage() {
       // returns plain staff only. Using it here is why «menecer digər menecerə icazə yaza bilmir»
       // was reported: the endpoint allowed it, the picker never listed them.
       ? await Promise.all([getManagerLeaves(), getLeaveSubjects()])
-      : await Promise.all([getLeaves(), getEmployees()])
+      : await Promise.all([getLeaves(), getEmployeeSelection()])
     // The manager rows are the same shape minus what a manager must not see — no salary on the
     // person, no cross-branch record — which is the point, so the cast goes through `unknown` rather
     // than pretending the two types overlap. Every field this screen reads is on both.
     if (leavesRes.status === 200 && Array.isArray(leavesRes.data))
       setRows(leavesRes.data as unknown as LeaveRecord[])
     if (empsRes.status === 200 && Array.isArray(empsRes.data))
-      setEmployees(empsRes.data as unknown as AdminEmployee[])
+      setEmployees(empsRes.data as unknown as EmployeeSelectionRow[])
   }
 
   useEffect(() => {
