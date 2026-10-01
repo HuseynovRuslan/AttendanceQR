@@ -1233,6 +1233,80 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .att-worked{font-variant-numeric:tabular-nums;font-weight:700;color:var(--c900)}
 .att-worked.live{color:var(--leaf-d)}
 .att-none{color:var(--c400)}
+/* ── İşçilər idarəetməsi (Figma «Isciler») ──────────────────────────────────────────────────────
+   Shares the board's shell — .att-head, .att-table, .att-tool, .att-pop, .att-emp — so the two
+   screens are one product rather than two generations of one. Only what the employees page has and
+   the board does not is written here: a metric card laid out icon-first, the two summary panels, the
+   select-style filter bar and the pager. */
+.emp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:12px}
+.emp-kpi{display:flex;align-items:center;gap:12px;padding:16px;background:var(--white);border:1px solid var(--c100);
+  border-radius:12px;box-shadow:var(--sh-sm)}
+.emp-kpi-ic{width:38px;height:38px;flex:none;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+.emp-kpi-ic svg{width:18px;height:18px}
+.emp-kpi-t{min-width:0}
+.emp-kpi-l{font-size:11px;font-weight:700;color:var(--c500)}
+.emp-kpi-v{display:flex;align-items:baseline;gap:8px;margin-top:5px}
+.emp-kpi-n{font-family:'Manrope',sans-serif;font-size:28px;font-weight:800;color:var(--c900);line-height:1;
+  font-variant-numeric:tabular-nums}
+.emp-kpi-u{font-size:12px;font-weight:600;color:var(--c500)}
+.emp-kpi-note{margin-top:5px;font-size:10.5px}
+.emp-note-blue{color:var(--blue)}
+.emp-note-leaf{color:var(--leaf-d)}
+.emp-note-amber{color:#b96d0c}
+
+/* `align-items:start` so each panel is its own height. The design draws them equal, but the bulk
+   panel carries four action rows against the attention panel's one row of tiles — forced equal, the
+   left one grows a hand's width of white under its numbers, which reads as something failed to
+   load. */
+.emp-panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px;margin-bottom:16px;align-items:start}
+.emp-panel{display:flex;flex-direction:column;gap:10px;padding:14px;background:var(--white);
+  border:1px solid var(--c100);border-radius:12px;box-shadow:var(--sh-sm)}
+.emp-panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.emp-panel-t{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--c900)}
+.emp-panel-t svg{width:16px;height:16px;color:var(--c500)}
+.emp-panel-note{font-size:10.5px;color:var(--c400)}
+
+.emp-attn{display:flex;gap:8px;flex-wrap:wrap}
+.emp-attn-i{flex:1 1 150px;min-width:0;display:flex;flex-direction:column;gap:5px;padding:10px;min-height:72px;
+  background:var(--c50);border:1px solid var(--c100);border-radius:8px;font:inherit;text-align:left;cursor:pointer}
+.emp-attn-i:hover{border-color:var(--c200)}
+.emp-attn-i.on{border-color:var(--leaf);box-shadow:0 0 0 2px color-mix(in srgb,var(--leaf) 20%,transparent)}
+.emp-attn-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.emp-attn-n{font-size:18px;font-weight:800;color:var(--c900);font-variant-numeric:tabular-nums}
+.emp-attn-x{font-size:10.5px;color:var(--c500);line-height:1.3}
+.emp-sev{padding:4px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap}
+.emp-sev-high{background:var(--clay-bg);color:var(--clay)}
+.emp-sev-mid{background:var(--amber-bg);color:#b96d0c}
+.emp-sev-low{background:var(--c100);color:var(--c600)}
+
+.emp-bulk{display:flex;flex-direction:column;gap:7px}
+.emp-bulk-i{display:flex;align-items:center;gap:8px;min-height:42px;padding:6px 10px;background:var(--c50);
+  border:1px solid var(--c100);border-radius:8px;flex-wrap:wrap}
+.emp-bulk-i>svg{width:16px;height:16px;flex:none;color:var(--c500)}
+.emp-bulk-t{flex:1;min-width:120px}
+.emp-bulk-n{font-size:11px;font-weight:700;color:var(--c900)}
+.emp-bulk-s{font-size:10px;color:var(--c400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emp-bulk-sel{height:28px;border:1px solid var(--c200);border-radius:7px;background:var(--white);
+  font:inherit;font-size:11px;color:var(--c900);padding:0 6px;max-width:170px}
+
+/* The filter bar sits INSIDE the table card, on its own ground, so it reads as "how this list is
+   narrowed" rather than as another page-level band. */
+.emp-filters{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:10px 16px;
+  background:var(--c50);border-top:1px solid var(--c100)}
+.emp-sel{height:38px;min-width:132px;border:1px solid var(--c200);border-radius:8px;background:var(--white);
+  font:inherit;font-size:12px;color:var(--c900);padding:0 8px}
+.emp-sel:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 15%,transparent)}
+.emp-filters .att-search{height:38px}
+
+.emp-tick{width:28px}
+.emp-tick input{accent-color:var(--leaf);margin:0}
+.att-table tbody tr.emp-on td{background:color-mix(in srgb,var(--leaf) 7%,transparent)}
+.emp-meta{font-size:11px;color:var(--c400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.emp-meta .mono{font-size:11px}
+.emp-nophone{color:#b45309;font-weight:600}
+.emp-pager{display:flex;align-items:center;gap:6px}
+.emp-pager-n{font-size:11px;font-weight:700;color:var(--c600);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
+
 .att-act{display:flex;align-items:center;justify-content:flex-end;gap:4px}
 /* Belt and braces on the one cell whose icons carry their size as an ATTRIBUTE rather than from a
    rule: an icon that arrives without one fills the cell and turns a 32px row into a 200px one. */
