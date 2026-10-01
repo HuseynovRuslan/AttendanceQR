@@ -40,7 +40,7 @@ import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
 import { StatusBadge } from '../../components/StatusBadge'
 import {
-  IconAlert, IconCalendar, IconCheck, IconChevronLeft, IconChevronRight, IconColumns,
+  IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
   IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
 } from '../../components/icons'
 
@@ -247,8 +247,12 @@ export function EmployeesPage() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [page, setPage] = useState(1)
   const [empColsOpen, setEmpColsOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const [empCols, setEmpCols] = useState<EmpCols>(readEmpCols)
   const searchRef = useRef<HTMLInputElement>(null)
+  // The keydown listener is registered once and must not go stale: it reads the CURRENT filtered
+  // list through a ref rather than closing over the one that existed at mount.
+  const visibleRef = useRef<AdminEmployee[]>([])
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   // Adding can be one-at-a-time or in bulk — both live under the single "İşçi əlavə et" button now
@@ -316,14 +320,28 @@ export function EmployeesPage() {
   // four people lands on page 7 of the old result and reads as «no results».
   useEffect(() => { setPage(1) }, [filterLoc, statusSel, roleFilter, search, showLeft])
 
-  // ⌘K / Ctrl-K puts the cursor in the search box: on a list of nine hundred people, looking one
-  // person up is what this page is opened for.
+  // ⌘K focuses the search box; ⌘A selects every row the filters have left on screen.
+  //
+  // ⌘A is the escape hatch the bulk actions depend on: «grant this to the whole branch» has to stay
+  // one press, or the permission gets granted carelessly instead. It is deliberately ignored while
+  // the caret is in a text field, where ⌘A means «select this text» and always will.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return
+      if (!(e.metaKey || e.ctrlKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'k') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+        return
+      }
+      if (k !== 'a') return
+      const el = document.activeElement
+      const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+        || (el instanceof HTMLElement && el.isContentEditable)
+      if (typing) return
       e.preventDefault()
-      searchRef.current?.focus()
-      searchRef.current?.select()
+      setSelected(new Set(visibleRef.current.map((r) => r.id)))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -820,16 +838,16 @@ ${back}`,
   const noDeviceCount = onboardPool.filter((r) => !r.hasDevice).length
 
   /**
-   * Who a bulk action applies to — the ticked rows, or, when nothing is ticked, everything on screen.
+   * Who a bulk action applies to — the ticked rows, and only those.
    *
-   * The fallback is the point. This page's idiom has always been «the filters ARE the selection»,
-   * written down where `applyShift` lives: ~260 workers own no phone and whole brigades work at
-   * poster-less sites, so ticking a box per person is an afternoon nobody finishes — and a permission
-   * too tedious to grant properly gets granted carelessly instead. The design's checkboxes are added
-   * ON TOP of that rather than in place of it: tick nobody and act on the branch, or tick three
-   * people and act on three.
+   * It used to fall back to «everything on screen» when nothing was ticked, because this page's
+   * idiom was «the filters ARE the selection»: ~260 workers own no phone and whole brigades work at
+   * poster-less sites, so ticking a box per person is an afternoon nobody finishes. That speed is
+   * kept, but the implicitness is not — ⌘A, or «Hamısını seç», puts the whole filtered list in the
+   * selection in one press. An action that takes a permission AWAY must never run against a set the
+   * admin did not say out loud.
    */
-  const bulkTargets = selected.size > 0 ? visible.filter((r) => selected.has(r.id)) : visible
+  const bulkTargets = visible.filter((r) => selected.has(r.id))
   /** Of those, the ones still holding an admin-issued PIN they have never used. */
   const bulkPendingPin = bulkTargets.filter((r) => r.isActive && r.activated && r.mustChangePin)
 
@@ -864,6 +882,8 @@ ${back}`,
       return next
     })
   }
+
+  visibleRef.current = visible
 
   const activeFilterCount =
     (filterLoc ? 1 : 0) + (statusSel ? 1 : 0) + (roleFilter ? 1 : 0) + (q ? 1 : 0)
@@ -973,92 +993,6 @@ ${back}`,
                 <span className="emp-attn-x">{a.text}</span>
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* The four bulk actions that actually exist. «Bildiriş göndər» from the design is not here
-            on purpose: announcements are their own screen with their own audience picker, and a
-            button that only navigates elsewhere would be the fourth tile pretending to be an action. */}
-        <div className="emp-panel">
-          <div className="emp-panel-h">
-            <span className="emp-panel-t"><IconUsers /> Kütləvi əməliyyatlar</span>
-            <span className="emp-panel-note">
-              {selected.size > 0
-                ? `Seçilmiş ${selected.size} nəfərə tətbiq olunur`
-                : `Görünən ${visible.length} nəfərə tətbiq olunur`}
-            </span>
-          </div>
-          <div className="emp-bulk">
-            {schedules.length > 0 && (
-              <div className="emp-bulk-i">
-                <IconCalendar />
-                <div className="emp-bulk-t">
-                  <div className="emp-bulk-n">Növbə tətbiq et</div>
-                  <div className="emp-bulk-s">İş qrafikini yenilə</div>
-                </div>
-                <select
-                  className="emp-bulk-sel"
-                  value={bulkShift}
-                  onChange={(e) => setBulkShift(e.target.value)}
-                  aria-label="Növbə seçin"
-                >
-                  <option value="">Növbə…</option>
-                  {schedules.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} · {s.shiftStart}–{s.shiftEnd}</option>
-                  ))}
-                  <option value="none">— Ləğv et —</option>
-                </select>
-                <button
-                  className="btn btn-sm"
-                  disabled={sharing || !bulkShift || bulkTargets.length === 0}
-                  onClick={() => void applyShift(bulkTargets)}
-                >
-                  Tətbiq et
-                </button>
-              </div>
-            )}
-            {([
-              {
-                key: 'ShareDevice' as BulkPermission, Icon: IconPhone,
-                title: 'Ortaq telefon icazəsi', sub: 'Telefonu olmayanlar üçün',
-                have: bulkTargets.filter((r) => r.canShareDevice === true).length,
-              },
-              {
-                key: 'FieldCheckIn' as BulkPermission, Icon: IconMapPin,
-                title: 'Sahə ziyarəti icazəsi', sub: 'QR plakatı olmayan obyektlər',
-                have: bulkTargets.filter((r) => r.canFieldCheckIn === true).length,
-              },
-            ]).map((p) => (
-              <div key={p.key} className="emp-bulk-i">
-                <p.Icon />
-                <div className="emp-bulk-t">
-                  <div className="emp-bulk-n">{p.title}</div>
-                  <div className="emp-bulk-s">{p.sub} · {p.have}/{bulkTargets.length}-də var</div>
-                </div>
-                <button className="btn btn-sm" disabled={sharing || bulkTargets.length === 0} onClick={() => void setPermission(bulkTargets, p.key, true)}>Ver</button>
-                <button className="btn btn-sm" disabled={sharing || bulkTargets.length === 0} onClick={() => void setPermission(bulkTargets, p.key, false)}>Geri al</button>
-              </div>
-            ))}
-            {/* The PIN list can be printed once and, if it is lost, only replaced — so the offer
-                belongs where the people who need it are already counted. */}
-            <div className="emp-bulk-i">
-              <IconKey />
-              <div className="emp-bulk-t">
-                <div className="emp-bulk-n">Müvəqqəti PIN ver</div>
-                <div className="emp-bulk-s">
-                  {bulkPendingPin.length > 0
-                    ? `${bulkPendingPin.length} nəfər hələ heç vaxt girməyib`
-                    : 'Hamısı öz PIN-ini təyin edib'}
-                </div>
-              </div>
-              <button
-                className="btn btn-sm"
-                disabled={issuing || bulkPendingPin.length === 0}
-                onClick={() => void issuePins(bulkPendingPin)}
-              >
-                {issuing ? 'Verilir…' : 'Yeni PIN'}
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -1810,6 +1744,140 @@ ${back}`,
 
       {/* employees table */}
       <div className="att-table">
+        {/* The contextual bar.
+            The bulk panel that used to sit above the table is gone: it stood there whether or not
+            anybody was selected, and it had to answer «applies to whom?» in prose. Bound to the
+            selection it answers that by existing — and the escape hatch the speed depended on is now
+            explicit rather than implicit: ⌘A, or «Hamısını seç», puts the whole filtered list in the
+            selection in one press. That matters most for the actions that take something AWAY. */}
+        {selected.size === 0
+          ? (
+            <div className="emp-bar empty">
+              <span className="emp-bar-hint">
+                <IconAlert />
+                Əməliyyat üçün cədvəldən işçiləri seçin
+              </span>
+              <span className="emp-bar-kbd">
+                <span className="att-kbd">⌘A</span> hamısını seç
+              </span>
+            </div>
+          )
+          : (
+            <div className="emp-bar on">
+              <div className="emp-bar-l">
+                <button className="emp-bar-x" onClick={() => setSelected(new Set())} title="Seçimi sil" aria-label="Seçimi sil">
+                  <IconX />
+                </button>
+                <span className="emp-bar-n"><b>{selected.size}</b> işçi seçildi</span>
+                <span className="emp-bar-sep" />
+                {schedules.length > 0 && (
+                  <>
+                    <select
+                      className="emp-bar-sel"
+                      value={bulkShift}
+                      onChange={(e) => setBulkShift(e.target.value)}
+                      aria-label="Növbə seçin"
+                    >
+                      <option value="">Növbə seçin…</option>
+                      {schedules.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} · {s.shiftStart}–{s.shiftEnd}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="emp-bar-b primary"
+                      disabled={sharing || !bulkShift}
+                      onClick={() => void applyShift(bulkTargets)}
+                    >
+                      <IconCalendar /> Növbə təyin et
+                    </button>
+                  </>
+                )}
+                <button
+                  className="emp-bar-b"
+                  disabled={sharing}
+                  onClick={() => void setPermission(bulkTargets, 'ShareDevice', true)}
+                >
+                  <IconPhone /> Ortaq telefon
+                </button>
+                <button
+                  className="emp-bar-b"
+                  disabled={sharing}
+                  onClick={() => void setPermission(bulkTargets, 'FieldCheckIn', true)}
+                >
+                  <IconMapPin /> Sahə ziyarəti
+                </button>
+                <div className="emp-more-w">
+                  <button className={`emp-bar-b${moreOpen ? ' on' : ''}`} onClick={() => setMoreOpen((v) => !v)}>
+                    Daha çox <IconChevronDown />
+                  </button>
+                  {moreOpen && (
+                    <>
+                      <div className="att-backdrop" onClick={() => setMoreOpen(false)} />
+                      <div className="emp-more">
+                        <button
+                          className="emp-more-i"
+                          disabled={issuing || bulkPendingPin.length === 0}
+                          onClick={() => { setMoreOpen(false); void issuePins(bulkPendingPin) }}
+                        >
+                          <IconKey />
+                          <span>
+                            Müvəqqəti PIN ver
+                            <i>{bulkPendingPin.length} nəfər hələ heç vaxt girməyib</i>
+                          </span>
+                        </button>
+                        {/* Taking something away sits apart and is drawn as what it is. The three
+                            below each remove an ability somebody is relying on today — a brigade's
+                            shared phone, a field worker's only way to clock in, a crew's hours. */}
+                        <div className="emp-more-sep">Geri alan əməliyyatlar</div>
+                        <button
+                          className="emp-more-i danger"
+                          disabled={sharing}
+                          onClick={() => { setMoreOpen(false); void setPermission(bulkTargets, 'ShareDevice', false) }}
+                        >
+                          <IconPhone />
+                          <span>
+                            Ortaq telefon icazəsini geri al
+                            <i>Briqadanın telefonunda hesab saxlamaq bağlanır</i>
+                          </span>
+                        </button>
+                        <button
+                          className="emp-more-i danger"
+                          disabled={sharing}
+                          onClick={() => { setMoreOpen(false); void setPermission(bulkTargets, 'FieldCheckIn', false) }}
+                        >
+                          <IconMapPin />
+                          <span>
+                            Sahə ziyarəti icazəsini geri al
+                            <i>Plakatsız sahədə işləyənin yeganə giriş yolu bağlanır</i>
+                          </span>
+                        </button>
+                        <button
+                          className="emp-more-i danger"
+                          disabled={sharing}
+                          onClick={() => { setMoreOpen(false); setBulkShift('none'); void applyShift(bulkTargets) }}
+                        >
+                          <IconCalendar />
+                          <span>
+                            Növbəni ləğv et
+                            <i>Öz saatına, o da yoxdursa filialın saatına qayıdır</i>
+                          </span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="emp-bar-r">
+                <span className="emp-bar-note">Seçilmiş işçilərə tətbiq olunur</span>
+                {selected.size < visible.length && (
+                  <button className="emp-bar-all" onClick={() => setSelected(new Set(visible.map((r) => r.id)))}>
+                    Hamısını seç ({visible.length})
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
         <div className="att-tbar">
           <div>
             <span className="att-tbar-t">İşçi siyahısı</span>

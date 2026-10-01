@@ -1298,6 +1298,56 @@ table.tbl{border-radius:var(--r-lg);border:1px solid var(--c100);background:var(
 .emp-sel:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 15%,transparent)}
 .emp-filters .att-search{height:38px}
 
+/* ── Kontekstual bar: əməliyyatlar seçimə bağlıdır ──────────────────────────────────────────────
+   It replaces a panel that stood above the table whether or not anybody was selected and had to
+   answer «applies to whom?» in prose. Bound to the selection, it answers that by existing. */
+.emp-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;flex-wrap:wrap}
+.emp-bar.empty{background:var(--c50);border-bottom:1px solid var(--c100)}
+.emp-bar.on{background:var(--leaf-bg);border-bottom:1px solid var(--leaf)}
+.emp-bar-hint{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--c500)}
+.emp-bar-hint svg{width:15px;height:15px;color:var(--c400)}
+.emp-bar-kbd{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--c400)}
+.emp-bar-l{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.emp-bar-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.emp-bar-x{width:24px;height:24px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--c200);border-radius:6px;background:var(--white);color:var(--c600);cursor:pointer;padding:0}
+.emp-bar-x:hover{color:var(--c900);border-color:var(--c400)}
+.emp-bar-x svg{width:12px;height:12px}
+.emp-bar-n{padding:4px 10px;border-radius:999px;background:var(--leaf);color:var(--on-leaf,#fff);font-size:12px;font-weight:600}
+.emp-bar-n b{font-weight:800}
+.emp-bar-sep{width:1px;height:20px;background:color-mix(in srgb,var(--leaf) 35%,transparent);flex:none}
+.emp-bar-b{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 11px;border:1px solid var(--c200);
+  border-radius:7px;background:var(--white);font:inherit;font-size:12px;font-weight:600;color:var(--c600);cursor:pointer}
+.emp-bar-b:hover:not(:disabled){border-color:var(--c400);color:var(--c900)}
+.emp-bar-b:disabled{opacity:.5;cursor:default}
+.emp-bar-b.primary{border-color:var(--leaf);color:var(--leaf-d)}
+.emp-bar-b.on{border-color:var(--leaf);color:var(--leaf-d);background:var(--white)}
+.emp-bar-b svg{width:14px;height:14px}
+.emp-bar-sel{height:34px;border:1px solid var(--c200);border-radius:7px;background:var(--white);
+  font:inherit;font-size:12px;color:var(--c900);padding:0 8px;max-width:200px}
+.emp-bar-note{font-size:11px;color:var(--c500)}
+.emp-bar-all{height:30px;padding:0 10px;border:1px solid var(--c200);border-radius:6px;background:var(--white);
+  font:inherit;font-size:11px;font-weight:700;color:var(--c600);cursor:pointer}
+.emp-bar-all:hover{border-color:var(--c400);color:var(--c900)}
+
+/* «Daha çox» — the actions that are not every day's, and the three that TAKE SOMETHING AWAY. */
+.emp-more-w{position:relative}
+.emp-more{position:absolute;z-index:40;top:calc(100% + 6px);left:0;min-width:300px;padding:6px;
+  background:var(--white);border:1px solid var(--c200);border-radius:12px;box-shadow:var(--sh)}
+.emp-more-i{display:flex;align-items:flex-start;gap:10px;width:100%;padding:8px 9px;border:none;border-radius:8px;
+  background:none;font:inherit;text-align:left;color:var(--c700);cursor:pointer}
+.emp-more-i:hover:not(:disabled){background:var(--c50)}
+.emp-more-i:disabled{opacity:.45;cursor:default}
+.emp-more-i>svg{width:16px;height:16px;flex:none;margin-top:1px;color:var(--c500)}
+.emp-more-i span{display:flex;flex-direction:column;gap:2px;font-size:12px;font-weight:600;min-width:0}
+.emp-more-i span i{font-style:normal;font-size:10.5px;font-weight:500;color:var(--c400);line-height:1.35}
+/* Withdrawal is drawn as what it is. Each one below removes an ability somebody is relying on today. */
+.emp-more-sep{margin:6px 9px 4px;padding-top:7px;border-top:1px solid var(--c100);
+  font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--clay)}
+.emp-more-i.danger{color:var(--clay)}
+.emp-more-i.danger>svg{color:var(--clay)}
+.emp-more-i.danger:hover:not(:disabled){background:var(--clay-bg)}
+
 .emp-tick{width:28px}
 .emp-tick input{accent-color:var(--leaf);margin:0}
 .att-table tbody tr.emp-on td{background:color-mix(in srgb,var(--leaf) 7%,transparent)}
