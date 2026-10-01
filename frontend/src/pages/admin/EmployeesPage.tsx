@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { RowActions } from '../../components/RowActions'
 import { BulkInvitePage } from './BulkInvitePage'
+import { initials } from './todayShift'
 import { PositionSelect } from '../../components/PositionSelect'
 import { NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -38,7 +39,10 @@ import {
 import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
 import { StatusBadge } from '../../components/StatusBadge'
-import { IconCalendar, IconCheck, IconKey, IconPhone, IconRefresh, IconSend, IconTrash, IconUsers, IconX } from '../../components/icons'
+import {
+  IconAlert, IconCalendar, IconCheck, IconChevronLeft, IconChevronRight, IconColumns,
+  IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
+} from '../../components/icons'
 
 const ATTENDANCE_ERRORS: Record<string, string> = {
   NothingToUpdate: 'Heç nə dəyişmədi',
@@ -168,6 +172,43 @@ const EMPTY: FormState = {
 
 /** The form edits Ad + Soyad separately. Prefer the stored parts; for a row not yet backfilled, fall
  *  back to splitting FullName (last token = surname) so the two fields aren't empty on first edit. */
+/**
+ * What the «Status» select can be narrowed to. Every value is a question somebody actually asks
+ * while chasing a rollout — «who has not started», «who does not get announcements», «whose phone is
+ * not bound» — rather than a tidy enumeration of the stored flags.
+ */
+type StatusSel = '' | 'activated' | 'pending' | 'notstarted' | 'nopush' | 'nodevice'
+
+const STATUS_OPTIONS: { value: StatusSel; label: string }[] = [
+  { value: '', label: 'Hamısı' },
+  { value: 'activated', label: 'Aktivləşdirilib' },
+  { value: 'pending', label: 'Dəvət gözləyir' },
+  { value: 'notstarted', label: 'Tətbiqi açmayıb' },
+  { value: 'nopush', label: 'Bildiriş bağlı' },
+  { value: 'nodevice', label: 'Cihaz bağlanmayıb' },
+]
+
+/** Which optional columns the list shows. Remembered per browser. */
+type EmpCols = { position: boolean; location: boolean; role: boolean; device: boolean; push: boolean; lastActive: boolean; status: boolean }
+const EMP_COLS_KEY = 'qrlog.employees.cols'
+const EMP_COLS_DEFAULT: EmpCols = {
+  position: true, location: true, role: true, device: true, push: true, lastActive: true, status: true,
+}
+
+function readEmpCols(): EmpCols {
+  // Storage can be absent or throw outright (private window, blocked site data); a remembered column
+  // preference is never worth a page that fails to render.
+  try {
+    const raw = localStorage.getItem(EMP_COLS_KEY)
+    return raw ? { ...EMP_COLS_DEFAULT, ...JSON.parse(raw) as Partial<EmpCols> } : EMP_COLS_DEFAULT
+  } catch {
+    return EMP_COLS_DEFAULT
+  }
+}
+
+/** How many rows one page of the list holds. 914 people is not a scroll. */
+const PAGE_SIZE = 25
+
 function splitName(first: string | null | undefined, last: string | null | undefined, full: string): { first: string; last: string } {
   if (first || last) return { first: first ?? '', last: last ?? '' }
   const toks = (full ?? '').trim().split(/\s+/).filter(Boolean)
@@ -193,8 +234,21 @@ export function EmployeesPage() {
   // "Bildirişsiz" — show only the people a reminder/announcement can NOT reach, so a manager can go
   // help them switch it on. A workforce that won't self-serve is what keeps reach stuck, and a name
   // list per branch is what actually converts.
-  const [onlyNoPush, setOnlyNoPush] = useState(false)
-  const [onlyNotStarted, setOnlyNotStarted] = useState(false)
+  /**
+   * The one status filter, replacing two independent booleans.
+   *
+   * «Bildirişsiz» and «hələ başlamayıb» used to be separate toggles on two separate strips, and both
+   * could be on at once — an intersection nobody ever wants, which left the list empty and looking
+   * broken. One select, one answer.
+   */
+  const [statusSel, setStatusSel] = useState<StatusSel>('')
+  const [roleFilter, setRoleFilter] = useState<string>('')
+  /** Ticked rows. Empty means «everything on screen» — see the note on bulkTargets. */
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [page, setPage] = useState(1)
+  const [empColsOpen, setEmpColsOpen] = useState(false)
+  const [empCols, setEmpCols] = useState<EmpCols>(readEmpCols)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   // Adding can be one-at-a-time or in bulk — both live under the single "İşçi əlavə et" button now
@@ -257,6 +311,23 @@ export function EmployeesPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, searchParams])
+
+  // Any change to the filters sends the reader back to page 1. Without this, a search that matches
+  // four people lands on page 7 of the old result and reads as «no results».
+  useEffect(() => { setPage(1) }, [filterLoc, statusSel, roleFilter, search, showLeft])
+
+  // ⌘K / Ctrl-K puts the cursor in the search box: on a list of nine hundred people, looking one
+  // person up is what this page is opened for.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -719,11 +790,15 @@ ${back}`,
   const visible = rows.filter((r) => {
     if (showLeft ? r.isActive : !r.isActive) return false
     if (filterLoc && r.locationId !== filterLoc) return false
-    if (onlyNoPush && r.pushEnabled) return false
+    if (roleFilter && r.role !== roleFilter) return false
     // "Not started" = has never signed in and chosen their own PIN. Two different states mean the
     // same thing to whoever is chasing them: an invite link nobody opened (never activated), and a
     // temporary PIN nobody used (activated at creation, still on it).
-    if (onlyNotStarted && r.activated && !r.mustChangePin) return false
+    if (statusSel === 'activated' && !(r.activated && !r.mustChangePin)) return false
+    if (statusSel === 'pending' && r.activated) return false
+    if (statusSel === 'notstarted' && r.activated && !r.mustChangePin) return false
+    if (statusSel === 'nopush' && r.pushEnabled) return false
+    if (statusSel === 'nodevice' && r.hasDevice) return false
     if (q && !`${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.id}`.toLowerCase().includes(q)) return false
     return true
   })
@@ -731,10 +806,6 @@ ${back}`,
   // Reach = the share of employees who can actually be reached, over the branch currently in view.
   // Only active, activated staff count — a deactivated or not-yet-onboarded person needs no reminder,
   // and counting them would understate how well the reachable ones are covered.
-  // Onboarding: who is still holding the PIN an admin generated for them, in the branch on screen.
-  // These are the people whose PIN list was printed once and, if it was lost, cannot be printed again
-  // — only replaced. The count is what makes that offer visible at the moment it is needed.
-  const pendingPin = visible.filter((r) => r.isActive && r.activated && r.mustChangePin)
 
   // Onboarding progress for the branch in view: who is actually using the app, and who has not
   // started. During a rollout this is the number the owner asks for every day, and it was only
@@ -745,48 +816,250 @@ ${back}`,
 
   const reachPool = rows.filter((r) => r.isActive && r.activated && (!filterLoc || r.locationId === filterLoc))
   const reachOn = reachPool.filter((r) => r.pushEnabled).length
-  const reachPct = reachPool.length > 0 ? Math.round((reachOn / reachPool.length) * 100) : 0
   const noPushCount = reachPool.length - reachOn
+  const noDeviceCount = onboardPool.filter((r) => !r.hasDevice).length
+
+  /**
+   * Who a bulk action applies to — the ticked rows, or, when nothing is ticked, everything on screen.
+   *
+   * The fallback is the point. This page's idiom has always been «the filters ARE the selection»,
+   * written down where `applyShift` lives: ~260 workers own no phone and whole brigades work at
+   * poster-less sites, so ticking a box per person is an afternoon nobody finishes — and a permission
+   * too tedious to grant properly gets granted carelessly instead. The design's checkboxes are added
+   * ON TOP of that rather than in place of it: tick nobody and act on the branch, or tick three
+   * people and act on three.
+   */
+  const bulkTargets = selected.size > 0 ? visible.filter((r) => selected.has(r.id)) : visible
+  /** Of those, the ones still holding an admin-issued PIN they have never used. */
+  const bulkPendingPin = bulkTargets.filter((r) => r.isActive && r.activated && r.mustChangePin)
+
+  // Paging is over the FILTERED list, and any change to the filters sends the reader back to page 1 —
+  // otherwise a search that matches four people lands on page 7 and reads as "no results".
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
+  const pageSafe = Math.min(page, pageCount)
+  const pageRows = visible.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE)
+  const allOnPageTicked = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function togglePage() {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (allOnPageTicked) pageRows.forEach((r) => next.delete(r.id))
+      else pageRows.forEach((r) => next.add(r.id))
+      return next
+    })
+  }
+
+  function toggleEmpCol(key: keyof EmpCols) {
+    setEmpCols((c) => {
+      const next = { ...c, [key]: !c[key] }
+      try { localStorage.setItem(EMP_COLS_KEY, JSON.stringify(next)) } catch { /* not worth a broken list */ }
+      return next
+    })
+  }
+
+  const activeFilterCount =
+    (filterLoc ? 1 : 0) + (statusSel ? 1 : 0) + (roleFilter ? 1 : 0) + (q ? 1 : 0)
+  // Tick column + name + actions, plus whichever optional columns are on.
+  const empColCount = 3 + Object.values(empCols).filter(Boolean).length
+
+  function resetFilters() {
+    setFilterLoc(null)
+    setStatusSel('')
+    setRoleFilter('')
+    setSearch('')
+  }
 
   return (
     <div>
-      {/* toolbar: area filter + add button */}
-      <div className="flex items-center justify-between mb-2" style={{ gap: 12, flexWrap: 'wrap' }}>
-        <div className="chip-row" style={{ marginBottom: 0 }}>
-          <span className={`chip${!filterLoc ? ' active' : ''}`} onClick={() => setFilterLoc(null)}>
-            Hamısı
-          </span>
-          {locations.map((l) => (
-            <span
-              key={l.id}
-              className={`chip${filterLoc === l.id ? ' active' : ''}`}
-              onClick={() => setFilterLoc(l.id)}
-            >
-              {l.name}
-            </span>
-          ))}
+      <div className="att-head">
+        <div>
+          <h1 className="att-title">İşçilər</h1>
+          <div className="att-sub">
+            Komandanı, giriş icazələrini və mobil tətbiq aktivliyini vahid mərkəzdən idarə edin
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            className="inp"
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Ad, nömrə, vəzifə üzrə axtar…"
-            style={{ width: 'auto', minWidth: 210, padding: '8px 12px' }}
-          />
-          {search && <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>}
+        <div className="att-head-act">
           {(leftCount > 0 || showLeft) && (
-            <button className={`btn btn-sm ${showLeft ? 'btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
-              {showLeft ? '← Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
+            <button className={`btn btn-sm${showLeft ? ' btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
+              <IconUserX />
+              {showLeft ? 'Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
             </button>
           )}
-          <button className="btn" disabled={refBusy} onClick={onResetAllReferences} title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir">
+          <button
+            className="btn btn-sm"
+            disabled={refBusy}
+            onClick={onResetAllReferences}
+            title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir"
+          >
             <IconRefresh /> Referansları sıfırla
           </button>
-          <button className="btn btn-primary" onClick={showForm && !editingId ? closeForm : startAdd}>
+          <button className="btn btn-sm btn-primary" onClick={showForm && !editingId ? closeForm : startAdd}>
             <IconUsers /> İşçi əlavə et
           </button>
+        </div>
+      </div>
+
+      {/* Three numbers, and the second two are the rollout question somebody asks every morning:
+          how many of these people are actually on the app yet. */}
+      <div className="emp-kpis">
+        {([
+          {
+            key: 'total', tint: 'blue', Icon: IconUsers,
+            label: 'Ümumi işçi sayı', value: onboardPool.length,
+            note: filterLoc ? locations.find((l) => l.id === filterLoc)?.name ?? '' : 'Bütün filiallar üzrə',
+            noteCls: 'emp-note-blue',
+          },
+          {
+            key: 'on', tint: 'leaf', Icon: IconCheck,
+            label: 'Aktivləşdirilib', value: started,
+            note: onboardPool.length > 0
+              ? `${Math.round((started / onboardPool.length) * 1000) / 10}% tətbiqə qoşulub` : '—',
+            noteCls: 'emp-note-leaf',
+          },
+          {
+            key: 'off', tint: 'amber', Icon: IconX,
+            label: 'Aktivləşdirilməyib', value: notStarted,
+            note: onboardPool.length > 0
+              ? `${Math.round((notStarted / onboardPool.length) * 1000) / 10}% aktivləşdirmə gözləyir` : '—',
+            noteCls: 'emp-note-amber',
+          },
+        ]).map(({ key, tint, Icon, label, value, note, noteCls }) => (
+          <div key={key} className="emp-kpi">
+            <span className={`emp-kpi-ic att-t-${tint}`}><Icon /></span>
+            <div className="emp-kpi-t">
+              <div className="emp-kpi-l">{label}</div>
+              <div className="emp-kpi-v">
+                <span className="emp-kpi-n">{value}</span>
+                <span className="emp-kpi-u">işçi</span>
+              </div>
+              <div className={`emp-kpi-note ${noteCls}`}>{note}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="emp-panels">
+        {/* Not a dashboard: every tile here is a FILTER, and pressing it leaves the list showing
+            exactly the people the number counted. A figure nobody can act on is a figure nobody
+            reads twice. */}
+        <div className="emp-panel">
+          <div className="emp-panel-h">
+            <span className="emp-panel-t"><IconAlert /> Diqqət tələb edir</span>
+            {statusSel && <button className="att-reset" onClick={() => setStatusSel('')}>Süzgəci götür</button>}
+          </div>
+          <div className="emp-attn">
+            {([
+              { sel: 'notstarted' as StatusSel, n: notStarted, sev: 'high', sevLabel: 'Yüksək', text: 'Tətbiqi heç vaxt açmayıb' },
+              { sel: 'nopush' as StatusSel, n: noPushCount, sev: 'mid', sevLabel: 'Orta', text: 'Bildiriş çatmır' },
+              { sel: 'nodevice' as StatusSel, n: noDeviceCount, sev: 'low', sevLabel: 'Yoxlayın', text: 'Cihaz bağlanmayıb' },
+            ]).map((a) => (
+              <button
+                key={a.sel}
+                className={`emp-attn-i${statusSel === a.sel ? ' on' : ''}`}
+                onClick={() => setStatusSel((v) => (v === a.sel ? '' : a.sel))}
+              >
+                <span className="emp-attn-top">
+                  <span className="emp-attn-n">{a.n}</span>
+                  <span className={`emp-sev emp-sev-${a.sev}`}>{a.sevLabel}</span>
+                </span>
+                <span className="emp-attn-x">{a.text}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* The four bulk actions that actually exist. «Bildiriş göndər» from the design is not here
+            on purpose: announcements are their own screen with their own audience picker, and a
+            button that only navigates elsewhere would be the fourth tile pretending to be an action. */}
+        <div className="emp-panel">
+          <div className="emp-panel-h">
+            <span className="emp-panel-t"><IconUsers /> Kütləvi əməliyyatlar</span>
+            <span className="emp-panel-note">
+              {selected.size > 0
+                ? `Seçilmiş ${selected.size} nəfərə tətbiq olunur`
+                : `Görünən ${visible.length} nəfərə tətbiq olunur`}
+            </span>
+          </div>
+          <div className="emp-bulk">
+            {schedules.length > 0 && (
+              <div className="emp-bulk-i">
+                <IconCalendar />
+                <div className="emp-bulk-t">
+                  <div className="emp-bulk-n">Növbə tətbiq et</div>
+                  <div className="emp-bulk-s">İş qrafikini yenilə</div>
+                </div>
+                <select
+                  className="emp-bulk-sel"
+                  value={bulkShift}
+                  onChange={(e) => setBulkShift(e.target.value)}
+                  aria-label="Növbə seçin"
+                >
+                  <option value="">Növbə…</option>
+                  {schedules.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} · {s.shiftStart}–{s.shiftEnd}</option>
+                  ))}
+                  <option value="none">— Ləğv et —</option>
+                </select>
+                <button
+                  className="btn btn-sm"
+                  disabled={sharing || !bulkShift || bulkTargets.length === 0}
+                  onClick={() => void applyShift(bulkTargets)}
+                >
+                  Tətbiq et
+                </button>
+              </div>
+            )}
+            {([
+              {
+                key: 'ShareDevice' as BulkPermission, Icon: IconPhone,
+                title: 'Ortaq telefon icazəsi', sub: 'Telefonu olmayanlar üçün',
+                have: bulkTargets.filter((r) => r.canShareDevice === true).length,
+              },
+              {
+                key: 'FieldCheckIn' as BulkPermission, Icon: IconMapPin,
+                title: 'Sahə ziyarəti icazəsi', sub: 'QR plakatı olmayan obyektlər',
+                have: bulkTargets.filter((r) => r.canFieldCheckIn === true).length,
+              },
+            ]).map((p) => (
+              <div key={p.key} className="emp-bulk-i">
+                <p.Icon />
+                <div className="emp-bulk-t">
+                  <div className="emp-bulk-n">{p.title}</div>
+                  <div className="emp-bulk-s">{p.sub} · {p.have}/{bulkTargets.length}-də var</div>
+                </div>
+                <button className="btn btn-sm" disabled={sharing || bulkTargets.length === 0} onClick={() => void setPermission(bulkTargets, p.key, true)}>Ver</button>
+                <button className="btn btn-sm" disabled={sharing || bulkTargets.length === 0} onClick={() => void setPermission(bulkTargets, p.key, false)}>Geri al</button>
+              </div>
+            ))}
+            {/* The PIN list can be printed once and, if it is lost, only replaced — so the offer
+                belongs where the people who need it are already counted. */}
+            <div className="emp-bulk-i">
+              <IconKey />
+              <div className="emp-bulk-t">
+                <div className="emp-bulk-n">Müvəqqəti PIN ver</div>
+                <div className="emp-bulk-s">
+                  {bulkPendingPin.length > 0
+                    ? `${bulkPendingPin.length} nəfər hələ heç vaxt girməyib`
+                    : 'Hamısı öz PIN-ini təyin edib'}
+                </div>
+              </div>
+              <button
+                className="btn btn-sm"
+                disabled={issuing || bulkPendingPin.length === 0}
+                onClick={() => void issuePins(bulkPendingPin)}
+              >
+                {issuing ? 'Verilir…' : 'Yeni PIN'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -857,206 +1130,6 @@ ${back}`,
         </div>
       )}
 
-      {/* Onboarding progress. Always on screen, not only while there is something to fix: during a
-          rollout "how many have started" is the question of the week, and it was previously readable
-          only as a side effect of the PIN-reissue offer below. */}
-      {onboardPool.length > 0 && (
-        <div
-          className="card"
-          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '10px 16px', marginBottom: 12 }}
-        >
-          <div style={{ fontWeight: 700 }}>
-            {onboardPool.length} işçi
-            {filterLoc && <span className="muted" style={{ fontWeight: 500 }}> · bu filialda</span>}
-          </div>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ color: 'var(--leaf-d)', fontWeight: 700 }}>
-              {started} <span style={{ fontWeight: 500 }}>hesabını aktivləşdirib</span>
-            </span>
-            <span style={{ color: notStarted > 0 ? 'var(--clay)' : 'var(--c400)', fontWeight: 700 }}>
-              {notStarted} <span style={{ fontWeight: 500 }}>hələ aktivləşdirməyib</span>
-            </span>
-          </div>
-          <div style={{ flex: 1, minWidth: 120, height: 8, borderRadius: 999, background: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-            <div
-              style={{
-                width: `${onboardPool.length ? Math.round((started / onboardPool.length) * 100) : 0}%`,
-                height: '100%',
-                borderRadius: 999,
-                background: 'var(--leaf)',
-                transition: 'width .4s ease',
-              }}
-            />
-          </div>
-          {notStarted > 0 && (
-            <button
-              className={`btn btn-sm${onlyNotStarted ? ' btn-primary' : ''}`}
-              onClick={() => setOnlyNotStarted((v) => !v)}
-            >
-              {onlyNotStarted ? 'Hamısını göstər' : 'Kimlər olduğunu göstər'}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Onboarding strip: the people in this branch who have never signed in and are still holding
-          the PIN somebody printed for them. It is the moment the list is needed, and the only moment
-          it can be produced — so the offer lives here rather than in a menu nobody opens. */}
-      {pendingPin.length > 0 && !pinList && (
-        <div
-          className="card"
-          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 16px', marginBottom: 12 }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 22 }}>🔑</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>{pendingPin.length} nəfər hələ heç vaxt girməyib</div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                Müvəqqəti PIN-dədirlər. PIN-i itirmisinizsə, yenisini verib siyahını götürə bilərsiniz.
-              </div>
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <button className="btn btn-sm" disabled={issuing} onClick={() => void issuePins(pendingPin)}>
-              {issuing ? 'Verilir…' : 'Yeni PIN siyahısı ver'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* The two opt-in capabilities, over the visible list. They sit here rather than on each card
-          because of the arithmetic: ~260 workers own no phone and whole brigades work at poster-less
-          sites, and a checkbox per person is an afternoon nobody finishes — a permission too tedious
-          to grant properly gets granted carelessly instead, or the rule gets turned off. Filter to a
-          branch, then act. */}
-      {visible.length > 0 && (
-        <div className="card" style={{ padding: '12px 16px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {([
-            {
-              key: 'ShareDevice' as BulkPermission,
-              icon: '📱',
-              title: 'Ortaq telefon icazəsi',
-              hint: 'Telefonu olmayanlar üçün: hesabı briqadanın telefonunda saxlanıla bilər.',
-              count: visible.filter((r) => r.canShareDevice === true).length,
-            },
-            {
-              key: 'FieldCheckIn' as BulkPermission,
-              icon: '📍',
-              title: 'Sahə ziyarəti icazəsi',
-              hint: 'QR plakatı olmayan obyektlər üçün: GPS + selfi ilə davamiyyət.',
-              count: visible.filter((r) => r.canFieldCheckIn === true).length,
-            },
-          ]).map((p) => (
-            <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <span style={{ fontSize: 22 }}>{p.icon}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700 }}>
-                    {p.title} — görünən {visible.length} nəfərdən {p.count}-də var
-                  </div>
-                  <div className="muted" style={{ fontSize: 12 }}>{p.hint}</div>
-                </div>
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <button className="btn btn-sm" disabled={sharing} onClick={() => void setPermission(visible, p.key, true)}>
-                  {sharing ? '…' : 'Görünənlərə ver'}
-                </button>
-                <button className="btn btn-sm" disabled={sharing} onClick={() => void setPermission(visible, p.key, false)}>
-                  Geri al
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* Assigning a shift stayed a per-person edit while shifts became the way hours are
-              described — and with per-day hours a shift is now the only way to say "08:00–18:00, but
-              09:00 at the weekend". A real crew is forty-six passes through the single form, whose
-              request blanks every field it is not handed. This writes ScheduleId and nothing else. */}
-          {schedules.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <span style={{ fontSize: 22 }}>🕒</span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700 }}>
-                    Növbə — görünən {visible.length} nəfər
-                  </div>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    Seçilən növbə görünən hər kəsə tətbiq olunur. Başqa filialın növbəsi olanlar buraxılır.
-                  </div>
-                </div>
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <select
-                  className="inp"
-                  style={{ width: 'auto', minWidth: 190, padding: '6px 10px', fontSize: 12 }}
-                  value={bulkShift}
-                  onChange={(e) => setBulkShift(e.target.value)}
-                >
-                  <option value="">Növbə seçin…</option>
-                  {schedules.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} · {s.shiftStart}–{s.shiftEnd}
-                    </option>
-                  ))}
-                  <option value="none">— Növbəni ləğv et —</option>
-                </select>
-                <button
-                  className="btn btn-sm"
-                  disabled={sharing || !bulkShift}
-                  onClick={() => void applyShift(visible)}
-                >
-                  {sharing ? '…' : 'Görünənlərə tətbiq et'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Reach strip: how many of the (active, onboarded) staff a reminder/announcement actually
-          reaches, for the branch in view — plus a one-tap way to list exactly who is missing so a
-          manager can help them turn it on. Hidden until the roster is loaded. */}
-      {reachPool.length > 0 && (
-        <div
-          className="card"
-          style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '12px 16px', marginBottom: 12 }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 22 }}>🔔</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>
-                Bildiriş {reachOn}/{reachPool.length} işçiyə çatır{' '}
-                <span className="muted" style={{ fontWeight: 600 }}>({reachPct}%)</span>
-              </div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                {noPushCount === 0
-                  ? 'Hamıya çatır — bütün işçilər bildirişi açıb.'
-                  : `${noPushCount} işçiyə növbə xatırlatması və elan çatmır.`}
-              </div>
-            </div>
-          </div>
-          {/* Track fill mirrors the percentage. */}
-          <div style={{ flex: 1, minWidth: 120, height: 8, borderRadius: 999, background: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-            <div
-              style={{
-                width: `${reachPct}%`,
-                height: '100%',
-                borderRadius: 999,
-                background: reachPct >= 80 ? '#2e7d32' : reachPct >= 50 ? '#c98a00' : '#c0392b',
-                transition: 'width .4s ease',
-              }}
-            />
-          </div>
-          {noPushCount > 0 && (
-            <button
-              className={`btn btn-sm${onlyNoPush ? ' btn-primary' : ''}`}
-              onClick={() => setOnlyNoPush((v) => !v)}
-            >
-              {onlyNoPush ? 'Hamısını göstər' : `Bildirişsiz (${noPushCount})`}
-            </button>
-          )}
-        </div>
-      )}
 
       {error && (
         <div className="fb fb-err" style={{ marginBottom: 14 }}>
@@ -1736,25 +1809,149 @@ ${back}`,
       )}
 
       {/* employees table */}
-      <div className="tbl-wrap tbl-cards">
+      <div className="att-table">
+        <div className="att-tbar">
+          <div>
+            <span className="att-tbar-t">İşçi siyahısı</span>
+            <span className="att-tbar-n">{visible.length} nəticə</span>
+          </div>
+          <div className="att-tbar-a">
+            {selected.size > 0 && (
+              <button className="att-reset" onClick={() => setSelected(new Set())}>
+                {selected.size} seçilib — seçimi götür
+              </button>
+            )}
+            <button className={`att-tool${empColsOpen ? ' on' : ''}`} onClick={() => setEmpColsOpen((v) => !v)}>
+              <IconColumns />
+              Sütunlar
+            </button>
+            {empColsOpen && (
+              <>
+                <div className="att-backdrop" onClick={() => setEmpColsOpen(false)} />
+                <div className="att-pop" style={{ left: 'auto', right: 0, minWidth: 210 }}>
+                  {([
+                    ['position', 'Vəzifə'],
+                    ['location', 'Filial'],
+                    ['role', 'Rol'],
+                    ['device', 'Cihaz'],
+                    ['push', 'Bildiriş'],
+                    ['lastActive', 'Son aktivlik'],
+                    ['status', 'Qeydiyyat'],
+                  ] as [keyof EmpCols, string][]).map(([key, label]) => (
+                    <label key={key} className="att-opt">
+                      <input type="checkbox" checked={empCols[key]} onChange={() => toggleEmpCol(key)} />
+                      <span className="att-opt-t">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="emp-filters">
+          <div className="att-f" style={{ flex: '1 1 280px' }}>
+            <span className="att-f-lbl">Axtarış</span>
+            <span className="att-search">
+              <IconSearch />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Ad, telefon nömrəsi və ya işçi ID-si üzrə axtarın"
+                aria-label="İşçi axtar"
+              />
+              {search
+                ? (
+                  <button className="att-clear" onClick={() => setSearch('')} title="Təmizlə" aria-label="Axtarışı təmizlə">
+                    <IconX />
+                  </button>
+                )
+                : <span className="att-kbd">⌘K</span>}
+            </span>
+          </div>
+          <div className="att-f">
+            <span className="att-f-lbl">Status</span>
+            <select
+              className="emp-sel"
+              value={statusSel}
+              onChange={(e) => setStatusSel(e.target.value as StatusSel)}
+              aria-label="Status"
+            >
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="att-f">
+            <span className="att-f-lbl">Filial</span>
+            <select
+              className="emp-sel"
+              value={filterLoc ?? ''}
+              onChange={(e) => setFilterLoc(e.target.value || null)}
+              aria-label="Filial"
+            >
+              <option value="">Bütün filiallar</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div className="att-f">
+            <span className="att-f-lbl">Rol</span>
+            <select
+              className="emp-sel"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              aria-label="Rol"
+            >
+              <option value="">Bütün rollar</option>
+              {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          {activeFilterCount > 0 && (
+            <button className="att-reset" style={{ alignSelf: 'flex-end', height: 38 }} onClick={resetFilters}>
+              Sıfırla
+            </button>
+          )}
+        </div>
+
+        <div className="tbl-wrap tbl-cards">
         <table>
           <thead>
             <tr>
-              <th>Ad, soyad, ata adı</th>
-              <th>Vəzifə</th>
-              <th>Filial</th>
-              <th>Rol</th>
-              <th>Cihaz</th>
-              <th>Bildiriş</th>
-              <th>Son aktivlik</th>
-              <th>Qeydiyyat</th>
+              <th className="emp-tick">
+                <input
+                  type="checkbox"
+                  checked={allOnPageTicked}
+                  onChange={togglePage}
+                  title="Bu səhifədəkilərin hamısını seç"
+                  aria-label="Bu səhifədəkilərin hamısını seç"
+                />
+              </th>
+              <th>İşçi / telefon / ID</th>
+              {empCols.position && <th>Vəzifə</th>}
+              {empCols.location && <th>Filial</th>}
+              {empCols.role && <th>Rol</th>}
+              {empCols.device && <th>Cihaz</th>}
+              {empCols.push && <th>Bildiriş</th>}
+              {empCols.lastActive && <th>Son aktivlik</th>}
+              {empCols.status && <th>Qeydiyyat</th>}
               <th style={{ textAlign: 'right' }}>Əməliyyat</th>
             </tr>
           </thead>
           <tbody>
-            {visible.map((e) => (
-              <tr key={e.id} style={{ opacity: e.isActive ? 1 : 0.55 }}>
+            {pageRows.map((e) => (
+              <tr key={e.id} className={selected.has(e.id) ? 'emp-on' : undefined} style={{ opacity: e.isActive ? 1 : 0.55 }}>
+                <td className="emp-tick" data-label="">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(e.id)}
+                    onChange={() => toggleRow(e.id)}
+                    aria-label={`${e.fullName} — seç`}
+                  />
+                </td>
                 <td data-label="İşçi">
+                  <span className="att-emp">
+                    <span className="att-av" aria-hidden="true">{initials(e.fullName)}</span>
+                    <span className="att-emp-t">
                   <div style={{ fontWeight: 700 }}>
                     <Link to={`/admin/employees/${e.id}`} style={{ color: 'var(--c900)', textDecoration: 'none' }}>
                       {e.fullName}{e.fatherName ? ` ${e.fatherName}` : ''}
@@ -1765,22 +1962,23 @@ ${back}`,
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--c400)' }}>
-                    {e.phoneNumber ? (
-                      <>📞 0{e.phoneNumber}</>
-                    ) : (
-                      <span style={{ color: '#b45309', fontWeight: 600 }}>nömrə yoxdur</span>
-                    )}
+                  {/* Phone, birth date and id on ONE line, as the design has it. They were three
+                      stacked lines, which made every row three times the height of its own content —
+                      on nine hundred people that is what turns a list into a scroll. */}
+                  <div className="emp-meta">
+                    {e.phoneNumber
+                      ? <>0{e.phoneNumber}</>
+                      : <span className="emp-nophone">nömrə yoxdur</span>}
                     {(e.birthDate || e.birthYear) &&
-                      // Father name now rides with the full name above; the meta keeps only birth date.
+                      // Father name rides with the full name above; the meta keeps only birth date.
                       ` · ${e.birthDate ? e.birthDate.split('-').reverse().join('.') : e.birthYear}`}
+                    {' · '}<span className="mono">ID {e.id.slice(0, 8)}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--c400)', fontFamily: "'IBM Plex Mono',monospace", marginTop: 2 }}>
-                    ID: {e.id.slice(0, 8)}
-                  </div>
+                    </span>
+                  </span>
                 </td>
-                <td data-label="Vəzifə">{e.position || '—'}</td>
-                <td data-label="Filial">
+                {empCols.position && <td data-label="Vəzifə">{e.position || '—'}</td>}
+                {empCols.location && <td data-label="Filial">
                   {e.locationName ?? '—'}
                   {/* Shown right under the branch, because the whole point is the CONTRAST between
                       where this person works and where their paperwork says they belong. On its own
@@ -1811,8 +2009,8 @@ ${back}`,
                       🔄 {cycleLabel(e.workCycleDays, e.workCycleOnDays ?? 1)}
                     </div>
                   )}
-                </td>
-                <td data-label="Rol">
+                </td>}
+                {empCols.role && <td data-label="Rol">
                   {ROLE_LABEL[e.role] ?? e.role}
                   {/* A manager with no branches is not a lesser manager — they see nothing at all.
                       That is invisible from the admin's side unless the list says so. */}
@@ -1827,17 +2025,17 @@ ${back}`,
                       </div>
                     )
                   )}
-                </td>
-                <td>{deviceBadge(e.hasDevice, e.deviceLabel)}</td>
-                <td data-label="Bildiriş">
+                </td>}
+                {empCols.device && <td data-label="Cihaz">{deviceBadge(e.hasDevice, e.deviceLabel)}</td>}
+                {empCols.push && <td data-label="Bildiriş">
                   {/* Whether an announcement/reminder actually reaches this person's phone. */}
                   {e.pushEnabled
                     ? pill('Açıq', '#2e7d32', 'rgba(124,179,66,0.15)')
                     : pill('Bağlı', '#9a3412', 'rgba(154,52,18,0.12)')}
-                </td>
-                <td>{lastActiveBadge(e.lastActiveAtUtc)}</td>
-                <td>{statusBadge(e.activated)}</td>
-                <td>
+                </td>}
+                {empCols.lastActive && <td data-label="Son aktivlik">{lastActiveBadge(e.lastActiveAtUtc)}</td>}
+                {empCols.status && <td data-label="Qeydiyyat">{statusBadge(e.activated)}</td>}
+                <td data-label="Əməliyyat">
                   {/* One button, then a ⋯ menu. Six buttons a row wrapped onto two lines, pushed the
                       columns people actually read out of view, and left a red "Sil" one mis-tap from
                       every other action — see RowActions. */}
@@ -1892,13 +2090,49 @@ ${back}`,
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                <td colSpan={empColCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   {rows.length === 0 ? 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın' : 'Bu axtarış/filial üzrə işçi yoxdur'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        </div>
+
+        {/* Paged at twenty-five, unlike the attendance board, which groups by branch instead. Nine
+            hundred names in one run is a scroll, and the question this page answers — «find this
+            person», «who has not started» — is answered by the filters above, not by scrolling. */}
+        <div className="att-foot">
+          <span>
+            {visible.length === 0
+              ? '0 nəticə'
+              : <>
+                  <b>{(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, visible.length)}</b>
+                  {' / '}{visible.length} nəticə · səhifədə {PAGE_SIZE}
+                </>}
+          </span>
+          {pageCount > 1 && (
+            <div className="emp-pager">
+              <button
+                className="att-step"
+                disabled={pageSafe <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label="Əvvəlki səhifə"
+              >
+                <IconChevronLeft />
+              </button>
+              <span className="emp-pager-n">{pageSafe} / {pageCount}</span>
+              <button
+                className="att-step"
+                disabled={pageSafe >= pageCount}
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                aria-label="Növbəti səhifə"
+              >
+                <IconChevronRight />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
