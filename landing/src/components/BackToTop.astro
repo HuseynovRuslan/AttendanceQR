@@ -1,0 +1,326 @@
+---
+/**
+ * "Səhifənin əvvəlinə qayıt" düyməsi: ~600px aşağı sürüşəndən sonra WhatsApp düyməsinin düz üstündə
+ * görünür, klikləyəndə səhifəni yuxarı aparır. Harada: BaseLayout onu hər səhifəyə qoyur. Props: lang.
+ * Necə işləyir: yeri WhatsAppButton.astro-dakı ortaq dəyişənlərdən (--wa-size, --wa-edge) hesablanır;
+ * görünüş CSS-dədir, skript yalnız is-visible və is-on-brand siniflərini dəyişir.
+ * Mavi fonlu yeni bölmə əlavə etsən, ona data-surface="brand" atributunu yaz — başqa heç nə lazım
+ * deyil: düymə onun üstündə olanda vizör künclərini ağ edir (mavi fonda mavi künc görünmür).
+ */
+import { useTranslations, type Lang } from '../i18n/ui'
+
+interface Props {
+  lang: Lang
+}
+
+const { lang } = Astro.props
+const t = useTranslations(lang)
+---
+
+<button type="button" class="back-to-top" aria-label={t('top.aria')} data-back-to-top>
+  <!-- Vizörün dörd küncü — loader-dəki kamera vizörü ilə eyni motiv. Hover və klaviatura fokusunda
+       görünür; fokus göstəricisi də elə budur (adi outline yoxdur). -->
+  <span class="back-to-top__corner back-to-top__corner--top-left" aria-hidden="true"></span>
+  <span class="back-to-top__corner back-to-top__corner--top-right" aria-hidden="true"></span>
+  <span class="back-to-top__corner back-to-top__corner--bottom-left" aria-hidden="true"></span>
+  <span class="back-to-top__corner back-to-top__corner--bottom-right" aria-hidden="true"></span>
+  <!-- Ox: yuxarıya işarə edir. -->
+  <i class="fa-solid fa-arrow-up back-to-top__arrow" style="color: rgb(243, 240, 240);"></i>
+</button>
+<style is:global>
+  /* is:global, scoped yox: aşağıdakı qaydalar bu komponentdən kənara baxır — <html>-dəki loader
+     siniflərinə (qrl-lock, qrl-reveal) və header-dəki data-open atributuna. Adlar BEM üsulu ilə
+     yazılıb: back-to-top__corner = "back-to-top-un küncü", --top-left = onun variantı. */
+  .back-to-top {
+    /* ---- Ölçü və yer ---- */
+    --back-to-top-size: 50px;
+    --back-to-top-gap: 12px; /* WhatsApp düyməsi ilə aradakı boşluq */
+    /* Gizli halda düymə bir az aşağıda və kiçik durur, görünəndə yerinə qalxır. */
+    --back-to-top-hidden-transform: translateY(10px) scale(0.9);
+
+    /* ---- Hərəkət ---- */
+    --back-to-top-speed: 0.22s; /* görünmə və gizlənmə */
+    /* WhatsApp düyməsinin görünmə əyrisi (wa-in) — iki düymə eyni cür hərəkət etsin. */
+    --back-to-top-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+    /* ---- Vizör küncləri ---- */
+    --corner-size: 10px;
+    --corner-line: 2px; /* xəttin qalınlığı */
+    --corner-radius: 3px; /* loader-in künc əyriliyi (22px-ə 7px), bu ölçüyə kiçildilib */
+    --corner-offset: 7px; /* künc düymədən bu qədər kənarda durur */
+    --corner-shift: 3px; /* gizli künc əlavə olaraq bu qədər kənara çəkilib */
+    --corner-speed: 0.18s; /* künclərin yerinə "oturması" */
+    /* Loader-də künclər məhz bu əyri ilə gəlir (qrl-b-in): sürətli başlayır, yumşaq dayanır. */
+    --corner-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --corner-color: var(--color-brand);
+
+    /* position: fixed yalnız valideynlərdə transform olmayanda ekrana bağlanır — ona görə BaseLayout
+       düyməni .qrl-page-dən kənara qoyur (WhatsAppButton.astro-da ətraflı izah var). */
+    position: fixed;
+    /* WhatsApp-ın mərkəz xətti: onun sağ məsafəsi + iki düymənin enlərinin fərqinin yarısı. */
+    right: calc(var(--wa-edge) + (var(--wa-size) - var(--back-to-top-size)) / 2);
+    /* WhatsApp-ın alt məsafəsi + onun hündürlüyü + boşluq. env(...) — iPhone-un aşağı sistem zolağı. */
+    bottom: calc(
+      var(--wa-edge) + var(--wa-size) + var(--back-to-top-gap) + env(safe-area-inset-bottom, 0px)
+    );
+    /* WhatsApp ilə eyni: loader-in (1000) altında, qalan hər şeyin üstündə. */
+    z-index: 900;
+    display: grid;
+    place-items: center;
+    width: var(--back-to-top-size);
+    height: var(--back-to-top-size);
+    padding: 0;
+    border-radius: 50%;
+    /* Açıq ağ kənar tünd bölmələrdə (CTA, footer) düymənin sərhədini göstərir — fon eyni tünd olanda
+       yalnız bu xətt düyməni fondan ayırır. */
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background-color: var(--ink);
+    color: var(--white);
+    /* WhatsApp-ın kölgəsi ilə eyni hündürlük (8px aşağı, -8px yayılma), bulanıqlıq düymənin ölçüsünə
+       görə kiçik. Rəng qara yox, --ink-in özüdür: saytın isti boz fonunda təmiz qara çirkli görünür. */
+    box-shadow: 0 8px 20px -8px rgba(17, 18, 17, 0.45);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+
+    /* Gizli hal (standart). pointer-events: none — gizlənmə animasiyası gedərkən görünməz düymə
+       klikləri tutmasın. */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: var(--back-to-top-hidden-transform);
+    /* Gizlənəndə visibility animasiyanın sonunda dəyişir ki, opacity-nin sönməsi görünsün. */
+    transition:
+      opacity var(--back-to-top-speed) ease,
+      transform var(--back-to-top-speed) var(--back-to-top-ease),
+      visibility 0s linear var(--back-to-top-speed),
+      background-color 0.2s ease;
+  }
+
+  .back-to-top.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    /* Görünəndə heç nə gözləmir — visibility də dərhal dəyişir. */
+    transition-delay: 0s;
+  }
+
+  /* Basanda tez (0.1s) kiçilir, buraxanda adi sürətlə yerinə qayıdır. */
+  .back-to-top.is-visible:active {
+    transform: scale(0.94);
+    transition-duration: 0.1s;
+  }
+
+  .back-to-top__arrow {
+    font-size: 1rem;
+    display: block;
+    transition: transform var(--corner-speed) var(--corner-ease);
+  }
+
+  /* ---------- Vizör küncləri ----------
+     Hər künc boş kvadratdır: yalnız iki tərəfinin xətti var. Gizli halda öz istiqamətində bir az
+     kənara çəkilib durur (transform), görünəndə yerinə oturur. pointer-events: none — künclər
+     düymədən kənara çıxır, amma klik və hover sahəsini böyütməməlidir. */
+  .back-to-top__corner {
+    position: absolute;
+    width: var(--corner-size);
+    height: var(--corner-size);
+    border: 0 solid var(--corner-color);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity var(--corner-speed) ease,
+      transform var(--corner-speed) var(--corner-ease);
+  }
+
+  .back-to-top__corner--top-left {
+    top: calc(var(--corner-offset) * -1);
+    left: calc(var(--corner-offset) * -1);
+    border-top-width: var(--corner-line);
+    border-left-width: var(--corner-line);
+    border-top-left-radius: var(--corner-radius);
+    transform: translate(calc(var(--corner-shift) * -1), calc(var(--corner-shift) * -1));
+  }
+
+  .back-to-top__corner--top-right {
+    top: calc(var(--corner-offset) * -1);
+    right: calc(var(--corner-offset) * -1);
+    border-top-width: var(--corner-line);
+    border-right-width: var(--corner-line);
+    border-top-right-radius: var(--corner-radius);
+    transform: translate(var(--corner-shift), calc(var(--corner-shift) * -1));
+  }
+
+  .back-to-top__corner--bottom-left {
+    bottom: calc(var(--corner-offset) * -1);
+    left: calc(var(--corner-offset) * -1);
+    border-bottom-width: var(--corner-line);
+    border-left-width: var(--corner-line);
+    border-bottom-left-radius: var(--corner-radius);
+    transform: translate(calc(var(--corner-shift) * -1), var(--corner-shift));
+  }
+
+  .back-to-top__corner--bottom-right {
+    bottom: calc(var(--corner-offset) * -1);
+    right: calc(var(--corner-offset) * -1);
+    border-bottom-width: var(--corner-line);
+    border-right-width: var(--corner-line);
+    border-bottom-right-radius: var(--corner-radius);
+    transform: translate(var(--corner-shift), var(--corner-shift));
+  }
+
+  /* Düymə mavi fonlu bölmənin (data-surface="brand") üstündədir — mavi künclər orada görünməz
+     olardı, ağ künclərin mavi fonla kontrastı 5.4:1-dir. Sinfi skript verir. */
+  .back-to-top.is-on-brand {
+    --corner-color: var(--white);
+  }
+
+  /* ---------- Hover və klaviatura fokusu ----------
+     Eyni effekt: fon bir az açılır, ox 2px qalxır, künclər yerinə oturur. Künclər həm də fokus
+     göstəricisidir, ona görə brauzerin adi outline-ı söndürülüb. */
+  .back-to-top:focus-visible {
+    outline: none;
+    background-color: var(--ink-2);
+  }
+
+  .back-to-top:focus-visible .back-to-top__arrow {
+    transform: translateY(-2px);
+  }
+
+  .back-to-top:focus-visible .back-to-top__corner {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Hover yalnız siçanlı cihazda. Telefonda toxunuşdan sonra :hover "ilişib" qalır — düymə yenidən
+     görünəndə künclər də açıq qalardı. */
+  @media (hover: hover) {
+    .back-to-top:hover {
+      background-color: var(--ink-2);
+    }
+
+    .back-to-top:hover .back-to-top__arrow {
+      transform: translateY(-2px);
+    }
+
+    .back-to-top:hover .back-to-top__corner {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* ---------- Telefon ---------- */
+  /* WhatsApp-ın telefon ölçüsü də eyni sərhəddə dəyişir (WhatsAppButton.astro). */
+  @media (max-width: 640px) {
+    .back-to-top {
+      --back-to-top-size: 46px;
+      --back-to-top-gap: 10px;
+    }
+  }
+
+  /* ---------- Loader, mobil menyu ---------- */
+  /* Loader ekrandadırsa, düymə is-visible olsa da gizlidir — WhatsApp düyməsi kimi. */
+  html.qrl-lock .back-to-top {
+    opacity: 0;
+    visibility: hidden;
+    transform: var(--back-to-top-hidden-transform);
+  }
+
+  /* Səhifə ortadan yenilənibsə, düymə loader gedəndən sonra WhatsApp ilə BİRLİKDƏ görünsün, ondan
+     qabaq yox. qrl-reveal sinfini loader çəkilərkən qısa müddətə <html>-ə verir (PageLoader.astro). */
+  html.qrl-reveal .back-to-top {
+    transition-delay: var(--wa-appear-delay);
+  }
+
+  /* Açıq mobil menyu ekranın aşağısına qədər uzana bilər — WhatsApp düyməsi ilə eyni qayda.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/:has */
+  html:has([data-header-bar][data-open]) .back-to-top {
+    visibility: hidden;
+  }
+
+  /* "Hərəkəti azalt" seçilibsə: heç bir keçid yoxdur — düymə və künclər dərhal görünür. */
+  @media (prefers-reduced-motion: reduce) {
+    .back-to-top,
+    .back-to-top__arrow,
+    .back-to-top__corner {
+      transition: none;
+    }
+  }
+
+  @media print {
+    .back-to-top {
+      display: none !important;
+    }
+  }
+</style>
+
+<script>
+  // ---------- Sabitlər ----------
+  const SHOW_AFTER_PX = 600 // bu qədər aşağı sürüşəndən sonra düymə görünür (təxminən bir ekran)
+
+  const button = document.querySelector<HTMLButtonElement>('[data-back-to-top]')
+  // Header-in ilk linki — loqo. Klikdən sonra fokus bura keçir (aşağıda moveFocusToHeader).
+  const firstHeaderLink = document.querySelector<HTMLAnchorElement>('[data-header] a')
+  // Mavi fonlu bölmələr. Siyahı bir dəfə yığılır: bölmələr səhifə açıldıqdan sonra dəyişmir.
+  const brandSurfaces = document.querySelectorAll<HTMLElement>('[data-surface="brand"]')
+  // matchMedia JS-dən CSS media sorğusunu yoxlayır: https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+
+  // Düymə mavi fonlu bölmənin üstündədirmi? Lazımdır, çünki vizör künclərinin rəngi --color-brand-dır:
+  // mavi fonda mavi künc görünmür və klaviatura istifadəçisi fokusun harada olduğunu itirir.
+  // getBoundingClientRect elementin ekrandakı yerini verir:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect
+  function isButtonOverBrandSurface(button: HTMLElement) {
+    const buttonRect = button.getBoundingClientRect()
+    for (const surface of brandSurfaces) {
+      const surfaceRect = surface.getBoundingClientRect()
+      const overlapsVertically = buttonRect.bottom > surfaceRect.top && buttonRect.top < surfaceRect.bottom
+      const overlapsHorizontally = buttonRect.right > surfaceRect.left && buttonRect.left < surfaceRect.right
+      if (overlapsVertically && overlapsHorizontally) {
+        return true
+      }
+    }
+    return false
+  }
+
+  // Düymənin iki vəziyyətini yeniləyir: görünürmü (is-visible) və künclər ağ olmalıdırmı (is-on-brand).
+  // Əvvəl ölçülür, sonra sinif yazılır — sinfi dəyişəndən sonra ölçmək brauzeri səhifəni təzədən
+  // hesablamağa məcbur edərdi.
+  function updateButton(button: HTMLElement) {
+    const isOverBrand = isButtonOverBrandSurface(button)
+    const shouldShow = window.scrollY > SHOW_AFTER_PX
+    button.classList.toggle('is-visible', shouldShow)
+    button.classList.toggle('is-on-brand', isOverBrand)
+  }
+
+  // Düymə yuxarıda gizlənir. Fokus onun üstündə qalsaydı, klaviatura ilə gəzən adam yerini itirərdi —
+  // növbəti Tab səhifənin sonundan davam edərdi. Ona görə fokus header-in ilk linkinə keçir.
+  // preventScroll: fokus özü səhifəni sürüşdürməsin, yoxsa hamar sürüşmə yarıda kəsilər.
+  function moveFocusToHeader() {
+    if (!firstHeaderLink) return
+    firstHeaderLink.focus({ preventScroll: true })
+  }
+
+  function scrollToTop() {
+    // 'auto' yox, 'instant': global.css html-ə scroll-behavior: smooth verir, 'auto' isə ona tabe olub
+    // yenə hamar sürüşdürərdi. Hərəkəti azaltmaq istəyən adam üçün sürüşmə dərhal olmalıdır.
+    let behavior: ScrollBehavior = 'smooth'
+    if (reduceMotion.matches) {
+      behavior = 'instant'
+    }
+    window.scrollTo({ top: 0, behavior: behavior })
+    moveFocusToHeader()
+  }
+
+  if (button) {
+    // window.onscroll = … yox: o, başqa faylın (məsələn, Header-in) scroll kodunu silə bilər.
+    // addEventListener isə öz dinləyicisini mövcud olanların yanına əlavə edir.
+    window.addEventListener('scroll', () => updateButton(button), { passive: true })
+    // Künclər fokusda görünür — rəngləri o an dəqiq olsun: səhifə sonuncu scroll-dan sonra dəyişə
+    // bilər (şəkil yüklənib bölməni yerindən oynada bilər).
+    button.addEventListener('focus', () => updateButton(button))
+    button.addEventListener('click', scrollToTop)
+    // Səhifə ortadan açılıbsa (refresh), düymə scroll gözləmədən düzgün vəziyyətdə olsun.
+    updateButton(button)
+  }
+</script>

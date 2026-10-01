@@ -1,11 +1,11 @@
-/* ---------- The typeface ----------
- * --font-sans in styles/tailwind.css asks for TT Interphases first. That face is licensed from
- * TypeType and is on no CDN, so it has to be served from this repo: put the woff2 files in
- * src/assets/fonts/ and uncomment the block below. Until then the stack falls through to Inter.
+/* ---------- Şrift ----------
+ * styles/tailwind.css-dəki --font-sans ilk olaraq TT Interphases şriftini istəyir. Onun lisenziyası
+ * TypeType-dandır və heç bir CDN-də yoxdur, ona görə şrift bu repodan verilməlidir: woff2 fayllarını
+ * src/assets/fonts/ qovluğuna qoy və aşağıdakı bloku şərhdən çıxar. O vaxta qədər Inter işlənir.
  *
- * src/assets/, not public/: Vite hashes a font reached through a relative url() into /_astro/,
- * which is the one path Caddy caches immutably. Under public/fonts/ it would match no cache rule
- * at all — the same thing that was true of the images before they moved.
+ * Niyə public/ yox, src/assets/: nisbi url() ilə çağırılan şrifti Vite hash-li adla /_astro/-ya
+ * köçürür, Caddy isə yalnız bu yolu "dəyişməz" (immutable) kimi keşləyir. public/fonts/-dakı fayla
+ * heç bir keş qaydası uyğun gəlməzdi — şəkillər oradan köçürülənə qədər onlarda da eyni problem var idi.
  *
  * @font-face {
  *   font-family: 'TT Interphases';
@@ -14,10 +14,10 @@
  *   font-style: normal;
  *   font-display: swap;
  * }
- *   …and one block each for 500, 600, 700 and 800 — those are the weights this stylesheet uses.
+ *   …və 500, 600, 700, 800 üçün də bir blok — bu stil faylı məhz bu qalınlıqları işlədir.
  *
- * Check the file itself for Ə ə İ ı Ğ ğ Ş ş Ç ç Ö ö Ü ü before shipping it. This site already lost a
- * typeface (Sora) that had no ə, and the whole site is in Azerbaijani.
+ * Şrifti qoşmazdan əvvəl faylın özündə Ə ə İ ı Ğ ğ Ş ş Ç ç Ö ö Ü ü hərflərinin olduğunu yoxla. Bu
+ * sayt artıq bir şrifti (Sora) atıb — onda ə hərfi yox idi, bütün sayt isə azərbaycancadır.
  */
 :root {
   --ink: #0B1726;
@@ -73,8 +73,8 @@ a {
   text-decoration: none
 }
 
-/* No Preflight (see styles/tailwind.css): without this, every button, input and select falls back to
-   the browser's own UI font instead of the site's. */
+/* Tailwind-in Preflight sıfırlaması qoşulmayıb (styles/tailwind.css-ə bax). Bu qayda olmasa, hər
+   button, input və select saytın şriftini yox, brauzerin öz sistem şriftini götürər. */
 button,
 input,
 select,
@@ -165,7 +165,7 @@ img {
   box-shadow: var(--shadow-sm)
 }
 
-/* ---------- Hero ---------- */
+/* ---------- Hero (giriş bölməsi) ---------- */
 .hero {
   position: relative;
   overflow: hidden;
@@ -350,7 +350,7 @@ h1.hero-title .hl::after {
   color: var(--muted)
 }
 
-/* animated hero entrance */
+/* Hero-nun animasiyalı girişi */
 .fade-up {
   opacity: 0;
   transform: translateY(20px);
@@ -384,7 +384,7 @@ h1.hero-title .hl::after {
   }
 }
 
-/* ---------- Scan card ---------- */
+/* ---------- Skan kartı ---------- */
 .scan-card {
   position: relative;
   background: #fff;
@@ -614,7 +614,7 @@ h1.hero-title .hl::after {
   }
 }
 
-/* ---------- Section shells ---------- */
+/* ---------- Bölmələrin ümumi çərçivəsi ---------- */
 section {
   padding: 88px 0
 }
@@ -636,7 +636,7 @@ section {
   font-size: 17px
 }
 
-/* ---------- Trust marquee ---------- */
+/* ---------- Etibar lenti (Trust.astro) ---------- */
 .trust {
   padding: 44px 0;
   border-top: 1px solid var(--line);
@@ -702,7 +702,7 @@ section {
   fill: none
 }
 
-/* ---------- Stats band ---------- */
+/* ---------- Rəqəmlər zolağı (statsband) ---------- */
 .statsband {
   background: var(--ink);
   color: #fff
@@ -756,7 +756,7 @@ section {
   margin-top: 6px
 }
 
-/* ---------- Features ---------- */
+/* ---------- İmkanlar ---------- */
 .feat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -812,7 +812,7 @@ section {
   font-size: 14.5px
 }
 
-/* ---------- Audience ---------- */
+/* ---------- Kimlər üçün ---------- */
 .aud-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -887,7 +887,7 @@ section {
   font-size: 14.5px
 }
 
-/* ---------- Security ---------- */
+/* ---------- Təhlükəsizlik ---------- */
 .sec {
   background: var(--paper);
   border-top: 1px solid var(--line);
@@ -942,7 +942,7 @@ section {
   font-size: 14px
 }
 
-/* ---------- Integrations ---------- */
+/* ---------- İnteqrasiyalar ---------- */
 .int-grid {
   display: flex;
   flex-wrap: wrap;
@@ -979,7 +979,7 @@ section {
   fill: none
 }
 
-/* ---------- Testimonials ---------- */
+/* ---------- Rəylər ---------- */
 .test-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1043,7 +1043,7 @@ section {
   color: var(--muted)
 }
 
-/* ---------- Pricing ---------- */
+/* ---------- Qiymətlər ---------- */
 .price {
   background: var(--paper);
   border-top: 1px solid var(--line)
@@ -1159,7 +1159,7 @@ section {
   width: 100%
 }
 
-/* ---------- FAQ ---------- */
+/* ---------- Suallar (FAQ) ---------- */
 .faq-list {
   max-width: 780px;
   margin: 0 auto;
@@ -1228,7 +1228,7 @@ section {
   font-size: 15px
 }
 
-/* ---------- CTA ---------- */
+/* ---------- Çağırış zolağı (CTA) ---------- */
 .cta-band {
   background: var(--ink);
   color: #fff;
@@ -1291,8 +1291,8 @@ footer {
 
 .flogo img {
   height: 30px;
-  /* <Image /> emits width= too; with only the height pinned here, that presentational
-     hint has nothing overriding it and stretches the mark. See Footer.astro. */
+  /* <Image /> HTML-ə width= atributunu da yazır. Burada yalnız hündürlük verilsəydi, o atributu heç
+     nə üstələməzdi və loqo dartılardı. Footer.astro-ya bax. */
   width: auto
 }
 
@@ -1332,7 +1332,7 @@ footer {
   font-size: 13px
 }
 
-/* ---------- Reveal ---------- */
+/* ---------- Görünmə animasiyası (.rv) ---------- */
 .rv {
   opacity: 0;
   transform: translateY(24px);
@@ -1368,7 +1368,7 @@ footer {
   transition-delay: .36s
 }
 
-/* ---------- Responsive ---------- */
+/* ---------- Kiçik ekranlar (responsive) ---------- */
 @media(max-width:900px) {
   .hero-grid {
     grid-template-columns: 1fr;
@@ -1425,7 +1425,7 @@ footer {
   }
 }
 
-/* ---------- Phone demo (scan → choose → done) ---------- */
+/* ---------- Telefon demosu (skan → seçim → hazır) ---------- */
 .pdemo {
   background: var(--paper);
   border-top: 1px solid var(--line);
@@ -1613,7 +1613,7 @@ footer {
   transform: none
 }
 
-/* status bar */
+/* telefonun status zolağı */
 .p-status {
   position: absolute;
   top: 0;
@@ -1639,7 +1639,7 @@ footer {
   color: var(--ink)
 }
 
-/* scan screen */
+/* skan ekranı */
 .screen-scan {
   background: var(--ink);
   align-items: center;
@@ -1754,7 +1754,7 @@ footer {
   animation: pulse 1.1s infinite
 }
 
-/* verify screen (device + location) */
+/* yoxlama ekranı (cihaz + məkan) */
 .screen-verify {
   background: #fff;
   padding: 52px 20px 24px;
@@ -1874,7 +1874,7 @@ footer {
   }
 }
 
-/* face-match screen (camera) */
+/* üz yoxlaması ekranı (kamera) */
 .screen-face {
   background: radial-gradient(120% 90% at 50% 0%, #12263D, #0A1420);
   align-items: center;
@@ -2011,7 +2011,7 @@ footer {
   vertical-align: middle
 }
 
-/* done screen */
+/* hazır ekranı (qeyd olundu) */
 .screen-done {
   background: #fff;
   align-items: center;
@@ -2171,7 +2171,9 @@ footer {
   }
 }
 
-/* ---------- Store (coming soon) ---------- */
+/* ---------- Tətbiq bölməsi (Pwa.astro, section.store) ----------
+   Google Play nişanı + iPhone üçün PWA addımları. Aşağıdakı .store-badge* və .store-soon-pill qaydaları köhnə «tezliklə» nişanlarından qalıb — indi heç
+   bir komponent onları işlətmir. Google Play nişanı GooglePlayBadge.astro-dadır. */
 .store {
   background: var(--paper);
   border-top: 1px solid var(--line);
@@ -2279,7 +2281,7 @@ footer {
   }
 }
 
-/* ---------- Footer wordmark ---------- */
+/* ---------- Footer-dəki yazı-loqo ---------- */
 .fword {
   font-family: var(--font-sans);
   font-weight: 800;
@@ -2295,7 +2297,7 @@ footer {
   color: #6E8098
 }
 
-/* ---------- CTA band buttons ---------- */
+/* ---------- CTA zolağının düymələri ---------- */
 .cta-buttons {
   display: flex;
   gap: 14px;
@@ -2303,7 +2305,7 @@ footer {
   flex-wrap: wrap
 }
 
-/* ---------- Pricing note ---------- */
+/* ---------- Qiymət qeydi ---------- */
 .price-note {
   max-width: 640px;
   margin: 28px auto 0;
@@ -2312,7 +2314,7 @@ footer {
   font-size: 14px
 }
 
-/* ---------- PWA section (replaces the store badges) ---------- */
+/* ---------- PWA addımları — yalnız iPhone üçün; Android-də tətbiq Google Play-dən gəlir ---------- */
 .pwa-steps {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2367,7 +2369,7 @@ footer {
   }
 }
 
-/* ---------- Inner pages: hero, prose, contact, blog ---------- */
+/* ---------- Daxili səhifələr: hero, mətn, əlaqə, bloq ---------- */
 .page-hero {
   position: relative;
   overflow: hidden;
@@ -2513,6 +2515,26 @@ footer {
   text-decoration: underline
 }
 
+.contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px
+}
+
+/* .btn-ghost faylın aşağısında tünd fon üçün yenidən təyin olunur: ağ mətn, yarımşəffaf ağ haşiyə.
+   Açıq rəngli əlaqə kartında belə düymə görünməz olardı. Ona görə kartın içində əvvəlki açıq
+   variant saxlanılır: --ink rəngli mətn, nazik --line haşiyəsi. */
+.contact-card .btn-ghost {
+  color: var(--ink);
+  background: #fff;
+  border-color: var(--line)
+}
+
+.contact-card .btn-ghost:hover {
+  border-color: var(--ink);
+  background: #fff
+}
+
 @media(max-width:900px) {
   .contact-grid {
     grid-template-columns: 1fr
@@ -2563,7 +2585,7 @@ footer {
   font-size: 15px
 }
 
-/* The individual-quote panel that stands in for the plan table while PRICING.showPlans is off. */
+/* «Fərdi təklif» paneli: PRICING.showPlans söndürülü olduğu müddətdə plan cədvəlinin yerində durur. */
 .quote-card {
   max-width: 640px;
   margin: 0 auto;
@@ -2594,9 +2616,10 @@ footer {
 }
 
 /* ==========================================================================================
-   QRLOG PREMIUM SYSTEM · 2026
-   A restrained, product-led visual layer. The original components remain semantic and
-   translation-safe; this layer turns them into one coherent B2B presentation.
+   QRLOG PREMIUM SİSTEMİ · 2026
+   Təmkinli, məhsulu önə çıxaran vizual qat. Əsas komponentlər semantik və tərcüməyə dözümlü
+   qalır; bu qat onları vahid B2B təqdimatına çevirir. Eyni selektorlu qaydalarda faylda sonra
+   gələn qalib gəlir, ona görə bu qat yuxarıdakı qaydaları üstələyir.
    ========================================================================================== */
 
 :root {
@@ -3045,7 +3068,7 @@ h1.hero-title .hl::after {
   bottom: 22%
 }
 
-/* Hero verification orbit — a system view, not a QR scanner mock-up. */
+/* Hero-dakı yoxlama orbiti — QR skanerin maketi yox, sistemin ümumi görünüşü. */
 .hero-orbit {
   position: relative;
   width: min(100%, 520px);
@@ -3521,7 +3544,7 @@ h1.hero-title .hl::after {
   }
 }
 
-/* Phone product walkthrough */
+/* Telefonda məhsul turu */
 .pdemo {
   padding: 124px 0;
   background: #fff;
@@ -3605,7 +3628,7 @@ h1.hero-title .hl::after {
   box-shadow: 0 42px 70px -28px rgba(7, 21, 33, .48)
 }
 
-/* Features — asymmetric bento without ornamental gradients */
+/* İmkanlar — bəzək qradiyentləri olmayan, xanaları fərqli ölçülü bento şəbəkəsi */
 #features {
   padding: 116px 0;
   background: var(--paper-warm);
@@ -3691,7 +3714,7 @@ h1.hero-title .hl::after {
   line-height: 1.65
 }
 
-/* Metrics */
+/* Rəqəmlər */
 .statsband {
   padding: 76px 0;
   background: var(--ink)
@@ -3755,7 +3778,7 @@ h1.hero-title .hl::after {
   color: #8196A5
 }
 
-/* Audience */
+/* Kimlər üçün */
 #audience {
   padding: 118px 0;
   background: #fff
@@ -3830,7 +3853,7 @@ h1.hero-title .hl::after {
   line-height: 1.55
 }
 
-/* Security */
+/* Təhlükəsizlik */
 .sec {
   padding: 112px 0;
   background: #0B1B28;
@@ -3905,7 +3928,7 @@ h1.hero-title .hl::after {
   color: #8FA4B3
 }
 
-/* Modules */
+/* Modullar */
 #modules {
   padding: 108px 0;
   background: var(--paper-warm)
@@ -3945,7 +3968,7 @@ h1.hero-title .hl::after {
   height: 21px
 }
 
-/* Pricing */
+/* Qiymətlər */
 .price {
   padding: 118px 0 128px;
   background: #fff;
@@ -4036,7 +4059,7 @@ h1.hero-title .hl::after {
   font-size: 12px
 }
 
-/* FAQ */
+/* Suallar (FAQ) */
 #faq {
   padding: 118px 0;
   background: var(--paper);
@@ -4096,7 +4119,7 @@ h1.hero-title .hl::after {
   line-height: 1.75
 }
 
-/* PWA */
+/* Tətbiq bölməsi (Pwa.astro, section.store) */
 .store {
   padding: 84px 0;
   background: #fff;
@@ -4159,7 +4182,7 @@ h1.hero-title .hl::after {
   stroke: var(--ink)
 }
 
-/* Closing CTA */
+/* Sondakı çağırış (CTA) */
 .cta-band {
   padding: 116px 0;
   background: #3978F6
@@ -4207,10 +4230,21 @@ footer {
   background: #06111A
 }
 
+/* Brend sütunu + dörd link sütunu: Məhsul, Şirkət, Hüquqi, Bizimlə əlaqə. */
 .foot-grid {
-  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  grid-template-columns: 1.6fr repeat(4, 1fr);
   gap: 54px;
   margin-bottom: 58px
+}
+
+.foot-grid .fbadge {
+  margin-top: 22px
+}
+
+/* Əlaqə sütunu (Telefon, WhatsApp, e-poçt): dar sütunda nömrə etiketdən sonra yeni sətrə keçə
+   bilər, amma nömrənin özü heç vaxt bölünmür. */
+.fcontact a span {
+  white-space: nowrap
 }
 
 .flogo {
@@ -4234,11 +4268,14 @@ footer {
 
 .foot-bot {
   padding-top: 25px;
+  /* Üzən WhatsApp düyməsi üçün yer (WhatsAppButton.astro): səhifənin lap sonunda düymə bu sətrin
+     sağ küncünün, ünvanın durduğu yerin üstünə düşür — ünvan düymənin altında qalmasın. */
+  padding-right: 76px;
   font-size: 11px;
   color: #5E7482
 }
 
-/* Content must remain visible without scrolling or JavaScript. Motion is enhancement only. */
+/* Məzmun sürüşdürmədən və JavaScript olmadan da görünməlidir. Hərəkət yalnız əlavə bəzəkdir. */
 .rv {
   opacity: 1;
   transform: none;
@@ -4250,7 +4287,7 @@ footer {
   transform: none
 }
 
-/* Responsive */
+/* Kiçik ekranlar (responsive) */
 
 @media(max-width:1100px) {
   .hero-grid {
@@ -4403,7 +4440,7 @@ footer {
   }
 
   .foot-grid {
-    grid-template-columns: 1.4fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 36px
   }
 
@@ -4722,8 +4759,9 @@ footer {
 }
 
 /* ==========================================================================================
-   EDITORIAL DIRECTION · AUG 2026
-   Flat surfaces, hard rules, operational typography. No glass, glow, orbit or bento language.
+   EDİTORİAL İSTİQAMƏT · AVQUST 2026
+   Düz səthlər, sərt xətlər, işgüzar tipoqrafiya. Şüşə effekti, parıltı, orbit və bento dili yoxdur.
+   Bu qat da faylda sonra gəldiyi üçün yuxarıdakı PREMIUM qatının eyni selektorlu qaydalarını üstələyir.
    ========================================================================================== */
 :root {
   --ink: #111211;
@@ -4806,9 +4844,9 @@ section {
   line-height: 1.65
 }
 
-/* Hero: warm editorial canvas + one instrument panel.
-   The surface is the --paper token, not the hex it used to be: Trust.astro sits directly under this
-   section on the same colour and reads as one sheet with it, and two hex literals drift. */
+/* Hero: isti editorial fon + bir alət paneli.
+   Fon əvvəlki kimi hex rəng yox, --paper tokenidir: Trust.astro bu bölmənin düz altında eyni rəngdə
+   durur və onunla bir vərəq kimi görünür. İki ayrı hex yazılsa, zamanla bir-birindən fərqlənər. */
 .hero {
   min-height: 760px;
   padding: 90px 0 82px;
@@ -5231,7 +5269,7 @@ h1.hero-title .hl::before {
   }
 }
 
-/* Walkthrough — telefon demosu. */
+/* Telefon demosu (məhsul turu). */
 .pdemo {
   background: #F6F5F1
 }
@@ -5264,7 +5302,7 @@ h1.hero-title .hl::before {
   animation: none
 }
 
-/* Feature index — a ruled capability list. */
+/* İmkanlar — xətlərlə ayrılmış siyahı. */
 #features {
   background: #F6F5F1;
   border-color: #BFC1BA
@@ -5334,7 +5372,7 @@ h1.hero-title .hl::before {
   font-size: 13.5px
 }
 
-/* Metrics become a single branded slab. */
+/* Rəqəmlər brend rəngində tək bir bütöv zolaq olur. */
 .statsband {
   background: #155EEF
 }
@@ -5359,7 +5397,7 @@ h1.hero-title .hl::before {
   color: #D4E0FA
 }
 
-/* Audience, security and modules use rows/rules instead of cards. */
+/* Kimlər üçün, təhlükəsizlik və modullar kartlarla yox, sətir və xətlərlə qurulur. */
 #audience {
   background: #f5f6fa
 }
@@ -5469,7 +5507,7 @@ h1.hero-title .hl::before {
   background: #DFDCD4
 }
 
-/* Pricing as a comparison table. */
+/* Qiymətlər müqayisə cədvəli kimi. */
 .price {
   background: #F6F5F1
 }
@@ -5517,7 +5555,7 @@ h1.hero-title .hl::before {
   border-radius: 0
 }
 
-/* FAQ, PWA, closing statement. */
+/* Suallar, tətbiq bölməsi (PWA) və sondakı çağırış. */
 #faq {
   background: #EAE7E0;
   border-color: #B8BAB2
@@ -5735,7 +5773,7 @@ footer {
   }
 }
 
-/* ---------- Hero assurance line (friction reducers under the CTA) ---------- */
+/* ---------- Hero-da CTA altındakı arxayınlıq sətri (tərəddüdü azaldan qısa qeydlər) ---------- */
 .hero-assure {
   list-style: none;
   margin: 0 0 34px;
@@ -5761,18 +5799,20 @@ footer {
   flex: none;
   border-radius: 50%;
   background: rgba(57, 165, 106, .16);
-  /* small check drawn with a conic-free inline mask keeps it dependency-light */
+  /* Kiçik tik işarəsi daxili SVG (data URI) ilə çəkilir — ayrıca fayl və ya ikon kitabxanası
+     lazım deyil. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2340C07A' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 13 4 4L19 7'/%3E%3C/svg%3E");
   background-size: 11px 11px;
   background-position: center;
   background-repeat: no-repeat;
 }
 
-/* ---------- Problem section (the old way) ----------
-   Matches the editorial grid the feature section uses — flat cells, hairline #BFC1BA dividers,
-   square corners, a floated icon — so it reads as a sibling of the rest of the page rather than a
-   pasted-in widget. The one deliberate difference is the accent: amber, not the product blue, so the
-   three costs of the old way stay visually separate from the blue "here is the answer" sections. */
+/* ---------- Problem bölməsi (köhnə üsul) ----------
+   İmkanlar bölməsinin editorial şəbəkəsini təkrarlayır — düz xanalar, nazik #BFC1BA ayırıcı xətlər,
+   kvadrat künclər, float ilə yerləşən ikon — ki, sonradan yapışdırılmış yad vidcet yox, səhifənin
+   qalan hissəsi ilə bir ailədən görünsün. Bilərəkdən edilən yeganə fərq aksent rəngidir: məhsulun
+   mavisi yox, kəhrəba (amber). Belə ki, köhnə üsulun üç itkisi mavi «həll budur» bölmələrindən
+   vizual olaraq ayrı qalır. */
 .problem {
   background: #F6F5F1
 }
@@ -5842,7 +5882,7 @@ footer {
   }
 }
 
-/* ---------- Final CTA reassurance line ---------- */
+/* ---------- Sondakı CTA-nın arxayınlıq sətri ---------- */
 .cta-assure {
   margin: 18px auto 0;
   max-width: 520px;
@@ -5851,19 +5891,19 @@ footer {
   line-height: 1.6;
 }
 
-/* ---------- Fixed header ---------- */
+/* ---------- Sabit header ---------- */
 /*
- * The header is src/components/Header.astro, and everything it looks like is a Tailwind utility in
- * that file — there are no .nav / .nav-links / .nav-right / .lang / .brand / .menu-toggle rules any
- * more, here or anywhere else. What stays here is the part the component cannot own.
+ * Header src/components/Header.astro-dadır və onun bütün görünüşü həmin fayldakı Tailwind
+ * utility-ləri ilə yazılıb — .nav / .nav-links / .nav-right / .lang / .brand / .menu-toggle qaydaları
+ * artıq nə burada, nə də başqa yerdə var. Burada yalnız komponentin özünün idarə edə bilmədiyi hissə qalır.
  *
- * The header is `position: fixed`, so it takes up no space in the page: the first section of every
- * page starts at the top of the viewport and the glass bar floats over its background instead of
- * sitting in a band of its own. --header-h is the bar's full height, its margins included, and the
- * two rules below hand that height back as space above the first line of a page.
+ * Header `position: fixed`-dir, ona görə səhifədə yer tutmur: hər səhifənin birinci bölməsi ekranın
+ * lap yuxarısından başlayır, şüşə panel isə ayrıca zolaqda durmur, bölmənin fonunun üstündə üzür.
+ * --header-h panelin tam hündürlüyüdür (kənar boşluqları da daxil), aşağıdakı .hero və .page-hero
+ * qaydaları isə bu hündürlüyü səhifənin birinci sətrinin üstünə boş yer kimi geri qaytarır.
  *
- * This block has to stay at the end of the file: the responsive .hero / .page-hero paddings above
- * would otherwise win over it.
+ * Bu blok faylın ən sonunda qalmalıdır: əks halda yuxarıdakı responsive .hero / .page-hero
+ * padding-ləri onu üstələyər.
  */
 :root {
   --header-h: 90px
@@ -5876,7 +5916,8 @@ footer {
 }
 
 html {
-  /* #how, #features and #faq land below the bar, never under it. */
+  /* Menyu linki ilə #how, #features, #faq-a keçəndə bölmə sabit panelin altında gizlənmir,
+     ondan aşağıda başlayır. */
   scroll-padding-top: var(--header-h)
 }
 

@@ -93,8 +93,11 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         </span>{t("hero.title.b")}
       </h1>
 
+      {/* text-pretty = CSS-də `text-wrap: pretty`: brauzer abzası elə bölür ki, son sətirdə tək söz
+          qalmasın (RU mətni 390px-də «нужны.» sözünü tək buraxırdı).
+          https://developer.mozilla.org/en-US/docs/Web/CSS/text-wrap */}
       <p
-        class="mt-6 max-w-147.5 text-[16px] leading-[1.7] text-stone-600 sm:text-[17px]"
+        class="mt-6 max-w-147.5 text-[16px] leading-[1.7] text-pretty text-stone-600 sm:text-[17px]"
       >
         {t("hero.sub")}
       </p>

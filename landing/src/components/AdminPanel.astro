@@ -238,8 +238,8 @@ const chipClass =
 
 <style>
   /*
-    Bölmənin bütün stili burada. Ekran komponentlərindəki qarmaqlara (.ap-live, [hidden]) :global()
-    ilə çatılır — ana seçici (.stage) bu komponentdədir, qayda kənara sızmır. Keyframe adları
+    Bölmənin bütün stili burada. Ekran komponentlərindəki qarmaqlara (.ap-live, .ap-caps, [hidden])
+    :global() ilə çatılır — ana seçici (.stage) bu komponentdədir, qayda kənara sızmır. Keyframe adları
     prefikslidir: Astro @keyframes adını scope etmir, global.css-də isə otuza yaxın keyframe var.
   */
 
@@ -302,6 +302,20 @@ const chipClass =
   @keyframes ap-blink {
     50% {
       opacity: 0.25;
+    }
+  }
+
+  /*
+    "CANLI" yazısı. Sətir qutusunda böyük hərflərin altında üstündəkindən çox boşluq qalır: items-center
+    nöqtəni qutunun ortasına qoyur, hərflər ondan yuxarıda durur — 100% miqyasda nöqtə hərflərin
+    ortasından ~2px aşağıda idi (ölçülüb). text-box qutunu hərflərin öz hündürlüyünə (cap → baseline)
+    kəsir, padding kəsilən yeri iki tərəfə bərabər qaytarır: hərflər nişanın tam ortasına düşür, ölçüsü
+    dəyişmir. text-box-u tanımayan brauzerdə əvvəlki kimi qalır.
+  */
+  @supports (text-box: trim-both cap alphabetic) {
+    .stage :global(.ap-caps) {
+      text-box: trim-both cap alphabetic;
+      padding-block: calc((1lh - 1cap) / 2);
     }
   }
 </style>

@@ -4,10 +4,10 @@ import {
   createSchedule,
   getAdminLocations,
   deleteSchedule,
-  getEmployees,
+  getAllEmployees,
   getSchedules,
   updateSchedule,
-  type AdminEmployee,
+  type AdminEmployeeRow,
   type Schedule,
   type ScheduleInput,
 } from '../../api/admin'
@@ -97,14 +97,14 @@ export function SchedulesPage() {
       }
     : {
         list: getSchedules,
-        staff: getEmployees,
+        staff: getAllEmployees,
         create: createSchedule,
         update: updateSchedule,
         remove: deleteSchedule,
       }
 
   const [rows, setRows] = useState<Schedule[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<AdminEmployeeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -120,7 +120,7 @@ export function SchedulesPage() {
     setLoading(true)
     const [s, e] = await Promise.all([api.list(), api.staff()])
     if (s.status === 200 && Array.isArray(s.data)) setRows(s.data as Schedule[])
-    if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data as AdminEmployee[])
+    if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data as AdminEmployeeRow[])
     setLoading(false)
   }
 

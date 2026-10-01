@@ -14,7 +14,10 @@ import {
   type BulkPinResult,
   deleteEmployee,
   getAdminLocations,
+  getEmployee,
   getEmployees,
+  getEmployeeSelection,
+  getEmployeeStats,
   getSchedules,
   invite,
   reinviteEmployee,
@@ -23,8 +26,10 @@ import {
   resetPin,
   resetReferencePhoto,
   updateEmployee,
-  type AdminEmployee,
+  type AdminEmployeeRow,
   type AdminLocation,
+  type EmployeeSelectionRow,
+  type EmployeeStats,
   type InviteResult,
   type Schedule,
 } from '../../api/admin'
@@ -206,8 +211,33 @@ function readEmpCols(): EmpCols {
   }
 }
 
-/** How many rows one page of the list holds. 914 people is not a scroll. */
+/** How many rows one page of the list holds — and how many the SERVER is asked for. */
 const PAGE_SIZE = 25
+
+/** Until the first /stats answers. Shown as zeros rather than as an empty card. */
+const ZERO_STATS: EmployeeStats = {
+  total: 0, activated: 0, notStarted: 0, noPush: 0, noDevice: 0, leftCount: 0,
+}
+
+/**
+ * A list row, reduced to what a bulk action decides from.
+ *
+ * The selection has to survive paging — tick four people on page 1, three on page 2, press «icazə
+ * ver» — so it cannot be «the ticked rows of the list currently loaded». It holds these instead, and
+ * /employees/selection returns the identical shape for «Hamısını seç».
+ */
+function selRow(e: AdminEmployeeRow): EmployeeSelectionRow {
+  return {
+    id: e.id,
+    fullName: e.fullName,
+    locationName: e.locationName,
+    isActive: e.isActive,
+    activated: e.activated,
+    mustChangePin: e.mustChangePin,
+    canShareDevice: e.canShareDevice === true,
+    canFieldCheckIn: e.canFieldCheckIn === true,
+  }
+}
 
 function splitName(first: string | null | undefined, last: string | null | undefined, full: string): { first: string; last: string } {
   if (first || last) return { first: first ?? '', last: last ?? '' }
@@ -217,7 +247,14 @@ function splitName(first: string | null | undefined, last: string | null | undef
 }
 
 export function EmployeesPage() {
-  const [rows, setRows] = useState<AdminEmployee[]>([])
+  // ONE page of the roster — twenty-five rows, narrowed and ordered in SQL. This used to be every
+  // employee in the company, with every device binding each of them had ever had.
+  const [rows, setRows] = useState<AdminEmployeeRow[]>([])
+  /** How many people the current filters match in total, for the pager and «Hamısını seç». */
+  const [total, setTotal] = useState(0)
+  /** The headline counts, which a page of twenty-five cannot compute. See getEmployeeStats. */
+  const [stats, setStats] = useState<EmployeeStats>(ZERO_STATS)
+  const [listing, setListing] = useState(true)
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
   /** The other companies in this owner's group — the «Sənəd üzrə şirkət» picker. Empty for a tenant
@@ -227,7 +264,8 @@ export function EmployeesPage() {
   /** The shift the bulk strip will apply; 'none' clears instead. */
   const [bulkShift, setBulkShift] = useState('')
   const navigate = useNavigate()
-  const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [filterLoc, setFilterLocRaw] = useState<string | null>(null)
   // Leavers stay (their days are in the tabel and pay) but off the everyday list — «deaktiv etdim, adlar
   // yenə qalır». One button shows them, to bring somebody back or delete a never-used account.
   const [showLeft, setShowLeft] = useState(false)
@@ -241,19 +279,23 @@ export function EmployeesPage() {
    * could be on at once — an intersection nobody ever wants, which left the list empty and looking
    * broken. One select, one answer.
    */
-  const [statusSel, setStatusSel] = useState<StatusSel>('')
-  const [roleFilter, setRoleFilter] = useState<string>('')
-  /** Ticked rows. Empty means «everything on screen» — see the note on bulkTargets. */
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [page, setPage] = useState(1)
+  const [statusSel, setStatusSelRaw] = useState<StatusSel>('')
+  const [roleFilter, setRoleFilterRaw] = useState<string>('')
+  /**
+   * The ticked people, by id, each carrying the flags a bulk action reads.
+   *
+   * A Map rather than a Set of ids because the list is paged now: the rows a selection refers to are
+   * often not the rows on screen, so the data has to travel with the tick.
+   */
+  const [selected, setSelected] = useState<Map<string, EmployeeSelectionRow>>(() => new Map())
+  const [selectingAll, setSelectingAll] = useState(false)
   const [empColsOpen, setEmpColsOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [empCols, setEmpCols] = useState<EmpCols>(readEmpCols)
   const searchRef = useRef<HTMLInputElement>(null)
-  // The keydown listener is registered once and must not go stale: it reads the CURRENT filtered
-  // list through a ref rather than closing over the one that existed at mount.
-  const visibleRef = useRef<AdminEmployee[]>([])
   const [search, setSearch] = useState('')
+  /** What the server is actually asked for — the box, debounced, so typing is not a request a letter. */
+  const [searchQ, setSearchQ] = useState('')
   const [showForm, setShowForm] = useState(false)
   // Adding can be one-at-a-time or in bulk — both live under the single "İşçi əlavə et" button now
   // (Toplu əlavə was removed from the sidebar). Editing always uses the single form.
@@ -266,6 +308,8 @@ export function EmployeesPage() {
   const isSelf = editingId !== null && editingId === myId
   const [ok, setOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  /** Reading one employee for the edit form — the «Redaktə» button waits on this. */
+  const [formBusy, setFormBusy] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null)
   const [resettingId, setResettingId] = useState<string | null>(null)
@@ -275,7 +319,7 @@ export function EmployeesPage() {
   const [pinReset, setPinReset] = useState<{ name: string; pin: string } | null>(null)
 
   // Attendance-correction panel (view + fix one employee's raw records).
-  const [attendanceEmployee, setAttendanceEmployee] = useState<AdminEmployee | null>(null)
+  const [attendanceEmployee, setAttendanceEmployee] = useState<AdminEmployeeRow | null>(null)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [attendanceLoading, setAttendanceLoading] = useState(false)
   const [attendanceError, setAttendanceError] = useState<string | null>(null)
@@ -288,37 +332,87 @@ export function EmployeesPage() {
   const [createCheckOut, setCreateCheckOut] = useState('')
   const [savingRecord, setSavingRecord] = useState(false)
 
+  /** Everything the current filters mean, in the shape the three endpoints take. */
+  const query = {
+    page, pageSize: PAGE_SIZE,
+    search: searchQ, status: statusSel, locationId: filterLoc, role: roleFilter, showLeft,
+  }
+  // Responses can come back out of order — a slow «Ə» answering after the «Əl» that replaced it would
+  // put the wrong page on screen. Only the newest request is allowed to write state.
+  const reqSeq = useRef(0)
+
+  /**
+   * One page of the list, plus the counts above it.
+   *
+   * Also what every mutation on this screen calls when it is done, which is why it re-reads BOTH:
+   * deactivating somebody moves them out of the list and out of the headline numbers at once.
+   */
   async function refresh() {
-    const [emp, locs, scheds, group] = await Promise.all([
-      getEmployees(), getAdminLocations(), getSchedules(), getGroupCompanies(),
-    ])
-    if (emp.status === 200 && Array.isArray(emp.data)) setRows(emp.data)
-    if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
-    if (scheds.status === 200 && Array.isArray(scheds.data)) setSchedules(scheds.data)
-    if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
+    const seq = ++reqSeq.current
+    setListing(true)
+    const [emp, st] = await Promise.all([getEmployees(query), getEmployeeStats(filterLoc)])
+    if (seq !== reqSeq.current) return
+    setListing(false)
+    if (emp.status === 200 && emp.data && 'items' in emp.data) {
+      setRows(emp.data.items)
+      setTotal(emp.data.total)
+    }
+    if (st.status === 200 && st.data) setStats(st.data)
   }
 
+  // Branches, shifts and the group's companies do not depend on the filters and are read once.
+  useEffect(() => {
+    void (async () => {
+      const [locs, scheds, group] = await Promise.all([
+        getAdminLocations(), getSchedules(), getGroupCompanies(),
+      ])
+      if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
+      if (scheds.status === 200 && Array.isArray(scheds.data)) setSchedules(scheds.data)
+      if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
+    })()
+  }, [])
+
+  // The box is debounced before it becomes a query: a name typed at speed is one request, not nine.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchQ((prev) => {
+        const next = search.trim()
+        if (next !== prev) setPage(1)
+        return next
+      })
+    }, 250)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // The list is re-read whenever what it is asked for changes, and nowhere else.
   useEffect(() => {
     void refresh()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchQ, statusSel, filterLoc, roleFilter, showLeft])
+
+  /**
+   * Any filter change also sends the reader back to page 1.
+   *
+   * In the setter rather than in an effect on purpose: an effect would let one request go out for
+   * page 7 of a result that no longer has seven pages, and then a second for page 1.
+   */
+  function setFilterLoc(v: string | null) { setFilterLocRaw(v); setPage(1) }
+  function setStatusSel(v: StatusSel | ((p: StatusSel) => StatusSel)) { setStatusSelRaw(v); setPage(1) }
+  function setRoleFilter(v: string) { setRoleFilterRaw(v); setPage(1) }
 
   // Opened from an employee's profile ("Redaktə et" → /admin/employees?edit=<id>): jump straight into
   // that employee's edit form once the list has loaded, then drop the query param.
   const [searchParams, setSearchParams] = useSearchParams()
+  // It used to wait for the whole roster to arrive and then look the employee up in it, so opening
+  // «Redaktə et» on somebody who would have landed on page 7 only worked because page 7 was loaded
+  // too. Now it reads that one employee.
   useEffect(() => {
     const eid = searchParams.get('edit')
-    if (!eid || rows.length === 0) return
-    const target = rows.find((r) => r.id === eid)
-    if (target) {
-      startEdit(target)
-      setSearchParams({}, { replace: true })
-    }
+    if (!eid) return
+    setSearchParams({}, { replace: true })
+    void startEdit(eid)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, searchParams])
-
-  // Any change to the filters sends the reader back to page 1. Without this, a search that matches
-  // four people lands on page 7 of the old result and reads as «no results».
-  useEffect(() => { setPage(1) }, [filterLoc, statusSel, roleFilter, search, showLeft])
+  }, [searchParams])
 
   // ⌘K focuses the search box; ⌘A selects every row the filters have left on screen.
   //
@@ -341,11 +435,34 @@ export function EmployeesPage() {
         || (el instanceof HTMLElement && el.isContentEditable)
       if (typing) return
       e.preventDefault()
-      setSelected(new Set(visibleRef.current.map((r) => r.id)))
+      void selectAll()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQ, statusSel, filterLoc, roleFilter, showLeft])
+
+  /**
+   * Tick EVERY person the filters match — all of them, not the twenty-five on screen.
+   *
+   * This is the one thing server-side paging could quietly have broken. «Hamısını seç» and ⌘A are
+   * what make «grant this to the whole branch» one press, and a branch is routinely forty people; if
+   * the phrase had come to mean «this page», a permission meant for a brigade would have reached the
+   * first page of it and nobody would have noticed. The server returns the whole matching set — ids
+   * and the handful of flags a bulk action reads, nothing else.
+   */
+  async function selectAll() {
+    setSelectingAll(true)
+    const { status, data } = await getEmployeeSelection({
+      search: searchQ, status: statusSel, locationId: filterLoc, role: roleFilter, showLeft,
+    })
+    setSelectingAll(false)
+    if (status !== 200 || !Array.isArray(data)) {
+      setError('Seçim alınmadı')
+      return
+    }
+    setSelected(new Map(data.map((r) => [r.id, r])))
+  }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -361,7 +478,23 @@ export function EmployeesPage() {
     setShowForm(true)
   }
 
-  function startEdit(e: AdminEmployee) {
+  /**
+   * Open the edit form on one employee, read FROM THE DETAIL ENDPOINT.
+   *
+   * Never from the list row. `EmployeeUpdateRequest` null-defaults every field it is not handed, so
+   * saving a form filled from a list row would blank whatever the list does not carry — the email,
+   * the salary, the per-person geofence and QR-less overrides, the rotation anchor. The list stopped
+   * carrying those on purpose; this is the other half of that change.
+   */
+  async function startEdit(id: string) {
+    setFormBusy(true)
+    const { status, data } = await getEmployee(id)
+    setFormBusy(false)
+    if (status !== 200 || !data || 'error' in data) {
+      setError('İşçi məlumatı gəlmədi')
+      return
+    }
+    const e = data
     setEditingId(e.id)
     const parts = splitName(e.firstName, e.lastName, e.fullName)
     setForm({
@@ -485,7 +618,16 @@ export function EmployeesPage() {
     }
   }
 
-  async function onDelete(e: AdminEmployee) {
+  /** Drop ids the list no longer has — a selection outlives the rows it was made from now. */
+  function deselect(ids: Iterable<string>) {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      for (const id of ids) next.delete(id)
+      return next
+    })
+  }
+
+  async function onDelete(e: AdminEmployeeRow) {
     if (!window.confirm(`"${e.fullName}" işçisi silinsin?`)) return
     setError(null)
     setOk(null)
@@ -502,6 +644,7 @@ export function EmployeesPage() {
         const forced = await deleteEmployee(e.id, true)
         setDeletingId(null)
         if (forced.status === 200) {
+          deselect([e.id])
           await refresh()
         } else {
           setError('Silinmədi')
@@ -512,6 +655,7 @@ export function EmployeesPage() {
 
     setDeletingId(null)
     if (status === 200) {
+      deselect([e.id])
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
       setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
@@ -520,7 +664,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onResetAttendance(e: AdminEmployee) {
+  async function onResetAttendance(e: AdminEmployeeRow) {
     if (
       !window.confirm(
         `"${e.fullName}" üçün BÜTÜN giriş/çıxış tarixçəsi silinsin? Hesab və cihaz bağlantısı qalır — yenidən skan testi edə bilərsiniz.`,
@@ -540,7 +684,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onReinvite(e: AdminEmployee) {
+  async function onReinvite(e: AdminEmployeeRow) {
     setError(null)
     setOk(null)
     setLinkBusyId(e.id)
@@ -554,7 +698,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onResetPin(e: AdminEmployee) {
+  async function onResetPin(e: AdminEmployeeRow) {
     if (!window.confirm(`"${e.fullName}" üçün PIN sıfırlansın? Yeni müvəqqəti PIN veriləcək — işçi girib öz PIN-ini dəyişməlidir.`)) return
     setError(null)
     setOk(null)
@@ -569,7 +713,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onResetReference(e: AdminEmployee) {
+  async function onResetReference(e: AdminEmployeeRow) {
     if (!window.confirm(`"${e.fullName}" üçün referans şəkli sıfırlansın? İşçi növbəti dəfə öz telefonu ilə giriş edəndə yeni referans avtomatik yaranacaq.`)) return
     setRefBusy(true)
     setError(null)
@@ -590,7 +734,7 @@ export function EmployeesPage() {
     else setError('Referanslar sıfırlanmadı')
   }
 
-  async function openAttendance(e: AdminEmployee) {
+  async function openAttendance(e: AdminEmployeeRow) {
     setAttendanceEmployee(e)
     setAttendanceError(null)
     setEditingRecordId(null)
@@ -708,7 +852,7 @@ export function EmployeesPage() {
    * strip beside it: the filters above ARE the selection, and it is the branch filter that makes this
    * safe to press — a crew is what a branch filter leaves on screen.
    */
-  async function applyShift(targets: AdminEmployee[]) {
+  async function applyShift(targets: EmployeeSelectionRow[]) {
     if (!bulkShift || targets.length === 0) return
     const clearing = bulkShift === 'none'
     const shift = schedules.find((s) => s.id === bulkShift)
@@ -742,8 +886,8 @@ export function EmployeesPage() {
     }
   }
 
-  async function setPermission(targets: AdminEmployee[], permission: BulkPermission, allowed: boolean) {
-    const has = (t: AdminEmployee) =>
+  async function setPermission(targets: EmployeeSelectionRow[], permission: BulkPermission, allowed: boolean) {
+    const has = (t: EmployeeSelectionRow) =>
       (permission === 'ShareDevice' ? t.canShareDevice : t.canFieldCheckIn) === true
     const affected = targets.filter((t) => has(t) !== allowed)
     if (affected.length === 0) return
@@ -772,6 +916,13 @@ ${back}`,
     const { status } = await bulkPermission(affected.map((t) => t.id), permission, allowed)
     setSharing(false)
     if (status === 200) {
+      const changed = new Set(affected.map((t) => t.id))
+      setSelected((prev) => new Map([...prev].map(([id, r]) => [
+        id,
+        changed.has(id)
+          ? permission === 'ShareDevice' ? { ...r, canShareDevice: allowed } : { ...r, canFieldCheckIn: allowed }
+          : r,
+      ])))
       await refresh()
       setOk(allowed ? `${affected.length} nəfərə icazə verildi` : `${affected.length} nəfərdən icazə alındı`)
     } else {
@@ -783,7 +934,7 @@ ${back}`,
   const [issuing, setIssuing] = useState(false)
   const [pinCopied, setPinCopied] = useState(false)
 
-  async function issuePins(targets: AdminEmployee[]) {
+  async function issuePins(targets: EmployeeSelectionRow[]) {
     if (targets.length === 0) return
     const names = targets.length === 1 ? `"${targets[0].fullName}"` : `${targets.length} nəfər`
     if (!window.confirm(
@@ -803,74 +954,37 @@ ${back}`,
     }
   }
 
-  const q = search.trim().toLowerCase()
-  const leftCount = rows.filter((r) => !r.isActive).length
-  const visible = rows.filter((r) => {
-    if (showLeft ? r.isActive : !r.isActive) return false
-    if (filterLoc && r.locationId !== filterLoc) return false
-    if (roleFilter && r.role !== roleFilter) return false
-    // "Not started" = has never signed in and chosen their own PIN. Two different states mean the
-    // same thing to whoever is chasing them: an invite link nobody opened (never activated), and a
-    // temporary PIN nobody used (activated at creation, still on it).
-    if (statusSel === 'activated' && !(r.activated && !r.mustChangePin)) return false
-    if (statusSel === 'pending' && r.activated) return false
-    if (statusSel === 'notstarted' && r.activated && !r.mustChangePin) return false
-    if (statusSel === 'nopush' && r.pushEnabled) return false
-    if (statusSel === 'nodevice' && r.hasDevice) return false
-    if (q && !`${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.id}`.toLowerCase().includes(q)) return false
-    return true
-  })
-
-  // Reach = the share of employees who can actually be reached, over the branch currently in view.
-  // Only active, activated staff count — a deactivated or not-yet-onboarded person needs no reminder,
-  // and counting them would understate how well the reachable ones are covered.
-
-  // Onboarding progress for the branch in view: who is actually using the app, and who has not
-  // started. During a rollout this is the number the owner asks for every day, and it was only
-  // visible as a side effect of the PIN-reissue strip.
-  const onboardPool = rows.filter((r) => r.isActive && (!filterLoc || r.locationId === filterLoc))
-  const started = onboardPool.filter((r) => r.activated && !r.mustChangePin).length
-  const notStarted = onboardPool.length - started
-
-  const reachPool = rows.filter((r) => r.isActive && r.activated && (!filterLoc || r.locationId === filterLoc))
-  const reachOn = reachPool.filter((r) => r.pushEnabled).length
-  const noPushCount = reachPool.length - reachOn
-  const noDeviceCount = onboardPool.filter((r) => !r.hasDevice).length
-
   /**
-   * Who a bulk action applies to — the ticked rows, and only those.
+   * Who a bulk action applies to — the ticked people, and only those.
    *
-   * It used to fall back to «everything on screen» when nothing was ticked, because this page's
-   * idiom was «the filters ARE the selection»: ~260 workers own no phone and whole brigades work at
-   * poster-less sites, so ticking a box per person is an afternoon nobody finishes. That speed is
-   * kept, but the implicitness is not — ⌘A, or «Hamısını seç», puts the whole filtered list in the
-   * selection in one press. An action that takes a permission AWAY must never run against a set the
+   * It used to fall back to «everything on screen» when nothing was ticked, because this page's idiom
+   * was «the filters ARE the selection»: ~260 workers own no phone and whole brigades work at
+   * poster-less sites, so ticking a box per person is an afternoon nobody finishes. That speed is kept
+   * — ⌘A, or «Hamısını seç», puts every person the filter matches in the selection in one press — but
+   * the implicitness is not. An action that takes a permission AWAY must never run against a set the
    * admin did not say out loud.
    */
-  const bulkTargets = visible.filter((r) => selected.has(r.id))
+  const bulkTargets = [...selected.values()]
   /** Of those, the ones still holding an admin-issued PIN they have never used. */
   const bulkPendingPin = bulkTargets.filter((r) => r.isActive && r.activated && r.mustChangePin)
 
-  // Paging is over the FILTERED list, and any change to the filters sends the reader back to page 1 —
-  // otherwise a search that matches four people lands on page 7 and reads as "no results".
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
-  const pageSafe = Math.min(page, pageCount)
-  const pageRows = visible.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE)
-  const allOnPageTicked = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))
+  // The pager counts the whole matching set, which only the server knows now.
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const allOnPageTicked = rows.length > 0 && rows.every((r) => selected.has(r.id))
 
-  function toggleRow(id: string) {
+  function toggleRow(e: AdminEmployeeRow) {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
+      const next = new Map(prev)
+      if (next.has(e.id)) next.delete(e.id); else next.set(e.id, selRow(e))
       return next
     })
   }
 
   function togglePage() {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (allOnPageTicked) pageRows.forEach((r) => next.delete(r.id))
-      else pageRows.forEach((r) => next.add(r.id))
+      const next = new Map(prev)
+      if (allOnPageTicked) rows.forEach((r) => next.delete(r.id))
+      else rows.forEach((r) => next.set(r.id, selRow(r)))
       return next
     })
   }
@@ -883,10 +997,8 @@ ${back}`,
     })
   }
 
-  visibleRef.current = visible
-
   const activeFilterCount =
-    (filterLoc ? 1 : 0) + (statusSel ? 1 : 0) + (roleFilter ? 1 : 0) + (q ? 1 : 0)
+    (filterLoc ? 1 : 0) + (statusSel ? 1 : 0) + (roleFilter ? 1 : 0) + (search.trim() ? 1 : 0)
   // Tick column + name + actions, plus whichever optional columns are on.
   const empColCount = 3 + Object.values(empCols).filter(Boolean).length
 
@@ -907,10 +1019,13 @@ ${back}`,
           </div>
         </div>
         <div className="att-head-act">
-          {(leftCount > 0 || showLeft) && (
-            <button className={`btn btn-sm${showLeft ? ' btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
+          {(stats.leftCount > 0 || showLeft) && (
+            <button
+              className={`btn btn-sm${showLeft ? ' btn-primary' : ''}`}
+              onClick={() => { setShowLeft((v) => !v); setPage(1) }}
+            >
               <IconUserX />
-              {showLeft ? 'Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
+              {showLeft ? 'Aktiv işçilər' : `İşdən çıxanlar (${stats.leftCount})`}
             </button>
           )}
           <button
@@ -933,22 +1048,22 @@ ${back}`,
         {([
           {
             key: 'total', tint: 'blue', Icon: IconUsers,
-            label: 'Ümumi işçi sayı', value: onboardPool.length,
+            label: 'Ümumi işçi sayı', value: stats.total,
             note: filterLoc ? locations.find((l) => l.id === filterLoc)?.name ?? '' : 'Bütün filiallar üzrə',
             noteCls: 'emp-note-blue',
           },
           {
             key: 'on', tint: 'leaf', Icon: IconCheck,
-            label: 'Aktivləşdirilib', value: started,
-            note: onboardPool.length > 0
-              ? `${Math.round((started / onboardPool.length) * 1000) / 10}% tətbiqə qoşulub` : '—',
+            label: 'Aktivləşdirilib', value: stats.activated,
+            note: stats.total > 0
+              ? `${Math.round((stats.activated / stats.total) * 1000) / 10}% tətbiqə qoşulub` : '—',
             noteCls: 'emp-note-leaf',
           },
           {
             key: 'off', tint: 'amber', Icon: IconX,
-            label: 'Aktivləşdirilməyib', value: notStarted,
-            note: onboardPool.length > 0
-              ? `${Math.round((notStarted / onboardPool.length) * 1000) / 10}% aktivləşdirmə gözləyir` : '—',
+            label: 'Aktivləşdirilməyib', value: stats.notStarted,
+            note: stats.total > 0
+              ? `${Math.round((stats.notStarted / stats.total) * 1000) / 10}% aktivləşdirmə gözləyir` : '—',
             noteCls: 'emp-note-amber',
           },
         ]).map(({ key, tint, Icon, label, value, note, noteCls }) => (
@@ -977,9 +1092,9 @@ ${back}`,
           </div>
           <div className="emp-attn">
             {([
-              { sel: 'notstarted' as StatusSel, n: notStarted, sev: 'high', sevLabel: 'Yüksək', text: 'Tətbiqi heç vaxt açmayıb' },
-              { sel: 'nopush' as StatusSel, n: noPushCount, sev: 'mid', sevLabel: 'Orta', text: 'Bildiriş çatmır' },
-              { sel: 'nodevice' as StatusSel, n: noDeviceCount, sev: 'low', sevLabel: 'Yoxlayın', text: 'Cihaz bağlanmayıb' },
+              { sel: 'notstarted' as StatusSel, n: stats.notStarted, sev: 'high', sevLabel: 'Yüksək', text: 'Tətbiqi heç vaxt açmayıb' },
+              { sel: 'nopush' as StatusSel, n: stats.noPush, sev: 'mid', sevLabel: 'Orta', text: 'Bildiriş çatmır' },
+              { sel: 'nodevice' as StatusSel, n: stats.noDevice, sev: 'low', sevLabel: 'Yoxlayın', text: 'Cihaz bağlanmayıb' },
             ]).map((a) => (
               <button
                 key={a.sel}
@@ -1765,7 +1880,7 @@ ${back}`,
           : (
             <div className="emp-bar on">
               <div className="emp-bar-l">
-                <button className="emp-bar-x" onClick={() => setSelected(new Set())} title="Seçimi sil" aria-label="Seçimi sil">
+                <button className="emp-bar-x" onClick={() => setSelected(new Map())} title="Seçimi sil" aria-label="Seçimi sil">
                   <IconX />
                 </button>
                 <span className="emp-bar-n"><b>{selected.size}</b> işçi seçildi</span>
@@ -1869,9 +1984,9 @@ ${back}`,
               </div>
               <div className="emp-bar-r">
                 <span className="emp-bar-note">Seçilmiş işçilərə tətbiq olunur</span>
-                {selected.size < visible.length && (
-                  <button className="emp-bar-all" onClick={() => setSelected(new Set(visible.map((r) => r.id)))}>
-                    Hamısını seç ({visible.length})
+                {selected.size < total && (
+                  <button className="emp-bar-all" disabled={selectingAll} onClick={() => void selectAll()}>
+                    {selectingAll ? 'Seçilir…' : `Hamısını seç (${total})`}
                   </button>
                 )}
               </div>
@@ -1881,11 +1996,11 @@ ${back}`,
         <div className="att-tbar">
           <div>
             <span className="att-tbar-t">İşçi siyahısı</span>
-            <span className="att-tbar-n">{visible.length} nəticə</span>
+            <span className="att-tbar-n">{listing ? '…' : `${total} nəticə`}</span>
           </div>
           <div className="att-tbar-a">
             {selected.size > 0 && (
-              <button className="att-reset" onClick={() => setSelected(new Set())}>
+              <button className="att-reset" onClick={() => setSelected(new Map())}>
                 {selected.size} seçilib — seçimi götür
               </button>
             )}
@@ -2006,13 +2121,13 @@ ${back}`,
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((e) => (
+            {rows.map((e) => (
               <tr key={e.id} className={selected.has(e.id) ? 'emp-on' : undefined} style={{ opacity: e.isActive ? 1 : 0.55 }}>
                 <td className="emp-tick" data-label="">
                   <input
                     type="checkbox"
                     checked={selected.has(e.id)}
-                    onChange={() => toggleRow(e.id)}
+                    onChange={() => toggleRow(e)}
                     aria-label={`${e.fullName} — seç`}
                   />
                 </td>
@@ -2109,7 +2224,7 @@ ${back}`,
                       every other action — see RowActions. */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <RowActions
-                      primary={{ label: 'Redaktə', onClick: () => startEdit(e) }}
+                      primary={{ label: 'Redaktə', onClick: () => void startEdit(e.id), disabled: formBusy }}
                       actions={[
                         {
                           label: 'Qeyd. linki',
@@ -2156,10 +2271,14 @@ ${back}`,
                 </td>
               </tr>
             ))}
-            {visible.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td colSpan={empColCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  {rows.length === 0 ? 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın' : 'Bu axtarış/filial üzrə işçi yoxdur'}
+                  {listing
+                    ? 'Yüklənir…'
+                    : activeFilterCount > 0 || showLeft
+                      ? 'Bu axtarış/filial üzrə işçi yoxdur'
+                      : 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın'}
                 </td>
               </tr>
             )}
@@ -2172,27 +2291,27 @@ ${back}`,
             person», «who has not started» — is answered by the filters above, not by scrolling. */}
         <div className="att-foot">
           <span>
-            {visible.length === 0
+            {total === 0
               ? '0 nəticə'
               : <>
-                  <b>{(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, visible.length)}</b>
-                  {' / '}{visible.length} nəticə · səhifədə {PAGE_SIZE}
+                  <b>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}</b>
+                  {' / '}{total} nəticə · səhifədə {PAGE_SIZE}
                 </>}
           </span>
           {pageCount > 1 && (
             <div className="emp-pager">
               <button
                 className="att-step"
-                disabled={pageSafe <= 1}
+                disabled={page <= 1 || listing}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 aria-label="Əvvəlki səhifə"
               >
                 <IconChevronLeft />
               </button>
-              <span className="emp-pager-n">{pageSafe} / {pageCount}</span>
+              <span className="emp-pager-n">{page} / {pageCount}</span>
               <button
                 className="att-step"
-                disabled={pageSafe >= pageCount}
+                disabled={page >= pageCount || listing}
                 onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                 aria-label="Növbəti səhifə"
               >

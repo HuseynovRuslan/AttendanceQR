@@ -1,14 +1,32 @@
 ---
+/**
+ * "Rəqəmlərlə" bölməsi (#stats) — əsas səhifədə, Landing.astro-da göstərilir.
+ * Props: lang — səhifənin dili (az / ru / en).
+ * Dörd kart: üçündə rəqəm ekrana girəndə 0-dan son dəyərə qədər sayılır, dördüncüsü sadə mətndir.
+ * Kartlar .rv sinfi ilə aşağıdan üzə çıxır; d1–d4 onları azca gecikmə ilə, bir-bir göstərir.
+ */
 import { useTranslations, type Lang } from '../i18n/ui'
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// Only figures that are true of the product itself. Usage numbers (scans per day, customer count,
-// uptime, star rating) are deliberately absent: we do not publish numbers we cannot stand behind.
+// Burada yalnız məhsulun özü haqqında doğru olan rəqəmlər var. İstifadə rəqəmləri (gündəlik skan
+// sayı, müştəri sayı, uptime, reytinq) qəsdən yoxdur: arxasında dura bilmədiyimiz rəqəmi yazmırıq.
+
+// Rəqəmli kartlarda <span>-ın data-* atributlarını BaseLayout.astro-dakı sayğac (count-up)
+// skripti oxuyur:
+//   data-count  — hansı rəqəmə qədər saysın
+//   data-prefix — rəqəmdən əvvəl yazılan mətn ("~")
+//   data-suffix — rəqəmdən sonra yazılan mətn (" ₼")
+// Brauzerdə "hərəkəti azalt" (prefers-reduced-motion) açıqdırsa, skript saymır — son dəyəri
+// dərhal yazır.
+// <span>-ın içindəki mətn isə son dəyərin özüdür: HTML-in özündə də düzgün rəqəm olsun deyə
+// (məsələn, axtarış sistemləri üçün). Rəqəmi dəyişəndə həm data-count-u, həm bu mətni dəyiş.
 ---
 
-<section class="statsband" id="stats">
+<!-- data-surface="brand": bu zolağın fonu brend mavisidir. BackToTop.astro düymə onun üstündə olanda
+     vizör künclərini ağ edir — mavi fonda mavi künc görünməzdi. -->
+<section class="statsband" id="stats" data-surface="brand">
   <div class="wrap">
     <div class="sec-head rv">
       <span class="eyebrow">{t('stats.title')}</span>
@@ -24,7 +42,7 @@ const t = useTranslations(lang)
         <div class="cap">{t('stats.s2')}</div>
       </div>
       <div class="stat-card rv d3">
-        <div class="big"><span data-count="3">3</span></div>
+        <div class="big"><span data-count="4">4</span></div>
         <div class="cap">{t('stats.s3')}</div>
       </div>
       <div class="stat-card rv d4">

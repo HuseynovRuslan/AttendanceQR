@@ -50,106 +50,362 @@ public class AdminController : ControllerBase
         _logger = logger;
     }
 
-    [HttpGet]
-    public async Task<IActionResult> List()
+
+    /// <summary>
+    /// The roster, narrowed in SQL rather than in the browser.
+    ///
+    /// Every filter the Employees screen offers is applied here, so one page of twenty-five people
+    /// costs one page of twenty-five rows. It used to cost the whole company: the list loaded every
+    /// employee WITH their device bindings, plus all locations, all schedules, all managed-location
+    /// rows and every push subscription, and the browser did the searching and paging afterwards. On
+    /// production (2026-10-01) that path had read 227 million rows out of a 1,081-row table.
+    /// </summary>
+    internal IQueryable<Employee> FilteredEmployees(
+        string? search, string? status, Guid? locationId, string? role, bool showLeft)
     {
-        // Admins/managers ARE shown here now (so they can be managed), EXCEPT the system/root admin
-        // accounts listed in AppOptions.HiddenEmails (e.g. admin@bms.az) — they're operators, not staff.
-        var employees = await _db.Employees
-            .Include(e => e.DeviceBindings)
-            .Where(e => e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()))
-            .OrderBy(e => e.FullName)
-            .ToListAsync(HttpContext.RequestAborted);
+        // AsNoTracking: nothing here is written back, and the change tracker on nine hundred entities
+        // is pure cost.
+        var q = _db.Employees.AsNoTracking()
+            // Admins/managers ARE shown (so they can be managed), EXCEPT the system/root accounts in
+            // AppOptions.HiddenEmails — they are operators, not staff.
+            .Where(e => e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()));
 
-        var locationNames = await _db.Locations
-            .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
+        // «İşdən çıxanlar» is a separate list, not a filter on the main one.
+        q = showLeft ? q.Where(e => !e.IsActive) : q.Where(e => e.IsActive);
 
-        // One dictionary, not one query per employee: the old per-row Schedules lookup below was a
-        // SYNC query inside a deferred Select — at 2000 employees the list endpoint ran 2000 blocking
-        // round-trips during JSON serialization.
-        var scheduleNames = await _db.Schedules
-            .ToDictionaryAsync(s => s.Id, s => s.Name, HttpContext.RequestAborted);
+        if (locationId is Guid loc)
+            q = q.Where(e => e.LocationId == loc);
 
-        // Which branches each manager oversees — the form needs it to show what is already ticked,
-        // and the list needs it because a manager with none sees an empty panel and no explanation.
-        var managedByEmployee = (await _db.ManagedLocations.ToListAsync(HttpContext.RequestAborted))
-            .GroupBy(m => m.EmployeeId)
-            .ToDictionary(g => g.Key, g => g.Select(m => m.LocationId).ToList());
+        if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<EmployeeRole>(role, out var parsedRole))
+            q = q.Where(e => e.Role == parsedRole);
 
-        // Who can actually be reached by a push (announcement or reminder) — an employee with no
-        // subscription silently receives nothing, which the admin otherwise has no way to see.
-        var pushEmployeeIds = (await _db.PushSubscriptions
-                .Select(p => p.EmployeeId)
-                .Distinct()
-                .ToListAsync(HttpContext.RequestAborted))
-            .ToHashSet();
-
-        var result = employees.Select(e =>
+        // These five must mean exactly what the same five words mean on screen, or a count and the
+        // list under it stop agreeing. See StatusSel in EmployeesPage.tsx.
+        q = status switch
         {
-            // An employee may hold several contexts (Safari, the installed PWA). The list still shows
-            // one label — the most recently used — plus how many are bound in total.
-            var active = e.DeviceBindings.Where(d => d.IsActive).OrderByDescending(d => d.LastSeenAtUtc).ToList();
-            var newest = active.FirstOrDefault();
-            return new
+            // Signed in and chose their own PIN.
+            "activated" => q.Where(e => e.ActivatedAtUtc != null && !e.MustChangePin),
+            // The invite was never accepted.
+            "pending" => q.Where(e => e.ActivatedAtUtc == null),
+            // Never got going: no invite accepted, OR still holding the PIN an admin generated.
+            "notstarted" => q.Where(e => e.ActivatedAtUtc == null || e.MustChangePin),
+            "nopush" => q.Where(e => !_db.PushSubscriptions.Any(p => p.EmployeeId == e.Id)),
+            "nodevice" => q.Where(e => !_db.DeviceBindings.Any(d => d.EmployeeId == e.Id && d.IsActive)),
+            _ => q,
+        };
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Same four fields the browser used to search: name, phone, job title and the id prefix
+            // the list prints.
+            var s = search.Trim().ToLower();
+            q = q.Where(e =>
+                e.FullName.ToLower().Contains(s)
+                || (e.PhoneNumber != null && e.PhoneNumber.Contains(s))
+                || (e.Position != null && e.Position.ToLower().Contains(s))
+                || e.Id.ToString().Contains(s));
+        }
+
+        return q;
+    }
+
+    /// <summary>
+    /// Ordered the way an Azerbaijani reader expects, IN THE DATABASE.
+    ///
+    /// This is not a detail. Postgres' default collation sorts «Ə», «İ» and «Ç» after «Z», so an
+    /// alphabetical roster would put a third of Azerbaijani surnames in a block at the end. The
+    /// browser used to avoid that with localeCompare('az'); moving the ordering server-side means the
+    /// database has to be told the same thing. Id breaks ties so paging is deterministic.
+    /// </summary>
+    internal IOrderedQueryable<Employee> ByName(IQueryable<Employee> q) =>
+        // COLLATE is a relational function and the test suite runs on EF Core InMemory, which cannot
+        // translate it. The provider check is only about that: on Postgres the sort happens in the
+        // database with the right collation, and the in-memory fallback keeps the same two sort keys
+        // so paging stays deterministic there too.
+        _db.Database.IsRelational()
+            ? q.OrderBy(e => EF.Functions.Collate(e.FullName, AzCollation)).ThenBy(e => e.Id)
+            : q.OrderBy(e => e.FullName).ThenBy(e => e.Id);
+
+    /// <summary>
+    /// The ICU collation Postgres ships for Azerbaijani. NOT <c>az-AZ-x-icu</c>, which does not exist.
+    /// </summary>
+    internal const string AzCollation = "az-Latn-AZ-x-icu";
+
+    [HttpGet]
+    public async Task<IActionResult> List(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        [FromQuery] string? search = null,
+        [FromQuery] string? status = null,
+        [FromQuery] Guid? locationId = null,
+        [FromQuery] string? role = null,
+        [FromQuery] bool showLeft = false)
+    {
+        var ct = HttpContext.RequestAborted;
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize is < 1 or > 200 ? 25 : pageSize;
+
+        var filtered = FilteredEmployees(search, status, locationId, role, showLeft);
+        var total = await filtered.CountAsync(ct);
+
+        // Device and push facts come back as SCALARS computed per row, not as loaded collections. The
+        // old `.Include(e => e.DeviceBindings)` pulled every binding an employee had ever had — the
+        // list only ever showed the newest one and a count.
+        var page_ = await ByName(filtered)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(e => new
+            {
+                e.Id,
+                e.FullName,
+                e.FatherName,
+                e.Position,
+                e.PaperEmployer,
+                e.PaperSite,
+                e.BirthYear,
+                e.BirthDate,
+                e.WorkStart,
+                e.WorkEnd,
+                e.ScheduleId,
+                e.WorkCycleDays,
+                e.WorkCycleOnDays,
+                e.CanFieldCheckIn,
+                e.CanShareDevice,
+                e.Role,
+                e.PhoneNumber,
+                e.LocationId,
+                e.IsActive,
+                Activated = e.ActivatedAtUtc != null,
+                e.MustChangePin,
+                e.LastActiveAtUtc,
+                PushEnabled = _db.PushSubscriptions.Any(p => p.EmployeeId == e.Id),
+                DeviceCount = _db.DeviceBindings.Count(d => d.EmployeeId == e.Id && d.IsActive),
+                Newest = _db.DeviceBindings
+                    .Where(d => d.EmployeeId == e.Id && d.IsActive)
+                    .OrderByDescending(d => d.LastSeenAtUtc)
+                    .Select(d => new { d.DeviceLabel, d.BoundAtUtc })
+                    .FirstOrDefault(),
+                ManagedIds = e.Role == EmployeeRole.Manager
+                    ? _db.ManagedLocations.Where(m => m.EmployeeId == e.Id).Select(m => m.LocationId).ToList()
+                    : new List<Guid>(),
+            })
+            .ToListAsync(ct);
+
+        // Two tiny lookup tables, read once for the page rather than joined per row. Locations is
+        // eighty rows and Schedules is a handful; the thing that mattered was never these.
+        var locationNames = await _db.Locations.AsNoTracking()
+            .ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        var scheduleNames = await _db.Schedules.AsNoTracking()
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        var items = page_.Select(e => new
+        {
+            id = e.Id,
+            fullName = e.FullName,
+            fatherName = e.FatherName,
+            position = e.Position,
+            paperEmployer = e.PaperEmployer,
+            paperSite = e.PaperSite,
+            birthYear = e.BirthYear,
+            birthDate = e.BirthDate,
+            workStart = e.WorkStart?.ToString("HH:mm"),
+            workEnd = e.WorkEnd?.ToString("HH:mm"),
+            scheduleId = e.ScheduleId,
+            scheduleName = e.ScheduleId is Guid sid ? scheduleNames.GetValueOrDefault(sid) : null,
+            workCycleDays = e.WorkCycleDays,
+            workCycleOnDays = e.WorkCycleOnDays,
+            canFieldCheckIn = e.CanFieldCheckIn,
+            canShareDevice = e.CanShareDevice,
+            role = e.Role.ToString(),
+            phoneNumber = e.PhoneNumber,
+            locationId = e.LocationId,
+            locationName = locationNames.GetValueOrDefault(e.LocationId),
+            managedLocationIds = e.ManagedIds,
+            managedLocationNames = e.ManagedIds.Select(id => locationNames.GetValueOrDefault(id, "")).ToList(),
+            isActive = e.IsActive,
+            activated = e.Activated,
+            mustChangePin = e.MustChangePin,
+            lastActiveAtUtc = e.LastActiveAtUtc,
+            pushEnabled = e.PushEnabled,
+            hasDevice = e.Newest != null,
+            deviceLabel = e.Newest?.DeviceLabel,
+            boundAtUtc = e.Newest?.BoundAtUtc,
+            deviceCount = e.DeviceCount,
+        }).ToList();
+
+        return Ok(new { items, total, page, pageSize });
+    }
+
+    /// <summary>
+    /// ONE employee, in full — what the edit form and the profile screen read.
+    ///
+    /// It exists because both of them used to fetch the entire roster and pick one row out of it in
+    /// the browser. The shape is deliberately the OLD list row, every field included: the edit form
+    /// round-trips most of them, and <c>EmployeeUpdateRequest</c> null-defaults everything it is not
+    /// handed — a form fed from a trimmed list DTO would blank whatever the trim left out.
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> Detail(Guid id)
+    {
+        var ct = HttpContext.RequestAborted;
+
+        var e = await _db.Employees.AsNoTracking()
+            .Where(x => x.Id == id)
+            .Select(x => new
+            {
+                Employee = x,
+                PushEnabled = _db.PushSubscriptions.Any(p => p.EmployeeId == x.Id),
+                DeviceCount = _db.DeviceBindings.Count(d => d.EmployeeId == x.Id && d.IsActive),
+                Newest = _db.DeviceBindings
+                    .Where(d => d.EmployeeId == x.Id && d.IsActive)
+                    .OrderByDescending(d => d.LastSeenAtUtc)
+                    .Select(d => new { d.DeviceLabel, d.BoundAtUtc })
+                    .FirstOrDefault(),
+                ManagedIds = x.Role == EmployeeRole.Manager
+                    ? _db.ManagedLocations.Where(m => m.EmployeeId == x.Id).Select(m => m.LocationId).ToList()
+                    : new List<Guid>(),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        // The tenant query filter has already done the scoping: a row belonging to another company
+        // simply is not here, and says so as "not found" rather than as a refusal.
+        if (e is null)
+            return NotFound(new { error = "EmployeeNotFound" });
+
+        var locationNames = await _db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        var scheduleName = e.Employee.ScheduleId is Guid sid
+            ? await _db.Schedules.AsNoTracking().Where(s => s.Id == sid).Select(s => s.Name).FirstOrDefaultAsync(ct)
+            : null;
+
+        var x = e.Employee;
+        return Ok(new
+        {
+            id = x.Id,
+            fullName = x.FullName,
+            firstName = x.FirstName,
+            lastName = x.LastName,
+            fatherName = x.FatherName,
+            position = x.Position,
+            paperEmployer = x.PaperEmployer,
+            paperSite = x.PaperSite,
+            birthYear = x.BirthYear,
+            birthDate = x.BirthDate,
+            workStart = x.WorkStart?.ToString("HH:mm"),
+            workEnd = x.WorkEnd?.ToString("HH:mm"),
+            scheduleId = x.ScheduleId,
+            scheduleName,
+            workCycleDays = x.WorkCycleDays,
+            workCycleOnDays = x.WorkCycleOnDays,
+            workCycleAnchor = x.WorkCycleAnchor,
+            monthlySalary = x.MonthlySalary,
+            photoExempt = x.PhotoExempt,
+            canFieldCheckIn = x.CanFieldCheckIn,
+            qrlessCheckInOverride = x.QrlessCheckInOverride,
+            requireGeofenceOverride = x.RequireGeofenceOverride,
+            canShareDevice = x.CanShareDevice,
+            consentAcceptedAtUtc = x.ConsentAcceptedAtUtc,
+            email = x.Email,
+            role = x.Role.ToString(),
+            phoneNumber = x.PhoneNumber,
+            locationId = x.LocationId,
+            locationName = locationNames.GetValueOrDefault(x.LocationId),
+            managedLocationIds = e.ManagedIds,
+            managedLocationNames = e.ManagedIds.Select(lid => locationNames.GetValueOrDefault(lid, "")).ToList(),
+            isActive = x.IsActive,
+            activated = x.ActivatedAtUtc != null,
+            mustChangePin = x.MustChangePin,
+            lastActiveAtUtc = x.LastActiveAtUtc,
+            pushEnabled = e.PushEnabled,
+            hasDevice = e.Newest != null,
+            deviceLabel = e.Newest?.DeviceLabel,
+            boundAtUtc = e.Newest?.BoundAtUtc,
+            deviceCount = e.DeviceCount,
+            createdAtUtc = x.CreatedAtUtc,
+        });
+    }
+
+    /// <summary>
+    /// The numbers above the list — counted in the database, over the WHOLE company.
+    ///
+    /// They have to be, now that the list is paged: the metric cards and the «Diqqət tələb edir»
+    /// tiles answer «how many people here have not started yet», and a page of twenty-five cannot
+    /// answer that.
+    ///
+    /// Only <paramref name="locationId"/> narrows them, and every count is over ACTIVE staff —
+    /// because that is exactly what the browser computed before. Search, role and «İşdən çıxanlar»
+    /// never touched these figures (a search box that moved the headline counts would just be
+    /// repeating «N nəticə» underneath), and `status` must not: the tiles ARE the status filter, so a
+    /// tile that recounted itself after being pressed would only ever read its own number back.
+    /// </summary>
+    [HttpGet("stats")]
+    public async Task<IActionResult> Stats([FromQuery] Guid? locationId = null)
+    {
+        var ct = HttpContext.RequestAborted;
+        var q = FilteredEmployees(null, null, locationId, null, showLeft: false);
+
+        // Five counts, one round trip each, and not one of them brings a row back to the application.
+        var total = await q.CountAsync(ct);
+        var activated = await q.CountAsync(e => e.ActivatedAtUtc != null && !e.MustChangePin, ct);
+        // «Bildiriş çatmır» counts only people who have actually started: somebody who has never
+        // opened the app has no push subscription for a reason that is not about notifications, and
+        // counting them would hide how well the reachable ones are covered.
+        var noPush = await q.CountAsync(
+            e => e.ActivatedAtUtc != null && !_db.PushSubscriptions.Any(p => p.EmployeeId == e.Id), ct);
+        var noDevice = await q.CountAsync(
+            e => !_db.DeviceBindings.Any(d => d.EmployeeId == e.Id && d.IsActive), ct);
+        // «İşdən çıxanlar» is counted company-wide and whichever list is on screen, because the button
+        // that opens it carries the number.
+        var left = await _db.Employees.AsNoTracking()
+            .Where(e => e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()))
+            .CountAsync(e => !e.IsActive, ct);
+
+        return Ok(new
+        {
+            total,
+            activated,
+            notStarted = total - activated,
+            noPush,
+            noDevice,
+            leftCount = left,
+        });
+    }
+
+    /// <summary>
+    /// Every employee the current filters match — ids and the handful of flags a bulk action decides
+    /// from, and nothing else.
+    ///
+    /// This is what keeps «apply to everyone matching this filter» meaning what it says once the list
+    /// is paged. Without it, «Hamısını seç» would quietly mean «these twenty-five», and a permission
+    /// granted to a branch of forty would reach the first page of it. Nine hundred rows of five small
+    /// fields is a payload the browser can hold; nine hundred full employees was not.
+    /// </summary>
+    [HttpGet("selection")]
+    public async Task<IActionResult> Selection(
+        [FromQuery] string? search = null,
+        [FromQuery] string? status = null,
+        [FromQuery] Guid? locationId = null,
+        [FromQuery] string? role = null,
+        [FromQuery] bool showLeft = false)
+    {
+        var rows = await ByName(FilteredEmployees(search, status, locationId, role, showLeft))
+            .Select(e => new
             {
                 id = e.Id,
                 fullName = e.FullName,
-                firstName = e.FirstName,
-                lastName = e.LastName,
-                fatherName = e.FatherName,
-                position = e.Position,
-                // Round-tripped by the edit form, not only displayed: EmployeeUpdateRequest
-                // null-defaults every field, so a form that cannot read these back would clear them
-                // on the next unrelated edit.
-                paperEmployer = e.PaperEmployer,
-                paperSite = e.PaperSite,
-                birthYear = e.BirthYear,
-                birthDate = e.BirthDate,
-                workStart = e.WorkStart?.ToString("HH:mm"),
-                workEnd = e.WorkEnd?.ToString("HH:mm"),
-                scheduleId = e.ScheduleId,
-                scheduleName = e.ScheduleId is Guid sid ? scheduleNames.GetValueOrDefault(sid) : null,
-                workCycleDays = e.WorkCycleDays,
-                workCycleOnDays = e.WorkCycleOnDays,
-                workCycleAnchor = e.WorkCycleAnchor,
-                monthlySalary = e.MonthlySalary,
-                photoExempt = e.PhotoExempt,
-                canFieldCheckIn = e.CanFieldCheckIn,
-                qrlessCheckInOverride = e.QrlessCheckInOverride,
-                requireGeofenceOverride = e.RequireGeofenceOverride,
-                canShareDevice = e.CanShareDevice,
-                // Who has accepted the data-processing notice — the answer to "did this employee
-                // agree, and when", which is the whole point of recording it.
-                consentAcceptedAtUtc = e.ConsentAcceptedAtUtc,
-                email = e.Email,
-                role = e.Role.ToString(),
-                phoneNumber = e.PhoneNumber,
-                locationId = e.LocationId,
-                locationName = locationNames.GetValueOrDefault(e.LocationId),
-                // Only meaningful for a Manager. Empty on one is why their panel is blank.
-                managedLocationIds = e.Role == EmployeeRole.Manager
-                    ? managedByEmployee.GetValueOrDefault(e.Id, [])
-                    : [],
-                managedLocationNames = e.Role == EmployeeRole.Manager
-                    ? managedByEmployee.GetValueOrDefault(e.Id, []).Select(id => locationNames.GetValueOrDefault(id, "")).ToList()
-                    : [],
+                // The announcements screen picks its audience from this list, so it needs the branch
+                // beside the name — two people called Ramin at two sites are otherwise the same row.
+                locationName = _db.Locations.Where(l => l.Id == e.LocationId).Select(l => l.Name).FirstOrDefault(),
                 isActive = e.IsActive,
                 activated = e.ActivatedAtUtc != null,
-                // Still on the PIN an admin generated for them — i.e. has never signed in. The
-                // onboarding screen counts these to offer a fresh list; see BulkResetPin.
                 mustChangePin = e.MustChangePin,
-                lastActiveAtUtc = e.LastActiveAtUtc,
-                // Whether this employee will actually receive announcements/reminders on their phone.
-                pushEnabled = pushEmployeeIds.Contains(e.Id),
-                hasDevice = newest != null,
-                deviceLabel = newest?.DeviceLabel,
-                boundAtUtc = newest?.BoundAtUtc,
-                deviceCount = active.Count,
-                createdAtUtc = e.CreatedAtUtc
-            };
-        }).ToList(); // materialized — a deferred enumerable would run its lambdas during serialization
-        return Ok(result);
+                canShareDevice = e.CanShareDevice,
+                canFieldCheckIn = e.CanFieldCheckIn,
+            })
+            .ToListAsync(HttpContext.RequestAborted);
+
+        return Ok(rows);
     }
+
 
     // Photo audit: clear ONE employee's reference selfie so their next check-in re-seeds it with the
     // correct face. Needed because the reference is auto-seeded from the first check-in photo — if

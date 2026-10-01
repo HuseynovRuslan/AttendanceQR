@@ -54,6 +54,28 @@ public class AttendanceRecordConfiguration : IEntityTypeConfiguration<Attendance
         builder.HasIndex(a => new { a.TenantId, a.AttendanceDate }, "IX_AttendanceRecords_Open")
             .HasFilter("\"CheckInAtUtc\" IS NOT NULL AND \"CheckOutAtUtc\" IS NULL");
 
+        // ONE PERSON's days — the lookup every screen about an individual makes, and the one the
+        // table had no index for between 2026-09-12 and this migration.
+        //
+        // It went missing as a side effect rather than a decision. The split-shift change narrowed
+        // the old UNIQUE (EmployeeId, AttendanceDate) constraint into the partial OneOpenPerDay above
+        // (it had to: a day worked in two stretches is two rows), and with it went the only b-tree
+        // that led with EmployeeId. Nothing replaced it, because the constraint had been doing the
+        // lookup's job for free.
+        //
+        // What that costs, measured on production 2026-10-01: a thirty-row attendance history was
+        // planned as a bitmap scan of IX_..._TenantId_AttendanceDate with EmployeeId applied as a
+        // heap FILTER — ~3,092 rows read to return ~4. Across the table, that index had read
+        // 1.33 billion entries to yield 95 million: a 7% hit rate. The partial index sat unused for
+        // these queries because it only covers rows that are still open.
+        //
+        // TenantId leads, matching every other index here and the global query filter, which puts
+        // the tenant into the WHERE clause of every single read. Non-unique on purpose: a day may
+        // legitimately hold more than one record, and the uniqueness that still matters — never two
+        // OPEN blocks — is the partial index above, untouched.
+        builder.HasIndex(a => new { a.TenantId, a.EmployeeId, a.AttendanceDate },
+            "IX_AttendanceRecords_TenantId_EmployeeId_AttendanceDate");
+
         builder.HasOne<Employee>()
             .WithMany()
             .HasForeignKey(a => a.EmployeeId)

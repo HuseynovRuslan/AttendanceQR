@@ -1,15 +1,36 @@
 ---
-import { useTranslations, type Lang } from '../i18n/ui'
+/**
+ * "Telefona quraşdırın" bölməsi (#app) — əsas səhifədə, Landing.astro-da göstərilir.
+ * Props: lang — səhifənin dili (az / ru / en).
+ * Yuxarıda Android üçün Google Play nişanı, altında iPhone üçün üç addım. Addımların mətni
+ * ui.ts-dəki pwa.b1–pwa.b3 açarlarındadır, ikonları isə aşağıdakı steps siyahısındadır.
+ */
+import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
+import GooglePlayBadge from './GooglePlayBadge.astro'
+
+// Google Play nişanının hündürlüyü (px) — qara nişanın özünün, şəffaf boşluq sayılmır.
+// Footer-dəkindən (40px) böyükdür, çünki burada nişan bölmənin əsas düyməsidir.
+const BADGE_HEIGHT_PX = 48
 
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// This replaced the template's "coming soon to the App Store / Google Play" badges. There is no
-// store app and none is planned — QRLog is a PWA, which is the actual selling point here.
-const steps = [
-  { l: 'pwa.b1', p: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/>' },
-  { l: 'pwa.b2', p: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 7v6M9 10h6"/>' },
-  { l: 'pwa.b3', p: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="m9.5 12 2 2 3.5-4"/>' },
+// Telefona iki yol var: Android tətbiqi Google Play-dən quraşdırır (nişan), iPhone isə QRLog-u
+// brauzerdə açıb ana ekrana əlavə edir. Aşağıdakı üç addım yalnız iPhone yoludur — üstündəki kiçik
+// etiket (pwa.steps, "iPhone üçün") da bunu deyir. App Store-da tətbiq yoxdur.
+interface Step {
+  // ui.ts-dəki mətn açarı. Tipi UIKey-dir, ona görə açarda hərf səhvi olsa,
+  // redaktor və `npm run check` dərhal xəta göstərir.
+  label: UIKey
+  // SVG-nin içindəki fiqurlar (24×24 çərçivə). Şablonda set:html ilə <svg>-nin içinə
+  // olduğu kimi yazılır: https://docs.astro.build/en/reference/directives-reference/#sethtml
+  icon: string
+}
+
+const steps: Step[] = [
+  { label: 'pwa.b1', icon: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/>' },
+  { label: 'pwa.b2', icon: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M12 7v6M9 10h6"/>' },
+  { label: 'pwa.b3', icon: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="m9.5 12 2 2 3.5-4"/>' },
 ]
 ---
 
@@ -19,15 +40,38 @@ const steps = [
       <span class="eyebrow">{t('pwa.eyebrow')}</span>
       <h2>{t('pwa.title')}</h2>
       <p>{t('pwa.sub')}</p>
+      <div class="pwa-store">
+        <GooglePlayBadge lang={lang} height={BADGE_HEIGHT_PX} />
+      </div>
     </div>
+    <p class="pwa-for rv">{t('pwa.steps')}</p>
     <div class="pwa-steps rv">
-      {steps.map((s, i) => (
+      {steps.map((step, index) => (
         <div class="pwa-step">
-          <span class="n">{i + 1}</span>
-          <svg viewBox="0 0 24 24" set:html={s.p} />
-          <b>{t(s.l as any)}</b>
+          <span class="n">{index + 1}</span>
+          <svg viewBox="0 0 24 24" set:html={step.icon} />
+          <b>{t(step.label)}</b>
         </div>
       ))}
     </div>
   </div>
 </section>
+
+<style>
+  .pwa-store {
+    margin-top: 18px;
+  }
+
+  /* Bu etiket addımların nömrələrinə (.pwa-step .n) uyğun yazılıb: eyni mono şrift, eyni boz rəng.
+     Qəsdən BÖYÜK hərflə deyil: azərbaycanca səhifədə brauzer i hərfini İ-yə çevirir və etiket
+     "İPHONE ÜÇÜN" alınırdı — brend adı isə "iPhone" qalmalıdır. */
+  .pwa-for {
+    margin: 0 auto 12px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #8b9aa3;
+  }
+</style>

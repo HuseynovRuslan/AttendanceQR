@@ -165,7 +165,13 @@ public sealed class ReportQueryService : IReportQueryService
         // who clocks in there. It used to stop at Role==Employee, which made a two-manager site report
         // a headcount short by one with nothing on screen to explain it. Acting on those people is a
         // separate question and still refused — see LocationScopeRules.CanManageEmployeeAsync.
-        var query = _db.Employees.Where(e =>
+        // AsNoTracking, and the projection below stays a projection: this list is read, counted and
+        // thrown away on every thirty-second poll of the today board and the dashboard, and nothing
+        // in it is ever written back. Tracking nine hundred entities for that is pure cost — and on a
+        // context that lives for the whole request it is a hazard too, since a tracked entity shadows
+        // what a later query in the same request reads. The reads inside ComputeDayLiveAsync carry it
+        // for the same two reasons.
+        var query = _db.Employees.AsNoTracking().Where(e =>
             e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())));
 
         switch (role)
@@ -218,7 +224,7 @@ public sealed class ReportQueryService : IReportQueryService
         var employeeIds = employees.Select(e => e.Id).ToList();
         var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
 
-        var locations = await _db.Locations
+        var locations = await _db.Locations.AsNoTracking()
             .Where(l => locationIds.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id, ct);
         // A voided record is not a day. It stays in the table with its selfie — that photograph is
@@ -229,7 +235,7 @@ public sealed class ReportQueryService : IReportQueryService
         // day is no longer guaranteed to be one row. The FIRST block is the day's record (arrival,
         // selfie, lateness all belong to it); the rest are folded in as extra spans below, so the
         // board and the nightly job add a split day up identically.
-        var recordRows = await _db.AttendanceRecords
+        var recordRows = await _db.AttendanceRecords.AsNoTracking()
             .Where(r => r.VoidedAtUtc == null)
             .Where(r => r.AttendanceDate == date && employeeIds.Contains(r.EmployeeId))
             .ToListAsync(ct);
@@ -269,7 +275,7 @@ public sealed class ReportQueryService : IReportQueryService
             });
 
         // A handful of rows per tenant; loaded whole and looked up in memory.
-        var schedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
+        var schedules = await _db.Schedules.AsNoTracking().ToDictionaryAsync(sc => sc.Id, ct);
         // Whoever covered somebody else's shift on THIS date is judged by that shift — one query, and
         // the day's arithmetic downstream is untouched.
         var dayOverrides = new ShiftOverrideMap(await _db.ShiftOverrides
@@ -294,7 +300,7 @@ public sealed class ReportQueryService : IReportQueryService
         // Who pinned each leave — surfaced on the board so an assigned reason is attributable to the
         // admin/manager who set it, not an anonymous status flip.
         var creatorIds = leaveRows.Select(l => l.CreatedByEmployeeId).Distinct().ToList();
-        var creatorNames = await _db.Employees
+        var creatorNames = await _db.Employees.AsNoTracking()
             .Where(e => creatorIds.Contains(e.Id))
             .Select(e => new { e.Id, e.FullName })
             .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
@@ -305,7 +311,7 @@ public sealed class ReportQueryService : IReportQueryService
             .Where(r => r.ManualByEmployeeId != null).Select(r => r.ManualByEmployeeId!.Value).Distinct().ToList();
         var manualByNames = manualByIds.Count == 0
             ? new Dictionary<Guid, string>()
-            : await _db.Employees.Where(e => manualByIds.Contains(e.Id))
+            : await _db.Employees.AsNoTracking().Where(e => manualByIds.Contains(e.Id))
                 .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
 
         foreach (var e in employees)
@@ -1469,7 +1475,9 @@ public sealed class ReportQueryService : IReportQueryService
             .OrderBy(p => p.DayOfWeek)
             .ToList();
 
-        var employeeNames = await _db.Employees
+        // Entities, keyed to a name dictionary and thrown away — the dashboard is the admin landing
+        // screen, so this ran for the whole company every time anybody opened the panel.
+        var employeeNames = await _db.Employees.AsNoTracking()
             .Where(e => scopedEmployeeIds.Contains(e.Id))
             .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
         var topLate = summaries

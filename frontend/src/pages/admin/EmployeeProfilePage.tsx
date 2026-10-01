@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  getEmployees,
+  getEmployee,
   getSummary,
   getEmployeeDays,
   getDeviceBindings,
@@ -126,7 +126,7 @@ export function EmployeeProfilePage() {
     // is unscoped and carries monthlySalary, so it must never be the thing a manager's screen fetches
     // and filters client-side.
     const [empRes, attRes, devRes, sumRes, daysRes, equipRes] = await Promise.all([
-      isManager ? getManagerEmployee(id) : getEmployees(),
+      isManager ? getManagerEmployee(id) : getEmployee(id),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
@@ -142,10 +142,14 @@ export function EmployeeProfilePage() {
       ? null
       : Array.isArray(empRes.data)
         ? empRes.data.find((e) => e.id === id) ?? null
-        // The manager row is the same shape minus salary and role — which is the point, so the cast
-        // goes through unknown rather than pretending the two types overlap. The fields this screen
-        // reads (identity, hours, shift, flags) are present on both; salary it never displays, and
-        // role only decorates a badge.
+        // BOTH sides now answer with one employee, so this is the branch that runs. The admin screen
+        // used to ask for the entire roster and pick a row out of it in the browser — nine hundred
+        // people loaded to show one, on every profile opened.
+        //
+        // The manager row is the same shape minus salary and role, so the cast goes through unknown
+        // rather than pretending the two types overlap. The fields this screen reads (identity,
+        // hours, shift, flags) are present on both; salary it never displays, and role only
+        // decorates a badge.
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
