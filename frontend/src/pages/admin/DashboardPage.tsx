@@ -9,7 +9,8 @@ import { usePolling } from '../../lib/usePolling'
 import { DashboardMap, type DashSite, type DashPerson } from './DashboardMap'
 import { DateRangePicker } from '../../components/DateRangePicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { IconX } from '../../components/icons'
+import { IconAlert, IconBuilding, IconCheck, IconClock, IconMapPin, IconPhone, IconUserX, IconX } from '../../components/icons'
+import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { COMPANY_TZ, fmtTime } from '../../lib/format'
 
 /**
@@ -155,7 +156,7 @@ export function DashboardPage() {
   const [allRows, setAllRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [openBucket, setOpenBucket] = useState<Bucket | null>(null)
-  const [actions, setActions] = useState({ open: 0, devices: 0, problems: 0 })
+  const [actions, setActions] = useState({ open: 0, devices: 0, problems: 0, outsideRadius: 0 })
   const [locations, setLocations] = useState<AdminLocation[]>([])
   // '' = the whole company. With one branch this was a question nobody had; with six, "how many are
   // at work" has six different answers and the panel was only ever giving the sum.
@@ -196,6 +197,11 @@ export function DashboardPage() {
       open: Array.isArray(open.data) ? open.data.length : 0,
       devices: Array.isArray(devices.data) ? devices.data.length : 0,
       problems: problems.data && 'rejectedCount' in problems.data ? problems.data.rejectedCount : 0,
+      // The breakdown, not just the total: «two people stood outside the fence» is a different job
+      // from «two people were refused», and the attention list is read as a to-do.
+      outsideRadius: problems.data && 'summary' in problems.data
+        ? (problems.data.summary.find((s) => s.reason === 'OutsideRadius')?.count ?? 0)
+        : 0,
     })
   }, 30_000)
 
@@ -256,6 +262,89 @@ export function DashboardPage() {
   const expected = total - notExpected
   const attended = counts.present + counts.incomplete
   const overallRate = expected ? Math.round((attended / expected) * 100) : 0
+
+  /**
+   * What needs a person today — the same queues the action strip listed, said in sentences.
+   *
+   * Only the non-empty ones appear. A permanent row reading «0 radius pozuntusu» is a line the reader
+   * learns to skip, and then skips on the morning it says 14.
+   *
+   * There is no «N nəfər gecikir» row, which the design asked for. This product has no lateness
+   * figure and is not growing one: every employee has their own hours, so a single «gecikmə» count
+   * compares people against a clock they were never on. The first row answers the same morning
+   * question with a number this company does keep — who has not come at all.
+   */
+  const faceFlagged = rows.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+  const silentSites = useMemo(() => {
+    if (filterLoc) return []
+    const seen = new Map<string, { name: string; any: boolean }>()
+    for (const r of rows) {
+      const hit = seen.get(r.locationId)
+      const scanned = !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc)
+      if (hit) hit.any = hit.any || scanned
+      else seen.set(r.locationId, { name: r.locationName, any: scanned })
+    }
+    return [...seen.values()].filter((s) => !s.any).map((s) => s.name)
+  }, [rows, filterLoc])
+
+  const attention = ([
+    {
+      key: 'absent', n: counts.absent, tint: 'clay', Icon: IconUserX, to: '/admin/today?status=absent',
+      title: `${counts.absent} nəfər bu gün gəlməyib`,
+      detail: 'Lövhədə səbəb yazmaq və ya qayıbı geri almaq olar',
+    },
+    {
+      key: 'face', n: faceFlagged, tint: 'clay', Icon: IconAlert, to: '/admin/today',
+      title: `${faceFlagged} üz uyğunsuzluğu var`,
+      detail: 'Giriş şəkli referansla uyuşmayan skanlar — yoxlanmalıdır',
+    },
+    {
+      key: 'radius', n: actions.outsideRadius, tint: 'amber', Icon: IconMapPin, to: '/admin/problems',
+      title: `${actions.outsideRadius} radius pozuntusu`,
+      detail: 'İş yerindən kənarda qeydə alınan skanlar rədd edilib',
+    },
+    {
+      key: 'open', n: actions.open, tint: 'amber', Icon: IconClock, to: '/admin/open-records',
+      title: `${actions.open} gün çıxışsız qalıb`,
+      detail: 'Bağlanmayan gün sıfır saat sayılır — bağlamaq lazımdır',
+    },
+    {
+      key: 'devices', n: actions.devices, tint: 'blue', Icon: IconPhone, to: '/admin/device-changes',
+      title: `${actions.devices} cihaz təsdiqi gözləyir`,
+      detail: 'Telefonunu dəyişən işçi təsdiq olunana qədər skan edə bilmir',
+    },
+    {
+      key: 'silent', n: silentSites.length, tint: 'slate', Icon: IconBuilding, to: '/admin/today',
+      title: `${silentSites.length} filial bu gün skan görməyib`,
+      detail: silentSites.slice(0, 3).join(', ') + (silentSites.length > 3 ? ' və b.' : ''),
+    },
+  ]).filter((a) => a.n > 0)
+
+  /**
+   * The branch that turned out best and worst today.
+   *
+   * Only branches with somebody EXPECTED are compared: a site whose whole crew is on its day off
+   * would otherwise come out at 0% and be named the worst in the company every Sunday.
+   */
+  const perf = useMemo(() => {
+    const by = new Map<string, { id: string; name: string; expected: number; onDuty: number; absent: number }>()
+    for (const r of allRows) {
+      const notDue = r.status === 'DayOff' || r.status === 'OnLeave' || r.status === 'Permission'
+        || r.status === 'Onboarding' || r.status === 'Pending'
+      const hit = by.get(r.locationId) ?? { id: r.locationId, name: r.locationName, expected: 0, onDuty: 0, absent: 0 }
+      if (!notDue) {
+        hit.expected++
+        if (r.status === 'Absent') hit.absent++; else hit.onDuty++
+      }
+      by.set(r.locationId, hit)
+    }
+    const scored = [...by.values()]
+      .filter((b) => b.expected >= 3)
+      .map((b) => ({ ...b, pct: Math.round((b.onDuty / b.expected) * 100) }))
+      .sort((a, b) => b.pct - a.pct || b.expected - a.expected)
+    if (scored.length < 2) return null
+    return { best: scored[0], worst: scored[scored.length - 1] }
+  }, [allRows])
 
   // On duty RIGHT NOW = checked in and not yet out. The hero number.
   const onDutyNow = counts.incomplete
@@ -564,41 +653,101 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* Action center — the things that need a person.
+      {/* Attention + branch performance, side by side.
 
-          Only the first tile follows the branch filter: it is counted from `rows`. The other three
-          come from endpoints that do not carry a branch at all — the problems report returns a number
-          rather than rows, and the device queue has no location on it — so rather than filter one and
+          Only the first and the last two rows follow the branch filter: they are counted from `rows`.
+          The middle ones come from endpoints that do not carry a branch at all — the problems report
+          returns totals, and the device queue has no location on it — so rather than filter one and
           silently leave two company-wide next to a branch name, the panel says which it is. A wrong
           count under a filter is worse than an honest unfiltered one. */}
-      <section className="card lux-panel lux-rise lux-d5">
-        <div className="lux-panel-h">
-          <span>Diqqət mərkəzi</span>
-          {filterLoc && (
-            <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>
-              son üçü bütün filiallar üzrə
+      <section className="lux-bottom lux-rise lux-d5">
+        <div className="card dash-attn">
+          <div className="dash-attn-h">
+            <div>
+              <div className="dash-attn-t">Diqqət tələb edir</div>
+              <div className="dash-attn-s">
+                Gəlməyənlər, üz uyğunsuzluğu, radius pozuntusu və skan görməyən filiallar
+                {filterLoc && ' · bəziləri bütün filiallar üzrə'}
+              </div>
+            </div>
+            <span className={`dash-pri ${attention.length === 0 ? 'ok' : 'hot'}`}>
+              {attention.length === 0 ? 'Təmiz' : `${attention.length} məsələ`}
             </span>
-          )}
-        </div>
-        <div className="lux-actions">
-          {[
-            // Goes to the today board rather than opening the pill list at the very top of the page —
-            // pressing something at the bottom and having the screen jump upward reads as a glitch.
-            { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => navigate('/admin/today?status=absent') },
-            { color: 'var(--amber)', n: actions.open, label: 'Çıxışı unudulub', onClick: () => navigate('/admin/open-records') },
-            { color: 'var(--blue)', n: actions.devices, label: 'Cihaz təsdiqi gözləyir', onClick: () => navigate('/admin/device-changes') },
-            { color: 'var(--clay)', n: actions.problems, label: 'Problemli skan (bu gün)', onClick: () => navigate('/admin/problems') },
-          ].map((it) => {
-            const calm = it.n === 0
-            return (
-              <button key={it.label} className={`lux-act${calm ? ' calm' : ''}`} onClick={calm ? undefined : it.onClick}>
-                <span className="lux-act-dot" style={{ background: calm ? 'var(--leaf)' : it.color }} />
-                <span className="lux-act-l">{it.label}</span>
-                <span className="lux-act-n">{it.n}</span>
-                {!calm && <span className="lux-act-ar">›</span>}
+          </div>
+          <div className="dash-attn-l">
+            {attention.map((a) => (
+              <button key={a.key} className="dash-attn-i" onClick={() => navigate(a.to)}>
+                <span className={`dash-attn-ic att-t-${a.tint}`}><a.Icon /></span>
+                <span className="dash-attn-tx">
+                  <span className="dash-attn-n">{a.title}</span>
+                  <span className="dash-attn-d">{a.detail}</span>
+                </span>
+                <span className={`dash-attn-b att-t-${a.tint}`}>Bax</span>
               </button>
+            ))}
+            {attention.length === 0 && (
+              <div className="dash-attn-ok">
+                <IconCheck />
+                <span>Bu gün diqqət tələb edən heç nə yoxdur.</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Best and worst branch by TURNOUT — not by lateness. This product has no lateness figure
+            and will not grow one: every employee has their own hours, so a single «gecikmə» number
+            across branches compares people against clocks they were never on. The second column is
+            Qayıb, which is the same question answered with a number this company actually keeps. */}
+        <div className="card dash-perf">
+          <div className="dash-attn-h">
+            <div>
+              <div className="dash-attn-t">Filial performansı</div>
+              <div className="dash-attn-s">İştirak faizi və qayıb sayı ilə ən yaxşı və ən zəif filiallar</div>
+            </div>
+            <span className="dash-pri calm">Ən yaxşı / ən zəif</span>
+          </div>
+          {perf
+            ? (
+              <div className="dash-perf-c">
+                {([
+                  { ...perf.best, kind: 'best' as const, label: 'Ən yaxşı', note: 'ən yaxşı nəticə' },
+                  { ...perf.worst, kind: 'worst' as const, label: 'Ən zəif', note: 'ən zəif nəticə' },
+                ]).map((b) => (
+                  <button
+                    key={b.kind}
+                    className="dash-perf-i"
+                    onClick={() => setFilterLoc(b.id)}
+                    title={`${b.name} filialına keç`}
+                  >
+                    <span className="dash-perf-h">
+                      <span className="dash-perf-k">
+                        <i className={b.kind === 'best' ? 'ok' : 'bad'} />{b.label}
+                      </span>
+                      <span className={`dash-pri ${b.kind === 'best' ? 'ok' : 'hot'}`}>{b.pct}%</span>
+                    </span>
+                    <span className="dash-perf-nm">{b.name}</span>
+                    <span className="dash-perf-m">
+                      <span>
+                        <span className="dash-perf-ml">İştirak faizi</span>
+                        <span className="dash-perf-mv">{b.pct}%</span>
+                      </span>
+                      <span>
+                        <span className="dash-perf-ml">Qayıb</span>
+                        <span className="dash-perf-mv">{b.absent}</span>
+                      </span>
+                    </span>
+                    <span className={`dash-perf-f ${b.kind === 'best' ? 'ok' : 'bad'}`}>
+                      {b.onDuty} işdə · {b.note}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )
-          })}
+            : (
+              <div className="dash-attn-ok">
+                <span>Müqayisə üçün ən azı iki filialda işçi olmalıdır.</span>
+              </div>
+            )}
         </div>
       </section>
     </div>
