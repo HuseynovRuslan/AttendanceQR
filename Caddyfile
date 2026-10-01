@@ -335,12 +335,19 @@ ideaflow.qrlog.az {
 # Six apps behind this Caddy on the shared attendanceqr_default network. Domains unchanged
 # (menyuqr.com @ Hostinger, *.bahram.site @ Namecheap); only the DNS A records move to this server.
 # Excluded on purpose: p109 (.NET) + k4nx — abandoned uuid.bahram.site deploys.
-# FOLLOW-UP: mirror these blocks into the AttendanceQR repo Caddyfile so a future redeploy keeps them.
+#
+# handle_path, not handle, for the two sub-path apps: both are Vite builds made with a base of
+# /gardenmarket/ and /driver-game-center/, and each is served by an nginx that expects to be at its own
+# root — Coolify's Traefik stripped the prefix before forwarding, and these builds were made for that.
+# With plain `handle` the prefix survives, so the browser asks for /driver-game-center/assets/x.js, nginx
+# finds no such file, falls through to its SPA rule and answers with index.html. The browser then has HTML
+# where it expected JavaScript and the page stays blank — on the very address printed on Driver Game
+# Center's QR codes. handle_path strips the prefix, which is what those builds were made for.
 menyuqr.com, www.menyuqr.com {
-	handle /gardenmarket* {
+	handle_path /gardenmarket* {
 		reverse_proxy gardenmarket-web:3000
 	}
-	handle /driver-game-center* {
+	handle_path /driver-game-center* {
 		reverse_proxy gamecenter-web:3000
 	}
 	handle {
