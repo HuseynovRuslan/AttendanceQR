@@ -265,6 +265,39 @@ book.qrlog.az {
 	reverse_proxy literature-millionaire-web:80
 }
 
+# PRIZMA (the creative-competition platform, pryzma.az) — separate project, own stack in /opt/meydan
+# (deploy/compose.yml in its repository; the container and directory names keep the platform's old name, MEYDAN,
+# because the rename was a product decision and not a rebuild). Only its nginx joins attendanceqr_default, as
+# meydan-web; its API and database stay on that project's private network. HSTS is set here at the edge; every
+# other header (the CSP included) comes from the app itself, whose policy is versioned with its code — so no
+# security_headers import.
+#
+# This block belongs here and nowhere else: a site typed straight into the file on the server is erased by the
+# next deploy, which resets this repository to origin/main. pryzma.az was added that way once and lost exactly so.
+pryzma.az {
+	encode zstd gzip
+	header {
+		# Applied AFTER the upstream answered (defer), so this replaces the HSTS the API sends on /api rather than
+		# adding a second copy, and strips nginx's Server header the same way security_headers does for our hosts.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+		defer
+	}
+	reverse_proxy meydan-web:80
+}
+
+# The platform's own www, and the two hosts it answered at before it had a domain of its own. Everything that
+# still knows an old name — printed QR codes, links people saved, messages already sent — is sent to the same
+# path on pryzma.az. There is only ever one copy of the application running.
+#
+# 308 and not `permanent`: `permanent` is 301, and a client that meets a 301 on a POST is entitled to retry it as
+# a GET without the body. QRLog's server posts its signed sign-in confirmation to this application, so that one
+# would be lost silently. It posts straight to pryzma.az (ExternalSignIn__Apps__meydan__ConfirmUrl) and never
+# meets these redirects — but the next thing to post here should not have to know that.
+www.pryzma.az, prizma.qrlog.az, meydan.qrlog.az {
+	redir https://pryzma.az{uri} 308
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #
@@ -285,4 +318,59 @@ https:// {
 		on_demand
 	}
 	import patient_proxy frontend:80
+}
+
+# IdeaFlow (ideaflow.qrlog.az) — ayrı layihə: github.com/HuseynovRuslan/ideaflow-site.
+# Artıq statik fayl deyil: öz stack-i (backend + Postgres) /opt/ideaflow/app-da qalxır və yalnız
+# 127.0.0.1:8100-ə bağlanır — xaricə yeganə yol buradır. Konteyner paylaşılan şəbəkəyə «ideaflow-app»
+# adı ilə qoşulur; `reverse_proxy 127.0.0.1:8100` İŞLƏMƏZDİ, o ünvan Caddy-nin öz konteyneridir.
+# CSP burada yoxdur — tətbiq öz siyasətini özü göndərir, versiyası kodu ilə birlikdə gedir.
+ideaflow.qrlog.az {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy ideaflow-app:8080
+}
+
+# ==================== MenyuQR (moved from Coolify box 89.167.122.64, 2026-09-21) ====================
+# Six apps behind this Caddy on the shared attendanceqr_default network. Domains unchanged
+# (menyuqr.com @ Hostinger, *.bahram.site @ Namecheap); only the DNS A records move to this server.
+# Excluded on purpose: p109 (.NET) + k4nx — abandoned uuid.bahram.site deploys.
+#
+# handle_path, not handle, for the two sub-path apps: both are Vite builds made with a base of
+# /gardenmarket/ and /driver-game-center/, and each is served by an nginx that expects to be at its own
+# root — Coolify's Traefik stripped the prefix before forwarding, and these builds were made for that.
+# With plain `handle` the prefix survives, so the browser asks for /driver-game-center/assets/x.js, nginx
+# finds no such file, falls through to its SPA rule and answers with index.html. The browser then has HTML
+# where it expected JavaScript and the page stays blank — on the very address printed on Driver Game
+# Center's QR codes. handle_path strips the prefix, which is what those builds were made for.
+menyuqr.com, www.menyuqr.com {
+	handle_path /gardenmarket* {
+		reverse_proxy gardenmarket-web:3000
+	}
+	handle_path /driver-game-center* {
+		reverse_proxy gamecenter-web:3000
+	}
+	handle {
+		reverse_proxy menyuqr-web:3000
+	}
+}
+
+gardenmarket-react.bahram.site {
+	reverse_proxy gardenmarket-web:3000
+}
+
+gardenmarket-api.bahram.site {
+	reverse_proxy gardenmarket-api:3000
+}
+
+game-center.bahram.site {
+	reverse_proxy gamecenter-web:3000
+}
+
+coffee-menu.bahram.site {
+	reverse_proxy coffee-api:3000
+}
+
+multiposting.bahram.site {
+	reverse_proxy multiposting:4000
 }

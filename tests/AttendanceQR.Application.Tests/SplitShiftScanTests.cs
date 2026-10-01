@@ -50,9 +50,23 @@ public class SplitShiftScanTests
         public Guid LocationId { get; } = Guid.NewGuid();
         private readonly IQrTokenService _qr;
 
+        /// <summary>
+        /// A clock the test pins. TimeProvider.System is what production gets, so pinning changes
+        /// nothing about the endpoint — it only stops the RESULT depending on the hour the suite
+        /// happens to run at. See EarlyCheckOutScanTests for what that cost.
+        /// </summary>
+        private sealed class FixedClock : TimeProvider
+        {
+            private readonly DateTime _utcNow;
+            public FixedClock(DateTime utcNow) => _utcNow = utcNow;
+            public override DateTimeOffset GetUtcNow() => new(_utcNow, TimeSpan.Zero);
+        }
+
         /// <param name="secondWindow">Give the employee's shift a second stretch covering right now.
         /// False produces an ordinary shift — the control.</param>
-        public Harness(bool secondWindow)
+        /// <param name="nowUtc">The instant the endpoint reads. Left null it uses the real clock, so
+        /// every existing caller behaves exactly as before.</param>
+        public Harness(bool secondWindow, DateTime? nowUtc = null)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantId);
@@ -112,7 +126,8 @@ public class SplitShiftScanTests
                 new StubFace(), new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),
-                NullLogger<AttendanceController>.Instance)
+                NullLogger<AttendanceController>.Instance,
+                clock: nowUtc is DateTime pinned ? new FixedClock(pinned) : null)
             {
                 ControllerContext = new ControllerContext
                 {

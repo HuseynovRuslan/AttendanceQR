@@ -2,10 +2,13 @@
 // In this order: tailwind.css declares the cascade layers that global-layered.css puts global.css in.
 import '../styles/tailwind.css'
 import '../styles/global-layered.css'
+import PageLoader from '../components/PageLoader.astro'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
+import { getImage } from 'astro:assets'
+import { LOGO_WORD } from '../data/brand'
 
 interface Props {
   lang: Lang
@@ -15,15 +18,34 @@ interface Props {
   description?: string
   /** Home page only: emits SoftwareApplication + FAQPage structured data. */
   home?: boolean
+  /**
+   * The colour the page opens on, so the loading viewfinder can stand on the same one and the
+   * hand-over carries no colour jump. 'tinted' is the home page, whose Hero is on --paper;
+   * every page that opens with <PageHero> is on plain --white.
+   */
+  heroTone?: 'tinted' | 'white'
   noindex?: boolean
 }
 
-const { lang, path = '/', title, description, home = false, noindex = false } = Astro.props
+const { lang, path = '/', title, description, home = false, noindex = false, heroTone = 'tinted' } = Astro.props
 const t = useTranslations(lang)
+
+// The token, not the hex behind it: change --white or --paper in global.css and the loader
+// follows. undefined leaves the loader on its own default, which is --paper.
+const loaderBg = heroTone === 'white' ? 'var(--white, #fff)' : undefined
+
+// qrl-lock on <html>: the loading viewfinder (components/PageLoader.astro) covers the page, so the
+// scroll is closed while it is up. The class is served in the markup rather than set by a script, so
+// that it is already in force in the first frame; the loader's own script takes it off when it is
+// done, and its <noscript> block cancels it where scripting is off.
 
 const site = SITE.url
 const canonical = site + localizedPath(lang, path)
+// public/, not src/assets/: a crawler holds this URL for as long as it caches the share card, so
+// it must not pick up a content hash or turn into webp. Same reason for the icons below.
 const ogImage = site + '/og-image.png'
+// Preloaded in <head> and painted by Header — one derivative, see src/data/brand.ts.
+const logoWord = await getImage(LOGO_WORD)
 
 const pageTitle = title ?? t('meta.title')
 const pageDesc = description ?? t('meta.description')
@@ -97,7 +119,7 @@ const websiteLd = {
 ---
 
 <!doctype html>
-<html lang={htmlLang[lang]} dir="ltr">
+<html lang={htmlLang[lang]} dir="ltr" class="qrl-lock">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -141,33 +163,37 @@ const websiteLd = {
     <!-- Icons -->
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo-mark.png" />
-    <link rel="preload" href="/logo-word.png" as="image" type="image/png" />
+    <link rel="preload" href={logoWord.src} as="image" type="image/webp" />
 
     <!--
-      Inter carries body copy; Manrope gives headings a restrained display face and includes the
-      Cyrillic characters needed by the Russian version. JetBrains Mono is used for UI labels.
+      The faces behind --font-sans and --font-mono (see styles/tailwind.css). Inter is the working
+      sans until the licensed TT Interphases files are self-hosted, and it is loaded in the five
+      weights the stylesheet uses; IBM Plex Mono carries the small mono labels. Both cover Azerbaijani
+      and Russian.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Onest:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
 
     <!-- Structured data -->
-    <script type="application/ld+json" set:html={JSON.stringify(orgLd)} />
-    <script type="application/ld+json" set:html={JSON.stringify(websiteLd)} />
-    {home && <script type="application/ld+json" set:html={JSON.stringify(appLd)} />}
-    {home && <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />}
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(orgLd)} />
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteLd)} />
+    {home && <script is:inline type="application/ld+json" set:html={JSON.stringify(appLd)} />}
+    {home && <script is:inline type="application/ld+json" set:html={JSON.stringify(faqLd)} />}
   </head>
   <body>
+    <PageLoader lang={lang} bg={loaderBg} />
     <a class="skip" href="#main">{t('a11y.skip')}</a>
-    <Header lang={lang} path={path} />
-    <main id="main">
-      <slot />
-    </main>
-    <Footer lang={lang} />
-
+    <div class="qrl-page">
+      <Header lang={lang} path={path} />
+      <main id="main">
+        <slot />
+      </main>
+      <Footer lang={lang} />
+    </div>
     <script>
       // ---------- QR pattern (decorative, deterministic) ----------
       function paintQr(id: string, seed: number) {
@@ -207,21 +233,7 @@ const websiteLd = {
         setInterval(tick, 1000)
       })()
 
-      // ---------- Mobile menu ----------
-      const mt = document.getElementById('menuToggle')
-      const nl = document.getElementById('navlinks')
-      if (mt && nl) {
-        mt.addEventListener('click', () => {
-          const open = nl.classList.toggle('open')
-          mt.setAttribute('aria-expanded', String(open))
-        })
-        nl.querySelectorAll('a').forEach((a) =>
-          a.addEventListener('click', () => {
-            nl.classList.remove('open')
-            mt.setAttribute('aria-expanded', 'false')
-          })
-        )
-      }
+      // The mobile menu and the language dropdown are wired up in Header.astro's own script.
 
       // ---------- Scroll reveal ----------
       const io = new IntersectionObserver(
@@ -235,7 +247,7 @@ const websiteLd = {
         },
         { threshold: 0.14 }
       )
-      document.querySelectorAll('.rv, .bars, .donut').forEach((el) => io.observe(el))
+      document.querySelectorAll('.rv').forEach((el) => io.observe(el))
 
       // ---------- Count-up counters ----------
       const easeOut = (x: number) => 1 - Math.pow(1 - x, 3)

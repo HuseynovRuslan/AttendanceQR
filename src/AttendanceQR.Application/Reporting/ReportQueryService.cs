@@ -1147,6 +1147,7 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(d =>
             {
                 var status = BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal, day);
+                var hours = d.Shift.HoursOn(day);
                 // A field check-in with no office record → "Sahədə". Checked before the status is read
                 // for anything else, because ComputeDayLiveAsync now scores such a day as worked, so
                 // it arrives here as OnTime/Incomplete rather than Absent/Pending.
@@ -1177,7 +1178,12 @@ public sealed class ReportQueryService : IReportQueryService
                     d.FieldVisitId,
                     markedAbsent.Contains(d.Employee.Id) ? markedBy.GetValueOrDefault(d.Employee.Id) ?? "—" : null,
                     d.Employee.PaperEmployer, d.Employee.PaperSite,
-                    d.BlockCount, d.BlockSpans, d.LastCheckOutAtUtc);
+                    d.BlockCount, d.BlockSpans, d.LastCheckOutAtUtc,
+                    // The window the status above was judged against — HoursOn, not Start/End, so a
+                    // day with its own hours shows the clock it was actually measured by.
+                    hours.Start.ToString("HH:mm"), hours.End.ToString("HH:mm"), d.Shift.ScheduleName,
+                    d.Shift.HasSecondWindow ? d.Shift.SecondStart!.Value.ToString("HH:mm") : null,
+                    d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

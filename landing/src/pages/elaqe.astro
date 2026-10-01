@@ -6,7 +6,7 @@ import { useTranslations } from '../i18n/ui'
 const lang = 'az' as const
 const t = useTranslations(lang)
 ---
-<BaseLayout lang={lang} path="/elaqe/" title={t('contact.metaTitle')} description={t('contact.metaDesc')}>
+<BaseLayout lang={lang} path="/elaqe/" title={t('contact.metaTitle')} description={t('contact.metaDesc')} heroTone="white">
   <PageHero title={t('contact.title')} subtitle={t('contact.sub')} />
   <ContactBody lang={lang} />
 </BaseLayout>

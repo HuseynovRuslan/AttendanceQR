@@ -9,7 +9,7 @@ import { PRICING } from '../../data/site'
 const lang = 'en' as const
 const t = useTranslations(lang)
 ---
-<BaseLayout lang={lang} path="/qiymet/" title={t('pricing.metaTitle')} description={t('pricing.metaDesc')}>
+<BaseLayout lang={lang} path="/qiymet/" title={t('pricing.metaTitle')} description={t('pricing.metaDesc')} heroTone="white">
   <PageHero title={t('price.title')} subtitle={PRICING.showPlans ? t('price.sub') : t('price.subQuote')} />
   <Pricing lang={lang} bare />
   <FAQ lang={lang} />

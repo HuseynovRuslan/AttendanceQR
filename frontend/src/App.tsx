@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
+import { mayReloadOnce } from './lib/staleBundle'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, PanelPage } from './components/AdminRoute'
@@ -53,6 +54,10 @@ const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.V
 const KitabxanaSignInPage = lazy(() => import('./pages/KitabxanaSignInPage').then(m => ({ default: m.KitabxanaSignInPage })))
 // Opened from Menu → Xidmətlər: the camera, and only the quiz's QR. No attendance checks.
 const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m => ({ default: m.KitabxanaScanPage })))
+// Xidmətlər → PRIZMA: scanning the sign-in QR an app of ours shows on a computer. Only reached from the menu.
+const ServiceSignInPage = lazy(() => import('./pages/ServiceSignInPage').then(m => ({ default: m.ServiceSignInPage })))
+// "QRLog ilə daxil ol" for another application of ours (PRIZMA): reached only from that app's link.
+const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
@@ -91,10 +96,9 @@ function AutoUpdater() {
     if (pathname === '/scan' || pathname === '/activate') return
 
     // Belt and braces: if a reload somehow served the same stale bundle again (a cached index.html
-    // would do it), we would spin forever. One attempt per published build, per tab.
-    const key = 'attendanceqr.reloadedFor'
-    if (sessionStorage.getItem(key) === newBuildId) return
-    sessionStorage.setItem(key, newBuildId)
+    // would do it), we would spin forever. One attempt per published build, per tab — the same key
+    // and rule the scan page uses (lib/staleBundle).
+    if (!mayReloadOnce('attendanceqr.reloadedFor', newBuildId)) return
     window.location.reload()
   }, [newBuildId, pathname])
 
@@ -221,11 +225,33 @@ function AppRoutes() {
         }
       />
 
+      {/* Approving a sign-in to another of our applications (PRIZMA) from this phone — the Kitabxana approval
+          generalised. Same guard: it vouches for whoever is signed in here, after one deliberate tap. */}
+      <Route
+        path="/signin/:app"
+        element={
+          <ProtectedRoute>
+            <ExternalSignInPage />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/kitabxana/scan"
         element={
           <ProtectedRoute>
             <KitabxanaScanPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Xidmətlər → an app that signs people in with QRLog (PRIZMA): scan the QR its computer page shows, then
+          approve on the same screen as /signin/:app. Same guard: it vouches for whoever is signed in here. */}
+      <Route
+        path="/services/:app"
+        element={
+          <ProtectedRoute>
+            <ServiceSignInPage />
           </ProtectedRoute>
         }
       />

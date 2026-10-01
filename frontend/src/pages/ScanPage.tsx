@@ -20,13 +20,16 @@ import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFe
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
 import { todayStr, withPendingScans } from '../lib/att'
+import { useAppUpdate } from '../lib/useAppUpdate'
+import { mayReloadOnce, memoizeModule } from '../lib/staleBundle'
 import { knownToday, rememberToday } from '../lib/todayCache'
 import { DOUBLE_TAP_MS, isEarlyCheckOut } from '../lib/earlyCheckOut'
 import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
-import { distanceMeters, FAILURE_REASON, getPosition, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { distanceMeters, FAILURE_REASON, getPosition, looksApproximate, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { PreciseLocationHelp } from '../components/PreciseLocationHelp'
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, CAMERA_FAIL_REASON, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
@@ -98,10 +101,26 @@ const READER_ID = 'reader'
 // so it's ready before the camera opens, and awaited at the actual point of use as a safety net. The
 // promise is cached so repeated scans never re-fetch. Failure to load surfaces as a normal camera
 // error, exactly like a getUserMedia failure would.
-let scannerModule: Promise<typeof import('html5-qrcode')> | null = null
-function loadScanner(): Promise<typeof import('html5-qrcode')> {
-  if (!scannerModule) scannerModule = import('html5-qrcode')
-  return scannerModule
+//
+// A FAILED load is not cached. It used to be: the rejected promise stayed in this variable, so every
+// retry re-read the same rejection without touching the network — Sərdar Hüseynov, 23.09, three
+// «Skan proqramı yüklənmədi» in ten minutes and a check-out his admin had to type in by hand.
+const loadScanner = memoizeModule(() => import('html5-qrcode'))
+
+/**
+ * The commonest reason that chunk cannot be fetched: this page has been open since before a deploy,
+ * and the file it is asking for no longer exists under that name. The bundle running here is stale —
+ * so fetch the new one. Once per build per tab, and only from the scan screen's idle state, where
+ * there is nothing in flight to lose.
+ *
+ * Returns true when a reload was started, so the caller can stop rather than paint an error the
+ * employee cannot act on («no amount of permission-fixing helps» — it is our deploy, not their phone).
+ */
+function reloadForStaleBundle(): boolean {
+  const id = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev'
+  if (!mayReloadOnce('attendanceqr.scannerReload', id)) return false
+  window.location.reload()
+  return true
 }
 
 export function ScanPage() {
@@ -189,6 +208,18 @@ export function ScanPage() {
   // Set when the phone found no face in the selfie. The check-in still goes through — this only
   // offers a retake, because a camera that refuses to record attendance costs someone a day's pay.
   const [profile, setProfile] = useState<MyProfile | null>(null)
+  // A newer build is published. AutoUpdater (App.tsx) deliberately never reloads /scan — a reload
+  // mid-scan throws away a selfie, a position and possibly a queued tap. But a scan page sitting idle
+  // at a poster IS safe to refresh, and leaving it on the old bundle is what breaks the next scan:
+  // its lazily-loaded chunks no longer exist under the names it knows.
+  const newBuildId = useAppUpdate()
+  useEffect(() => {
+    if (!newBuildId) return
+    if (phase !== 'scanning' || result || busyRef.current) return
+    // Same key AutoUpdater uses, so the two can never reload for the same build twice.
+    if (!mayReloadOnce('attendanceqr.reloadedFor', newBuildId)) return
+    window.location.reload()
+  }, [newBuildId, phase, result])
   // The branch decides whether there is a poster to scan at all, so the pre-check must know the
   // profile BEFORE it opens the QR camera — and the profile arrives on its own request. A promise
   // rather than the state: runChecks starts the moment today's status is known, which can be before
@@ -572,6 +603,9 @@ export function ScanPage() {
           // A real getUserMedia failure (denied / no camera / in use) — no point retrying.
           await stopCamera()
           const kind = cameraFailKind(err)
+          // The scanner file itself would not load — almost always a bundle left over from before a
+          // deploy. Reload into the new one instead of blaming the camera.
+          if (kind === 'loadfailed' && reloadForStaleBundle()) return
           setCameraError(kind)
           // Surface it to the admin's Problems screen — a phone whose camera won't open is a scan that
           // silently never happened, otherwise visible only as a phone call. The KIND goes with it:
@@ -1163,6 +1197,10 @@ export function ScanPage() {
           <GpsHelp kind={geo.fail} onRetry={() => void runChecks()} />
         )}
 
+        {radiusFail && geo.kind === 'ready' && looksApproximate(geo.accuracy) && (
+          <PreciseLocationHelp onRetry={() => void runChecks()} />
+        )}
+
         {radiusFail && (
           <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-rose-500/30 bg-gradient-to-b from-rose-950/70 to-slate-900/90 p-6 text-center shadow-2xl backdrop-blur-2xl">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/20 text-2xl text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.3)]">
@@ -1178,9 +1216,13 @@ export function ScanPage() {
               {geo.kind === 'ready' && <> · GPS dəqiqliyi ±{geo.accuracy} m</>}.
             </p>
             <p className="mt-2 text-xs font-medium text-slate-400 leading-relaxed">
-              {geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS
-                ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxıb 10–15 saniyə gözləyin.'
-                : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən yoxlayın.'}
+              {geo.kind === 'ready' && looksApproximate(geo.accuracy)
+                // ±2000 m is the OS blurring the fix on purpose — see looksApproximate. The steps are
+                // below; repeating «go outside» here would send them out for nothing.
+                ? 'Telefon dəqiq yeri vermir — aşağıdakı ayarı açın.'
+                : geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS
+                  ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxıb 10–15 saniyə gözləyin.'
+                  : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən yoxlayın.'}
             </p>
             <button
               onClick={() => void runChecks()}
@@ -1262,7 +1304,9 @@ export function ScanPage() {
             still allowed — this only nudges the employee somewhere with a clearer view of the sky. */}
         {showCamera && geo.kind === 'ready' && geo.accuracy > POOR_ACCURACY_METERS && (
           <div className="w-full max-w-sm rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-center text-xs font-medium text-amber-200 backdrop-blur-md">
-            GPS dəqiqliyi zəifdir (±{geo.accuracy} m). Skan işləyəcək, amma açıq yerdə daha dəqiq olar.
+            {looksApproximate(geo.accuracy)
+              ? <>Telefonda «dəqiq məkan» söndürülüb (±{geo.accuracy} m) — skan rədd edilə bilər. Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan.</>
+              : <>GPS dəqiqliyi zəifdir (±{geo.accuracy} m). Skan işləyəcək, amma açıq yerdə daha dəqiq olar.</>}
           </div>
         )}
 
@@ -1847,7 +1891,9 @@ function locationCard(distance: number | null | undefined, accuracy?: number): C
     tone: 'red',
     title: 'Yeriniz təsdiqlənmədi',
     detail: parts.join(' · '),
-    note: vague
+    note: looksApproximate(accuracy)
+      ? 'Telefonda «dəqiq məkan» söndürülüb: Parametrlər → Tətbiqlər → Chrome → İcazələr → Məkan → «Dəqiq məkandan istifadə». Açıq havada gözləmək kömək etmir.'
+      : vague
       ? 'Telefon yerinizi dəqiq tapa bilmir. Açıq havaya çıxın, 10–15 saniyə gözləyin, sonra yenidən cəhd edin.'
       : 'İş yerindəsinizsə, açıq yerə çıxıb yenidən cəhd edin. Yenə alınmasa, rəhbərinizə bildirin — filialın xəritədəki yeri düzəldilməlidir.',
   }

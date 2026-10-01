@@ -2,6 +2,13 @@
 // prices and the social-proof lists. Translated strings live in src/i18n/ui.ts.
 //
 // Anything a non-developer is likely to want to change is here on purpose — one edit, one rebuild.
+//
+// The customer logos are IMPORTED rather than written as URLs: they live in src/assets/ and go
+// through astro:assets, so a mistyped name fails the build instead of shipping a 404. See CUSTOMERS.
+import bakiAbadliq from '../assets/images/customers/bakiabadliq.png'
+import cleanFix from '../assets/images/customers/cleanfix.png'
+import eastCaf from '../assets/images/customers/eastcaf.png'
+import greenGarden from '../assets/images/customers/greengarden.png'
 
 export const SITE = {
   name: 'QRLog',
@@ -16,7 +23,11 @@ export const SITE = {
   phone: '+994 50 600 16 55',
   // e.g. 'https://wa.me/994506001655' — empty hides the WhatsApp button. Left empty until someone
   // has confirmed the number actually answers on WhatsApp: a dead button costs more than no button.
-  whatsapp: '',
+  //
+  // `as string` is load-bearing: SITE is `as const`, so without it this field's type is the literal
+  // '' — always falsy — and ContactBody's `{SITE.whatsapp && …}` guard narrows it to `never`, which
+  // makes .replace() a type error. Drop it only when a real URL is written here.
+  whatsapp: '' as string,
   address: 'Bakı, Azərbaycan',
 } as const
 
@@ -62,31 +73,29 @@ export const PRICING = {
 //
 // Spelling is theirs, not ours: it is "EastCaf", not "EastCafe" — they have corrected this before.
 // ---------------------------------------------------------------------------------------------
-// `logo` is a path under landing/public/. The two we have came in as JPEGs on their own opaque
-// squares — CleanFix blue-on-white, EastCaf a navy roundel on black — so both were cut out to
-// transparent PNGs (see landing/public/customers/). Each still carries its own background inside the
-// artwork, which is why the card puts every logo on a WHITE tile rather than straight onto the dark
-// band: EastCaf's navy roundel is within a few shades of the band itself and would simply vanish.
+// `logo` is an IMPORT (top of this file), not a URL — the file sits in src/assets/images/customers/
+// and Trust.astro paints it with <Image />, which resizes it and rewrites it as webp at build time.
+// The two we were sent came in as JPEGs on their own opaque squares — CleanFix blue-on-white,
+// EastCaf a navy roundel on black — and were cut out to transparent PNGs, so each sits on whatever
+// surface the page gives it. Keep any new one transparent: the bar has no tile behind the logos to
+// hide a background with.
 //
-// `logoH` is the rendered height in px, set per logo rather than shared. Equal heights would NOT
-// look equal: CleanFix is a wordmark 3.6× wider than it is tall, so at the same height it carries
-// far more ink than a circular badge and dominates the row. These are balanced by eye, not by
-// formula — a wide lockup sits lower, a square or round mark sits taller.
+// `logoH` is a RELATIVE weight, not a size. Equal heights would NOT look equal: CleanFix is a wordmark
+// 3.6x wider than it is tall, so at the same height it carries far more ink than a circular badge and
+// dominates the row. Trust.astro divides these by the largest of them and scales the row's one real
+// height by the result — only the ratios matter, and a wide lockup sits lower while a square or round
+// mark sits taller. Balanced by eye, not by formula.
 //
-// `accent` tints the hover glow and any monogram fallback, sampled from each company's own artwork.
+// A company with no `logo` is set as a wordmark in its own name; there is nothing else to add here.
 export const CUSTOMERS = {
   show: true,
   items: [
-    { key: 'c1', name: 'Bakı Abadlıq Xidməti', mark: 'BA', accent: '#78C048',
-      logo: '/customers/bakiabadliq.png', logoH: 70 },
-    { key: 'c2', name: 'CleanFix', mark: 'CF', accent: '#3A9BDE',
-      logo: '/customers/cleanfix.png', logoH: 44 },
-    { key: 'c3', name: 'EastCaf', mark: 'EC', accent: '#D8C486',
-      logo: '/customers/eastcaf.png', logoH: 74 },
-    // Green Garden came in as a round badge like EastCaf's, so it takes the same taller height —
+    { key: 'c1', name: 'Bakı Abadlıq Xidməti', logo: bakiAbadliq, logoH: 70 },
+    { key: 'c2', name: 'CleanFix', logo: cleanFix, logoH: 44 },
+    { key: 'c3', name: 'EastCaf', logo: eastCaf, logoH: 74 },
+    // Green Garden came in as a round badge like EastCaf's, so it takes the same taller weight —
     // a circular mark carries less ink than a wordmark and looks small at a wordmark's height.
-    { key: 'c4', name: 'Green Garden', mark: 'GG', accent: '#549C30',
-      logo: '/customers/greengarden.png', logoH: 72 },
+    { key: 'c4', name: 'Green Garden', logo: greenGarden, logoH: 72 },
   ],
 } as const
 

@@ -1,3 +1,24 @@
+/* ---------- The typeface ----------
+ * --font-sans in styles/tailwind.css asks for TT Interphases first. That face is licensed from
+ * TypeType and is on no CDN, so it has to be served from this repo: put the woff2 files in
+ * src/assets/fonts/ and uncomment the block below. Until then the stack falls through to Inter.
+ *
+ * src/assets/, not public/: Vite hashes a font reached through a relative url() into /_astro/,
+ * which is the one path Caddy caches immutably. Under public/fonts/ it would match no cache rule
+ * at all — the same thing that was true of the images before they moved.
+ *
+ * @font-face {
+ *   font-family: 'TT Interphases';
+ *   src: url('../assets/fonts/TTInterphases-Regular.woff2') format('woff2');
+ *   font-weight: 400;
+ *   font-style: normal;
+ *   font-display: swap;
+ * }
+ *   …and one block each for 500, 600, 700 and 800 — those are the weights this stylesheet uses.
+ *
+ * Check the file itself for Ə ə İ ı Ğ ğ Ş ş Ç ç Ö ö Ü ü before shipping it. This site already lost a
+ * typeface (Sora) that had no ə, and the whole site is in Azerbaijani.
+ */
 :root {
   --ink: #0B1726;
   --ink-2: #122438;
@@ -11,7 +32,7 @@
   --radius: 18px;
   --shadow: 0 24px 60px -28px rgba(11, 23, 38, .35);
   --shadow-sm: 0 8px 24px -14px rgba(11, 23, 38, .28);
-  --maxw: 1160px;
+  --maxw: 1360px;
 }
 
 * {
@@ -25,7 +46,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   color: var(--ink);
   background: var(--white);
   line-height: 1.6;
@@ -38,18 +59,27 @@ h2,
 h3,
 h4,
 .display {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: -.02em;
   line-height: 1.08
 }
 
 .mono {
-  font-family: 'JetBrains Mono', monospace
+  font-family: var(--font-mono)
 }
 
 a {
   color: inherit;
   text-decoration: none
+}
+
+/* No Preflight (see styles/tailwind.css): without this, every button, input and select falls back to
+   the browser's own UI font instead of the site's. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit
 }
 
 img {
@@ -64,7 +94,7 @@ img {
 }
 
 .eyebrow {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -87,98 +117,12 @@ img {
   left: 0
 }
 
-/* ---------- Header ---------- */
-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: rgba(255, 255, 255, .82);
-  backdrop-filter: saturate(160%) blur(14px);
-  border-bottom: 1px solid var(--line)
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  height: 72px
-}
-
-.brand img {
-  height: 30px;
-  width: auto
-}
-
-.nav-links {
-  display: flex;
-  gap: 26px;
-  margin-left: 14px
-}
-
-.nav-links a {
-  font-size: 14.5px;
-  font-weight: 500;
-  color: var(--muted);
-  transition: color .18s;
-  position: relative
-}
-
-.nav-links a::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 100%;
-  bottom: -4px;
-  height: 2px;
-  background: var(--blue);
-  border-radius: 2px;
-  transition: right .25s
-}
-
-.nav-links a:hover {
-  color: var(--ink)
-}
-
-.nav-links a:hover::after {
-  right: 0
-}
-
-.nav-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 14px
-}
-
-.lang {
-  display: inline-flex;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px;
-  gap: 2px
-}
-
-.lang a {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--muted);
-  padding: 6px 12px;
-  border-radius: 999px;
-  transition: all .18s
-}
-
-.lang a.active {
-  background: var(--ink);
-  color: #fff
-}
-
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   justify-content: center;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 14.5px;
   padding: 11px 20px;
@@ -219,24 +163,6 @@ header {
 .btn-white:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-sm)
-}
-
-.menu-toggle {
-  display: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  padding: 6px
-}
-
-.menu-toggle span {
-  display: block;
-  width: 22px;
-  height: 2px;
-  background: var(--ink);
-  margin: 5px 0;
-  border-radius: 2px;
-  transition: .25s
 }
 
 /* ---------- Hero ---------- */
@@ -413,7 +339,7 @@ h1.hero-title .hl::after {
 }
 
 .stat .num {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 28px;
   font-weight: 700;
   color: var(--ink)
@@ -494,7 +420,7 @@ h1.hero-title .hl::after {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .12em;
@@ -524,7 +450,7 @@ h1.hero-title .hl::after {
 }
 
 .scan-head .clock {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted)
 }
@@ -619,7 +545,7 @@ h1.hero-title .hl::after {
 }
 
 .feed-label {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: .1em;
   color: var(--muted);
@@ -650,7 +576,7 @@ h1.hero-title .hl::after {
   font-weight: 700;
   font-size: 13px;
   color: #fff;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif
+  font-family: var(--font-sans)
 }
 
 .row .who {
@@ -660,7 +586,7 @@ h1.hero-title .hl::after {
 
 .row .status {
   margin-left: auto;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   color: #16A34A;
   display: flex;
@@ -675,7 +601,7 @@ h1.hero-title .hl::after {
 }
 
 .row .t {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
   text-align: right
@@ -720,7 +646,7 @@ section {
 
 .trust p {
   text-align: center;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -752,7 +678,7 @@ section {
 }
 
 .mq-item {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 22px;
   color: #9AA9BD;
@@ -815,7 +741,7 @@ section {
 }
 
 .stat-card .big {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: clamp(32px, 4vw, 48px);
   font-weight: 800;
   background: linear-gradient(180deg, #fff, #6E9BFF);
@@ -828,60 +754,6 @@ section {
   font-size: 14px;
   color: #93A4BC;
   margin-top: 6px
-}
-
-/* ---------- Steps ---------- */
-.how {
-  background: var(--paper);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line)
-}
-
-.steps {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 22px;
-  position: relative
-}
-
-.step {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 30px 26px;
-  position: relative;
-  transition: transform .25s, box-shadow .25s
-}
-
-.step:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-sm)
-}
-
-.step .n {
-  font-family: 'JetBrains Mono';
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--blue);
-  border: 1px solid var(--blue-tint);
-  background: var(--blue-tint);
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 18px
-}
-
-.step h3 {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 8px
-}
-
-.step p {
-  color: var(--muted);
-  font-size: 15px
 }
 
 /* ---------- Features ---------- */
@@ -938,199 +810,6 @@ section {
 .feat p {
   color: var(--muted);
   font-size: 14.5px
-}
-
-/* ---------- Dashboard ---------- */
-.dash {
-  background: var(--ink);
-  color: #fff;
-  overflow: hidden;
-  position: relative
-}
-
-.dash .sec-head h2 {
-  color: #fff
-}
-
-.dash .sec-head p {
-  color: #93A4BC
-}
-
-.dash .eyebrow {
-  color: #6E9BFF
-}
-
-.board {
-  max-width: 940px;
-  margin: 0 auto;
-  background: var(--ink-2);
-  border: 1px solid rgba(255, 255, 255, .08);
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 40px 90px -40px rgba(0, 0, 0, .7)
-}
-
-.board-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, .08)
-}
-
-.board-bar i {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #33455C
-}
-
-.board-bar .title {
-  margin-left: 14px;
-  font-family: 'JetBrains Mono';
-  font-size: 12px;
-  color: #8CA0BC
-}
-
-.board-body {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 26px;
-  padding: 26px
-}
-
-.kpis {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 22px
-}
-
-.kpi {
-  background: rgba(255, 255, 255, .04);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 14px;
-  padding: 14px
-}
-
-.kpi .v {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  font-size: 24px;
-  font-weight: 700
-}
-
-.kpi .k {
-  font-size: 12px;
-  color: #93A4BC;
-  margin-top: 2px
-}
-
-.kpi.green .v {
-  color: #4ADE80
-}
-
-.kpi.blue .v {
-  color: #6E9BFF
-}
-
-.kpi.amber .v {
-  color: #FBBF24
-}
-
-.bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  height: 130px;
-  padding: 8px 4px 0
-}
-
-.bar {
-  flex: 1;
-  background: linear-gradient(180deg, #2E6BF0, #1E63E9);
-  border-radius: 7px 7px 0 0;
-  position: relative;
-  height: 0;
-  transition: height 1s cubic-bezier(.2, .8, .2, 1)
-}
-
-.bars.in .bar {
-  height: var(--h)
-}
-
-.bar span {
-  position: absolute;
-  bottom: -22px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-family: 'JetBrains Mono';
-  font-size: 10.5px;
-  color: #7E92AE
-}
-
-.donut-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, .04);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 16px;
-  padding: 22px
-}
-
-.donut {
-  position: relative;
-  width: 150px;
-  height: 150px
-}
-
-.donut .lab {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center
-}
-
-.donut .lab b {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  font-size: 30px;
-  font-weight: 700
-}
-
-.donut .lab small {
-  font-size: 12px;
-  color: #93A4BC
-}
-
-.donut .arc {
-  stroke-dasharray: 314;
-  stroke-dashoffset: 314;
-  transition: stroke-dashoffset 1.4s cubic-bezier(.3, .7, .3, 1)
-}
-
-.donut.in .arc {
-  stroke-dashoffset: 25
-}
-
-.legend {
-  display: flex;
-  gap: 16px;
-  margin-top: 16px;
-  font-size: 12px;
-  color: #B7C4D6
-}
-
-.legend i {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border-radius: 3px;
-  margin-right: 6px;
-  vertical-align: middle
 }
 
 /* ---------- Audience ---------- */
@@ -1349,7 +1028,7 @@ section {
   display: grid;
   place-items: center;
   color: #fff;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 15px
 }
@@ -1420,7 +1099,7 @@ section {
   font-weight: 700;
   padding: 4px 12px;
   border-radius: 999px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   letter-spacing: .08em
 }
 
@@ -1437,7 +1116,7 @@ section {
 }
 
 .plan .amt {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 38px;
   font-weight: 700;
   margin: 10px 0 2px
@@ -1447,7 +1126,7 @@ section {
   font-size: 14px;
   color: var(--muted);
   font-weight: 500;
-  font-family: 'Inter'
+  font-family: var(--font-sans)
 }
 
 .plan ul {
@@ -1507,7 +1186,7 @@ section {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 16.5px;
   color: var(--ink)
@@ -1611,7 +1290,10 @@ footer {
 }
 
 .flogo img {
-  height: 30px
+  height: 30px;
+  /* <Image /> emits width= too; with only the height pinned here, that presentational
+     hint has nothing overriding it and stretches the mark. See Footer.astro. */
+  width: auto
 }
 
 .foot-grid p {
@@ -1625,7 +1307,7 @@ footer {
   text-transform: uppercase;
   letter-spacing: .1em;
   margin-bottom: 14px;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-weight: 700
 }
 
@@ -1697,7 +1379,6 @@ footer {
     margin: 0 auto
   }
 
-  .steps,
   .feat-grid,
   .aud-grid,
   .test-grid {
@@ -1709,50 +1390,13 @@ footer {
     grid-template-columns: 1fr 1fr
   }
 
-  .board-body {
-    grid-template-columns: 1fr
-  }
-
   .foot-grid {
     grid-template-columns: 1fr 1fr
   }
 
-  .nav-links {
-    display: none
   }
-
-  .menu-toggle {
-    display: block
-  }
-
-  .nav-links.open {
-    display: flex;
-    position: absolute;
-    top: 72px;
-    left: 0;
-    right: 0;
-    flex-direction: column;
-    background: #fff;
-    border-bottom: 1px solid var(--line);
-    padding: 16px 24px;
-    gap: 8px;
-    margin: 0
-  }
-}
-
-/* The login link lives twice: a ghost button in the header for wide screens, a plain menu row for
-   narrow ones — where .nav-right .btn is hidden. Exactly one of the two is ever visible. */
-.nav-login-mobile {
-  display: none
-}
 
 @media(max-width:560px) {
-  .nav-login-mobile {
-    display: block;
-    font-weight: 600;
-    color: var(--blue)
-  }
-
   .foot-grid {
     grid-template-columns: 1fr 1fr
   }
@@ -1762,18 +1406,11 @@ footer {
     grid-template-columns: 1fr
   }
 
-  .kpis {
-    grid-template-columns: 1fr 1fr
-  }
-
   .stats {
     gap: 22px
   }
 
-  .nav-right .btn {
-    display: none
   }
-}
 
 @media(prefers-reduced-motion:reduce) {
   * {
@@ -1785,14 +1422,6 @@ footer {
   .fade-up {
     opacity: 1 !important;
     transform: none !important
-  }
-
-  .bars .bar {
-    height: var(--h) !important
-  }
-
-  .donut .arc {
-    stroke-dashoffset: 25 !important
   }
 }
 
@@ -1858,7 +1487,7 @@ footer {
   color: var(--muted);
   display: grid;
   place-items: center;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-weight: 700;
   font-size: 14px;
   transition: all .3s
@@ -1995,7 +1624,7 @@ footer {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px 0;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 11px;
   z-index: 4
 }
@@ -2110,7 +1739,7 @@ footer {
   right: 0;
   text-align: center;
   color: #B7C4D6;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .06em
 }
@@ -2134,7 +1763,7 @@ footer {
 }
 
 .screen-verify h4 {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
   font-weight: 600;
   text-align: center;
@@ -2366,7 +1995,7 @@ footer {
   right: 0;
   text-align: center;
   color: #AFC4E0;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: .05em
 }
@@ -2430,7 +2059,7 @@ footer {
 }
 
 .done-title {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 24px;
   font-weight: 800;
   color: #16A34A
@@ -2443,7 +2072,7 @@ footer {
 }
 
 .done-meta {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--muted)
 }
@@ -2606,7 +2235,7 @@ footer {
 }
 
 .store-badge .tt small {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -2614,7 +2243,7 @@ footer {
 }
 
 .store-badge .tt b {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 700
 }
@@ -2652,7 +2281,7 @@ footer {
 
 /* ---------- Footer wordmark ---------- */
 .fword {
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 800;
   font-size: 24px;
   color: #fff
@@ -2711,7 +2340,7 @@ footer {
   position: absolute;
   top: 12px;
   left: 14px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
   color: var(--blue)
@@ -2869,7 +2498,7 @@ footer {
 }
 
 .contact-list span {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -2918,7 +2547,7 @@ footer {
 }
 
 .post-card time {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted)
 }
@@ -2932,166 +2561,6 @@ footer {
 .post-card p {
   color: var(--muted);
   font-size: 15px
-}
-
-/* ---------- Named customers (Trust.astro) ----------
-   A dark band under a light hero. Everything above is white-to-paper, so ink here stops the
-   customers reading as one more pale row and gives the three names a stage of their own. The glow
-   and dot grid are the hero's, reused rather than reinvented. */
-.cust {
-  position: relative;
-  overflow: hidden;
-  background: var(--ink);
-  color: #fff;
-  padding: 64px 0 68px
-}
-
-.cust-bg {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(60% 70% at 50% -10%, rgba(30, 99, 233, .30), transparent 70%),
-    radial-gradient(40% 60% at 90% 110%, rgba(47, 163, 107, .16), transparent 70%);
-}
-
-.cust-bg::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: .30;
-  background-image: radial-gradient(rgba(255, 255, 255, .22) 1.1px, transparent 1.1px);
-  background-size: 26px 26px;
-  -webkit-mask-image: radial-gradient(75% 70% at 50% 40%, #000, transparent 78%);
-  mask-image: radial-gradient(75% 70% at 50% 40%, #000, transparent 78%)
-}
-
-.cust-inner {
-  position: relative;
-  z-index: 1
-}
-
-.cust-eyebrow {
-  text-align: center;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11.5px;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: #8FB3FF;
-  margin-bottom: 12px
-}
-
-.cust-h {
-  text-align: center;
-  font-size: clamp(24px, 3.2vw, 34px);
-  font-weight: 700;
-  color: #fff;
-  margin: 0 auto 38px;
-  max-width: 22ch;
-  text-wrap: balance
-}
-
-.cust-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px
-}
-
-.cust-card {
-  position: relative;
-  border: 1px solid rgba(255, 255, 255, .11);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, .045);
-  padding: 28px 24px 26px;
-  text-align: center;
-  transition: transform .28s cubic-bezier(.2, .7, .3, 1), border-color .28s, background .28s, box-shadow .28s
-}
-
-.cust-card::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 26%, transparent), transparent 55%);
-  opacity: 0;
-  transition: opacity .28s
-}
-
-.cust-card:hover {
-  transform: translateY(-6px);
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: rgba(255, 255, 255, .07);
-  box-shadow: 0 26px 60px -30px color-mix(in srgb, var(--accent) 75%, transparent)
-}
-
-.cust-card:hover::before {
-  opacity: .5
-}
-
-/* Every logo on a white tile of the same size: the two real ones were drawn for their own
-   backgrounds (CleanFix blue-on-white, EastCaf a navy roundel), and EastCaf's navy is within a few
-   shades of this band. The tile is what makes three different shapes read as one row. */
-.cust-tile {
-  height: 110px;
-  margin-bottom: 18px;
-  border-radius: 14px;
-  background: #fff;
-  display: grid;
-  place-items: center;
-  padding: 18px 22px;
-  box-shadow: 0 10px 26px -18px rgba(0, 0, 0, .8)
-}
-
-/* Height comes from the item's own logoH — see CUSTOMERS in site.ts for why it is not shared. */
-.cust-tile img {
-  max-height: var(--logo-h, 56px);
-  max-width: 88%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  display: block
-}
-
-/* No logo yet — a monogram at the same optical weight keeps the row even. */
-.cust-mono {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: 20px;
-  color: #fff;
-  letter-spacing: .02em;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 92%, #fff), color-mix(in srgb, var(--accent) 62%, #000))
-}
-
-.cust-card h3 {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  margin-bottom: 5px;
-  letter-spacing: -.01em
-}
-
-.cust-card p {
-  font-size: 13.5px;
-  color: #9DB0C7;
-  line-height: 1.55;
-  margin: 0
-}
-
-@media(max-width:860px) {
-  .cust-grid {
-    grid-template-columns: 1fr;
-    max-width: 420px;
-    margin: 0 auto
-  }
-
-  .cust {
-    padding: 52px 0 56px
-  }
 }
 
 /* The individual-quote panel that stands in for the plan table while PRICING.showPlans is off. */
@@ -3144,15 +2613,11 @@ footer {
   --radius: 20px;
   --shadow: 0 34px 90px -44px rgba(4, 18, 29, .42);
   --shadow-sm: 0 16px 40px -28px rgba(4, 18, 29, .32);
-  --maxw: 1220px;
-}
-
-html {
-  scroll-padding-top: 86px
+  --maxw: 1320px;
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   background: var(--white);
   color: var(--ink);
 }
@@ -3164,12 +2629,10 @@ h4,
 .display,
 .stat .num,
 .stat-card .big,
-.kpi .v,
 .plan .amt,
 .done-title,
-.cust-mono,
 .fword {
-  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: -.04em;
 }
 
@@ -3186,7 +2649,7 @@ section {
   align-items: center;
   gap: 9px;
   color: var(--blue);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: .14em;
 }
@@ -3218,66 +2681,6 @@ section {
   font-size: 17px;
   line-height: 1.72;
   color: var(--muted)
-}
-
-/* Header */
-header {
-  background: rgba(255, 255, 255, .92);
-  border-bottom: 1px solid rgba(7, 21, 33, .09);
-  backdrop-filter: blur(18px) saturate(140%);
-}
-
-.nav {
-  height: 78px;
-  gap: 34px
-}
-
-.brand {
-  display: flex;
-  align-items: center
-}
-
-.brand img {
-  height: 29px
-}
-
-.nav-links {
-  gap: 30px;
-  margin-left: 18px
-}
-
-.nav-links a {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #566771
-}
-
-.nav-links a::after {
-  bottom: -10px;
-  height: 1px
-}
-
-.nav-right {
-  gap: 12px
-}
-
-.lang {
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  padding: 0;
-  gap: 1px
-}
-
-.lang a {
-  padding: 7px 9px;
-  border-radius: 6px;
-  font-size: 11px
-}
-
-.lang a.active {
-  background: var(--ink);
-  color: #fff
 }
 
 .btn {
@@ -3523,7 +2926,7 @@ h1.hero-title .hl::after {
 
 .scan-shell-bar b {
   margin-left: auto;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 8px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -3684,7 +3087,7 @@ h1.hero-title .hl::after {
   align-items: center;
   gap: 9px;
   color: #B7C8D3;
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: .09em;
   text-transform: uppercase
@@ -3840,7 +3243,7 @@ h1.hero-title .hl::after {
 }
 
 .verify-node small {
-  font-family: 'JetBrains Mono';
+  font-family: var(--font-mono);
   font-size: 7px;
   letter-spacing: .09em;
   color: #667D8B
@@ -3916,7 +3319,7 @@ h1.hero-title .hl::after {
   border-radius: 11px;
   background: var(--blue);
   color: #fff;
-  font: 700 11px 'Manrope', sans-serif
+  font: 700 11px var(--font-sans)
 }
 
 .person-copy {
@@ -3926,7 +3329,7 @@ h1.hero-title .hl::after {
 }
 
 .person-copy small {
-  font: 700 8px 'JetBrains Mono';
+  font: 700 8px var(--font-mono);
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--blue)
@@ -4008,7 +3411,7 @@ h1.hero-title .hl::after {
 
 .orbit-result small {
   margin-top: 4px;
-  font: 8px 'JetBrains Mono';
+  font: 8px var(--font-mono);
   color: #758B98
 }
 
@@ -4116,273 +3519,6 @@ h1.hero-title .hl::after {
     height: 5px;
     opacity: .45
   }
-}
-
-/* Customers */
-.cust {
-  padding: 54px 0 62px;
-  background: var(--paper-warm);
-  color: var(--ink);
-  border-bottom: 1px solid var(--line)
-}
-
-.cust-bg {
-  display: none
-}
-
-.cust-inner {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 54px;
-  align-items: center
-}
-
-.cust-heading {
-  border-right: 1px solid var(--line);
-  padding-right: 32px
-}
-
-.cust-eyebrow {
-  text-align: left;
-  color: var(--blue);
-  margin: 0 0 10px;
-  font-size: 10px
-}
-
-.cust-h {
-  max-width: 12ch;
-  margin: 0;
-  text-align: left;
-  color: var(--ink);
-  font-size: 22px;
-  line-height: 1.24;
-  font-weight: 700
-}
-
-.cust-grid {
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
-  background: #fff
-}
-
-.cust-card {
-  min-width: 0;
-  padding: 20px 15px 17px;
-  border: 0;
-  border-right: 1px solid var(--line);
-  border-radius: 0;
-  background: #fff;
-  color: var(--ink);
-  text-align: center;
-  box-shadow: none;
-}
-
-.cust-card:last-child {
-  border-right: 0
-}
-
-.cust-card::before {
-  display: none
-}
-
-.cust-card:hover {
-  transform: none;
-  border-color: var(--line);
-  background: #FAFBFA;
-  box-shadow: none
-}
-
-.cust-tile {
-  height: 72px;
-  margin: 0 0 10px;
-  padding: 8px 15px;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent
-}
-
-.cust-tile img {
-  max-height: min(var(--logo-h, 56px), 54px);
-  max-width: 82%;
-  filter: saturate(.85);
-  transition: filter .2s, transform .2s
-}
-
-.cust-card:hover img {
-  filter: saturate(1);
-  transform: scale(1.035)
-}
-
-.cust-card h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 12px;
-  letter-spacing: -.01em
-}
-
-.cust-card p {
-  display: none
-}
-
-/* Product dashboard — brought up immediately after customer proof */
-.dash {
-  padding: 124px 0;
-  background: #fff;
-  color: var(--ink)
-}
-
-.dash::before {
-  content: "";
-  display: block;
-  position: absolute
-}
-
-.dash .wrap {
-  display: grid;
-  grid-template-columns: .68fr 1.32fr;
-  gap: 70px;
-  align-items: center
-}
-
-.dash .sec-head {
-  margin: 0
-}
-
-.dash .sec-head h2 {
-  color: var(--ink);
-  font-size: clamp(38px, 4.3vw, 57px)
-}
-
-.dash .sec-head p {
-  color: var(--muted)
-}
-
-.dash .eyebrow {
-  color: var(--blue)
-}
-
-.board {
-  width: 100%;
-  margin: 0;
-  border: 1px solid #1E3444;
-  border-radius: 15px;
-  background: #0B1B28;
-  box-shadow: 0 42px 90px -42px rgba(3, 20, 32, .68);
-}
-
-.board-bar {
-  background: #0A1824;
-  padding: 12px 15px
-}
-
-.board-body {
-  gap: 20px;
-  padding: 21px
-}
-
-.kpis {
-  margin-bottom: 19px
-}
-
-.kpi,
-.donut-wrap {
-  border-color: rgba(255, 255, 255, .08);
-  background: rgba(255, 255, 255, .04)
-}
-
-.kpi .v {
-  font-size: 21px
-}
-
-.bars {
-  height: 116px
-}
-
-/* How it works */
-.how {
-  padding: 106px 0;
-  background: var(--paper);
-  border-color: var(--line)
-}
-
-.how .sec-head {
-  display: grid;
-  grid-template-columns: .65fr 1.35fr;
-  gap: 48px;
-  max-width: none;
-  align-items: end
-}
-
-.how .sec-head .eyebrow {
-  align-self: start;
-  margin-top: 7px
-}
-
-.how .sec-head h2 {
-  grid-column: 2;
-  margin: 0;
-  font-size: clamp(36px, 4.3vw, 56px)
-}
-
-.how .sec-head p {
-  grid-column: 2;
-  margin-top: -30px
-}
-
-.steps {
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  border-top: 1px solid #C9D2D6
-}
-
-.step {
-  min-height: 285px;
-  padding: 33px 34px 30px 0;
-  border: 0;
-  border-right: 1px solid #C9D2D6;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.step+.step {
-  padding-left: 34px
-}
-
-.step:last-child {
-  border-right: 0;
-  padding-right: 0
-}
-
-.step:hover {
-  transform: none;
-  box-shadow: none
-}
-
-.step .n {
-  width: auto;
-  height: auto;
-  display: block;
-  margin: 0 0 74px;
-  background: none;
-  border: 0;
-  border-radius: 0;
-  color: var(--blue);
-  font-size: 12px;
-  text-align: left
-}
-
-.step h3 {
-  font-size: 22px;
-  margin-bottom: 12px
-}
-
-.step p {
-  font-size: 14.5px;
-  line-height: 1.7
 }
 
 /* Phone product walkthrough */
@@ -4941,7 +4077,7 @@ h1.hero-title .hl::after {
 
 .faq-q {
   padding: 22px 0;
-  font-family: 'Manrope', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px
 }
 
@@ -5115,6 +4251,7 @@ footer {
 }
 
 /* Responsive */
+
 @media(max-width:1100px) {
   .hero-grid {
     grid-template-columns: 1fr .86fr;
@@ -5131,28 +4268,6 @@ footer {
 
   .signal-device {
     right: -10px
-  }
-
-  .cust-inner {
-    grid-template-columns: 190px 1fr;
-    gap: 30px
-  }
-
-  .cust-grid {
-    grid-template-columns: repeat(2, 1fr)
-  }
-
-  .cust-card:nth-child(2) {
-    border-right: 0
-  }
-
-  .cust-card:nth-child(-n+2) {
-    border-bottom: 1px solid var(--line)
-  }
-
-  .dash .wrap {
-    grid-template-columns: .78fr 1.22fr;
-    gap: 42px
   }
 
   .plans {
@@ -5182,22 +4297,6 @@ footer {
     padding-inline: 22px
   }
 
-  .nav {
-    height: 72px
-  }
-
-  .nav-links.open {
-    top: 72px;
-    gap: 0;
-    padding: 10px 22px 18px;
-    box-shadow: 0 22px 40px -30px rgba(7, 21, 33, .4)
-  }
-
-  .nav-links.open a {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--line)
-  }
-
   .hero {
     padding: 74px 0 80px
   }
@@ -5222,72 +4321,6 @@ footer {
 
   .hero-orbit {
     margin: 0 auto
-  }
-
-  .cust-inner {
-    grid-template-columns: 1fr;
-    gap: 24px
-  }
-
-  .cust-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: end;
-    gap: 30px;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 0 0 20px
-  }
-
-  .cust-eyebrow {
-    margin: 0
-  }
-
-  .cust-h {
-    max-width: 14ch;
-    text-align: right;
-    font-size: 20px
-  }
-
-  .dash .wrap {
-    grid-template-columns: 1fr;
-    gap: 42px
-  }
-
-  .dash .sec-head {
-    max-width: 650px
-  }
-
-  .how .sec-head {
-    display: block
-  }
-
-  .how .sec-head h2 {
-    margin: 18px 0 15px
-  }
-
-  .how .sec-head p {
-    margin: 0
-  }
-
-  .steps {
-    grid-template-columns: 1fr
-  }
-
-  .step,
-  .step+.step {
-    min-height: auto;
-    padding: 28px 0;
-    border-right: 0;
-    border-bottom: 1px solid #C9D2D6
-  }
-
-  .step:last-child {
-    border-bottom: 0
-  }
-
-  .step .n {
-    margin-bottom: 30px
   }
 
   .pdemo-grid {
@@ -5398,14 +4431,6 @@ footer {
 
   .sec-head p {
     font-size: 15px
-  }
-
-  .brand img {
-    height: 26px
-  }
-
-  .lang {
-    display: none
   }
 
   .hero {
@@ -5550,48 +4575,6 @@ footer {
 
   .orbit-result {
     grid-template-columns: auto 1fr
-  }
-
-  .cust-heading {
-    display: block
-  }
-
-  .cust-h {
-    margin-top: 8px;
-    text-align: left
-  }
-
-  .cust-grid {
-    grid-template-columns: 1fr 1fr
-  }
-
-  .cust-card {
-    padding-inline: 8px
-  }
-
-  .cust-card h3 {
-    font-size: 10.5px
-  }
-
-  .dash {
-    padding: 82px 0
-  }
-
-  .board-body {
-    grid-template-columns: 1fr;
-    padding: 14px
-  }
-
-  .kpis {
-    grid-template-columns: 1fr 1fr
-  }
-
-  .kpi:last-child {
-    grid-column: 1/-1
-  }
-
-  .donut-wrap {
-    margin-top: 26px
   }
 
   .pdemo-grid {
@@ -5748,18 +4731,18 @@ footer {
   --blue: #155EEF;
   --blue-600: #0E4BC6;
   --blue-tint: #E7EEFF;
-  --paper: #F1EFEA;
+  --paper: #f5f6fa;
   --paper-warm: #EAE7E0;
   --line: #CFCFC8;
   --muted: #646760;
   --radius: 2px;
   --shadow: none;
   --shadow-sm: none;
-  --maxw: 1240px;
+  --maxw: 1340px;
 }
 
 body {
-  font-family: 'IBM Plex Sans', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   background: #F6F5F1;
   color: var(--ink)
 }
@@ -5771,12 +4754,10 @@ h4,
 .display,
 .stat .num,
 .stat-card .big,
-.kpi .v,
 .plan .amt,
 .done-title,
-.cust-mono,
 .fword {
-  font-family: 'IBM Plex Sans', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: -.045em;
 }
 
@@ -5784,7 +4765,7 @@ h4,
 .eyebrow,
 .feed-label,
 .orbit-time {
-  font-family: 'IBM Plex Mono', monospace
+  font-family: var(--font-mono)
 }
 
 .wrap {
@@ -5798,7 +4779,7 @@ section {
 
 .eyebrow {
   color: var(--blue);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .13em;
@@ -5825,62 +4806,13 @@ section {
   line-height: 1.65
 }
 
-/* Header: quiet and architectural. */
-header {
-  background: #F6F5F1;
-  border-bottom: 1px solid #BFC1BA;
-  backdrop-filter: none
-}
-
-.nav {
-  height: 82px
-}
-
-.nav-links a {
-  font-size: 13px;
-  font-weight: 500;
-  color: #454842
-}
-
-.nav-links a::after {
-  bottom: -12px;
-  height: 1px
-}
-
-.lang {
-  border-left: 1px solid #C8C9C3;
-  padding-left: 12px;
-  border-radius: 0
-}
-
-.lang a {
-  border-radius: 0
-}
-
-.lang a.active {
-  background: transparent;
-  color: var(--blue);
-  box-shadow: inset 0 -1px 0 var(--blue)
-}
-
-.nav .btn-primary {
-  min-height: 42px;
-  padding: 9px 17px;
-  border-radius: 0;
-  background: var(--ink);
-  box-shadow: none
-}
-
-.nav .btn-primary:hover {
-  background: var(--blue);
-  transform: none
-}
-
-/* Hero: warm editorial canvas + one instrument panel. */
+/* Hero: warm editorial canvas + one instrument panel.
+   The surface is the --paper token, not the hex it used to be: Trust.astro sits directly under this
+   section on the same colour and reads as one sheet with it, and two hex literals drift. */
 .hero {
   min-height: 760px;
   padding: 90px 0 82px;
-  background: #F1EFEA;
+  background: var(--paper);
   color: var(--ink)
 }
 
@@ -6027,7 +4959,7 @@ h1.hero-title .hl::before {
 .ops-feed-head span,
 .timeline-label span,
 .ops-kpis span {
-  font: 500 9px 'IBM Plex Mono';
+  font: 500 9px var(--font-mono);
   letter-spacing: .12em;
   text-transform: uppercase;
   color: #959B92
@@ -6035,7 +4967,7 @@ h1.hero-title .hl::before {
 
 .ops-head strong {
   margin-top: 7px;
-  font: 500 11px 'IBM Plex Mono';
+  font: 500 11px var(--font-mono);
   color: #F2F1EC
 }
 
@@ -6078,7 +5010,7 @@ h1.hero-title .hl::before {
 .ops-kpis strong {
   display: block;
   margin-top: 19px;
-  font: 500 36px/1 'IBM Plex Sans';
+  font: 500 36px/1 var(--font-sans);
   letter-spacing: -.06em
 }
 
@@ -6090,7 +5022,7 @@ h1.hero-title .hl::before {
 .ops-kpis small {
   display: inline-block;
   margin: 10px 0 0 8px;
-  font: 500 9px 'IBM Plex Mono';
+  font: 500 9px var(--font-mono);
   color: #5FDA91;
   vertical-align: top
 }
@@ -6107,7 +5039,7 @@ h1.hero-title .hl::before {
 }
 
 .timeline-label b {
-  font: 400 8px 'IBM Plex Mono';
+  font: 400 8px var(--font-mono);
   color: #777D75
 }
 
@@ -6115,7 +5047,7 @@ h1.hero-title .hl::before {
   display: flex;
   justify-content: space-between;
   margin-top: 18px;
-  font: 400 7px 'IBM Plex Mono';
+  font: 400 7px var(--font-mono);
   color: #626860
 }
 
@@ -6210,7 +5142,7 @@ h1.hero-title .hl::before {
 }
 
 .ops-feed-head small {
-  font: 400 8px 'IBM Plex Mono';
+  font: 400 8px var(--font-mono);
   color: #626860
 }
 
@@ -6234,7 +5166,7 @@ h1.hero-title .hl::before {
   width: 23px;
   height: 23px;
   border: 1px solid #4A4F48;
-  font: 500 7px 'IBM Plex Mono';
+  font: 500 7px var(--font-mono);
   color: #AEB3AA
 }
 
@@ -6250,7 +5182,7 @@ h1.hero-title .hl::before {
   display: flex;
   align-items: center;
   gap: 5px;
-  font: 400 7px 'IBM Plex Mono';
+  font: 400 7px var(--font-mono);
   color: #7B8178;
   animation: rowConfirm 4.8s steps(1, end) infinite;
   animation-delay: var(--row-delay)
@@ -6264,7 +5196,7 @@ h1.hero-title .hl::before {
 }
 
 .ops-row time {
-  font: 400 8px 'IBM Plex Mono';
+  font: 400 8px var(--font-mono);
   color: #656B63;
   text-align: right
 }
@@ -6299,126 +5231,7 @@ h1.hero-title .hl::before {
   }
 }
 
-/* Client proof reads like an index, not a logo-card carousel. */
-.cust {
-  padding: 46px 0;
-  background: #F6F5F1;
-  border-bottom: 1px solid #BFC1BA
-}
-
-.cust-inner {
-  grid-template-columns: 220px 1fr;
-  gap: 42px
-}
-
-.cust-heading {
-  border-color: #BFC1BA
-}
-
-.cust-eyebrow {
-  color: #6A6D67
-}
-
-.cust-h {
-  font-size: 20px;
-  font-weight: 600
-}
-
-.cust-grid {
-  border: 0;
-  border-left: 1px solid #BFC1BA;
-  border-radius: 0;
-  background: transparent
-}
-
-.cust-card {
-  padding: 14px;
-  border-right: 1px solid #BFC1BA;
-  background: transparent
-}
-
-.cust-card:hover {
-  background: transparent
-}
-
-.cust-tile {
-  height: 58px;
-  margin-bottom: 8px
-}
-
-.cust-tile img {
-  max-height: min(var(--logo-h, 56px), 42px);
-  filter: grayscale(1);
-  opacity: .72
-}
-
-.cust-card:hover img {
-  filter: grayscale(0);
-  opacity: 1;
-  transform: none
-}
-
-.cust-card h3 {
-  font: 500 10px 'IBM Plex Mono';
-  color: #5B5F58
-}
-
-/* Product panel. */
-.dash {
-  padding: 116px 0;
-  background: #171917;
-  color: #F6F5F1
-}
-
-.dash .sec-head h2 {
-  color: #F6F5F1
-}
-
-.dash .sec-head p {
-  color: #A6ABA2
-}
-
-.board {
-  border: 1px solid #454941;
-  border-radius: 0;
-  background: #20231F;
-  box-shadow: none
-}
-
-.board-bar {
-  background: #1B1D1B
-}
-
-.kpi,
-.donut-wrap {
-  border-radius: 0
-}
-
-.bar {
-  border-radius: 0;
-  background: #3E78F2
-}
-
-/* How-to and walkthrough. */
-.how {
-  background: #EAE7E0;
-  border-color: #BFC1BA
-}
-
-.steps {
-  border-color: #B8BAB2
-}
-
-.step,
-.step+.step {
-  border-color: #B8BAB2
-}
-
-.step .n {
-  font-family: 'IBM Plex Mono';
-  color: #155EEF
-}
-
+/* Walkthrough — telefon demosu. */
 .pdemo {
   background: #F6F5F1
 }
@@ -6490,7 +5303,7 @@ h1.hero-title .hl::before {
 
 .feat::before {
   content: "0" counter(feature);
-  font: 500 9px 'IBM Plex Mono';
+  font: 500 9px var(--font-mono);
   color: #155EEF
 }
 
@@ -6548,7 +5361,7 @@ h1.hero-title .hl::before {
 
 /* Audience, security and modules use rows/rules instead of cards. */
 #audience {
-  background: #F1EFEA
+  background: #f5f6fa
 }
 
 .aud-grid {
@@ -6798,19 +5611,6 @@ footer {
     padding-top: 72px
   }
 
-  .cust-inner {
-    grid-template-columns: 1fr
-  }
-
-  .cust-heading {
-    display: block;
-    text-align: left
-  }
-
-  .cust-h {
-    text-align: left
-  }
-
   .aud-grid {
     grid-template-columns: 1fr 1fr
   }
@@ -6827,10 +5627,6 @@ footer {
 @media(max-width:640px) {
   .wrap {
     padding-inline: 18px
-  }
-
-  .nav {
-    height: 70px
   }
 
   h1.hero-title {
@@ -7053,4 +5849,41 @@ footer {
   color: #93A9C2;
   font-size: 14px;
   line-height: 1.6;
+}
+
+/* ---------- Fixed header ---------- */
+/*
+ * The header is src/components/Header.astro, and everything it looks like is a Tailwind utility in
+ * that file — there are no .nav / .nav-links / .nav-right / .lang / .brand / .menu-toggle rules any
+ * more, here or anywhere else. What stays here is the part the component cannot own.
+ *
+ * The header is `position: fixed`, so it takes up no space in the page: the first section of every
+ * page starts at the top of the viewport and the glass bar floats over its background instead of
+ * sitting in a band of its own. --header-h is the bar's full height, its margins included, and the
+ * two rules below hand that height back as space above the first line of a page.
+ *
+ * This block has to stay at the end of the file: the responsive .hero / .page-hero paddings above
+ * would otherwise win over it.
+ */
+:root {
+  --header-h: 90px
+}
+
+@media(min-width:640px) {
+  :root {
+    --header-h: 98px
+  }
+}
+
+html {
+  /* #how, #features and #faq land below the bar, never under it. */
+  scroll-padding-top: var(--header-h)
+}
+
+.hero {
+  padding-top: calc(var(--header-h) + 60px)
+}
+
+.page-hero {
+  padding-top: calc(var(--header-h) + 48px)
 }

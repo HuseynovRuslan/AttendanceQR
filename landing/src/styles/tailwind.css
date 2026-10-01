@@ -14,12 +14,47 @@
 @import 'tailwindcss/theme.css' layer(theme);
 /* Classes are looked for in src/ only. Left to find files on its own, Tailwind skips what .gitignore
    lists — and the Docker build has no .gitignore, so the server would build different CSS than a
-   local build does. */
+   local build does.
+
+   source() is resolved against THIS FILE and has to land on src/. Move this stylesheet and the
+   path moves with it — and getting it wrong does not fail the build, it silently empties the
+   utilities layer. */
 @import 'tailwindcss/utilities.css' layer(utilities) source('..');
 
 @theme {
-  /* `font-sans` / `font-mono` mean the faces BaseLayout loads, not system fonts. */
-  --font-sans: 'IBM Plex Sans', 'Inter', sans-serif;
+  /* The site's own blue — the "Log" of the logo, the stats band, --blue in global.css — so that
+     `bg-brand` and `from-brand` mean QRLog blue and not Tailwind's default, which is lighter and
+     more electric. -600 is the hover shade, -700 the pressed one; white text on all three clears
+     5.4:1, which Tailwind's own blue-500 → blue-600 gradient did not. */
+  --color-brand: #155EEF;
+  --color-brand-600: #0F4FD1;
+  --color-brand-700: #0B3CA8;
+
+  /* The neutral half of the newer section design (Header, Hero, Trust, Problem, HowItWorks): one
+     near-black for headings, one warm grey for body copy, one hairline for the 1px rules, and the
+     off-white the illustration stages sit on. They are tokens and not hex literals precisely
+     because the same four values appear in class names AND inside inline SVG fills — a section
+     half in tokens and half in hex drifts the first time one of them is nudged.
+
+     Not the same thing as global.css's --ink / --line / --paper: those are the older navy-tinted
+     palette (#0B1726, #E1E7F0, #F6F8FC) the rest of the page still runs on. Do not merge them —
+     the two sets belong to two different generations of the design and are being replaced section
+     by section. */
+  --color-ink: #111211;
+  --color-ink2: #78716C;
+  --color-hair: #E3E1E1;
+  --color-page: #F5F6FA;
+
+  /* The site's typeface, and the only place one is named. global.css asks for var(--font-sans) and
+     var(--font-mono); components use `font-sans` / `font-mono` or nothing at all, because <body>
+     carries the sans stack and everything inherits it.
+
+     Onest is served by Google Fonts and is the only free face checked here that carries everything
+     this site sets: the Azerbaijani Ə ə İ ı Ğ ğ Ş ş, the full Russian alphabet, the arrows and check
+     marks in the copy, and — the one that rules most faces out — ₼, the manat sign the prices are in.
+     Inter follows it for anyone who has it installed; IBM Plex Sans, the face this site used before,
+     has no ₼ at all. Anything that replaces Onest has to be measured against the same list. */
+  --font-sans: 'Onest', 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 
   /* global.css already has keyframes named spin, ping and pulse. Tailwind writes an animate-*
@@ -28,6 +63,11 @@
   --animate-spin: tw-spin 1s linear infinite;
   --animate-ping: tw-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
   --animate-pulse: tw-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  /* The halo behind the phone in the hero. Seven seconds because it is ambient light and not a
+     status light: at Tailwind's own two-second pulse it reads as something blinking for attention,
+     which the live dot beside it already does. global.css stops it under prefers-reduced-motion. */
+  --animate-halo: qr-halo 7s ease-in-out infinite;
 
   @keyframes tw-spin {
     to {
@@ -44,6 +84,17 @@
   @keyframes tw-pulse {
     50% {
       opacity: 0.5;
+    }
+  }
+  @keyframes qr-halo {
+    0%,
+    100% {
+      opacity: 0.7;
+      transform: scale(0.96);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.04);
     }
   }
 }

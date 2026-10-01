@@ -18,16 +18,30 @@ namespace AttendanceQR.Application.Tests;
 /// </summary>
 public class EarlyCheckOutScanTests
 {
+    /// <summary>
+    /// The incident's own minute: 16.09, 17:54 in Baku — when Fərəcov Elşən opened the app to leave.
+    ///
+    /// Pinned, because these tests read the wall clock through the endpoint and two of them only held
+    /// after 09:00 UTC. The offline branch of <see cref="AttendanceController.Scan"/> opens the day on
+    /// the UTC date of the time the PHONE sent, not the server's. With the arrival pushed nine hours
+    /// back, that timestamp crossed UTC midnight whenever the suite ran before nine in the morning:
+    /// the day was then looked up under yesterday's date, no open record was found, and the replayed
+    /// scan opened a FRESH check-in instead of being weighed as a check-out — so the first test got
+    /// null where it expected «ConfirmEarlyCheckOut», and the second blew up in SingleAsync on the
+    /// second row. Every CI run before 09:00 UTC was red for this reason and nothing else.
+    /// </summary>
+    private static readonly DateTime Anchor = new(2026, 9, 16, 13, 54, 0, DateTimeKind.Utc);
+
     private static string? Error(IActionResult r) =>
         r is ObjectResult { Value: { } v } ? v.GetType().GetProperty("error")?.GetValue(v) as string : null;
 
     /// <summary>Check in, then move the arrival <paramref name="minutesAgo"/> into the past.</summary>
     private static async Task<SplitShiftScanTests.Harness> ArrivedAsync(int minutesAgo)
     {
-        var h = new SplitShiftScanTests.Harness(secondWindow: false);
+        var h = new SplitShiftScanTests.Harness(secondWindow: false, nowUtc: Anchor);
         Assert.Null(Error(await h.Controller.Scan(h.Scan())));
         var open = await h.Db.AttendanceRecords.SingleAsync();
-        open.CheckInAtUtc = DateTime.UtcNow.AddMinutes(-minutesAgo);
+        open.CheckInAtUtc = Anchor.AddMinutes(-minutesAgo);
         await h.Db.SaveChangesAsync();
         return h;
     }
