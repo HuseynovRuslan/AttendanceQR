@@ -1,21 +1,21 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
 import { areaOf, exportRow, uniqueAreas, type AreaView } from './exportRows'
-import { formatWorked, initials, shiftHours, shiftTitle, workedMinutes } from './todayShift'
+import { formatWorked, workedMinutes } from './todayShift'
+import { TodayRow } from './TodayRow'
 import { useSearchParams } from 'react-router-dom'
-import { EmployeeLink } from '../../components/EmployeeLink'
 import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow } from '../../api/admin'
 import { getImpersonation } from '../../api/client'
 import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
 import { useAuth } from '../../auth/AuthContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
-import { StatusBadge, STATUS_MAP, dayLabel, dayVisual } from '../../components/StatusBadge'
+import { STATUS_MAP, dayLabel } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
-import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
+import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import {
-  IconCalendar, IconCamera, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconClock,
-  IconColumns, IconDownload, IconPencil, IconSearch, IconTable, IconUserX, IconX,
+  IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconClock,
+  IconColumns, IconDownload, IconSearch, IconTable, IconUserX, IconX,
 } from '../../components/icons'
 import { fmtLongDate, fmtTime, toCompanyInputValue } from '../../lib/format'
 
@@ -86,12 +86,16 @@ export function TodayPage() {
   const [reasonFor, setReasonFor] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
 
-  function openReasonMenu(e: MouseEvent, employeeId: string) {
+  // useCallback with no dependencies, and that is load-bearing rather than tidiness: the row is
+  // memoised, so a handler that changed identity on every render would re-render all 488 rows and
+  // undo the whole point. Every handler below is written to need nothing from the render it is in.
+  const openReasonMenu = useCallback((e: MouseEvent, employeeId: string) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     // Clamp so a menu near the right/bottom edge stays on screen.
     setMenuPos({ top: Math.min(r.bottom + 4, window.innerHeight - 250), left: Math.min(r.left, window.innerWidth - 210) })
     setReasonFor(employeeId)
-  }
+  }, [])
+
   // The company's day, not the device's — and recomputed every render rather than frozen at mount.
   //
   // It was `localDateISO(new Date())` inside a useMemo with no deps, which is two bugs in one line: a
@@ -164,6 +168,9 @@ export function TodayPage() {
   // the report differs — so it is one switch, not two exports to keep in step.
   const [exportView, setExportView] = useState<AreaView>('actual')
 
+  const pickPosition = useCallback((p: string) => setFilterPosition((v) => (v === p ? null : p)), [])
+  const pickLocation = useCallback((id: string) => setFilterLocs([id]), [])
+
   function toggleCol(key: keyof Cols) {
     setCols((c) => {
       const next = { ...c, [key]: !c[key] }
@@ -172,7 +179,7 @@ export function TodayPage() {
     })
   }
 
-  async function viewPhoto(row: DayAttendanceRow) {
+  const viewPhoto = useCallback(async (row: DayAttendanceRow) => {
     if (!row.recordId) return
     setBusyId(row.recordId)
     setPhotoError(null)
@@ -184,7 +191,9 @@ export function TodayPage() {
       return
     }
     setModal({ title: row.employeeName, photo: data, recordId: row.recordId ?? null })
-  }
+  }, [])
+
+  const onPhoto = useCallback((row: DayAttendanceRow) => { void viewPhoto(row) }, [viewPhoto])
 
   // Assign a reason to an absent employee straight from this board: a single-day leave for the date
   // being viewed. Managers file through their own scoped endpoint, admins through the admin one — the
@@ -304,7 +313,10 @@ export function TodayPage() {
       .sort((a, b) => a.name.localeCompare(b.name, 'az'))
   }, [rows])
 
-  const locFiltered = filterLocs.length ? rows.filter((r) => filterLocs.includes(r.locationId)) : rows
+  const locFiltered = useMemo(
+    () => (filterLocs.length ? rows.filter((r) => filterLocs.includes(r.locationId)) : rows),
+    [rows, filterLocs],
+  )
 
   // Counts reflect the LOCATION scope only (not the status/search/photo filters), so the cards keep
   // showing the day's real breakdown and stay usable as toggles.
@@ -314,14 +326,15 @@ export function TodayPage() {
   // (`OnLeave`) and is separable only by `leaveType`, so a screen that counts by status merges a
   // work trip into the holidays — which is what this board did, and what the reports did before
   // 3d6ac7e. Twice is enough for it to belong somewhere a test can see it.
-  const counts = countToday(locFiltered)
-  const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
-  const noPhotoCount = locFiltered.filter((r) => r.checkInAtUtc && !r.hasPhoto).length
+  const counts = useMemo(() => countToday(locFiltered), [locFiltered])
+  const { flaggedCount, noPhotoCount } = useMemo(() => ({
+    flaggedCount: locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length,
+    noPhotoCount: locFiltered.filter((r) => r.checkInAtUtc && !r.hasPhoto).length,
+  }), [locFiltered])
   const incompleteLabel = isToday ? 'İşdə' : 'Çıxış yoxdur'
-  const incompleteOverride = isToday ? undefined : { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
 
   const q = search.trim().toLowerCase()
-  const visible = sortRows(locFiltered.filter((r) => {
+  const visible = useMemo(() => sortRows(locFiltered.filter((r) => {
     if (lens === 'flagged' && !faceIsFlagged(r.faceMatchStatus)) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
     if (lens === 'nophoto' && !(r.checkInAtUtc && !r.hasPhoto)) return false
@@ -333,7 +346,7 @@ export function TodayPage() {
     if (filterPosition && (r.position ?? '') !== filterPosition) return false
     if (q && !r.employeeName.toLowerCase().includes(q)) return false
     return true
-  }), sortBy, sortDesc)
+  }), sortBy, sortDesc), [locFiltered, lens, statusFilter, filterPosition, q, sortBy, sortDesc])
 
   /**
    * The list, cut into branches.
@@ -343,15 +356,15 @@ export function TodayPage() {
    * once as a heading and the column disappears; with one branch on screen there is nothing to say,
    * so the grouping switches itself off rather than printing a single heading over everything.
    */
-  const branchesOnScreen = new Set(visible.map((r) => r.locationName)).size
+  const branchesOnScreen = useMemo(() => new Set(visible.map((r) => r.locationName)).size, [visible])
   const grouped = groupByBranch && branchesOnScreen > 1
-  const byBranch = grouped
+  const byBranch = useMemo(() => (grouped
     ? [...visible.reduce((m, r) => {
         const list = m.get(r.locationName)
         if (list) list.push(r); else m.set(r.locationName, [r])
         return m
       }, new Map<string, typeof visible>())].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'az'))
-    : [['', visible] as [string, typeof visible]]
+    : [['', visible] as [string, typeof visible]]), [visible, grouped])
 
   // Same column twice reverses it; a new column starts ascending, which is what every table does.
   const sort = (c: typeof sortBy) => {
@@ -509,6 +522,9 @@ export function TodayPage() {
   // Inline: the ones that happened today, up to four. A status with nobody in it is still reachable —
   // it is behind «Digər statuslar», so a filter never disappears, it only stops taking up a row.
   const minorShown = moreOpen ? MINOR : MINOR.filter((m) => m.n > 0 || m.key === statusFilter).slice(0, 4)
+
+  /** The row whose reason menu is open, if any — the menu itself is rendered once, at page level. */
+  const reasonRow = reasonFor ? rows.find((r) => r.employeeId === reasonFor) : undefined
 
   const locLabel = (id: string) => locations.find((l) => l.id === id)?.name ?? ''
   const locMatches = locations.filter(
@@ -863,234 +879,31 @@ export function TodayPage() {
                     </tr>
                   )}
                   {rows.map((r) => {
+                    // Computed HERE, not in the row: the row is memoised, and a clock it read for
+                    // itself would make every row new on every tick. A string that has not changed
+                    // lets React skip the row entirely.
                     const worked = cols.worked ? workedMinutes(r, nowMs, isToday) : null
                     const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc)
                       && !(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-                    const hours = shiftHours(r)
                     return (
-                  <tr key={r.employeeId}>
-                <td data-label="İşçi">
-                  <span className="att-emp">
-                    {/* Initials, not a thumbnail: the selfie is the audit control and opens on demand,
-                        and a column of faces would be two hundred signed URLs on a screen that is read
-                        with other people in the room. */}
-                    <span className="att-av" aria-hidden="true">{initials(r.employeeName)}</span>
-                    <span className="att-emp-t">
-                      <span className="att-emp-n"><EmployeeLink id={r.employeeId} name={r.employeeName} /></span>
-                      {/* The job title sits under the name, where the design puts it — and stays the
-                          filter it was: one click narrows the board to that trade. */}
-                      {r.position && !cols.position && (
-                        <button
-                          className="att-emp-p"
-                          onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
-                          title={`Yalnız «${r.position}» vəzifəsi`}
-                        >
-                          {r.position}
-                        </button>
-                      )}
-                    </span>
-                  </span>
-                </td>
-                {showLocCol && (
-                  <td data-label="Ərazi">
-                    <button className="tbl-filter" onClick={() => setFilterLocs([r.locationId])}>
-                      {r.locationName}
-                    </button>
-                  </td>
-                )}
-                {cols.position && (
-                  <td data-label="Vəzifə">
-                    {r.position
-                      ? (
-                        <button
-                          className="tbl-filter"
-                          onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
-                        >
-                          {r.position}
-                        </button>
-                      )
-                      : null}
-                  </td>
-                )}
-                {cols.schedule && (
-                  <td data-label="İş qrafiki">
-                    {hours
-                      ? (
-                        <span className="att-sched" title={shiftTitle(r)}>
-                          <IconClock />
-                          {hours}
-                        </span>
-                      )
-                      : <span className="att-none">—</span>}
-                  </td>
-                )}
-                <td data-label="Status">
-                  {/* Pencil next to the badge on a Qayıb row (to pin a reason) or an assigned single-day
-                      leave (to change it, or revert to Qayıb). Menu is fixed so the table can't clip it. */}
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                    <StatusBadge
-                      status={r.status}
-                      override={r.status === 'Incomplete' ? incompleteOverride : dayVisual(r.status, r.leaveType)}
-                    />
-                    {/* Which rows can be given a reason.
-                        «Aktivləşdirməyib»: the person whose day nobody can decide but a human — no
-                        scan history, so the system will never call them absent by itself.
-                        «İstirahət»: a rest day is the branch's calendar, not a statement about the
-                        person, and somebody on that day may in fact be on holiday or off sick. The
-                        Fəvvarələr manager had nineteen people reading «İstirahət» on a Sunday, some
-                        of them on leave and some ill, and no way to say so from this screen — the
-                        pencil simply never appeared on those rows. */}
-                    {(r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
-                      || ((r.status === 'OnLeave' || r.status === 'Permission') && r.leaveId)) && (
-                      assigningId === r.employeeId ? (
-                        <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>…</span>
-                      ) : (
-                        <button className="reason-pencil" title="Səbəb təyin et / dəyiş" onClick={(e) => openReasonMenu(e, r.employeeId)}>
-                          <IconPencil />
-                        </button>
-                      )
-                    )}
-                    {reasonFor === r.employeeId && menuPos && (
-                      <>
-                        <div className="reason-backdrop" onClick={() => setReasonFor(null)} />
-                        <div className="reason-pop" style={{ top: menuPos.top, left: menuPos.left }}>
-                          <div className="reason-pop-h">Səbəb seçin</div>
-                          {LEAVE_OPTIONS.map((o) => (
-                            <button key={o.type} className="reason-pop-item" onClick={() => void assignLeave(r.employeeId, o.type, r.leaveId)}>
-                              <span className="reason-dot" style={{ background: o.dot }} />
-                              {o.label}
-                            </button>
-                          ))}
-                          {/* «Səbəbi sil», not «Qayıba qaytar»: the day underneath may be a rest day,
-                              and removing a holiday from a Sunday returns it to İstirahət. */}
-                          {r.leaveId && (
-                            <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void removeLeave(r.employeeId, r.leaveId!)}>
-                              <span className="reason-dot" style={{ background: 'var(--clay)' }} />
-                              Səbəbi sil
-                            </button>
-                          )}
-                          {/* The other half of the pair: a day the system will not judge by itself. */}
-                          {!r.leaveId && !r.absenceMarkedBy && r.status !== 'Absent' && (
-                            <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void markDayAbsent(r.employeeId)}>
-                              <span className="reason-dot" style={{ background: 'var(--clay)' }} />
-                              Qayıb yaz
-                            </button>
-                          )}
-                          {r.absenceMarkedBy && (
-                            <button className="reason-pop-item" onClick={() => void undoDayAbsent(r.employeeId)}>
-                              <span className="reason-dot" style={{ background: 'var(--c400)' }} />
-                              Qayıbı geri al
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </span>
-                  {/* Who pinned this reason. It was a second line under the badge, which made every
-                      leave row twice the height of the ones around it — on a board of two hundred
-                      names, uneven rows are what stops the eye tracking down a column. It is a title
-                      on the badge now: still there for anyone who asks, no longer a layout event. */}
-                  {r.leaveAssignedBy && (
-                    <span className="tbl-by" title={`Təyin edən: ${r.leaveAssignedBy}`}>ⓘ</span>
-                  )}
-                  {/* A Qayıb somebody wrote by hand says whose decision it was — it costs a day's pay. */}
-                  {r.absenceMarkedBy && (
-                    <span className="tbl-by" title={`Qayıbı yazan: ${r.absenceMarkedBy}`}>✋</span>
-                  )}
-                  {/* This giriş-çıxış was entered/changed by hand, not scanned — attribute it. */}
-                  {r.manualBy && (
-                    <div style={{ fontSize: 11, marginTop: 4, color: 'var(--amber)' }}>
-                      Əl ilə daxil edilib · {r.manualBy}
-                    </div>
-                  )}
-                  {/* Not a manual entry and not a poster scan: the worker closed their own field visit
-                      and went home, which closed this day at the moment they left the site. */}
-                  {r.closedByFieldVisit && (
-                    <div style={{ fontSize: 11, marginTop: 4, color: 'var(--c600)' }}>
-                      📍 Ərazi çıxışı ilə bağlandı
-                    </div>
-                  )}
-                </td>
-                <td className="mono" data-label="Giriş">
-                  {(r.checkInAtUtc ?? r.fieldCheckInAtUtc) ? fmtTime(r.checkInAtUtc ?? r.fieldCheckInAtUtc) : ''}
-                  {r.status === 'Field' && (
-                    <span className="tag" title="Sahə ziyarəti — GPS ilə" style={{ marginLeft: 6, background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }}>📍 sahə</span>
-                  )}
-                  {r.wasOffline && (
-                    <span
-                      className="tag"
-                      title="Oflayn qeydə alınıb — vaxt telefonun saatı ilədir"
-                      style={{ marginLeft: 6, background: 'var(--amber-bg)', color: 'var(--amber)' }}
-                    >
-                      📴 oflayn
-                    </span>
-                  )}
-                  {r.lateArrivalReason && (
-                    <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
-                      Gec: {r.lateArrivalReason}
-                    </div>
-                  )}
-                </td>
-                <td className="mono" data-label="Çıxış">
-                  {/* On a day worked in two stretches this is the NIGHT's departure, not the
-                      morning block's — otherwise the row would read «07:00 → 11:00» and look as
-                      though the nine hours after ten at night were never recorded. */}
-                  {(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-                    ? fmtTime(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-                    : ''}
-                  {/* The count alone did not read: «07:18 → 11:19 · 2 blok» looked like one unbroken
-                      stretch with a puzzling label, and the whole point of a split day is that the
-                      person went home in between. So the stretches are named under the times. */}
-                  {(r.blocks ?? 1) > 1 && r.blockSpans && (
-                    <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 3, lineHeight: 1.5 }}>
-                      {r.blockSpans.map((b, i) => (
-                        <div key={i}>
-                          {i + 1}. {b.inAtUtc ? fmtTime(b.inAtUtc) : '—'} → {b.outAtUtc ? fmtTime(b.outAtUtc) : 'işdə'}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {r.earlyDepartureReason && (
-                    <div className="tbl-note">
-                      Tez: {r.earlyDepartureReason}
-                    </div>
-                  )}
-                </td>
-                {cols.worked && (
-                  <td className="mono" data-label="İş vaxtı">
-                    {worked === null
-                      ? <span className="att-none">—</span>
-                      : (
-                        <span
-                          className={`att-worked${running ? ' live' : ''}`}
-                          title={running ? 'İşdədir — indiyə qədər' : undefined}
-                        >
-                          {formatWorked(worked)}
-                        </span>
-                      )}
-                  </td>
-                )}
-                <td data-label="Əməliyyat">
-                  <span className="att-act">
-                    <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} compact />
-                    {/* Şəkli olan HƏR sətirdə (sahibin qərarı, 2026-08-31). Əvvəl yalnız üz-uyğunsuzluğu
-                        flaqlı və ortaq telefonlu sətirlərdə göstərilirdi; səbəb R2-dən yüklənmə gecikməsi
-                        idi, o isə burada tətbiq olunmur — şəkil YALNIZ düyməyə basanda çəkilir, düymənin
-                        özü heç nə yükləmir. Menecerdə hələ də görünmür: `mayViewPhotos`. */}
-                    {mayViewPhotos && r.hasPhoto && r.recordId ? (
-                      <button
-                        className="tbl-icon"
-                        disabled={busyId === r.recordId}
-                        onClick={() => void viewPhoto(r)}
-                        title="Giriş şəklini gör"
-                        aria-label="Giriş şəklini gör"
-                      >
-                        {busyId === r.recordId ? '…' : <IconCamera />}
-                      </button>
-                    ) : null}
-                  </span>
-                </td>
-                  </tr>
+                      <TodayRow
+                        key={r.employeeId}
+                        r={r}
+                        showLocCol={showLocCol}
+                        showPosition={cols.position}
+                        showSchedule={cols.schedule}
+                        showWorked={cols.worked}
+                        isToday={isToday}
+                        workedText={formatWorked(worked)}
+                        running={running}
+                        mayViewPhotos={mayViewPhotos}
+                        assigning={assigningId === r.employeeId}
+                        photoBusy={busyId !== null && busyId === r.recordId}
+                        onPosition={pickPosition}
+                        onLocation={pickLocation}
+                        onReason={openReasonMenu}
+                        onPhoto={onPhoto}
+                      />
                     )
                   })}
                 </Fragment>
@@ -1118,6 +931,58 @@ export function TodayPage() {
           )}
         </div>
       </div>
+
+      {/* The reason menu, once — not once per row.
+          It is `position: fixed` and only ever one is open, so rendering it inside the row was a
+          conditional branch 488 rows had to carry and React had to walk on every pass. Here it costs
+          one lookup. */}
+      {reasonRow && menuPos && (
+        <>
+          <div className="reason-backdrop" onClick={() => setReasonFor(null)} />
+          <div className="reason-pop" style={{ top: menuPos.top, left: menuPos.left }}>
+            <div className="reason-pop-h">Səbəb seçin</div>
+            {LEAVE_OPTIONS.map((o) => (
+              <button
+                key={o.type}
+                className="reason-pop-item"
+                onClick={() => void assignLeave(reasonRow.employeeId, o.type, reasonRow.leaveId)}
+              >
+                <span className="reason-dot" style={{ background: o.dot }} />
+                {o.label}
+              </button>
+            ))}
+            {/* «Səbəbi sil», not «Qayıba qaytar»: the day underneath may be a rest day, and removing
+                a holiday from a Sunday returns it to İstirahət. */}
+            {reasonRow.leaveId && (
+              <button
+                className="reason-pop-item"
+                style={{ color: 'var(--clay)' }}
+                onClick={() => void removeLeave(reasonRow.employeeId, reasonRow.leaveId!)}
+              >
+                <span className="reason-dot" style={{ background: 'var(--clay)' }} />
+                Səbəbi sil
+              </button>
+            )}
+            {/* The other half of the pair: a day the system will not judge by itself. */}
+            {!reasonRow.leaveId && !reasonRow.absenceMarkedBy && reasonRow.status !== 'Absent' && (
+              <button
+                className="reason-pop-item"
+                style={{ color: 'var(--clay)' }}
+                onClick={() => void markDayAbsent(reasonRow.employeeId)}
+              >
+                <span className="reason-dot" style={{ background: 'var(--clay)' }} />
+                Qayıb yaz
+              </button>
+            )}
+            {reasonRow.absenceMarkedBy && (
+              <button className="reason-pop-item" onClick={() => void undoDayAbsent(reasonRow.employeeId)}>
+                <span className="reason-dot" style={{ background: 'var(--c400)' }} />
+                Qayıbı geri al
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {exportOpen && (
         <ExportDialog
