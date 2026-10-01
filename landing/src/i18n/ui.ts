@@ -498,6 +498,10 @@ export const ui = {
     'wa.aria': 'WhatsApp-da yazın',
     'wa.tooltip': 'WhatsApp-da yazın',
     'wa.message': 'Salam! QRLog haqqında məlumat almaq istəyirəm.',
+
+    // BackToTop — WhatsApp düyməsinin üstündəki "yuxarı" düyməsi. Görünən yazısı yoxdur, bu mətni
+    // yalnız ekran oxuyucusu oxuyur (aria-label).
+    'top.aria': 'Səhifənin əvvəlinə qayıt',
   },
 
   ru: {
@@ -877,6 +881,8 @@ export const ui = {
     'wa.aria': 'Написать в WhatsApp',
     'wa.tooltip': 'Написать в WhatsApp',
     'wa.message': 'Здравствуйте! Хочу узнать подробнее о QRLog.',
+
+    'top.aria': 'Наверх',
   },
 
   en: {
@@ -1257,6 +1263,8 @@ export const ui = {
     'wa.aria': 'Message us on WhatsApp',
     'wa.tooltip': 'Message us on WhatsApp',
     'wa.message': "Hello! I'd like to learn more about QRLog.",
+
+    'top.aria': 'Back to top',
   },
 } as const
 

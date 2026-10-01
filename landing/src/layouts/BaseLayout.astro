@@ -5,7 +5,7 @@
  * Props: lang (dil), path (dil prefiksi olmadan marşrut), title və description (verilməsə ui.ts-dəki
  * meta mətnləri), home (ana səhifə), heroTone (loader-in fonu), noindex (axtarışdan gizlət).
  * Necə işləyir: <head>-də SEO, sosial kart, şriftlər və schema.org datası; <body>-də loader, Header,
- * Footer, WhatsApp düyməsi; sondakı skript səhifədəki canlı hissələri (sayğac, demo, FAQ) işə salır.
+ * Footer, WhatsApp və "yuxarı" düymələri; sondakı skript səhifədəki canlı hissələri (sayğac, demo, FAQ) işə salır.
  */
 
 // Sıra vacibdir: qatların (cascade layers) sırasını tailwind.css elan edir, global-layered.css isə
@@ -16,6 +16,7 @@ import PageLoader from '../components/PageLoader.astro'
 import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
 import WhatsAppButton from '../components/WhatsAppButton.astro'
+import BackToTop from '../components/BackToTop.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
 import { getImage } from 'astro:assets'
@@ -182,6 +183,7 @@ const websiteLd = {
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo-mark.png" />
     <link rel="preload" href={logoWord.src} as="image" type="image/webp" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta2/css/all.min.css" integrity="sha512-YWzhKL2whUzgiheMoBFwW8CKV4qpHQAEuvilg9FAn5VJUDwKZZxkJNuGM4XkWuk94WCrrwslk8yWNGmY1EduTA==" crossorigin="anonymous" referrerpolicy="no-referrer">
 
     <!--
       --font-sans və --font-mono-nun şriftləri (bax styles/tailwind.css). Onest əsas şriftdir: yoxlanan
@@ -212,9 +214,12 @@ const websiteLd = {
       </main>
       <Footer lang={lang} />
     </div>
-    <!-- Qəsdən .qrl-page-dən kənardadır: loader bitəndə .qrl-page-ə transform animasiyası verilir, transform
-    olan valideyn isə position: fixed düyməni ekrana yox, özünə bağlayardı. -->
+    <!-- Hər iki düymə qəsdən .qrl-page-dən kənardadır: loader bitəndə .qrl-page-ə transform animasiyası
+    verilir, transform olan valideyn isə position: fixed düyməni ekrana yox, özünə bağlayardı.
+    BackToTop WhatsApp-dan SONRA gəlir: z-index-ləri eynidir, sonra gələn üstdə çəkilir — WhatsApp-ın
+    nəbz halqası "yuxarı" düyməsinin altından keçir, üstündən yox. -->
     <WhatsAppButton lang={lang} />
+    <BackToTop lang={lang} />
     <script>
       // Bu skript saytın hər səhifəsində işləyir, amma hər hissə öz elementini axtarır: element
       // səhifədə yoxdursa, həmin hissə heç nə etmir. Mobil menyu və dil seçimi Header.astro-dadır.

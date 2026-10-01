@@ -29,7 +29,7 @@ export const SITE = {
   // `phone`-dan FƏRQLİ nömrədir, qəsdən: WhatsApp-da cavab verən budur (sahibkar təsdiqləyib,
   // 2026-09). `phone` kimi oxumaq üçün yazılıb; wa.me linkini aşağıdakı whatsappUrl() bunun
   // rəqəmlərindən qurur. /elaqe/-də, footer-də və üzən WhatsApp düyməsində görünür.
-  whatsapp: '+994 51 240 97 67',
+  whatsapp: '+994 50 600 16 55',
   address: 'Bakı, Azərbaycan',
   // Android tətbiqi (frontend/android, paket az.qrlog.app). iPhone üçün mağaza tətbiqi yoxdur —
   // orada brauzerdən PWA kimi işləyir. GooglePlayBadge.astro-ya bax.

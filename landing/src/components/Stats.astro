@@ -24,7 +24,9 @@ const t = useTranslations(lang)
 // (məsələn, axtarış sistemləri üçün). Rəqəmi dəyişəndə həm data-count-u, həm bu mətni dəyiş.
 ---
 
-<section class="statsband" id="stats">
+<!-- data-surface="brand": bu zolağın fonu brend mavisidir. BackToTop.astro düymə onun üstündə olanda
+     vizör künclərini ağ edir — mavi fonda mavi künc görünməzdi. -->
+<section class="statsband" id="stats" data-surface="brand">
   <div class="wrap">
     <div class="sec-head rv">
       <span class="eyebrow">{t('stats.title')}</span>
