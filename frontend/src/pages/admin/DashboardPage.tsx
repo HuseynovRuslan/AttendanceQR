@@ -11,6 +11,7 @@ import { DateRangePicker } from '../../components/DateRangePicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconAlert, IconBuilding, IconCheck, IconClock, IconMapPin, IconPhone, IconUserX, IconX } from '../../components/icons'
 import { faceIsFlagged } from '../../components/FaceFlagBadge'
+import { bucketOf, countToday, type TodayBucket } from './todayCounts'
 import { COMPANY_TZ, fmtTime } from '../../lib/format'
 
 /**
@@ -33,26 +34,28 @@ const BUCKET_LABEL: Record<Bucket, string> = {
   trip: 'Ezamiyyət',
 }
 
-/** Which today-row belongs to which tappable bucket. Vacation / Sick / Unpaid share the OnLeave
- *  status, so they are told apart by the row's leaveType — which is exactly why Sick used to show as
- *  "Məzuniyyət" until the board started carrying the leave type. Mirrors the counts below exactly. */
+/**
+ * This panel's pill names, mapped onto the board's buckets. Only a translation of names — the RULE
+ * itself lives in todayCounts.ts and is asked for, never restated here.
+ *
+ * It used to be restated, twice: once in this function and once in the counting loop below. The two
+ * copies drifted on the case that matters most. A «Sahədə» row was counted as «Tamamlayıb» whatever
+ * the visit was doing, while this function matched it to no bucket at all — so on 02.10, with 54
+ * people still standing on sites, the panel announced them as finished, said 54 fewer were at work
+ * than the board did, and opening the «Tamamlayıb 55» pill listed one person. todayCounts.ts closes
+ * a field day only when the worker has left the SITE; that is the rule, and it has the tests.
+ *
+ * Typed as a total Record so the compiler refuses a pill with no bucket, or a bucket name that does
+ * not exist. A bucket with no PILL is the remaining gap, and dashboardBuckets.test.ts covers it.
+ */
+export const PILL_BUCKET: Record<Exclude<Bucket, 'total'>, TodayBucket> = {
+  in: 'incomplete', done: 'present', absent: 'absent', pending: 'pending', onboarding: 'onboarding',
+  sick: 'sick', vacation: 'onLeave', unpaid: 'unpaid', permission: 'permission',
+  rest: 'rest', dayOff: 'dayOff', trip: 'trip',
+}
+
 function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
-  switch (bucket) {
-    case 'total': return true
-    case 'done': return r.status === 'OnTime' || r.status === 'Late'
-    case 'absent': return r.status === 'Absent'
-    case 'in': return r.status === 'Incomplete'
-    case 'pending': return r.status === 'Pending'
-    case 'onboarding': return r.status === 'Onboarding'
-    case 'permission': return r.status === 'Permission'
-    case 'rest': return r.status === 'DayOff' && r.leaveType === 'Rest'
-    case 'dayOff': return r.status === 'DayOff' && r.leaveType !== 'Rest'
-    case 'sick': return r.status === 'OnLeave' && r.leaveType === 'Sick'
-    case 'unpaid': return r.status === 'OnLeave' && r.leaveType === 'Unpaid'
-    case 'trip': return r.status === 'OnLeave' && r.leaveType === 'BusinessTrip'
-    case 'vacation': return r.status === 'OnLeave' && r.leaveType !== 'Sick' && r.leaveType !== 'Unpaid' && r.leaveType !== 'BusinessTrip'
-    default: return false
-  }
+  return bucket === 'total' || bucketOf(r) === PILL_BUCKET[bucket]
 }
 
 /** Eases a number from its previous value to the target (easeOutCubic); counts up from 0 on mount,
@@ -232,30 +235,11 @@ export function DashboardPage() {
     return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 500)
   }, [rows])
 
-  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, onboarding: 0, dayOff: 0, rest: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
-  for (const r of rows) {
-    // 'Field' burada olmasa «Natamam»a yıxılırdı: bütün günü sahədə işləyən adam lövhədə qüsur kimi
-    // görünürdü. Bugünkü lövhə (todayCounts.ts) onu artıq işdə sayır — iki ekran razılaşmalıdır.
-    if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') counts.present++
-    else if (r.status === 'Absent') counts.absent++
-    else if (r.status === 'Pending') counts.pending++
-    // Tanınmasa «İşdə» qalığına yıxılardı — və 294 qurulmamış hesab «İndi iş başında» sayılardı.
-    else if (r.status === 'Onboarding') counts.onboarding++
-    // Two facts under one status. «İstirahət 220» on a Sunday, when nobody was granted anything, is
-    // noise the reader learns to skip — and the handful of days a manager actually decided were
-    // buried inside it. Only the leave type separates them, and it now travels for rest days too.
-    else if (r.status === 'DayOff') { if (r.leaveType === 'Rest') counts.rest++; else counts.dayOff++ }
-    else if (r.status === 'Permission') counts.permission++
-    else if (r.status === 'OnLeave') {
-      if (r.leaveType === 'Sick') counts.sick++
-      else if (r.leaveType === 'Unpaid') counts.unpaid++
-      else if (r.leaveType === 'BusinessTrip') counts.trip++
-      else counts.vacation++
-    }
-    else counts.incomplete++
-  }
+  // Counted by the SAME function the board counts with, for the same reason PILL_BUCKET is a map
+  // rather than a rule: this was a second implementation, and it drifted. See todayCounts.ts.
+  const counts = useMemo(() => countToday(rows), [rows])
   const total = rows.length
-  const onLeaveTotal = counts.sick + counts.vacation + counts.unpaid + counts.trip
+  const onLeaveTotal = counts.sick + counts.onLeave + counts.unpaid + counts.trip
   // Aktivləşdirməmişlər bu gün gözlənilənlərə DAXİL DEYİL — telefonları hələ paylanmayıb, iştirak
   // faizinin məxrəcində olmaları faizi mənasız edərdi.
   const notExpected = counts.dayOff + onLeaveTotal + counts.permission + counts.onboarding
@@ -507,7 +491,7 @@ export function DashboardPage() {
         {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Növbəsi başlamayıb" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
         {counts.onboarding > 0 && <Pill tone="slate" n={counts.onboarding} label="Aktivləşdirməyib" active={openBucket === 'onboarding'} onClick={() => openPill('onboarding')} />}
         {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
-        {counts.vacation > 0 && <Pill tone="purple" n={counts.vacation} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}
+        {counts.onLeave > 0 && <Pill tone="purple" n={counts.onLeave} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}
         {counts.unpaid > 0 && <Pill tone="purple" n={counts.unpaid} label="Ödənişsiz" active={openBucket === 'unpaid'} onClick={() => openPill('unpaid')} />}
         {counts.permission > 0 && <Pill tone="purple" n={counts.permission} label="İcazə" active={openBucket === 'permission'} onClick={() => openPill('permission')} />}
         {counts.trip > 0 && <Pill tone="teal" n={counts.trip} label="Ezamiyyət" active={openBucket === 'trip'} onClick={() => openPill('trip')} />}
