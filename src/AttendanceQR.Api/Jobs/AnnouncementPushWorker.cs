@@ -1,3 +1,4 @@
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -23,13 +24,16 @@ public sealed class AnnouncementPushWorker : BackgroundService
     private readonly IAnnouncementPushQueue _queue;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AnnouncementPushWorker> _logger;
+    private readonly TimeZoneInfo _timeZone;
 
     public AnnouncementPushWorker(
-        IAnnouncementPushQueue queue, IServiceScopeFactory scopeFactory, ILogger<AnnouncementPushWorker> logger)
+        IAnnouncementPushQueue queue, IServiceScopeFactory scopeFactory, ILogger<AnnouncementPushWorker> logger,
+        AppOptions appOptions)
     {
         _queue = queue;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -119,7 +123,7 @@ public sealed class AnnouncementPushWorker : BackgroundService
         if (announcement.ScheduledForUtc is DateTime scheduled && scheduled > DateTime.UtcNow)
             return; // not due yet — the sweep will come back for it
 
-        var ids = await ResolveAudienceAsync(db, announcement, ct);
+        var ids = await ResolveAudienceAsync(db, announcement, _timeZone, ct);
         var title = string.IsNullOrWhiteSpace(announcement.Title) ? "Yeni elan" : announcement.Title!;
         // The banner carries the full text; the notification just has to get them to open it.
         var body = announcement.Message.Length > 160 ? announcement.Message[..157] + "…" : announcement.Message;
@@ -134,7 +138,8 @@ public sealed class AnnouncementPushWorker : BackgroundService
 
     /// <summary>Resolves an announcement's audience to employee ids. Mirrors the employee-side filter
     /// in AnnouncementsController so both agree on who it's for.</summary>
-    private static async Task<List<Guid>> ResolveAudienceAsync(AppDbContext db, Announcement a, CancellationToken ct)
+    private static async Task<List<Guid>> ResolveAudienceAsync(
+        AppDbContext db, Announcement a, TimeZoneInfo timeZone, CancellationToken ct)
     {
         if (a.Audience == AnnouncementAudience.Selected)
         {
@@ -145,10 +150,10 @@ public sealed class AnnouncementPushWorker : BackgroundService
         var active = db.Employees.Where(e => e.IsActive);
         if (a.Audience is AnnouncementAudience.AtWork or AnnouncementAudience.NotAtWork)
         {
-            // "At work" = checked in today. Records are keyed by the server UTC day (scan handler).
-            var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+            // "At work" = checked in today. Records are keyed by the COMPANY day (scan handler).
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone));
             var inToday = db.AttendanceRecords
-                .Where(r => r.AttendanceDate == todayUtc && r.CheckInAtUtc != null)
+                .Where(r => r.AttendanceDate == today && r.CheckInAtUtc != null)
                 .Select(r => r.EmployeeId);
             active = a.Audience == AnnouncementAudience.AtWork
                 ? active.Where(e => inToday.Contains(e.Id))

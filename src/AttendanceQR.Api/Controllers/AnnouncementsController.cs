@@ -22,8 +22,13 @@ namespace AttendanceQR.Api.Controllers;
 public class AnnouncementsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly TimeZoneInfo _timeZone;
 
-    public AnnouncementsController(AppDbContext db) => _db = db;
+    public AnnouncementsController(AppDbContext db, AppOptions options)
+    {
+        _db = db;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+    }
 
     [HttpGet]
     public async Task<IActionResult> Active()
@@ -50,10 +55,10 @@ public class AnnouncementsController : ControllerBase
 
         if (TenantFeatures.IsEnabled(disabled, TenantFeatures.Announcements))
         {
-            // AttendanceRecords are keyed by the server UTC day (see the scan handler), so match that.
-            var todayUtc = DateOnly.FromDateTime(nowUtc);
+            // AttendanceRecords are keyed by the COMPANY day (see the scan handler), so match that.
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone));
             var atWorkToday = await _db.AttendanceRecords
-                .AnyAsync(r => r.EmployeeId == employeeId && r.AttendanceDate == todayUtc && r.CheckInAtUtc != null, ct);
+                .AnyAsync(r => r.EmployeeId == employeeId && r.AttendanceDate == today && r.CheckInAtUtc != null, ct);
 
             var due = await _db.Announcements
                 .Where(a => a.IsActive && (a.ScheduledForUtc == null || a.ScheduledForUtc <= nowUtc))

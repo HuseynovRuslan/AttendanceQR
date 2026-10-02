@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,11 +21,20 @@ namespace AttendanceQR.Api.Controllers;
 public class MissedCheckoutController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly TimeZoneInfo _timeZone;
 
     // Per-calendar-month cap on self-reports before the employee must go through the admin directly.
     public const int MonthlyLimit = 3;
 
-    public MissedCheckoutController(AppDbContext db) => _db = db;
+    public MissedCheckoutController(AppDbContext db, AppOptions options)
+    {
+        _db = db;
+        _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
+    }
+
+    /// <summary>The company day — what AttendanceDate is stamped with. See AttendanceController.Scan.</summary>
+    private DateOnly TodayLocal() =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
     // GET /api/attendance/missed-checkout — for the home banner: the oldest open past day (if any),
     // this month's self-report count, the cap, and whether a request is already pending for that day.
@@ -33,11 +43,11 @@ public class MissedCheckoutController : ControllerBase
     {
         var employeeId = User.EmployeeId();
 
-        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = TodayLocal();
 
         var open = await _db.AttendanceRecords
             .Where(r => r.EmployeeId == employeeId && r.CheckInAtUtc != null
-                        && r.CheckOutAtUtc == null && r.AttendanceDate < todayUtc)
+                        && r.CheckOutAtUtc == null && r.AttendanceDate < today)
             .OrderByDescending(r => r.AttendanceDate)
             .Select(r => new { r.Id, r.AttendanceDate, r.CheckInAtUtc })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
@@ -83,7 +93,7 @@ public class MissedCheckoutController : ControllerBase
             return BadRequest(new { error = "NoCheckIn" });
         if (record.CheckOutAtUtc is not null)
             return Conflict(new { error = "AlreadyClosed" });
-        if (record.AttendanceDate >= DateOnly.FromDateTime(DateTime.UtcNow))
+        if (record.AttendanceDate >= TodayLocal())
             return BadRequest(new { error = "NotPastDay" });
 
         var checkOut = request.CheckOutAtUtc;

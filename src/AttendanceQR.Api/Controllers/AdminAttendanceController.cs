@@ -52,9 +52,9 @@ public class AdminAttendanceController : ControllerBase
     [HttpGet("open")]
     public async Task<IActionResult> Open()
     {
-        // AttendanceDate is stamped from the UTC day at check-in (see AttendanceController.Scan), so
-        // the "not today" cutoff uses the same UTC day — no timezone conversion to get out of step.
-        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        // The company day — the same one the scan stamps onto AttendanceDate. It was the UTC day on
+        // both sides until 02.10.2026; see AttendanceController.Scan for the night that changed it.
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
         // A manager sees their own branches; an admin sees the company. Without this the list was
         // tenant-wide for whoever could reach it, and the 500-row cap would have quietly hidden a
@@ -66,7 +66,7 @@ public class AdminAttendanceController : ControllerBase
 
         var rows = await (
             from r in _db.AttendanceRecords
-            where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayUtc
+            where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < today
                   && (managed == null || managed.Contains(r.LocationId))
             join e in _db.Employees on r.EmployeeId equals e.Id
             join l in _db.Locations on r.LocationId equals l.Id

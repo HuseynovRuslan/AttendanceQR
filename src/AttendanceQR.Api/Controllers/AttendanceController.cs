@@ -146,11 +146,11 @@ public class AttendanceController : ControllerBase
         // of a split shift. The phone used to decide «finished» on its own and hide the button; it now
         // shows it when THIS says so, and this asks the same two rules Scan does.
         //
-        // Only when the day Scan would file this scan under is the day shown. Scan dates by the UTC
-        // calendar; between 00:00 and 04:00 in Baku the two disagree, and a guess there is worse than
-        // the old behaviour — which is what false gives.
+        // There used to be a third condition here, that the UTC day still matched the company day,
+        // because Scan filed by the UTC calendar and between 00:00 and 04:00 in Baku the two
+        // disagreed. Scan now files by the company day as well, so the hedge is gone — and with it the
+        // four hours after midnight when this screen hid a button the poster would have accepted.
         if (record.CheckOutAtUtc is not null && record.CheckInAtUtc is not null
-            && DateOnly.FromDateTime(nowUtc) == today
             && await MayScanAgainAsync(employeeId, today, nowLocal))
             record = record with { MayScanAgain = true };
         return Ok(record);
@@ -795,7 +795,7 @@ public class AttendanceController : ControllerBase
         if (deviceRejection is not null)
             return deviceRejection;
 
-        // 6. Resolve today's record (server UTC day) and decide check-in vs check-out.
+        // 6. Resolve today's record (the COMPANY's day) and decide check-in vs check-out.
         // An offline scan carries the phone's clock; trust it only within a sane window, otherwise fall
         // back to server time so a rolled-back clock can't fake an on-time arrival. Online scans (the
         // overwhelming majority) always use server time — Offline is false, so this is a no-op for them.
@@ -819,7 +819,23 @@ public class AttendanceController : ControllerBase
             }
             nowUtc = clientUtc;
         }
-        var today = DateOnly.FromDateTime(nowUtc);
+        // Which day this scan belongs to, by the clock on the wall in Baku.
+        //
+        // It used to be the UTC day, and Baku is four hours ahead of it: between midnight and 04:00
+        // the scan was still filing under YESTERDAY. On the night of 01→02.10.2026 six people worked
+        // a presidential event at Heydər Əliyev Mərkəzi, checked out at 23:53, and tried to start the
+        // new day a few minutes later. Their yesterday was closed, so the poster answered «Giriş və
+        // çıxış artıq qeydə alınıb» — forty-one times, until the hour reached 04:00 and the UTC
+        // calendar finally agreed it was tomorrow. Six hours each of real work exists only in the
+        // audit log.
+        //
+        // Everything else in the system had always used the company day: the nightly summary, the
+        // tabel, the reports, the reminders, the field visits, and this controller's own /me/today.
+        // The scan was the single place that did not, so what this changes is an inconsistency, not a
+        // convention. The only scans that move are those between 00:00 and 04:00 Baku — in the whole
+        // history there have been three of them, and this is why.
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        var today = DateOnly.FromDateTime(nowLocal);
 
         // Resolved once here and carried through both branches, so a single scan cannot judge its
         // check-in against one set of hours and its check-out against another.
@@ -836,7 +852,7 @@ public class AttendanceController : ControllerBase
 
         // Both branches below need to know where in the day this scan falls: a night shift's single
         // working day spans two dates, so "morning" and "evening" decide what a scan can possibly mean.
-        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        // nowLocal is resolved with `today` above — they answer the same question.
         var yesterday = today.AddDays(-1);
 
         if (record is null)
