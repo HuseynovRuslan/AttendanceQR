@@ -18,6 +18,8 @@ public sealed class AssistantDataService
     {
         ["DeviceMismatch"] = "skan qeydiyyatda olmayan telefondan/brauzerdən edilib",
         ["NoDeviceBound"] = "hesaba hələ heç bir cihaz bağlanmayıb",
+        ["DeviceBindLimit"] = "telefon son vaxtlar bir neçə dəfə yeni cihaz kimi göründü — tətbiq telefonda yadda qalmır (gizli rejim, başqa brauzer və ya təmizləyici proqram); yeni telefon tələbi göndərilməli və tətbiq ana ekrandakı ikondan açılmalıdır",
+        ["DeviceRevoked"] = "admin bu telefonu hesabdan ayırıb; telefon işçinin özününküdürsə, yeni telefon tələbi göndərilməlidir",
         ["OutsideRadius"] = "skan iş yerinin ərazisindən kənarda edilib",
         ["TokenExpired"] = "QR kod köhnəlib — plakat yenilənib",
         ["LocationInactive"] = "lokasiya deaktiv edilib",

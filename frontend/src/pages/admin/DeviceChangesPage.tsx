@@ -92,6 +92,22 @@ export function DeviceChangesPage() {
                   <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
                     {fmtFullDateTime(r.requestedAtUtc)}
                   </div>
+                  {r.autoBindLimitReached && (
+                    // Not a new phone: the poster stopped adopting because this one keeps forgetting the
+                    // app. Approving is still right, and it reopens the allowance — but the lasting fix is
+                    // a word with the person, and nothing else on this screen would prompt it.
+                    <div
+                      style={{
+                        fontSize: 12, lineHeight: 1.5, marginTop: 8, padding: '8px 10px', borderRadius: 8, maxWidth: 560,
+                        background: 'var(--amber-bg)', color: 'var(--c700)',
+                        border: '1px solid color-mix(in srgb, var(--amber) 35%, transparent)',
+                      }}
+                    >
+                      Son 30 gündə {r.recentNewDevices} dəfə yeni telefon kimi gəlib — çox güman ki, telefon tətbiqi
+                      yadda saxlamır. Təsdiqləsəniz, növbəti yeni telefonlar posterin yanında özü qəbul olunacaq.
+                      İşçiyə deyin: tətbiqi həmişə ana ekrandakı ikondan açsın, gizli rejimdə açmasın.
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-primary btn-sm" disabled={busyId === r.requestId} onClick={() => act(r.requestId, 'approve')}>

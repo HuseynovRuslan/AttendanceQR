@@ -1098,6 +1098,11 @@ export interface PendingDeviceChange {
   currentDeviceFingerprint: string | null
   newDeviceFingerprint: string
   requestedAtUtc: string
+  /** New devices this person arrived with in the last 30 days, adopted at a poster or approved. */
+  recentNewDevices: number
+  /** The poster has stopped adopting new phones for them: this request is the allowance running out,
+   *  and approving it reopens the allowance. */
+  autoBindLimitReached: boolean
 }
 
 export function getPendingDeviceChanges() {

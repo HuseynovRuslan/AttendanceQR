@@ -14,6 +14,7 @@ import {
 import { reportFailure, flushFailures } from '../lib/scanFailures'
 import { successFeedback, errorFeedback, primeFeedbackOnGesture } from '../lib/feedback'
 import { getDeviceFingerprint } from '../lib/device'
+import { deviceRefusalCopy } from '../lib/deviceRefusal'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless } from '../lib/qrless'
@@ -1700,6 +1701,8 @@ interface ScanResponse {
   checkInAtUtc?: string
   checkOutAtUtc?: string
   error?: string
+  /** Why a phone the account does not know was refused — beside `error`, never instead of it. */
+  cause?: string
   distanceMeters?: number
   minutes?: number
   /** Past days this employee left open (checked in, never out) — each counts as zero hours. */
@@ -1914,15 +1917,9 @@ function errorResult(status: number, data: ScanResponse | null, accuracy?: numbe
       // reading it, and it is the half they can actually do something about.
       return locationCard(data?.distanceMeters, accuracy)
     case 'DeviceMismatch':
-      return {
-        tone: 'red',
-        title: 'Bu cihaz hesabınıza bağlı deyil',
-        note: 'Yenidən skan etmək kömək etməyəcək.',
-        final: true,
-        showDeviceChangeLink: true,
-      }
     case 'NoDeviceBound':
-      return { tone: 'red', title: 'Cihaz hesabınıza bağlı deyil', detail: 'Admin ilə əlaqə saxlayın.', final: true }
+      // The words depend on WHY the phone was refused, which the server sends beside the code.
+      return { tone: 'red', final: true, ...deviceRefusalCopy(err, data?.cause) }
     case 'SharedDeviceNotAllowed':
       // Plain and specific: the worker is standing at the poster on someone else's phone. Tell them
       // exactly what is wrong and exactly who fixes it — retrying is what they were doing 75 times.
