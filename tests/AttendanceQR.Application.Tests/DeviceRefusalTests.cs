@@ -57,7 +57,7 @@ public class DeviceRefusalTests
         public Guid LocationId { get; } = Guid.NewGuid();
         private readonly IQrTokenService _qr;
 
-        public Harness(bool autoBind = true)
+        public Harness(bool autoBind = true, IStaffAlertQueue? alerts = null)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantId);
@@ -97,7 +97,8 @@ public class DeviceRefusalTests
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),
                 NullLogger<AttendanceController>.Instance,
-                clock: new FixedClock(Now))
+                clock: new FixedClock(Now),
+                alerts: alerts)
             {
                 ControllerContext = new ControllerContext
                 {
@@ -356,6 +357,43 @@ public class DeviceRefusalTests
 
         Assert.False(pending.AutoBindLimitReached);
         Assert.Equal(1, pending.RecentNewDevices);
+    }
+
+    // --- the manager hears about it -------------------------------------------
+
+    private sealed class CapturingQueue : IStaffAlertQueue
+    {
+        public List<StaffAlert> Items { get; } = [];
+        public void Enqueue(StaffAlert alert) => Items.Add(alert);
+        public ChannelReader<StaffAlert> Reader => Channel.CreateUnbounded<StaffAlert>().Reader;
+    }
+
+    [Fact]
+    public async Task A_refused_phone_raises_an_alert_for_the_branch_manager()
+    {
+        var queue = new CapturingQueue();
+        using var h = new Harness(alerts: queue);
+        h.AutoBound("ctx-1", 18);
+        h.AutoBound("ctx-2", 15);
+        h.AutoBound("ctx-3", 14);
+
+        await h.Controller.Scan(h.Scan("ctx-new"));
+
+        var alert = Assert.Single(queue.Items);
+        Assert.Equal((h.EmployeeId, "DeviceBindLimit", Now), (alert.EmployeeId, alert.Kind, alert.RaisedAtUtc));
+    }
+
+    [Fact]
+    public async Task A_phone_reporting_a_switched_off_permission_raises_one_alert_however_often_it_retries()
+    {
+        var queue = new CapturingQueue();
+        using var h = new Harness(alerts: queue);
+
+        await h.Controller.ScanFailure(new ScanFailureRequest("GpsPermissionDenied", Platform: "android", PermissionState: "prompt"));
+        await h.Controller.ScanFailure(new ScanFailureRequest("GpsPermissionDenied", Platform: "android", PermissionState: "prompt"));
+        await h.Controller.ScanFailure(new ScanFailureRequest("GpsTimeout", Platform: "android"));
+
+        Assert.Equal("GpsPermissionDenied", Assert.Single(queue.Items).Kind);
     }
 
     // --- stubs --------------------------------------------------------------

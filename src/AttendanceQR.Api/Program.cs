@@ -128,6 +128,10 @@ builder.Services.AddHostedService<PhotoUploadWorker>();
 // Announcement push fan-out out-of-band + the sweep that sends SCHEDULED announcements' pushes.
 builder.Services.AddSingleton<IAnnouncementPushQueue, AnnouncementPushQueue>();
 builder.Services.AddHostedService<AnnouncementPushWorker>();
+// Pushes a branch's managers about a person stuck at the poster, or a new-phone request — off the
+// scan path, which never waits on a notification (see StaffAlerts).
+builder.Services.AddSingleton<IStaffAlertQueue, StaffAlertQueue>();
+builder.Services.AddHostedService<StaffAlertWorker>();
 
 // App options (time zone for shift/UTC math). Registered as a plain singleton so the
 // Application/Infrastructure layers don't need an Options package reference.
