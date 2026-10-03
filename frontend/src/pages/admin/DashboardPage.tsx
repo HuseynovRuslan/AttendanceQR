@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   getAdminLocations, getDashboard, getPendingDeviceChanges, getProblems, getToday,
@@ -8,11 +8,12 @@ import { getOpenRecords } from '../../api/attendance'
 import { usePolling } from '../../lib/usePolling'
 import { DashboardMap, type DashSite, type DashPerson } from './DashboardMap'
 import { DateRangePicker } from '../../components/DateRangePicker'
+import { CountUp, LiveClock } from '../../components/LiveNumbers'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconAlert, IconBuilding, IconCheck, IconClock, IconMapPin, IconPhone, IconUserX, IconX } from '../../components/icons'
 import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { bucketOf, countToday, type TodayBucket } from './todayCounts'
-import { COMPANY_TZ, fmtTime } from '../../lib/format'
+import { fmtTime } from '../../lib/format'
 
 /**
  * The admin's live "today" board, dressed as the group panel a director reacted to — but in white,
@@ -56,33 +57,6 @@ export const PILL_BUCKET: Record<Exclude<Bucket, 'total'>, TodayBucket> = {
 
 function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
   return bucket === 'total' || bucketOf(r) === PILL_BUCKET[bucket]
-}
-
-/** Eases a number from its previous value to the target (easeOutCubic); counts up from 0 on mount,
- *  ticks smoothly on each poll, and jumps straight to the value under reduced-motion. */
-function useCountUp(target: number, duration = 750): number {
-  const [val, setVal] = useState(target)
-  const fromRef = useRef(0)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      fromRef.current = target
-      setVal(target)
-      return
-    }
-    const from = fromRef.current
-    const start = performance.now()
-    let raf = 0
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / duration)
-      const eased = 1 - Math.pow(1 - p, 3)
-      setVal(from + (target - from) * eased)
-      if (p < 1) raf = requestAnimationFrame(tick)
-      else fromRef.current = target
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [target, duration])
-  return val
 }
 
 const isoDay = (d: Date) => {
@@ -130,6 +104,13 @@ function Sparkline({ points }: { points: number[] }) {
  */
 function RateRing({ pct }: { pct: number }) {
   const safe = Math.max(0, Math.min(100, Math.round(pct)))
+  // Drawn empty first and given its value a frame later, so the CSS transition on .lux-ring-arc fills
+  // the arc — one render of this ring rather than one render of the whole panel per frame.
+  const [drawn, setDrawn] = useState(0)
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setDrawn(safe))
+    return () => cancelAnimationFrame(r)
+  }, [safe])
   const R = 26
   const C = 2 * Math.PI * R
   // Below half the day is going badly and the ring should say so without anyone reading the label.
@@ -142,12 +123,12 @@ function RateRing({ pct }: { pct: number }) {
         <circle
           cx="32" cy="32" r={R} fill="none" stroke={stroke} strokeWidth="6" strokeLinecap="round"
           strokeDasharray={C}
-          strokeDashoffset={C * (1 - safe / 100)}
+          strokeDashoffset={C * (1 - drawn / 100)}
           transform="rotate(-90 32 32)"
           className="lux-ring-arc"
         />
       </svg>
-      <b className="lux-ring-n">{safe}%</b>
+      <b className="lux-ring-n"><CountUp value={safe} suffix="%" /></b>
     </span>
   )
 }
@@ -170,18 +151,11 @@ export function DashboardPage() {
   // The activity list is the whole day and scrolls; on a busy morning that is 300 rows, and «where is
   // Rəşad» is answered by typing four letters rather than by scrolling.
   const [feedQuery, setFeedQuery] = useState('')
-  const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
     getAdminLocations().then(({ status, data }) => {
       if (status === 200 && Array.isArray(data)) setLocations(data)
     })
-  }, [])
-
-  // Live clock, like the group board — the seconds ticking is half of what makes it read as live.
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
   }, [])
 
   usePolling(async () => {
@@ -332,11 +306,6 @@ export function DashboardPage() {
 
   // On duty RIGHT NOW = checked in and not yet out. The hero number.
   const onDutyNow = counts.incomplete
-  const cOnDuty = Math.round(useCountUp(onDutyNow))
-  const cDone = Math.round(useCountUp(counts.present))
-  const cAbsent = Math.round(useCountUp(counts.absent))
-  const cTotal = Math.round(useCountUp(total))
-  const cRate = Math.round(useCountUp(overallRate))
 
   // Sites for the map: each location joined with how many of its people are on duty now.
   const sites = useMemo<DashSite[]>(() => {
@@ -429,7 +398,6 @@ export function DashboardPage() {
   }, [activity, feedQuery])
 
   // The board hangs on a wall in Baku; it shows Baku's time whatever the machine driving it thinks.
-  const clock = now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })
 
   return (
     <div className="lux">
@@ -460,7 +428,8 @@ export function DashboardPage() {
             </select>
           )}
           <span className="lux-live"><i />CANLI</span>
-          <span className="lux-clock">{clock}</span>
+          {/* Its own component: the seconds tick re-renders a timestamp, not the panel (components/LiveNumbers). */}
+          <LiveClock className="lux-clock" />
         </div>
       </header>
 
@@ -470,14 +439,14 @@ export function DashboardPage() {
       <section className="lux-hero lux-rise lux-d2">
         <div className="lux-hero-main">
           <div className="lux-hero-label">İndi iş başında</div>
-          <div className="lux-hero-num">{cOnDuty}<span className="lux-hero-unit">nəfər</span></div>
-          <div className="lux-hero-note">{cTotal} işçidən {cOnDuty}-i hazırda işdədir</div>
+          <div className="lux-hero-num"><CountUp value={onDutyNow} /><span className="lux-hero-unit">nəfər</span></div>
+          <div className="lux-hero-note"><CountUp value={total} /> işçidən <CountUp value={onDutyNow} />-i hazırda işdədir</div>
         </div>
         {/* One number leads; the day's rate is the SHAPE beside it. As bare text in the corner it was
             a second figure competing with the first — as a ring it is read before it is read, and the
             arc says «about half» before anyone parses «54%». */}
         <div className="lux-hero-rate">
-          <RateRing pct={cRate} />
+          <RateRing pct={overallRate} />
           <span className="lux-hero-rate-l">bugünkü iştirak</span>
         </div>
       </section>
@@ -485,9 +454,9 @@ export function DashboardPage() {
       {/* Buckets as tappable pills. Order per request: Ümumi işçi first (leftmost), Tamamlayıb last
           (rightmost); the day's live states sit between. Leave/permission/rest appear only when > 0. */}
       <section className="lux-pills lux-rise lux-d3">
-        <Pill tone="slate" n={cTotal} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
-        <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
-        <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
+        <Pill tone="slate" n={<CountUp value={total} />} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
+        <Pill tone="blue" n={<CountUp value={onDutyNow} />} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
+        <Pill tone="clay" n={<CountUp value={counts.absent} />} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
         {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Növbəsi başlamayıb" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
         {counts.onboarding > 0 && <Pill tone="slate" n={counts.onboarding} label="Aktivləşdirməyib" active={openBucket === 'onboarding'} onClick={() => openPill('onboarding')} />}
         {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
@@ -499,7 +468,7 @@ export function DashboardPage() {
             the record to be able to see. The roster's own day off follows it, and says so. */}
         {counts.rest > 0 && <Pill tone="purple" n={counts.rest} label="İstirahət (təyin edilmiş)" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
         {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="Həftəlik istirahət" active={openBucket === 'dayOff'} onClick={() => openPill('dayOff')} />}
-        <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
+        <Pill tone="leaf" n={<CountUp value={counts.present} />} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
       </section>
 
       {/* Tapping a pill opens the matching employee list right here. */}
@@ -739,7 +708,7 @@ export function DashboardPage() {
 }
 
 function Pill({ tone, n, label, active, onClick }:
-  { tone: string; n: number; label: string; active?: boolean; onClick?: () => void }) {
+  { tone: string; n: ReactNode; label: string; active?: boolean; onClick?: () => void }) {
   return (
     <button className={`lux-pill ${tone}${active ? ' active' : ''}${onClick ? '' : ' static'}`} onClick={onClick} disabled={!onClick}>
       <span className="lux-pill-n">{n}</span>
