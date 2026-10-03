@@ -1381,7 +1381,6 @@ export interface ImpersonateResult {
   adminName: string
   /** Which seat was borrowed — the banner says "manager" rather than implying admin. */
   role: 'Admin' | 'Manager'
-  expiresInMinutes: number
 }
 
 /** Someone inside a company whose session the console may borrow. Admins and managers only —

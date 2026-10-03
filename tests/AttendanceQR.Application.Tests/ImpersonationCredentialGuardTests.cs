@@ -179,7 +179,7 @@ public class ImpersonationCredentialGuardTests
     private sealed class StubJwt : IJwtService
     {
         public string GenerateToken(Employee employee) => "token-for:" + employee.Id;
-        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes, bool readOnly = false) => "imp";
+        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, bool readOnly = false) => "imp";
     }
 
     private sealed class StubPhotoStorage : IPhotoStorageService
@@ -297,7 +297,7 @@ public class ImpersonationCredentialGuardTests
         };
 
         var impersonation = new JwtSecurityTokenHandler().ReadJwtToken(
-            jwt.GenerateImpersonationToken(admin, Guid.NewGuid(), 60));
+            jwt.GenerateImpersonationToken(admin, Guid.NewGuid()));
         Assert.DoesNotContain(impersonation.Claims, c => c.Type == "mcp");
         Assert.Contains(impersonation.Claims, c => c.Type == "imp");
 

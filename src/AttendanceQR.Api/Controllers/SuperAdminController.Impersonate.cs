@@ -8,14 +8,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
 
-// Impersonation — the support operator's "log in as this company's admin" for a short window, to see
-// exactly what the customer sees. The minted token is confined to the target tenant + target admin
-// (tid + tv), so it can never reach another company or escalate; it is short-lived so it cannot linger
-// like a normal ~100-year login; and starting it is audited.
+// Impersonation — the support operator's "log in as this company's admin", to see exactly what the
+// customer sees. The minted token is confined to the target tenant + target admin (tid + tv), so it can
+// never reach another company or escalate, and starting it is audited. It lasts as long as an ordinary
+// login: it was an hour until 03.10.2026, when the owner chose not to sign in again after every hour of
+// support (see IJwtService.GenerateImpersonationToken).
 public partial class SuperAdminController
 {
-    private const int ImpersonationMinutes = 60;
-
     /// <summary>
     /// Who this console may borrow inside one company — its active admins and managers.
     ///
@@ -171,7 +170,7 @@ public partial class SuperAdminController
                 return BadRequest(new { error = "NoImpersonableAdmin" });
         }
 
-        var token = _jwt.GenerateImpersonationToken(admin, actorId, ImpersonationMinutes, readOnly);
+        var token = _jwt.GenerateImpersonationToken(admin, actorId, readOnly);
 
         // The CUSTOMER's own audit gets a row as well as the operator console's. Everything the borrowed
         // session then does inside the tenant is recorded under the admin's own id (AuditLog has no
@@ -199,7 +198,6 @@ public partial class SuperAdminController
             adminName = admin.FullName,
             // Which seat was borrowed, so the banner can say "manager" rather than implying admin.
             role = admin.Role.ToString(),
-            expiresInMinutes = ImpersonationMinutes,
             readOnly,
         });
     }

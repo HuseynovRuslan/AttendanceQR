@@ -176,7 +176,7 @@ public class ForgotPinAppShellTests
     private sealed class StubJwt : IJwtService
     {
         public string GenerateToken(Employee employee) => "token";
-        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes, bool readOnly = false) => "imp";
+        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, bool readOnly = false) => "imp";
     }
 
     /// <summary>Records which lockout budgets were cleared — the login screen the employee lands on
