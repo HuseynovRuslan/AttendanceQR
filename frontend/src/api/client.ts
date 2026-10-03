@@ -165,13 +165,17 @@ export async function apiRequest<T = unknown>(
 
   if (auth && asToken === undefined && impersonationLost(res.status, data)) {
     const info = getImpersonation()
+    // Read before exiting — exitImpersonation clears it.
+    const back = impersonationReturnPath()
     try {
       sessionStorage.setItem(ENDED_SESSION_KEY, info?.readOnly ? 'view' : 'support')
     } catch {
-      /* private window: the login screen simply shows without the sentence */
+      /* private window: the screen simply shows without the sentence */
     }
-    clearToken()
-    onUnauthorized?.()
+    // Exactly what the banner's «Çıx» does: the operator's own token back, a full reload, and the
+    // screen the session was started from.
+    exitImpersonation()
+    window.location.href = back
   }
 
   return { status: res.status, data: data as T }
@@ -184,11 +188,17 @@ export async function apiRequest<T = unknown>(
 // bounce above never ran. On 03.10.2026 the attendance board sat under a support banner saying
 // «Məlumat yüklənmədi» for nearly two hours after the session had ended, with nothing to say so.
 //
-// Recognised ONLY while impersonating. An employee's or an admin's own session is never ended here:
+// Recognised ONLY while impersonating. An employee's or an admin's own session is never touched here:
 // their tokens do not expire, a TenantUnresolved on one of them means something else entirely, and
-// signing people out is the one thing this product does not do. The session then ends exactly as a
-// 401 ends it — the operator's own stashed token goes too (see clearToken) — and the login screen
-// says why, once.
+// signing people out is the one thing this product does not do.
+//
+// The session ends the way the banner's «Çıx» ends it: the operator's own token is restored and they
+// land back where they started, with one sentence saying why. It first shipped ending in a full
+// sign-out — the stashed operator token cleared as a 401 clears it — and on 03.10.2026 the owner chose
+// the way back instead: signing in again after every hour of support is the cost, and what it bought
+// was protection for a session that is left open on the operator's machine anyway whenever they are
+// not impersonating. If their own token is no longer good either, the next request is a 401 and the
+// ordinary bounce to the login screen takes over.
 
 const ENDED_SESSION_KEY = 'attendanceqr.sessionEnded'
 
@@ -198,8 +208,8 @@ function impersonationLost(status: number, data: unknown): boolean {
     && getImpersonation() !== null
 }
 
-/** The sentence a login screen shows when it is there because a support or view session ran out —
- *  or null. Only reads; the screen calls forgetEndedSessionNotice once it has shown it. */
+/** The sentence to show once a support or view session has run out — or null. Only reads; whoever shows
+ *  it calls forgetEndedSessionNotice. */
 export function endedSessionNotice(): string | null {
   let kind: string | null = null
   try {
@@ -207,8 +217,10 @@ export function endedSessionNotice(): string | null {
   } catch {
     return null
   }
-  if (kind === 'support') return 'Dəstək rejiminin vaxtı bitdi. Təhlükəsizlik üçün yenidən daxil olun.'
-  if (kind === 'view') return 'Baxış sessiyasının vaxtı bitdi. Yenidən daxil olun.'
+  // True on every screen it can land on — the operator's own panel, or the login screen when their own
+  // session had run out as well — so it says what happened and nothing about where they are.
+  if (kind === 'support') return 'Dəstək rejiminin vaxtı bitdi.'
+  if (kind === 'view') return 'Baxış sessiyasının vaxtı bitdi.'
   return null
 }
 
