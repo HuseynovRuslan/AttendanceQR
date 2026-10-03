@@ -18,6 +18,7 @@ import {
   IconColumns, IconDownload, IconSearch, IconTable, IconUserX, IconX,
 } from '../../components/icons'
 import { fmtLongDate, fmtTime, toCompanyInputValue } from '../../lib/format'
+import { takeRows, useRowWindow } from '../../lib/rowWindow'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -365,6 +366,14 @@ export function TodayPage() {
         return m
       }, new Map<string, typeof visible>())].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'az'))
     : [['', visible] as [string, typeof visible]]), [visible, grouped])
+
+  // Drawn a window at a time rather than all 994 rows at once — see lib/rowWindow.ts. The window
+  // starts over when the question changes, never on the thirty-second refresh.
+  const windowKey = [
+    date, filterLocs.join(','), lens, statusFilter ?? '', q, filterPosition ?? '', sortBy, sortDesc, grouped,
+  ].join('|')
+  const { limit, hasMore, sentinel } = useRowWindow(windowKey, visible.length)
+  const shown = useMemo(() => takeRows(byBranch, limit), [byBranch, limit])
 
   // Same column twice reverses it; a new column starts ascending, which is what every table does.
   const sort = (c: typeof sortBy) => {
@@ -863,7 +872,7 @@ export function TodayPage() {
               </tr>
             </thead>
             <tbody>
-              {byBranch.map(([branch, rows]) => (
+              {shown.map(({ name: branch, rows, total: branchTotal }) => (
                 <Fragment key={branch || 'all'}>
                   {grouped && (
                     <tr className="tbl-group">
@@ -874,7 +883,7 @@ export function TodayPage() {
                         >
                           {branch}
                         </button>
-                        <span className="tbl-group-n">{rows.length}</span>
+                        <span className="tbl-group-n">{branchTotal}</span>
                       </td>
                     </tr>
                   )}
@@ -908,6 +917,15 @@ export function TodayPage() {
                   })}
                 </Fragment>
               ))}
+              {hasMore && (
+                // Comes into range a screen before the reader reaches it, so the next rows are usually
+                // there already; the words are for someone who drags straight to the bottom.
+                <tr ref={sentinel}>
+                  <td colSpan={colCount} className="muted" style={{ textAlign: 'center', padding: 18 }}>
+                    Qalan {visible.length - limit} nəfər yüklənir…
+                  </td>
+                </tr>
+              )}
               {loadedOnce && visible.length === 0 && !error && (
                 <tr>
                   <td colSpan={colCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
