@@ -6,6 +6,7 @@ import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, PanelPage } from './components/AdminRoute'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
+import { EndedSessionNotice } from './components/EndedSessionNotice'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
 import { useAuth } from './auth/AuthContext'
@@ -149,6 +150,7 @@ export default function App() {
   return (
     <>
       <ImpersonationBanner />
+      <EndedSessionNotice />
       <AutoUpdater />
       <OfflineSyncer />
       <ScannerPrefetch />

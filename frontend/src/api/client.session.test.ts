@@ -20,24 +20,28 @@ function respond(status: number, body: unknown) {
 
 const SUPPORT = { tenantName: 'Bakı Abadlıq Xidməti', adminName: 'Vüqar Bəbirov' }
 
-function impersonating(info: object = SUPPORT) {
+function impersonating(info: object = SUPPORT, from: string | null = '/tenants') {
   localStorage.setItem('attendanceqr.jwt', 'impersonation-token')
   localStorage.setItem('attendanceqr.jwt.super', 'operator-token')
   localStorage.setItem('attendanceqr.impersonation', JSON.stringify(info))
+  if (from) localStorage.setItem('attendanceqr.impersonation.from', from)
 }
 
 describe('a support session the server no longer accepts', () => {
-  let bounced = 0
+  let signedOut = 0
+  let navigations: string[] = []
 
   beforeEach(() => {
     vi.stubGlobal('localStorage', memoryStorage())
     vi.stubGlobal('sessionStorage', memoryStorage())
-    bounced = 0
-    setUnauthorizedHandler(() => { bounced++ })
+    navigations = []
+    vi.stubGlobal('window', { location: { pathname: '/admin/today', set href(v: string) { navigations.push(v) } } })
+    signedOut = 0
+    setUnauthorizedHandler(() => { signedOut++ })
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('ends the session and tells the login screen why', async () => {
+  it("hands the operator back their own panel, as the banner's «Çıx» does", async () => {
     // 03.10.2026: the board said «Məlumat yüklənmədi» under a support banner for nearly two hours
     // after the session had run out, because the refusal was a 400 and only a 401 ended a session.
     impersonating()
@@ -45,21 +49,22 @@ describe('a support session the server no longer accepts', () => {
 
     await apiRequest('/api/reports/today')
 
-    expect(bounced).toBe(1)
-    expect(localStorage.getItem('attendanceqr.jwt')).toBeNull()
-    // The operator's own stashed token goes too, exactly as a 401 takes it — see clearToken.
+    expect(localStorage.getItem('attendanceqr.jwt')).toBe('operator-token')
     expect(localStorage.getItem('attendanceqr.jwt.super')).toBeNull()
     expect(localStorage.getItem('attendanceqr.impersonation')).toBeNull()
-    expect(endedSessionNotice()).toBe('Dəstək rejiminin vaxtı bitdi. Təhlükəsizlik üçün yenidən daxil olun.')
+    expect(navigations).toEqual(['/tenants'])
+    expect(signedOut).toBe(0)
+    expect(endedSessionNotice()).toBe('Dəstək rejiminin vaxtı bitdi.')
   })
 
-  it('calls a view session a view session', async () => {
-    impersonating({ ...SUPPORT, readOnly: true })
+  it('goes back to wherever the session was started — the group board as much as the console', async () => {
+    impersonating({ ...SUPPORT, readOnly: true }, '/hq')
     respond(400, { error: 'TenantUnresolved' })
 
     await apiRequest('/api/reports/today')
 
-    expect(endedSessionNotice()).toBe('Baxış sessiyasının vaxtı bitdi. Yenidən daxil olun.')
+    expect(navigations).toEqual(['/hq'])
+    expect(endedSessionNotice()).toBe('Baxış sessiyasının vaxtı bitdi.')
   })
 
   it('says it once', async () => {
@@ -79,10 +84,11 @@ describe('a support session the server no longer accepts', () => {
 
     await Promise.all([apiRequest('/a'), apiRequest('/b'), apiRequest('/c')])
 
-    expect(bounced).toBe(1)
+    expect(navigations).toHaveLength(1)
+    expect(localStorage.getItem('attendanceqr.jwt')).toBe('operator-token')
   })
 
-  it("never ends an employee's or an admin's own session this way", async () => {
+  it("never touches an employee's or an admin's own session", async () => {
     // Their tokens do not expire, a TenantUnresolved on one means something else, and signing people
     // out is the one thing this product does not do.
     localStorage.setItem('attendanceqr.jwt', 'own-token')
@@ -90,7 +96,8 @@ describe('a support session the server no longer accepts', () => {
 
     await apiRequest('/api/reports/today')
 
-    expect(bounced).toBe(0)
+    expect(signedOut).toBe(0)
+    expect(navigations).toEqual([])
     expect(localStorage.getItem('attendanceqr.jwt')).toBe('own-token')
     expect(endedSessionNotice()).toBeNull()
   })
@@ -101,7 +108,7 @@ describe('a support session the server no longer accepts', () => {
 
     await apiRequest('/api/admin/employees', { method: 'POST', body: {} })
 
-    expect(bounced).toBe(0)
+    expect(navigations).toEqual([])
     expect(localStorage.getItem('attendanceqr.jwt')).toBe('impersonation-token')
   })
 
@@ -111,6 +118,7 @@ describe('a support session the server no longer accepts', () => {
 
     await apiRequest('/api/attendance/scan', { method: 'POST', body: {}, token: 'someone-else' })
 
-    expect(bounced).toBe(0)
+    expect(navigations).toEqual([])
+    expect(localStorage.getItem('attendanceqr.jwt')).toBe('impersonation-token')
   })
 })
