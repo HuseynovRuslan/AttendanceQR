@@ -51,20 +51,36 @@ public sealed class DeviceChangeService : IDeviceChangeService
             where r.Status == DeviceChangeStatus.Pending
             join e in _db.Employees on r.EmployeeId equals e.Id
             orderby r.RequestedAtUtc
-            select new PendingDeviceChangeDto(
+            select new
+            {
                 r.Id,
                 r.EmployeeId,
                 e.FullName,
-                _db.DeviceBindings
+                Current = _db.DeviceBindings
                     .Where(d => d.EmployeeId == r.EmployeeId && d.IsActive)
                     .OrderByDescending(d => d.LastSeenAtUtc)
                     .Select(d => d.DeviceFingerprint)
                     .FirstOrDefault(),
                 r.NewDeviceFingerprint,
-                r.RequestedAtUtc))
+                r.RequestedAtUtc,
+            })
             .ToListAsync(ct);
 
-        return rows;
+        // Two counts per request, asked one request at a time. The list is short — RequestAsync keeps
+        // one open request per employee — and the counts must be the very ones the scan refused on, so
+        // they come from DeviceBindingAllowance rather than a cleverer join that could drift from it.
+        var now = DateTime.UtcNow;
+        var result = new List<PendingDeviceChangeDto>(rows.Count);
+        foreach (var r in rows)
+        {
+            var used = await DeviceBindingAllowance.UsedAsync(_db, r.EmployeeId, now, ct);
+            var recent = await DeviceBindingAllowance.RecentNewDevicesAsync(_db, r.EmployeeId, now, ct);
+            result.Add(new PendingDeviceChangeDto(
+                r.Id, r.EmployeeId, r.FullName, r.Current, r.NewDeviceFingerprint, r.RequestedAtUtc,
+                recent, used >= _options.MaxBindsPer30Days));
+        }
+
+        return result;
     }
 
     public async Task<ReviewDeviceChangeOutcome> ApproveAsync(

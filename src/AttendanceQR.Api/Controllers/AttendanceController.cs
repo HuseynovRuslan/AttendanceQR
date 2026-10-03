@@ -1411,7 +1411,7 @@ public class AttendanceController : ControllerBase
     // being physically at the location is the whole evidence behind an automatic binding.
     private async Task<IActionResult?> ResolveDeviceAsync(Employee employee, string fingerprint, string? ip)
     {
-        var nowUtc = DateTime.UtcNow;
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
 
         var known = employee.DeviceBindings.FirstOrDefault(d =>
             d.IsActive && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
@@ -1427,21 +1427,18 @@ public class AttendanceController : ControllerBase
         var revoked = employee.DeviceBindings.FirstOrDefault(d =>
             d.RevokedAtUtc != null && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
         if (revoked is not null)
-            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint, cause: "DeviceRevoked");
 
         // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change.
         if (!_deviceOptions.AutoBind)
             return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
 
         // Private browsing hands out a fresh storage context per session — uncapped, it would mint a
-        // binding on every scan. Hitting this limit means "talk to this employee", not "attack".
-        var since = nowUtc.AddDays(-30);
-        var recentBinds = await _db.AuditLogs.CountAsync(a =>
-            a.EmployeeId == employee.Id
-            && a.EventType == AuditEventType.DeviceAutoBound
-            && a.CreatedAtUtc >= since);
-        if (recentBinds >= _deviceOptions.MaxBindsPer30Days)
-            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
+        // binding on every scan. Hitting this limit means "talk to this employee", not "attack" — and
+        // an admin approving their request starts the count again (DeviceBindingRules.AutoBindWindowStart).
+        var used = await DeviceBindingAllowance.UsedAsync(_db, employee.Id, nowUtc);
+        if (used >= _deviceOptions.MaxBindsPer30Days)
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint, cause: "DeviceBindLimit");
 
         // Somebody ELSE'S device. Adopting it is what turns a phone into a brigade's shared handset,
         // and it is the moment the "one phone, one employee" control is given up for this person — so
@@ -1505,8 +1502,23 @@ public class AttendanceController : ControllerBase
     /// next but tell the admin almost nothing; a shared-phone refusal has an exact, actionable fix
     /// ("give this person shared-device permission") which is lost if it arrives as DeviceMismatch.
     /// </param>
+    /// <param name="cause">
+    /// Why a phone the account does not know was refused, when a person can act on it:
+    /// <c>DeviceBindLimit</c> (the allowance of automatic adoptions is spent) or <c>DeviceRevoked</c>
+    /// (an admin removed this phone). Both used to arrive as a bare DeviceMismatch, so the employee read
+    /// «Bu cihaz hesabınıza bağlı deyil» whatever had happened and the Problems screen could not tell a
+    /// stolen phone from a forgetful one — eleven people at Bakı Abadlıq were locked out by the
+    /// allowance for twelve days before anybody could see that it was the allowance.
+    ///
+    /// The wire error deliberately stays DeviceMismatch / NoDeviceBound, with the cause beside it. An
+    /// installed app can run a bundle from before this for days; that copy matches on <c>error</c>, and
+    /// a code it has never heard of would reach it as a yellow «QR kod qəbul edilmədi» with a retry
+    /// button while its offline queue resent the scan every minute (lib/scanReject.ts tells that
+    /// story). The audit records the cause itself, because the admin is the one who acts on it.
+    /// </param>
     private async Task<IActionResult> RejectDeviceAsync(
-        Employee employee, string? ip, string? overrideReason = null, string? fingerprint = null)
+        Employee employee, string? ip, string? overrideReason = null, string? fingerprint = null,
+        string? cause = null)
     {
         // "No device at all" and "the wrong device" send the employee down different paths in the
         // app — the first is an admin problem, the second offers "this is my new phone".
@@ -1529,10 +1541,11 @@ public class AttendanceController : ControllerBase
             detail = owners.Count == 0 ? "naməlum telefon" : $"{string.Join(", ", owners)} telefonu";
         }
 
+        var code = cause ?? reason;
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
-            detail is null ? reason : $"{reason}|{detail}", ip);
+            detail is null ? code : $"{code}|{detail}", ip);
         // The wire error stays the BARE code — the app matches on it, and the detail is for the admin.
-        return StatusCode(StatusCodes.Status403Forbidden, new { error = reason });
+        return StatusCode(StatusCodes.Status403Forbidden, new { error = reason, cause });
     }
 
     private async Task WriteAuditAsync(Guid? employeeId, AuditEventType eventType, string? reason, string? ip)

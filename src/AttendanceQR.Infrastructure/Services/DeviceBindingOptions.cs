@@ -21,7 +21,12 @@ public sealed class DeviceBindingOptions
 
     /// <summary>
     /// Guards against private browsing, where every session is a fresh storage context and would
-    /// otherwise mint a binding on every single scan, for ever. A normal employee never gets near it.
+    /// otherwise mint a binding on every single scan, for ever.
+    ///
+    /// Counted over the last thirty days, or since an admin last approved a device change for the
+    /// employee if that is more recent (<see cref="DeviceBindingRules.AutoBindWindowStart"/>). The
+    /// people who reach it are mostly not browsing privately: their phone keeps losing the app's
+    /// storage. On 03.10.2026 that was 21 of Bakı Abadlıq's 914, with 58 more one lost context away.
     /// </summary>
     public int MaxBindsPer30Days { get; set; } = 3;
 
