@@ -368,10 +368,9 @@ export function TodayPage() {
     : [['', visible] as [string, typeof visible]]), [visible, grouped])
 
   // Drawn a window at a time rather than all 994 rows at once — see lib/rowWindow.ts. The window
-  // starts over when the question changes, never on the thirty-second refresh.
-  const windowKey = [
-    date, filterLocs.join(','), lens, statusFilter ?? '', q, filterPosition ?? '', sortBy, sortDesc, grouped,
-  ].join('|')
+  // starts over when WHICH rows are on the list changes; a sort or the branch grouping only reorders
+  // them, and the thirty-second refresh changes neither.
+  const windowKey = [date, filterLocs.join(','), lens, statusFilter ?? '', q, filterPosition ?? ''].join('|')
   const { limit, hasMore, sentinel } = useRowWindow(windowKey, visible.length)
   const shown = useMemo(() => takeRows(byBranch, limit), [byBranch, limit])
 

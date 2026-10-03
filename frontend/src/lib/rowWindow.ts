@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * How much of a long list to put on the page now — the rest arrives as the reader scrolls toward it.
@@ -43,8 +43,11 @@ export function takeRows<T>(groups: ReadonlyArray<readonly [string, readonly T[]
  * The window over a list of `total` rows: how many to draw, and a ref for an element placed after the
  * last one. When that element comes within a screen of view, the window grows.
  *
- * It starts over only when `resetKey` changes — a different question asked of the list. A board that
- * refreshes itself every thirty seconds must not throw somebody reading row 400 back to the top.
+ * It starts over only when `resetKey` changes, and the caller should change it only when the SET of
+ * rows changes — a filter, the day. Not on the thirty-second refresh, which would throw somebody
+ * reading row 400 back to the top; and not on a sort, which only reorders what is already drawn: cut
+ * back to the first window, the page would shrink under a reader standing at row 500, leave them at
+ * its bottom, and the list would grow again straight away.
  */
 export function useRowWindow(resetKey: string, total: number) {
   const [limit, setLimit] = useState(FIRST_ROWS)
@@ -55,22 +58,23 @@ export function useRowWindow(resetKey: string, total: number) {
   }
 
   const hasMore = limit < total
-  const sentinel = useRef<HTMLTableRowElement | null>(null)
+  // The element itself, held in state rather than a ref object, so the observer follows it if the
+  // table is ever drawn afresh: watching a node that has left the page would stop the list silently.
+  const [sentinel, setSentinel] = useState<HTMLTableRowElement | null>(null)
 
   // Re-armed after every growth on purpose: observing an element reports where it is right now, so a
   // reader who is already at the bottom keeps getting rows until the bottom is out of reach again.
   // An observer left armed would only speak when the element moved in or out of view — and after a
   // growth it may simply stay in view, which would stop the list there.
   useEffect(() => {
-    const el = sentinel.current
-    if (!el || !hasMore || typeof IntersectionObserver === 'undefined') return
+    if (!sentinel || !hasMore || typeof IntersectionObserver === 'undefined') return
     const io = new IntersectionObserver(
       (entries) => { if (entries.some((e) => e.isIntersecting)) setLimit((n) => n + MORE_ROWS) },
       { rootMargin: '800px 0px' },
     )
-    io.observe(el)
+    io.observe(sentinel)
     return () => io.disconnect()
-  }, [limit, hasMore])
+  }, [sentinel, limit, hasMore])
 
-  return { limit, hasMore, sentinel }
+  return { limit, hasMore, sentinel: setSentinel }
 }
