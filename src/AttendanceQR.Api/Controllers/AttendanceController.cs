@@ -88,6 +88,9 @@ public class AttendanceController : ControllerBase
     private readonly TimeProvider _clock;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AttendanceController> _logger;
+    // Tells a branch's managers about somebody stuck at the poster (see StaffAlerts). Optional: no queue,
+    // no alert — never an error, and never anything a scan waits on.
+    private readonly IStaffAlertQueue? _alerts;
 
     public AttendanceController(
         AppDbContext db,
@@ -102,10 +105,12 @@ public class AttendanceController : ControllerBase
         IMemoryCache cache,
         ILogger<AttendanceController> logger,
         ISummaryRebuildQueue? summaryRebuild = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        IStaffAlertQueue? alerts = null)
     {
         _summaryRebuild = summaryRebuild;
         _clock = clock ?? TimeProvider.System;
+        _alerts = alerts;
         _db = db;
         _qrTokenService = qrTokenService;
         _attendanceQuery = attendanceQuery;
@@ -663,6 +668,11 @@ public class AttendanceController : ControllerBase
         {
             await WriteAuditAsync(employeeId, AuditEventType.ScanBlockedOnDevice, reason,
                 HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            // A permission the manager at the site can switch on: they hear about it if the person is
+            // still stuck once the grace period is over.
+            if (StaffAlertKinds.IsAlertable(request.Reason))
+                _alerts?.Enqueue(new StaffAlert(_db.CurrentTenantId, employeeId, request.Reason, _clock.GetUtcNow().UtcDateTime));
         }
 
         return Accepted();
@@ -1544,6 +1554,7 @@ public class AttendanceController : ControllerBase
         var code = cause ?? reason;
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
             detail is null ? code : $"{code}|{detail}", ip);
+        _alerts?.Enqueue(new StaffAlert(employee.TenantId, employee.Id, code, _clock.GetUtcNow().UtcDateTime));
         // The wire error stays the BARE code — the app matches on it, and the detail is for the admin.
         return StatusCode(StatusCodes.Status403Forbidden, new { error = reason, cause });
     }

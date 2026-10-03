@@ -59,5 +59,11 @@ public enum AuditEventType
     // the account that CHANGED, naming the manager in the reason: since 2026-09-14 a manager may do this
     // to a fellow manager anywhere in the company, and a PIN they reset is a PIN they know — so the row
     // is what turns a quiet sign-in as somebody else into a question with a name and a time on it.
-    CredentialChangedByManager = 18
+    CredentialChangedByManager = 18,
+
+    // A branch's managers (or, without one, the company's admins) were pushed about this employee:
+    // refused for a reason they can fix on the spot, or asking for a new phone. Written against the
+    // employee, the reason «Kind|reached/recipients who». It is also what keeps the alert to once per
+    // person, problem and day — see StaffAlertDispatcher.
+    StaffAlertSent = 19
 }
