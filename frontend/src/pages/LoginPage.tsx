@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { endedSessionNotice, forgetEndedSessionNotice } from '../api/client'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { login, appLogin } from '../api/auth'
 import { isAppMode } from '../lib/host'
@@ -19,6 +20,9 @@ export function LoginPage() {
   const [email, setEmail] = useState((location.state as { identifier?: string } | null)?.identifier ?? '')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Why this screen is here, when a view session from the group board has just run out — said once.
+  const [notice] = useState(endedSessionNotice)
+  useEffect(() => { forgetEndedSessionNotice() }, [])
   const [loading, setLoading] = useState(false)
   const { saveToken, switchProfile } = useAuth()
   // Accounts already on this device. On a personal phone this is empty (logout removes the profile it
@@ -120,6 +124,12 @@ export function LoginPage() {
           <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 18, color: 'var(--c900)' }}>
             Sistemə daxil olun
           </div>
+
+          {notice && !error && (
+            <div className="fb fb-info" style={{ marginBottom: 14 }}>
+              <span>{notice}</span>
+            </div>
+          )}
 
           {error && (
             <div className="fb fb-err" style={{ marginBottom: 14 }}>

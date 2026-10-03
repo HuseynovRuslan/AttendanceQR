@@ -162,5 +162,62 @@ export async function apiRequest<T = unknown>(
 
   const text = await res.text()
   const data = text ? JSON.parse(text) : null
+
+  if (auth && asToken === undefined && impersonationLost(res.status, data)) {
+    const info = getImpersonation()
+    try {
+      sessionStorage.setItem(ENDED_SESSION_KEY, info?.readOnly ? 'view' : 'support')
+    } catch {
+      /* private window: the login screen simply shows without the sentence */
+    }
+    clearToken()
+    onUnauthorized?.()
+  }
+
   return { status: res.status, data: data as T }
+}
+
+// --- A support or view session that ran out ------------------------------------
+// Those tokens are short-lived on purpose. When one expires the server cannot say which company the
+// request belongs to — the company is read from the token, and an expired token is not read — so it
+// refuses with 400 TenantUnresolved before authentication gets the chance to say 401, and the 401
+// bounce above never ran. On 03.10.2026 the attendance board sat under a support banner saying
+// «Məlumat yüklənmədi» for nearly two hours after the session had ended, with nothing to say so.
+//
+// Recognised ONLY while impersonating. An employee's or an admin's own session is never ended here:
+// their tokens do not expire, a TenantUnresolved on one of them means something else entirely, and
+// signing people out is the one thing this product does not do. The session then ends exactly as a
+// 401 ends it — the operator's own stashed token goes too (see clearToken) — and the login screen
+// says why, once.
+
+const ENDED_SESSION_KEY = 'attendanceqr.sessionEnded'
+
+function impersonationLost(status: number, data: unknown): boolean {
+  return status === 400
+    && (data as { error?: unknown } | null)?.error === 'TenantUnresolved'
+    && getImpersonation() !== null
+}
+
+/** The sentence a login screen shows when it is there because a support or view session ran out —
+ *  or null. Only reads; the screen calls forgetEndedSessionNotice once it has shown it. */
+export function endedSessionNotice(): string | null {
+  let kind: string | null = null
+  try {
+    kind = sessionStorage.getItem(ENDED_SESSION_KEY)
+  } catch {
+    return null
+  }
+  if (kind === 'support') return 'Dəstək rejiminin vaxtı bitdi. Təhlükəsizlik üçün yenidən daxil olun.'
+  if (kind === 'view') return 'Baxış sessiyasının vaxtı bitdi. Yenidən daxil olun.'
+  return null
+}
+
+/** Said once: a later visit to the login screen has nothing to explain. Kept apart from reading it so
+ *  a render that runs twice (React's development checks do) cannot lose the sentence on the way. */
+export function forgetEndedSessionNotice(): void {
+  try {
+    sessionStorage.removeItem(ENDED_SESSION_KEY)
+  } catch {
+    /* nothing to forget */
+  }
 }
