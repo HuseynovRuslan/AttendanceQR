@@ -169,6 +169,10 @@ public class AdminDeviceBindingController : ControllerBase
         var now = DateTime.UtcNow;
         foreach (var b in actionable)
         {
+            // Both fields, as the single Revoke below sets them. The scan recognises a phone by IsActive
+            // alone, so a row stamped revoked but left active went on clocking in — the phone an admin
+            // had just taken off everybody stayed on all of them, while this screen said it was gone.
+            b.IsActive = false;
             b.RevokedAtUtc = now;
             _db.AuditLogs.Add(new AuditLog
             {

@@ -242,6 +242,8 @@ if (hasExpiryExemptHash
         || !qrToken.ExpiryExemptTokenSha256.All(Uri.IsHexDigit)))
     throw new InvalidOperationException(
         "QrToken:ExpiryExemptTokenSha256 must be a 64-character hexadecimal SHA-256 fingerprint.");
+// Read once: the list only changes with a restart, which is also what the off switch below relies on.
+var operatorIds = appOptions.SuperAdminIdList();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -329,6 +331,15 @@ builder.Services
                 if (!account.IsActive)
                 {
                     context.Fail("AccountDeactivated");
+                    return;
+                }
+
+                // A support or view session ends when its operator stops being one — the only off switch
+                // it has, now that it lasts as long as a login. A 401, so the client signs the whole
+                // browser out, the operator's own stashed token included. See ImpersonationAllowlist.
+                if (!ImpersonationAllowlist.StillAllowed(context.Principal!, operatorIds))
+                {
+                    context.Fail("ImpersonatorNotAllowed");
                     return;
                 }
 

@@ -334,6 +334,20 @@ public class DeviceBindingManagerScopeTests
     }
 
     [Fact]
+    public async Task Revoke_all_takes_the_phone_off_at_the_gate_too()
+    {
+        // The scan recognises a phone by IsActive alone. Revoke-all used to stamp only the date, so every
+        // account it detached went on clocking in on that handset while the device list said it was gone.
+        using var f = new Fixture();
+
+        await f.Admin.RevokeDevice(BrigadePhone);
+
+        Assert.False(f.Binding(f.BrigadeMineId).IsActive);
+        Assert.False(f.Binding(f.BrigadeSecondId).IsActive);
+        Assert.False(f.Binding(f.BrigadeOtherBranchId).IsActive);
+    }
+
+    [Fact]
     public async Task Revoke_all_on_a_handset_carrying_nobody_of_theirs_is_refused()
     {
         // Revoke-all is addressed by fingerprint rather than by a row from the caller's own list, so
