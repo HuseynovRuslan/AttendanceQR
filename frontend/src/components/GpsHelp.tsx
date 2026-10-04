@@ -23,6 +23,15 @@ const STEPS: Record<ReturnType<typeof platform>, Step[]> = {
   ],
 }
 
+// The trap behind most repeat refusals. Android and Chrome both ask with a «this time» choice, and that
+// permission is gone once the app closes — so the scan works today and is refused tomorrow. In the week
+// to 04.10.2026, 56 people at Bakı Abadlıq were refused for location on three days or more. Exact
+// button labels vary with the phone's language and version, so the wording leans on «bu dəfə».
+const ONE_TIME_TRAP = {
+  title: '«Bu dəfə» seçməyin',
+  body: 'Telefon icazə soruşanda adında «bu dəfə» olan düyməni yox, «Hər ziyarətdə» və ya «Tətbiq istifadə edilərkən» düyməsini basın. «Bu dəfə» icazəsi tətbiq bağlananda silinir — sabah skan yenə alınmaz.',
+}
+
 /** Which step to point at. Chrome tells us the permission outright; on iOS we can't be sure, so we
  *  flag the two permission layers rather than pretend to know which one it is. */
 function highlightFor(kind: GeoFailKind, os: ReturnType<typeof platform>): number[] {
@@ -63,6 +72,13 @@ export function GpsHelp({ kind, onRetry, busy }: { kind: GeoFailKind; onRetry: (
         <h2 className="mt-2 text-lg font-bold text-white">{title}</h2>
         <p className="mt-1 text-sm text-slate-300">{detail}</p>
       </div>
+
+      {kind === 'denied' && os === 'android' && (
+        <div className="mt-4 rounded-xl border border-rose-400/60 bg-rose-500/10 p-3">
+          <p className="text-sm font-semibold text-rose-200">⚠️ {ONE_TIME_TRAP.title}</p>
+          <p className="mt-1 text-sm leading-relaxed text-rose-100/80">{ONE_TIME_TRAP.body}</p>
+        </div>
+      )}
 
       {kind !== 'timeout' && kind !== 'unsupported' && (
         <ol className="mt-5 space-y-2">
