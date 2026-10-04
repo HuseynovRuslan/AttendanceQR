@@ -182,7 +182,9 @@ export async function apiRequest<T = unknown>(
 }
 
 // --- A support or view session that ran out ------------------------------------
-// Those tokens are short-lived on purpose. When one expires the server cannot say which company the
+// Those tokens ran out after an hour until c098fa1; this stays as the net for one the server cannot read.
+// (An operator taken off the allowlist is a 401 instead — see the backend's ImpersonationAllowlist.)
+// When one expires the server cannot say which company the
 // request belongs to — the company is read from the token, and an expired token is not read — so it
 // refuses with 400 TenantUnresolved before authentication gets the chance to say 401, and the 401
 // bounce above never ran. On 03.10.2026 the attendance board sat under a support banner saying
