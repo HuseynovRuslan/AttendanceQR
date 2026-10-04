@@ -52,6 +52,15 @@ public static class StaffAlertKinds
     /// </summary>
     public static readonly TimeSpan GraceForBlocked = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// Nobody is woken for this. On the first morning these went out, one landed at 04:07. An alert that
+    /// falls due between QuietFrom and QuietUntil, company time, waits for the morning — and is still
+    /// dropped then if the person has scanned since, so a night-shift worker who got in at 05:00 is never
+    /// reported at all.
+    /// </summary>
+    public static readonly TimeOnly QuietFrom = new(22, 0);
+    public static readonly TimeOnly QuietUntil = new(6, 30);
+
     // Only what the manager can fix on the spot. Not a weak GPS signal or a busy camera — those clear
     // on their own — and not «outside the radius», which is mostly somebody scanning from the bus.
     private static readonly Dictionary<string, (string Problem, string Fix, string Url)> Blocked = new()
@@ -74,22 +83,40 @@ public static class StaffAlertKinds
     /// request goes at once.</summary>
     public static bool WaitsForRecovery(string kind) => Blocked.ContainsKey(kind);
 
-    public static DateTime DueAtUtc(StaffAlert alert) =>
-        WaitsForRecovery(alert.Kind) ? alert.RaisedAtUtc + GraceForBlocked : alert.RaisedAtUtc;
+    public static DateTime DueAtUtc(StaffAlert alert, TimeZoneInfo timeZone) => AfterQuietHours(
+        WaitsForRecovery(alert.Kind) ? alert.RaisedAtUtc + GraceForBlocked : alert.RaisedAtUtc, timeZone);
 
-    /// <summary>The push — title, body, where tapping it leads — or null for a kind nobody hears about.</summary>
-    public static (string Title, string Body, string Url)? Describe(string kind, string employeeName)
+    /// <summary>The moment itself when it is outside quiet hours; otherwise QuietUntil on the morning that
+    /// ends them.</summary>
+    public static DateTime AfterQuietHours(DateTime utc, TimeZoneInfo timeZone)
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, timeZone);
+        var time = TimeOnly.FromDateTime(local);
+        if (time >= QuietUntil && time < QuietFrom)
+            return utc;
+        var morning = local.Date + QuietUntil.ToTimeSpan();
+        if (time >= QuietFrom)
+            morning = morning.AddDays(1);
+        return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(morning, DateTimeKind.Unspecified), timeZone);
+    }
+
+    /// <summary>The push — title, body, where tapping it leads — or null for a kind nobody hears about.
+    /// <paramref name="waited"/> is how long ago the refusal was: ten minutes in the day, a night's worth
+    /// for one held until the morning, which must not claim ten.</summary>
+    public static (string Title, string Body, string Url)? Describe(string kind, string employeeName, TimeSpan waited)
     {
         if (kind == DeviceChangeRequested)
             return ($"{employeeName} yeni telefon tələbi göndərib", "Təsdiqləsəniz, dərhal skan edə biləcək.", "/admin/device-changes");
         if (!Blocked.TryGetValue(kind, out var b))
             return null;
-        return ($"{employeeName} skan edə bilmir",
-            $"{GraceForBlocked.TotalMinutes:0} dəqiqədir alınmır: {b.Problem}. {b.Fix}", b.Url);
+        var since = waited < TimeSpan.FromHours(1)
+            ? $"{Math.Max(GraceForBlocked.TotalMinutes, Math.Floor(waited.TotalMinutes)):0} dəqiqədir"
+            : $"{Math.Floor(waited.TotalHours):0} saatdır";
+        return ($"{employeeName} skan edə bilmir", $"{since} alınmır: {b.Problem}. {b.Fix}", b.Url);
     }
 }
 
-public enum StaffAlertOutcome { Sent, Recovered, AlreadyAlerted, NotAlertable, NoRecipients, UnknownEmployee }
+public enum StaffAlertOutcome { Sent, Recovered, AlreadyHandled, AlreadyAlerted, NotAlertable, NoRecipients, UnknownEmployee }
 
 /// <summary>
 /// Delivers one due alert: to the managers of the person's own branch — the people standing there —
@@ -121,6 +148,15 @@ public static class StaffAlertDispatcher
             if (recovered)
                 return StaffAlertOutcome.Recovered;
         }
+        else
+        {
+            // A request held overnight may have been approved or rejected by morning — by an admin who was
+            // awake. Telling the manager to approve it then sends them to an empty screen.
+            var stillPending = await db.DeviceChangeRequests.AnyAsync(r =>
+                r.EmployeeId == alert.EmployeeId && r.Status == DeviceChangeStatus.Pending, ct);
+            if (!stillPending)
+                return StaffAlertOutcome.AlreadyHandled;
+        }
 
         // Once a day per person and problem, counted on the company's calendar.
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
@@ -148,7 +184,7 @@ public static class StaffAlertDispatcher
         if (recipients.Count == 0)
             return StaffAlertOutcome.NoRecipients;
 
-        var text = StaffAlertKinds.Describe(alert.Kind, employee.FullName)!.Value;
+        var text = StaffAlertKinds.Describe(alert.Kind, employee.FullName, nowUtc - alert.RaisedAtUtc)!.Value;
         var reached = await notifier.NotifyEmployeesAsync(recipients, text.Title, text.Body, text.Url, ct);
 
         // Written even when nobody had a live subscription: the next refusal must not try again, and

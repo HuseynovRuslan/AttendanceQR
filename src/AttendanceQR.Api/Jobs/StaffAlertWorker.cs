@@ -6,8 +6,9 @@ using AttendanceQR.Infrastructure.Services;
 namespace AttendanceQR.Api.Jobs;
 
 /// <summary>
-/// Delivers staff alerts once they are due — a refusal after its grace period, a request at once. See
-/// StaffAlertKinds for what is alerted and StaffAlertDispatcher for who hears it.
+/// Delivers staff alerts once they are due — a refusal after its grace period, a request at once, and
+/// anything due in the night at the end of quiet hours. See StaffAlertKinds for what is alerted and when,
+/// and StaffAlertDispatcher for who hears it.
 ///
 /// Alerts still waiting are held in memory; a restart forgets them. That costs a courtesy, never a
 /// record — the refusal itself is already in the audit log and on the Problems screen.
@@ -15,6 +16,10 @@ namespace AttendanceQR.Api.Jobs;
 public sealed class StaffAlertWorker : BackgroundService
 {
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(15);
+
+    // A night's alerts now wait here until the morning, so the list is bounded as the channel is: the
+    // oldest go first, and each person is alerted about each problem once a day anyway.
+    private const int MaxWaiting = 2000;
 
     private readonly IStaffAlertQueue _queue;
     private readonly IServiceScopeFactory _scopes;
@@ -40,15 +45,17 @@ public sealed class StaffAlertWorker : BackgroundService
         {
             while (_queue.Reader.TryRead(out var alert))
                 waiting.Add(alert);
+            if (waiting.Count > MaxWaiting)
+                waiting.RemoveRange(0, waiting.Count - MaxWaiting);
 
             var now = _clock.GetUtcNow().UtcDateTime;
-            foreach (var alert in waiting.Where(a => StaffAlertKinds.DueAtUtc(a) <= now).ToList())
+            foreach (var alert in waiting.Where(a => StaffAlertKinds.DueAtUtc(a, _timeZone) <= now).ToList())
             {
                 waiting.Remove(alert);
                 await DeliverAsync(alert, now, ct);
             }
 
-            // Wake for a new alert, or every Tick to release the ones whose grace period has run out.
+            // Wake for a new alert, or every Tick to release the ones whose wait has run out.
             using var wake = CancellationTokenSource.CreateLinkedTokenSource(ct);
             wake.CancelAfter(Tick);
             try

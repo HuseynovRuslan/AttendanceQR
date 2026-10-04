@@ -54,14 +54,45 @@ public class StaffAlertTests
     [Fact]
     public void A_refusal_waits_out_the_grace_period_and_a_request_goes_at_once()
     {
-        Assert.Equal(Now.AddMinutes(10), StaffAlertKinds.DueAtUtc(new StaffAlert(TenantId, Guid.NewGuid(), "GpsPermissionDenied", Now)));
-        Assert.Equal(Now, StaffAlertKinds.DueAtUtc(new StaffAlert(TenantId, Guid.NewGuid(), StaffAlertKinds.DeviceChangeRequested, Now)));
+        Assert.Equal(Now.AddMinutes(10), StaffAlertKinds.DueAtUtc(new StaffAlert(TenantId, Guid.NewGuid(), "GpsPermissionDenied", Now), Baku));
+        Assert.Equal(Now, StaffAlertKinds.DueAtUtc(new StaffAlert(TenantId, Guid.NewGuid(), StaffAlertKinds.DeviceChangeRequested, Now), Baku));
+    }
+
+    /// <summary>A moment on 03.10.2026, Baku time, as UTC (Baku is UTC+4 all year).</summary>
+    private static DateTime BakuTime(int day, int hour, int minute) =>
+        new DateTime(2026, 10, day, hour, minute, 0, DateTimeKind.Utc).AddHours(-4);
+
+    [Theory]
+    // The 04.10.2026 push that went at 04:07 — now it waits for the morning.
+    [InlineData(3, 4, 17, 3, 6, 30)]
+    // Late evening waits for the NEXT morning.
+    [InlineData(3, 22, 0, 4, 6, 30)]
+    [InlineData(3, 23, 50, 4, 6, 30)]
+    [InlineData(3, 6, 29, 3, 6, 30)]
+    // The day is untouched, to the minute at both ends.
+    [InlineData(3, 6, 30, 3, 6, 30)]
+    [InlineData(3, 21, 59, 3, 21, 59)]
+    [InlineData(3, 12, 0, 3, 12, 0)]
+    public void Nothing_goes_out_in_the_night(int day, int hour, int minute, int dueDay, int dueHour, int dueMinute)
+    {
+        Assert.Equal(BakuTime(dueDay, dueHour, dueMinute), StaffAlertKinds.AfterQuietHours(BakuTime(day, hour, minute), Baku));
+    }
+
+    [Fact]
+    public void A_refusal_at_the_edge_of_the_night_is_held_too()
+    {
+        // Refused at 21:55: the grace period runs out at 22:05, inside quiet hours.
+        var alert = new StaffAlert(TenantId, Guid.NewGuid(), "GpsPermissionDenied", BakuTime(3, 21, 55));
+        Assert.Equal(BakuTime(4, 6, 30), StaffAlertKinds.DueAtUtc(alert, Baku));
+
+        var request = new StaffAlert(TenantId, Guid.NewGuid(), StaffAlertKinds.DeviceChangeRequested, BakuTime(3, 23, 10));
+        Assert.Equal(BakuTime(4, 6, 30), StaffAlertKinds.DueAtUtc(request, Baku));
     }
 
     [Fact]
     public void The_push_names_the_person_the_problem_and_the_fix()
     {
-        var push = StaffAlertKinds.Describe("GpsPermissionDenied", "Bağırov Zamiq")!.Value;
+        var push = StaffAlertKinds.Describe("GpsPermissionDenied", "Bağırov Zamiq", TimeSpan.FromMinutes(10.2))!.Value;
 
         Assert.Equal("Bağırov Zamiq skan edə bilmir", push.Title);
         Assert.Contains("10 dəqiqədir", push.Body);
@@ -69,8 +100,21 @@ public class StaffAlertTests
         Assert.Contains("kömək edin", push.Body);
         Assert.Equal("/admin/problems", push.Url);
 
-        Assert.Equal("/admin/device-changes", StaffAlertKinds.Describe(StaffAlertKinds.DeviceChangeRequested, "X")!.Value.Url);
-        Assert.Null(StaffAlertKinds.Describe("OutsideRadius", "X"));
+        Assert.Equal("/admin/device-changes", StaffAlertKinds.Describe(StaffAlertKinds.DeviceChangeRequested, "X", TimeSpan.Zero)!.Value.Url);
+        Assert.Null(StaffAlertKinds.Describe("OutsideRadius", "X", TimeSpan.FromMinutes(10)));
+    }
+
+    [Theory]
+    [InlineData(10.0, "10 dəqiqədir")]
+    [InlineData(23.7, "23 dəqiqədir")]
+    // Held from 04:07 to 06:30 — the morning push must not say ten minutes.
+    [InlineData(143.0, "2 saatdır")]
+    [InlineData(510.0, "8 saatdır")]
+    public void The_push_says_how_long_it_has_really_been(double minutes, string since)
+    {
+        var push = StaffAlertKinds.Describe("CameraDenied", "X", TimeSpan.FromMinutes(minutes))!.Value;
+
+        Assert.StartsWith($"{since} alınmır:", push.Body);
     }
 
     // --- who hears it ---------------------------------------------------------
@@ -127,6 +171,15 @@ public class StaffAlertTests
         public void Audit(Guid employeeId, AuditEventType type, DateTime at, string? reason = null)
         {
             Db.AuditLogs.Add(new AuditLog { TenantId = TenantId, EmployeeId = employeeId, EventType = type, Reason = reason, CreatedAtUtc = at });
+            Db.SaveChanges();
+        }
+
+        public void Request(Guid employeeId, DeviceChangeStatus status)
+        {
+            Db.DeviceChangeRequests.Add(new DeviceChangeRequest
+            {
+                TenantId = TenantId, EmployeeId = employeeId, NewDeviceFingerprint = "fp", Status = status, RequestedAtUtc = Now,
+            });
             Db.SaveChanges();
         }
 
@@ -195,10 +248,52 @@ public class StaffAlertTests
     public async Task A_request_is_sent_even_if_the_person_is_scanning_with_another_phone()
     {
         using var w = new World();
+        w.Request(w.Worker, DeviceChangeStatus.Pending);
         w.Audit(w.Worker, AuditEventType.CheckInSuccess, Now.AddMinutes(1));
         var push = new FakeNotifier();
 
         Assert.Equal(StaffAlertOutcome.Sent, await w.Deliver(push, w.Worker, StaffAlertKinds.DeviceChangeRequested, Now, Now));
+    }
+
+    [Theory]
+    [InlineData(DeviceChangeStatus.Approved)]
+    [InlineData(DeviceChangeStatus.Rejected)]
+    public async Task A_request_somebody_answered_overnight_is_not_announced_in_the_morning(DeviceChangeStatus status)
+    {
+        // Asked at 23:10, held until 06:30 — and an admin who was still up dealt with it at 23:30.
+        using var w = new World();
+        w.Request(w.Worker, status);
+        var push = new FakeNotifier();
+
+        var outcome = await w.Deliver(push, w.Worker, StaffAlertKinds.DeviceChangeRequested, BakuTime(3, 23, 10), BakuTime(4, 6, 30));
+
+        Assert.Equal(StaffAlertOutcome.AlreadyHandled, outcome);
+        Assert.Empty(push.Sent);
+    }
+
+    [Fact]
+    public async Task A_refusal_held_overnight_goes_in_the_morning_with_the_real_wait()
+    {
+        using var w = new World();
+        var push = new FakeNotifier();
+
+        var outcome = await w.Deliver(push, w.Worker, "GpsPermissionDenied", BakuTime(4, 4, 7), BakuTime(4, 6, 30));
+
+        Assert.Equal(StaffAlertOutcome.Sent, outcome);
+        Assert.StartsWith("2 saatdır alınmır:", Assert.Single(push.Sent).Body);
+    }
+
+    [Fact]
+    public async Task A_night_shift_worker_who_got_in_before_morning_is_never_reported()
+    {
+        using var w = new World();
+        w.Audit(w.Worker, AuditEventType.CheckInSuccess, BakuTime(4, 5, 0));
+        var push = new FakeNotifier();
+
+        var outcome = await w.Deliver(push, w.Worker, "GpsPermissionDenied", BakuTime(4, 4, 7), BakuTime(4, 6, 30));
+
+        Assert.Equal(StaffAlertOutcome.Recovered, outcome);
+        Assert.Empty(push.Sent);
     }
 
     [Fact]
