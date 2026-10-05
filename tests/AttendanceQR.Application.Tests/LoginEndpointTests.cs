@@ -320,4 +320,32 @@ public class LoginEndpointTests
         Assert.Equal(StatusCodes.Status401Unauthorized, status);
         Assert.Equal("InvalidCredentials", error);
     }
+
+    [Fact]
+    public async Task Signing_in_closes_the_persons_open_pin_request()
+    {
+        // A working PIN makes the «PIN-i unutdum» request moot. Left open, the branch's manager is pushed
+        // to it and resetting the PIN would sign the person straight back out.
+        using var h = new Harness();
+        h.Db.PinResetRequests.Add(new PinResetRequest { TenantId = TenantA, EmployeeId = h.EmployeeId });
+        h.Db.SaveChanges();
+
+        await h.Login("+994501234567", RightPin);
+
+        var request = h.Db.PinResetRequests.AsNoTracking().Single();
+        Assert.Equal(PinResetStatus.Recovered, request.Status);
+        Assert.NotNull(request.ResolvedAtUtc);
+    }
+
+    [Fact]
+    public async Task A_failed_sign_in_leaves_the_request_open()
+    {
+        using var h = new Harness();
+        h.Db.PinResetRequests.Add(new PinResetRequest { TenantId = TenantA, EmployeeId = h.EmployeeId });
+        h.Db.SaveChanges();
+
+        await h.Login("+994501234567", WrongPin);
+
+        Assert.Equal(PinResetStatus.Pending, h.Db.PinResetRequests.AsNoTracking().Single().Status);
+    }
 }

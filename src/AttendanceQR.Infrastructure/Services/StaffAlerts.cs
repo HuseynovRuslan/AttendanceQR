@@ -45,6 +45,14 @@ public static class StaffAlertKinds
     public const string DeviceChangeRequested = "DeviceChangeRequested";
 
     /// <summary>
+    /// Somebody who cannot sign in asked for a new PIN («PIN-i unutdum»). On 05.10.2026, 70 of Bakı
+    /// Abadlıq's 72 requests of the past two months had never been answered: they sat on a screen the
+    /// branch managers could open but were never told about, and the people behind them got back in after
+    /// three days on average — or not at all.
+    /// </summary>
+    public const string PinResetRequested = "PinResetRequested";
+
+    /// <summary>
     /// How long a refused person gets to sort it out alone before their manager hears about it. Most
     /// do: 207 people met a location-permission refusal in the week to 03.10.2026, nearly all for a
     /// minute or two. Alerting on every one would teach managers to swipe these away; waiting, and
@@ -77,7 +85,8 @@ public static class StaffAlertKinds
         ["DeviceAccountLimit"] = ("skan etdiyi telefonda həddən çox hesab var", "Hesablardan birini başqa telefona keçirin.", "/admin/device-changes"),
     };
 
-    public static bool IsAlertable(string kind) => kind == DeviceChangeRequested || Blocked.ContainsKey(kind);
+    public static bool IsAlertable(string kind) =>
+        kind == DeviceChangeRequested || kind == PinResetRequested || Blocked.ContainsKey(kind);
 
     /// <summary>A refusal waits out the grace period and is dropped if the person scanned meanwhile; a
     /// request goes at once.</summary>
@@ -107,6 +116,8 @@ public static class StaffAlertKinds
     {
         if (kind == DeviceChangeRequested)
             return ($"{employeeName} yeni telefon tələbi göndərib", "Təsdiqləsəniz, dərhal skan edə biləcək.", "/admin/device-changes");
+        if (kind == PinResetRequested)
+            return ($"{employeeName} PIN-ini unudub", "Proqrama girə bilmir. Toxunun, yeni müvəqqəti PIN yaradın və ona deyin.", "/admin/pin-resets");
         if (!Blocked.TryGetValue(kind, out var b))
             return null;
         var since = waited < TimeSpan.FromHours(1)
@@ -134,7 +145,7 @@ public static class StaffAlertDispatcher
 
         var employee = await db.Employees.AsNoTracking()
             .Where(e => e.Id == alert.EmployeeId)
-            .Select(e => new { e.FullName, e.LocationId })
+            .Select(e => new { e.FullName, e.LocationId, e.Role })
             .FirstOrDefaultAsync(ct);
         if (employee is null)
             return StaffAlertOutcome.UnknownEmployee;
@@ -150,10 +161,14 @@ public static class StaffAlertDispatcher
         }
         else
         {
-            // A request held overnight may have been approved or rejected by morning — by an admin who was
-            // awake. Telling the manager to approve it then sends them to an empty screen.
-            var stillPending = await db.DeviceChangeRequests.AnyAsync(r =>
-                r.EmployeeId == alert.EmployeeId && r.Status == DeviceChangeStatus.Pending, ct);
+            // A request held overnight may have been answered by morning — by an admin who was awake, or,
+            // for a PIN, by the person getting back in on their own. Sending the manager to it then means
+            // an empty screen.
+            var stillPending = alert.Kind == StaffAlertKinds.PinResetRequested
+                ? await db.PinResetRequests.AnyAsync(r =>
+                    r.EmployeeId == alert.EmployeeId && r.Status == PinResetStatus.Pending, ct)
+                : await db.DeviceChangeRequests.AnyAsync(r =>
+                    r.EmployeeId == alert.EmployeeId && r.Status == DeviceChangeStatus.Pending, ct);
             if (!stillPending)
                 return StaffAlertOutcome.AlreadyHandled;
         }
@@ -170,7 +185,10 @@ public static class StaffAlertDispatcher
         if (already)
             return StaffAlertOutcome.AlreadyAlerted;
 
-        var managers = await (
+        // A manager's PIN queue holds only their plain staff (AdminPinResetController), so a PIN request from
+        // anyone else — a manager who forgot theirs — goes to the admins, who can see it.
+        var managersCanAct = alert.Kind != StaffAlertKinds.PinResetRequested || employee.Role == EmployeeRole.Employee;
+        List<Guid> managers = !managersCanAct ? [] : await (
             from ml in db.ManagedLocations
             join m in db.Employees on ml.EmployeeId equals m.Id
             where ml.LocationId == employee.LocationId && m.IsActive && m.Role == EmployeeRole.Manager
