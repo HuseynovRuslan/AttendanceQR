@@ -183,6 +183,15 @@ public class StaffAlertTests
             Db.SaveChanges();
         }
 
+        public void PinRequest(Guid employeeId, PinResetStatus status)
+        {
+            Db.PinResetRequests.Add(new PinResetRequest
+            {
+                TenantId = TenantId, EmployeeId = employeeId, Status = status, RequestedAtUtc = Now,
+            });
+            Db.SaveChanges();
+        }
+
         public Task<StaffAlertOutcome> Deliver(IPushNotifier notifier, Guid employeeId, string kind, DateTime raisedAt, DateTime? now = null) =>
             StaffAlertDispatcher.HandleAsync(Db, notifier, new StaffAlert(TenantId, employeeId, kind, raisedAt), now ?? raisedAt.AddMinutes(10), Baku);
 
@@ -269,6 +278,72 @@ public class StaffAlertTests
 
         Assert.Equal(StaffAlertOutcome.AlreadyHandled, outcome);
         Assert.Empty(push.Sent);
+    }
+
+    // --- «PIN-i unutdum» --------------------------------------------------------
+    // On 05.10.2026, 70 of Bakı Abadlıq's 72 requests of the past two months had never been answered: the
+    // branch managers could open the queue and were never told it had anything in it.
+
+    [Fact]
+    public void A_pin_request_goes_at_once_and_says_what_to_do()
+    {
+        var alert = new StaffAlert(TenantId, Guid.NewGuid(), StaffAlertKinds.PinResetRequested, Now);
+        Assert.True(StaffAlertKinds.IsAlertable(alert.Kind));
+        Assert.Equal(Now, StaffAlertKinds.DueAtUtc(alert, Baku));
+
+        var push = StaffAlertKinds.Describe(StaffAlertKinds.PinResetRequested, "Bağırov Zamiq", TimeSpan.Zero)!.Value;
+        Assert.Equal("Bağırov Zamiq PIN-ini unudub", push.Title);
+        Assert.Contains("yeni müvəqqəti PIN", push.Body);
+        Assert.Equal("/admin/pin-resets", push.Url);
+    }
+
+    [Fact]
+    public async Task A_pin_request_reaches_the_managers_of_the_persons_branch()
+    {
+        using var w = new World();
+        w.PinRequest(w.Worker, PinResetStatus.Pending);
+        var push = new FakeNotifier();
+
+        var outcome = await w.Deliver(push, w.Worker, StaffAlertKinds.PinResetRequested, Now, Now);
+
+        Assert.Equal(StaffAlertOutcome.Sent, outcome);
+        var sent = Assert.Single(push.Sent);
+        Assert.Equal([w.ManagerA], sent.To);
+        Assert.Equal("/admin/pin-resets", sent.Url);
+    }
+
+    [Theory]
+    [InlineData(PinResetStatus.Recovered)]   // got back in on their own
+    [InlineData(PinResetStatus.Resolved)]
+    [InlineData(PinResetStatus.Dismissed)]
+    public async Task A_pin_request_that_is_already_closed_is_not_announced(PinResetStatus status)
+    {
+        using var w = new World();
+        w.PinRequest(w.Worker, status);
+        var push = new FakeNotifier();
+
+        var outcome = await w.Deliver(push, w.Worker, StaffAlertKinds.PinResetRequested, BakuTime(3, 23, 10), BakuTime(4, 6, 30));
+
+        Assert.Equal(StaffAlertOutcome.AlreadyHandled, outcome);
+        Assert.Empty(push.Sent);
+    }
+
+    [Fact]
+    public async Task A_managers_own_pin_request_goes_to_the_admins()
+    {
+        // A manager's queue holds only their plain staff, so a fellow manager pushed about it would open a
+        // screen without the request on it.
+        using var w = new World();
+        var colleague = Guid.NewGuid();
+        w.Person(colleague, "Bazar Meneceri 2", w.SiteB, EmployeeRole.Manager);
+        w.Db.ManagedLocations.Add(new ManagedLocation { TenantId = TenantId, EmployeeId = colleague, LocationId = w.SiteB });
+        w.Db.SaveChanges();
+        w.PinRequest(w.ManagerB, PinResetStatus.Pending);
+        var push = new FakeNotifier();
+
+        await w.Deliver(push, w.ManagerB, StaffAlertKinds.PinResetRequested, Now, Now);
+
+        Assert.Equal([w.Admin], Assert.Single(push.Sent).To);
     }
 
     [Fact]

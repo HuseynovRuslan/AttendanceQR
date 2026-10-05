@@ -74,7 +74,7 @@ export function ForgotPinPage() {
       // device with no front camera. Re-opening cannot ever work, so say so — otherwise the tap
       // repaints a pixel-identical screen and the button reads as broken.
       setCamError(true)
-      setError('Bu telefonda kamera açılmır. Administratora sorğu göndərin.')
+      setError('Bu telefonda kamera açılmır. Rəhbərinizə sorğu göndərin.')
       return
     }
     setCamBusy(true)
@@ -93,7 +93,7 @@ export function ForgotPinPage() {
       setCamReady(false)
       // Repeating "allow it and press the button again" to somebody who has just done exactly that is
       // the same dead end in politer words. From the second failure on, point at the route that works.
-      if (camFailedOnceRef.current) setError('Hələ də alınmır. Administratora sorğu göndərin.')
+      if (camFailedOnceRef.current) setError('Hələ də alınmır. Rəhbərinizə sorğu göndərin.')
       camFailedOnceRef.current = true
     } finally {
       setCamBusy(false)
@@ -186,7 +186,8 @@ export function ForgotPinPage() {
     }
   }
 
-  // Fallback when face+device can't verify: file a request for the admin to reset by hand.
+  // Fallback when face+device can't verify: file a request for the branch manager (an admin where the
+  // branch has none) to reset by hand. They are pushed about it — see StaffAlertKinds.PinResetRequested.
   async function sendAdminRequest() {
     setBusy(true)
     setError(null)
@@ -218,7 +219,7 @@ export function ForgotPinPage() {
   const errorNote = error ? <p className="mt-2 text-center text-sm text-red-600">{error}</p> : null
   const adminButton = (className: string) => (
     <button onClick={() => void sendAdminRequest()} disabled={busy} className={className}>
-      {busy ? 'Göndərilir…' : 'Administratora sorğu göndər'}
+      {busy ? 'Göndərilir…' : 'Rəhbərə sorğu göndər'}
     </button>
   )
 
@@ -263,8 +264,8 @@ export function ForgotPinPage() {
             Nömrə səhvdirsə, geri qayıdıb düzgün yazın və yenidən göndərin.
           </p>
           <p className="mt-2 text-center text-sm text-slate-600">
-            Administratorunuz PIN-inizi sıfırlayıb sizə yeni müvəqqəti PIN verəcək. Bu gün cavab
-            gəlməsə, rəhbərinizə və ya administratora birbaşa deyin.
+            Nömrə düzgündürsə, rəhbərinizə bildiriş gedir: o, PIN-inizi sıfırlayıb sizə yeni müvəqqəti
+            PIN deyəcək. Cavab gəlməsə, ona birbaşa yaxınlaşın.
           </p>
           <button
             onClick={() => {
@@ -293,7 +294,7 @@ export function ForgotPinPage() {
               the retry is the quiet one; it used to be the other way round. */}
           <p className="mt-3 text-center text-sm text-slate-600">
             Ola bilsin ki, bu telefon hesabınıza bağlı deyil — məsələn, yeni telefon işlədirsiniz. Belə
-            halda şəkli neçə dəfə çəksəniz də nəticə dəyişməyəcək. Ən qısa yol — administratora sorğu
+            halda şəkli neçə dəfə çəksəniz də nəticə dəyişməyəcək. Ən qısa yol — rəhbərinizə sorğu
             göndərmək.
           </p>
           {adminButton('mt-5 w-full rounded-2xl bg-blue-600 py-3 font-bold text-white disabled:opacity-50')}
@@ -314,7 +315,7 @@ export function ForgotPinPage() {
           <div className="text-center text-5xl">📶</div>
           <h1 className="mt-2 text-center text-xl font-bold">Yoxlama başa çatmadı</h1>
           <p className="mt-3 text-center text-sm text-slate-600">
-            {trouble} Düzəlməsə, administratora sorğu göndərin — PIN-inizi o sıfırlayacaq.
+            {trouble} Düzəlməsə, rəhbərinizə sorğu göndərin — PIN-inizi o sıfırlayacaq.
           </p>
           <button onClick={retryPhoto} className="mt-5 w-full rounded-2xl bg-blue-600 py-3 font-bold text-white">
             Yenidən cəhd et
@@ -365,7 +366,7 @@ export function ForgotPinPage() {
               </p>
               <p className="mt-1 text-left text-sm leading-relaxed text-amber-700">{cameraPermissionPath()}</p>
               <p className="mt-1 text-center text-sm text-amber-700">
-                İcazə verdikdən sonra aşağıdakı düyməni basın. Alınmasa, administratora sorğu göndərin.
+                İcazə verdikdən sonra aşağıdakı düyməni basın. Alınmasa, rəhbərinizə sorğu göndərin.
               </p>
               <button onClick={() => void startCamera()} disabled={camBusy} className={primaryBtn}>
                 {camBusy ? 'Açılır…' : 'Kameranı yenidən aç'}

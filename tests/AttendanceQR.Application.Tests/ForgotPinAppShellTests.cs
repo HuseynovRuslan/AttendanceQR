@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using AttendanceQR.Api;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
@@ -60,6 +61,9 @@ public class ForgotPinAppShellTests
         public IMemoryCache Cache { get; } = new MemoryCache(new MemoryCacheOptions());
 
         public RecordingLockout Lockout { get; } = new();
+
+        /// <summary>The staff alerts the controller raised — what the branch's managers would be pushed.</summary>
+        public CapturingAlerts Alerts { get; } = new();
 
         public Harness(bool sharedBActivated = true, bool sharedBActive = true)
         {
@@ -124,7 +128,7 @@ public class ForgotPinAppShellTests
             return new AuthController(
                 db, tenant, new StubHasher(), new StubJwt(), Lockout, new StubPhotoStorage(),
                 new StubFaceMatch(faceScore), new StubPush(), Cache,
-                NullLogger<AuthController>.Instance)
+                NullLogger<AuthController>.Instance, Alerts)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             };
@@ -593,5 +597,78 @@ public class ForgotPinAppShellTests
             await controller.ForgotPinCheck(new ForgotPinRequest(Harness.AlicePhone));
 
         Assert.False(KnownOf(await controller.ForgotPinCheck(new ForgotPinRequest("500000002"))));
+    }
+
+    public sealed class CapturingAlerts : IStaffAlertQueue
+    {
+        public List<StaffAlert> Items { get; } = [];
+        public void Enqueue(StaffAlert alert) => Items.Add(alert);
+        public ChannelReader<StaffAlert> Reader => throw new NotSupportedException();
+    }
+
+    // --- the branch hears about it, and a working PIN closes it ---------------------------------
+    // On 05.10.2026, 70 of Bakı Abadlıq's 72 requests of two months had never been answered — the branch
+    // managers could open the queue but were never told it had anything in it — and 62 of the 70 were from
+    // people who had long since got back in.
+
+    [Fact]
+    public async Task Filing_a_request_alerts_the_employees_own_company()
+    {
+        using var h = new Harness();
+
+        await h.AppShell().ForgotPin(new ForgotPinRequest(Harness.AlicePhone));
+
+        var alert = Assert.Single(h.Alerts.Items);
+        Assert.Equal((TenantA, h.AliceId, StaffAlertKinds.PinResetRequested), (alert.TenantId, alert.EmployeeId, alert.Kind));
+    }
+
+    [Fact]
+    public async Task A_request_nobody_answered_is_announced_again_but_filed_once()
+    {
+        using var h = new Harness();
+
+        await h.AppShell().ForgotPin(new ForgotPinRequest(Harness.AlicePhone));
+        await h.AppShell().ForgotPin(new ForgotPinRequest(Harness.AlicePhone));
+
+        Assert.Single(h.AllResetRequests());
+        // Carried twice; StaffAlertDispatcher says it once a day at most.
+        Assert.Equal(2, h.Alerts.Items.Count);
+    }
+
+    [Fact]
+    public async Task An_unknown_number_alerts_nobody()
+    {
+        using var h = new Harness();
+
+        await h.AppShell().ForgotPin(new ForgotPinRequest("994705559999"));
+
+        Assert.Empty(h.Alerts.Items);
+    }
+
+    [Fact]
+    public async Task Signing_in_with_a_working_pin_closes_the_open_request()
+    {
+        // Left open, it is an offer to reset the PIN of somebody already back in, and acting on it signs
+        // them out. From the app shell, where there is no tenant to filter on.
+        using var h = new Harness();
+        await h.AppShell().ForgotPin(new ForgotPinRequest(Harness.AlicePhone));
+
+        var result = await h.AppShell().AppLogin(new LoginRequest(Harness.AlicePhone, "1234"));
+
+        Assert.IsType<OkObjectResult>(result);
+        var request = Assert.Single(h.AllResetRequests());
+        Assert.Equal(PinResetStatus.Recovered, request.Status);
+        Assert.NotNull(request.ResolvedAtUtc);
+    }
+
+    [Fact]
+    public async Task A_wrong_pin_leaves_the_request_open()
+    {
+        using var h = new Harness();
+        await h.AppShell().ForgotPin(new ForgotPinRequest(Harness.AlicePhone));
+
+        await h.AppShell().AppLogin(new LoginRequest(Harness.AlicePhone, "0000"));
+
+        Assert.Equal(PinResetStatus.Pending, Assert.Single(h.AllResetRequests()).Status);
     }
 }

@@ -29,6 +29,7 @@ public partial class AuthController : ControllerBase
     private readonly IPushNotifier _pushNotifier;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
+    private readonly IStaffAlertQueue? _alerts;
 
     // Per-IP throttle for the anonymous PIN-recovery endpoints — and "per IP" has to be read as very
     // much coarser than it sounds. Two things widen it: a whole factory sits behind one NAT, and
@@ -73,7 +74,8 @@ public partial class AuthController : ControllerBase
     public AuthController(
         AppDbContext db, ITenantContext tenant, IPasswordHasher passwordHasher, IJwtService jwtService,
         ILoginLockoutStore lockoutStore, IPhotoStorageService photoStorage, IFaceMatchService faceMatch,
-        IPushNotifier pushNotifier, IMemoryCache cache, ILogger<AuthController> logger)
+        IPushNotifier pushNotifier, IMemoryCache cache, ILogger<AuthController> logger,
+        IStaffAlertQueue? alerts = null)
     {
         _db = db;
         _tenant = tenant;
@@ -85,6 +87,7 @@ public partial class AuthController : ControllerBase
         _pushNotifier = pushNotifier;
         _cache = cache;
         _logger = logger;
+        _alerts = alerts;
     }
 
     [HttpPost("activate")]
@@ -247,7 +250,23 @@ public partial class AuthController : ControllerBase
         // creeping toward the cap on typos alone.
         if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
             _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
+        await CloseMootPinRequestsAsync(matched.Id);
         return Ok(new { token = _jwtService.GenerateToken(matched), employeeId = matched.Id });
+    }
+
+    // A PIN that works makes any «PIN-i unutdum» request this person filed moot. Closed here so nobody
+    // resets the PIN of somebody already back in — which would sign them straight out again. Never at
+    // the cost of the sign-in itself.
+    private async Task CloseMootPinRequestsAsync(Guid employeeId)
+    {
+        try
+        {
+            await PinResetQueue.CloseOnSignInAsync(_db, employeeId, DateTime.UtcNow, HttpContext.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Sign-in: could not close open PIN requests for {EmployeeId}", employeeId);
+        }
     }
 
     // Accepts a data URL ("data:image/jpeg;base64,AAAA…") or a bare base64 string.
@@ -327,6 +346,7 @@ public partial class AuthController : ControllerBase
         // Same NAT self-healing as app-login: a success pays one failure back.
         if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
             _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
+        await CloseMootPinRequestsAsync(employee!.Id);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
 
@@ -513,6 +533,13 @@ public partial class AuthController : ControllerBase
 
         if (filed)
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+        // The branch's managers hear about it at once (the admins, where nobody manages the branch). A
+        // plea that was already waiting is announced again — it is the one nobody answered — and the
+        // dispatcher says it once a day at most, so a second tap or somebody else typing this number in
+        // cannot turn it into a stream. In memory only: the response stays the same 200 either way.
+        foreach (var employee in targets)
+            _alerts?.Enqueue(new StaffAlert(employee.TenantId, employee.Id, StaffAlertKinds.PinResetRequested, DateTime.UtcNow));
 
         return Ok(new { ok = true });
     }
