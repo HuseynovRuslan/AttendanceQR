@@ -46,7 +46,8 @@ export const localePrefix: Record<Lang, string> = {
 }
 
 /**
- * «Rəhbərin bir günü» bölməsindəki məhsul ekranlarının içindəki mətn (AdminPanel*.astro).
+ * Məhsul ekranlarının içindəki mətn: «Rəhbərin bir günü» (AdminPanel*.astro) və «Saxtaya qarşı
+ * qoruma» bölməsindəki panel parçası (AntiFraudPanel.astro).
  * Bu ekranlar QRLog admin panelinin özüdür, panel isə yalnız azərbaycancadır — ona görə bu mətnlər
  * üç dildə eynidir: burada bir dəfə yazılır və aşağıdakı hər dil blokuna `...panelUi` ilə köçürülür.
  * /ru/ və /en/ səhifələrində ekranlar lang="az" daşıyır (AdminPanel.astro-ya bax), panel.note isə
@@ -64,6 +65,9 @@ const panelUi = {
   'panel.ui.rest': 'İstirahət',
   'panel.ui.dayOff': 'Həftəlik istirahət',
   'panel.ui.live': 'CANLI',
+  // Üzü referansla uyğun gəlməyən giriş: məhsulda qırmızı «⚠ Uyğunsuz 41%» nişanı
+  // (frontend/src/components/FaceFlagBadge.tsx). AdminPanelToday və AntiFraudPanel işlədir.
+  'panel.ui.mismatch': 'Uyğunsuz',
   // 08:15 — İdarəetmə paneli
   'panel.ui.m1.title': 'İdarəetmə paneli',
   'panel.ui.m1.sub': 'Bütün filiallar · canlı davamiyyət',
@@ -95,13 +99,23 @@ const panelUi = {
   'panel.ui.m3.all': 'Bütün işçilər',
   'panel.ui.m3.faceMismatch': 'Üzü uyğun gəlməyənlər',
   'panel.ui.m3.noPhoto': 'Şəkilsizlər',
-  'panel.ui.m3.finished': 'Tamamlandı',
+  // Giriş də, çıxış da olan gün. Admin lövhəsində «Tamamlayıb» yazılır, «Tamamlandı» yox
+  // (frontend/src/components/StatusBadge.tsx). AntiFraudPanel də bu açarı işlədir.
+  'panel.ui.m3.finished': 'Tamamlayıb',
   'panel.ui.m3.thName': 'İşçi',
   'panel.ui.m3.thRole': 'Vəzifə',
   'panel.ui.m3.thStatus': 'Status',
   'panel.ui.m3.thIn': 'Giriş',
   'panel.ui.m3.thOut': 'Çıxış',
   'panel.ui.m3.thFace': 'Üz',
+  // «Saxtaya qarşı qoruma» — «Bugünkü davamiyyət» ekranından parça (AntiFraudPanel.astro).
+  // Sütun başlıqları və «Tamamlayıb» yuxarıdakı m3 açarlarındandır.
+  'panel.ui.af.title': 'Bugünkü davamiyyət',
+  'panel.ui.af.branch': 'Baş ofis',
+  'panel.ui.af.sample': 'Nümunə',
+  'panel.ui.af.offline': 'oflayn',
+  'panel.ui.af.manual': 'Əl ilə daxil edilib',
+  'panel.ui.af.photo': 'Şəklə bax',
 } as const
 
 export const ui = {
@@ -144,6 +158,7 @@ export const ui = {
     'hero.d.poster': 'Giriş və çıxış üçün skan edin',
     'hero.d.posterNote': 'Telefonun kamerasını koda tutun. Giriş təxminən 10 saniyəyə qeydə alınır.',
     'hero.d.scanned': 'Skan olundu',
+    'hero.d.checkIn': 'Giriş',
     'hero.d.offlineT': 'İnternet yoxdursa da',
     'hero.d.offlineD': 'Qeyd telefonda saxlanılır, bağlantı gələndə göndərilir',
     'hero.d.recorded': 'Giriş qeydə alındı',
@@ -184,27 +199,6 @@ export const ui = {
     'scan.demo': 'Nümunə ekran',
 
     'trust.title': 'QRLog bu sahələrdə istifadə olunur',
-
-    'demo.eyebrow': 'Skan anı',
-    'demo.title': 'Skandan qeydiyyata qədər',
-    'demo.sub':
-      'Telefon QR-ı oxuyur, cihaz və məkan yoxlanılır, şəkil referansla müqayisə edilir — və giriş yazılır. Kamera və ya şəkil uğursuz olsa belə giriş bloklanmır: sistem onu işarələyir, amma işçinin qeydiyyatını dayandırmır.',
-    'demo.scanning': 'QR oxunur…',
-    'demo.detected': 'QR tapıldı',
-    'demo.choose': 'Giriş növünü seçin',
-    'demo.checkin': 'Giriş',
-    'demo.checkout': 'Çıxış',
-    'demo.done': 'Hazır!',
-    'demo.recorded': 'Davamiyyət qeydə alındı',
-    'demo.step1': 'Skan et',
-    'demo.step2': 'Cihaz və məkan',
-    'demo.step3': 'Foto təsdiqi',
-    'demo.step4': 'Hazır',
-    'demo.verify.title': 'Cihaz və məkan yoxlanılır',
-    'demo.verify.device': 'Cihaz tanındı',
-    'demo.verify.location': 'İş yeri ərazisindədir',
-    'demo.face.title': 'Şəkil təsdiqlənir',
-    'demo.face.hint': 'Telefon kamerasına baxın',
 
     'stats.title': 'Rəqəmlərlə',
     'stats.sub': 'Bahalı avadanlıq yox, mürəkkəb quraşdırma yox.',
@@ -288,6 +282,60 @@ export const ui = {
     'panel.slide': 'slayd',
     'panel.note': 'Ekranlar QRLog panelindəndir · məlumat nümunədir',
     ...panelUi,
+
+    // «Saxtaya qarşı qoruma» (AntiFraud.astro, AntiFraudPanel.astro). Hər iddia 2026-10-02-də məhsul
+    // kodu ilə yoxlanılıb — mətni dəyişəndə kodda da yoxla. Ad, saat və faiz mətn deyil, komponentdə
+    // data kimi durur: {t} — saat, {p} — faiz, fmt() doldurur. Panel parçasının mətni panelUi-dədir.
+    'af.eyebrow': 'Saxtaya qarşı qoruma',
+    'af.title': 'Hər giriş dörd qatda yoxlanılır',
+    'af.sub':
+      'Başqasının yerinə, evdən və ya posterin şəklindən giriş cəhdi ya rədd olunur, ya da rəhbərin panelində işarə ilə görünür. Yoxlamalar işçi skan edən kimi başlayır, nəticə adətən bir neçə saniyəyə hazır olur.',
+    // Giriş qeydi kartı
+    'af.rec.meta': 'Giriş · {t} · Baş ofis',
+    'af.rec.pending': 'yoxlanılır',
+    'af.rec.done': 'qeydə alındı',
+    'af.rec.footer': 'Bir giriş · 4 yoxlama',
+    'af.sample': 'Nümunə məlumat',
+    // Kartın dörd sətri: başlıq (t) və dəyər (v)
+    'af.r1.t': 'QR imzası',
+    'af.r1.v': 'Baş ofis posteri',
+    'af.r2.t': 'Cihaz',
+    'af.r2.v': 'İşçiyə bağlı cihaz',
+    'af.r3.t': 'Məkan (GPS)',
+    'af.r3.v': 'Filial radiusunda',
+    'af.r4.t': 'Üz uyğunluğu',
+    'af.r4.v': 'Uyğunluq {p}%',
+    // Dörd izah: başlıq (t), «Qarşısını alır: …» etiketinin dəyəri (p) və mətn (d)
+    'af.prevents': 'Qarşısını alır',
+    'af.c1.t': 'İmzalanmış poster',
+    'af.c1.p': 'saxta kod',
+    'af.c1.d':
+      'Posterdəki kod imzalıdır və filiala bağlıdır: saxta kod qəbul edilmir, kod yalnız öz filialının ərazisində işləyir.',
+    'af.c2.t': 'Cihaz bağlaması',
+    'af.c2.p': 'başqasının yerinə',
+    'af.c2.d':
+      'İşçinin hesabı onun telefonuna bağlanır. Başqasına bağlı telefondan edilən giriş qəbul edilmir və Problemlər siyahısında telefonun sahibi ilə görünür.',
+    'af.c3.t': 'GPS geo-hasar',
+    'af.c3.p': 'evdən giriş',
+    'af.c3.d':
+      'Skan yalnız filialın təyin olunmuş radiusunda qəbul edilir. Evdən və ya yoldan giriş işləmir.',
+    'af.c4.t': 'Üz yoxlaması',
+    'af.c4.p': 'dost əvəzinə skan',
+    'af.c4.d':
+      'Girişdə çəkilən selfi referans şəkillə avtomatik müqayisə olunur. Dost əvəzinə edilən skan rəhbərə işarə ilə görünür.',
+    // Aşağı blok: «İşçi qapıda ilişib qalmır»
+    'af.door.t': 'İşçi qapıda ilişib qalmır',
+    'af.door.d':
+      'Şəkil alınmasa və ya üz uyğun gəlməsə, işçi bloklanmır — giriş yazılır, rəhbər onu paneldə görür. Radiusdan kənar skan isə qəbul edilmir; göndərilən skan səbəbi ilə Problemlər siyahısına düşür.',
+    'af.rule1.t': 'Şəkil və ya üz',
+    'af.rule1.d': 'Giriş yazılır; üz uyğun gəlməsə sətir işarələnir',
+    'af.rule2.t': 'Radiusdan kənar',
+    'af.rule2.d': 'Skan qəbul edilmir; göndərilən skan səbəbi ilə Problemlərə düşür',
+    'af.rule3.t': 'İnternet yoxdur',
+    'af.rule3.d': 'Skan telefonda saxlanılır, bağlantı gələndə göndərilir',
+    'af.rule4.t': 'Əl ilə düzəliş',
+    'af.rule4.d': 'Kimin etdiyi ilə birlikdə qeydə alınır',
+    'af.privacy': 'Selfi yalnız davamiyyəti və şəxsiyyəti təsdiqləmək üçün işlədilir',
 
     'aud.eyebrow': 'Kimlər üçün',
     'aud.title': 'İşçisi olan hər təşkilat üçün',
@@ -445,7 +493,7 @@ export const ui = {
     'about.p1':
       'QRLog işçi davamiyyətinin uçotunu sadə, sürətli və etibarlı etmək üçün yaradılıb. Turniket və bahalı terminallar əvəzinə işçilər öz telefonları ilə iş yerindəki QR posteri skan edir.',
     'about.p2':
-      'Sistem hər girişdə dörd şeyi yoxlayır: posterdəki QR kodun imzasını, işçinin filial ərazisində olduğunu (GPS), tanınmış cihazdan skan etdiyini və girişdəki şəklin referansla uyğunluğunu. Radiusdan kənar skan qəbul edilmir. Şəkil alınmasa və ya üz uyğun gəlməsə isə giriş bloklanmır — yazılır və rəhbərin panelində işarələnir, çünki əmək haqqı həmin qeydə bağlıdır.',
+      'Sistem hər girişdə dörd şeyi yoxlayır: posterdəki QR kodun imzasını, işçinin filial ərazisində olduğunu (GPS), tanınmış cihazdan skan etdiyini və girişdəki şəklin referansla uyğunluğunu. Radiusdan kənar skan qəbul edilmir. Şəkil alınmasa və ya üz uyğun gəlməsə isə giriş bloklanmır, çünki əmək haqqı həmin qeydə bağlıdır: giriş yazılır, üz uyğun gəlməyəndə sətir işarələnir, şəkilsiz girişləri isə rəhbər ayrıca süzgəclə tapır.',
     'about.p3':
       'Məhsul Azərbaycanda hazırlanır və istifadə olunur; tətbiqin interfeysi tam Azərbaycan dilindədir. Təmizlik, ictimai iaşə və ticarət sahələrində real şirkətlərin gündəlik davamiyyəti QRLog ilə aparılır.',
     'about.h2': 'Necə qurulur',
@@ -542,6 +590,7 @@ export const ui = {
     'hero.d.poster': 'Сканируйте для входа и выхода',
     'hero.d.posterNote': 'Наведите камеру телефона на код. Отметка занимает около 10 секунд.',
     'hero.d.scanned': 'Отсканировано',
+    'hero.d.checkIn': 'Приход',
     'hero.d.offlineT': 'Даже без интернета',
     'hero.d.offlineD': 'Отметка сохраняется в телефоне и уходит, когда появится связь',
     'hero.d.recorded': 'Вход записан',
@@ -582,27 +631,6 @@ export const ui = {
     'scan.demo': 'Пример экрана',
 
     'trust.title': 'QRLog используют в этих сферах',
-
-    'demo.eyebrow': 'Момент скана',
-    'demo.title': 'От скана до отметки',
-    'demo.sub':
-      'Телефон читает QR, проверяются устройство и локация, фото сверяется с эталоном — и отметка сохранена. Даже если камера или фото не сработали, отметка не блокируется: система её помечает, но не останавливает.',
-    'demo.scanning': 'Сканирование…',
-    'demo.detected': 'QR найден',
-    'demo.choose': 'Выберите тип',
-    'demo.checkin': 'Приход',
-    'demo.checkout': 'Уход',
-    'demo.done': 'Готово!',
-    'demo.recorded': 'Отметка сохранена',
-    'demo.step1': 'Скан',
-    'demo.step2': 'Устройство и локация',
-    'demo.step3': 'Фотоподтверждение',
-    'demo.step4': 'Готово',
-    'demo.verify.title': 'Проверка устройства и локации',
-    'demo.verify.device': 'Устройство распознано',
-    'demo.verify.location': 'Находится на территории',
-    'demo.face.title': 'Фото подтверждается',
-    'demo.face.hint': 'Смотрите в камеру телефона',
 
     'stats.title': 'В цифрах',
     'stats.sub': 'Без дорогого оборудования и сложного внедрения.',
@@ -681,6 +709,54 @@ export const ui = {
     // açıq deyir ki, /ru/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
     'panel.note': 'Экраны из панели QRLog (интерфейс на азербайджанском) · данные условные',
     ...panelUi,
+
+    // «Saxtaya qarşı qoruma». «Problemlər» azərbaycanca qalır — panelin menyusunun adıdır.
+    'af.eyebrow': 'Защита от подлога',
+    'af.title': 'Каждая отметка проходит четыре проверки',
+    'af.sub':
+      'Попытка отметиться за другого, из дома или по фото постера либо отклоняется, либо появляется в панели руководителя с пометкой. Проверки начинаются в момент сканирования, результат обычно готов через несколько секунд.',
+    'af.rec.meta': 'Вход · {t} · Головной офис',
+    'af.rec.pending': 'проверка',
+    'af.rec.done': 'записано',
+    'af.rec.footer': 'Одна отметка · 4 проверки',
+    'af.sample': 'Пример данных',
+    'af.r1.t': 'Подпись QR',
+    'af.r1.v': 'Постер головного офиса',
+    'af.r2.t': 'Устройство',
+    'af.r2.v': 'Привязанное устройство',
+    'af.r3.t': 'Место (GPS)',
+    'af.r3.v': 'В радиусе филиала',
+    'af.r4.t': 'Совпадение лица',
+    'af.r4.v': 'Совпадение {p}%',
+    'af.prevents': 'Предотвращает',
+    'af.c1.t': 'Подписанный постер',
+    'af.c1.p': 'поддельный код',
+    'af.c1.d':
+      'Код на постере подписан и привязан к филиалу: поддельный код не принимается, а работает код только на территории своего филиала.',
+    'af.c2.t': 'Привязка устройства',
+    'af.c2.p': 'отметку за другого',
+    'af.c2.d':
+      'Аккаунт сотрудника привязывается к его телефону. Отметка с телефона, привязанного к другому человеку, отклоняется и появляется в «Problemlər» с именем владельца.',
+    'af.c3.t': 'GPS-геозона',
+    'af.c3.p': 'отметку из дома',
+    'af.c3.d':
+      'Скан принимается только в заданном радиусе филиала. Отметиться из дома или по дороге не получится.',
+    'af.c4.t': 'Проверка лица',
+    'af.c4.p': 'скан «за друга»',
+    'af.c4.d':
+      'Селфи при входе автоматически сравнивается с эталонным фото. Скан «за друга» руководитель увидит с пометкой.',
+    'af.door.t': 'Сотрудник не застрянет у двери',
+    'af.door.d':
+      'Если фото не получилось или лицо не совпало, сотрудник не блокируется — вход записывается, и руководитель видит его в панели. Скан за пределами радиуса не принимается; отправленный скан попадает в «Problemlər» с причиной.',
+    'af.rule1.t': 'Фото или лицо',
+    'af.rule1.d': 'Вход записывается; при несовпадении лица строка отмечается',
+    'af.rule2.t': 'Вне радиуса',
+    'af.rule2.d': 'Скан отклоняется; отправленный скан попадает в «Problemlər» с причиной',
+    'af.rule3.t': 'Нет интернета',
+    'af.rule3.d': 'Скан сохраняется в телефоне и отправляется, когда появится связь',
+    'af.rule4.t': 'Ручная правка',
+    'af.rule4.d': 'Фиксируется вместе с именем автора',
+    'af.privacy': 'Селфи используется только для подтверждения посещаемости и личности',
 
     'aud.eyebrow': 'Для кого',
     'aud.title': 'Для любой организации с сотрудниками',
@@ -834,7 +910,7 @@ export const ui = {
     'about.p1':
       'QRLog создан, чтобы сделать учёт посещаемости простым, быстрым и надёжным. Вместо турникетов и дорогих терминалов сотрудники сканируют QR-постер на рабочем месте своим телефоном.',
     'about.p2':
-      'При каждом входе система проверяет четыре вещи: подпись QR-кода на постере, нахождение сотрудника на территории филиала (GPS), вход с привязанного устройства и совпадение фото с эталоном. Скан за пределами радиуса не принимается. Если же фото не получилось или лицо не совпало, вход не блокируется — он записывается и отмечается в панели руководителя, потому что от этой записи зависит зарплата.',
+      'При каждом входе система проверяет четыре вещи: подпись QR-кода на постере, нахождение сотрудника на территории филиала (GPS), вход с привязанного устройства и совпадение фото с эталоном. Скан за пределами радиуса не принимается. Если же фото не получилось или лицо не совпало, вход не блокируется, потому что от этой записи зависит зарплата: вход записывается, при несовпадении лица строка отмечается, а входы без фото руководитель находит отдельным фильтром.',
     'about.p3':
       'Продукт разрабатывается и используется в Азербайджане; интерфейс приложения полностью на азербайджанском. Реальные компании в клининге, общепите и рознице ведут ежедневный учёт в QRLog.',
     'about.h2': 'Как всё настраивается',
@@ -923,6 +999,7 @@ export const ui = {
     'hero.d.poster': 'Scan to check in and out',
     'hero.d.posterNote': 'Point your phone camera at the code. A check-in takes about 10 seconds.',
     'hero.d.scanned': 'Scanned',
+    'hero.d.checkIn': 'Check-in',
     'hero.d.offlineT': 'Even with no internet',
     'hero.d.offlineD': 'The record is kept on the phone and sent once the connection is back',
     'hero.d.recorded': 'Check-in recorded',
@@ -963,27 +1040,6 @@ export const ui = {
     'scan.demo': 'Sample screen',
 
     'trust.title': 'QRLog is used across these sectors',
-
-    'demo.eyebrow': 'The scan',
-    'demo.title': 'From scan to check-in',
-    'demo.sub':
-      'The phone reads the QR, device and location are verified, the photo is compared against the reference — and the check-in is written. If the camera or the photo fails, the check-in is not blocked: the system flags it, it does not stop it.',
-    'demo.scanning': 'Scanning…',
-    'demo.detected': 'QR detected',
-    'demo.choose': 'Choose entry type',
-    'demo.checkin': 'Check-in',
-    'demo.checkout': 'Check-out',
-    'demo.done': 'Done!',
-    'demo.recorded': 'Attendance recorded',
-    'demo.step1': 'Scan',
-    'demo.step2': 'Device & location',
-    'demo.step3': 'Photo check',
-    'demo.step4': 'Done',
-    'demo.verify.title': 'Verifying device & location',
-    'demo.verify.device': 'Device recognised',
-    'demo.verify.location': 'Inside the site radius',
-    'demo.face.title': 'Confirming the photo',
-    'demo.face.hint': 'Look at the phone camera',
 
     'stats.title': 'In numbers',
     'stats.sub': 'No expensive hardware, no complicated rollout.',
@@ -1062,6 +1118,54 @@ export const ui = {
     // açıq deyir ki, /en/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
     'panel.note': 'Screens from the QRLog panel (interface in Azerbaijani) · sample data',
     ...panelUi,
+
+    // «Saxtaya qarşı qoruma». «Problemlər» azərbaycanca qalır — panelin menyusunun adıdır.
+    'af.eyebrow': 'Anti-fraud',
+    'af.title': 'Every check-in passes four checks',
+    'af.sub':
+      "A check-in for someone else, from home or from a photo of the poster is either rejected or shows up flagged in the manager's panel. Checks start the moment the employee scans; the result is usually ready within seconds.",
+    'af.rec.meta': 'Check-in · {t} · Head office',
+    'af.rec.pending': 'checking',
+    'af.rec.done': 'recorded',
+    'af.rec.footer': 'One check-in · 4 checks',
+    'af.sample': 'Sample data',
+    'af.r1.t': 'QR signature',
+    'af.r1.v': 'Head office poster',
+    'af.r2.t': 'Device',
+    'af.r2.v': 'Bound device',
+    'af.r3.t': 'Location (GPS)',
+    'af.r3.v': 'Inside branch radius',
+    'af.r4.t': 'Face match',
+    'af.r4.v': 'Match {p}%',
+    'af.prevents': 'Prevents',
+    'af.c1.t': 'Signed poster',
+    'af.c1.p': 'fake codes',
+    'af.c1.d':
+      "The poster code is signed and tied to its branch: a fake code is rejected, and a code only works on its own branch's premises.",
+    'af.c2.t': 'Device binding',
+    'af.c2.p': 'checking in for others',
+    'af.c2.d':
+      "Each employee's account is bound to their phone. A check-in from a phone bound to someone else is rejected and listed under “Problemlər” with the owner's name.",
+    'af.c3.t': 'GPS geofence',
+    'af.c3.p': 'checking in from home',
+    'af.c3.d':
+      "A scan is accepted only within the branch's set radius. Checking in from home or on the way doesn't work.",
+    'af.c4.t': 'Face check',
+    'af.c4.p': 'buddy punching',
+    'af.c4.d':
+      "The check-in selfie is automatically compared with a reference photo. A scan on a friend's behalf reaches the manager flagged.",
+    'af.door.t': 'No one gets stuck at the door',
+    'af.door.d':
+      "If the photo fails or the face doesn't match, the employee isn't blocked — the check-in is recorded and the manager sees it in the panel. A scan outside the radius is rejected; a submitted one is listed under “Problemlər” with its reason.",
+    'af.rule1.t': 'Photo or face',
+    'af.rule1.d': 'Check-in recorded; a face mismatch flags the row',
+    'af.rule2.t': 'Outside the radius',
+    'af.rule2.d': 'Scan rejected; a submitted one is listed in “Problemlər” with the reason',
+    'af.rule3.t': 'No internet',
+    'af.rule3.d': 'Scan saved on the phone, sent once back online',
+    'af.rule4.t': 'Manual edit',
+    'af.rule4.d': 'Logged with the name of whoever made it',
+    'af.privacy': 'The selfie is used only to confirm attendance and identity',
 
     'aud.eyebrow': "Who it's for",
     'aud.title': 'For any organisation with staff',
@@ -1216,7 +1320,7 @@ export const ui = {
     'about.p1':
       'QRLog exists to make attendance records simple, fast and reliable. Instead of turnstiles and expensive terminals, employees scan the QR poster at their workplace with their own phone.',
     'about.p2':
-      "On every check-in the system verifies four things: the signature of the QR code on the poster, that the employee is within the branch area (GPS), that the scan comes from their registered device, and that the photo matches the reference. Scans outside the radius are rejected. If the photo fails or the face doesn't match, the check-in isn't blocked — it's recorded and flagged in the manager's panel, because payroll depends on that record.",
+      "On every check-in the system verifies four things: the signature of the QR code on the poster, that the employee is within the branch area (GPS), that the scan comes from their registered device, and that the photo matches the reference. Scans outside the radius are rejected. If the photo fails or the face doesn't match, the check-in isn't blocked, because payroll depends on that record: it's recorded, a face mismatch flags the row, and check-ins without a photo can be found with a separate filter.",
     'about.p3':
       'The product is built and used in Azerbaijan; the app interface is entirely in Azerbaijani. Real companies in cleaning, hospitality and retail run their daily attendance on QRLog.',
     'about.h2': 'Getting set up',
