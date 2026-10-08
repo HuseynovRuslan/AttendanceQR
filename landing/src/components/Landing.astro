@@ -5,13 +5,12 @@ import Hero from './Hero.astro'
 import Trust from './Trust.astro'
 import Problem from './Problem.astro'
 import HowItWorks from './HowItWorks.astro'
-import Features from './Features.astro'
+import Modules from './Modules.astro'
 import Stats from './Stats.astro'
 import AdminPanel from './AdminPanel.astro'
 import AntiFraud from './AntiFraud.astro'
 import Audience from './Audience.astro'
 import Security from './Security.astro'
-import Modules from './Modules.astro'
 import Testimonials from './Testimonials.astro'
 import Pricing from './Pricing.astro'
 import FAQ from './FAQ.astro'
@@ -27,11 +26,10 @@ const { lang } = Astro.props as { lang: Lang }
 <HowItWorks lang={lang} />
 <AdminPanel lang={lang} />
 <AntiFraud lang={lang} />
-<Features lang={lang} />
+<Modules lang={lang} />
 <Stats lang={lang} />
 <Audience lang={lang} />
 <Security lang={lang} />
-<Modules lang={lang} />
 <Testimonials lang={lang} />
 {PRICING.enabled && <Pricing lang={lang} />}
 <FAQ lang={lang} />

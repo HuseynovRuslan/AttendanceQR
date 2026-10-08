@@ -756,62 +756,6 @@ section {
   margin-top: 6px
 }
 
-/* ---------- İmkanlar ---------- */
-.feat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px
-}
-
-.feat {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 26px;
-  transition: border-color .25s, transform .25s, box-shadow .25s;
-  background: #fff
-}
-
-.feat:hover {
-  border-color: #c7d4e6;
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-sm)
-}
-
-.feat .ic {
-  width: 46px;
-  height: 46px;
-  border-radius: 13px;
-  background: var(--blue-tint);
-  display: grid;
-  place-items: center;
-  margin-bottom: 16px;
-  color: var(--blue);
-  transition: transform .3s
-}
-
-.feat:hover .ic {
-  transform: rotate(-6deg) scale(1.06)
-}
-
-.feat .ic svg {
-  width: 23px;
-  height: 23px;
-  stroke: var(--blue);
-  stroke-width: 1.9;
-  fill: none
-}
-
-.feat h3 {
-  font-size: 17.5px;
-  font-weight: 600;
-  margin-bottom: 6px
-}
-
-.feat p {
-  color: var(--muted);
-  font-size: 14.5px
-}
-
 /* ---------- Kimlər üçün ---------- */
 .aud-grid {
   display: grid;
@@ -940,43 +884,6 @@ section {
 .sec-item p {
   color: var(--muted);
   font-size: 14px
-}
-
-/* ---------- İnteqrasiyalar ---------- */
-.int-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  justify-content: center;
-  max-width: 820px;
-  margin: 0 auto
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 20px;
-  font-weight: 600;
-  font-size: 15px;
-  transition: transform .2s, border-color .2s, box-shadow .2s
-}
-
-.chip:hover {
-  transform: translateY(-3px);
-  border-color: #c7d4e6;
-  box-shadow: var(--shadow-sm)
-}
-
-.chip svg {
-  width: 22px;
-  height: 22px;
-  stroke: var(--blue);
-  stroke-width: 1.8;
-  fill: none
 }
 
 /* ---------- Rəylər ---------- */
@@ -1379,7 +1286,6 @@ footer {
     margin: 0 auto
   }
 
-  .feat-grid,
   .aud-grid,
   .test-grid {
     grid-template-columns: 1fr
@@ -2797,92 +2703,6 @@ h1.hero-title .hl::after {
   }
 }
 
-/* İmkanlar — bəzək qradiyentləri olmayan, xanaları fərqli ölçülü bento şəbəkəsi */
-#features {
-  padding: 116px 0;
-  background: var(--paper-warm);
-  border-block: 1px solid var(--line)
-}
-
-#features .sec-head {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  max-width: none;
-  gap: 70px;
-  align-items: end
-}
-
-#features .sec-head .eyebrow {
-  grid-column: 1/-1
-}
-
-#features .sec-head h2 {
-  margin: 0
-}
-
-#features .sec-head p {
-  align-self: end
-}
-
-.feat-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 16px
-}
-
-.feat {
-  grid-column: span 3;
-  min-height: 242px;
-  padding: 28px;
-  border-color: #D9E0E3;
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: none
-}
-
-.feat:nth-child(-n+2) {
-  grid-column: span 6;
-  min-height: 268px;
-  padding: 34px
-}
-
-.feat:hover {
-  transform: translateY(-3px);
-  border-color: #AFC0C9;
-  box-shadow: 0 22px 48px -38px rgba(7, 21, 33, .55)
-}
-
-.feat .ic {
-  width: 43px;
-  height: 43px;
-  margin-bottom: 44px;
-  border-radius: 10px;
-  background: var(--ink)
-}
-
-.feat .ic svg {
-  stroke: #8DB1FF
-}
-
-.feat:nth-child(-n+2) .ic {
-  margin-bottom: 67px
-}
-
-.feat h3 {
-  font-size: 18px;
-  line-height: 1.25
-}
-
-.feat:nth-child(-n+2) h3 {
-  font-size: 23px
-}
-
-.feat p {
-  margin-top: 9px;
-  font-size: 14px;
-  line-height: 1.65
-}
-
 /* Rəqəmlər */
 .statsband {
   padding: 76px 0;
@@ -3095,46 +2915,6 @@ h1.hero-title .hl::after {
   font-size: 13.5px;
   line-height: 1.65;
   color: #8FA4B3
-}
-
-/* Modullar */
-#modules {
-  padding: 108px 0;
-  background: var(--paper-warm)
-}
-
-#modules .sec-head {
-  max-width: 640px
-}
-
-.int-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  max-width: none;
-  margin: 0
-}
-
-.chip {
-  min-height: 84px;
-  justify-content: flex-start;
-  padding: 18px;
-  border-radius: 10px;
-  background: #fff;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.chip:hover {
-  transform: none;
-  border-color: #AFC0C9;
-  box-shadow: none
-}
-
-.chip svg {
-  flex: none;
-  width: 21px;
-  height: 21px
 }
 
 /* Qiymətlər */
@@ -3480,18 +3260,6 @@ footer {
     grid-template-columns: 1fr 1fr;
     gap: 14px
   }
-
-  .int-grid {
-    grid-template-columns: repeat(3, 1fr)
-  }
-
-  .feat {
-    grid-column: span 6
-  }
-
-  .feat:nth-child(-n+2) {
-    grid-column: span 6
-  }
 }
 
 @media(max-width:900px) {
@@ -3529,30 +3297,12 @@ footer {
     margin: 0 auto
   }
 
-  #features .sec-head,
   #audience .sec-head {
     display: block
   }
 
-  #features .sec-head h2,
   #audience .sec-head h2 {
     margin: 18px 0 15px
-  }
-
-  .feat-grid {
-    grid-template-columns: 1fr 1fr
-  }
-
-  .feat,
-  .feat:nth-child(-n+2) {
-    grid-column: auto;
-    min-height: 245px;
-    padding: 28px
-  }
-
-  .feat .ic,
-  .feat:nth-child(-n+2) .ic {
-    margin-bottom: 42px
   }
 
   .statsband .wrap {
@@ -3764,15 +3514,6 @@ footer {
     grid-template-columns: auto 1fr
   }
 
-  .feat-grid {
-    grid-template-columns: 1fr
-  }
-
-  .feat,
-  .feat:nth-child(-n+2) {
-    min-height: 225px
-  }
-
   .stat-grid {
     grid-template-columns: 1fr 1fr;
     border-left: 0
@@ -3814,16 +3555,6 @@ footer {
     margin-bottom: 36px
   }
 
-  .int-grid {
-    grid-template-columns: 1fr 1fr
-  }
-
-  .chip {
-    min-height: 78px;
-    padding: 14px;
-    font-size: 12px
-  }
-
   .plans {
     grid-template-columns: 1fr
   }
@@ -3861,10 +3592,6 @@ footer {
 }
 
 @media(max-width:390px) {
-  .int-grid {
-    grid-template-columns: 1fr
-  }
-
   .stat-grid {
     grid-template-columns: 1fr
   }
@@ -4400,76 +4127,6 @@ h1.hero-title .hl::before {
   }
 }
 
-/* İmkanlar — xətlərlə ayrılmış siyahı. */
-#features {
-  background: #F6F5F1;
-  border-color: #BFC1BA
-}
-
-.feat-grid {
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  border-top: 1px solid #BFC1BA;
-  counter-reset: feature
-}
-
-.feat,
-.feat:nth-child(-n+2) {
-  counter-increment: feature;
-  grid-column: auto;
-  min-height: 230px;
-  padding: 30px 38px;
-  border: 0;
-  border-right: 1px solid #BFC1BA;
-  border-bottom: 1px solid #BFC1BA;
-  border-radius: 0;
-  background: transparent
-}
-
-.feat:nth-child(2n) {
-  border-right: 0
-}
-
-.feat:hover {
-  transform: none;
-  border-color: #BFC1BA;
-  background: #ECEAE4;
-  box-shadow: none
-}
-
-.feat::before {
-  content: "0" counter(feature);
-  font: 500 9px var(--font-mono);
-  color: #155EEF
-}
-
-.feat .ic,
-.feat:nth-child(-n+2) .ic {
-  float: right;
-  width: 30px;
-  height: 30px;
-  margin: 0;
-  border-radius: 0;
-  background: transparent
-}
-
-.feat .ic svg {
-  stroke: #155EEF
-}
-
-.feat h3,
-.feat:nth-child(-n+2) h3 {
-  clear: both;
-  padding-top: 57px;
-  font-size: 21px;
-  font-weight: 600
-}
-
-.feat p {
-  max-width: 44ch;
-  font-size: 13.5px
-}
-
 /* Rəqəmlər brend rəngində tək bir bütöv zolaq olur. */
 .statsband {
   background: #155EEF
@@ -4495,7 +4152,7 @@ h1.hero-title .hl::before {
   color: #D4E0FA
 }
 
-/* Kimlər üçün, təhlükəsizlik və modullar kartlarla yox, sətir və xətlərlə qurulur. */
+/* Kimlər üçün və təhlükəsizlik kartlarla yox, sətir və xətlərlə qurulur. */
 #audience {
   background: #f5f6fa
 }
@@ -4579,30 +4236,6 @@ h1.hero-title .hl::before {
 
 .sec-item p {
   color: var(--muted)
-}
-
-#modules {
-  background: #EAE7E0
-}
-
-.int-grid {
-  gap: 0;
-  border-top: 1px solid #B8BAB2;
-  border-left: 1px solid #B8BAB2
-}
-
-.chip {
-  min-height: 92px;
-  border: 0;
-  border-right: 1px solid #B8BAB2;
-  border-bottom: 1px solid #B8BAB2;
-  border-radius: 0;
-  background: transparent
-}
-
-.chip:hover {
-  border-color: #B8BAB2;
-  background: #DFDCD4
 }
 
 /* Qiymətlər müqayisə cədvəli kimi. */
@@ -4824,16 +4457,6 @@ footer {
     display: none
   }
 
-  .feat-grid {
-    grid-template-columns: 1fr
-  }
-
-  .feat,
-  .feat:nth-child(-n+2) {
-    border-right: 0;
-    padding-inline: 24px
-  }
-
   .aud-grid {
     grid-template-columns: 1fr
   }
@@ -4906,7 +4529,7 @@ footer {
 }
 
 /* ---------- Problem bölməsi (köhnə üsul) ----------
-   İmkanlar bölməsinin editorial şəbəkəsini təkrarlayır — düz xanalar, nazik #BFC1BA ayırıcı xətlər,
+   Köhnə İmkanlar bölməsinin (indi silinib) editorial şəbəkəsini təkrarlayırdı — düz xanalar, nazik #BFC1BA ayırıcı xətlər,
    kvadrat künclər, float ilə yerləşən ikon — ki, sonradan yapışdırılmış yad vidcet yox, səhifənin
    qalan hissəsi ilə bir ailədən görünsün. Bilərəkdən edilən yeganə fərq aksent rəngidir: məhsulun
    mavisi yox, kəhrəba (amber). Belə ki, köhnə üsulun üç itkisi mavi «həll budur» bölmələrindən
@@ -5014,7 +4637,7 @@ footer {
 }
 
 html {
-  /* Menyu linki ilə #how, #features, #faq-a keçəndə bölmə sabit panelin altında gizlənmir,
+  /* Menyu linki ilə #how, #modules, #faq-a keçəndə bölmə sabit panelin altında gizlənmir,
      ondan aşağıda başlayır. */
   scroll-padding-top: var(--header-h)
 }
