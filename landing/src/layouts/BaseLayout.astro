@@ -5,7 +5,7 @@
  * Props: lang (dil), path (dil prefiksi olmadan marşrut), title və description (verilməsə ui.ts-dəki
  * meta mətnləri), home (ana səhifə), heroTone (loader-in fonu), noindex (axtarışdan gizlət).
  * Necə işləyir: <head>-də SEO, sosial kart, şriftlər və schema.org datası; <body>-də loader, Header,
- * Footer, WhatsApp və "yuxarı" düymələri; sondakı skript səhifədəki canlı hissələri (sayğac, demo, FAQ) işə salır.
+ * Footer, WhatsApp və "yuxarı" düymələri; sondakı skript səhifədəki canlı hissələri (sayğac, FAQ) işə salır.
  */
 
 // Sıra vacibdir: qatların (cascade layers) sırasını tailwind.css elan edir, global-layered.css isə
@@ -225,21 +225,6 @@ const websiteLd = {
       // səhifədə yoxdursa, həmin hissə heç nə etmir. Mobil menyu və dil seçimi Header.astro-dadır.
 
       // ---------- Sabitlər ----------
-      // Dekorativ QR naxışı
-      const QR_SIZE = 25 // QR 25×25 xanadır (PhoneDemo-dakı svg-nin viewBox-u da "0 0 25 25"-dir)
-      // Təsadüfi ədəd (0…1) bundan BÖYÜK olanda xana dolur: 0.5 → təxminən yarısı dolu; kiçiltsən, QR sıxlaşar.
-      const QR_FILL_THRESHOLD = 0.5
-      const QR_FINDER_SIZE = 7 // künc "göz"ünün ölçüsü, xana ilə (buildFinderSquare-dəki 7×7 kvadrat)
-      const QR_FINDER_FAR_EDGE = QR_SIZE - QR_FINDER_SIZE // = 18: sağ və aşağı künc gözü kənara dayanır
-      // #qrsvg naxışının başlanğıc ədədi. Hazırda heç bir səhifədə #qrsvg yoxdur, ona görə
-      // aşağıdakı paintQr('qrsvg', …) çağırışı heç nə etmir.
-      const QRSVG_SEED = 1234567
-      const PHONE_QR_SEED = 987654 // #pqr (telefon demosu) naxışının başlanğıc ədədi
-      // LCG — ən sadə "təsadüfi" ədəd düsturu. Bunlar onun klassik sabitləridir; birini dəyişsən, naxış da dəyişər.
-      const LCG_MULTIPLIER = 1103515245
-      const LCG_INCREMENT = 12345
-      const LCG_MAX = 0x7fffffff // 2^31 - 1: "&" ilə yalnız aşağı 31 bit qalır, nəticə 0…LCG_MAX olur
-
       // Canlı saat
       const CLOCK_TICK_MS = 1000 // saat hər saniyə yenilənir
 
@@ -249,56 +234,6 @@ const websiteLd = {
       // Sayğaclar ([data-count])
       const COUNTER_DURATION_MS = 1600 // rəqəm 1.6 saniyəyə son dəyərinə çatır
       const COUNTER_THRESHOLD = 0.5 // sayğacın yarısı ekrana girəndə sayma başlayır
-
-      // Telefon demosu: addımın adı #phone-un data-state atributuna yazılır, CSS də həmin ekranı göstərir.
-      // durationMs — addımın ekranda qalma müddəti, sonra növbəti addıma keçilir.
-      const PHONE_DEMO_STEPS = [
-        { state: 'scan', durationMs: 2400 }, // QR skan olunur
-        { state: 'verify', durationMs: 2600 }, // cihaz və məkan yoxlanır
-        { state: 'face', durationMs: 2400 }, // üz (selfi) yoxlanır
-        { state: 'done', durationMs: 2800 }, // gəliş qeydə alındı
-      ]
-      const PHONE_DEMO_THRESHOLD = 0.3 // telefonun 30%-i ekrana girəndə demo başlayır
-
-      // ---------- QR naxışı (dekorativ, həmişə eyni) ----------
-      // QR-ın kiçik xanalarını doldurur. Təsadüf saxtadır (LCG): eyni seed həmişə eyni ardıcıllığı
-      // verir, ona görə naxış hər yükləmədə eyni görünür. Real QR deyil, oxunmur.
-      function buildQrCells(seed: number) {
-        let randomState = seed
-        let cells = ''
-        for (let y = 0; y < QR_SIZE; y++) {
-          for (let x = 0; x < QR_SIZE; x++) {
-            randomState = (randomState * LCG_MULTIPLIER + LCG_INCREMENT) & LCG_MAX
-            const randomValue = randomState / LCG_MAX
-            if (randomValue > QR_FILL_THRESHOLD) {
-              cells += `<rect x="${x}" y="${y}" width="1" height="1"/>`
-            }
-          }
-        }
-        return cells
-      }
-
-      // QR-ın küncündəki böyük "göz": üst-üstə üç kvadrat — 7×7, 5×5 və 3×3.
-      // Xarici 7 QR_FINDER_SIZE ilə eyni olmalıdır: birini dəyişsən, o birini də dəyiş.
-      function buildFinderSquare(left: number, top: number) {
-        return (
-          `<rect x="${left}" y="${top}" width="7" height="7"/>` +
-          `<rect x="${left + 1}" y="${top + 1}" width="5" height="5" fill="#0B1726"/>` +
-          `<rect x="${left + 2}" y="${top + 2}" width="3" height="3" fill="#fff"/>`
-        )
-      }
-
-      // Naxışı verilən id-li <svg>-nin içinə çəkir; belə element yoxdursa, heç nə etmir.
-      function paintQr(svgId: string, seed: number) {
-        const svg = document.getElementById(svgId)
-        if (!svg) return
-        const cells = buildQrCells(seed)
-        svg.innerHTML =
-          cells +
-          buildFinderSquare(0, 0) +
-          buildFinderSquare(QR_FINDER_FAR_EDGE, 0) +
-          buildFinderSquare(0, QR_FINDER_FAR_EDGE)
-      }
 
       // ---------- Canlı saat (#clock) ----------
       // Diqqət: hazırda heç bir səhifədə #clock yoxdur, ona görə startClock() heç nə etmir.
@@ -415,65 +350,6 @@ const websiteLd = {
         })
       }
 
-      // ---------- Telefon demosu (#phone) ----------
-      // Telefonu verilən addıma keçirir, addım siyahısında (#pdemoSteps) cari addımı "active",
-      // keçilmişləri "done" edir.
-      function showPhoneStep(phone: HTMLElement, stepItems: HTMLElement[], stepIndex: number) {
-        phone.dataset.state = PHONE_DEMO_STEPS[stepIndex].state
-        stepItems.forEach((stepItem, index) => {
-          stepItem.classList.toggle('active', index === stepIndex)
-          stepItem.classList.toggle('done', index < stepIndex)
-        })
-      }
-
-      // Demonun hazırkı addımı. Bir ümumi dəyişəndir (funksiya parametri yox): demo nə qədər
-      // işə salınsa da, hamısı eyni sayğacı irəli aparır — köhnə kodda da belə idi.
-      let currentPhoneStep = 0
-
-      // Cari addım öz müddəti qədər ekranda qalır, sonra növbəti addım göstərilir.
-      // Sonuncu addımdan sonra yenidən birinciyə qayıdır — demo dayanmadan təkrarlanır.
-      function scheduleNextPhoneStep(phone: HTMLElement, stepItems: HTMLElement[]) {
-        const currentDuration = PHONE_DEMO_STEPS[currentPhoneStep].durationMs
-        setTimeout(() => {
-          currentPhoneStep = currentPhoneStep + 1
-          if (currentPhoneStep === PHONE_DEMO_STEPS.length) {
-            currentPhoneStep = 0
-          }
-          showPhoneStep(phone, stepItems, currentPhoneStep)
-          scheduleNextPhoneStep(phone, stepItems)
-        }, currentDuration)
-      }
-
-      // Demo yalnız telefon ekrana girəndə başlayır — səhifənin qalan hissəsində CPU-nu boş yerə yormamaq üçün.
-      function startPhoneDemoWhenVisible(phone: HTMLElement, stepItems: HTMLElement[]) {
-        const phoneObserver = new IntersectionObserver(
-          (entries, observer) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                scheduleNextPhoneStep(phone, stepItems)
-                observer.disconnect()
-              }
-            })
-          },
-          { threshold: PHONE_DEMO_THRESHOLD }
-        )
-        phoneObserver.observe(phone)
-      }
-
-      function startPhoneDemo() {
-        const phone = document.getElementById('phone')
-        if (!phone) return
-        const stepItems = Array.from(document.querySelectorAll<HTMLElement>('#pdemoSteps .pstep'))
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        if (reduceMotion) {
-          // Hərəkət istəməyənlərə dərhal son addım ("qeydə alındı") göstərilir, demo fırlanmır.
-          showPhoneStep(phone, stepItems, PHONE_DEMO_STEPS.length - 1)
-          return
-        }
-        showPhoneStep(phone, stepItems, 0)
-        startPhoneDemoWhenVisible(phone, stepItems)
-      }
-
       // ---------- FAQ akkordeonu ----------
       // Eyni anda yalnız bir cavab açıq qalır: yeni sual açılmazdan əvvəl açıq olanların hamısı bağlanır.
       function closeAllFaqItems() {
@@ -511,12 +387,9 @@ const websiteLd = {
 
       // ---------- İşə salma ----------
       // Hissələr bir-birindən asılı deyil: hər biri öz elementini tapıb işə düşür.
-      paintQr('qrsvg', QRSVG_SEED)
-      paintQr('pqr', PHONE_QR_SEED)
       startClock()
       startScrollReveal()
       startCounters()
-      startPhoneDemo()
       setupFaqAccordion()
     </script>
   </body>

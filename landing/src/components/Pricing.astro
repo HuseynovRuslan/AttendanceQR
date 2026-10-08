@@ -27,7 +27,13 @@ const plans = PRICING.plans.map((p) => ({
 }))
 ---
 
-<section class="price" id="pricing">
+<section class="price relative" id="pricing">
+  <!--
+    Üst xətt: yuxarıdakı «Təhlükəsizlik» bölməsi ilə eyni fondadır (#F6F5F1) və aralarında heç nə
+    qalmayıb, ona görə sərhəd görünmürdü. Xətt digər bölmələrdəki ilə eynidir (hair tokeni, kənarlara
+    doğru əriyir). /qiymet/ səhifəsində (bare) yuxarıda ağ PageHero var, xətt oraya lazım deyil.
+  -->
+  {!bare && <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>}
   <div class="wrap">
     {!bare && (
       <div class="sec-head rv">
@@ -67,3 +73,12 @@ const plans = PRICING.plans.map((p) => ({
     {PRICING.showPlans && <p class="price-note rv">{t('price.note')}</p>}
   </div>
 </section>
+
+<style>
+  /* Xəttin kənarlara doğru əriməsi. Eyni qayda HowItWorks, AdminPanel və Modules-də də var — orada
+     scoped-dur, ona görə burada da təkrarlanır. */
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+</style>

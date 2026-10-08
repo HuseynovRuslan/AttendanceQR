@@ -4,7 +4,7 @@ import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
 /**
  * 18:30 — "Davamiyyət". «Rəhbərin bir günü» bölməsinin (AdminPanel.astro) üçüncü ekranı.
  *
- * Canlı hadisə: 1.1 s sonra Orxan çıxış edir — "İşdə" → "Tamamlandı", çıxış 18:31, "İşdə" 5 → 4,
+ * Canlı hadisə: 1.1 s sonra Orxan çıxış edir — "İşdə" → "Tamamlayıb", çıxış 18:31, "İşdə" 5 → 4,
  * "Tamamlayıb" 43 → 44; sətir və kart qısa müddət yaşıl fonla yanır. Qarmaqlar
  * AdminPanelDashboard.astro və AdminPanelProblems.astro-dakı kimidir, üstəlik:
  *   data-swap   in: hadisədə görünür, out: hadisədə gizlənir (status nişanı; sütunun eni dəyişmir —
@@ -34,9 +34,13 @@ const badges = {
   dayOff: { label: 'panel.ui.dayOff', icon: '', tone: 'bg-brand/10 text-brand' },
 } satisfies Record<string, { label: UIKey; icon: string; tone: string }>
 
-const faces = {
+// Uyğun üz lövhədə yalnız "✓ 99%" yazılır. Uyğunsuz üz isə məhsuldakı kimidir: qırmızı nişan,
+// «⚠ Uyğunsuz 41%» (frontend/src/components/FaceFlagBadge.tsx — eyni Tailwind sinifləri).
+// label yalnız uyğunsuz nişanda var, ona görə tipdə `label?` — "ola da bilər, olmaya da".
+type FaceChip = { icon: string; label?: UIKey; tone: string }
+const faces: { ok: FaceChip; low: FaceChip } = {
   ok: { icon: '✓', tone: 'bg-[#E9F7EF] text-[#15803D]' },
-  low: { icon: '⚠', tone: 'border border-[#FDE3A7] bg-[#FEF6E1] text-[#B45309]' },
+  low: { icon: '⚠', label: 'panel.ui.mismatch', tone: 'bg-red-100 text-red-700' },
 }
 
 // Canlı hadisədə dəyişən xanada [əvvəl, sonra] durur — yalnız Orxanın sətrində iki dəyər var.
@@ -55,12 +59,14 @@ const rows: {
   { name: 'Kamran Rzayev', role: 'Satış meneceri', status: ['done'], in: '08:05', out: ['18:12'], face: ['ok', 97] },
 ]
 
-// Container sorğuları: @min-[30rem] — prototipdəki sm (Çıxış, Üz), @min-[40rem] — md (Vəzifə).
+// Container sorğuları: @min-[32rem] — Çıxış və Üz, @min-[40rem] — md (Vəzifə). Prototipdə Çıxış və Üz
+// 30rem-dən (sm) görünürdü; qırmızı «⚠ Uyğunsuz 41%» nişanı enli olduğu üçün 30–31rem panel enində
+// cədvəl sağdan 13px-ə qədər kəsilirdi (ölçülüb), ona görə 32rem.
 // @min-[18.25rem] — Giriş: İşçi + Status + Giriş ən azı 290px istəyir (ölçülüb), kartın çərçivəsi
 // ilə 292px. 320–360px telefonda panel bundan dardır və sütun kənardan kəsilirdi.
 const cell = 'px-3.5 py-2.5'
 const narrow = 'hidden @min-[18.25rem]:table-cell'
-const wide = 'hidden @min-[30rem]:table-cell'
+const wide = 'hidden @min-[32rem]:table-cell'
 const wider = 'hidden @min-[40rem]:table-cell'
 const time = 'font-mono text-[12px] tabular-nums'
 const chip = 'rounded-full border border-[#E3E5EA] bg-white px-3 py-1 text-[11.5px]'
@@ -156,7 +162,7 @@ const chip = 'rounded-full border border-[#E3E5EA] bg-white px-3 py-1 text-[11.5
               <td class={`${cell} ${wide}`}>
                 {face && row.face && (
                   <span class:list={['rounded-full px-2 py-0.5 font-mono text-[11px] whitespace-nowrap', face.tone]}>
-                    <span aria-hidden="true">{face.icon}</span> {row.face[1]}%
+                    <span aria-hidden="true">{face.icon}</span> {face.label && t(face.label)} {row.face[1]}%
                   </span>
                 )}
               </td>
