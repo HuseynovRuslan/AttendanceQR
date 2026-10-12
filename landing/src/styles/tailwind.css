@@ -57,9 +57,10 @@
   --font-sans: 'Onest', 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 
-  /* global.css already has keyframes named spin, ping and pulse. Tailwind writes an animate-*
-     utility's keyframes outside any layer, where they would beat those and change the site's own
-     animations — so Tailwind's three live under names of their own. */
+  /* global.css already has keyframes named ping and pulse. Tailwind writes an animate-* utility's
+     keyframes outside any layer, where they would beat those and change the site's own animations —
+     so Tailwind's three live under names of their own. spin is renamed too: global.css no longer has
+     one, but the three stay alike, and a spin added there later cannot collide. */
   --animate-spin: tw-spin 1s linear infinite;
   --animate-ping: tw-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
   --animate-pulse: tw-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

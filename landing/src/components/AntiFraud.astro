@@ -1,0 +1,590 @@
+---
+/*
+ * «Saxtaya qarşı qoruma» bölməsi: bir girişin dörd yoxlaması — QR imzası, cihaz, məkan (GPS), üz.
+ * Harada işlənir: Landing.astro-da, Admin paneldən (AdminPanel.astro) dərhal sonra.
+ * Props: lang — səhifənin dili.
+ * Desktopda (lg+) ortada giriş qeydi kartı, ətrafında dörd izah: bölmə ekrana girəndə yoxlamalar
+ * bir-bir təsdiqlənir (faylın sonundakı skript). Mobildə eyni dörd yoxlama sadə siyahıdır.
+ * Aşağıdakı «İşçi qapıda ilişib qalmır» bloku AntiFraudPanel.astro-dadır.
+ */
+import { useTranslations, fmt, type Lang, type UIKey } from '../i18n/ui'
+import AntiFraudPanel from './AntiFraudPanel.astro'
+
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+/**
+ * Kartdakı nümunə giriş. Hero.astro-dakı `person` ilə eyni adam və eyni saatdır: birinci ekranda
+ * skan olunan giriş burada yoxlanılır. Birini dəyişsən, o birini də dəyiş.
+ */
+const record = { name: 'Əli Məmmədov', initials: 'ƏM', time: '08:58', faceMatchPercent: 98 }
+
+/**
+ * Kart sətirlərinin ikonları — SVG-nin içi, 20×20 sahə üçün. Aşağıda `set:html` ilə yazılır, yəni
+ * mətn kimi yox, HTML kimi (məzmun bizimdir, istifadəçidən gəlmir).
+ * https://docs.astro.build/en/reference/directives-reference/#sethtml
+ */
+const icons = {
+  qr: '<rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="12" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="12" width="5" height="5" rx="1.2"/><path d="M12 12h2v2M17 12v5h-5"/>',
+  device: '<rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/>',
+  pin: '<path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5Z"/><circle cx="10" cy="8" r="2"/>',
+  face: '<path d="M3 7V5a2 2 0 0 1 2-2h2M13 3h2a2 2 0 0 1 2 2v2M17 13v2a2 2 0 0 1-2 2h-2M7 17H5a2 2 0 0 1-2-2v-2"/><circle cx="10" cy="9" r="2.5"/><path d="M6.5 14.5c.8-1.6 2-2.3 3.5-2.3s2.7.7 3.5 2.3"/>',
+}
+
+// Kiçik ✓ və fırlanan yarımdairə — 12×12 sahə üçün, bir neçə yerdə işlənir.
+const CHECK_PATH = 'M2.4 6.4 4.8 8.8 9.6 3.6'
+const SPINNER_PATH = 'M6 1.5a4.5 4.5 0 1 1-4.5 4.5'
+
+/**
+ * Dörd yoxlama. Hər biri iki yerdə görünür: kartın sətrində (rowTitle, rowValue) və izahda (title,
+ * prevents, text). side — izahın kartın hansı tərəfində durduğu: 01 və 03 solda, 02 və 04 sağda,
+ * göz kartın iki tərəfi arasında zigzaqla enir. `satisfies` hər açarın ui.ts-də olduğunu yoxlayır
+ * (HowItWorks.astro-dakı qeydə bax). `keyof typeof icons` — "icons obyektinin açarlarından biri":
+ * ikonun adında hərf səhvi olsa, `astro check` xəta verir.
+ * https://www.typescriptlang.org/docs/handbook/2/keyof-types.html
+ */
+const checks = [
+  { number: '01', side: 'left', icon: 'qr', rowTitle: 'af.r1.t', rowValue: 'af.r1.v', title: 'af.c1.t', prevents: 'af.c1.p', text: 'af.c1.d' },
+  { number: '02', side: 'right', icon: 'device', rowTitle: 'af.r2.t', rowValue: 'af.r2.v', title: 'af.c2.t', prevents: 'af.c2.p', text: 'af.c2.d' },
+  { number: '03', side: 'left', icon: 'pin', rowTitle: 'af.r3.t', rowValue: 'af.r3.v', title: 'af.c3.t', prevents: 'af.c3.p', text: 'af.c3.d' },
+  { number: '04', side: 'right', icon: 'face', rowTitle: 'af.r4.t', rowValue: 'af.r4.v', title: 'af.c4.t', prevents: 'af.c4.p', text: 'af.c4.d' },
+] satisfies {
+  number: string
+  side: 'left' | 'right'
+  icon: keyof typeof icons
+  rowTitle: UIKey
+  rowValue: UIKey
+  title: UIKey
+  prevents: UIKey
+  text: UIKey
+}[]
+
+/**
+ * Anatomiyanın grid sətirləri: 1-ci sətir kartın başlığıdır, sonra hər yoxlama öz sətrində, ən
+ * sonda kartın altlığı. Ona görə birinci izah 2-ci sətirdədir. Yoxlama sayı dəyişsə, aşağıdakı
+ * `lg:grid-rows-[repeat(6,auto)]` və kartın `row-span-6` sinfi də dəyişməlidir: yoxlama sayı + 2.
+ */
+const FIRST_CHECK_ROW = 2
+
+/**
+ * İzahın iki tərəfi bir-birinin güzgü əksidir: xətt həmişə izahdan karta tərəf uzanır.
+ * Solda: [mətn][xətt] — nömrə başlıqdan sonra (karta yaxın), xətt soldan sağa çəkilir.
+ * Sağda: flex-row-reverse ilə [xətt][mətn] — xətt sağdan sola çəkilir.
+ * Siniflər tam yazılıb ('col-start-1'), hissə-hissə yığılmayıb: Tailwind yalnız kodda tam yazılan
+ * sinifləri tanıyır.
+ */
+const sideClasses = {
+  left: {
+    column: 'col-start-1',
+    text: 'text-right',
+    heading: 'flex-row-reverse',
+    line: 'ml-4',
+    lineGrowsFrom: 'origin-left',
+    dot: 'right-[-3.5px]',
+  },
+  right: {
+    column: 'col-start-3 flex-row-reverse',
+    text: '',
+    heading: '',
+    line: 'mr-4',
+    lineGrowsFrom: 'origin-right',
+    dot: 'left-[-3.5px]',
+  },
+}
+
+// Sinif sətirləri bir dəfə yazılır: desktop izahı və mobil siyahı eyni çipi göstərir — belə olmasa
+// ikisi vaxt keçdikcə bir-birindən aralanır (HowItWorks.astro-dakı qayda).
+const avatarClass =
+  'flex size-10 shrink-0 items-center justify-center rounded-full bg-[#EAF0FC] text-[13px] font-semibold text-brand'
+const metaClass = 'mt-1 font-mono text-[11px] text-slate-500'
+const pillClass =
+  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] whitespace-nowrap'
+const numberClass =
+  'flex size-9 shrink-0 items-center justify-center rounded-lg text-[13px] font-medium'
+// «Qarşısını alır: …». Dar ekranda uzun dildə iki sətrə düşə bilər: inline-block mətni təbii bükür,
+// 11px radius isə bir sətirdə həb (pill) kimi, iki sətirdə səliqəli qutu kimi görünür.
+// Fon #F7F8FA, bg-page yox: ink2 mətni bg-page üstündə 4.44:1 verir, AA üçün 4.5:1 lazımdır.
+const preventsClass =
+  'inline-block rounded-[11px] border border-hair bg-[#F7F8FA] px-2.5 py-[3px] text-[12px] leading-[1.45] text-ink2'
+const textClass = 'mt-2 text-[13.5px] leading-[1.6] text-ink2'
+---
+
+<section
+  id="antifraud"
+  aria-labelledby="antifraud-title"
+  class="antifraud relative overflow-hidden bg-white py-20 lg:py-28"
+>
+  <!-- Qabıq HowItWorks və AdminPanel-dəki kimidir. Fonlar növbələşir: üstdəki Admin panel bozdur, bu ağdır. -->
+  <div class="blueprint pointer-events-none absolute inset-0" aria-hidden="true"></div>
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
+
+  <div class="wrap relative">
+    <!-- Başlıq AdminPanel və HowItWorks ilə eyni siniflərlədir: üç bölmə ardıcıl gəlir. -->
+    <div class="max-w-155">
+      <span
+        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('af.eyebrow')}
+      </span>
+      <h2
+        id="antifraud-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('af.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('af.sub')}</p>
+    </div>
+
+    <!--
+      ══════════ DESKTOP (lg+): bir girişin anatomiyası ══════════
+      Üç sütun: sol izahlar | kart | sağ izahlar. Altı sətir: kartın başlığı, dörd yoxlama, kartın
+      altlığı. Hər izah öz yoxlamasının sətrində durur. data-* halları <style>-da, ardıcıllıq <script>-dədir.
+    -->
+    <div
+      id="afAnatomy"
+      class="anatomy rv d3 mt-16 hidden lg:grid lg:grid-cols-[minmax(0,1fr)_360px_minmax(0,1fr)] lg:grid-rows-[repeat(6,auto)] xl:grid-cols-[minmax(0,1fr)_420px_minmax(0,1fr)]"
+    >
+      <!--
+        Giriş qeydi kartı. grid-rows-subgrid: kartın altı sətri xarici grid-in altı sətrini işlədir.
+        Ona görə izah uzananda kartın uyğun sətri də uzanır və izahın xətti həmişə öz sətrinin
+        ortasına düşür — JS ilə ölçmədən. https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout/Subgrid
+      -->
+      <div
+        class="col-start-2 row-span-6 row-start-1 grid grid-rows-subgrid rounded-2xl border border-hair bg-white shadow-[0_1px_2px_rgba(16,24,40,.04),0_24px_48px_-28px_rgba(16,24,40,.28)]"
+      >
+        <!-- 1024–1279px-də kart dardır: status adın altına düşür, xl-dən sağda durur (mobil başlıq kimi). -->
+        <div
+          class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 border-b border-hair px-5 py-4 xl:grid-cols-[auto_minmax(0,1fr)_auto]"
+        >
+          <span class={avatarClass} aria-hidden="true">{record.initials}</span>
+          <div class="min-w-0">
+            <p class="text-[15px] leading-tight font-medium text-ink">{record.name}</p>
+            <p class={metaClass}>{fmt(t('af.rec.meta'), { t: record.time })}</p>
+          </div>
+          <!-- HTML-də son hal yazılıb (data-done="true"); skript animasiyadan əvvəl "false" edir. -->
+          <span data-status data-done="true" class="col-start-2 xl:col-start-3">
+            <span class={`status-pending ${pillClass} border-hair bg-[#F7F8FA] text-ink2`}>
+              <svg
+                class="animate-spin"
+                width="11"
+                height="11"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d={SPINNER_PATH}></path>
+              </svg>
+              {t('af.rec.pending')}
+            </span>
+            <span class={`status-done ${pillClass} border-[#D7E0F7] bg-[#EEF3FD] text-brand`}>
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d={CHECK_PATH}></path>
+              </svg>
+              {t('af.rec.done')}
+            </span>
+          </span>
+        </div>
+
+        {
+          checks.map((check, index) => {
+            const isLastRow = index === checks.length - 1
+            return (
+              <div
+                data-check-row
+                data-checked="true"
+                class:list={['flex items-center gap-3 px-5 py-4', !isLastRow && 'border-b border-hair']}
+              >
+                <span
+                  class="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-hair bg-[#FAFBFC] text-slate-500"
+                  aria-hidden="true"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={icons[check.icon]}
+                  />
+                </span>
+                <div class="min-w-0">
+                  <p class="text-[13.5px] leading-tight font-medium text-ink">{t(check.rowTitle)}</p>
+                  {/* fmt yalnız üz sətrində nəsə dəyişir ({p} — faiz); qalan sətirlərdə yer tutucu yoxdur. */}
+                  <p class="value mt-1 font-mono text-[11px] text-ink">
+                    {fmt(t(check.rowValue), { p: record.faceMatchPercent })}
+                  </p>
+                </div>
+                {/* Fırlanan ikon və ✓ eyni xanada üst-üstə durur: grid-də ikisi də 1-ci sütun, 1-ci sətir. */}
+                <span class="ml-auto grid size-6 shrink-0 place-items-center" aria-hidden="true">
+                  <svg
+                    class="spinner col-start-1 row-start-1 animate-spin text-slate-300"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                  >
+                    <path d={SPINNER_PATH} />
+                  </svg>
+                  <span class="tick col-start-1 row-start-1 flex size-6 items-center justify-center rounded-full bg-brand text-white">
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d={CHECK_PATH} />
+                    </svg>
+                  </span>
+                </span>
+              </div>
+            )
+          })
+        }
+
+        <p
+          class="flex items-center justify-between gap-3 border-t border-hair px-5 py-3 font-mono text-[10.5px] tracking-[0.12em] text-slate-500 uppercase"
+        >
+          <span>{t('af.rec.footer')}</span>
+          <span>{t('af.sample')}</span>
+        </p>
+      </div>
+
+      {
+        checks.map((check, index) => {
+          const side = sideClasses[check.side]
+          const gridRow = FIRST_CHECK_ROW + index
+          return (
+            <div
+              data-callout
+              data-checked="true"
+              style={`grid-row: ${gridRow}`}
+              class:list={['flex items-center', side.column]}
+            >
+              {/* grid-row inline yazılıb, sinif kimi yox: 'row-start-' + rəqəm kimi yığılan sinfi
+                  Tailwind tanımır (frontmatter-dəki sideClasses qeydinə bax). */}
+              <div class:list={['max-w-[240px] min-w-0 xl:max-w-[300px]', side.text]}>
+                <p class:list={['flex items-center gap-2.5', side.heading]}>
+                  <span class={`num ${numberClass}`}>{check.number}</span>
+                  <span class="text-[15px] font-medium tracking-[-0.01em] text-ink">{t(check.title)}</span>
+                </p>
+                <p class="mt-2">
+                  <span class={preventsClass}>
+                    {t('af.prevents')}: <span class="font-medium text-ink">{t(check.prevents)}</span>
+                  </span>
+                </p>
+                <p class={textClass}>{t(check.text)}</p>
+              </div>
+              {/* Xətt sütunun kənarına, yəni kartın sərhədinə qədər gedir; ucundakı dairə kartın üstündə durur. */}
+              <span class:list={['relative h-px min-w-6 flex-1 bg-hair', side.line]} aria-hidden="true">
+                <span class:list={['leader absolute inset-0 bg-brand', side.lineGrowsFrom]} />
+                <span
+                  class:list={[
+                    'leader-dot absolute top-[-3px] size-[7px] rounded-full border-2 border-brand bg-white',
+                    side.dot,
+                  ]}
+                />
+              </span>
+            </div>
+          )
+        })
+      }
+    </div>
+
+    <!--
+      ══════════ MOBİL (lg-dən kiçik) ══════════
+      Anatomiya yoxdur: yan izahlara yer yoxdur. Kartın başlığı + dörd yoxlama sadə siyahı kimi, son halda.
+      Desktop variantı burada display:none-dur — ekran oxuyucusu da onu oxumur, mətn iki dəfə səslənmir.
+    -->
+    <div class="check-list rv d3 mt-12 overflow-hidden rounded-2xl border border-hair bg-white lg:hidden">
+      <!-- Dar ekranda status adın altına düşür, sm-dən böyük ekranda sağda durur. -->
+      <div
+        class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 border-b border-hair px-5 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+      >
+        <span class={avatarClass} aria-hidden="true">{record.initials}</span>
+        <div class="min-w-0">
+          <p class="text-[15px] leading-tight font-medium text-ink">{record.name}</p>
+          <p class={metaClass}>{fmt(t('af.rec.meta'), { t: record.time })}</p>
+        </div>
+        <span
+          class={`${pillClass} col-start-2 w-fit border-[#D7E0F7] bg-[#EEF3FD] text-brand sm:col-start-3`}
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d={CHECK_PATH}></path>
+          </svg>
+          {t('af.rec.done')}
+        </span>
+      </div>
+
+      <!-- role="list" əl ilə: list-none Safari-də siyahı semantikasını silir (Hero.astro-dakı kimi). -->
+      <ol role="list" class="list-none divide-y divide-hair">
+        {
+          checks.map((check) => (
+            <li class="flex gap-3.5 px-5 py-4">
+              <span class={`${numberClass} bg-brand text-white`}>{check.number}</span>
+              <div class="min-w-0">
+                <p class="text-[15px] font-medium text-ink">{t(check.title)}</p>
+                <p class="mt-2">
+                  <span class={preventsClass}>
+                    {t('af.prevents')}: <span class="font-medium text-ink">{t(check.prevents)}</span>
+                  </span>
+                </p>
+                <p class={textClass}>{t(check.text)}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+
+      <p
+        class="border-t border-hair px-5 py-3 text-right font-mono text-[10.5px] tracking-[0.12em] text-slate-500 uppercase"
+      >
+        {t('af.sample')}
+      </p>
+    </div>
+
+    <AntiFraudPanel lang={lang} />
+  </div>
+</section>
+
+<style>
+  /*
+    Bölmənin bütün stili burada. Yoxlama ardıcıllığının halları data-* atributlarındadır:
+      data-checked="true | false" — kartın yoxlama sətri və onun izahı (eyni nömrə)
+      data-done="true | false"    — kartın başlığındakı status
+    HTML son halda gəlir (hamısı "true"): JS söndürülübsə və ya "hərəkəti azalt" seçilibsə, oxucu
+    dərhal hazır kartı görür. Skript yalnız animasiyadan əvvəl "false" yazır (faylın sonuna bax).
+    global.css "hərəkəti azalt" rejimində bütün animasiya və keçidləri onsuz da söndürür.
+  */
+
+  .antifraud {
+    /* HowItWorks-dakı --how-ease ilə eyni əyri — saytın görünmə hərəkətlərinin ortaq dili. Prototipdə
+       ✓ "sıçrayırdı" (overshoot əyrisi); İş prinsipi bölməsi sıçrayışı qəsdən işlətmir, burada da yox. */
+    --af-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  /* Kənarlara doğru əriyən üst/alt xətt — HowItWorks və AdminPanel-dəki qaydanın eynisi. */
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+
+  /* "Texniki sxem" fonu: 32px-lik çox zəif şəbəkə. Mərkəzdə görünür, kənarlara doğru əriyir. */
+  .blueprint {
+    background-image:
+      linear-gradient(var(--color-hair) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-hair) 1px, transparent 1px);
+    background-size: 32px 32px;
+    opacity: 0.6;
+    -webkit-mask-image: radial-gradient(60% 55% at 50% 58%, #000 20%, transparent 75%);
+    mask-image: radial-gradient(60% 55% at 50% 58%, #000 20%, transparent 75%);
+  }
+
+  /*
+    subgrid-i tanımayan köhnə brauzerdə (Chrome 116-dan, Safari 16-dan köhnə) kartın sətirləri
+    izahlarla düzlənmir və xətlər səhv yerə düşərdi. Orada desktopda da mobil siyahı göstərilir.
+    Bu qaydalar Tailwind-in `hidden`/`lg:hidden` siniflərini üstələyir: komponentin stili qatsızdır.
+    https://developer.mozilla.org/en-US/docs/Web/CSS/@supports
+  */
+  @supports not (grid-template-rows: subgrid) {
+    .anatomy {
+      display: none;
+    }
+
+    .check-list {
+      display: block;
+      max-width: 720px;
+    }
+  }
+
+  /*
+    ---------- Keçid müddətləri ----------
+    ✓ 0.32s, xətt 0.45s, nömrə 0.3s: hamısı skriptdəki CHECK_STEP_MS-dən (420ms) qısa və ya ona
+    yaxındır — növbəti yoxlama başlayanda əvvəlki demək olar bitmiş olur, hərəkətlər üst-üstə yığılmır.
+  */
+
+  /* ---------- Kartın sətri: gözləyəndə fırlanan ikon, təsdiqlənəndə mavi ✓ ---------- */
+  .tick {
+    transition:
+      opacity 0.2s,
+      transform 0.32s var(--af-ease);
+  }
+
+  .value {
+    transition: color 0.3s;
+  }
+
+  [data-checked='true'] .spinner {
+    display: none;
+  }
+
+  [data-checked='false'] .tick {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  [data-checked='false'] .value {
+    color: var(--color-ink2);
+  }
+
+  /* ---------- İzah: nömrə maviləşir, xətt izahdan karta doğru çəkilir ---------- */
+  /* Nömrənin gözləmə tonu HowItWorks-dakı addım çipinin tonudur. */
+  .num {
+    background: #eef2fb;
+    color: var(--color-brand);
+    transition:
+      background-color 0.3s,
+      color 0.3s;
+  }
+
+  [data-checked='true'] .num {
+    background: var(--color-brand);
+    color: #fff;
+  }
+
+  .leader {
+    transition: transform 0.45s var(--af-ease);
+  }
+
+  [data-checked='false'] .leader {
+    transform: scaleX(0);
+  }
+
+  /*
+    Ucdakı dairə xətt karta çatanda görünür. Xətt 0.45s çəkilir, amma əyri sonda yavaşlayır:
+    0.35s-də xəttin demək olar hamısı artıq çəkilib, dairə də elə o an yanır.
+  */
+  .leader-dot {
+    transition: opacity 0.2s 0.35s;
+  }
+
+  /* Keçid qaydası hədəf haldan götürülür: dairə gizlənəndə gecikmə olmasın, dərhal itsin. */
+  [data-checked='false'] .leader-dot {
+    opacity: 0;
+    transition-delay: 0s;
+  }
+
+  /* ---------- Status: «yoxlanılır» → «qeydə alındı» ---------- */
+  [data-done='true'] .status-pending,
+  [data-done='false'] .status-done {
+    display: none;
+  }
+</style>
+
+<script>
+  /*
+    Yoxlama ardıcıllığı — yalnız desktop anatomiyası (#afAnatomy).
+    HTML son halda gəlir: dörd ✓ və «qeydə alındı». Skript kartı əvvəlcə «yoxlanılır» halına qaytarır,
+    bölmə ekrana girəndə isə yoxlamaları bir-bir təsdiqləyir. Bir dəfə oynayır, təkrar yoxdur.
+    "Hərəkəti azalt" seçilibsə, skript heç nə etmir — kart son halda qalır.
+    Hərəkətin özü CSS-dədir (<style>); JS yalnız data-* atributlarını dəyişir və vaxtı sayır.
+
+    Layihədə Astro View Transitions (ClientRouter) işlənmir, ona görə skript səhifə başına bir dəfə
+    işləyir (HowItWorks.astro-dakı qeydə bax).
+  */
+
+  const CHECK_START_MS = 700 // bölmə görünəndən birinci ✓-yə qədər: oxucu kartı əvvəl «yoxlanılır» halında görsün
+  const CHECK_STEP_MS = 420 // iki ✓ arasındakı vaxt
+  // Ardıcıllıq kartın yuxarı kənarı ekranın yuxarı 65%-inə girəndə başlayır (aşağıdan 35% kəsilir).
+  // Ölçü ekrandan götürülür, kartın öz hündürlüyündən yox: ekran kartdan alçaq olsa da (aşağıda açıq
+  // DevTools, bölünmüş pəncərə) animasiya mütləq başlayır və kart «yoxlanılır» halında ilişib qalmır.
+  const START_ROOT_MARGIN = '0px 0px -35% 0px'
+
+  const anatomy = document.getElementById('afAnatomy')
+  // matchMedia CSS media sorğusunu JS-dən yoxlayır:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+  const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (anatomy && !prefersReducedMotion) {
+    // <HTMLElement> yalnız TypeScript üçündür: tapılanların HTML elementi olduğunu (dataset-i var) bildirir.
+    // https://www.typescriptlang.org/docs/handbook/2/generics.html
+    const rows = Array.from(anatomy.querySelectorAll<HTMLElement>('[data-check-row]'))
+    const callouts = Array.from(anatomy.querySelectorAll<HTMLElement>('[data-callout]'))
+    const status = anatomy.querySelector<HTMLElement>('[data-status]')
+
+    // index-ci yoxlamanı — kartın sətrini və onun izahını — verilən hala keçirir.
+    const setChecked = (index: number, isChecked: boolean) => {
+      rows[index].dataset.checked = String(isChecked)
+      callouts[index].dataset.checked = String(isChecked)
+    }
+
+    const setStatusDone = (isDone: boolean) => {
+      if (status) status.dataset.done = String(isDone)
+    }
+
+    // Hamısı «yoxlanılır» halına. Bölmə hələ ekranın xeyli aşağısındadır, dəyişiklik gözə görünmür.
+    const showPending = () => {
+      for (let index = 0; index < rows.length; index++) {
+        setChecked(index, false)
+      }
+      setStatusDone(false)
+    }
+
+    // CHECK_START_MS-də birinci ✓, sonra hər CHECK_STEP_MS-dən bir növbəti; sonuncudan da bir addım
+    // sonra status «qeydə alındı» olur.
+    const playChecks = () => {
+      for (let index = 0; index < rows.length; index++) {
+        setTimeout(() => setChecked(index, true), CHECK_START_MS + index * CHECK_STEP_MS)
+      }
+      setTimeout(() => setStatusDone(true), CHECK_START_MS + rows.length * CHECK_STEP_MS)
+    }
+
+    showPending()
+
+    // IntersectionObserver elementin ekrana girdiyini scroll hadisəsini dinləmədən xəbər verir:
+    // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Bir dəfəyə bir neçə qeyd gələ bilər (məs. səhifə yenilənib scroll bərpa olunanda) —
+        // hamısına baxırıq, təkcə birincisinə yox.
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            // Bir dəfə oynayır — bölməni daha izləməyə ehtiyac yoxdur.
+            observer.disconnect()
+            playChecks()
+            return
+          }
+        }
+      },
+      { rootMargin: START_ROOT_MARGIN }
+    )
+    observer.observe(anatomy)
+  }
+</script>

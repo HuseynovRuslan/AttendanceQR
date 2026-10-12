@@ -18,7 +18,7 @@ npm run preview  # build-i yoxla
 
 `npm run build` **`check`-i çağırmır** (`ops/build-landing.sh` da) — statik saytın deploy-ını tip
 xətasına bağlamaq istənilmədi. Ona görə dəyişiklikdən sonra `npm run check`-i özün işlət; hazırda
-46 faylda 0 xəta, 0 xəbərdarlıq, 0 hint verir.
+55 faylda 0 xəta, 0 xəbərdarlıq verir (3 hint — istifadə olunmayan import və s., köhnədir).
 
 **`package.json`-dakı `overrides` nədir?** `@astrojs/language-server` 2.15.4-ə bağlanıb. Yeni
 versiya (2.17) ESM-only `@astrojs/astro2tsx`-i `require()` edir, bu da Node **20.19+ / 22+** tələb
@@ -104,7 +104,7 @@ utility class-ları birbaşa yazmaq olar.
 - Saytın rəngləri CSS dəyişənləridir: `text-(--ink)`, `bg-(--paper)`, `border-(--line)`.
   `font-sans` / `font-mono` — IBM Plex.
 - `animate-spin`, `animate-ping`, `animate-pulse` işləyir, keyframe adları isə `tw-*`-dır:
-  `global.css`-də eyni adlı (`spin`, `ping`, `pulse`) animasiyalar var.
+  `global.css`-də eyni adlı (`ping`, `pulse`) animasiyalar var.
 - `global.css`-i `tailwind.css`-ə import etməyin — niyə ayrıca fayldan qoşulduğu
   `src/styles/global-layered.css`-də yazılıb.
 - **`tailwind.css`-i yerindən tərpətsən `source()`-u da düzəlt.**
@@ -143,7 +143,7 @@ istifadə statistikası, uydurma reytinq (JSON-LD-də `aggregateRating` yoxdur),
 loqoları və rəyləri, GDPR/“uçtan-uca şifrələmə” iddiaları, App Store vədi (iPhone-da məhsul
 PWA-dır; Android tətbiqi isə həqiqətən Google Play-dədir — `az.qrlog.app`) və “dinamik QR” (poster
 sabitdir — kod dəyişmir). Yoxlamalar dörddür — QR imzası, məkan (GPS), cihaz, üz — və sayı hər
-yerdə eyni olmalıdır (Hero, Stats, İş prinsipi, Haqqımızda, meta təsvir).
+yerdə eyni olmalıdır (Hero, Stats, İş prinsipi, Saxtaya qarşı qoruma, Haqqımızda, meta təsvir).
 
 ## Deploy
 
