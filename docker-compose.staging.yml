@@ -77,8 +77,16 @@ services:
       stg-db:
         condition: service_healthy
     networks:
-      - default
-      - edge
+      default:
+        # frontend/nginx.conf proxies /manifest.webmanifest to `backend:8080` and nginx resolves that name
+        # at START-UP. On production's network `backend` WAS production's backend — so until 2026-10-15 the
+        # staging frontend fetched its manifest from production. Off that network the name must exist here,
+        # or the frontend exits and restarts forever (stage A, 2026-10-15). The alias lives on THIS project's
+        # private network only and must NEVER be added under `edge`: Caddy sits on edge and reaches
+        # production's API as `backend:8080`, so a second `backend` there could route production traffic here.
+        aliases:
+          - backend
+      edge: {}
 
   stg-frontend:
     container_name: qrlog-stg-frontend
