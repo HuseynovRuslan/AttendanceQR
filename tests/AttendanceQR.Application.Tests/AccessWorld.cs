@@ -11,6 +11,8 @@ using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AttendanceQR.Application.Tests;
 
@@ -25,6 +27,8 @@ internal sealed class AccessWorld : IDisposable
     public static readonly Guid TenantB = Guid.Parse("00000000-0000-0000-0000-0000000ac0b2");
 
     private readonly string _db = $"access-{Guid.NewGuid()}";
+    // One root for every context of this world, so a context built with an interceptor sees the same store.
+    private readonly InMemoryDatabaseRoot _root = new();
     private readonly List<AppDbContext> _open = [];
 
     public Guid B1 { get; } = Guid.NewGuid();
@@ -117,11 +121,14 @@ internal sealed class AccessWorld : IDisposable
         : id == M1 || id == M2 || id == M3 || id == M4 || id == M5 ? EmployeeRole.Manager
         : EmployeeRole.Employee;
 
-    public AppDbContext Context(Guid tenantId, IAuthzObserver? observer = null)
+    public AppDbContext Context(Guid tenantId, IAuthzObserver? observer = null, IInterceptor? interceptor = null)
     {
         var tenant = new TenantContext();
         tenant.Resolve(tenantId);
-        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_db).Options, tenant, observer);
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_db, _root);
+        if (interceptor is not null)
+            options.AddInterceptors(interceptor);
+        var db = new AppDbContext(options.Options, tenant, observer);
         _open.Add(db);
         return db;
     }
