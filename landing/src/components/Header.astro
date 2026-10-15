@@ -313,8 +313,12 @@ const flagBox =
   const header = document.querySelector<HTMLElement>("[data-header]");
   const bar = header?.querySelector<HTMLElement>("[data-header-bar]");
 
+        <!-- data-lenis-prevent: bu siyahının öz scroll-u var. Atribut olmasa, hamar scroll (Lenis) təkəri
+             tutub səhifəni sürüşdürər, siyahı isə yerində qalar. Menyu açıq olanda Lenis onsuz da dayanır
+             (SmoothScroll.astro). -->
   if (header && bar) {
     const menuButton = bar.querySelector<HTMLButtonElement>("[data-menu-trigger]");
+          data-lenis-prevent
     const mobileMenu = bar.querySelector<HTMLElement>("[data-menu]");
     const langDropdown = bar.querySelector<HTMLElement>("[data-lang]");
     const langButton = langDropdown?.querySelector<HTMLButtonElement>("[data-lang-trigger]");

@@ -301,14 +301,22 @@ const t = useTranslations(lang)
     firstHeaderLink.focus({ preventScroll: true })
   }
 
+  // Hamar scroll (Lenis) işləyirsə, yuxarı qalxmanı da o aparır: brauzerin öz smooth sürüşməsi Lenis-in
+  // sürüşməsi ilə toqquşardı. window.qrlLenis-i SmoothScroll.astro yazır; telefonda və "hərəkəti azalt"
+  // halında Lenis yoxdur, orada aşağıdakı köhnə yol işləyir.
   function scrollToTop() {
-    // 'auto' yox, 'instant': global.css html-ə scroll-behavior: smooth verir, 'auto' isə ona tabe olub
-    // yenə hamar sürüşdürərdi. Hərəkəti azaltmaq istəyən adam üçün sürüşmə dərhal olmalıdır.
-    let behavior: ScrollBehavior = 'smooth'
-    if (reduceMotion.matches) {
-      behavior = 'instant'
+    if (window.qrlLenis) {
+      // Müddət və əyri menyu linkləri ilə eynidir (SmoothScroll.astro → ANCHOR_DURATION), ikisi eyni hissi versin.
+      window.qrlLenis.scrollTo(0, window.qrlAnchorScroll)
+    } else {
+      // 'auto' yox, 'instant': global.css html-ə scroll-behavior: smooth verir, 'auto' isə ona tabe olub
+      // yenə hamar sürüşdürərdi. Hərəkəti azaltmaq istəyən adam üçün sürüşmə dərhal olmalıdır.
+      let behavior: ScrollBehavior = 'smooth'
+      if (reduceMotion.matches) {
+        behavior = 'instant'
+      }
+      window.scrollTo({ top: 0, behavior: behavior })
     }
-    window.scrollTo({ top: 0, behavior: behavior })
     moveFocusToHeader()
   }
 

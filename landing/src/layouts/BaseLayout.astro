@@ -17,6 +17,7 @@ import Header from '../components/Header.astro'
 import Footer from '../components/Footer.astro'
 import WhatsAppButton from '../components/WhatsAppButton.astro'
 import BackToTop from '../components/BackToTop.astro'
+import SmoothScroll from '../components/SmoothScroll.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
 import { getImage } from 'astro:assets'
@@ -220,6 +221,8 @@ const websiteLd = {
     nəbz halqası "yuxarı" düyməsinin altından keçir, üstündən yox. -->
     <WhatsAppButton lang={lang} />
     <BackToTop lang={lang} />
+    <!-- Hamar scroll (Lenis): yalnız siçan/touchpad-də, bütün səhifələrdə; markup yoxdur, yalnız skript. -->
+    <SmoothScroll />
     <script>
       // Bu skript saytın hər səhifəsində işləyir, amma hər hissə öz elementini axtarır: element
       // səhifədə yoxdursa, həmin hissə heç nə etmir. Mobil menyu və dil seçimi Header.astro-dadır.

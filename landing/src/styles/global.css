@@ -45,6 +45,31 @@ html {
   scroll-behavior: smooth
 }
 
+/* ---------- Lenis (hamar scroll, components/SmoothScroll.astro) ----------
+ * Bu üç qayda lenis/dist/lenis.css-dən (1.3.26) köçürülüb, onun faylı qəsdən import olunmur: o, qatsızdır
+ * (unlayered) və `overflow: clip` ilə scrollbar-ı yığıb səhifəni ~15px sıçradır. Lenis versiyasını
+ * dəyişəndə həmin faylı bu üç qaydayla müqayisə et. `html.lenis` sinfini Lenis yaradılanda özü verir. */
+
+/* Brauzerin öz hamar sürüşməsi söndürülür: Lenis hər kadrda mövqeyi özü yazır, brauzer də onu yenidən
+ * hamarlasa, sürüşmə yırğalanar. Lenis işləməyən yerdə (telefon, "hərəkəti azalt") yuxarıdakı smooth qalır. */
+html.lenis {
+  scroll-behavior: auto
+}
+
+/* lenis.stop() (loader ekrandadır, mobil menyu açıqdır) <html>-ə lenis-stopped sinfi verir. Təkəri Lenis
+ * özü bağlayır, klaviatura scroll-unu (↓, Space, PageDown) isə yalnız overflow bağlaya bilər.
+ * scrollbar-gutter: scrollbar yoxa çıxanda səhifə eninin dəyişməməsi üçündür (loader-də də eynisi var). */
+html.lenis-stopped {
+  overflow: hidden;
+  scrollbar-gutter: stable
+}
+
+/* data-lenis-prevent olan elementin (mobil menyu siyahısı) scroll-u sona çatanda arxadakı səhifəyə
+ * keçmir. */
+[data-lenis-prevent] {
+  overscroll-behavior: contain
+}
+
 body {
   font-family: var(--font-sans);
   color: var(--ink);
