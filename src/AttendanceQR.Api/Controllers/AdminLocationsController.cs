@@ -347,7 +347,8 @@ public class AdminLocationsController : ControllerBase
         isActive = l.IsActive,
         workDaysMask = l.WorkDaysMask,
         qrlessCheckIn = l.QrlessCheckIn,
-        requireGeofence = l.RequireGeofence
+        requireGeofence = l.RequireGeofence,
+        structureId = l.StructureId
     };
 
     private static bool TryValidate(LocationRequest r, out TimeOnly start, out TimeOnly end, out string? error)

@@ -65,5 +65,14 @@ public enum AuditEventType
     // refused for a reason they can fix on the spot, or asking for a new phone. Written against the
     // employee, the reason «Kind|reached/recipients who». It is also what keeps the alert to once per
     // person, problem and day — see StaffAlertDispatcher.
-    StaffAlertSent = 19
+    StaffAlertSent = 19,
+
+    // A structure was created, renamed, archived or restored. Written against the employee who did it;
+    // the reason names the structure and what changed.
+    StructureChanged = 20,
+
+    // A branch was put into a structure, moved to another, or taken out of one. Written against the
+    // employee who did it, the reason «Branch: Old → New». Who sees a branch follows its structure once
+    // structure-wide access exists, so every move is on the record.
+    LocationStructureChanged = 21
 }

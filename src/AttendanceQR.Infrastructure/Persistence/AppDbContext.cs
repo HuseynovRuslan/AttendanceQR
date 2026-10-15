@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<Structure> Structures => Set<Structure>();
     public DbSet<DeviceBinding> DeviceBindings => Set<DeviceBinding>();
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
     public DbSet<PinResetRequest> PinResetRequests => Set<PinResetRequest>();
@@ -96,7 +97,7 @@ public class AppDbContext : DbContext
             typeof(PushSubscription), typeof(EmployeeNotification),
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
             typeof(FieldVisit), typeof(FieldVisitChecklistItem), typeof(PendingPhotoUpload),
-            typeof(EquipmentRecord),
+            typeof(EquipmentRecord), typeof(Structure),
         };
         foreach (var t in tenantScoped)
         {
@@ -112,6 +113,7 @@ public class AppDbContext : DbContext
         // entity (typed) so EF reliably treats CurrentTenantId as a runtime value, not a baked constant.
         modelBuilder.Entity<Employee>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Location>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Structure>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceBinding>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
