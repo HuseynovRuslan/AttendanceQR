@@ -576,3 +576,110 @@ təsdiqlə və pik saatlardan kənarda edilir.
   - Sonra backend restart.
 - **Kod:** əvvəlki staging commit-inə qayıtmaq olar. Yeni cədvəllər əlavədir, köhnə kod onları oxumur.
 - **Tam geri dönüş:** `qrlog_stg-2026-10-15-pre-access.dump`.
+
+## 16. Faza 3 — rol və təyinat (2026-10-15, branch `feat/permissions-phase3`)
+
+Sahib Faza 2-nin staging nəticələrini qəbul etdi və Faza 3-ə icazə verdi. Qərarlar və onların kodda necə
+ifadə olunduğu aşağıdadır. Hamısı yeni modeldədir, Faza 5-də qərar verməyə başlayır. İstisna yalnız davamiyyət
+düzəlişidir: o, bu gündən hər iki rejimdə işləyir.
+
+### 16.1 Sahibin qaydaları (2026-10-15)
+
+1. **Hesab yalnız yuxarıdan dəyişir.**
+   - Eyni strukturun iki operatoru bir-birinin PIN-ini, nömrəsini, profilini və rolunu dəyişə bilmir:
+     `AccessRules.Outranks` — biri o birini əhatə edir, amma o biri onu əhatə etmir.
+   - Bu qayda yalnız hədəf yeni modelin rolunu daşıyanda işə düşür.
+   - Bugünkü həmkar qaydası və adminlərin bir-birini idarə etməsi olduğu kimi qalır. Şirkət boyu hüquq
+     sahibi «şirkət hesabı»dır.
+2. **Davamiyyətə düzəliş.**
+   - Yalnız `attendance.correct` ilə olur.
+   - Öz gününə düzəliş **heç kimə**, admin daxil, olmur. Bu, `LocationScopeRules.CanCorrectAttendanceAsync`
+     və `ShadowRules.CorrectAttendance` ilə 9 yolda yoxlanılır: redaktə, əl ilə qeyd, açıq günləri bağlama,
+     çıxışı ləğv, silmə, «qayıb» qoyma və götürmə, unudulmuş çıxışı təsdiq və rədd.
+   - `void-fraud` və `unvoid` da öz gününə toxunmur.
+   - Toplu bağlamada adamın öz günü sadəcə ötürülür.
+   - 5 düzəliş yolunda səbəb **məcburidir** (3–500 hərf). Səbəb audit sətrinə «əvvəl → sonra» vaxtları ilə
+     yazılır.
+3. **Təyinat.**
+   - Operator yalnız öz sahəsində işləyən adama rol verir (`AssigneeOutOfScope`). Başqa sahənin adamına
+     vermək üçün ayrıca şirkət icazəsi var: `assignments.cross_area`.
+   - Yalnız özündən **aşağı** rol vermək olar (`NotBelowYou`). Müqayisədə «hüquqlar haqqında hüquqlar»
+     (`AccessPermissions.Meta`: təyinat, rol idarəsi) nəzərə alınmır. Səbəb: operator gündəlik hüquqlarını
+     verib yalnız təyinat hüququnu saxlasa, yenə də bərabərini təyin etmiş olur.
+   - Yalnız özündən aşağı adama rol vermək olar (`AssigneeNotBelowYou`).
+   - Şirkət sahəsində təyinat hüququ olan hesab bərabərini də təyin edə bilər.
+   - Geri alma (`CanRevoke`) eyni qaydalarla işləyir. Öz təyinatını geri almaq olmaz. Sistem sətrini əl ilə
+     geri almaq olmaz — o, işçi formasından gəlir.
+
+### 16.2 API — `/api/admin/access` (Faza 3-də yalnız Admin)
+
+| Endpoint | Nə edir |
+|---|---|
+| `GET catalogue` | 59 icazə, Azərbaycanca adları, yalnız-şirkət və meta bayraqları; 6 şablon |
+| `GET/POST roles`, `PUT roles/{id}`, `POST roles/{id}/archive · restore` | Şirkətin öz rolları. Kilidli rollar dəyişmir. İstifadədə olan rol arxivə getmir. Struktur və ya filial üzrə verilmiş rola şirkət hüququ əlavə olunmur. |
+| `GET assignments` | Kim, hansı rol, harada; hər sətir üçün «bu adam geri ala bilərmi» |
+| `GET people`, `GET people/{id}` | Təyinat üçün şəxs axtarışı; şəxsin rolları və nəticədə əldə etdiyi hüquqlar |
+| `GET assignable?employeeId=` | Bu adama hansı rolu harada vermək olar — dialoq yalnız bunları göstərir |
+| `POST assignments`, `POST assignments/{id}/revoke` | Rol vermək (filial üzrə bir neçə filiala birdən) və geri almaq |
+
+Bütün yazılar haqqında:
+- Hamısı audit-ə yazılır: 22 rol verildi, 23 geri alındı, 24 rol dəyişdi.
+- Dəstək sessiyasında (impersonation) rol verilmir.
+- Hüquqlar hər sorğuda bazadan oxunur, ona görə dəyişiklik növbəti sorğudan qüvvəyə minir. Logout və
+  `TokenVersion` artımı yoxdur.
+
+### 16.3 Ekran
+
+- **`/admin/access` — «Səlahiyyətlər».**
+  - **Təyinatlar:** axtarış; rol və mənbəyə görə filtr (əl ilə verilən / işçi formasından gələn); geri
+    alınanlar; «+ Rol ver».
+  - **Rollar:** kartlar, hüquqlar qruplarla; şablondan yeni rol; redaktə, arxiv, bərpa.
+  - **Strukturlar:** yaratmaq, adını dəyişmək, filialları seçmək, arxiv və bərpa. Faza 1 API-si üzərində
+    qurulub, çünki operatoru təyin etmək üçün əvvəlcə struktur olmalıdır.
+- **«Rol ver» paneli** üç addımdır: kim → hansı rol → harada. Yalnız icazə verilən seçimlər göstərilir.
+  Operator üçün susmaya görə sahə struktur, tabelçi üçün filiallardır.
+- **İşçi profilində «Hüquqlar» kartı:** rollar, sahələr, «nə edə bilər»; buradan rol vermək və geri almaq.
+- **Davamiyyət düzəlişi pəncərəsi:** 4 hazır səbəb və sərbəst mətn. Profildə, işçilər siyahısında və açıq
+  günlər səhifəsində `window.confirm`-in yerini tutur.
+
+### 16.4 Testlər
+
+| Dəst | Nəticə |
+|---|---|
+| Backend | 1284/1284. Faza 2-dən sonra 16 yeni test: 13 eskalasiya, 3 düzəliş |
+| Frontend | 414/414 |
+| Staging-ə birləşmiş kod | backend 1314/1314, frontend 422/422 |
+
+Eskalasiya testləri bunları yoxlayır:
+- operator ↛ operator; yalnız aşağıya;
+- bugünkü həmkar qaydası və adminlər toxunulmazdır;
+- heç kim öz gününə düzəliş etmir;
+- qayda 1, 2, 3 və geri alma;
+- API: iki filiallı tabelçi növbəti sorğudan qüvvədə, `TokenVersion` dəyişmir;
+- API-nin hər rədd yolu: köhnə rol, platforma operatoru, özü, dəstək sessiyası, başqa şirkət, sistem sətri;
+- rol redaktəsinin qaydaları;
+- dialoq yalnız icazə veriləni təklif edir.
+
+### 16.5 Staging yoxlaması (`test` şirkəti, real PostgreSQL)
+
+Deploy-dan əvvəl ehtiyat nüsxə götürüldü. `Şirkət administratoru` rolu yeni icazəni startup-da özü aldı:
+58-dən 59-a.
+
+Ekranda edilənlər:
+- «Aeroport (test)» strukturu yaradıldı, 4 filial ona salındı;
+- operator struktur üzrə təyin olundu, tabelçi iki filialda;
+- profildə «Hüquqlar» kartı yoxlandı;
+- tabelçinin bir filialı geri alındı;
+- açıq bir gün səbəblə bağlandı.
+
+Bazada hamısı düzgündür:
+- 3 əl ilə təyinat;
+- audit: 20, 21 ×4, 22 ×3, 23, 7 — sonuncu «əvvəl → sonra» vaxtları və səbəblə;
+- Shadow fərqi 0;
+- backend xətası 0.
+
+### 16.6 Açıq qalanlar
+
+- Telefonla staging-də real QR skanı — sahibdədir. Prod təsdiqindən əvvəl mütləq edilməlidir.
+- Faza 4: vahid panel. Təyinat hüququ olan operator öz ekranını orada alacaq.
+- Faza 5: qərar yeni modelə keçir; hesabat endpoint-ləri öz icazə yoxlamasını alır (§14.4).

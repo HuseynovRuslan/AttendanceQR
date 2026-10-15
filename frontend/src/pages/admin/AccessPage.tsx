@@ -10,7 +10,7 @@ import { AssignRoleDrawer } from '../../components/AssignRoleDrawer'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
 import { groupPermissions, TEMPLATE_HINT } from '../../lib/accessGroups'
-import { fmtDate } from '../../lib/format'
+import { fmtDateOfInstant } from '../../lib/format'
 
 type Tab = 'assignments' | 'roles' | 'structures'
 type Catalogue = { permissions: PermissionInfo[]; templates: RoleTemplateInfo[] }
@@ -153,8 +153,8 @@ function AssignmentsTab({ labels }: { labels: Record<string, string> }) {
                   <span className="acc-badge role">{a.roleName}</span>
                   <span className="acc-badge area">{a.area}</span>
                   {a.system && <span className="acc-badge sys" title="İşçi formasındakı vəzifə və filiallardan gəlir — orada dəyişin">işçi formasından</span>}
-                  {!a.system && a.createdByName && <span>verən: {a.createdByName} · {fmtDate(a.createdAtUtc)}</span>}
-                  {a.revokedAtUtc && <span>geri alan: {a.revokedByName ?? '—'} · {fmtDate(a.revokedAtUtc)}</span>}
+                  {!a.system && a.createdByName && <span>verən: {a.createdByName} · {fmtDateOfInstant(a.createdAtUtc)}</span>}
+                  {a.revokedAtUtc && <span>geri alan: {a.revokedByName ?? '—'} · {fmtDateOfInstant(a.revokedAtUtc)}</span>}
                 </div>
               </div>
               {a.canRevoke && (
