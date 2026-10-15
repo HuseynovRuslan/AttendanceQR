@@ -14,7 +14,7 @@ import {
   availableLangs,
   type Lang,
 } from "../i18n/ui";
-import { SITE } from "../data/site";
+import { SITE, PRICING } from "../data/site";
 import { getImage } from "astro:assets";
 import { LOGO_WORD } from "../data/brand";
 
@@ -53,23 +53,31 @@ const langMeta: Record<Lang, { name: string; flag: string }> = {
 };
 
 // Bölmə linkləri tam ünvandır (ana səhifə + #hash), ona görə eyni header /elaqe/ və /bloq/
-// səhifələrində də işləyir. `page` ayrıca səhifə olan linkləri işarələyir ki, hazırda açıq olan
-// səhifənin linki bunu göstərə bilsin (aria-current="page").
+// səhifələrində də işləyir: ana səhifədə klik həmin bölməyə hamar sürüşür, başqa səhifədən klik
+// ana səhifəni açıb bölməyə düşür. Ayrıca «Qiymət» səhifəsi yoxdur — «Qiymət» də eyni cür bölmə
+// linkidir (#pricing).
+// `isVisible: false` olan link menyuya düşmür (aşağıdakı filter). «Qiymət» bölməsi ana səhifədə
+// yalnız site.ts → PRICING.enabled olanda var, ona görə link də yalnız onda görünür. Footer-də
+// eyni qayda işləyir.
+// `page` — ayrıca səhifəyə aparan link üçündür (məs. "/haqqimizda/"): hazırda açıq olan səhifənin
+// linki bununla işarələnir (aria-current="page"). Hazırda heç bir link `page` almır; massivin tipi
+// onu ona görə elan edir ki, gələcəkdə əlavə olunan link bu sahəni yaza bilsin.
 // Burada "Əlaqə" linki yoxdur: aşağıdakı "Əlaqə saxlayın" düyməsi elə həmin səhifəyə aparır, eyni
 // yerə fərqli sözlərlə aparan iki element isə iki ayrı yer kimi oxunur. Footer-də bu link qalır.
+interface NavLink {
+  href: string;
+  label: string;
+  isVisible: boolean;
+  page?: string;
+}
 const home = localizedPath(lang, "/");
-const links = [
-  { href: `${home}#how`, label: t("nav.how") },
-  { href: `${home}#modules`, label: t("nav.modules") },
-  // Həmişə görünür: /qiymet/ səhifəsi tarif cədvəli olsa da, olmasa da var. Tariflər söndürüləndə o,
-  // qiymət sualına fərdi təkliflə cavab verir — insanlar elə bu səhifəni axtarır.
-  {
-    href: localizedPath(lang, "/qiymet/"),
-    label: t("nav.pricing"),
-    page: "/qiymet/",
-  },
-  { href: `${home}#faq`, label: t("nav.faq") },
+const allLinks: NavLink[] = [
+  { href: `${home}#how`, label: t("nav.how"), isVisible: true },
+  { href: `${home}#modules`, label: t("nav.modules"), isVisible: true },
+  { href: `${home}#pricing`, label: t("nav.pricing"), isVisible: PRICING.enabled },
+  { href: `${home}#faq`, label: t("nav.faq"), isVisible: true },
 ];
+const links = allLinks.filter((link) => link.isVisible);
 
 // İşçilərin daxil olduğu tətbiq — bütün şirkətlər üçün eyni ünvan.
 const appUrl = "https://app.qrlog.az";

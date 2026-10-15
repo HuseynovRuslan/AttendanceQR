@@ -512,10 +512,6 @@ export const ui = {
     'contact.whatsappCta': 'WhatsApp-da yazın',
     'contact.writeBtn': 'E-poçt göndər',
 
-    'pricing.metaTitle': 'Qiymət — QRLog',
-    'pricing.metaDesc':
-      'QRLog davamiyyət sisteminin planları. Təşkilatınızın ölçüsünə uyğun təklif üçün əlaqə saxlayın.',
-
     'blog.title': 'Bloq',
     'blog.sub': 'Davamiyyət və QR sistemləri haqqında məqalələr.',
     'blog.metaTitle': 'Bloq — QRLog',
@@ -920,10 +916,6 @@ export const ui = {
     'contact.whatsappCta': 'Написать в WhatsApp',
     'contact.writeBtn': 'Написать письмо',
 
-    'pricing.metaTitle': 'Цены — QRLog',
-    'pricing.metaDesc':
-      'Планы системы учёта посещаемости QRLog. Свяжитесь с нами для предложения под размер вашей организации.',
-
     'blog.title': 'Блог',
     'blog.sub': 'Статьи о посещаемости и QR-системах.',
     'blog.metaTitle': 'Блог — QRLog',
@@ -1317,10 +1309,6 @@ export const ui = {
       'Tell us the company name, how many sites you have and roughly how many employees, and we will send a matching quote in one reply.',
     'contact.whatsappCta': 'Message on WhatsApp',
     'contact.writeBtn': 'Send an email',
-
-    'pricing.metaTitle': 'Pricing — QRLog',
-    'pricing.metaDesc':
-      'QRLog attendance system plans. Contact us for a quote that matches the size of your organisation.',
 
     'blog.title': 'Blog',
     'blog.sub': 'Articles about attendance and QR systems.',
