@@ -619,4 +619,96 @@ public class OpenRecordsManagerScopeTests
         var bad = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal("ReasonRequired", bad.Value!.GetType().GetProperty("error")!.GetValue(bad.Value));
     }
+
+    // ── The other six ways a day changes (2026-10-15, the owner's second decision): Qayıb on and off, a
+    //    missed check-out approved or rejected, a voided day — each says why, and the why is kept.
+
+    private static T As<T>(T controller, Guid who, EmployeeRole role) where T : ControllerBase
+    {
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim("sub", who.ToString()), new Claim("role", role.ToString()),
+                }, "test")),
+            },
+        };
+        return controller;
+    }
+
+    private static string LastAudit(Fixture f) =>
+        f.Db.AuditLogs.AsEnumerable().Last(a => a.EventType == AuditEventType.RecordEditedByAdmin).Reason!;
+
+    [Fact]
+    public async Task A_Qayib_is_put_on_and_taken_off_only_with_a_reason_and_both_are_on_the_record()
+    {
+        using var f = new Fixture();
+        var marks = As(new AbsenceMarksController(f.Db, new StubSummary()), f.AdminId, EmployeeRole.Admin);
+        var day = Fixture.OpenDate.AddDays(-10);
+
+        AssertReasonRequired(await marks.Mark(new AbsenceMarkRequest(f.MyWorkerId, day, null)));
+        AssertReasonRequired(await marks.Mark(new AbsenceMarkRequest(f.MyWorkerId, day, "x")));
+        Assert.Empty(f.Db.AbsenceMarks);
+
+        Assert.IsType<OkObjectResult>(await marks.Mark(new AbsenceMarkRequest(f.MyWorkerId, day, "Xəbərsiz gəlmədi")));
+        Assert.Contains($"Qayıb qoyuldu {day:yyyy-MM-dd}. Səbəb: Xəbərsiz gəlmədi", LastAudit(f));
+
+        AssertReasonRequired(await marks.Unmark(f.MyWorkerId, day, null));
+        Assert.Single(f.Db.AbsenceMarks);
+        Assert.IsType<OkObjectResult>(await marks.Unmark(f.MyWorkerId, day, new AttendanceCorrectionRequest("Arayış gətirdi")));
+        Assert.Empty(f.Db.AbsenceMarks);
+        Assert.Contains("Qayıb götürüldü", LastAudit(f));
+        Assert.EndsWith("Səbəb: Arayış gətirdi", LastAudit(f));
+    }
+
+    [Fact]
+    public async Task A_missed_check_out_is_approved_or_rejected_only_with_a_reason()
+    {
+        using var f = new Fixture();
+        MissedCheckoutRequest Request() => new()
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = f.MyWorkerId, AttendanceRecordId = f.OpenMineId,
+            AttendanceDate = Fixture.OpenDate, RequestedCheckOutAtUtc = At(Fixture.OpenDate, 17), Reason = "Telefon sönmüşdü",
+            RequestedAtUtc = DateTime.UtcNow,
+        };
+        var approve = Request();
+        var reject = Request();
+        f.Db.MissedCheckoutRequests.AddRange(approve, reject);
+        f.Db.SaveChanges();
+        var desk = As(new AdminMissedCheckoutController(f.Db, new StubSummary()), f.AdminId, EmployeeRole.Admin);
+
+        AssertReasonRequired(await desk.Approve(approve.Id, null));
+        AssertReasonRequired(await desk.Reject(reject.Id, new AttendanceCorrectionRequest("  ")));
+        Assert.All(f.Db.MissedCheckoutRequests, r => Assert.Equal(MissedCheckoutStatus.Pending, r.Status));
+
+        Assert.IsType<OkObjectResult>(await desk.Approve(approve.Id, new AttendanceCorrectionRequest("Rəhbəri təsdiqlədi")));
+        Assert.Contains("işçinin səbəbi: Telefon sönmüşdü", LastAudit(f));
+        Assert.EndsWith("Səbəb: Rəhbəri təsdiqlədi", LastAudit(f));
+        Assert.IsType<OkObjectResult>(await desk.Reject(reject.Id, new AttendanceCorrectionRequest("Artıq bağlanıb")));
+        Assert.EndsWith("Səbəb: Artıq bağlanıb", LastAudit(f));
+    }
+
+    [Fact]
+    public async Task A_day_is_voided_or_restored_only_with_a_reason()
+    {
+        using var f = new Fixture();
+        var admin = f.AsAdmin();
+
+        // Refused before anything else is read — the notifier is never reached.
+        AssertReasonRequired(await admin.VoidFraud(f.ClosedMineId, new VoidFraudRequest(Reason: null), pushNotifier: null!));
+        Assert.Null(f.Row(f.ClosedMineId).VoidedAtUtc);
+
+        var row = f.Db.AttendanceRecords.Single(r => r.Id == f.ClosedMineId); // tracked — Row() reads without tracking
+        row.VoidedAtUtc = DateTime.UtcNow;
+        row.VoidReason = "Giriş şəkli saxtadır";
+        f.Db.SaveChanges();
+        AssertReasonRequired(await admin.Unvoid(f.ClosedMineId, null));
+        Assert.NotNull(f.Row(f.ClosedMineId).VoidedAtUtc);
+        Assert.IsType<OkObjectResult>(await admin.Unvoid(f.ClosedMineId, new AttendanceCorrectionRequest("Şəkil yenidən yoxlandı — özüdür")));
+        Assert.Null(f.Row(f.ClosedMineId).VoidedAtUtc);
+        Assert.Contains("ləğvin səbəbi: Giriş şəkli saxtadır", LastAudit(f));
+        Assert.EndsWith("Səbəb: Şəkil yenidən yoxlandı — özüdür", LastAudit(f));
+    }
 }
