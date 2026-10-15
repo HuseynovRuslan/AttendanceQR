@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -29,12 +30,15 @@ public class AdminPinResetController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILoginLockoutStore _lockout;
+    private readonly Guid[] _operatorIds;
 
-    public AdminPinResetController(AppDbContext db, IPasswordHasher passwordHasher, ILoginLockoutStore lockout)
+    public AdminPinResetController(
+        AppDbContext db, IPasswordHasher passwordHasher, ILoginLockoutStore lockout, AppOptions appOptions)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _lockout = lockout;
+        _operatorIds = appOptions.SuperAdminIdList();
     }
 
     // GET /api/admin/pin-resets — the pending queue, oldest first, with enough to identify the person.
@@ -51,6 +55,9 @@ public class AdminPinResetController : ControllerBase
             var managed = await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), ct);
             people = people.Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee);
         }
+
+        // A platform operator's request is nobody's here to answer (see Resolve), so it is not offered.
+        people = people.Where(e => !_operatorIds.Contains(e.Id));
 
         var rows = await _db.PinResetRequests
             .Where(r => r.Status == PinResetStatus.Pending)
@@ -82,6 +89,14 @@ public class AdminPinResetController : ControllerBase
             .FirstOrDefaultAsync(ct);
         if (employeeId is null)
             return NotFound(new { error = "RequestNotFound" });
+
+        // Never an operator. Their employee rows sit inside a company (today: bax) like anybody's, and anyone
+        // may file «PIN-i unutdum» for their number — so resolving it would hand that company's admin, or a
+        // manager whose branch holds the row, the operator's temporary PIN and with it the console over every
+        // company (SEC-02, 2026-10-02 audit). Every other way of minting a PIN already refused an operator;
+        // this one did not. Before the claim below, so the refusal does not consume the request.
+        if (_operatorIds.Contains(employeeId.Value))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
 
         // The same boundary the list applies, re-checked on the action — a request id guessed or held
         // from before a branch reassignment must not resolve into a PIN. Checked before the atomic
