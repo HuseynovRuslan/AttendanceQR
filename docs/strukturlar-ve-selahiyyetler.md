@@ -767,15 +767,15 @@ ilə «… Səbəb: …» formasında. Ekranlarda bir dialoq var, hər yolun öz
 - **Yeniləmə hesabı girişsiz qoya bilirdi.** İndi telefon və ya email tələb olunur (`NeedEmailOrPhone`),
   dəvətdə olduğu kimi.
 - **403 ≠ boş.** Yeddi səhifədə gəlməyən siyahı «Qeyd yoxdur» kimi çəkilirdi: Məzuniyyət, Doğum günləri,
-  Tapşırıqlar, Növbələr, Filiallar, İşçilər, Elanlar. İndi boş sətir «icazəniz yoxdur» və ya «yüklənmədi»
-  deyir.
+  Tapşırıqlar, Növbələr, Filiallar, İşçilər, Elanlar, həmçinin profilin alt siyahıları. İndi boş sətir
+  «icazəniz yoxdur» və ya «yüklənmədi» deyir.
   - Menecerin aça bildiyi heç bir əsas siyahı yalnız admin üçün olan endpoint-dən gəlmir (yoxlandı).
   - Normal istifadədə 403 yalnız funksiyası söndürülmüş «Elanlar»da yaranırdı.
 
 ### 17.7 Testlər və ölçülər
 
 - Backend 1323 test. Frontend 440 test, build yaşıl.
-- İşçi tətbiqinin ilkin yükləməsi: 129,5 → 130,8 KB gzip (+1,2 KB). Bütün JS: +0,7 KB, çünki köhnə menecer
+- İşçi tətbiqinin ilkin yükləməsi: 129,5 → 130,8 KB gzip (+1,3 KB, +1%). Bütün JS: +1,6 KB, çünki köhnə menecer
   səhifəsi silindi.
 - Sorğu sayı:
   - menecerin siyahısı açılanda 5 sorğu, əvvəl də 5 idi; vəzifələr artıq yalnız forma açılanda oxunur;
@@ -784,7 +784,5 @@ ilə «… Səbəb: …» formasında. Ekranlarda bir dialoq var, hər yolun öz
 
 ### 17.8 Açıq qalanlar
 
-- Profil səhifəsinin alt siyahıları (son davamiyyət, cihazlar, bu ay) xətanı hələ boş kimi göstərir. Menecer
-  üçün orada 403 gözlənilmir, amma eyni düzəliş lazımdır.
 - Sayğac və zəng hələ yalnız admindədir.
 - Faza 5: qərar yeni modelə keçir, vahid `/api/employees`, əkiz endpoint-lər ləqəbə çevrilir.
