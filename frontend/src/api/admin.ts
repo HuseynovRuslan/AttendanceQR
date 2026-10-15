@@ -659,11 +659,18 @@ export interface InvitePayload {
   paperSite?: string | null
 }
 
-export interface AdminEmployee {
+/**
+ * ONE ROW of the roster list — what `/api/admin/employees` returns per person.
+ *
+ * Deliberately a different type from AdminEmployee: the list no longer carries the fields only the
+ * edit form reads (email, the name parts, salary, the per-person overrides). That is not an oversight
+ * to be patched by widening this type — `EmployeeUpdateRequest` null-defaults every field it is not
+ * handed, so a form fed from a list row would BLANK whatever the list leaves out. The form reads
+ * getEmployee(id).
+ */
+export interface AdminEmployeeRow {
   id: string
   fullName: string
-  firstName: string | null
-  lastName: string | null
   fatherName: string | null
   position: string | null
   /** «Sənəd üzrə» — the employer and site the paperwork names, when it differs from where they work. */
@@ -674,26 +681,16 @@ export interface AdminEmployee {
   birthDate?: string | null
   workStart?: string | null
   workEnd?: string | null
-  monthlySalary?: number | null
-  /** True when an admin has waived the check-in selfie for this employee. */
-  photoExempt?: boolean
   /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). */
   canFieldCheckIn?: boolean
   /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
   canShareDevice?: boolean
-  /** Per-person check-in mode. null = follow the branch; true/false = a pinned exception. */
-  qrlessCheckInOverride?: boolean | null
-  requireGeofenceOverride?: boolean | null
   /** The named shift they are on, if any, plus its name for display. */
   scheduleId?: string | null
   scheduleName?: string | null
   /** Rotation, used only when scheduleId is null. */
   workCycleDays?: number | null
   workCycleOnDays?: number | null
-  workCycleAnchor?: string | null
-  /** When the employee accepted the data-processing notice; null = not yet. */
-  consentAcceptedAtUtc?: string | null
-  email: string | null
   phoneNumber: string | null
   role: Role
   locationId: string
@@ -712,6 +709,30 @@ export interface AdminEmployee {
   hasDevice: boolean
   deviceLabel: string | null
   boundAtUtc: string | null
+  /** How many devices are bound, not just whether any is. */
+  deviceCount?: number
+}
+
+/**
+ * ONE employee, in full — what `/api/admin/employees/{id}` returns.
+ *
+ * The edit form and the profile screen read this and nothing else. Every field below is one the form
+ * round-trips, so a screen that updates an employee must be fed from here.
+ */
+export interface AdminEmployee extends AdminEmployeeRow {
+  firstName: string | null
+  lastName: string | null
+  email: string | null
+  monthlySalary?: number | null
+  /** True when an admin has waived the check-in selfie for this employee. */
+  photoExempt?: boolean
+  /** Per-person check-in mode. null = follow the branch; true/false = a pinned exception. */
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
+  /** Rotation anchor date "yyyy-MM-dd"; only meaningful with workCycleDays. */
+  workCycleAnchor?: string | null
+  /** When the employee accepted the data-processing notice; null = not yet. */
+  consentAcceptedAtUtc?: string | null
   createdAtUtc: string
 }
 
@@ -721,8 +742,114 @@ export type EmployeeUpdatePayload = Omit<InvitePayload, never> & {
   managedLocationIds?: string[]
 }
 
-export function getEmployees() {
-  return apiRequest<AdminEmployee[]>('/api/admin/employees')
+/** What the list screen narrows by. Every one of these is applied in SQL, not in the browser. */
+export interface EmployeeQuery {
+  page?: number
+  pageSize?: number
+  search?: string
+  /** '' | 'activated' | 'pending' | 'notstarted' | 'nopush' | 'nodevice' — see StatusSel. */
+  status?: string
+  locationId?: string | null
+  role?: string
+  /** «İşdən çıxanlar» — the deactivated list, which is its own page rather than a filter. */
+  showLeft?: boolean
+}
+
+export interface EmployeePage {
+  items: AdminEmployeeRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+function employeeQs(q: EmployeeQuery): string {
+  const p = new URLSearchParams()
+  if (q.page) p.set('page', String(q.page))
+  if (q.pageSize) p.set('pageSize', String(q.pageSize))
+  if (q.search?.trim()) p.set('search', q.search.trim())
+  if (q.status) p.set('status', q.status)
+  if (q.locationId) p.set('locationId', q.locationId)
+  if (q.role) p.set('role', q.role)
+  if (q.showLeft) p.set('showLeft', 'true')
+  return p.toString()
+}
+
+/**
+ * One page of the roster.
+ *
+ * It used to be the whole company — every employee with every device binding they had ever had —
+ * and the browser did the searching, filtering and paging afterwards. At 914 people that was 227
+ * million rows read from a 1,081-row table on production. The rows this returns are LIST rows: the
+ * edit form must not be fed from them (see getEmployee).
+ */
+export function getEmployees(query: EmployeeQuery = {}) {
+  const qs = employeeQs({ page: 1, pageSize: 25, ...query })
+  return apiRequest<EmployeePage>(`/api/admin/employees${qs ? `?${qs}` : ''}`)
+}
+
+/**
+ * The WHOLE roster as list rows, for the few screens that genuinely need every name at once: the
+ * leave picker, the equipment picker and the «kim hansı növbədə» counts. They are pickers, not lists —
+ * paging a dropdown helps nobody — but they get the same cheap projection the list page does, instead
+ * of the old per-employee device bindings.
+ */
+export async function getAllEmployees() {
+  const r = await getEmployees({ page: 1, pageSize: 2000 })
+  const items = r.data && 'items' in r.data ? r.data.items : null
+  return { status: r.status, data: items }
+}
+
+/** ONE employee, in full — what the edit form and the profile screen read. */
+export function getEmployee(id: string) {
+  return apiRequest<AdminEmployee | { error: string }>(`/api/admin/employees/${id}`)
+}
+
+/** The numbers above the list, counted server-side over the whole filtered set. */
+export interface EmployeeStats {
+  total: number
+  activated: number
+  notStarted: number
+  noPush: number
+  noDevice: number
+  leftCount: number
+}
+
+/**
+ * Counts for the metric cards and the «Diqqət tələb edir» tiles.
+ *
+ * Only the branch is sent, because only the branch ever narrowed these numbers: the cards have always
+ * counted ACTIVE staff at the branch on screen, and the search box, the role picker and «İşdən
+ * çıxanlar» have always left them alone. The status tiles ARE the status filter, so sending `status`
+ * would make every tile read its own number back.
+ */
+export function getEmployeeStats(locationId?: string | null) {
+  const qs = locationId ? `?locationId=${encodeURIComponent(locationId)}` : ''
+  return apiRequest<EmployeeStats>(`/api/admin/employees/stats${qs}`)
+}
+
+/** The flags a bulk action decides from, for one employee. */
+export interface EmployeeSelectionRow {
+  id: string
+  fullName: string
+  /** The branch, so a picker can tell two people of the same name apart. */
+  locationName: string | null
+  isActive: boolean
+  activated: boolean
+  mustChangePin: boolean
+  canShareDevice: boolean
+  canFieldCheckIn: boolean
+}
+
+/**
+ * EVERY employee the current filters match — ids and bulk flags only.
+ *
+ * This is what keeps «Hamısını seç» meaning «everyone this filter matches» now that the list is
+ * paged. Without it the phrase would quietly shrink to «these twenty-five», and a permission granted
+ * to a branch of forty would reach the first page of it.
+ */
+export function getEmployeeSelection(query: EmployeeQuery = {}) {
+  const qs = employeeQs({ ...query, page: undefined, pageSize: undefined })
+  return apiRequest<EmployeeSelectionRow[]>(`/api/admin/employees/selection${qs ? `?${qs}` : ''}`)
 }
 
 export function invite(payload: InvitePayload) {
