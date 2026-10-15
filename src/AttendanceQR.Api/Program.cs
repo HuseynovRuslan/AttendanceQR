@@ -604,7 +604,7 @@ using (var scope = app.Services.CreateScope())
     // start so drift heals itself (AccessSeeder). Non-fatal: authorization still runs on today's roles.
     try
     {
-        var changed = await AccessSeeder.ReconcileAllAsync(db);
+        var changed = await AccessSeeder.ReconcileAllAsync(db, startupLogger);
         if (changed > 0)
             startupLogger.LogInformation("Access reconcile: {Changed} role/assignment row(s) brought in line.", changed);
     }
