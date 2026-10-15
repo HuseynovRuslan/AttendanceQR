@@ -638,6 +638,12 @@ public class OpenRecordsManagerScopeTests
         return controller;
     }
 
+    private sealed class NoPush : IPushNotifier
+    {
+        public Task<int> NotifyEmployeesAsync(IReadOnlyCollection<Guid> employeeIds, string title, string body, string? url,
+            CancellationToken ct = default) => Task.FromResult(0);
+    }
+
     private static string LastAudit(Fixture f) =>
         f.Db.AuditLogs.AsEnumerable().Last(a => a.EventType == AuditEventType.RecordEditedByAdmin).Reason!;
 
@@ -700,10 +706,11 @@ public class OpenRecordsManagerScopeTests
         AssertReasonRequired(await admin.VoidFraud(f.ClosedMineId, new VoidFraudRequest(Reason: null), pushNotifier: null!));
         Assert.Null(f.Row(f.ClosedMineId).VoidedAtUtc);
 
-        var row = f.Db.AttendanceRecords.Single(r => r.Id == f.ClosedMineId); // tracked — Row() reads without tracking
-        row.VoidedAtUtc = DateTime.UtcNow;
-        row.VoidReason = "Giriş şəkli saxtadır";
-        f.Db.SaveChanges();
+        // With a reason it goes through, and its own line says why the way every correction does.
+        Assert.IsType<OkObjectResult>(await admin.VoidFraud(f.ClosedMineId,
+            new VoidFraudRequest("Giriş şəkli saxtadır", RevokeDevice: false, NotifyEmployee: false), new NoPush()));
+        Assert.NotNull(f.Row(f.ClosedMineId).VoidedAtUtc);
+        Assert.EndsWith("Səbəb: Giriş şəkli saxtadır", LastAudit(f));
         AssertReasonRequired(await admin.Unvoid(f.ClosedMineId, null));
         Assert.NotNull(f.Row(f.ClosedMineId).VoidedAtUtc);
         Assert.IsType<OkObjectResult>(await admin.Unvoid(f.ClosedMineId, new AttendanceCorrectionRequest("Şəkil yenidən yoxlandı — özüdür")));
