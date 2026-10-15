@@ -48,7 +48,7 @@ export interface ManagerEmployee {
   photoExempt: boolean
   canFieldCheckIn: boolean
   /** Per-person check-in mode (null = follow the branch). Read back so the edit form can send them
-   *  unchanged — see managerFormFrom. */
+   *  unchanged — the shared staff page reads them from the person's own card. */
   qrlessCheckInOverride?: boolean | null
   requireGeofenceOverride?: boolean | null
   /** Read-only for a manager. Whether an account may ride on somebody else's phone is granted here in
