@@ -187,6 +187,13 @@ describe('a branch manager on the same screen', () => {
       fireEvent.click(within(own).getByText('Redaktə'))
     })
     const save = await screen.findByRole('button', { name: /Yadda saxla/ })
+    // The form says what is stored: QR-less on, and the GPS wall NOT required (false) — «yalnız ölç».
+    const shown = [...document.querySelectorAll('form select')].map((el) => {
+      const sel = el as HTMLSelectElement
+      return sel.options[sel.selectedIndex]?.textContent ?? ''
+    })
+    expect(shown).toContain('QR-suz — üz və GPS ilə giriş etsin')
+    expect(shown.some((t) => t.startsWith('Rədd etmə — yalnız ölç'))).toBe(true)
     await act(async () => {
       fireEvent.click(save)
     })
