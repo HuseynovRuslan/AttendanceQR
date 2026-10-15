@@ -759,8 +759,20 @@ ilə «… Səbəb: …» formasında. Ekranlarda bir dialoq var, hər yolun öz
 - **Menecer siyahısı fərdi QR-siz və GPS ayarlarını silirdi.**
   - Siyahı sorğusu bu iki sahəni oxuyurdu, amma cavabda atırdı.
   - Redaktə forması sətri geri göndərdiyi üçün hər saxlama onları sıfırlayırdı.
-  - Düzəliş həm bu branch-dədir, həm də main-dən ayrıca hotfix branch-indədir:
-    `fix/manager-roster-overrides`. Merge və deploy edilməyib.
+  - Əvvəlki düzəliş (439243a) yalnız formanı düzəltmişdi. Forma sahəni siyahı sətrindən oxuyur, sətirdə isə
+    sahə yox idi. Ona görə xəta production-da qalır.
+  - Düzəliş main-dən `fix/manager-roster-overrides` branch-indədir (draft PR #23). Faza 4-ə əcdad kimi merge
+    olunub, yəni bir düzəlişdir, iki deyil. Main + hotfix + Faza 4 sınaqda konfliktsiz birləşir.
+  - Faza 4-də köhnə menecer səhifəsi silindiyi üçün 439243a-nın forma köməkçisi istifadəsiz qalmışdı, silindi.
+    Vahid səhifə redaktəni şəxsin öz kartından oxuyur.
+- **Fərdi GPS divarı seçimi tərsinə yazılırdı** (production-da da var).
+  - «Radiusdan kənarda girişi rədd et» seçmək `false` yazırdı, yəni divarı söndürürdü.
+  - Saxlanmış `true` «yalnız ölç» kimi göstərilirdi.
+  - Dəyər gediş-qayıdışda dəyişmədiyi üçün görünmürdü, amma hər seçim əksini edirdi.
+  - Düzəliş main-dən `fix/geofence-override-direction` branch-indədir (2e1da54), Faza 4-ə merge olunub.
+    Çevirmə `lib/fenceOverride`-dadır və testlə bağlanıb. Data dəyişdirilmir.
+- **«Girişi ləğv et» audit sətri** səbəbi « — …» ilə yazırdı, digər on yol isə «Səbəb: …» ilə. Bunu
+  staging-də real PostgreSQL probe-u tapdı. İndi format eynidir.
 - **Toplu «Növbəni ləğv et» köhnə vəziyyəti oxuyurdu.** Ya heç nə etmirdi, ya da seçilmiş növbəni təyin
   edirdi.
 - **Profildə menecerin «Redaktə et»i işləmirdi.**
@@ -774,7 +786,26 @@ ilə «… Səbəb: …» formasında. Ekranlarda bir dialoq var, hər yolun öz
 
 ### 17.7 Testlər və ölçülər
 
-- Backend 1323 test. Frontend 440 test, build yaşıl.
+- Backend 1323 test. Frontend 457 test (51 fayl), build yaşıl.
+- Komponent testləri jsdom ilə, yalnız `@vitest-environment jsdom` yazan fayllarda işləyir. Qalan testlər node-da
+  qalır. Real komponentlər render olunur, yalnız şəbəkə saxtadır. Əhatə olunanlar:
+  - operator, tabelçi və müşahidəçi üçün menyu;
+  - icazəsiz düymələrin gizlədilməsi;
+  - müşahidəçinin redaktə edə bilməməsi;
+  - köhnə admin və menecer ekranları;
+  - 403 ilə boş siyahının fərqi;
+  - rol və filial dəyişəndə tab-a qayıdışda yenilənmə;
+  - menecerin saxlamasının fərdi ayarları kartdan göndərməsi.
+- Brauzer testi lokal aparıldı: Chrome, Vite, hər rol üçün saxta API. Lokal Docker olmadığı üçün backend lokal
+  qalxmadı. Backend məntiqi staging-də real PostgreSQL ilə yoxlanıldı:
+  - Faza 4 build-i konteynerin içində probe ilə işlədildi;
+  - yazılar geri qaytarıldı, baza izi əvvəl və sonra eyni qaldı.
+- Probe nəticələri:
+  - 186 qərarda köhnə admin və menecer heç bir səhifəni itirmir;
+  - operatorun təyin etdiyi tabelçi növbəti sorğuda tək, düzgün filialı görür, `TokenVersion` dəyişmir;
+  - altı yeni yolun hər biri səbəbsiz rədd olunur, səbəblə qəbul olunur və audit-ə yazılır;
+  - menecer siyahısı formanın göndərdiyi hər sahəni daşıyır;
+  - `/api/me/access` median 3–5 ms çəkir.
 - İşçi tətbiqinin ilkin yükləməsi: 129,5 → 130,8 KB gzip (+1,3 KB, +1%). Bütün JS: +1,6 KB, çünki köhnə menecer
   səhifəsi silindi.
 - Sorğu sayı:
