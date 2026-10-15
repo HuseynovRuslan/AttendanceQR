@@ -420,4 +420,30 @@ public class ManagerAccountScopeTests
                 Assert.Equal(false, Field(r, "manageable"));
         }
     }
+
+    [Fact]
+    public async Task The_roster_row_carries_every_field_the_edit_form_sends_back()
+    {
+        // The manager's edit form is filled from this row and sends back what it was given; a field the
+        // row leaves out comes back as null and the save writes it. That is how the QR-less and GPS
+        // overrides were wiped on every roster save until 2026-10-15 (canShareDevice before them).
+        using var h = new Harness();
+        var e = h.Db.Employees.Single(x => x.Id == h.SameBranchEmployeeId);
+        e.QrlessCheckInOverride = true;
+        e.RequireGeofenceOverride = false;
+        h.Db.SaveChanges();
+
+        var rows = ((System.Collections.IEnumerable)Assert.IsType<OkObjectResult>(await h.Controller.Employees()).Value!)
+            .Cast<object>().ToList();
+        var row = rows.Single(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)! == h.SameBranchEmployeeId);
+        object? Field(string n) => row.GetType().GetProperty(n)?.GetValue(row);
+
+        Assert.Equal(true, Field("qrlessCheckInOverride"));
+        Assert.Equal(false, Field("requireGeofenceOverride"));
+
+        var sent = typeof(ManagerEmployeeRequest).GetConstructors().Single().GetParameters()
+            .Select(p => char.ToLowerInvariant(p.Name![0]) + p.Name[1..]);
+        var missing = sent.Where(n => row.GetType().GetProperty(n) is null).ToList();
+        Assert.True(missing.Count == 0, "The roster row lacks: " + string.Join(", ", missing));
+    }
 }

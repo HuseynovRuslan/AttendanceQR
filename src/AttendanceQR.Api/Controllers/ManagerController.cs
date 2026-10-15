@@ -518,6 +518,10 @@ public class ManagerController : ControllerBase
             // Was projected above and then dropped here, so the manager's screen counted zero however
             // many people had it and the "take it back" button computed an empty set and did nothing.
             r.canShareDevice,
+            // Dropped here the same way until 2026-10-15 — and these two the edit form sends back as it
+            // got them, so every save from the roster sent null and quietly put the person back on
+            // their branch's QR-less and GPS rules. A test now holds every field the form round-trips.
+            r.qrlessCheckInOverride, r.requireGeofenceOverride,
             r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
