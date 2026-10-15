@@ -99,11 +99,13 @@ services:
 
 networks:
   default:
-  # Production's own network, joined rather than recreated: Caddy already sits on it, so it can reach
-  # these containers by name without production's compose file being touched at all.
+  # Staging's own edge, shared ONLY with Caddy — stage A of the network separation (2026-10-15). Staging used
+  # to join production's network, which left production's database one password away from every staging
+  # container. Caddy is attached here by /etc/cron.d/qrlog-staging-edge, re-attached every two minutes so a
+  # recreated Caddy finds it again — the pattern hr.test already uses for qrlog_hr_edge.
   edge:
     external: true
-    name: attendanceqr_default
+    name: qrlog-staging_edge
 
 volumes:
   stgdata:
