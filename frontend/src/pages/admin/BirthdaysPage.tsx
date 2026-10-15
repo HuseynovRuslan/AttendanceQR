@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { getBirthdays, type BirthdayRow } from '../../api/admin'
+import { listFailureText } from '../../lib/listFailure'
 
 const MONTHS = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun',
@@ -10,12 +11,14 @@ const MONTHS = [
 export function BirthdaysPage() {
   const [rows, setRows] = useState<BirthdayRow[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState<number | null>(null)
   const monthName = MONTHS[new Date().getMonth()]
   const todayDay = new Date().getDate()
 
   useEffect(() => {
     void getBirthdays().then(({ status, data }) => {
       if (status === 200 && Array.isArray(data)) setRows(data)
+      else setFailed(status)
       setLoaded(true)
     })
   }, [])
@@ -25,7 +28,11 @@ export function BirthdaysPage() {
       <div className="card card-pad">
         <div className="card-title">🎂 {monthName} ayında doğum günü olanlar</div>
 
-        {loaded && rows.length === 0 && (
+        {loaded && failed != null && (
+          <div className="muted" style={{ padding: '16px 0' }}>{listFailureText(failed)}</div>
+        )}
+
+        {loaded && failed == null && rows.length === 0 && (
           <div className="muted" style={{ padding: '16px 0' }}>
             Bu ay doğum günü olan yoxdur. (Yalnız tam doğum tarixi olan işçilər görünür — İşçilər
             səhifəsindən doğum tarixini əlavə edin.)

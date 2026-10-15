@@ -9,6 +9,7 @@ import {
 } from '../../api/manager'
 import { IconTrash, IconX } from '../../components/icons'
 import { fmtDate } from '../../lib/format'
+import { listFailureText } from '../../lib/listFailure'
 
 const TYPE_LABELS: Record<LeaveType, string> = {
   Vacation: 'Məzuniyyət',
@@ -28,6 +29,9 @@ export function LeavesPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  /** The register's own request failed: its empty row must not read «Qeyd yoxdur» — this register
+   *  decides whether a day counts as unexcused absence. */
+  const [listFailed, setListFailed] = useState<number | null>(null)
 
   async function refresh() {
     // A manager reads the same register through their own endpoints, which return only their
@@ -45,6 +49,7 @@ export function LeavesPage() {
     // than pretending the two types overlap. Every field this screen reads is on both.
     if (leavesRes.status === 200 && Array.isArray(leavesRes.data))
       setRows(leavesRes.data as unknown as LeaveRecord[])
+    setListFailed(leavesRes.status === 200 ? null : leavesRes.status)
     if (empsRes.status === 200 && Array.isArray(empsRes.data))
       setEmployees(empsRes.data as unknown as EmployeeSelectionRow[])
   }
@@ -156,7 +161,7 @@ export function LeavesPage() {
             {visible.length === 0 && (
               <tr>
                 <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Qeyd yoxdur
+                  {listFailed != null ? listFailureText(listFailed) : 'Qeyd yoxdur'}
                 </td>
               </tr>
             )}

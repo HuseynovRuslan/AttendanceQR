@@ -59,6 +59,7 @@ import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { StatusBadge } from '../../components/StatusBadge'
+import { listFailureText } from '../../lib/listFailure'
 import {
   IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
   IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
@@ -294,6 +295,10 @@ export function EmployeesPage() {
   /** The headline counts, which a page of twenty-five cannot compute. See getEmployeeStats. */
   const [stats, setStats] = useState<EmployeeStats>(ZERO_STATS)
   const [listing, setListing] = useState(true)
+  /** The list's own request failed (its status). The empty row says so instead of «Hələ işçi yoxdur». */
+  const [listFailed, setListFailed] = useState<number | null>(null)
+  /** Whether the branch list came — so «no branch assigned yet» is said only when it is true. */
+  const [locsLoaded, setLocsLoaded] = useState(false)
   const [locations, setLocations] = useState<BranchOption[]>([])
   const [schedules, setSchedules] = useState<ShiftOption[]>([])
   /** The other companies in this owner's group — the «Sənəd üzrə şirkət» picker. Empty for a tenant
@@ -395,7 +400,7 @@ export function EmployeesPage() {
       if (seq !== reqSeq.current) return
       setListing(false)
       if (status === 200 && Array.isArray(data)) setMgrAll(data)
-      else setError('İşçi siyahısı gəlmədi')
+      setListFailed(status === 200 ? null : status)
       return
     }
     const [emp, st] = await Promise.all([getEmployees(query), getEmployeeStats(filterLoc)])
@@ -405,6 +410,7 @@ export function EmployeesPage() {
       setRows(emp.data.items)
       setTotal(emp.data.total)
     }
+    setListFailed(emp.status === 200 ? null : emp.status)
     if (st.status === 200 && st.data) setStats(st.data)
   }
 
@@ -415,7 +421,10 @@ export function EmployeesPage() {
         const [locs, scheds, group] = await Promise.all([
           getManagerLocations(), getManagerSchedules(), getGroupCompanies(),
         ])
-        if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
+        if (locs.status === 200 && Array.isArray(locs.data)) {
+          setLocations(locs.data)
+          setLocsLoaded(true)
+        }
         if (scheds.status === 200 && Array.isArray(scheds.data)) {
           setSchedules(scheds.data.map((sc) => ({ ...sc, locationId: null })))
         }
@@ -1254,7 +1263,7 @@ ${back}`,
         </div>
       </div>
 
-      {isManager && !listing && locations.length === 0 && (
+      {isManager && locsLoaded && locations.length === 0 && (
         <div className="fb fb-err" style={{ marginBottom: 14 }}>
           <IconAlert />
           <span>Sizə hələ filial təyin edilməyib — admin ilə əlaqə saxlayın.</span>
@@ -2548,7 +2557,9 @@ ${back}`,
                 <td colSpan={empColCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
                   {listing
                     ? 'Yüklənir…'
-                    : activeFilterCount > 0 || showLeft
+                    : listFailed != null
+                      ? listFailureText(listFailed)
+                      : activeFilterCount > 0 || showLeft
                       ? 'Bu axtarış/filial üzrə işçi yoxdur'
                       : 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın'}
                 </td>
