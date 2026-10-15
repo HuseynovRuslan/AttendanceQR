@@ -6,6 +6,8 @@ import {
   type AccessRoleRow, type AssignmentRow, type PermissionInfo, type RoleTemplateInfo, type StructureBranch,
   type StructureRow,
 } from '../../api/access'
+import { useAuth } from '../../auth/AuthContext'
+import { useAccess } from '../../auth/AccessContext'
 import { AssignRoleDrawer } from '../../components/AssignRoleDrawer'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
@@ -30,6 +32,17 @@ type Feedback = { ok: boolean; text: string } | null
 export function AccessPage() {
   const [tab, setTab] = useState<Tab>('assignments')
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null)
+  // Since Phase 4 an operator below company level uses this page too (the access API admits whoever holds
+  // the right). They see what their rights reach: the assignments in their area, giving a role if they
+  // may assign, the roles read-only. The structures screen stays the admin's — its API is. The server
+  // decides every one of these on its own; this only spares the buttons that would be refused.
+  const { role } = useAuth()
+  const { access } = useAccess()
+  const holds = (key: string, company = false) =>
+    access?.permissions.some((p) => p.key === key && (!company || p.company)) === true
+  const isAdmin = role === 'Admin'
+  const canAssign = isAdmin || holds('assignments.manage')
+  const canEditRoles = isAdmin || holds('roles.manage', true)
 
   useEffect(() => {
     void getAccessCatalogue().then(({ status, data }) => {
@@ -48,23 +61,23 @@ export function AccessPage() {
         {([
           ['assignments', 'Təyinatlar'],
           ['roles', 'Rollar'],
-          ['structures', 'Strukturlar'],
+          ...(isAdmin ? [['structures', 'Strukturlar']] : []),
         ] as [Tab, string][]).map(([key, label]) => (
           <button key={key} type="button" role="tab" aria-selected={tab === key} className={`acc-tab${tab === key ? ' on' : ''}`} onClick={() => setTab(key)}>
             {label}
           </button>
         ))}
       </div>
-      {tab === 'assignments' && <AssignmentsTab labels={labels} />}
-      {tab === 'roles' && <RolesTab catalogue={catalogue} labels={labels} />}
-      {tab === 'structures' && <StructuresTab />}
+      {tab === 'assignments' && <AssignmentsTab labels={labels} canAssign={canAssign} />}
+      {tab === 'roles' && <RolesTab catalogue={catalogue} labels={labels} canEdit={canEditRoles} />}
+      {tab === 'structures' && isAdmin && <StructuresTab />}
     </div>
   )
 }
 
 // ───────────────────────────── Təyinatlar ─────────────────────────────
 
-function AssignmentsTab({ labels }: { labels: Record<string, string> }) {
+function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>; canAssign: boolean }) {
   const [rows, setRows] = useState<AssignmentRow[] | null>(null)
   const [roles, setRoles] = useState<AccessRoleRow[]>([])
   const [query, setQuery] = useState('')
@@ -125,9 +138,11 @@ function AssignmentsTab({ labels }: { labels: Record<string, string> }) {
           Geri alınanlar da
         </label>
         <span style={{ flex: 1 }} />
-        <button type="button" className="btn btn-sm btn-primary" onClick={() => { setFeedback(null); setAssigning(true) }}>
-          + Rol ver
-        </button>
+        {canAssign && (
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => { setFeedback(null); setAssigning(true) }}>
+            + Rol ver
+          </button>
+        )}
       </div>
 
       {feedback && <div className={`fb ${feedback.ok ? 'fb-ok' : 'fb-err'}`} style={{ marginBottom: 10 }}>{feedback.text}</div>}
@@ -184,7 +199,7 @@ function AssignmentsTab({ labels }: { labels: Record<string, string> }) {
 
 // ───────────────────────────── Rollar ─────────────────────────────
 
-function RolesTab({ catalogue, labels }: { catalogue: Catalogue | null; labels: Record<string, string> }) {
+function RolesTab({ catalogue, labels, canEdit }: { catalogue: Catalogue | null; labels: Record<string, string>; canEdit: boolean }) {
   const [rows, setRows] = useState<AccessRoleRow[] | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -221,9 +236,11 @@ function RolesTab({ catalogue, labels }: { catalogue: Catalogue | null; labels: 
           Arxivdəkilər də
         </label>
         <span style={{ flex: 1 }} />
-        <button type="button" className="btn btn-sm btn-primary" disabled={!catalogue} onClick={() => { setFeedback(null); setEditor({ role: null }) }}>
-          + Yeni rol
-        </button>
+        {canEdit && (
+          <button type="button" className="btn btn-sm btn-primary" disabled={!catalogue} onClick={() => { setFeedback(null); setEditor({ role: null }) }}>
+            + Yeni rol
+          </button>
+        )}
       </div>
       {feedback && <div className={`fb ${feedback.ok ? 'fb-ok' : 'fb-err'}`}>{feedback.text}</div>}
 
@@ -256,13 +273,13 @@ function RolesTab({ catalogue, labels }: { catalogue: Catalogue | null; labels: 
                   }}>
                     {expanded ? 'Gizlət' : 'Hüquqlar'}
                   </button>
-                  {!r.isLocked && !r.archived && (
+                  {canEdit && !r.isLocked && !r.archived && (
                     <>
                       <button type="button" className="btn btn-sm" onClick={() => { setFeedback(null); setEditor({ role: r }) }}>Redaktə</button>
                       <button type="button" className="btn btn-sm btn-ghost" onClick={() => void archive(r)}>Arxivlə</button>
                     </>
                   )}
-                  {r.archived && <button type="button" className="btn btn-sm" onClick={() => void restore(r)}>Bərpa et</button>}
+                  {canEdit && r.archived && <button type="button" className="btn btn-sm" onClick={() => void restore(r)}>Bərpa et</button>}
                 </div>
                 {expanded && (
                   <div>

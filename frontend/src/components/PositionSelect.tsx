@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPosition, getPositions } from '../api/positions'
+import { getManagerPositions } from '../api/manager'
 
 /**
  * Picks a job title from the company's catalogue instead of typing one.
@@ -8,13 +9,19 @@ import { createPosition, getPositions } from '../api/positions'
  * everything that groups by position then treated them as three roles. A new title can still be added
  * here — refusing that would just push people back to a free-text workaround — but it goes into the
  * catalogue, so the next person picks it rather than retyping it slightly differently.
+ *
+ * A branch manager reads the same catalogue through their own endpoint and picks from it; adding a title
+ * is the admin's (it renames nothing, but it is the company's list). Their old form was a free-text box
+ * with suggestions — the very thing this component exists to end.
  */
 export function PositionSelect({
   value,
   onChange,
+  manager = false,
 }: {
   value: string
   onChange: (value: string) => void
+  manager?: boolean
 }) {
   const [names, setNames] = useState<string[]>([])
   const [adding, setAdding] = useState(false)
@@ -23,10 +30,10 @@ export function PositionSelect({
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    void getPositions().then(({ status, data }) => {
+    void (manager ? getManagerPositions() : getPositions()).then(({ status, data }) => {
       if (status === 200 && Array.isArray(data)) setNames(data.map((p) => p.name))
     })
-  }, [])
+  }, [manager])
 
   async function add() {
     const name = draft.trim()
@@ -80,9 +87,11 @@ export function PositionSelect({
         {value && !names.includes(value) && <option value={value}>{value}</option>}
         {names.map((n) => <option key={n} value={n}>{n}</option>)}
       </select>
-      <button className="btn btn-sm" type="button" onClick={() => { setAdding(true); setDraft('') }}>
-        + Yeni
-      </button>
+      {!manager && (
+        <button className="btn btn-sm" type="button" onClick={() => { setAdding(true); setDraft('') }}>
+          + Yeni
+        </button>
+      )}
     </div>
   )
 }
