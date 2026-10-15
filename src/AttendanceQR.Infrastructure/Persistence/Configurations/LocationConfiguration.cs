@@ -27,5 +27,15 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
         // 126 = every day except Sunday — backfills existing rows to the same assumption the app
         // already made everywhere else, rather than defaulting to 0 (no working days at all).
         builder.Property(l => l.WorkDaysMask).HasDefaultValue(126);
+
+        // Optional, and composite on purpose: a branch can only sit in a structure of its OWN company. A
+        // null StructureId leaves the key unchecked (MATCH SIMPLE), which is "no structure". Restrict, never
+        // cascade or set-null: a structure with branches is not archived, let alone deleted.
+        builder.HasOne<Structure>()
+            .WithMany()
+            .HasForeignKey(l => new { l.TenantId, l.StructureId })
+            .HasPrincipalKey(s => new { s.TenantId, s.Id })
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

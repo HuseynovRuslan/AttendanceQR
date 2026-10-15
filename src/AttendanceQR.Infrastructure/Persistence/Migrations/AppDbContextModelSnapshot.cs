@@ -942,6 +942,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<TimeOnly>("ShiftStart")
                         .HasColumnType("time without time zone");
 
+                    b.Property<Guid?>("StructureId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -953,6 +956,8 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "StructureId");
 
                     b.ToTable("Locations", (string)null);
                 });
@@ -1420,6 +1425,37 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("ShiftOverrides");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.Structure", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArchivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique()
+                        .HasFilter("\"ArchivedAtUtc\" IS NULL");
+
+                    b.ToTable("Structures", (string)null);
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.SuperAdminAuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1871,6 +1907,12 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Structure", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "StructureId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.ManagedLocation", b =>
@@ -2015,6 +2057,15 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasForeignKey("LocationId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.Structure", b =>
+                {
                     b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
