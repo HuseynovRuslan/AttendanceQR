@@ -1197,6 +1197,11 @@ public class AdminController : ControllerBase
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         // Keep the current email if none supplied, so a phone-only edit doesn't wipe it.
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
+        // Neither a number nor an e-mail leaves nothing to sign in with — the rule the invite already holds
+        // (NeedEmailOrPhone), held on the edit too: blanking the only number of a phone-only employee left
+        // an account nobody could reach, with nothing on screen to say why. None exists today (2026-10-15).
+        if (phone is null && string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { error = "NeedEmailOrPhone" });
 
         // Only probe uniqueness for a real email — a null one (phone-only employee) makes
         // `e.Email == email` become `Email IS NULL`, which matches every other phone-only account and
