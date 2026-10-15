@@ -10,11 +10,18 @@ public class AppDbContext : DbContext
 
     // ITenantContext is optional so the design-time factory (migrations) can build the model without
     // the DI container. At runtime it's always injected.
-    public AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null)
+    public AppDbContext(
+        DbContextOptions<AppDbContext> options, ITenantContext? tenant = null,
+        Services.Access.IAuthzObserver? authzObserver = null)
         : base(options)
     {
         _tenant = tenant;
+        AuthzObserver = authzObserver;
     }
+
+    /// <summary>Hears today's scope decisions for the permission model's shadow comparison (Services.Access).
+    /// Null outside a request — start-up jobs, design time, most tests.</summary>
+    public Services.Access.IAuthzObserver? AuthzObserver { get; }
 
     /// <summary>The tenant every query is filtered to and every insert is stamped with. Referenced by
     /// the query filters below — EF re-reads it per query, so it tracks the current request's tenant.
@@ -32,6 +39,9 @@ public class AppDbContext : DbContext
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<Structure> Structures => Set<Structure>();
+    public DbSet<AccessRole> AccessRoles => Set<AccessRole>();
+    public DbSet<RoleAssignment> RoleAssignments => Set<RoleAssignment>();
+    public DbSet<AuthzShadowEvent> AuthzShadowEvents => Set<AuthzShadowEvent>();
     public DbSet<DeviceBinding> DeviceBindings => Set<DeviceBinding>();
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
     public DbSet<PinResetRequest> PinResetRequests => Set<PinResetRequest>();
@@ -97,7 +107,8 @@ public class AppDbContext : DbContext
             typeof(PushSubscription), typeof(EmployeeNotification),
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
             typeof(FieldVisit), typeof(FieldVisitChecklistItem), typeof(PendingPhotoUpload),
-            typeof(EquipmentRecord), typeof(Structure),
+            typeof(EquipmentRecord), typeof(Structure), typeof(AccessRole), typeof(RoleAssignment),
+            typeof(AuthzShadowEvent),
         };
         foreach (var t in tenantScoped)
         {
@@ -114,6 +125,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Employee>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Location>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Structure>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AccessRole>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<RoleAssignment>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AuthzShadowEvent>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceBinding>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

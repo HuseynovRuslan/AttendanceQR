@@ -36,11 +36,32 @@ public static class TenantPurge
         .GetMethod(nameof(CountTypeAsync), BindingFlags.NonPublic | BindingFlags.Static)!;
 
     /// <summary>Every entity type that belongs to a company, straight from the model.</summary>
-    public static IReadOnlyList<IEntityType> ScopedTypes(IModel model) =>
-        model.GetEntityTypes()
+    public static IReadOnlyList<IEntityType> ScopedTypes(IModel model)
+    {
+        var remaining = model.GetEntityTypes()
             .Where(t => !t.IsOwned() && t.FindProperty("TenantId") is not null)
             .OrderBy(t => t.ClrType.Name)
             .ToList();
+
+        // Rows that point at others go first. Loading a row whose parent is already marked deleted severs a
+        // required relationship and EF refuses — alphabetical order had only ever been lucky, and role
+        // assignments (which point at roles, people, branches and structures) were the first to lose. Ties
+        // keep the alphabetical order; a cycle, should one ever appear, keeps the rest as it was.
+        var ordered = new List<IEntityType>();
+        while (remaining.Count > 0)
+        {
+            var leaf = remaining.FirstOrDefault(t => !remaining.Any(other =>
+                other != t && other.GetForeignKeys().Any(fk => fk.PrincipalEntityType == t)));
+            if (leaf is null)
+            {
+                ordered.AddRange(remaining);
+                break;
+            }
+            ordered.Add(leaf);
+            remaining.Remove(leaf);
+        }
+        return ordered;
+    }
 
     /// <summary>
     /// How many rows this company owns, per table. Shown to the operator before they confirm, because

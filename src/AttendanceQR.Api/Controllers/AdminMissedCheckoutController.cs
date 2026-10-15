@@ -1,4 +1,5 @@
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -28,6 +29,7 @@ public class AdminMissedCheckoutController : ControllerBase
         _dailySummaryService = dailySummaryService;
     }
 
+    [Permission(AccessPermissions.AttendanceView)]
     [HttpGet("pending")]
     public async Task<IActionResult> Pending()
     {
@@ -89,6 +91,7 @@ public class AdminMissedCheckoutController : ControllerBase
         return Ok(result);
     }
 
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id)
     {
@@ -126,6 +129,7 @@ public class AdminMissedCheckoutController : ControllerBase
         return Ok(new { status = "Approved" });
     }
 
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id)
     {

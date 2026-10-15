@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,6 +11,7 @@ namespace AttendanceQR.Api.Controllers;
 /// that can only be inferred from missing photos is a queue nobody notices until payroll asks).
 /// Numbers only, no tenant data; Admin because it is a diagnostics surface, not a public health check.
 /// </summary>
+[Permission(AccessPermissions.DiagView)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/diag")]

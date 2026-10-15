@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -32,6 +33,7 @@ public class AdminDeviceChangeController : ControllerBase
         _db = db;
     }
 
+    [Permission(AccessPermissions.DevicesView)]
     [HttpGet("pending")]
     public async Task<IActionResult> Pending()
     {
@@ -65,6 +67,7 @@ public class AdminDeviceChangeController : ControllerBase
             : StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
     }
 
+    [Permission(AccessPermissions.DevicesApprove)]
     [HttpPost("{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id)
     {
@@ -84,6 +87,7 @@ public class AdminDeviceChangeController : ControllerBase
         };
     }
 
+    [Permission(AccessPermissions.DevicesApprove)]
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id)
     {

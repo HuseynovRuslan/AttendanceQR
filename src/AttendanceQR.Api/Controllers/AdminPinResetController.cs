@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -22,6 +23,7 @@ namespace AttendanceQR.Api.Controllers;
 /// Role==Employee inside their ManagedLocations: the branch-only reach that let a manager reset a
 /// same-branch ADMIN's PIN was the P0 of 2026-08-08 and does not come back here.
 /// </summary>
+[Permission(AccessPermissions.EmployeesResetPin)]
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/pin-resets")]

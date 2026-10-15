@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -13,6 +14,7 @@ namespace AttendanceQR.Api.Controllers;
 /// Creating and running the "Ayın işçisi" ballot. A month only has a vote because someone made one —
 /// there is no automatic window, so a company that skips a month simply doesn't create a campaign.
 /// </summary>
+[Permission(AccessPermissions.VotesManage)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/vote-campaigns")]

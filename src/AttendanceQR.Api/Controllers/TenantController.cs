@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
@@ -58,6 +59,7 @@ public class TenantController : ControllerBase
     // Deliberately NOT part of /branding, which is anonymous: branding is what a login page may show
     // a stranger, and which companies belong to one owner is not. Authorised staff only, and only
     // their own tenant's list.
+    [Permission(AccessPermissions.EmployeesUpdate)]
     [HttpGet("group-companies")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> GroupCompanies()

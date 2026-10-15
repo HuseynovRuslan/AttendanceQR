@@ -6,6 +6,7 @@ using AttendanceQR.Application.Common;
 using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Services.Access;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
@@ -306,6 +307,8 @@ public partial class SuperAdminController : ControllerBase
 
         await AuditAsync("TenantCreated", tenant.Id, slug,
             $"'{displayName}' — admin {phone ?? "(təyin edilməyib)"}", HttpContext.RequestAborted);
+        // The new company starts with its template roles, and its first admin holds Company administrator.
+        await AccessSeeder.ReconcileAfterWriteAsync(_db, tenant.Id, _logger, HttpContext.RequestAborted);
 
         return Ok(new
         {

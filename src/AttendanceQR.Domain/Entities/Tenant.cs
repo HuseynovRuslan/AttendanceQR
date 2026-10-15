@@ -77,4 +77,8 @@ public class Tenant
     // may not read another's rows; a list rather than free text because a single company spelled
     // three ways would make the group's mismatch report unreadable.
     public string? GroupCompanies { get; set; }
+
+    /// <summary>Which authorization decides for this company while the permission model is introduced —
+    /// Legacy until the owner moves it on. See <see cref="Enums.AuthzMode"/>.</summary>
+    public Enums.AuthzMode AuthzMode { get; set; } = Enums.AuthzMode.Legacy;
 }
