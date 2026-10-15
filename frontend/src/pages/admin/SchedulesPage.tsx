@@ -21,6 +21,7 @@ import {
 import { useAuth } from '../../auth/AuthContext'
 import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
+import { listFailureText } from '../../lib/listFailure'
 
 /**
  * Named shifts ("Növbələr") — hours, working days and an optional rotation, defined once and assigned
@@ -116,10 +117,13 @@ export function SchedulesPage() {
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
+  // The shift list's own request failed — «Növbə yoxdur» over it would invite making shifts that exist.
+  const [listFailed, setListFailed] = useState<number | null>(null)
   async function refresh() {
     setLoading(true)
     const [s, e] = await Promise.all([api.list(), api.staff()])
     if (s.status === 200 && Array.isArray(s.data)) setRows(s.data as Schedule[])
+    setListFailed(s.status === 200 ? null : s.status)
     if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data as AdminEmployeeRow[])
     setLoading(false)
   }
@@ -456,7 +460,10 @@ export function SchedulesPage() {
       )}
 
       {loading && <div className="card card-pad muted">Yüklənir…</div>}
-      {!loading && rows.length === 0 && (
+      {!loading && listFailed != null && (
+        <div className="card card-pad muted" style={{ textAlign: 'center' }}>{listFailureText(listFailed)}</div>
+      )}
+      {!loading && listFailed == null && rows.length === 0 && (
         <div className="card card-pad muted" style={{ textAlign: 'center' }}>
           Növbə yoxdur. «Yeni növbə» ilə başlayın.
         </div>

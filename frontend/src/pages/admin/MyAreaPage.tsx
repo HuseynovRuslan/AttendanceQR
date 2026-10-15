@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { FEATURE, useFeatureEnabled } from '../../branding/BrandingContext'
 import { useAccess } from '../../auth/AccessContext'
 import { groupPermissions, SCOPE_LABEL, TEMPLATE_HINT } from '../../lib/accessGroups'
 import { PANEL_PAGES, pagesAfterSwitch, pagesFor } from '../../lib/panelAccess'
@@ -21,6 +22,11 @@ const MODE_NOTE: Record<string, string> = {
 export function MyAreaPage() {
   const { role } = useAuth()
   const { access, loading } = useAccess()
+  // The menu hides a page the company has switched off; this card follows it, or it would link to one.
+  const switchedOff: Record<string, boolean> = {
+    payroll: !useFeatureEnabled(FEATURE.Payroll),
+    announcements: !useFeatureEnabled(FEATURE.Announcements),
+  }
 
   if (loading && !access) return <div className="muted">Yüklənir…</div>
   if (!access) {
@@ -52,7 +58,7 @@ export function MyAreaPage() {
   const groups = groupPermissions(access.permissions.map((p) => p.key))
   const openNow = pagesFor(role, access)
   const later = pagesAfterSwitch(role, access)
-  const menuPages = PANEL_PAGES.filter((p) => p.menu !== false && p.path !== 'my-area')
+  const menuPages = PANEL_PAGES.filter((p) => p.menu !== false && p.path !== 'my-area' && !switchedOff[p.path])
 
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 880 }}>

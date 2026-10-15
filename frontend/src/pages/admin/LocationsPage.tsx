@@ -17,6 +17,7 @@ import {
 } from '../../api/admin'
 import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../components/icons'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
+import { listFailureText } from '../../lib/listFailure'
 
 type FormState = {
   name: string
@@ -106,10 +107,13 @@ export function LocationsPage() {
     end: '06:00',
   })
 
+  // The refusal used to go to `error`, which only the closed add/edit form shows — so it was never seen,
+  // and the list read «Hələ filial yoxdur». It is the list's own row now.
+  const [listFailed, setListFailed] = useState<number | null>(null)
   async function refresh() {
     const { status, data } = await getAdminLocations()
     if (status === 200 && Array.isArray(data)) setRows(data)
-    else if (status === 403) setError('İcazəniz yoxdur')
+    setListFailed(status === 200 ? null : status)
   }
 
   async function loadSchedules() {
@@ -690,7 +694,7 @@ export function LocationsPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Hələ filial yoxdur — «Filial əlavə et» ilə başlayın
+                  {listFailed != null ? listFailureText(listFailed) : 'Hələ filial yoxdur — «Filial əlavə et» ilə başlayın'}
                 </td>
               </tr>
             )}
