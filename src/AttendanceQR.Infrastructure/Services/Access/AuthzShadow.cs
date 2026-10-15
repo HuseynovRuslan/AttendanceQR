@@ -46,14 +46,18 @@ public static class ShadowRules
     public const string CredentialTarget = "CredentialTarget";
     public const string ManageableEmployee = "ManageableEmployee";
     public const string LeaveSubject = "LeaveSubject";
+    public const string CorrectAttendance = "CorrectAttendance";
     public const string ManagedSet = "ManagedSet";
 
     /// <summary>
     /// The permission model's answer to the question each of today's rules asks. One table, so the shadow,
     /// the equivalence tests and — at Phase 5 — the enforcing code all mean the same thing by each rule.
+    /// <paramref name="actorHome"/> is the caller's own branch: the strict account rule needs it to read
+    /// today's colleague rule in the reverse direction.
     /// </summary>
     public static bool Decide(
-        string rule, EffectiveAccess actor, Guid targetId, Guid targetHome, EffectiveAccess target, bool targetIsOperator) =>
+        string rule, EffectiveAccess actor, Guid targetId, Guid targetHome, EffectiveAccess target, bool targetIsOperator,
+        Guid? actorHome = null) =>
         rule switch
         {
             // See a person's records.
@@ -61,16 +65,19 @@ public static class ShadowRules
             // Roster a person (shift overrides) — today a manager may roster themselves even off their branches.
             CanSchedule => actor.Has(AccessPermissions.SchedulesAssign)
                            && (targetId == actor.EmployeeId || actor.Covers(AccessPermissions.SchedulesAssign, targetHome)),
-            // Act on a person's records (attendance, devices, requests). Operators are not refused here — today's
-            // rule does not refuse them either; the credential paths below do.
+            // Act on a person's records (devices, requests). Operators are not refused here — today's rule does not
+            // refuse them either; the credential paths below do. Records, not accounts: not strict.
             CanManage => AccessRules.CanActOn(actor, AccessPermissions.AttendanceCorrect, targetId, targetHome, target,
                 targetIsOperator, refuseOperators: false, refuseSelf: false),
-            // Hand a person a new PIN or login number.
+            // Correct a person's attendance — never one's own (the owner, 2026-10-15), whoever one is.
+            CorrectAttendance => AccessRules.CanActOn(actor, AccessPermissions.AttendanceCorrect, targetId, targetHome, target,
+                targetIsOperator, refuseOperators: false, refuseSelf: true),
+            // Hand a person a new PIN or login number — an account action: only from above.
             CredentialTarget => AccessRules.CanActOn(actor, AccessPermissions.EmployeesResetPin, targetId, targetHome, target,
-                targetIsOperator, refuseOperators: true, refuseSelf: true),
-            // Edit a person's profile from the manager desk.
+                targetIsOperator, refuseOperators: true, refuseSelf: true, strict: true, actorHome: actorHome),
+            // Edit a person's profile from the manager desk — an account action: only from above.
             ManageableEmployee => AccessRules.CanActOn(actor, AccessPermissions.EmployeesUpdate, targetId, targetHome, target,
-                targetIsOperator, refuseOperators: true, refuseSelf: true),
+                targetIsOperator, refuseOperators: true, refuseSelf: true, strict: true, actorHome: actorHome),
             // File leave for a person — today admins at the branch included, operators never.
             LeaveSubject => !targetIsOperator && AccessRules.CanSee(actor, AccessPermissions.LeavesManage, targetId, targetHome),
             _ => throw new ArgumentOutOfRangeException(nameof(rule), rule, null),
@@ -117,15 +124,13 @@ public sealed class AuthzObserver : IAuthzObserver
             if (await ModeAsync(db, _cache, ct) != AuthzMode.Shadow)
                 return;
             var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
-            if (!_homes.TryGetValue(targetId, out var home))
-            {
-                var row = await db.Employees.AsNoTracking().Where(e => e.Id == targetId).Select(e => (Guid?)e.LocationId).FirstOrDefaultAsync(ct);
-                _homes[targetId] = home = (row ?? Guid.Empty, row is not null);
-            }
+            var home = await HomeOfAsync(db, targetId, ct);
             if (!home.Found)
                 return; // today's rule answered for a person who is not there; nothing to compare
+            var callerHome = await HomeOfAsync(db, callerId, ct);
 
-            var decided = ShadowRules.Decide(rule, graph.For(callerId), targetId, home.Home, graph.For(targetId), _operatorIds.Contains(targetId));
+            var decided = ShadowRules.Decide(rule, graph.For(callerId), targetId, home.Home, graph.For(targetId),
+                _operatorIds.Contains(targetId), callerHome.Found ? callerHome.Home : null);
             if (decided != legacy)
                 await _sink.RecordAsync(db, new ShadowRecord(db.CurrentTenantId, rule, $"{rule} as {callerRole}", callerId, targetId.ToString(), legacy, decided), ct);
         }
@@ -133,6 +138,15 @@ public sealed class AuthzObserver : IAuthzObserver
         {
             _logger.LogWarning(ex, "Authz shadow: {Rule} could not be compared", rule);
         }
+    }
+
+    /// <summary>A person's home branch, asked once per request per person.</summary>
+    private async Task<(Guid Home, bool Found)> HomeOfAsync(AppDbContext db, Guid employeeId, CancellationToken ct)
+    {
+        if (_homes.TryGetValue(employeeId, out var home))
+            return home;
+        var row = await db.Employees.AsNoTracking().Where(e => e.Id == employeeId).Select(e => (Guid?)e.LocationId).FirstOrDefaultAsync(ct);
+        return _homes[employeeId] = (row ?? Guid.Empty, row is not null);
     }
 
     public async Task ObserveManagedSetAsync(

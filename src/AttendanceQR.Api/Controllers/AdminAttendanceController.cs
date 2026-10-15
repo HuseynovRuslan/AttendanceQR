@@ -8,6 +8,7 @@ using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
@@ -97,10 +98,12 @@ public class AdminAttendanceController : ControllerBase
         return Ok(rows.Select(x => new
         {
             x.recordId, x.employeeId, x.employeeName, x.locationName, x.attendanceDate, x.checkInAtUtc,
-            closable = managed is null
-                       // Plain staff, and since 2026-09-18 a fellow manager — both of the caller's own branches.
-                       || ((x.Role == EmployeeRole.Employee || x.Role == EmployeeRole.Manager)
-                           && x.employeeId != me && managed.Contains(x.EmployeeLocationId)),
+            // Never one's own day — an admin's included since 2026-10-15 (CanCorrectAttendanceAsync).
+            closable = x.employeeId != me
+                       && (managed is null
+                           // Plain staff, and since 2026-09-18 a fellow manager — both of the caller's own branches.
+                           || ((x.Role == EmployeeRole.Employee || x.Role == EmployeeRole.Manager)
+                               && managed.Contains(x.EmployeeLocationId))),
         }));
     }
 
@@ -110,6 +113,8 @@ public class AdminAttendanceController : ControllerBase
     {
         if (request.CheckInAtUtc is null && request.CheckOutAtUtc is null)
             return BadRequest(new { error = "NothingToUpdate" });
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
@@ -117,10 +122,14 @@ public class AdminAttendanceController : ControllerBase
 
         // A manager may only correct their OWN staff's record. Same boundary as every other manager
         // write: their branches, and Role==Employee — the 2026-08-08 rule that stopped a manager
-        // reaching a same-branch admin's account. An admin passes straight through.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
+        // reaching a same-branch admin's account. An admin passes straight through — except to their own
+        // day, which nobody corrects for themselves (the owner, 2026-10-15).
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+        var before = Times(record);
 
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId);
         if (location is null)
@@ -152,7 +161,8 @@ public class AdminAttendanceController : ControllerBase
         record.ManualByEmployeeId = requesterId; // this record was touched by hand — attribute it
         await _db.SaveChangesAsync();
 
-        await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+        await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString(),
+            $"{before} → {Times(record)}", reason);
 
         await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
 
@@ -187,6 +197,8 @@ public class AdminAttendanceController : ControllerBase
             return BadRequest(new { error = "NothingSelected" });
         if (ids.Count > MaxBulkClose)
             return BadRequest(new { error = "TooMany" });
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var requesterId = User.EmployeeId();
         var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
@@ -195,7 +207,7 @@ public class AdminAttendanceController : ControllerBase
             .Where(r => ids.Contains(r.Id) && r.CheckInAtUtc != null && r.CheckOutAtUtc == null)
             .ToListAsync(ct);
 
-        var closed = 0;
+        var closed = new List<AttendanceRecord>();
         var skipped = 0;
         var days = new HashSet<DateOnly>();
 
@@ -203,7 +215,8 @@ public class AdminAttendanceController : ControllerBase
         {
             if (record.AttendanceDate >= todayLocal) { skipped++; continue; }
 
-            if (!await LocationScopeRules.CanManageEmployeeAsync(_db, requesterId, User.Role(), record.EmployeeId, ct))
+            // One's own day included — skipped, never closed (CanCorrectAttendanceAsync refuses it).
+            if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, requesterId, User.Role(), record.EmployeeId, ct))
             { skipped++; continue; }
 
             var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId, ct);
@@ -216,25 +229,25 @@ public class AdminAttendanceController : ControllerBase
 
             record.CheckOutAtUtc = closeAt;
             record.ManualByEmployeeId = requesterId; // written by hand, and attributed like any other
-            closed++;
+            closed.Add(record);
             days.Add(record.AttendanceDate);
         }
 
-        if (closed == 0)
-            return Ok(new { closed, skipped });
+        if (closed.Count == 0)
+            return Ok(new { closed = 0, skipped });
 
         await _db.SaveChangesAsync(ct);
 
         // One audit row per record, exactly as a single edit writes — a batch must not be cheaper to
-        // audit than the twenty clicks it replaces.
+        // audit than the twenty clicks it replaces. The batch's one reason goes on every row.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-        foreach (var r in records.Where(r => r.CheckOutAtUtc != null && r.ManualByEmployeeId == requesterId))
-            await WriteAuditAsync(r.EmployeeId, requesterId, r.Id, ip);
+        foreach (var r in closed)
+            await WriteAuditAsync(r.EmployeeId, requesterId, r.Id, ip, $"closed at shift end, {Times(r)}", reason);
 
         foreach (var day in days)
             await _dailySummaryService.GenerateForDateAsync(day, ct);
 
-        return Ok(new { closed, skipped });
+        return Ok(new { closed = closed.Count, skipped });
     }
 
     /// <summary>How many days one press may close. High enough for a month's backlog at a big company,
@@ -285,12 +298,16 @@ public class AdminAttendanceController : ControllerBase
 
         if (!TryValidateTimes(request.CheckInAtUtc, request.CheckOutAtUtc, out var error))
             return BadRequest(new { error });
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == request.EmployeeId);
         if (employee is null)
             return BadRequest(new { error = "EmployeeNotFound" });
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
+        if (OwnDay(request.EmployeeId) is { } own)
+            return own;
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(
                 _db, User.EmployeeId(), User.Role(), request.EmployeeId, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
@@ -318,7 +335,8 @@ public class AdminAttendanceController : ControllerBase
         _db.AttendanceRecords.Add(record);
         await _db.SaveChangesAsync();
 
-        await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+        await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString(),
+            $"created {request.Date:yyyy-MM-dd} {Times(record)}", reason);
 
         await _dailySummaryService.GenerateForDateAsync(request.Date, HttpContext.RequestAborted);
 
@@ -330,27 +348,35 @@ public class AdminAttendanceController : ControllerBase
     // there means "leave as-is"), so an accidental double-scan check-out needs this explicit action.
     [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{recordId:guid}/clear-checkout")]
-    public async Task<IActionResult> ClearCheckOut(Guid recordId)
+    public async Task<IActionResult> ClearCheckOut(
+        Guid recordId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
+
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
 
         // A manager may only correct their OWN staff's record. Same boundary as every other manager
         // write: their branches, and Role==Employee — the 2026-08-08 rule that stopped a manager
-        // reaching a same-branch admin's account. An admin passes straight through.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
+        // reaching a same-branch admin's account. An admin passes straight through — except to their own day.
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         if (record.CheckOutAtUtc is not null)
         {
+            var before = Times(record);
             record.CheckOutAtUtc = null;
             var requesterId = User.EmployeeId();
             record.ManualByEmployeeId = requesterId; // undoing a check-out is a manual touch
             await _db.SaveChangesAsync();
 
-            await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+            await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString(),
+                $"check-out cleared, {before} → {Times(record)}", reason);
             await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
         }
 
@@ -506,6 +532,9 @@ public class AdminAttendanceController : ControllerBase
 
         // Same boundary as every other write here: a manager reaches only their own branches' plain
         // employees. This one docks a day's pay and sends an accusation, so the check runs first.
+        // Voiding or restoring a day changes what it pays — never on one's own (the owner, 2026-10-15).
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
         if (!await LocationScopeRules.CanManageEmployeeAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
@@ -613,6 +642,9 @@ public class AdminAttendanceController : ControllerBase
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
+        // Voiding or restoring a day changes what it pays — never on one's own (the owner, 2026-10-15).
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
         if (!await LocationScopeRules.CanManageEmployeeAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
@@ -659,8 +691,13 @@ public class AdminAttendanceController : ControllerBase
     /// </summary>
     [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpDelete("{recordId:guid}")]
-    public async Task<IActionResult> Delete(Guid recordId)
+    public async Task<IActionResult> Delete(
+        Guid recordId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
+        // In the body, not the query string: a reason is free text about a person, and URLs end up in logs.
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
+
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
@@ -668,8 +705,10 @@ public class AdminAttendanceController : ControllerBase
         // Same boundary as the edit and the clear-checkout beside it: a manager reaches only their own
         // branches' plain employees. Deletion is not a wider power than editing a day to zero, and the
         // manager is who notices a phantom on their own board — but it is irreversible, so the scope
-        // check runs before anything is touched.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
+        // check runs before anything is touched. Never one's own day.
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
@@ -684,9 +723,9 @@ public class AdminAttendanceController : ControllerBase
         {
             EmployeeId = employeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = $"Deleted by {requesterId}: {date:yyyy-MM-dd} "
-                   + $"{record.CheckInAtUtc:HH:mm}–{(record.CheckOutAtUtc is null ? "—" : record.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC"
-                   + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}"),
+            Reason = Cap($"Deleted by {requesterId}: {date:yyyy-MM-dd} {Times(record)}"
+                         + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}")
+                         + $". Səbəb: {reason}"),
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
@@ -790,17 +829,34 @@ public class AdminAttendanceController : ControllerBase
         return true;
     }
 
-    private async Task WriteAuditAsync(Guid employeeId, Guid requesterId, Guid recordId, string? ip)
+    /// <summary>
+    /// One audit line per corrected record: who, which record, what changed and — required since 2026-10-15 —
+    /// why, in the corrector's own words.
+    /// </summary>
+    private async Task WriteAuditAsync(Guid employeeId, Guid requesterId, Guid recordId, string? ip, string what, string reason)
     {
         _db.AuditLogs.Add(new AuditLog
         {
             EmployeeId = employeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = $"By {requesterId}, record {recordId}",
+            Reason = Cap($"By {requesterId}, record {recordId}: {what}. Səbəb: {reason}"),
             IpAddress = ip
         });
         await _db.SaveChangesAsync();
     }
+
+    /// <summary>The 403 for a correction to one's own day, or null when the day is somebody else's. Nobody —
+    /// an admin included — corrects the day they are paid for (the owner, 2026-10-15).</summary>
+    private IActionResult? OwnDay(Guid employeeId) =>
+        employeeId == User.EmployeeId()
+            ? StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" })
+            : null;
+
+    private static string Times(AttendanceRecord r) =>
+        $"{r.CheckInAtUtc:HH:mm}–{(r.CheckOutAtUtc is null ? "—" : r.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC";
+
+    /// <summary>The audit column holds 1000 characters; a long reason is cut, never refused at save time.</summary>
+    private static string Cap(string text) => text.Length <= 1000 ? text : text[..1000];
 
     private static object Project(AttendanceRecord r) => new
     {

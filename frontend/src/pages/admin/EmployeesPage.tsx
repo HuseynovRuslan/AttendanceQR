@@ -43,6 +43,7 @@ import {
 } from '../../api/attendance'
 import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
+import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { StatusBadge } from '../../components/StatusBadge'
 import {
   IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
@@ -59,6 +60,8 @@ const ATTENDANCE_ERRORS: Record<string, string> = {
   CheckOutBeforeCheckIn: 'Çıxış girişdən əvvəl ola bilməz',
   DateInFuture: 'Tarix gələcəkdə ola bilməz',
   RecordAlreadyExists: 'Bu gün üçün artıq qeyd var',
+  // Since 2026-10-15: every correction says why, and nobody corrects their own day.
+  ...CORRECTION_ERROR,
 }
 
 function toLocalInputValue(iso: string | null): string {
@@ -247,6 +250,7 @@ function splitName(first: string | null | undefined, last: string | null | undef
 }
 
 export function EmployeesPage() {
+  const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   // ONE page of the roster — twenty-five rows, narrowed and ordered in SQL. This used to be every
   // employee in the company, with every device binding each of them had ever had.
   const [rows, setRows] = useState<AdminEmployeeRow[]>([])
@@ -769,12 +773,15 @@ export function EmployeesPage() {
 
   async function saveEditRecord() {
     if (!editingRecordId || !attendanceEmployee) return
+    const reason = await askReason({ title: 'Qeyd dəyişdirilsin?', detail: 'Giriş və çıxış vaxtı yeni dəyərlərlə yazılacaq.', confirmLabel: 'Yadda saxla' })
+    if (!reason) return
     setSavingRecord(true)
     setAttendanceError(null)
     const { status, data } = await adminUpdateRecord(
       editingRecordId,
       fromLocalInputValue(editCheckIn),
       fromLocalInputValue(editCheckOut),
+      reason,
     )
     setSavingRecord(false)
     if (status === 200) {
@@ -789,10 +796,15 @@ export function EmployeesPage() {
 
   async function onClearCheckOut(r: AttendanceRecord) {
     if (!attendanceEmployee) return
-    if (!window.confirm('Bu qeydin çıxışı ləğv edilsin? İşçi yenidən "işdədir" olacaq və sonra düzgün çıxış edə biləcək.')) return
+    const reason = await askReason({
+      title: 'Bu qeydin çıxışı ləğv edilsin?',
+      detail: 'İşçi yenidən «işdədir» olacaq və sonra düzgün çıxış edə biləcək.',
+      confirmLabel: 'Çıxışı ləğv et',
+    })
+    if (!reason) return
     setSavingRecord(true)
     setAttendanceError(null)
-    const { status, data } = await adminClearCheckout(r.recordId)
+    const { status, data } = await adminClearCheckout(r.recordId, reason)
     setSavingRecord(false)
     if (status === 200) {
       await refreshAttendance(attendanceEmployee.id)
@@ -805,10 +817,12 @@ export function EmployeesPage() {
 
   async function submitCreateRecord() {
     if (!attendanceEmployee || !createDate || !createCheckIn) return
+    const reason = await askReason({ title: 'Qeyd əlavə edilsin?', detail: 'İşçinin skan etmədiyi gün üçün əl ilə qeyd yazılır.', confirmLabel: 'Əlavə et' })
+    if (!reason) return
     setSavingRecord(true)
     setAttendanceError(null)
     const checkIn = fromLocalInputValue(createCheckIn)!
-    const { status, data } = await adminCreateRecord(attendanceEmployee.id, createDate, checkIn, fromLocalInputValue(createCheckOut))
+    const { status, data } = await adminCreateRecord(attendanceEmployee.id, createDate, checkIn, fromLocalInputValue(createCheckOut), reason)
     setSavingRecord(false)
     if (status === 200) {
       setShowCreateRecord(false)
@@ -1011,6 +1025,7 @@ ${back}`,
 
   return (
     <div>
+      {reasonDialog}
       <div className="att-head">
         <div>
           <h1 className="att-title">İşçilər</h1>

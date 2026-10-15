@@ -214,16 +214,20 @@ public class OpenRecordsManagerScopeTests
             .ToList();
     }
 
-    private static void AssertOutOfScope(IActionResult result)
+    private static void AssertOutOfScope(IActionResult result) => AssertRefused(result, "OutOfScope");
+
+    private static void AssertRefused(IActionResult result, string error)
     {
         var obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
         // The screen switches on this code to explain the refusal instead of showing a bare failure.
-        Assert.Equal("OutOfScope", obj.Value!.GetType().GetProperty("error")!.GetValue(obj.Value));
+        Assert.Equal(error, obj.Value!.GetType().GetProperty("error")!.GetValue(obj.Value));
     }
 
     /// <summary>Closing a day the way the screen does: fill in the missing departure time.</summary>
-    private static AdminAttendanceUpdateRequest CloseAt(DateOnly date) => new(null, At(date, 18));
+    private static AdminAttendanceUpdateRequest CloseAt(DateOnly date) => new(null, At(date, 18), "Çıxış vurmağı unudub");
+
+    private static readonly AttendanceCorrectionRequest Why = new("Təkrar skan — səhv çıxış");
 
     // --- the list ---------------------------------------------------------------------------------
 
@@ -302,8 +306,9 @@ public class OpenRecordsManagerScopeTests
         Assert.True(closable[f.OpenPeerId]);
         Assert.False(closable[f.OpenSelfId]);
 
-        // The flag is the write's own answer, not a second opinion that could drift away from it.
-        AssertOutOfScope(await f.AsManager().Update(f.OpenSelfId, CloseAt(Fixture.OpenDate)));
+        // The flag is the write's own answer, not a second opinion that could drift away from it. One's own
+        // day says so by name since 2026-10-15: nobody corrects the day they are paid for.
+        AssertRefused(await f.AsManager().Update(f.OpenSelfId, CloseAt(Fixture.OpenDate)), "OwnAttendance");
     }
 
     [Fact]
@@ -368,7 +373,7 @@ public class OpenRecordsManagerScopeTests
         // whole day is five minutes long, and Update cannot fix it (a null check-out means "leave").
         using var f = new Fixture();
 
-        Assert.IsType<OkObjectResult>(await f.AsManager().ClearCheckOut(f.ClosedMineId));
+        Assert.IsType<OkObjectResult>(await f.AsManager().ClearCheckOut(f.ClosedMineId, Why));
 
         Assert.Null(f.Row(f.ClosedMineId).CheckOutAtUtc);
         Assert.Equal(f.ManagerId, f.Row(f.ClosedMineId).ManualByEmployeeId);
@@ -381,7 +386,7 @@ public class OpenRecordsManagerScopeTests
         // only as strong as whichever endpoint the next change remembers.
         using var f = new Fixture();
 
-        AssertOutOfScope(await f.AsManager().ClearCheckOut(f.ClosedAdminId));
+        AssertOutOfScope(await f.AsManager().ClearCheckOut(f.ClosedAdminId, Why));
 
         Assert.Equal(At(Fixture.ClosedDate, 18), f.Row(f.ClosedAdminId).CheckOutAtUtc);
         Assert.Equal(0, f.AuditRows());
@@ -392,7 +397,7 @@ public class OpenRecordsManagerScopeTests
     {
         using var f = new Fixture();
 
-        AssertOutOfScope(await f.AsManager().ClearCheckOut(f.ClosedTheirsId));
+        AssertOutOfScope(await f.AsManager().ClearCheckOut(f.ClosedTheirsId, Why));
 
         Assert.Equal(At(Fixture.ClosedDate, 18), f.Row(f.ClosedTheirsId).CheckOutAtUtc);
     }
@@ -405,7 +410,7 @@ public class OpenRecordsManagerScopeTests
         using var f = new Fixture();
 
         Assert.IsType<OkObjectResult>(await f.AsAdmin().Update(f.OpenAdminId, CloseAt(Fixture.OpenDate)));
-        Assert.IsType<OkObjectResult>(await f.AsAdmin().ClearCheckOut(f.ClosedTheirsId));
+        Assert.IsType<OkObjectResult>(await f.AsAdmin().ClearCheckOut(f.ClosedTheirsId, Why));
 
         Assert.Equal(At(Fixture.OpenDate, 18), f.Row(f.OpenAdminId).CheckOutAtUtc);
         Assert.Null(f.Row(f.ClosedTheirsId).CheckOutAtUtc);
@@ -432,7 +437,8 @@ public class OpenRecordsManagerScopeTests
         // It carried the attribute because "there is no existing record to scope against". True of the
         // record, and it was the wrong thing to scope against: the anchor is the EMPLOYEE the day is
         // being written onto, which exists whether or not a record does. So the attribute is gone and
-        // an explicit CanManageEmployeeAsync stands in its place — the three tests above are what hold
+        // an explicit scope check stands in its place — CanManageEmployeeAsync until 2026-10-15, now
+        // CanCorrectAttendanceAsync, which also refuses one's own day. The three tests above are what hold
         // it, and this one fails loudly if somebody removes the check without restoring the attribute.
         var method = typeof(AdminAttendanceController).GetMethod("Create", BindingFlags.Public | BindingFlags.Instance);
         Assert.NotNull(method);
@@ -442,7 +448,7 @@ public class OpenRecordsManagerScopeTests
             "AdminAttendanceController.cs"));
         var create = body[body.IndexOf("public async Task<IActionResult> Create(")..];
         create = create[..create.IndexOf("_db.AttendanceRecords.Add")];
-        Assert.Contains("CanManageEmployeeAsync", create);
+        Assert.Contains("CanCorrectAttendanceAsync", create);
     }
 
     /// <summary>Walks up from the test binary to the repository root.</summary>
@@ -480,7 +486,7 @@ public class OpenRecordsManagerScopeTests
         var day = new DateOnly(2026, 8, 20);
 
         var result = await h.AsManager().Create(new AdminAttendanceCreateRequest(
-            h.MyWorkerId, day, At(day, 9), At(day, 18)));
+            h.MyWorkerId, day, At(day, 9), At(day, 18), "Telefon evdə qalıb"));
 
         Assert.IsType<OkObjectResult>(result);
         Assert.True(h.Db.AttendanceRecords.AsNoTracking()
@@ -494,7 +500,7 @@ public class OpenRecordsManagerScopeTests
         var day = new DateOnly(2026, 8, 20);
 
         var result = await h.AsManager().Create(new AdminAttendanceCreateRequest(
-            h.TheirWorkerId, day, At(day, 9), At(day, 18)));
+            h.TheirWorkerId, day, At(day, 9), At(day, 18), "Telefon evdə qalıb"));
 
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
         // Date-specific: the fixture already seeds this worker an open record on another day.
@@ -512,7 +518,7 @@ public class OpenRecordsManagerScopeTests
         var day = new DateOnly(2026, 8, 20);
 
         var result = await h.AsManager().Create(new AdminAttendanceCreateRequest(
-            h.SameBranchAdminId, day, At(day, 9), At(day, 18)));
+            h.SameBranchAdminId, day, At(day, 9), At(day, 18), "Telefon evdə qalıb"));
 
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
         Assert.False(h.Db.AttendanceRecords.AsNoTracking()
@@ -526,6 +532,91 @@ public class OpenRecordsManagerScopeTests
         var day = new DateOnly(2026, 8, 20);
 
         Assert.IsType<OkObjectResult>(await h.AsAdmin().Create(new AdminAttendanceCreateRequest(
-            h.TheirWorkerId, day, At(day, 9), At(day, 18))));
+            h.TheirWorkerId, day, At(day, 9), At(day, 18), "Telefon evdə qalıb")));
+    }
+
+    // ── The owner's rules of 2026-10-15: a correction says why, the why is kept, and nobody corrects their own day.
+
+    [Fact]
+    public async Task Every_correction_says_why_or_is_refused_and_nothing_is_written()
+    {
+        using var f = new Fixture();
+        var admin = f.AsAdmin();
+        var day = Fixture.OpenDate.AddDays(-1);
+
+        foreach (var reason in new[] { null, "", "   ", "ok" })
+        {
+            AssertReasonRequired(await admin.Update(f.OpenMineId, new AdminAttendanceUpdateRequest(null, At(Fixture.OpenDate, 18), reason)));
+            AssertReasonRequired(await admin.CloseOpenDays(new CloseOpenDaysRequest([f.OpenMineId], reason)));
+            AssertReasonRequired(await admin.Create(new AdminAttendanceCreateRequest(f.MyWorkerId, day, At(day, 9), At(day, 18), reason)));
+            AssertReasonRequired(await admin.ClearCheckOut(f.ClosedMineId, new AttendanceCorrectionRequest(reason)));
+            AssertReasonRequired(await admin.Delete(f.ClosedMineId, new AttendanceCorrectionRequest(reason)));
+        }
+        // No body at all — what an older screen sends — is the same refusal, not a framework error.
+        AssertReasonRequired(await admin.ClearCheckOut(f.ClosedMineId, null));
+        AssertReasonRequired(await admin.Delete(f.ClosedMineId, null));
+
+        Assert.Null(f.Row(f.OpenMineId).CheckOutAtUtc);
+        Assert.NotNull(f.Row(f.ClosedMineId).CheckOutAtUtc);
+        Assert.False(f.Db.AttendanceRecords.Any(r => r.EmployeeId == f.MyWorkerId && r.AttendanceDate == day));
+        Assert.Empty(f.Db.AuditLogs);
+    }
+
+    [Fact]
+    public async Task The_reason_is_kept_in_the_audit_line_with_what_changed()
+    {
+        using var f = new Fixture();
+
+        Assert.IsType<OkObjectResult>(await f.AsAdmin().Update(f.OpenMineId,
+            new AdminAttendanceUpdateRequest(null, At(Fixture.OpenDate, 18), "  Çıxış vurmağı unudub  ")));
+
+        var line = Assert.Single(f.Db.AuditLogs.Where(a => a.EventType == AuditEventType.RecordEditedByAdmin));
+        Assert.Equal(f.MyWorkerId, line.EmployeeId);
+        Assert.Contains($"By {f.AdminId}", line.Reason);
+        Assert.Contains("09:00–— UTC → 09:00–18:00 UTC", line.Reason);
+        Assert.EndsWith("Səbəb: Çıxış vurmağı unudub", line.Reason);
+    }
+
+    [Fact]
+    public async Task Nobody_corrects_their_own_day_an_admin_included()
+    {
+        using var f = new Fixture();
+        var ownOpen = Guid.NewGuid();
+        var ownClosed = Guid.NewGuid();
+        f.Db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = ownOpen, TenantId = TenantId, EmployeeId = f.AdminId, LocationId = f.ManagedBranch,
+            AttendanceDate = Fixture.OpenDate, CheckInAtUtc = At(Fixture.OpenDate, 9), Status = AttendanceStatus.Incomplete,
+        });
+        f.Db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = ownClosed, TenantId = TenantId, EmployeeId = f.AdminId, LocationId = f.ManagedBranch,
+            AttendanceDate = Fixture.ClosedDate, CheckInAtUtc = At(Fixture.ClosedDate, 9),
+            CheckOutAtUtc = At(Fixture.ClosedDate, 18), Status = AttendanceStatus.OnTime,
+        });
+        f.Db.SaveChanges();
+        var admin = f.AsAdmin();
+        var why = "Özümə düzəliş";
+        var day = Fixture.OpenDate.AddDays(-1);
+
+        AssertRefused(await admin.Update(ownOpen, new AdminAttendanceUpdateRequest(null, At(Fixture.OpenDate, 18), why)), "OwnAttendance");
+        AssertRefused(await admin.ClearCheckOut(ownClosed, new AttendanceCorrectionRequest(why)), "OwnAttendance");
+        AssertRefused(await admin.Delete(ownClosed, new AttendanceCorrectionRequest(why)), "OwnAttendance");
+        AssertRefused(await admin.Create(new AdminAttendanceCreateRequest(f.AdminId, day, At(day, 9), At(day, 18), why)), "OwnAttendance");
+
+        // In a batch the own day is skipped and counted, never closed — the others still close.
+        var batch = Assert.IsType<OkObjectResult>(await admin.CloseOpenDays(new CloseOpenDaysRequest([ownOpen, f.OpenMineId], why)));
+        Assert.Equal((1, 1), ((int)batch.Value!.GetType().GetProperty("closed")!.GetValue(batch.Value)!,
+                              (int)batch.Value!.GetType().GetProperty("skipped")!.GetValue(batch.Value)!));
+        Assert.Null(f.Row(ownOpen).CheckOutAtUtc);
+        Assert.NotNull(f.Row(ownClosed).CheckOutAtUtc);
+        // And the list says so before anybody presses anything.
+        Assert.False(Closable(await f.AsAdmin().Open())[ownOpen]);
+    }
+
+    private static void AssertReasonRequired(IActionResult result)
+    {
+        var bad = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("ReasonRequired", bad.Value!.GetType().GetProperty("error")!.GetValue(bad.Value));
     }
 }

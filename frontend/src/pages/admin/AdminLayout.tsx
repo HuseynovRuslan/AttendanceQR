@@ -27,6 +27,7 @@ import {
   IconMoney,
   IconPhone,
   IconRefresh,
+  IconShield,
   IconSun,
   IconTable,
   IconUsers,
@@ -50,6 +51,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/my-employees': { title: 'İşçilər', sub: 'Öz filialınızın işçiləri — əlavə et, redaktə et' },
   '/admin/my-leaves': { title: 'Məzuniyyət / İcazə', sub: 'Öz işçiləriniz üçün icazə və məzuniyyət' },
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
+  '/admin/access': { title: 'Səlahiyyətlər', sub: 'Kimə hansı rol, harada — verilən hüquq növbəti açılışdan qüvvədədir' },
   '/admin/equipment': { title: 'Kompüter inventarizasiyası', sub: 'İT avadanlıqlarının siyahısı — kimdə nə var' },
   '/admin/schedules': { title: 'Növbələr', sub: 'Saatlar, iş günləri və rotasiya — bir dəfə qurulur, işçilərə təyin edilir' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
@@ -199,6 +201,7 @@ export function AdminLayout() {
         // poster hangs and how wide the yard is. Creating and deleting stays with the admin.
         { to: '/admin/locations', label: 'Filiallar', Icon: IconBuilding },
         ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
+        ...(isAdmin ? [{ to: '/admin/access', label: 'Səlahiyyətlər', Icon: IconShield }] : []),
         // What the company pays for the product, and whether it is settled. Admin only — a manager
         // runs a branch, not the contract.
         ...(isAdmin ? [{ to: '/admin/billing', label: 'Abunəlik', Icon: IconMoney }] : []),

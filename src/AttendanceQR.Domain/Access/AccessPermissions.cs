@@ -67,6 +67,9 @@ public static class AccessPermissions
 
     public const string AssignmentsView = "assignments.view";
     public const string AssignmentsManage = "assignments.manage";
+    /// <summary>Giving a role to somebody who works OUTSIDE your own area. The owner's rule (2026-10-15): by
+    /// default an assigner reaches only their own people; reaching further is a separate, higher right.</summary>
+    public const string AssignmentsCrossArea = "assignments.cross_area";
     public const string RolesManage = "roles.manage";
 
     public const string NotificationsStaffAlerts = "notifications.staff_alerts";
@@ -131,6 +134,7 @@ public static class AccessPermissions
         [StructuresManage] = "Strukturları idarə etmək",
         [AssignmentsView] = "Kimin hansı hüququ olduğunu görmək",
         [AssignmentsManage] = "Rol təyin etmək",
+        [AssignmentsCrossArea] = "Başqa sahənin işçisinə rol vermək",
         [RolesManage] = "Rolları idarə etmək",
         [NotificationsStaffAlerts] = "İşçi problemi bildirişləri",
         [TasksUse] = "Tapşırıqlar lövhəsi",
@@ -153,7 +157,17 @@ public static class AccessPermissions
     public static readonly IReadOnlySet<string> CompanyOnly = new HashSet<string>
     {
         AttendanceMaintenance, EmployeesResetAttendance, LocationsCreate, LocationsActivate, StructuresManage,
-        RolesManage, HolidaysManage, PositionsManage, AnnouncementsManage, VotesManage, EquipmentView,
-        EquipmentManage, BillingView, DiagView,
+        RolesManage, AssignmentsCrossArea, HolidaysManage, PositionsManage, AnnouncementsManage, VotesManage,
+        EquipmentView, EquipmentManage, BillingView, DiagView,
+    };
+
+    /// <summary>
+    /// The rights ABOUT rights. Left out when two roles' levels are compared (AccessRules.CanGrant): an
+    /// assigner handing out their own daily powers minus only the right to assign is still appointing their
+    /// equal — the owner's rule 3 of 2026-10-15 forbids exactly that below company level.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Meta = new HashSet<string>
+    {
+        AssignmentsView, AssignmentsManage, AssignmentsCrossArea, RolesManage,
     };
 }

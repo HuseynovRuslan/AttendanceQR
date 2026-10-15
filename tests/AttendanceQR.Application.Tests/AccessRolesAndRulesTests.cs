@@ -51,6 +51,13 @@ public class AccessRolesAndRulesTests
         public void Dispose() => W.Dispose();
     }
 
+    /// <summary>CanGrant with everything it asks since Phase 3 — the assignee's home and power, the actor's home.</summary>
+    private static GrantDecision Grant(
+        Org o, AccessGraph graph, Guid actor, IReadOnlyCollection<string> permissions, AccessScopeType scope,
+        Guid? structure, Guid? location, Guid assignee, bool assigneeIsOperator = false) =>
+        AccessRules.CanGrant(graph.For(actor), permissions, scope, structure, location, assignee, assigneeIsOperator,
+            o.W.HomeOf(assignee), graph.For(assignee), o.W.HomeOf(actor));
+
     [Fact]
     public async Task A_structure_operator_reaches_every_branch_of_their_structure_and_no_other()
     {
@@ -157,10 +164,9 @@ public class AccessRolesAndRulesTests
         using var o = new Org();
         await o.InitAsync();
         var graph = await o.GraphAsync();
-        var admin = graph.For(o.W.Admin1);
 
-        var decision = AccessRules.CanGrant(admin, AccessRoleTemplates.ObserverTemplate.Permissions, AccessScopeType.Branch,
-            null, o.W.B1, assigneeId: o.W.Admin1, assigneeIsOperator: false);
+        var decision = Grant(o, graph, o.W.Admin1, AccessRoleTemplates.ObserverTemplate.Permissions, AccessScopeType.Branch,
+            null, o.W.B1, o.W.Admin1);
 
         Assert.Equal("SelfGrant", decision.Error);
     }
@@ -184,23 +190,23 @@ public class AccessRolesAndRulesTests
             StructureId = o.Airport, CreatedByEmployeeId = o.W.Admin1,
         });
         await db.SaveChangesAsync();
-        var op = (await o.GraphAsync()).For(o.W.E4);
+        var graph = await o.GraphAsync();
 
-        // A timekeeper at a branch of their structure: yes.
-        Assert.True(AccessRules.CanGrant(op, AccessRoleTemplates.TimekeeperTemplate.Permissions, AccessScopeType.Branch,
-            null, o.W.B2, o.W.E2, false).Allowed);
+        // A timekeeper at a branch of their structure, to somebody who works there: yes.
+        Assert.True(Grant(o, graph, o.W.E4, AccessRoleTemplates.TimekeeperTemplate.Permissions, AccessScopeType.Branch,
+            null, o.W.B2, o.W.E2).Allowed);
         // At a branch of another structure: out of their area.
-        Assert.Equal("OutOfScope", AccessRules.CanGrant(op, AccessRoleTemplates.TimekeeperTemplate.Permissions,
-            AccessScopeType.Branch, null, o.W.B3, o.W.E3, false).Error);
+        Assert.Equal("OutOfScope", Grant(o, graph, o.W.E4, AccessRoleTemplates.TimekeeperTemplate.Permissions,
+            AccessScopeType.Branch, null, o.W.B3, o.W.E3).Error);
         // A role carrying a power they do not hold (attendance correction): escalation, refused.
         var withCorrection = AccessRoleTemplates.TimekeeperTemplate.Permissions.Append(AttendanceCorrect).ToList();
-        var refused = AccessRules.CanGrant(op, withCorrection, AccessScopeType.Branch, null, o.W.B2, o.W.E2, false);
+        var refused = Grant(o, graph, o.W.E4, withCorrection, AccessScopeType.Branch, null, o.W.B2, o.W.E2);
         Assert.Equal(("PermissionNotHeld", AttendanceCorrect), (refused.Error, refused.Permission));
         // Company-wide: they hold nothing company-wide.
-        Assert.Equal("OutOfScope", AccessRules.CanGrant(op, AccessRoleTemplates.ObserverTemplate.Permissions,
-            AccessScopeType.Company, null, null, o.W.E2, false).Error);
+        Assert.Equal("OutOfScope", Grant(o, graph, o.W.E4, AccessRoleTemplates.ObserverTemplate.Permissions,
+            AccessScopeType.Company, null, null, o.W.E2).Error);
         // A platform operator's row: never.
-        Assert.Equal("CannotManageOperator", AccessRules.CanGrant(op, AccessRoleTemplates.ObserverTemplate.Permissions,
+        Assert.Equal("CannotManageOperator", Grant(o, graph, o.W.E4, AccessRoleTemplates.ObserverTemplate.Permissions,
             AccessScopeType.Branch, null, o.W.B1, o.W.Operator, assigneeIsOperator: true).Error);
     }
 
@@ -209,11 +215,11 @@ public class AccessRolesAndRulesTests
     {
         using var o = new Org();
         await o.InitAsync();
-        var admin = (await o.GraphAsync()).For(o.W.Admin1);
+        var graph = await o.GraphAsync();
 
-        var refused = AccessRules.CanGrant(admin, [HolidaysManage], AccessScopeType.Structure, o.Airport, null, o.W.E1, false);
+        var refused = Grant(o, graph, o.W.Admin1, [HolidaysManage], AccessScopeType.Structure, o.Airport, null, o.W.E1);
 
         Assert.Equal(("CompanyOnlyPermission", HolidaysManage), (refused.Error, refused.Permission));
-        Assert.True(AccessRules.CanGrant(admin, [HolidaysManage], AccessScopeType.Company, null, null, o.W.E1, false).Allowed);
+        Assert.True(Grant(o, graph, o.W.Admin1, [HolidaysManage], AccessScopeType.Company, null, null, o.W.E1).Allowed);
     }
 }
