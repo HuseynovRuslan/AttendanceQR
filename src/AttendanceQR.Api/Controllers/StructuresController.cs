@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -19,6 +20,7 @@ namespace AttendanceQR.Api.Controllers;
 /// A structure is a label over branches: archiving one needs it empty, and moving a branch rewrites one
 /// column and an audit row.
 /// </summary>
+[Permission(AccessPermissions.StructuresManage)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/structures")]
@@ -36,6 +38,7 @@ public class StructuresController : ControllerBase
 
     // GET /api/admin/structures — every structure with its branches, and the branches in none. Archived
     // structures are listed last and marked, so a name that was retired is still recognisable.
+    [Permission(AccessPermissions.StructuresView)]
     [HttpGet]
     public async Task<IActionResult> List()
     {

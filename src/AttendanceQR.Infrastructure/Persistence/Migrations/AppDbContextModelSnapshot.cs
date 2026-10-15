@@ -57,6 +57,59 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("AbsenceMarks");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.AccessRole", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArchivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<bool>("PeersManageable")
+                        .HasColumnType("boolean");
+
+                    b.PrimitiveCollection<List<string>>("Permissions")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("TemplateKey")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique()
+                        .HasFilter("\"ArchivedAtUtc\" IS NULL");
+
+                    b.HasIndex("TenantId", "TemplateKey")
+                        .IsUnique()
+                        .HasFilter("\"TemplateKey\" IS NOT NULL");
+
+                    b.ToTable("AccessRoles", (string)null);
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.Announcement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -250,6 +303,61 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAtUtc");
 
                     b.ToTable("AuditLogs", (string)null);
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.AuthzShadowEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FirstAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("LastAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Legacy")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("New")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("TargetKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Day", "Kind", "Subject", "EmployeeId", "TargetKey")
+                        .IsUnique();
+
+                    b.ToTable("AuthzShadowEvents", (string)null);
                 });
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.DailySummary", b =>
@@ -1328,6 +1436,67 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("PushSubscriptions");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.RoleAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccessRoleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("StructureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "AccessRoleId");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .HasFilter("\"RevokedAtUtc\" IS NULL");
+
+                    b.HasIndex("TenantId", "LocationId");
+
+                    b.HasIndex("TenantId", "StructureId");
+
+                    b.HasIndex("EmployeeId", "AccessRoleId", "Scope", "StructureId", "LocationId")
+                        .IsUnique()
+                        .HasFilter("\"RevokedAtUtc\" IS NULL");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("EmployeeId", "AccessRoleId", "Scope", "StructureId", "LocationId"), false);
+
+                    b.ToTable("RoleAssignments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RoleAssignments_Scope", "(\"Scope\" = 0 AND \"StructureId\" IS NULL AND \"LocationId\" IS NULL) OR (\"Scope\" = 1 AND \"StructureId\" IS NOT NULL AND \"LocationId\" IS NULL) OR (\"Scope\" = 2 AND \"LocationId\" IS NOT NULL AND \"StructureId\" IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.Schedule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1548,6 +1717,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AuthzMode")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Color")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
@@ -1705,6 +1877,15 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("VoteCampaigns");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.AccessRole", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.Announcement", b =>
                 {
                     b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
@@ -1757,6 +1938,15 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.AuthzShadowEvent", b =>
+                {
                     b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
@@ -2048,6 +2238,40 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.RoleAssignment", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.AccessRole", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "AccessRoleId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Location", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "LocationId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Structure", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "StructureId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.Schedule", b =>

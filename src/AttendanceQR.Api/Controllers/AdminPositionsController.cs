@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -11,6 +12,7 @@ namespace AttendanceQR.Api.Controllers;
 /// The company's list of job titles. Employees pick from it instead of typing, which is the only
 /// reliable way to stop one job existing under three spellings.
 /// </summary>
+[Permission(AccessPermissions.PositionsManage)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/positions")]

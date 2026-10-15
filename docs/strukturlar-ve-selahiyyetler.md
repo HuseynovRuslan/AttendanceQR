@@ -220,7 +220,7 @@ Kilidli olan yalnız «Şirkət administratoru»dur: bərpa yolu itməsin deyə 
 | Rol | Adətən sahə | İcazələr | İstəyə bağlı (sahib seçir) |
 |---|---|---|---|
 | **Şirkət administratoru** 🔒 | Şirkət | Hamısı | — |
-| **Struktur operatoru** | Struktur | panel; davamiyyət (oxu, export); işçi (görmək, əlaqə, yaratmaq, dəyişmək, işdən çıxartmaq, PIN, nömrə); telefon (görmək, təsdiq, ləğv); növbə (görmək, idarə, təyin); məzuniyyət; filial (görmək, QR çapı); sahə ziyarətləri; təyinat (görmək, idarə — yalnız Tabelçi və Müşahidəçi); bildirişlər | `attendance.correct`, `field_checkin.grant`, `checkin_rules.override`, `locations.update` |
+| **Struktur operatoru** | Struktur | panel; davamiyyət (oxu, export); işçi (görmək, əlaqə, yaratmaq, dəyişmək, işdən çıxartmaq, PIN, nömrə); telefon (görmək, təsdiq, ləğv); növbə (görmək, idarə, təyin); məzuniyyət; filial (görmək, QR çapı); sahə ziyarətləri; təyinatları görmək; bildirişlər | `assignments.manage` (tabelçiyə filial təyin etmək — tapşırıqda «icazəlidirsə»), `attendance.correct`, `field_checkin.grant`, `checkin_rules.override`, `locations.update` |
 | **Tabelçi** | Filial(lar) | panel; davamiyyət (oxu, export); işçi (görmək, əlaqə, yaratmaq, dəyişmək, PIN); telefon (görmək, təsdiq); növbə (görmək, təyin); məzuniyyət; sahə ziyarətləri (oxu); bildirişlər | `attendance.correct`, `field_checkin.grant` |
 | **Müşahidəçi** | Struktur və ya filial | panel; davamiyyət (oxu, export); işçi (görmək); məzuniyyət (oxu); növbə (oxu); filial (oxu); sahə ziyarətləri (oxu). **Heç bir yazı yoxdur.** | — |
 | **Filial meneceri (köhnə qayda)** | Filial(lar) | Bugünkü menecerin dəqiq icazələri, §3.3-ün «Menecer» sütunu | Keçid rolu: sahib adamları yeni rollara keçirdikcə boşalır |
@@ -424,3 +424,73 @@ Qaydalar:
 3. **Bildirişlər** keçiddən sonra filialda əməliyyat icazəsi olan tabelçi və operatora gedir,
    yalnız izləyən menecerə getmir. Keçidə qədər bugünkü kimi menecerə gedir. ✅
 4. **T1 + T2** — ayrıca branch-də indi düzəldilir və deploy olunur. ✅
+
+---
+
+## 14. Faza 2 — qurulub (2026-10-15, branch `feat/permissions-phase2`)
+
+Hələ heç nəyi **qərar vermir**. Bütün şirkətlər `Legacy` rejimindədir. Bugünkü rollar və sahə qaydaları
+olduğu kimi işləyir, yeni model yalnız hesablayır, müqayisə edir və `/api/me/access`-i doldurur.
+
+### 14.1 Nə var
+
+| Hissə | Harada |
+|---|---|
+| İcazə kataloqu (58 açar, Azərbaycanca adlar, 14-ü yalnız şirkət sahəsində) | `Domain/Access/AccessPermissions.cs` |
+| 6 rol şablonu | `Domain/Access/AccessRoleTemplates.cs` |
+| `AccessRoles`, `RoleAssignments`, `AuthzShadowEvents` cədvəlləri, `Tenants.AuthzMode` (0 = Legacy) | miqrasiya `AddAccessRoles` — yalnız əlavə edir, data yazmır |
+| Bugünkü Admin və Menecer girişinin sistem təyinatlarına köçürülməsi | `AccessSeeder`. Hər start-da və rolu və ya menecer filiallarını dəyişən 4 yazıdan sonra işləyir. İnsanın verdiyi təyinata toxunmur. |
+| Kim nə edə bilər, harada | `AccessGraph` / `EffectiveAccess` — sorğuda bazadan, tokendən yox |
+| Üstünlük, özünə vermə qadağası, şirkət icazəsi, operator qorunması | `AccessRules` |
+| Bugünkü hər sahə qaydasının yeni modeldəki cavabı (bir cədvəl) | `ShadowRules.Decide` |
+| Kölgə: sahə qaydaları | `AuthzObserver` — `LocationScopeRules` və menecer masasının üç köməkçisi ona deyir |
+| Kölgə: qapı (endpoint) | `AuthzShadowMiddleware` + 109 `[Permission]` qeydi |
+| «Mənim icazələrim» | `GET /api/me/access` |
+
+### 14.2 İşləyərkən dəqiqləşən qaydalar
+
+- **Həmkar qaydası.** Təmiz «üstünlük» qaydası Bakı Abadlıqda 9 menecer cütündən həmkar hüququnu alardı.
+  Bu, prod datasında yalnız oxuma ilə ölçülüb. Ona görə köhnə menecer rolu `PeersManageable` daşıyır:
+  - hədəfin evi olan filialda eyni rolu daşıyan həmkar onu idarə edə bilir — bu, bugünkü qaydadır;
+  - başqa yerdə yaşayıb eyni filialları idarə edən idarə edə bilmir — bu da bugünkü kimidir.
+
+  Yeni rollar ciddi qaydanı işlədir.
+- **Özünə yox.** PIN, giriş nömrəsi və profil kimi hesab əməliyyatları heç vaxt adamın özünə tətbiq olunmur.
+  Bu gün də belədir, bərabərlik testi bunu tapdı: PIN köməkçisi şirkət sahəsində olduğu üçün menecer öz
+  PIN-ini sıfırlaya bilərdi. Öz qeydlərinə düzəliş isə yalnız şirkət sahəsində mümkündür: admin edə
+  bilər, menecer edə bilməz, bugünkü kimi.
+- **`AtCompany`.** Şirkət boyu siyahılar, cəmlər və ayarlar icazənin şirkət sahəsində olmasını tələb edir.
+  Admin-ə xas endpoint-lərin bugünkü «yalnız admin» qapısı belə dəqiq köçürülür.
+- **`Twin`.** Menecer üçün `/api/manager/*` və admin üçün onun əkiz yolları olan endpoint-lərdə qapı
+  fərqi var. Amma həmin güc o biri yolla eynilə mövcuddur. Belə hallar «Gate» yox, «Twin» kimi yazılır.
+- **Şirkət silmə sırası.** `TenantPurge` cədvəlləri əlifba ilə deyil, xarici açarlara görə silir. Əvvəlki
+  sıra sadəcə şanslı idi, təyinatlar onu pozdu.
+
+### 14.3 Köhnə və yeni qərarlar arasında fərq
+
+- **Testlərdə: 0.**
+  - Bugünkü 3 sahə qaydası × 13 nəfər × 13 hədəf.
+  - Menecer masasının 3 qaydası × 5 menecer × 13 hədəf.
+  - Hər menecerin filial dəsti.
+  - 3 hesab növü (admin, menecer, işçi) × hər `[Permission]` endpoint-i.
+- **Prod datasında, yalnız oxuma ilə:** köçürməni pozacaq heç nə yoxdur.
+  - 159 `ManagedLocations` sətri: şirkət uyğunsuzluğu 0, menecer olmayanın sətri 0.
+  - Filialsız menecer yoxdur.
+  - Gözlənilən təyinatlar: 11 şirkət administratoru, 159 köhnə menecer, 39 PIN köməkçisi.
+- **Qəsdən fərq, sahibin qərarı:** şirkət boyu növbə yaratmaq və silmək yeni modeldə şirkət sahəsi tələb
+  edir. Kod hələ köhnə qaydanı işlədir, bu dəyişiklik Faza 5-də qüvvəyə minəcək.
+
+### 14.4 Hələ yoxdur
+
+- Rol və təyinat ekranı, API — Faza 3.
+- Vahid panel; siyahıların və StaffAlerts alıcılarının yeni modelə keçməsi — Faza 4.
+- Qərarın yeni modelə verilməsi (`Enforced`) — Faza 5.
+- Hesabat sahəsi (`ReportQueryService`) — bu fazada kölgədə müqayisə olunmur.
+
+### 14.5 Növbəti addımlar (hər biri ayrıca təsdiqlə)
+
+1. Staging-də miqrasiya və uzlaşdırma real PostgreSQL-də. Staging şirkətlərindən birini `Shadow`-a keçirib
+   `AuthzShadowEvents`-ə baxmaq.
+2. Prod deploy. Bütün şirkətlər `Legacy` qalır, yalnız təyinatlar yaranır.
+3. Bakı Abadlıq `Shadow` rejiminə, ən azı 3 iş günü.
+4. `AuthzShadowEvents` hesabatı. Hər «Gate» və sahə fərqinin izahı olmalıdır.

@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +18,7 @@ namespace AttendanceQR.Api.Controllers;
 /// paid, or see another company: pricing and collection stay with the operator, which is what they
 /// stay with in every product that sells this way. What changes is that the customer can now check.
 /// </summary>
+[Permission(AccessPermissions.BillingView)]
 [ApiController]
 [Route("api/tenant/billing")]
 [Authorize(Roles = "Admin")]

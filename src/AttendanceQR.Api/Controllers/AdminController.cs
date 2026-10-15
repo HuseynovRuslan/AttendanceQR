@@ -2,9 +2,11 @@ using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using ClosedXML.Excel;
+using AttendanceQR.Infrastructure.Services.Access;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
@@ -50,6 +52,7 @@ public class AdminController : ControllerBase
         _logger = logger;
     }
 
+    [Permission(AccessPermissions.EmployeesView, AtCompany = true)]
     [HttpGet]
     public async Task<IActionResult> List()
     {
@@ -155,6 +158,7 @@ public class AdminController : ControllerBase
     // correct face. Needed because the reference is auto-seeded from the first check-in photo — if
     // that first scan was an admin's (their face), the reference is wrong. Nulling the key is enough:
     // the next check-in overwrites the object at reference/{id}.
+    [Permission(AccessPermissions.EmployeesReferencePhoto)]
     [HttpPost("{id:guid}/reset-reference-photo")]
     public async Task<IActionResult> ResetReferencePhoto(Guid id)
     {
@@ -170,6 +174,7 @@ public class AdminController : ControllerBase
 
     // Bulk version — clears every employee's reference selfie in one shot (e.g. all references were
     // seeded from the admin's face during setup). Each re-seeds on that employee's next check-in.
+    [Permission(AccessPermissions.EmployeesReferencePhoto)]
     [HttpPost("reset-all-reference-photos")]
     public async Task<IActionResult> ResetAllReferencePhotos()
     {
@@ -185,6 +190,7 @@ public class AdminController : ControllerBase
         return Ok(new { reset = employees.Count });
     }
 
+    [Permission(AccessPermissions.EmployeesCreate, AtCompany = true)]
     [HttpPost("invite")]
     public async Task<IActionResult> Invite([FromBody] InviteRequest request)
     {
@@ -240,6 +246,8 @@ public class AdminController : ControllerBase
         _db.Employees.Add(employee!);
         await RegisterPositionsAsync();
         await _db.SaveChangesAsync();
+        // A new Admin or Manager holds their role in the permission model from the first request.
+        await AccessSeeder.ReconcileAfterWriteAsync(_db, employee!.TenantId, _logger, HttpContext.RequestAborted);
 
         // No email/SMS channel yet — the credential comes back in plaintext to be passed on by hand,
         // whichever kind it is. The PIN is shown once and never readable again; the token is
@@ -307,6 +315,7 @@ public class AdminController : ControllerBase
     // POST /api/admin/employees/bulk-invite — add many employees at once (one shared location + role).
     // Each row is validated on its own: a duplicate phone or missing name is reported back in `failed`
     // without blocking the others. All the good rows are saved in a single transaction.
+    [Permission(AccessPermissions.EmployeesImport)]
     [HttpPost("bulk-invite")]
     public async Task<IActionResult> BulkInvite([FromBody] BulkInviteRequest request)
     {
@@ -366,6 +375,7 @@ public class AdminController : ControllerBase
     // temporary PIN the admin hands out (no activation link). The employee signs in with phone + temp
     // PIN and is forced to set their own PIN on first login (MustChangePin). The device binds later, at
     // the first scan inside the geofence. Same per-row validation as bulk-invite.
+    [Permission(AccessPermissions.EmployeesImport)]
     [HttpPost("bulk-import")]
     public async Task<IActionResult> BulkImport([FromBody] BulkInviteRequest request)
     {
@@ -456,6 +466,7 @@ public class AdminController : ControllerBase
     // three-column file (Ad Soyad · Telefon · Vəzifə) still import correctly after the template grew
     // to eight: by position, its phone column would have landed in "Ata adı" — silently, and the
     // import would have looked like it worked. It also means the admin may reorder or delete columns.
+    [Permission(AccessPermissions.EmployeesImport)]
     [HttpPost("parse-xlsx")]
     [RequestSizeLimit(5 * 1024 * 1024)]
     public IActionResult ParseXlsx(IFormFile? file)
@@ -589,6 +600,7 @@ public class AdminController : ControllerBase
     // and the grey example row keeps column A EMPTY — that emptiness is exactly what stops it from
     // importing as an employee named "Nümunə". The «Təlimat» sheet must stay SECOND: the parser
     // reads only the first worksheet.
+    [Permission(AccessPermissions.EmployeesImport)]
     [HttpGet("xlsx-template")]
     public async Task<IActionResult> XlsxTemplate()
     {
@@ -895,6 +907,7 @@ public class AdminController : ControllerBase
         return (employee, tempPin, null);
     }
 
+    [Permission(AccessPermissions.EmployeesUpdate, AtCompany = true)]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] EmployeeUpdateRequest request)
     {
@@ -989,6 +1002,8 @@ public class AdminController : ControllerBase
             return BadRequest(new { error = scopeError });
 
         await _db.SaveChangesAsync();
+        // A changed role or set of managed branches reaches the permission model now, not at the next start.
+        await AccessSeeder.ReconcileAfterWriteAsync(_db, employee.TenantId, _logger, HttpContext.RequestAborted);
         return Ok(new { id = employee.Id });
     }
 
@@ -1063,6 +1078,7 @@ public class AdminController : ControllerBase
     private static TimeOnly? ParseTimeOrNull(string? value)
         => TimeOnly.TryParse(value, out var t) ? t : null;
 
+    [Permission(AccessPermissions.EmployeesDelete)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, [FromQuery] bool force = false)
     {
@@ -1160,6 +1176,7 @@ public class AdminController : ControllerBase
     // Testing/reset helper: clears an employee's check-in/check-out history so the same account +
     // device can be used to test the scan flow again from a clean slate. Keeps the employee,
     // activation state and device binding untouched — only attendance data is removed.
+    [Permission(AccessPermissions.EmployeesResetAttendance)]
     [HttpPost("{id:guid}/reset-attendance")]
     public async Task<IActionResult> ResetAttendance(Guid id)
     {
@@ -1173,6 +1190,7 @@ public class AdminController : ControllerBase
 
     // Regenerate the activation link for a not-yet-activated employee (e.g. the original link was
     // lost or expired). Only the new token's hash is stored; the plaintext is returned once.
+    [Permission(AccessPermissions.EmployeesReinvite)]
     [HttpPost("{id:guid}/reinvite")]
     public async Task<IActionResult> Reinvite(Guid id)
     {
@@ -1225,6 +1243,7 @@ public class AdminController : ControllerBase
     // who forgot theirs (a hashed PIN can never be read back). Returns the plaintext temp PIN so the
     // admin can pass it on; the employee logs in and changes it from the menu. Also clears any login
     // lockout so they can sign in straight away. Not-yet-activated accounts use reinvite instead.
+    [Permission(AccessPermissions.EmployeesResetPin, AtCompany = true, Twin = true)]
     [HttpPost("{id:guid}/reset-pin")]
     public async Task<IActionResult> ResetPin(Guid id)
     {
@@ -1289,6 +1308,7 @@ public class AdminController : ControllerBase
     /// the shared-devices screen's job. Splitting it that way is deliberate — withdrawing a permission
     /// should never be the thing that strands somebody at a poster mid-morning.
     /// </summary>
+    [Permission(AccessPermissions.FieldCheckInGrant, AtCompany = true)]
     [HttpPost("bulk-permission")]
     public async Task<IActionResult> BulkGrant([FromBody] BulkPermissionRequest request)
     {
@@ -1337,6 +1357,7 @@ public class AdminController : ControllerBase
     // Rows out of reach are SKIPPED rather than failing the call, the same as the bulk permission
     // grant: a shift pinned to a branch may only go to that branch's staff, and a filtered list will
     // sometimes carry somebody else. Refusing all of it would teach admins to stop using the button.
+    [Permission(AccessPermissions.SchedulesAssign, AtCompany = true)]
     [HttpPost("bulk-schedule")]
     public async Task<IActionResult> BulkSchedule([FromBody] BulkScheduleRequest request)
     {
@@ -1393,6 +1414,7 @@ public class AdminController : ControllerBase
     //
     // So this does not recover anything — it reissues. Everyone named gets a NEW PIN, which means any
     // PIN already handed to them stops working, and the screen says so before it is pressed.
+    [Permission(AccessPermissions.EmployeesResetPin, AtCompany = true, Twin = true)]
     [HttpPost("bulk-reset-pin")]
     public async Task<IActionResult> BulkResetPin([FromBody] BulkResetPinRequest request)
     {

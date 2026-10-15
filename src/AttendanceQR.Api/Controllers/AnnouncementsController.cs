@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -95,6 +96,7 @@ public class AnnouncementsController : ControllerBase
 
 /// <summary>Admin management of announcements — post (with title, audience, optional schedule), list,
 /// retire, delete.</summary>
+[Permission(AccessPermissions.AnnouncementsManage)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/announcements")]
