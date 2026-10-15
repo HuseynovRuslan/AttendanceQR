@@ -291,19 +291,21 @@ export interface ExportDayRowInput {
 // cannot show they were ever handed a working way to scan, and payroll deducts a day per Qayıb. So a
 // Qayıb on such a day comes from a person who watched it, and can be taken off again.
 
-/** POST /api/admin/absence-marks — state that this employee did not come on this day. */
-export function markAbsent(employeeId: string, date: string, note?: string | null) {
+/** POST /api/admin/absence-marks — state that this employee did not come on this day. The note is the
+ * correction's reason (required since 2026-10-15) — a Qayıb docks a day's pay. */
+export function markAbsent(employeeId: string, date: string, reason: string) {
   return apiRequest<{ ok: true } | { error: string }>(
     '/api/admin/absence-marks',
-    { method: 'POST', body: { employeeId, date, note: note ?? null } },
+    { method: 'POST', body: { employeeId, date, note: reason } },
   )
 }
 
 /** DELETE /api/admin/absence-marks — take the mark off and rebuild the day without it. */
-export function unmarkAbsent(employeeId: string, date: string) {
+export function unmarkAbsent(employeeId: string, date: string, reason: string) {
+  // The reason rides in the body, not the URL: free text about a person does not belong in a log line.
   return apiRequest<{ ok: true } | { error: string }>(
     `/api/admin/absence-marks?employeeId=${employeeId}&date=${date}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', body: { reason } },
   )
 }
 
@@ -995,16 +997,18 @@ export function getMissedCheckoutPending() {
 }
 
 /** POST .../approve — write the requested check-out onto the record and recompute that day. */
-export function approveMissedCheckout(id: string) {
+export function approveMissedCheckout(id: string, reason: string) {
   return apiRequest<{ status: string } | { error: string }>(`/api/admin/missed-checkout/${id}/approve`, {
     method: 'POST',
+    body: { reason },
   })
 }
 
 /** POST .../reject — decline the request (the day stays open for the admin to handle). */
-export function rejectMissedCheckout(id: string) {
+export function rejectMissedCheckout(id: string, reason: string) {
   return apiRequest<{ status: string } | { error: string }>(`/api/admin/missed-checkout/${id}/reject`, {
     method: 'POST',
+    body: { reason },
   })
 }
 

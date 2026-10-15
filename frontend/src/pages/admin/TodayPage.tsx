@@ -12,6 +12,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { STATUS_MAP, dayLabel } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
+import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import {
   IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconClock,
@@ -123,6 +124,7 @@ export function TodayPage() {
   const [locQuery, setLocQuery] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
+  const correction = useCorrectionReason()
   const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse; recordId: string | null } | null>(null)
   // A caller can deep-link a pre-applied status filter, e.g. the dashboard's "Bu gün gəlməyib" →
   // /admin/today?status=absent. Read once at mount.
@@ -223,16 +225,28 @@ export function TodayPage() {
     return r ? dayLabel(r.status, r.leaveType).toLocaleLowerCase('az') : 'məzuniyyət/icazə'
   }
 
+  // Both directions say why (the owner's rule of 2026-10-15): a Qayıb docks a day's pay, and taking one
+  // off gives it back. The reason is the mark's note and goes into the audit line.
   async function markDayAbsent(employeeId: string) {
-    setAssigningId(employeeId)
-    const res = await markAbsent(employeeId, date)
-    setAssigningId(null)
     setReasonFor(null)
+    const name = rows.find((x) => x.employeeId === employeeId)?.employeeName ?? 'İşçi'
+    const why = await correction.ask({
+      title: `${name} — ${fmtLongDate(date)} Qayıb yaz`,
+      detail: 'Qayıb bir günlük maaşı kəsir. Səbəb jurnala yazılır.',
+      confirmLabel: 'Qayıb yaz',
+      danger: true,
+      presets: ['Xəbərsiz işə gəlmədi', 'Zənglərə cavab vermədi', 'Rəhbərin təsdiqi ilə'],
+    })
+    if (why === null) return
+    setAssigningId(employeeId)
+    const res = await markAbsent(employeeId, date, why)
+    setAssigningId(null)
     if (res.status === 200) { await load(); return }
     const code = res.data && typeof res.data === 'object' && 'error' in res.data
       ? (res.data as { error: string }).error : ''
     setPhotoError(
-      code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
+      CORRECTION_ERROR[code] ? CORRECTION_ERROR[code]
+        : code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
         // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
         // admin blocked by a rest day — two thirds of every record ever filed — or by an ezamiyyət
         // went looking for a holiday that does not exist.
@@ -242,12 +256,21 @@ export function TodayPage() {
   }
 
   async function undoDayAbsent(employeeId: string) {
-    setAssigningId(employeeId)
-    const res = await unmarkAbsent(employeeId, date)
-    setAssigningId(null)
     setReasonFor(null)
-    if (res.status === 200) await load()
-    else setPhotoError('Qayıb geri alınmadı')
+    const name = rows.find((x) => x.employeeId === employeeId)?.employeeName ?? 'İşçi'
+    const why = await correction.ask({
+      title: `${name} — ${fmtLongDate(date)} Qayıbı geri al`,
+      confirmLabel: 'Geri al',
+      presets: ['Səhvən yazılmışdı', 'Arayış və ya sənəd gətirdi', 'Rəhbərin təsdiqi ilə'],
+    })
+    if (why === null) return
+    setAssigningId(employeeId)
+    const res = await unmarkAbsent(employeeId, date, why)
+    setAssigningId(null)
+    if (res.status === 200) { await load(); return }
+    const code = res.data && typeof res.data === 'object' && 'error' in res.data
+      ? (res.data as { error: string }).error : ''
+    setPhotoError(CORRECTION_ERROR[code] ?? 'Qayıb geri alınmadı')
   }
 
   // Undo a mistaken reason — delete the single-day leave so the row goes back to Qayıb.
@@ -799,6 +822,7 @@ export function TodayPage() {
           <span>{photoError}</span>
         </div>
       )}
+      {correction.dialog}
 
       {filterPosition && (
         <div className="fb fb-info" style={{ marginTop: 14 }}>
