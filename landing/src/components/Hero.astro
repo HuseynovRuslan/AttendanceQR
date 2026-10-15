@@ -40,6 +40,8 @@ const card = `absolute z-20 ${cardWhite} hover:scale-105`;
 const cardLive = `absolute z-20 ${cardSkin} border-emerald-500/20 bg-white/95 hover:scale-105`;
 // The check-in note is the one card that is not always floating: while the scene is narrow it sits in
 // the flow underneath, and only takes the pointer lift once it floats.
+// Dörd kartın hər biri öz animate-float-* sinfi ilə yavaş-yavaş üzür (ayrı müddət və faza: styles/tailwind.css).
+// Üzmə `translate` xassəsindədir, hover:scale-105 isə `scale`-də — ikisi toqquşmur, toplanır.
 const cardFlow = `${cardWhite} @md:hover:scale-105`;
 // No text size in here either: the "+181" badge needs a smaller one than the initials do.
 const avatar =
@@ -75,7 +77,8 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         <span
           class="relative inline-flex whitespace-nowrap px-[0.16em] py-[0.04em]"
         >
-          {t("hero.title.hl")}
+          <!-- Ayrıca <span>: skan xətti ortadan keçəndə yalnız söz mavi olur (bax: aşağıdakı <style>). -->
+          <span class="hero-scan-word">{t("hero.title.hl")}</span>
           <span aria-hidden="true" class="absolute inset-0">
             <span
               class="absolute top-0 left-0 size-[0.3em] border-t-[0.05em] border-l-[0.05em] border-brand"
@@ -88,6 +91,16 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             ></span>
             <span
               class="absolute right-0 bottom-0 size-[0.3em] border-r-[0.05em] border-b-[0.05em] border-brand"
+            <!--
+              Skan xətti: künclərin arasında yuxarıdan aşağı enib-qalxır (hərəkəti aşağıdakı <style>
+              təsvir edir). Hər ölçü `em`-dədir: 1em = başlığın şrift ölçüsü, o da ekrana görə 42px-dən
+              76px-ə qədər dəyişir. Ona görə xəttin qalınlığı (0.045em), kənarlardan boşluğu (0.1em) və
+              işığının yayılması (0.3em) başlıqla birlikdə böyüyüb-kiçilir; px yazsaydıq, kiçik ekranda
+              xətt həddindən artıq qalın görünərdi. Rəng: kənarları şəffaf, ortası mavi olan gradient.
+            -->
+            <span
+              class="hero-scan-line absolute inset-x-[0.1em] h-[0.045em] rounded-full bg-linear-to-r from-transparent via-brand to-transparent shadow-[0_0_0.3em_rgba(21,94,239,.55)]"
+            ></span>
             ></span>
           </span>
         </span>{t("hero.title.b")}
@@ -293,7 +306,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
 
         <!-- The scan that starts it: the name on this note is the name on the screen behind it. -->
         <div
-          class={`${card} top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[56%] @md:w-[40%]`}
+          class={`${card} animate-float-scan top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[56%] @md:w-[40%]`}
         >
           <span
             class="grid size-7 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-600 @md:size-8 @md:text-[11px]"
@@ -324,7 +337,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           can do without.
         -->
         <div
-          class={`${card} hidden items-start gap-2 @md:top-[26%] @md:left-[68%] @md:flex @md:w-[36%]`}
+          class={`${card} animate-float-offline hidden items-start gap-2 @md:top-[26%] @md:left-[68%] @md:flex @md:w-[36%]`}
         >
           <span
             class="grid size-7 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"
@@ -368,7 +381,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           under the sentence while the card is narrow rather than squeezing it to two words a line.
         -->
         <div
-          class={`${cardLive} bottom-[2%] left-[-1%] w-[70%] @md:top-[72%] @md:bottom-auto @md:left-[-2%] @md:w-[40%]`}
+          class={`${cardLive} animate-float-live bottom-[2%] left-[-1%] w-[70%] @md:top-[72%] @md:bottom-auto @md:left-[-2%] @md:w-[40%]`}
         >
           <p
             class="flex items-center gap-2 text-[11px] font-semibold text-slate-900 @md:text-[12px]"
@@ -424,7 +437,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         лица" is half again as wide as "Üz uyğunluğu", and a cell sized for one truncates the other.
       -->
       <div
-        class={`${cardFlow} relative z-20 mt-3 w-full @md:absolute @md:top-[67%] @md:left-[46%] @md:mt-0 @md:w-[42%]`}
+        class={`${cardFlow} relative z-20 mt-3 w-full @md:absolute @md:animate-float-recorded @md:top-[67%] @md:left-[46%] @md:mt-0 @md:w-[42%]`}
       >
         <div class="flex items-center gap-2">
           <span
@@ -498,3 +511,75 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
     </ul>
   </div>
 </section>
+
+<style>
+  /* ---------- Skan animasiyası: "skan" sözünün ətrafındakı xətt və sözün rəngi ----------
+     @keyframes — animasiyanın addımlarını təsvir edən CSS qaydasıdır: "dövrün hansı faizində element necə
+     görünsün". `animation` xassəsi isə o addımları elementə qoşur: ad, müddət, sürət əyrisi, təkrar sayı.
+     Xətt və söz EYNİ anda, eyni 3 saniyəlik dövrlə başlayır, ona görə söz məhz xətt ortadan keçəndə yanır.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/animation */
+
+  /* Skan xətti: başlanğıc yeri künclərin arasında yuxarıdadır (qutunun hündürlüyünün 14%-i), `animation`
+     xətti 3 saniyəlik dövrlə hərəkət etdirir. `ease-in-out` — hər yarım dövrdə yavaş başlayıb, ortada
+     sürətlənib, sonda yenə yavaşlayır; `infinite` — sonsuz təkrar. Qalınlıq, uzunluq, rəng və işıq
+     Tailwind siniflərindədir (Hero.astro-da `hero-scan-line` elementi). */
+  .hero-scan-line {
+    top: 14%;
+    animation: hero-scan 3s ease-in-out infinite;
+  }
+
+  /* Xəttin yolu: 0%-də yuxarıda (14%), 50%-də aşağıda (82%), 100%-də yenə yuxarıda. Yəni bir dövr = enmək
+     + qalxmaq. Xətt sözün ortasından (≈48%) dövrün 25%-də (enəndə) və 75%-də (qalxanda) keçir — aşağıdakı
+     söz animasiyasının faizləri buradan gəlir. Ad "hero-" ilə başlayır: Astro @keyframes adlarını təcrid
+     etmir, global.css-də isə onlarla keyframe var. */
+  @keyframes hero-scan {
+    0%,
+    100% {
+      top: 14%;
+    }
+    50% {
+      top: 82%;
+    }
+  }
+
+  /* Söz: eyni 3 saniyəlik dövr, eyni əyri. Rəngi aşağıdakı addımlar dəyişir. */
+  .hero-scan-word {
+    animation: hero-hit 3s ease-in-out infinite;
+  }
+
+  /* "Oxundu" hissi: xətt sözün ortasından keçəndə (22–28% və 72–78%) söz mavi olur, qalan vaxt öz rəngində
+     qalır. `inherit` — "valideynin (başlığın) rəngini götür", yəni qara. Faizlər arasında rəng yumşaq keçir
+     (17→22%, 28→33%), mavi yalnız ~0.2 saniyə tam görünür. var(--color-brand) — saytın mavisi (#155EEF),
+     styles/tailwind.css-də təyin olunub. */
+  @keyframes hero-hit {
+    0%,
+    17%,
+    33%,
+    67%,
+    83%,
+    100% {
+      color: inherit;
+    }
+    22%,
+    28%,
+    72%,
+    78% {
+      color: var(--color-brand);
+    }
+  }
+
+  /* "Hərəkəti azalt" — istifadəçinin sistemdə "animasiyaları azaldın" seçdiyini bildirən media şərti
+     (prefers-reduced-motion). Belə adam üçün heç nə hərəkət etmir: söz öz rəngində qalır, xətt isə
+     gizlədilir. Xətt ortada dayansaydı, sözün üstündən çəkilmiş cızıq kimi oxunardı.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .hero-scan-line {
+      animation: none;
+      opacity: 0;
+    }
+
+    .hero-scan-word {
+      animation: none;
+    }
+  }
+</style>
