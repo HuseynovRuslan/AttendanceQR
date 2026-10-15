@@ -409,14 +409,18 @@ Qaydalar:
 | Böyük frontend dəyişikliyi | Köhnə URL yönləndirmələri, keçid dövründə API ləqəbləri |
 | HR modulu ilə toqquşma | `leaves.approve` sahəsi HR-ın «kim təsdiq edir» sualını həll edir. HR sənədinin qaydaları qorunur. |
 
-## 13. Sahibin qərarı lazım olan suallar
+## 13. Sahibin qərarları (2026-10-15)
 
-1. **Kölgə rejimi + şirkət-şirkət keçid** — bu yanaşma qəbuldurmu?
-2. **Bugünkü menecer «istisnaları»** (§1.3). Köhnə qayda rolu bunları olduğu kimi saxlasın, ya
-   keçiddə daraldaq? Şirkət boyu növbə yaratmaq və silmək, tapşırıqlar, filialın GPS və QR-siz
-   ayarları, filialdakı adminə məzuniyyət yazmaq.
-   Tövsiyə: köhnə qaydada **saxla**, ilk gün sürpriz olmasın. Yeni şablonlarda bunlar yoxdur.
-   Yalnız şirkət boyu növbə yaratmaq və silmək **daraldılsın**: filiala bağlı növbələr. Görünür,
-   bu təsadüfən açıq qalıb.
-3. **Bildirişlər** keçiddən sonra tabelçi və operatora getsin, müşahidəçi menecerə yox — razısan?
-4. **T1 + T2** elə indi ayrıca düzəldilsin?
+1. **Keçid** — kölgə rejimi + şirkət-şirkət keçid. ✅ Qəbul edildi.
+2. **Bugünkü menecer «istisnaları»** (§1.3) köhnə qayda rolunda **saxlanır**:
+   - tapşırıqlar lövhəsi;
+   - filialın GPS və QR-siz ayarları;
+   - filialdakı adminə məzuniyyət yazmaq;
+   - şirkət boyu PIN və nömrə.
+
+   **Daraldılır:** şirkət boyu növbə yaratmaq və istifadə olunmayan istənilən növbəni silmək. Menecer
+   yalnız öz filiallarına bağlı növbələri yarada və silə bilər. Yeni şablonlarda bu istisnaların
+   heç biri yoxdur. ✅
+3. **Bildirişlər** keçiddən sonra filialda əməliyyat icazəsi olan tabelçi və operatora gedir,
+   yalnız izləyən menecerə getmir. Keçidə qədər bugünkü kimi menecerə gedir. ✅
+4. **T1 + T2** — ayrıca branch-də indi düzəldilir və deploy olunur. ✅
