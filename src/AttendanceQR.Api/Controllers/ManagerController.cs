@@ -518,6 +518,10 @@ public class ManagerController : ControllerBase
             // Was projected above and then dropped here, so the manager's screen counted zero however
             // many people had it and the "take it back" button computed an empty set and did nothing.
             r.canShareDevice,
+            // Dropped here the same way until 2026-10-15 — and these two the edit form sends back as it
+            // got them, so every save from the roster sent null and quietly put the person back on
+            // their branch's QR-less and GPS rules. A test now holds every field the form round-trips.
+            r.qrlessCheckInOverride, r.requireGeofenceOverride,
             r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
@@ -697,6 +701,11 @@ public class ManagerController : ControllerBase
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
+        // Neither a number nor an e-mail leaves nothing to sign in with — the rule the invite already holds
+        // (NeedEmailOrPhone), held on the edit too: blanking the only number of a phone-only employee left
+        // an account nobody could reach, with nothing on screen to say why. None exists today (2026-10-15).
+        if (phone is null && string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { error = "NeedEmailOrPhone" });
         // Guard the uniqueness probe on a non-empty email exactly like the phone one below: with a null
         // email (a phone-only employee), `e.Email == email` translates to `Email IS NULL`, which matches
         // EVERY other phone-only employee and falsely reports "EmailAlreadyExists" — blocking any edit

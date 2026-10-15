@@ -25,6 +25,7 @@ import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompa
 import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
+import { useAccess } from '../../auth/AccessContext'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { PersonAccessCard } from '../../components/PersonAccessCard'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
@@ -65,6 +66,7 @@ export function EmployeeProfilePage() {
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
   const { role, employeeId: myId } = useAuth()
+  const { access } = useAccess()
   const isManager = role === 'Manager'
   /**
    * Whether this caller may ACT on the person whose card is open.
@@ -448,7 +450,9 @@ export function EmployeeProfilePage() {
             {manageable && (
               <button
                 className="btn btn-primary btn-sm"
-                onClick={() => navigate(`/admin/${isManager ? 'my-employees' : 'employees'}?edit=${emp.id}`)}
+                // One staff list for both since Phase 4, and it opens a manager's edit from their own
+                // card. The old manager address redirected without the ?edit= and opened nothing.
+                onClick={() => navigate(`/admin/employees?edit=${emp.id}`)}
               >
                 Redaktə et
               </button>
@@ -537,8 +541,11 @@ export function EmployeeProfilePage() {
       {id && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
 
       {/* Personal */}
-      {/* Roles and where — admin only while the access API is (Phase 3); the card hides itself otherwise. */}
-      {role === 'Admin' && emp && <PersonAccessCard employeeId={emp.id} fullName={emp.fullName} />}
+      {/* Roles and where — for whoever the access API admits: the admin, and anybody whose role carries
+          «assignments.view» (the server narrows it to their own area). */}
+      {(role === 'Admin' || access?.permissions.some((p) => p.key === 'assignments.view')) && emp && (
+        <PersonAccessCard employeeId={emp.id} fullName={emp.fullName} />
+      )}
 
       <div className="card card-pad">
         <div className="card-title">Şəxsi məlumat</div>

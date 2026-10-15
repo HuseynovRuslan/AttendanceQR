@@ -16,14 +16,20 @@ namespace AttendanceQR.Api.Controllers;
 ///
 /// Every decision here is the permission model's own (AccessRules.CanGrant / CanRevoke), read from the
 /// database on every request: a role given or taken away counts from the next request on, and nobody is
-/// signed out (the owner's rule — no forced logout). The gate is still today's «Admin» while the rest of the
-/// panel is; somebody holding the right to assign below company level gets their screen in Phase 4.
+/// signed out (the owner's rule — no forced logout).
+///
+/// The door (Phase 4, the owner's decision of 2026-10-15): today's company administrators, as before, and —
+/// the one door the permission model opens before Phase 5 — anybody whose assignments carry the right in
+/// question somewhere, so a structure operator can make their own timekeepers without asking an admin. Where
+/// they may use it is each action's own rule (CanGrant, CanRevoke, CanSeeArea) and is not widened by this:
+/// an operator reaches their own area and below, and nothing they did not hold already. No [Permission] on
+/// these actions — the shadow compares today's gate with the model, and here the model IS the gate.
 ///
 /// A support session only looks. Handing out or taking away power changes who can do what in somebody
 /// else's company, and that is never support's to do — the same line AdminController draws at promotions.
 /// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
+[Authorize]
 [Route("api/admin/access")]
 public class AdminAccessController : ControllerBase
 {
@@ -45,28 +51,33 @@ public class AdminAccessController : ControllerBase
 
     /// <summary>The permission keys with their Azerbaijani names, and the six template roles — what the role
     /// editor draws its checkboxes from.</summary>
-    [Permission(AccessPermissions.AssignmentsView)]
     [HttpGet("catalogue")]
-    public IActionResult Catalogue() => Ok(new
+    public async Task<IActionResult> Catalogue()
     {
-        permissions = AccessPermissions.Labels.Select(kv => new
+        if (Admit(await MeAsync(HttpContext.RequestAborted), AccessPermissions.AssignmentsView) is { } refused)
+            return refused;
+        return Ok(new
         {
-            key = kv.Key,
-            label = kv.Value,
-            companyOnly = AccessPermissions.CompanyOnly.Contains(kv.Key),
-            meta = AccessPermissions.Meta.Contains(kv.Key),
-        }),
-        templates = AccessRoleTemplates.All.Select(t => new
-        {
-            key = t.Key, name = t.Name, description = t.Description, isLocked = t.IsLocked, isLegacy = t.IsLegacy,
-        }),
-    });
+            permissions = AccessPermissions.Labels.Select(kv => new
+            {
+                key = kv.Key,
+                label = kv.Value,
+                companyOnly = AccessPermissions.CompanyOnly.Contains(kv.Key),
+                meta = AccessPermissions.Meta.Contains(kv.Key),
+            }),
+            templates = AccessRoleTemplates.All.Select(t => new
+            {
+                key = t.Key, name = t.Name, description = t.Description, isLocked = t.IsLocked, isLegacy = t.IsLegacy,
+            }),
+        });
+    }
 
-    [Permission(AccessPermissions.AssignmentsView)]
     [HttpGet("roles")]
     public async Task<IActionResult> Roles([FromQuery] bool includeArchived = false)
     {
         var ct = HttpContext.RequestAborted;
+        if (Admit(await MeAsync(ct), AccessPermissions.AssignmentsView) is { } refused)
+            return refused;
         var counts = await _db.RoleAssignments.AsNoTracking()
             .Where(a => a.RevokedAtUtc == null)
             .GroupBy(a => a.AccessRoleId)
@@ -84,7 +95,6 @@ public class AdminAccessController : ControllerBase
     }
 
     /// <summary>A company's own role. Only power the creator holds over the whole company can go into it.</summary>
-    [Permission(AccessPermissions.RolesManage, AtCompany = true)]
     [HttpPost("roles")]
     public async Task<IActionResult> CreateRole([FromBody] AccessRoleRequest request)
     {
@@ -120,7 +130,6 @@ public class AdminAccessController : ControllerBase
     /// three locked roles never change here: the company administrator is the way back in, and the two
     /// legacy roles ARE today's access, which only the code that reads Employee.Role may say.
     /// </summary>
-    [Permission(AccessPermissions.RolesManage, AtCompany = true)]
     [HttpPut("roles/{id:guid}")]
     public async Task<IActionResult> UpdateRole(Guid id, [FromBody] AccessRoleRequest request)
     {
@@ -168,7 +177,6 @@ public class AdminAccessController : ControllerBase
 
     /// <summary>Puts a role away. Only an unused one — taking power from the people who hold it is done one
     /// assignment at a time, each on the record, not as a side effect of tidying the role list.</summary>
-    [Permission(AccessPermissions.RolesManage, AtCompany = true)]
     [HttpPost("roles/{id:guid}/archive")]
     public async Task<IActionResult> ArchiveRole(Guid id)
     {
@@ -196,7 +204,6 @@ public class AdminAccessController : ControllerBase
         return Ok(ProjectRole(role, 0));
     }
 
-    [Permission(AccessPermissions.RolesManage, AtCompany = true)]
     [HttpPost("roles/{id:guid}/restore")]
     public async Task<IActionResult> RestoreRole(Guid id)
     {
@@ -227,13 +234,14 @@ public class AdminAccessController : ControllerBase
     /// assignments over the areas their «assignments.view» reaches. Each row says whether THIS caller may take
     /// it away, by the same rule the revoke applies, so the screen offers only what will work.
     /// </summary>
-    [Permission(AccessPermissions.AssignmentsView)]
     [HttpGet("assignments")]
     public async Task<IActionResult> Assignments(
         [FromQuery] Guid? employeeId = null, [FromQuery] Guid? roleId = null, [FromQuery] bool includeRevoked = false)
     {
         var ct = HttpContext.RequestAborted;
         var me = await MeAsync(ct);
+        if (Admit(me, AccessPermissions.AssignmentsView) is { } refused)
+            return refused;
         var rows = await _db.RoleAssignments.AsNoTracking()
             .Where(a => (includeRevoked || a.RevokedAtUtc == null)
                         && (employeeId == null || a.EmployeeId == employeeId)
@@ -250,16 +258,17 @@ public class AdminAccessController : ControllerBase
     /// People to pick in the assignment dialog — by name or phone, active, the ones the caller may see. Its
     /// own small search rather than the roster's: this screen must not break when the roster's paging does.
     /// </summary>
-    [Permission(AccessPermissions.AssignmentsView)]
     [HttpGet("people")]
     public async Task<IActionResult> People([FromQuery] string? search = null)
     {
         var ct = HttpContext.RequestAborted;
+        var me = await MeAsync(ct);
+        if (Admit(me, AccessPermissions.AssignmentsView) is { } refused)
+            return refused;
         var text = search?.Trim();
         if (string.IsNullOrEmpty(text) || text.Length < 2)
             return Ok(Array.Empty<object>());
         var lower = text.ToLower();
-        var me = await MeAsync(ct);
         var rows = await _db.Employees.AsNoTracking()
             .Where(e => e.IsActive
                         && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()))
@@ -283,18 +292,19 @@ public class AdminAccessController : ControllerBase
     }
 
     /// <summary>One person: what they hold, and what that adds up to — for the «Hüquqlar» card on a profile.</summary>
-    [Permission(AccessPermissions.AssignmentsView)]
     [HttpGet("people/{employeeId:guid}")]
     public async Task<IActionResult> Person(Guid employeeId)
     {
         var ct = HttpContext.RequestAborted;
+        var me = await MeAsync(ct);
+        if (Admit(me, AccessPermissions.AssignmentsView) is { } refused)
+            return refused;
         var person = await _db.Employees.AsNoTracking()
             .Where(e => e.Id == employeeId)
             .Select(e => new { e.Id, e.FullName, e.LocationId, e.Role, e.IsActive })
             .FirstOrDefaultAsync(ct);
         if (person is null)
             return NotFound(new { error = "EmployeeNotFound" });
-        var me = await MeAsync(ct);
         if (!me.Access.Covers(AccessPermissions.AssignmentsView, person.LocationId) && person.Id != me.Id)
             return Refused("OutOfScope");
 
@@ -328,18 +338,19 @@ public class AdminAccessController : ControllerBase
     /// a daily «make Aynur the tabelçi of two branches» needs no permissions expert. The server re-checks
     /// everything when the assignment is saved; this only spares the clicks that would be refused.
     /// </summary>
-    [Permission(AccessPermissions.AssignmentsManage)]
     [HttpGet("assignable")]
     public async Task<IActionResult> Assignable([FromQuery] Guid employeeId)
     {
         var ct = HttpContext.RequestAborted;
+        var me = await MeAsync(ct);
+        if (Admit(me, AccessPermissions.AssignmentsManage) is { } refused)
+            return refused;
         var person = await _db.Employees.AsNoTracking()
             .Where(e => e.Id == employeeId)
             .Select(e => new { e.Id, e.LocationId, e.IsActive })
             .FirstOrDefaultAsync(ct);
         if (person is null)
             return NotFound(new { error = "EmployeeNotFound" });
-        var me = await MeAsync(ct);
         var assignee = me.Graph.For(person.Id);
         var isOperator = _operators.Ids.Contains(person.Id);
 
@@ -367,6 +378,12 @@ public class AdminAccessController : ControllerBase
             .Where(o => o.company || o.structureIds.Count > 0 || o.locationIds.Count > 0)
             .ToList();
 
+        // The names the dialog draws its choices from: every structure and branch for a company-wide assigner,
+        // otherwise only the ones some option can actually reach — somebody working below company level sees
+        // their own area, not the company's map.
+        var everywhere = me.Access.HasAtCompany(AccessPermissions.AssignmentsManage);
+        var reachableStructures = options.SelectMany(o => o.structureIds).ToHashSet();
+        var reachableBranches = options.SelectMany(o => o.locationIds).ToHashSet();
         return Ok(new
         {
             employeeActive = person.IsActive,
@@ -376,8 +393,8 @@ public class AdminAccessController : ControllerBase
                 : person.Id == me.Id ? "SelfGrant"
                 : "NothingAssignable",
             roles = options,
-            structures = structures.OrderBy(s => s.Name),
-            branches = branches.OrderBy(b => b.Name),
+            structures = structures.Where(st => everywhere || reachableStructures.Contains(st.Id)).OrderBy(st => st.Name),
+            branches = branches.Where(b => everywhere || reachableBranches.Contains(b.Id)).OrderBy(b => b.Name),
         });
     }
 
@@ -386,13 +403,15 @@ public class AdminAccessController : ControllerBase
     /// the call, so a half-applied «three branches» never happens. An area the person already holds the role
     /// over is counted, not doubled. Effective from the person's next request.
     /// </summary>
-    [Permission(AccessPermissions.AssignmentsManage)]
     [HttpPost("assignments")]
     public async Task<IActionResult> Assign([FromBody] AssignRoleRequest request)
     {
         var ct = HttpContext.RequestAborted;
         if (User.IsImpersonating())
             return NotDuringSupport();
+        var me = await MeAsync(ct);
+        if (Admit(me, AccessPermissions.AssignmentsManage) is { } refused)
+            return refused;
 
         var person = await _db.Employees.FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct);
         if (person is null)
@@ -436,7 +455,6 @@ public class AdminAccessController : ControllerBase
                 return BadRequest(new { error = "ScopeMismatch" });
         }
 
-        var me = await MeAsync(ct);
         var assignee = me.Graph.For(person.Id);
         var isOperator = _operators.Ids.Contains(person.Id);
         foreach (var (structureId, locationId) in areas)
@@ -486,13 +504,15 @@ public class AdminAccessController : ControllerBase
 
     /// <summary>Takes one assignment away — the row stays, with who took it and when. Effective from the
     /// person's next request.</summary>
-    [Permission(AccessPermissions.AssignmentsManage)]
     [HttpPost("assignments/{id:guid}/revoke")]
     public async Task<IActionResult> Revoke(Guid id)
     {
         var ct = HttpContext.RequestAborted;
         if (User.IsImpersonating())
             return NotDuringSupport();
+        var me = await MeAsync(ct);
+        if (Admit(me, AccessPermissions.AssignmentsManage) is { } refused)
+            return refused;
 
         var row = await _db.RoleAssignments.FirstOrDefaultAsync(a => a.Id == id, ct);
         if (row is null)
@@ -503,7 +523,6 @@ public class AdminAccessController : ControllerBase
         var person = await _db.Employees.AsNoTracking()
             .Where(e => e.Id == row.EmployeeId).Select(e => new { e.Id, e.LocationId }).FirstAsync(ct);
 
-        var me = await MeAsync(ct);
         var decision = AccessRules.CanRevoke(me.Access, row.CreatedByEmployeeId is null, role.Permissions, row.Scope,
             row.StructureId, row.LocationId, person.Id, _operators.Ids.Contains(person.Id), person.LocationId,
             me.Graph.For(person.Id), me.Home);
@@ -535,6 +554,13 @@ public class AdminAccessController : ControllerBase
         var home = await _db.Employees.AsNoTracking().Where(e => e.Id == id).Select(e => (Guid?)e.LocationId).FirstOrDefaultAsync(ct);
         return new Me(id, home, graph, graph.For(id));
     }
+
+    /// <summary>
+    /// The door, before any area is looked at: today's administrator as before, or anybody the permission model
+    /// gives this right somewhere. Refused with the same error the in-action checks use.
+    /// </summary>
+    private ObjectResult? Admit(Me me, string permission) =>
+        User.Role() == EmployeeRole.Admin || me.Access.Has(permission) ? null : Refused("PermissionNotHeld", permission);
 
     private async Task<Names> NamesAsync(IReadOnlyCollection<RoleAssignment> rows, CancellationToken ct, Guid[]? extraEmployees = null)
     {

@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 /**
  * The owner's rule of 2026-10-15: a correction to somebody's attendance says why, and the why goes into the
  * audit line beside the change. One dialog for every correction — edit, add a day, close forgotten days,
- * undo a check-out, delete — and it doubles as the confirmation the screens used to ask with
- * window.confirm, so a correction is still one decision, not two.
+ * undo a check-out, delete, a Qayıb put on or taken off, a forgotten check-out decided, a day voided — and
+ * it doubles as the confirmation the screens used to ask with window.confirm, so a correction is still one
+ * decision, not two.
  *
- * The four presets are the reasons that actually come up; anything else is typed.
+ * The presets are the reasons that actually come up; anything else is typed. A screen whose corrections
+ * have reasons of their own (a Qayıb, a voided day) passes its own.
  */
 const PRESETS = [
   'Çıxış vurmağı unudub',
@@ -25,7 +27,10 @@ interface AskOptions {
   title: string
   detail?: string
   confirmLabel?: string
+  /** For a confirm button that itself says «ləğv et» (voiding a day) — two «Ləğv et» side by side is a trap. */
+  cancelLabel?: string
   danger?: boolean
+  presets?: string[]
 }
 
 /** `ask` resolves to the reason, or null when the dialog was dismissed. Render `dialog` once in the page. */
@@ -48,7 +53,7 @@ export function useCorrectionReason(): { ask: (o: AskOptions) => Promise<string 
 }
 
 function ReasonDialog({
-  title, detail, confirmLabel = 'Təsdiq et', danger, onDone,
+  title, detail, confirmLabel = 'Təsdiq et', cancelLabel = 'Ləğv et', danger, presets = PRESETS, onDone,
 }: AskOptions & { onDone: (reason: string | null) => void }) {
   const [text, setText] = useState('')
   const input = useRef<HTMLTextAreaElement>(null)
@@ -57,11 +62,15 @@ function ReasonDialog({
 
   useEffect(() => {
     input.current?.focus()
+    // Capture phase, and the Escape stops here: the dialog can open over another modal (the photo
+    // comparison) whose own Escape would otherwise close both at once.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') done.current(null)
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      done.current(null)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
   const trimmed = text.trim()
@@ -76,7 +85,7 @@ function ReasonDialog({
           Səbəb <span className="muted">— məcburidir, jurnala yazılır</span>
         </label>
         <div className="acc-chips">
-          {PRESETS.map((p) => (
+          {presets.map((p) => (
             <button
               key={p}
               type="button"
@@ -99,7 +108,7 @@ function ReasonDialog({
         />
         <div className="acc-modal-foot">
           <button type="button" className="btn btn-sm" onClick={() => onDone(null)}>
-            Ləğv et
+            {cancelLabel}
           </button>
           <button
             type="button"

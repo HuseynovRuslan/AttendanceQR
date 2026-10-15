@@ -1,3 +1,4 @@
+using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Enums;
@@ -5,6 +6,7 @@ using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
@@ -93,11 +95,14 @@ public class AdminMissedCheckoutController : ControllerBase
 
     [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{id:guid}/approve")]
-    public async Task<IActionResult> Approve(Guid id)
+    public async Task<IActionResult> Approve(
+        Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
         var callerId = User.EmployeeId();
         var role = User.Role();
         var ct = HttpContext.RequestAborted;
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var mc = await _db.MissedCheckoutRequests.FirstOrDefaultAsync(r => r.Id == id, ct);
         if (mc is null)
@@ -125,6 +130,9 @@ public class AdminMissedCheckoutController : ControllerBase
         mc.Status = MissedCheckoutStatus.Approved;
         mc.ReviewedByEmployeeId = callerId;
         mc.ReviewedAtUtc = DateTime.UtcNow;
+        _db.AuditLogs.Add(CorrectionReason.Audit(mc.EmployeeId, callerId, HttpContext.Connection.RemoteIpAddress?.ToString(),
+            $"Unudulmuş çıxış təsdiqləndi, record {record.Id}: {record.AttendanceDate:yyyy-MM-dd} çıxış "
+            + $"{mc.RequestedCheckOutAtUtc:HH:mm} UTC (işçinin səbəbi: {mc.Reason})", reason));
         await _db.SaveChangesAsync(ct);
 
         await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
@@ -134,11 +142,14 @@ public class AdminMissedCheckoutController : ControllerBase
 
     [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{id:guid}/reject")]
-    public async Task<IActionResult> Reject(Guid id)
+    public async Task<IActionResult> Reject(
+        Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
         var callerId = User.EmployeeId();
         var role = User.Role();
         var ct = HttpContext.RequestAborted;
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var mc = await _db.MissedCheckoutRequests.FirstOrDefaultAsync(r => r.Id == id, ct);
         if (mc is null)
@@ -156,6 +167,8 @@ public class AdminMissedCheckoutController : ControllerBase
         mc.Status = MissedCheckoutStatus.Rejected;
         mc.ReviewedByEmployeeId = callerId;
         mc.ReviewedAtUtc = DateTime.UtcNow;
+        _db.AuditLogs.Add(CorrectionReason.Audit(mc.EmployeeId, callerId, HttpContext.Connection.RemoteIpAddress?.ToString(),
+            $"Unudulmuş çıxış rədd edildi, record {mc.AttendanceRecordId} (işçinin səbəbi: {mc.Reason})", reason));
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { status = "Rejected" });

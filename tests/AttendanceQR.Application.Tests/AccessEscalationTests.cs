@@ -110,9 +110,9 @@ public class AccessEscalationTests
             AccessRules.CanGrant(g.For(actor), permissions, scope, structure, location, assignee, assignee == W.Operator,
                 W.HomeOf(assignee), g.For(assignee), W.HomeOf(actor));
 
-        public AdminAccessController Api(Guid caller, bool impersonating = false)
+        public AdminAccessController Api(Guid caller, bool impersonating = false, string role = "Admin")
         {
-            var claims = new List<Claim> { new("sub", caller.ToString()), new("role", "Admin") };
+            var claims = new List<Claim> { new("sub", caller.ToString()), new("role", role) };
             if (impersonating)
                 claims.Add(new Claim("imp", Guid.NewGuid().ToString()));
             return new AdminAccessController(W.Context(AccessWorld.TenantA), new OperatorAllowlist(new HashSet<Guid> { W.Operator }), W.Options)
@@ -123,6 +123,18 @@ public class AccessEscalationTests
                 },
             };
         }
+
+        public MeController Me(Guid who, string role) =>
+            new(W.Context(AccessWorld.TenantA), new MemoryCache(new MemoryCacheOptions()))
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext
+                    {
+                        User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", who.ToString()), new Claim("role", role)], "test")),
+                    },
+                },
+            };
 
         public void Dispose() => W.Dispose();
     }
@@ -422,5 +434,97 @@ public class AccessEscalationTests
 
         Assert.Equal("SelfGrant", Prop<string>(Assert.IsType<OkObjectResult>(await api.Assignable(o.W.Admin1)).Value!, "reason"));
         Assert.Equal("CannotManageOperator", Prop<string>(Assert.IsType<OkObjectResult>(await api.Assignable(o.W.Operator)).Value!, "reason"));
+    }
+
+    // ───────────────────── Phase 4: the door opens for whoever holds the right ─────────────────────
+
+    private static List<Guid> Ids(object result, string list, string field) =>
+        Prop<System.Collections.IEnumerable>(result, list).Cast<object>().Select(x => Prop<Guid>(x, field)).ToList();
+
+    [Fact]
+    public async Task An_operator_who_is_plain_staff_today_makes_their_own_timekeeper_and_it_counts_at_once()
+    {
+        using var o = new Airport();
+        await o.InitAsync();
+        // Plain staff by today's role — no panel, no admin — and an operator of Aeroport yolu allowed to assign.
+        var api = o.Api(o.Assigner, role: "Employee");
+
+        var offer = Assert.IsType<OkObjectResult>(await api.Assignable(o.Worker1)).Value!;
+        var keys = Prop<System.Collections.IEnumerable>(offer, "roles").Cast<object>().Select(r => Prop<string?>(r, "templateKey")).ToList();
+        Assert.Contains(AccessRoleTemplates.Timekeeper, keys);
+        Assert.Contains(AccessRoleTemplates.Observer, keys);
+        Assert.DoesNotContain(AccessRoleTemplates.StructureOperator, keys);   // never their equal (decision 1)
+        // Their own area's names, not the company's map.
+        Assert.Equal(new[] { o.W.B1, o.W.B2 }.Order(), Ids(offer, "branches", "Id").Order());
+        Assert.DoesNotContain(o.W.B3, Ids(offer, "branches", "Id"));
+        Assert.DoesNotContain(o.Parks, Ids(offer, "structures", "Id"));
+
+        Assert.IsType<OkObjectResult>(await api.Assign(new AssignRoleRequest(
+            o.Worker1, o.Roles[AccessRoleTemplates.Timekeeper].Id, AccessScopeType.Branch, LocationIds: [o.W.B1])));
+        // Outside their structure, or their equal: refused, and nothing written.
+        Assert.Equal("OutOfScope", ErrorOf(await api.Assign(new AssignRoleRequest(
+            o.Worker1, o.Roles[AccessRoleTemplates.Timekeeper].Id, AccessScopeType.Branch, LocationIds: [o.W.B3]))));
+        Assert.Equal("NotBelowYou", ErrorOf(await api.Assign(new AssignRoleRequest(
+            o.Worker1, o.Roles[AccessRoleTemplates.StructureOperator].Id, AccessScopeType.Structure, StructureId: o.Structure))));
+        Assert.Single(o.W.Context(AccessWorld.TenantA).RoleAssignments.Where(a => a.EmployeeId == o.Worker1));
+
+        // The new timekeeper's very next panel request: the panel is theirs, with exactly that branch, and
+        // nobody was signed out for it.
+        var me = Assert.IsType<OkObjectResult>(await o.Me(o.Worker1, "Employee").Access()).Value!;
+        Assert.True(Prop<bool>(me, "panel"));
+        Assert.Equal("Employee", Prop<string>(me, "legacyRole"));
+        Assert.Equal([o.W.B1], Ids(me, "branches", "id"));
+        var held = Prop<System.Collections.IEnumerable>(me, "assignments").Cast<object>().Single();
+        Assert.Equal(AccessRoleTemplates.Timekeeper, Prop<string?>(held, "template"));
+        Assert.Equal("Tabelçi", Prop<string?>(held, "roleName"));
+    }
+
+    [Fact]
+    public async Task Without_the_right_the_door_stays_shut_whatever_the_role()
+    {
+        using var o = new Airport();
+        await o.InitAsync();
+        var observer = o.Roles[AccessRoleTemplates.Observer].Id;
+        var anyRow = o.W.Context(AccessWorld.TenantA).RoleAssignments.AsNoTracking().First();
+
+        // Plain staff with no role, and today's branch manager — whose role carries no right to assign: both
+        // were refused by the old «Admin» gate, and still are, now by the model and with a reason.
+        foreach (var (who, role) in new[] { (o.W.E1, "Employee"), (o.W.M1, "Manager") })
+        {
+            var api = o.Api(who, role: role);
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Catalogue()));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Roles()));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Assignments()));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.People("İşçi")));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Person(o.Worker1)));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Assignable(o.Worker1)));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Assign(new AssignRoleRequest(
+                o.Worker1, observer, AccessScopeType.Branch, LocationIds: [o.W.B1]))));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.Revoke(anyRow.Id)));
+            Assert.Equal("PermissionNotHeld", ErrorOf(await api.CreateRole(new AccessRoleRequest("Rol", null, [AttendanceView]))));
+        }
+        // A timekeeper's role carries no «assignments.view» either.
+        Assert.Equal("PermissionNotHeld", ErrorOf(await o.Api(o.Keeper, role: "Employee").Assignments()));
+        // An operator without the right to assign may look at their structure's assignments, and hand out none.
+        var op = o.Api(o.Op1, role: "Employee");
+        Assert.IsType<OkObjectResult>(await op.Assignments());
+        Assert.Equal("PermissionNotHeld", ErrorOf(await op.Assignable(o.Worker1)));
+    }
+
+    [Fact]
+    public async Task The_panel_is_offered_to_todays_two_roles_and_to_anybody_holding_a_new_one()
+    {
+        using var o = new Airport();
+        await o.InitAsync();
+        async Task<object> MeOf(Guid who, string role) => Assert.IsType<OkObjectResult>(await o.Me(who, role).Access()).Value!;
+
+        Assert.True(Prop<bool>(await MeOf(o.W.Admin1, "Admin"), "panel"));
+        Assert.True(Prop<bool>(await MeOf(o.W.M1, "Manager"), "panel"));
+        Assert.True(Prop<bool>(await MeOf(o.Keeper, "Employee"), "panel"));
+        Assert.False(Prop<bool>(await MeOf(o.W.E1, "Employee"), "panel"));
+        // An admin reaches every branch; a timekeeper, theirs.
+        Assert.Contains(o.W.B3, Ids(await MeOf(o.W.Admin1, "Admin"), "branches", "id"));
+        Assert.Equal([o.W.B2], Ids(await MeOf(o.Keeper, "Employee"), "branches", "id"));
+        Assert.Empty(Ids(await MeOf(o.W.E1, "Employee"), "branches", "id"));
     }
 }

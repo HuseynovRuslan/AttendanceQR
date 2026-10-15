@@ -59,7 +59,7 @@ const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m 
 const ServiceSignInPage = lazy(() => import('./pages/ServiceSignInPage').then(m => ({ default: m.ServiceSignInPage })))
 // "QRLog ilə daxil ol" for another application of ours (PRIZMA): reached only from that app's link.
 const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
-const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
+const MyAreaPage = lazy(() => import('./pages/admin/MyAreaPage').then(m => ({ default: m.MyAreaPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const AccessPage = lazy(() => import('./pages/admin/AccessPage').then(m => ({ default: m.AccessPage })))
@@ -392,8 +392,11 @@ function AppRoutes() {
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
         <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
-        {/* Manager write surface — the endpoints are Manager-only + location-scoped server-side. */}
-        <Route path="my-employees" element={<PanelPage path="my-employees"><ManagerEmployeesPage /></PanelPage>} />
+        {/* The manager's own roster screen is retired: since Phase 4 there is one staff list, which reads
+            the manager's own endpoints for a manager. Kept as a redirect for bookmarks and open tabs. */}
+        <Route path="my-employees" element={<Navigate to="/admin/employees" replace />} />
+        {/* «Mənim sahəm» — what I hold, where, and what opens for me after the switch. */}
+        <Route path="my-area" element={<PanelPage path="my-area"><MyAreaPage /></PanelPage>} />
         {/* The narrow register is retired: the shared one now reads through the manager's own
             endpoints, so there is one leave screen again. The route stays as a redirect because a
             manager may have bookmarked it or have it open in a tab. */}
