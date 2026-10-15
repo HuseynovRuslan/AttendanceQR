@@ -115,7 +115,7 @@ public class AccessEscalationTests
             var claims = new List<Claim> { new("sub", caller.ToString()), new("role", "Admin") };
             if (impersonating)
                 claims.Add(new Claim("imp", Guid.NewGuid().ToString()));
-            return new AdminAccessController(W.Context(AccessWorld.TenantA), new OperatorAllowlist(new HashSet<Guid> { W.Operator }))
+            return new AdminAccessController(W.Context(AccessWorld.TenantA), new OperatorAllowlist(new HashSet<Guid> { W.Operator }), W.Options)
             {
                 ControllerContext = new ControllerContext
                 {

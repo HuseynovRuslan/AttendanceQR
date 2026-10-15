@@ -100,6 +100,9 @@ export const PANEL_PAGES: PanelPage[] = [
   { path: 'billing', roles: ADMIN },
   // Renaming or merging a job title rewrites it on every employee holding it.
   { path: 'positions', roles: ADMIN },
+  // Who holds which role where (Phase 3). The API behind it is Admin-only until the unified panel
+  // (Phase 4) lets somebody with the right to assign reach it below company level.
+  { path: 'access', roles: ADMIN },
   // A holiday changes the payroll divisor for the whole company.
   { path: 'non-working-days', roles: ADMIN },
   { path: 'vote', roles: ADMIN },

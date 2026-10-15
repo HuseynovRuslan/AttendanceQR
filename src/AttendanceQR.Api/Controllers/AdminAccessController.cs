@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -32,11 +33,14 @@ public class AdminAccessController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly OperatorAllowlist _operators;
+    private readonly string[] _hiddenEmails;
 
-    public AdminAccessController(AppDbContext db, OperatorAllowlist operators)
+    public AdminAccessController(AppDbContext db, OperatorAllowlist operators, AppOptions appOptions)
     {
         _db = db;
         _operators = operators;
+        // The system/root accounts the roster hides are not people anybody gives a role to.
+        _hiddenEmails = appOptions.HiddenEmailList();
     }
 
     /// <summary>The permission keys with their Azerbaijani names, and the six template roles — what the role
@@ -240,6 +244,42 @@ public class AdminAccessController : ControllerBase
         var names = await NamesAsync(rows, ct);
         return Ok(rows.Where(a => CanSeeArea(me.Access, a.Scope, a.StructureId, a.LocationId))
             .Select(a => ProjectAssignment(a, names, me)));
+    }
+
+    /// <summary>
+    /// People to pick in the assignment dialog — by name or phone, active, the ones the caller may see. Its
+    /// own small search rather than the roster's: this screen must not break when the roster's paging does.
+    /// </summary>
+    [Permission(AccessPermissions.AssignmentsView)]
+    [HttpGet("people")]
+    public async Task<IActionResult> People([FromQuery] string? search = null)
+    {
+        var ct = HttpContext.RequestAborted;
+        var text = search?.Trim();
+        if (string.IsNullOrEmpty(text) || text.Length < 2)
+            return Ok(Array.Empty<object>());
+        var lower = text.ToLower();
+        var me = await MeAsync(ct);
+        var rows = await _db.Employees.AsNoTracking()
+            .Where(e => e.IsActive
+                        && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()))
+                        && (e.FullName.ToLower().Contains(lower) || (e.PhoneNumber != null && e.PhoneNumber.Contains(text))))
+            .OrderBy(e => e.FullName)
+            .Take(60)
+            .Select(e => new { e.Id, e.FullName, e.LocationId, e.Position })
+            .ToListAsync(ct);
+        var branches = await _db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+        return Ok(rows
+            .Where(e => me.Access.Covers(AccessPermissions.AssignmentsView, e.LocationId))
+            .Take(20)
+            .Select(e => new
+            {
+                id = e.Id,
+                fullName = e.FullName,
+                home = branches.GetValueOrDefault(e.LocationId),
+                position = e.Position,
+                isOperator = _operators.Ids.Contains(e.Id),
+            }));
     }
 
     /// <summary>One person: what they hold, and what that adds up to — for the «Hüquqlar» card on a profile.</summary>
