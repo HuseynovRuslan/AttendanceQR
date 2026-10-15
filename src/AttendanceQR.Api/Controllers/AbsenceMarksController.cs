@@ -71,7 +71,9 @@ public class AbsenceMarksController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
+        if (request.EmployeeId == User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(4)); // company day, near enough for a guard
@@ -127,7 +129,9 @@ public class AbsenceMarksController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
+        if (employeeId == User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var row = await _db.AbsenceMarks

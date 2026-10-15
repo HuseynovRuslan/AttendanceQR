@@ -133,6 +133,10 @@ internal sealed class AccessWorld : IDisposable
         return db;
     }
 
+    /// <summary>The branch a person clocks in at — what the permission rules call their home.</summary>
+    public Guid HomeOf(Guid employeeId) =>
+        Context(TenantA).Employees.IgnoreQueryFilters().AsNoTracking().Single(e => e.Id == employeeId).LocationId;
+
     public async Task<AccessGraph> ReconcileAndLoadAsync()
     {
         await AccessSeeder.ReconcileTenantAsync(Context(TenantA), TenantA);

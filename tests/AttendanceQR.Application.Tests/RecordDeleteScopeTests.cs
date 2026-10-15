@@ -1,3 +1,4 @@
+using AttendanceQR.Api.Contracts;
 using System.Security.Claims;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Common;
@@ -166,7 +167,7 @@ public class RecordDeleteScopeTests
         using var h = new Harness();
         var rec = h.Record(h.SameBranchEmployeeId, h.BranchA, TenantA);
 
-        var result = await h.AsManager.Delete(rec.Id);
+        var result = await h.AsManager.Delete(rec.Id, new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü"));
 
         Assert.IsType<OkObjectResult>(result);
         Assert.False(h.Exists(rec.Id));
@@ -178,7 +179,7 @@ public class RecordDeleteScopeTests
         using var h = new Harness();
         var rec = h.Record(h.OtherBranchEmployeeId, h.BranchB, TenantA);
 
-        AssertForbidden(await h.AsManager.Delete(rec.Id));
+        AssertForbidden(await h.AsManager.Delete(rec.Id, new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü")));
         Assert.True(h.Exists(rec.Id));
     }
 
@@ -192,7 +193,7 @@ public class RecordDeleteScopeTests
         var target = who == "admin" ? h.SameBranchAdminId : h.SameBranchManagerId;
         var rec = h.Record(target, h.BranchA, TenantA);
 
-        AssertForbidden(await h.AsManager.Delete(rec.Id));
+        AssertForbidden(await h.AsManager.Delete(rec.Id, new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü")));
         Assert.True(h.Exists(rec.Id));
     }
 
@@ -204,7 +205,7 @@ public class RecordDeleteScopeTests
         using var h = new Harness();
         var rec = h.Record(h.OtherTenantEmployeeId, h.BranchA, TenantB);
 
-        var result = await h.AsAdmin.Delete(rec.Id);
+        var result = await h.AsAdmin.Delete(rec.Id, new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü"));
 
         Assert.IsType<NotFoundObjectResult>(result);
         Assert.True(h.Exists(rec.Id));
@@ -217,7 +218,7 @@ public class RecordDeleteScopeTests
         using var h = new Harness();
         var rec = h.Record(h.SameBranchEmployeeId, h.BranchA, TenantA, photoKey: "checkins/2026/09/01/x.webp");
 
-        await h.AsAdmin.Delete(rec.Id);
+        await h.AsAdmin.Delete(rec.Id, new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü"));
 
         Assert.Equal(new[] { "checkins/2026/09/01/x.webp" }, h.Photo.Deleted);
     }
@@ -230,7 +231,7 @@ public class RecordDeleteScopeTests
         using var h = new Harness();
         var rec = h.Record(h.SameBranchEmployeeId, h.BranchA, TenantA);
 
-        await h.AsAdmin.Delete(rec.Id);
+        await h.AsAdmin.Delete(rec.Id, new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü"));
 
         var log = Assert.Single(h.Db.AuditLogs.IgnoreQueryFilters()
             .Where(a => a.EmployeeId == h.SameBranchEmployeeId).ToList());
@@ -243,6 +244,6 @@ public class RecordDeleteScopeTests
     public async Task A_record_that_is_not_there_is_a_404_not_a_crash()
     {
         using var h = new Harness();
-        Assert.IsType<NotFoundObjectResult>(await h.AsAdmin.Delete(Guid.NewGuid()));
+        Assert.IsType<NotFoundObjectResult>(await h.AsAdmin.Delete(Guid.NewGuid(), new AttendanceCorrectionRequest("Gecə növbəsinin səhv günü")));
     }
 }

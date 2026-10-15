@@ -10,4 +10,6 @@ namespace AttendanceQR.Api.Contracts;
 /// <param name="RecordIds">The open records to close. Anything already closed, out of the caller's
 /// scope, or dated today is skipped and counted, never failed — a batch must not be all-or-nothing
 /// when the reason one row cannot be closed has nothing to do with the other twenty.</param>
-public record CloseOpenDaysRequest(List<Guid> RecordIds);
+/// <param name="Reason">One reason for the whole batch — required (CorrectionReason), written into each
+/// record's audit line.</param>
+public record CloseOpenDaysRequest(List<Guid> RecordIds, string? Reason = null);

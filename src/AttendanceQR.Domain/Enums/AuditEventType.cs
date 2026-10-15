@@ -74,5 +74,15 @@ public enum AuditEventType
     // A branch was put into a structure, moved to another, or taken out of one. Written against the
     // employee who did it, the reason «Branch: Old → New». Who sees a branch follows its structure once
     // structure-wide access exists, so every move is on the record.
-    LocationStructureChanged = 21
+    LocationStructureChanged = 21,
+
+    // A role was given to somebody over an area, or taken away (Phase 3, AdminAccessController). Written
+    // against the person who RECEIVED or LOST it; the reason «By {who}: {role} @ {area}». Who could do what
+    // on a given day is answerable from these lines and the assignment rows, which are revoked, never deleted.
+    AccessGranted = 22,
+    AccessRevoked = 23,
+
+    // A role itself was created, edited, archived or restored — its permission set is everybody's who holds
+    // it, so every change is on the record. Written against the employee who did it.
+    AccessRoleChanged = 24
 }
