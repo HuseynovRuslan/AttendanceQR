@@ -15,6 +15,7 @@ import {
 import { IconX } from '../../components/icons'
 import { getManagerSchedules, type ManagerSchedule } from '../../api/manager'
 import { getGroupCompanies } from '../../api/tenant'
+import { managerFormFrom } from '../../lib/managerEmployeeForm'
 import { CredentialDesk } from './CredentialDesk'
 import './manager.css'
 
@@ -23,15 +24,8 @@ const EMPTY: ManagerEmployeeInput = {
   locationId: '', birthDate: null, birthYear: null, workStart: null, workEnd: null,
   scheduleId: null, workCycleDays: null, workCycleOnDays: null, workCycleAnchor: null,
   photoExempt: false, canFieldCheckIn: false, isActive: true,
+  qrlessCheckInOverride: null, requireGeofenceOverride: null,
   paperEmployer: null, paperSite: null,
-}
-
-/** Prefer stored parts; fall back to splitting FullName (last token = surname) for un-backfilled rows. */
-function splitName(first: string | null | undefined, last: string | null | undefined, full: string): { first: string; last: string } {
-  if (first || last) return { first: first ?? '', last: last ?? '' }
-  const toks = (full ?? '').trim().split(/\s+/).filter(Boolean)
-  if (toks.length <= 1) return { first: toks[0] ?? '', last: '' }
-  return { first: toks.slice(0, -1).join(' '), last: toks[toks.length - 1] }
 }
 
 const ERRORS: Record<string, string> = {
@@ -130,21 +124,7 @@ export function ManagerEmployeesPage() {
   }
 
   function startEdit(e: ManagerEmployee) {
-    const nm = splitName(e.firstName, e.lastName, e.fullName)
-    setForm({
-      fullName: e.fullName, firstName: nm.first, lastName: nm.last,
-      // Phone-only employees have a null email now — and legacy placeholder addresses are hidden.
-      email: e.email && !e.email.endsWith('@baki.local') ? e.email : null,
-      phoneNumber: e.phoneNumber, fatherName: e.fatherName, position: e.position,
-      locationId: e.locationId, birthDate: e.birthDate, birthYear: e.birthYear,
-      workStart: e.workStart, workEnd: e.workEnd, photoExempt: e.photoExempt,
-      canFieldCheckIn: e.canFieldCheckIn, isActive: e.isActive,
-      scheduleId: e.scheduleId,
-      workCycleDays: e.workCycleDays, workCycleOnDays: e.workCycleOnDays, workCycleAnchor: e.workCycleAnchor,
-      // Read back before it can be written back: the payload is a spread of `form`, so a field that
-      // never lands in the form reaches the server as undefined and is cleared there.
-      paperEmployer: e.paperEmployer ?? null, paperSite: e.paperSite ?? null,
-    })
+    setForm(managerFormFrom(e))
     setEditing(e.id)
     setErr(null)
     setPin(null)
