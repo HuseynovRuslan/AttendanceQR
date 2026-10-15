@@ -565,7 +565,8 @@ public class AdminAttendanceController : ControllerBase
                    + $"{record.CheckInAtUtc:HH:mm} UTC, face {record.FaceMatchStatus}"
                    + (record.FaceMatchScore is int sc ? $" {sc}%" : "")
                    + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}")
-                   + $" — {record.VoidReason}",
+                   // «Səbəb:» like every other correction's line, so one search finds them all.
+                   + $". Səbəb: {record.VoidReason}",
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
