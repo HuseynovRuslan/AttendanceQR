@@ -141,7 +141,6 @@ export const ui = {
     'hero.title.b': ' ilə idarə edin',
     'hero.sub':
       'İşçi iş yerindəki QR posteri telefonu ilə skan edir; sistem QR imzasını, məkanı, cihazı və üzü yoxlayıb giriş-çıxışı qeydə alır. Turniket, barmaq izi cihazı və ya kağız jurnal lazım deyil.',
-    'hero.cta2': 'Necə işləyir →',
     'hero.s1n': '~10 san',
     'hero.s1l': 'bir girişin qeydə alınması',
     'hero.s2n': '0 ₼',
@@ -572,7 +571,6 @@ export const ui = {
     'hero.title.b': '',
     'hero.sub':
       'Сотрудник сканирует QR-постер на рабочем месте своим телефоном; система проверяет подпись QR, локацию, устройство и лицо — и записывает приход или уход. Турникеты, сканеры отпечатков и бумажные журналы не нужны.',
-    'hero.cta2': 'Как это работает →',
     'hero.s1n': '~10 сек',
     'hero.s1l': 'на одну отметку',
     'hero.s2n': '0 ₼',
@@ -973,7 +971,6 @@ export const ui = {
     'hero.title.b': '',
     'hero.sub':
       'An employee scans the QR poster at their site with their own phone; the system checks the QR signature, the location, the device and the face, then records the check-in or check-out. No turnstiles, no fingerprint readers, no paper register.',
-    'hero.cta2': 'How it works →',
     'hero.s1n': '~10 sec',
     'hero.s1l': 'to record one check-in',
     'hero.s2n': '0 ₼',
