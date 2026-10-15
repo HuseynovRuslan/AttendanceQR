@@ -26,6 +26,7 @@ import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
 import { useAccess } from '../../auth/AccessContext'
+import { listFailureText } from '../../lib/listFailure'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { PersonAccessCard } from '../../components/PersonAccessCard'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
@@ -93,6 +94,8 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
+  /** Which of the card's lists did not come (their status) — so «yoxdur» is said only when it is true. */
+  const [failed, setFailed] = useState<{ attendance?: number; devices?: number; summary?: number }>({})
   const [equipment, setEquipment] = useState<EquipmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -171,6 +174,11 @@ export function EmployeeProfilePage() {
     }
     const recs = attRes.status === 200 && Array.isArray(attRes.data) ? attRes.data : []
     setRecords(recs)
+    setFailed({
+      attendance: attRes.status === 200 ? undefined : attRes.status,
+      devices: devRes.status === 200 ? undefined : devRes.status,
+      summary: sumRes.status === 200 ? undefined : sumRes.status,
+    })
     if (devRes.status === 200 && Array.isArray(devRes.data)) setDevices(devRes.data.filter((d) => d.employeeId === id))
     if (equipRes?.status === 200 && Array.isArray(equipRes.data)) setEquipment(equipRes.data)
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
@@ -532,7 +540,9 @@ export function EmployeeProfilePage() {
             {openMetric && <MetricBreakdown metric={openMetric} days={monthDays} onClose={() => setOpenMetric(null)} />}
           </>
         ) : (
-          <p className="muted" style={{ fontSize: 13 }}>Bu ay üçün məlumat yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.summary != null ? listFailureText(failed.summary) : 'Bu ay üçün məlumat yoxdur.'}
+          </p>
         )}
       </div>
 
@@ -620,7 +630,9 @@ export function EmployeeProfilePage() {
         )}
 
         {recent.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Qeyd yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.attendance != null ? listFailureText(failed.attendance) : 'Qeyd yoxdur.'}
+          </p>
         ) : (
           <div className="tbl-wrap tbl-cards">
             <table>
@@ -753,7 +765,9 @@ export function EmployeeProfilePage() {
       <div className="card card-pad">
         <div className="card-title">Cihazlar</div>
         {devices.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Bağlı cihaz yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.devices != null ? listFailureText(failed.devices) : 'Bağlı cihaz yoxdur.'}
+          </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {devices.map((d) => (
