@@ -47,6 +47,10 @@ export interface ManagerEmployee {
   workCycleAnchor: string | null
   photoExempt: boolean
   canFieldCheckIn: boolean
+  /** Per-person check-in mode (null = follow the branch). Read back so the edit form can send them
+   *  unchanged — see managerFormFrom. */
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
   /** Read-only for a manager. Whether an account may ride on somebody else's phone is granted here in
    *  bulk over their own staff, but the per-employee edit form does not carry it — see the manager
    *  projection in ManagerController for why. */

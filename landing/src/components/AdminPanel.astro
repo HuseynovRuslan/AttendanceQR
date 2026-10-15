@@ -269,7 +269,7 @@ const chipClass =
   }
 
   [aria-selected='true'] .pbar > i {
-    animation: ap-fill 8s linear forwards;
+    animation: ap-fill 4s linear forwards;
   }
 
   [data-state='paused'] [aria-selected='true'] .pbar > i {
@@ -468,7 +468,7 @@ const chipClass =
         el.animate(
           frames,
           leaving
-            ? { duration: 280, easing: 'ease-in', fill: 'forwards' }
+            ? { duration: 180, easing: 'ease-in', fill: 'forwards' }
             : { duration: 560, delay: 160 + k * 60, easing: EASE, fill: 'backwards' }
         )
       })

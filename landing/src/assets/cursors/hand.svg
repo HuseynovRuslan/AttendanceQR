@@ -1,0 +1,17 @@
+<!--
+  Açıq əl — Modullar slayderinin üstündəki kursor (Modules.astro, `.mod-slider .splide__track`).
+  Mənbə: Phosphor Icons, "hand" ikonu, "regular" (nazik) çəki — https://phosphoricons.com
+  Lisenziya: MIT — https://github.com/phosphor-icons/core/blob/main/LICENSE
+  Dəyişiklik: ikon iki dəfə çəkilib. Altda qalın ağ haşiyə (tünd fonda da görünsün), üstdə qara əl.
+  Qara rəng saytın `ink` tokenidir (#111211) — şəkil faylında CSS dəyişəni işləmir, ona görə hex yazılıb.
+  Ölçü 24×24 — adi kursor ölçüsü. viewBox ikonu haşiyəyə yer qalsın deyə hər tərəfdən 8 vahid genişləndirir.
+  `width` və `height` mütləqdir: onlarsız Firefox SVG kursoru göstərmir.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-8 -8 272 272">
+  <g fill="#ffffff" stroke="#ffffff" stroke-width="16" stroke-linejoin="round">
+    <path d="M188,48a27.75,27.75,0,0,0-12,2.71V44a28,28,0,0,0-54.65-8.6A28,28,0,0,0,80,60v64l-3.82-6.13a28,28,0,0,0-48.6,27.82c16,33.77,28.93,57.72,43.72,72.69C86.24,233.54,103.2,240,128,240a88.1,88.1,0,0,0,88-88V76A28,28,0,0,0,188,48Zm12,104a72.08,72.08,0,0,1-72,72c-20.38,0-33.51-4.88-45.33-16.85C69.44,193.74,57.26,171,41.9,138.58a6.36,6.36,0,0,0-.3-.58,12,12,0,0,1,20.79-12,1.76,1.76,0,0,0,.14.23l18.67,30A8,8,0,0,0,96,152V60a12,12,0,0,1,24,0v60a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v76a8,8,0,0,0,16,0V76a12,12,0,0,1,24,0Z"/>
+  </g>
+  <g fill="#111211">
+    <path d="M188,48a27.75,27.75,0,0,0-12,2.71V44a28,28,0,0,0-54.65-8.6A28,28,0,0,0,80,60v64l-3.82-6.13a28,28,0,0,0-48.6,27.82c16,33.77,28.93,57.72,43.72,72.69C86.24,233.54,103.2,240,128,240a88.1,88.1,0,0,0,88-88V76A28,28,0,0,0,188,48Zm12,104a72.08,72.08,0,0,1-72,72c-20.38,0-33.51-4.88-45.33-16.85C69.44,193.74,57.26,171,41.9,138.58a6.36,6.36,0,0,0-.3-.58,12,12,0,0,1,20.79-12,1.76,1.76,0,0,0,.14.23l18.67,30A8,8,0,0,0,96,152V60a12,12,0,0,1,24,0v60a8,8,0,0,0,16,0V44a12,12,0,0,1,24,0v76a8,8,0,0,0,16,0V76a12,12,0,0,1,24,0Z"/>
+  </g>
+</svg>

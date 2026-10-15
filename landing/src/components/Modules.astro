@@ -1,48 +1,498 @@
 ---
-import { useTranslations, type Lang } from '../i18n/ui'
+/*
+ * «Modullar» bölməsi: məhsulun davamiyyətdən kənar imkanları — tam enli, özü axan kart slayderi.
+ * Harada işlənir: Landing.astro-da, «Saxtaya qarşı» bölməsi ilə rəqəmlər zolağının arasında (AZ/RU/EN).
+ * Props: lang — səhifənin dili.
+ * Necə işləyir: kartlar aşağıdakı `cards` massivindən qurulur. Slayderi faylın sonundakı skript Splide
+ * ilə işə salır: kartlar özü axır, siçan üstündə dayanır, barmaq və ya siçanla sürüşdürülür.
+ */
+import '@splidejs/splide/css/core'
+import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
+import ModuleIcon from './ModuleIcon.astro'
+import type { IconName } from './ModuleIcon.astro'
 
-const { lang } = Astro.props as { lang: Lang }
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
 const t = useTranslations(lang)
 
-// This replaced the template's "Integrations" strip. QRLog has no Slack, Google Sheets, SAML or
-// webhook integration — what it does have is these modules, in the same admin panel.
-const icons = {
-  board: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/>',
-  sheet: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>',
-  money: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/>',
-  leave: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="m9 15 2 2 4-4"/>',
-  shift: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  mega: '<path d="M4 10v4a1 1 0 0 0 1 1h3l5 4V5L8 9H5a1 1 0 0 0-1 1Z"/><path d="M17 9a4 4 0 0 1 0 6"/>',
-  task: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 11 2.5 2.5L16 8"/><path d="M8 17h6"/>',
-  bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
-  kiosk: '<rect x="5" y="3" width="14" height="14" rx="2"/><path d="M9 21h6M12 17v4"/>',
-  branch: '<path d="M6 3v6a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3v6"/><circle cx="6" cy="3" r="1.6"/><circle cx="18" cy="21" r="1.6"/>',
+interface ModuleCard {
+  icon: IconName
+  name: UIKey
+  desc: UIKey
+  /** Yalnız Push kartı: hover-də zəng bir dəfə yırğalanır. */
+  wiggle?: boolean
 }
-const chips = [
-  { l: 'mod.m1', p: icons.board },
-  { l: 'mod.m2', p: icons.sheet },
-  { l: 'mod.m3', p: icons.money },
-  { l: 'mod.m4', p: icons.leave },
-  { l: 'mod.m5', p: icons.shift },
-  { l: 'mod.m6', p: icons.mega },
-  { l: 'mod.m7', p: icons.task },
-  { l: 'mod.m8', p: icons.bell },
-  { l: 'mod.m9', p: icons.kiosk },
-  { l: 'mod.m10', p: icons.branch },
+
+// Kartın nömrəsi (01, 02 …) massivdəki sıradan çıxır. Kartı çıxarmaq üçün sətri silmək kifayətdir —
+// qalan kartların nömrələri özü düzəlir. Mətnlər `UIKey` olduğu üçün açarda hərf səhvi olsa,
+// redaktor və `npm run check` xəta göstərir.
+const cards: ModuleCard[] = [
+  { icon: 'calendar-clock', name: 'mod.shift.name', desc: 'mod.shift.desc' },
+  { icon: 'calendar-check', name: 'mod.leave.name', desc: 'mod.leave.desc' },
+  { icon: 'clipboard-check', name: 'mod.field.name', desc: 'mod.field.desc' },
+  { icon: 'megaphone', name: 'mod.announce.name', desc: 'mod.announce.desc' },
+  { icon: 'bell-ring', name: 'mod.push.name', desc: 'mod.push.desc', wiggle: true },
+  { icon: 'network', name: 'mod.branches.name', desc: 'mod.branches.desc' },
+  { icon: 'tablet-smartphone', name: 'mod.kiosk.name', desc: 'mod.kiosk.desc' },
 ]
+
+
+// Splide ekran oxuyucu mətnlərini özü ingiliscə yazır. `data-splide` atributu Splide-ın rəsmi yoludur:
+// içindəki JSON seçimləri skriptdəki seçimlərlə birləşdirir. Beləcə tərcümə server tərəfində hazır
+// gəlir, skript isə dildən xəbərsiz qalır. https://splidejs.com/guides/options/
+const splideSettings = {
+  i18n: {
+    carousel: t('mod.carousel'),
+    slide: t('mod.slide'),
+    slideLabel: t('mod.slideLabel'),
+  },
+}
 ---
 
-<section id="modules">
-  <div class="wrap">
-    <div class="sec-head rv">
-      <span class="eyebrow">{t('mod.eyebrow')}</span>
-      <h2>{t('mod.title')}</h2>
-      <p>{t('mod.sub')}</p>
+<!--
+  overflow-x-clip, overflow-hidden DEYİL — bunu "təmizləməyin": overflow-hidden hover-də qalxan kartın
+  kölgəsini yuxarıdan və aşağıdan kəsir, clip isə yalnız üfüqi daşmanı kəsir.
+  Yuxarı/aşağı boşluq burada (pt/pb) verilir, çünki global.css `section { padding }` yazır.
+-->
+<section
+  id="modules"
+  aria-labelledby="modules-title"
+  class="relative overflow-x-clip bg-page pt-20 pb-16 lg:pt-28 lg:pb-24"
+>
+  <!-- Bölmənin üstü və altı: kənarlara doğru əriyən 1px xətt — HowItWorks və AdminPanel ilə eyni qabıq. -->
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
+
+  <div class="wrap relative">
+    <!-- Başlıq HowItWorks və AdminPanel-dəkinin eynisidir: üç bölmə ardıcıl durur. Sağ tərəf boşdur. -->
+    <div class="max-w-155">
+      <span
+        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('mod.eyebrow')}
+      </span>
+      <h2
+        id="modules-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('mod.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('mod.sub')}</p>
     </div>
-    <div class="int-grid">
-      {chips.map((c, i) => (
-        <span class={`chip rv d${(i % 6) + 1}`}><svg viewBox="0 0 24 24" set:html={c.p} />{t(c.l as any)}</span>
-      ))}
+  </div>
+
+  <!--
+    Slayder konteynerdən çıxır: `wrap`-ın içində deyil, ekranın tam enindədir.
+    Splide-ın tələb etdiyi quruluş: .splide > .splide__track > .splide__list > .splide__slide.
+    aria-label slayderin adıdır (bölmənin eyebrow-u ilə eynidir).
+  -->
+  <div
+    id="mod-slider"
+    class="splide mod-slider mt-8 lg:mt-12"
+    aria-label={t('mod.eyebrow')}
+    data-splide={JSON.stringify(splideSettings)}
+  >
+    <div class="splide__track">
+      <ul class="splide__list">
+        {
+          cards.map((card) => (
+            <li class="splide__slide">
+              <article class="mod-card">
+                <div class="flex items-start justify-between">
+                  <!-- is-wiggle: yalnız Push kartında (cards massivində wiggle: true) zəng yırğalanır. -->
+                  <span class:list={['mod-tile', { 'is-wiggle': card.wiggle }]}>
+                    <ModuleIcon name={card.icon} />
+                  </span>
+
+                </div>
+                <div class="mod-text">
+                  <h3 class="mod-name">{t(card.name)}</h3>
+                  <p class="mod-desc">{t(card.desc)}</p>
+                </div>
+              </article>
+            </li>
+          ))
+        }
+      </ul>
     </div>
   </div>
 </section>
+
+<style>
+  /* ---------- Bu bölməyə xas rənglər ----------
+     Layihədə yaxın token olmayan rənglər burada adlandırılır. Qalan hər rəng saytın tokenlərindən
+     gəlir: --color-brand (mavi), --color-ink (başlıq), --color-ink2 (mətn). */
+  .mod-slider {
+    --mod-card-border: #e7e9ee; /* kartın kənarı (AdminPanel-dəki çiplərin kənarı ilə eyni hex) */
+    --mod-tile-bg: #eef3fd; /* ikon plitəsinin açıq mavi fonu */
+    --mod-card-hover-bg: #edf3fe; /* hover-də kartın fonu: ağdan açıq mavi tona keçir */
+    --mod-card-hover-border: #b7cbf7; /* hover-də kartın kənarı */
+    --mod-desc-hover: #4b4540; /* hover-də təsvirin tündləşmiş rəngi */
+
+    /* ---------- Ölçülər ---------- */
+    --mod-card-width: 320px;
+    --mod-card-gap: 20px; /* skriptdəki CARD_GAP ilə EYNİ olmalıdır: Splide boşluğu özü yazır */
+    --mod-card-pad: 28px;
+    --mod-border-width: 1px;
+    --mod-tile-size: 96px;
+    /* Plitənin altı ilə adın üstü arasındakı boşluq. Bu qədər olanda kart nə sıxılmış, nə də ortası
+       "deşik" kimi görünür (plitənin 2/3-i). Az olsa sıxılır, çox olsa ikon ilə mətn qopur. */
+    --mod-tile-text-gap: 64px;
+    /* Mətn blokunun (ad + təsvir) ən az hündürlüyü = ən uzun blokun hündürlüyü. Hamısı eyni olduğu
+       üçün adlar bir xətt üzərində durur. Ölçülüb: ən uzun mətn 1 sətir ad + 3 sətir təsvirdir
+       (26×1.15 + 8 + 3×24.8 = 112.3px), üç dildə də eynidir. Mətn dəyişəndə yenidən ölçün: az olsa
+       adlar bir xətdə durmur, çox olsa mətn kartın dibindən daşır. */
+    --mod-text-min-height: 113px;
+    /* Kartın hündürlüyü rəqəm kimi yazılmır, hissələrdən yığılır: yuxarı-aşağı boşluq + kənar +
+       plitə + plitə ilə mətn arası boşluq + mətn bloku. Mətn bloku dəyişəndə kart özü uyğunlaşır. */
+    --mod-card-height: calc(
+      var(--mod-card-pad) * 2 + var(--mod-border-width) * 2 + var(--mod-tile-size) +
+        var(--mod-tile-text-gap) + var(--mod-text-min-height)
+    );
+
+    /* Saytın bütün bölmələrində işlənən yumşaq əyri (AdminPanel-dəki EASE ilə eyni). */
+    --mod-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  @media (max-width: 640px) {
+    .mod-slider {
+      --mod-card-width: 272px;
+      /* Kart 15% dardır (272/320), plitə ilə mətn arasındakı boşluq da təxminən o qədər azalır. */
+      --mod-tile-text-gap: 56px;
+      /* Kart dardır, mətn çox sətrə düşür: ən uzun blok 2 sətir ad + 3 sətir təsvirdir
+         (2×29.9 + 8 + 3×24.8 = 142.2px). Kartın hündürlüyü yuxarıdakı calc()-dan özü çıxır. */
+      --mod-text-min-height: 143px;
+    }
+
+    /* Rus mətni daha uzundur: ən uzun blok 2 sətir ad + 4 sətir təsvirdir (167px). Seçici dilə
+       baxır: <html lang="ru-RU"> ona uyğun gəlir. https://developer.mozilla.org/en-US/docs/Web/CSS/:lang */
+    :lang(ru) .mod-slider {
+      --mod-text-min-height: 168px;
+    }
+  }
+
+  /* ---------- Slayder ---------- */
+  .mod-slider {
+    /* Sol və sağ kənar 7% məsafədə əriyir: kartlar qəfil kəsilmir, ekranın kənarından süzülür. */
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+    /* Splide-ın core CSS-i .splide-ı qurulana qədər gizlədir (visibility: hidden). Skript yüklənməsə
+       bölmə boş qalmasın deyə həmişə görünür edirik. Qurulmamış halda kartlar yan-yana durur,
+       aşağıdakı qayda isə Splide-ın sonradan yazacağı boşluğu əvvəlcədən verir — qurulanda sıçrayış olmur. */
+    visibility: visible;
+  }
+
+  .mod-slider:not(.is-initialized) .splide__slide {
+    margin-right: var(--mod-card-gap);
+  }
+
+  .mod-slider .splide__track {
+    /* Hover-də kart 6px qalxır və kölgəsi aşağı düşür. Splide trekə overflow: hidden verir, ona görə
+       kölgə kəsilməsin deyə trekə yuxarı-aşağı yer veririk (kölgə ən çox ~38px çıxır, 44px ehtiyatdır).
+       Mənfi margin həmin yeri geri alır ki, bölmə uzanmasın. */
+    padding-block: 44px;
+    margin-block: -18px;
+    /* Şaquli sürüşdürmə səhifəyə, üfüqi sürüşdürmə slayderə məxsusdur. Bu xətt olmasa mobildə
+       barmaq bir az əyri getsə, brauzer və Splide bir-biri ilə mübarizə aparır. */
+    touch-action: pan-y pinch-zoom;
+    /* Sürüşdürmə kursoru: qara açıq əl. Format: url(şəkil) X Y, ehtiyat. `12 12` kursorun "ucu"dur
+       (24px şəklin mərkəzi), `grab` isə şəkil yüklənməsə işləyən brauzer kursorudur. Yol faylın
+       özünə nisbətəndir: Vite onu build-də düzgün ünvanla əvəz edir (sayt base yolu ilə qurulsa da). */
+    cursor: url('../assets/cursors/hand.svg') 12 12, grab;
+  }
+
+  /* Basıb sürüşdürəndə tutulmuş əl; buraxanda yenə açıq əl. */
+  .mod-slider .splide__track:active {
+    cursor: url('../assets/cursors/hand-grabbing.svg') 12 12, grabbing;
+  }
+
+  .mod-slider .splide__slide {
+    width: var(--mod-card-width);
+  }
+
+  /* ---------- Kart ---------- */
+  .mod-card {
+    display: flex;
+    flex-direction: column;
+    height: var(--mod-card-height);
+    padding: var(--mod-card-pad);
+    border: var(--mod-border-width) solid var(--mod-card-border);
+    border-radius: 24px;
+    background: white;
+    /* Çox zəif kölgə: kart ağ fonda yalnız kənarı ilə seçilir, kölgə yalnız dərinlik hissi verir. */
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    transition:
+      transform 0.45s var(--mod-ease),
+      box-shadow 0.45s ease,
+      border-color 0.3s ease,
+      background-color 0.3s ease,
+      opacity 0.3s ease;
+  }
+
+  /* margin-top: auto mətni kartın dibinə yığır, plitə ilə mətn arasında isə kartın artıq yeri qalır
+     (kartın hündürlüyü hesablandığı üçün o, --mod-tile-text-gap-ə bərabərdir). min-height bütün
+     kartlarda mətn blokunu eyni hündürlükdə saxlayır — beləcə adlar bir xətt üzərində durur. */
+  .mod-text {
+    margin-top: auto;
+    min-height: var(--mod-text-min-height);
+    /* Uzun rus sözü (məs. «Push-уведомления») kartdan daşmasın. */
+    overflow-wrap: break-word;
+  }
+
+  .mod-name {
+    font-size: 26px;
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--color-ink);
+  }
+
+  .mod-desc {
+    margin-top: 8px;
+    max-width: 30ch;
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--color-ink2);
+    transition: color 0.3s ease;
+  }
+
+  /* ---------- İkon plitəsi ----------
+     İkonu ModuleIcon.astro çəkir (başqa komponentdir), ona görə ona yalnız :global(svg) ilə çatmaq
+     olar — qayda yenə də .mod-tile-ın içindədir və kənara sızmır. İkonun rəngi `color`-dan gəlir:
+     plitə mavi dolanda ikon ağ olur. */
+  .mod-tile {
+    display: grid;
+    place-items: center; /* ikon plitənin düz ortasında durur */
+    width: var(--mod-tile-size);
+    height: var(--mod-tile-size);
+    border: 1px solid color-mix(in srgb, var(--color-brand) 14%, transparent); /* brand rənginin 14%-i */
+    border-radius: 28px;
+    background: var(--mod-tile-bg);
+    color: var(--color-brand);
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease,
+      border-color 0.3s ease,
+      transform 0.45s var(--mod-ease);
+  }
+
+  .mod-tile :global(svg) {
+    width: 50px;
+    height: 50px;
+  }
+
+  /* ---------- Hover ----------
+     Yalnız siçanı olan cihazlarda: telefonda toxunuşdan sonra hover "ilişib" qalır. */
+  @media (hover: hover) {
+    .mod-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--mod-card-hover-border);
+      background: var(--mod-card-hover-bg);
+      box-shadow: 0 26px 40px -28px rgba(16, 24, 40, 0.32);
+    }
+
+    /* Nömrə də təsvirlə birlikdə tündləşir: açıq mavi fonda adi boz (#78716C) 4.5:1 kontrastdan
+       aşağı düşür (4.25:1), tünd rəngdə isə kifayət qədərdir. */
+    .mod-card:hover .mod-desc,
+    .mod-card:hover .mod-num {
+      color: var(--mod-desc-hover);
+    }
+
+    .mod-card:hover .mod-tile {
+      border-color: var(--color-brand);
+      background: var(--color-brand);
+      color: white;
+      transform: scale(1.04);
+    }
+
+    /* Yalnız Push kartı (cards massivində wiggle: true): zəng bir dəfə yırğalanır. */
+    .mod-card:hover .mod-tile.is-wiggle :global(svg) {
+      animation: mod-wiggle 0.7s ease;
+    }
+
+    /* Siçan siyahının üstündə olanda qalan kartlar solur, baxılan kart tam qalır. Kartlar arasındakı
+       boşluqda heç bir kart "baxılan" deyil, hamısı solğun qalır — bu, kartdan karta keçəndə işığın
+       yanıb-sönməsinin qarşısını alır. */
+    .mod-slider .splide__list:hover .mod-card {
+      opacity: 0.55;
+    }
+
+    .mod-slider .splide__list .splide__slide:hover .mod-card {
+      opacity: 1;
+    }
+  }
+
+  /* Astro @keyframes adını scope etmir, global.css-də isə onlarla keyframe var — ona görə prefikslidir. */
+  @keyframes mod-wiggle {
+    0%,
+    100% {
+      transform: rotate(0);
+    }
+    20% {
+      transform: rotate(-14deg);
+    }
+    40% {
+      transform: rotate(11deg);
+    }
+    60% {
+      transform: rotate(-7deg);
+    }
+    80% {
+      transform: rotate(4deg);
+    }
+  }
+
+  /* Hərəkət azaldılıb: kart animasiyaları yoxdur (global.css də eyni şeyi edir, amma bölmə ona
+     güvənməsin deyə burada da yazılıb). Slayderin özü skriptdə axmır, əl ilə sürüşdürülür. */
+  @media (prefers-reduced-motion: reduce) {
+    .mod-card,
+    .mod-desc,
+    .mod-num,
+    .mod-tile {
+      transition: none;
+    }
+
+    .mod-card:hover .mod-tile.is-wiggle :global(svg) {
+      animation: none;
+    }
+  }
+
+  /* Bölmənin üst və alt xətti kənarlara doğru əriyir. Eyni qayda HowItWorks və AdminPanel-də də var —
+     orada scoped-dur, ona görə burada da təkrarlanır. */
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+</style>
+
+<script>
+  import Splide from '@splidejs/splide'
+  import type { Options } from '@splidejs/splide'
+  import { AutoScroll } from '@splidejs/splide-extension-auto-scroll'
+
+  // Sürət: hər kadrda neçə piksel sürüşür. Nə qədər böyükdürsə, kartlar o qədər tez axır.
+  const SCROLL_SPEED = 0.85
+  // Kartlar arası boşluq. CSS-dəki --mod-card-gap ilə eyni olmalıdır.
+  const CARD_GAP = '20px'
+  // Slayderin neçə hissəsi ekranda olanda axsın: 0.1 = 10%.
+  const VISIBLE_PART_TO_PLAY = 0.1
+  const SLIDER_ID = 'mod-slider'
+
+  // Loop-da Splide kartların nüsxəsini hər tərəfə qoyur. Standart say kartların sayı qədərdir, bu isə
+  // kart az olanda geniş ekrana çatmır: 4 kart 1920px-də sağda boş yer buraxır. Ona görə nüsxə sayını
+  // ekranın eninə görə yoxlayırıq: kart çıxarılsa da boşluq yaranmır. Standartdan az heç vaxt
+  // qoymuruq — hər nüsxə kadr başına əlavə hesablama deməkdir, telefonda bu sayılır.
+  // Ölçü səhifə açılanda götürülür: pəncərə sonradan çox genişlənsə, səhifəni yeniləmək lazımdır.
+  function countClonesPerSide(sliderElement: HTMLElement): number {
+    const slides = sliderElement.querySelectorAll('.splide__slide')
+    if (slides.length === 0) {
+      return 0
+    }
+    // parseFloat('20px') → 20
+    const slideStepPx = slides[0].getBoundingClientRect().width + parseFloat(CARD_GAP)
+    const clonesToFillScreen = Math.ceil(window.innerWidth / slideStepPx)
+    return Math.max(slides.length, clonesToFillScreen)
+  }
+
+  function buildOptions(sliderElement: HTMLElement, reduceMotion: boolean): Options {
+    const options: Options = {
+      type: 'loop', // sonsuz dövr: sonuncu kartdan sonra yenidən birinci gəlir
+      clones: countClonesPerSide(sliderElement),
+      drag: 'free', // barmaq və ya siçanla sərbəst sürüşdürmə, kart yerinə "oturmur"
+      autoWidth: true, // kartın eni CSS-dən gəlir (.splide__slide { width })
+      gap: CARD_GAP,
+      arrows: false, // ox və pagination qəsdən yoxdur: slayder özü axır, istəyən sürüşdürür
+      pagination: false,
+      snap: false,
+    }
+
+    // Hərəkət azaldılıbsa, avtomatik sürüşmə qoşulmur — kartları yalnız əl ilə sürüşdürmək olur.
+    if (!reduceMotion) {
+      // pauseOnHover: siçan üstündə olanda dayanır; pauseOnFocus: klaviatura fokusu içəridədirsə dayanır.
+      options.autoScroll = { speed: SCROLL_SPEED, pauseOnHover: true, pauseOnFocus: true }
+    }
+    return options
+  }
+
+  // Splide hər slayda aria-hidden-i özü yazıb silir: o, yalnız ekranda görünən slaydları oxuyur.
+  // Loop rejimində nüsxələr (splide__slide--clone) görünəndə onlar da oxunur, ekrandan çıxmış əsl kartlar
+  // isə gizlənir — ekran oxuyucu kartları təkrar və natamam oxuyur. Bizə lazım olan: hər kart bir dəfə.
+  // Ona görə nüsxələri həmişə gizlədirik, əsl kartları həmişə açıq saxlayırıq. `inert` işlətmirik:
+  // o, nüsxənin üstündəki hover effektini də söndürür.
+  // MutationObserver atributun dəyişdiyini bildirir: https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver
+  function keepEachCardReadOnce(sliderElement: HTMLElement): void {
+    const slides = sliderElement.querySelectorAll<HTMLElement>('.splide__slide')
+
+    // Atributu yalnız fərqli olanda dəyişirik: eyni dəyəri yazmaq da yeni bildiriş yaradır,
+    // nəticədə observer sonsuz dövrə girərdi.
+    function fixSlide(slide: HTMLElement): void {
+      const isClone = slide.classList.contains('splide__slide--clone')
+      if (isClone && slide.getAttribute('aria-hidden') !== 'true') {
+        slide.setAttribute('aria-hidden', 'true')
+      }
+      if (!isClone && slide.hasAttribute('aria-hidden')) {
+        slide.removeAttribute('aria-hidden')
+      }
+    }
+
+    const observer = new MutationObserver(function (changes) {
+      changes.forEach(function (change) {
+        fixSlide(change.target as HTMLElement)
+      })
+    })
+
+    slides.forEach(function (slide) {
+      fixSlide(slide)
+      observer.observe(slide, { attributes: true, attributeFilter: ['aria-hidden'] })
+    })
+  }
+
+  // Bölmə ekrandan çıxanda slayder dayanır (boş yerə işləməsin), qayıdanda davam edir.
+  // IntersectionObserver elementin ekrana girib-çıxdığını bildirir:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+  function playOnlyWhileVisible(slider: Splide, sliderElement: HTMLElement): void {
+    const autoScroll = slider.Components.AutoScroll
+    if (!autoScroll) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      function (entries) {
+        const latestEntry = entries[entries.length - 1]
+        if (latestEntry.isIntersecting) {
+          autoScroll.play()
+        } else {
+          autoScroll.pause()
+        }
+      },
+      { threshold: VISIBLE_PART_TO_PLAY }
+    )
+    observer.observe(sliderElement)
+  }
+
+  // Layihədə Astro View Transitions (ClientRouter) işlənmir — BaseLayout onu idxal etmir — ona görə bu
+  // skript səhifə başına bir dəfə işləyir. ClientRouter əlavə olunsa: initModulesSlider-i
+  // `astro:page-load`-da çağırın, `astro:before-swap`-da isə slider.destroy() və observer.disconnect()
+  // edin, yoxsa köhnə səhifənin slayderi yaddaşda qalır.
+  function initModulesSlider(): void {
+    const sliderElement = document.getElementById(SLIDER_ID)
+    if (!sliderElement) {
+      return
+    }
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const slider = new Splide(sliderElement, buildOptions(sliderElement, reduceMotion))
+    // AutoScroll Splide-ın ayrıca əlavəsidir: mount()-a verilməsə, avtomatik sürüşmə olmur.
+    slider.mount(reduceMotion ? {} : { AutoScroll })
+
+    keepEachCardReadOnce(sliderElement)
+    if (!reduceMotion) {
+      playOnlyWhileVisible(slider, sliderElement)
+    }
+  }
+
+  initModulesSlider()
+</script>

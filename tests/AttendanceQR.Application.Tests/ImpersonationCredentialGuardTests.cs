@@ -140,7 +140,7 @@ public class ImpersonationCredentialGuardTests
         }
 
         public AdminPinResetController PinResets(bool impersonating) =>
-            new(Db, new StubHasher(), new StubLockout())
+            new(Db, new StubHasher(), new StubLockout(), new AppOptions())
             {
                 ControllerContext = new ControllerContext
                 {

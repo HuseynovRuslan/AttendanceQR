@@ -1,0 +1,274 @@
+---
+/*
+ * «İşçi qapıda ilişib qalmır» — «Saxtaya qarşı qoruma» bölməsinin aşağı bloku (AntiFraud.astro çağırır).
+ * Props: lang — səhifənin dili.
+ * Solda başlıq, abzas, dörd qayda və məxfilik qeydi; sağda admin panelin «Bugünkü davamiyyət»
+ * ekranından nümunə parça. Parça məhsulun özüdür, məhsul isə yalnız azərbaycancadır: RU/EN-də lang="az".
+ * Rəşadın «⚠ Uyğunsuz» nişanı ekrana girəndə bir dəfə yumşaq nəbz verir (faylın sonundakı skript).
+ */
+import { useTranslations, type Lang, type UIKey } from '../i18n/ui'
+
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+// AdminPanel.astro-dakı qayda: AZ səhifəsində atribut lazım deyil, RU/EN-də parça lang="az" daşıyır.
+// Onsuz `uppercase` başlıqlar "İŞÇİ" yox, "İŞÇI" yazılır, ekran oxuyucusu da mətni səhv dildə oxuyur.
+const PANEL_LANG: Lang = 'az'
+const panelLang = lang === PANEL_LANG ? undefined : PANEL_LANG
+
+const rules = [
+  { title: 'af.rule1.t', text: 'af.rule1.d' },
+  { title: 'af.rule2.t', text: 'af.rule2.d' },
+  { title: 'af.rule3.t', text: 'af.rule3.d' },
+  { title: 'af.rule4.t', text: 'af.rule4.d' },
+] satisfies { title: UIKey; text: UIKey }[]
+
+/**
+ * Panelin nümunə sətirləri. Rəşad Quliyev AdminPanelToday.astro-dakı ilə eyni sətirdir: eyni saatlar
+ * (08:15–18:20) və eyni «⚠ Uyğunsuz 41%» — iki bölmə eyni nümunə günü göstərir, birini dəyişsən, o
+ * birini də dəyiş. Əli Məmmədov (08:58) isə yuxarıdakı kartın və Hero-nun adamıdır.
+ *   mismatchPercent — üz uyğun gəlməyib: faiz qırmızı nişanda yazılır, sətir çox açıq qırmızı fon alır
+ *   offline         — skan internetsiz edilib, sonra göndərilib: giriş vaxtının yanında «📴 oflayn»
+ *   manualBy        — girişi əl ilə daxil edən rəhbər
+ */
+const rows: {
+  name: string
+  timeIn: string
+  timeOut: string
+  mismatchPercent?: number
+  offline?: boolean
+  manualBy?: string
+}[] = [
+  { name: 'Əli Məmmədov', timeIn: '08:58', timeOut: '18:02' },
+  { name: 'Rəşad Quliyev', timeIn: '08:15', timeOut: '18:20', mismatchPercent: 41 },
+  { name: 'Nigar Həsənova', timeIn: '08:41', timeOut: '17:55', offline: true },
+  { name: 'Tural Əliyev', timeIn: '09:00', timeOut: '18:00', manualBy: 'Sevinc Nəbiyeva' },
+]
+
+/**
+ * Status nişanının iki növü (AdminPanelToday-dəki `faces` kimi, eyni üsul). Yaşıl «Tamamlayıb»
+ * AdminPanelToday-dəki rəngdir; qırmızı «Uyğunsuz» isə məhsulun frontend/src/components/FaceFlagBadge.tsx
+ * faylındakı siniflərin eynisidir (bg-red-100 text-red-700).
+ */
+const chipClass = 'inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-[10.5px] whitespace-nowrap'
+// `satisfies` hər label-in ui.ts-də olan açar olduğunu yoxlayır. Record<string, …> — "istənilən adlı
+// açar, dəyəri bu formada": https://www.typescriptlang.org/docs/handbook/utility-types.html#recordkeys-type
+// icon — Font Awesome ikonunun sinfi (kitabxana BaseLayout.astro-da qoşulub): https://fontawesome.com/icons
+const chips = {
+  finished: { icon: 'fa-check', label: 'panel.ui.m3.finished', tone: 'bg-[#E9F7EF] font-medium text-[#15803D]' },
+  mismatch: {
+    icon: 'fa-triangle-exclamation',
+    label: 'panel.ui.mismatch',
+    tone: 'bg-red-100 font-semibold text-red-700',
+  },
+} satisfies Record<string, { icon: string; label: UIKey; tone: string }>
+
+// Mobildə sətir iki xətdir (ad, altında nişan): vaxt adla eyni xətdə dursun deyə align-baseline.
+const cellClass = 'px-3 py-2.5 align-baseline md:align-middle'
+const timeClass = 'font-mono text-[12px] text-ink tabular-nums'
+// md-dən kiçik ekranda Status, Çıxış və «Şəklə bax» sütunları gizlənir — status nişanı adın altına düşür.
+const wideOnly = 'hidden md:table-cell'
+---
+
+<!--
+  Fon #F7F8FA, bg-page (#F5F6FA) tokeni yox: blokdakı ink2 mətni bg-page üstündə 4.44:1 kontrast verir,
+  WCAG AA üçün ən azı 4.5:1 lazımdır; #F7F8FA ilə 4.51:1-dir.
+  İki sütun yalnız xl-dən: 1024px-də panel parçası dar sütuna sığmır, ona görə lg-də bloklar alt-altadır.
+-->
+<div
+  class="rv mt-16 grid gap-8 rounded-2xl border border-hair bg-[#F7F8FA] p-5 sm:p-8 lg:mt-20 lg:p-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,600px)] xl:items-center xl:gap-14"
+>
+  <div>
+    <h3 class="text-[22px] leading-tight font-semibold tracking-[-0.02em] text-ink">{t('af.door.t')}</h3>
+    <p class="mt-3 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('af.door.d')}</p>
+
+    <dl class="mt-6 divide-y divide-hair border-y border-hair text-[14px]">
+      {
+        rules.map((rule) => (
+          <div class="flex flex-col gap-1 py-3 sm:flex-row sm:items-baseline sm:gap-4">
+            <dt class="shrink-0 font-mono text-[11px] tracking-[0.1em] text-ink2 uppercase sm:w-[150px]">
+              {t(rule.title)}
+            </dt>
+            <dd class="leading-[1.6] text-ink">{t(rule.text)}</dd>
+          </div>
+        ))
+      }
+    </dl>
+
+    <p class="mt-5 flex items-center gap-2 font-mono text-[11px] text-ink2">
+      <svg
+        class="shrink-0"
+        width="13"
+        height="13"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="3" y="7" width="10" height="7" rx="2"></rect>
+        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path>
+      </svg>
+      {t('af.privacy')}
+    </p>
+  </div>
+
+  <!-- Panel parçası: real admin panelin «Bugünkü davamiyyət» cədvəli kimi, nümunə məlumatla. -->
+  <div
+    id="afPanel"
+    lang={panelLang}
+    class="overflow-hidden rounded-xl border border-hair bg-white shadow-[0_1px_2px_rgba(16,24,40,.04)]"
+  >
+    <div class="flex items-start justify-between gap-3 border-b border-hair px-4 py-3">
+      <p id="afPanelTitle" class="min-w-0 text-[13.5px] font-semibold text-ink">
+        {t('panel.ui.af.title')}
+        <span class="font-normal text-slate-500">· {t('panel.ui.af.branch')}</span>
+      </p>
+      <span class="shrink-0 pt-0.5 font-mono text-[10.5px] tracking-[0.12em] text-slate-500 uppercase">
+        {t('panel.ui.af.sample')}
+      </span>
+    </div>
+
+    <table aria-labelledby="afPanelTitle" class="w-full border-collapse text-left">
+      <thead class="hidden md:table-header-group">
+        <tr class="border-b border-hair bg-[#FAFBFC] font-mono text-[10px] tracking-[0.12em] text-slate-500 uppercase">
+          <th scope="col" class={`${cellClass} pl-4 font-normal`}>{t('panel.ui.m3.thName')}</th>
+          <th scope="col" class={`${cellClass} font-normal`}>{t('panel.ui.m3.thStatus')}</th>
+          <th scope="col" class={`${cellClass} font-normal`}>{t('panel.ui.m3.thIn')}</th>
+          <th scope="col" class={`${cellClass} font-normal`}>{t('panel.ui.m3.thOut')}</th>
+          {/* «Şəklə bax» sütununun başlığı yoxdur: boş <th> ekran oxuyucusunda adsız başlıq kimi səslənir. */}
+          <td class={cellClass}></td>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-hair text-[13.5px]">
+        {
+          rows.map((row) => {
+            const isMismatch = row.mismatchPercent !== undefined
+            const chip = isMismatch ? chips.mismatch : chips.finished
+            // Uyğunsuz nişanda faiz də yazılır: «⚠ Uyğunsuz 41%», yaşıl nişanda yalnız «✓ Tamamlayıb».
+            const chipText = isMismatch ? `${t(chip.label)} ${row.mismatchPercent}%` : t(chip.label)
+            return (
+              <tr class:list={[isMismatch && 'bg-red-50/60']}>
+                <td class={`${cellClass} pl-4`}>
+                  <p class="font-medium text-ink">{row.name}</p>
+                  {row.manualBy && (
+                    <p class="mt-0.5 text-[11px] text-[#C2410C]">
+                      {t('panel.ui.af.manual')} · {row.manualBy}
+                    </p>
+                  )}
+                  {/* Mobildə Status sütunu yoxdur — nişan adın altına düşür. md+ ekranda bu nüsxə
+                      gizlidir (display:none), ekran oxuyucusu nişanı iki dəfə oxumur. */}
+                  <p class="mt-1.5 md:hidden">
+                    <span data-pulse={isMismatch ? 'off' : undefined} class:list={[chipClass, chip.tone]}>
+                      <i class={`fa-solid ${chip.icon}`} aria-hidden="true"></i>
+                      {chipText}
+                    </span>
+                  </p>
+                </td>
+                <td class={`${wideOnly} ${cellClass}`}>
+                  <span data-pulse={isMismatch ? 'off' : undefined} class:list={[chipClass, chip.tone]}>
+                    <i class={`fa-solid ${chip.icon}`} aria-hidden="true"></i>
+                    {chipText}
+                  </span>
+                </td>
+                <td class={`${cellClass} text-right md:text-left`}>
+                  {/* Oflayn etiketi vaxtın yanında (məhsuldakı kimi); dar ekranda vaxtın altına düşür.
+                      Rəng məhsuldakı kəhrəbanın tünd tonudur: məhsulun öz rəngi (#E3963E) ağ fonda 2.4:1 verir.
+                      Mobildə cədvəlin başlıq sətri gizlidir — ekran oxuyucusu vaxtı «Giriş» sözü ilə oxusun. */}
+                  <span class="inline-flex flex-col items-end gap-1 md:flex-row md:items-center md:gap-1.5">
+                    <span class={timeClass}>
+                      <span class="sr-only md:hidden">{t('panel.ui.m3.thIn')}: </span>
+                      {row.timeIn}
+                    </span>
+                    {row.offline && (
+                      <span class="inline-flex items-center gap-1 rounded-md bg-[#FEF6E1] px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap text-[#B45309]">
+                        <span aria-hidden="true">📴</span>
+                        {t('panel.ui.af.offline')}
+                      </span>
+                    )}
+                  </span>
+                </td>
+                <td class={`${wideOnly} ${cellClass} ${timeClass}`}>{row.timeOut}</td>
+                <td class={`${wideOnly} ${cellClass} pr-4`}>
+                  {/* Dekorativdir: <span>, <button> yox — kliklənmir, fokus almır, ekran oxuyucusu oxumur. */}
+                  <span
+                    aria-hidden="true"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[10.5px] font-medium whitespace-nowrap text-slate-700"
+                  >
+                    {/* fa-solid, fa-regular yox: Free paketdə kamera yalnız solid-dir, regular Pro-dur və boş çıxır. */}
+                    <i class="fa-solid fa-camera"></i>
+                    {t('panel.ui.af.photo')}
+                  </span>
+                </td>
+              </tr>
+            )
+          })
+        }
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  /*
+    Rəşadın «⚠ Uyğunsuz» nişanı: ekrana girəndə bir dəfə yumşaq nəbz — rəhbərin gözü əvvəlcə ora
+    getsin. data-pulse="on"-u faylın sonundakı skript yazır. Nəbzin rəngi nişanın öz qırmızısıdır:
+    color-mix mətnin rəngini (currentColor) 35% görünən edir.
+    https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color-mix
+    "Hərəkəti azalt" rejimində global.css bütün animasiyaları söndürür, skript də heç nə etmir.
+  */
+  [data-pulse='on'] {
+    animation: af-flag-pulse 1.6s ease-out 0.3s 1;
+  }
+
+  /* Keyframe adı Astro-da scope olunmur, global.css-də isə onlarla keyframe var — ona görə af- prefiksi. */
+  @keyframes af-flag-pulse {
+    from {
+      box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent);
+    }
+    to {
+      box-shadow: 0 0 0 10px transparent;
+    }
+  }
+</style>
+
+<script>
+  /*
+    Rəşadın nişanının nəbzi. Nişan ekrana girəndə ona data-pulse="on" yazılır, nəbzi CSS oynadır.
+    Bir dəfə — sonra izləmə dayanır. "Hərəkəti azalt" seçilibsə, skript heç nə etmir.
+    Nişanın iki nüsxəsi var (mobildə adın altında, md+ ekranda Status sütununda). Gizli nüsxə
+    (display:none) ekrana heç vaxt "girmir", ona görə yalnız görünən nəbz verir.
+  */
+  const PULSE_VISIBLE_THRESHOLD = 0.6 // nişanın 60%-i görünəndə
+
+  // Axtarış yalnız bu panelin içindədir: səhifədə başqa data-pulse olsa, ona toxunmasın.
+  // <HTMLElement> yalnız TypeScript üçündür — tapılanların dataset-i olduğunu bildirir.
+  // https://www.typescriptlang.org/docs/handbook/2/generics.html
+  const flags = document.querySelectorAll<HTMLElement>('#afPanel [data-pulse]')
+  // matchMedia CSS media sorğusunu JS-dən yoxlayır:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+  const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (flags.length > 0 && !prefersReducedMotion) {
+    // IntersectionObserver nişanın ekrana girdiyini scroll hadisəsini dinləmədən xəbər verir —
+    // nəbz oxucu onu görəndə oynasın, səhifə açılanda yox:
+    // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const flag = entry.target as HTMLElement
+          flag.dataset.pulse = 'on'
+          observer.unobserve(flag)
+        }
+      },
+      { threshold: PULSE_VISIBLE_THRESHOLD }
+    )
+    flags.forEach((flag) => observer.observe(flag))
+  }
+</script>
