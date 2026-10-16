@@ -17,11 +17,30 @@ const PRESETS = [
   'Rəhbərin təsdiqi ilə',
 ]
 
-/** What the two new refusals mean, for every screen that corrects attendance. */
+/** What the refusals mean, for every screen that corrects attendance. */
 export const CORRECTION_ERROR: Record<string, string> = {
   ReasonRequired: 'Səbəbi yazın — ən azı 3 hərf.',
   OwnAttendance: 'Öz davamiyyətinizə düzəliş edə bilməzsiniz — bunu başqa admin və ya rəhbəriniz edir.',
+  // One's own day where nobody else could correct it (the single-admin rule of 2026-10-16).
+  SelfCorrectionNeedsApproval: 'Şirkətinizdə öz düzəlişi ikinci təsdiq istəyir — günü profildən düzəldin, düzəliş təsdiqə gedəcək.',
+  NotAnApprover: 'Bu düzəlişi təsdiqləmək sizin hüququnuz deyil.',
+  RecordChanged: 'Gün sorğudan sonra dəyişib — heç nə tətbiq olunmadı. Düzəliş yenidən istənməlidir.',
+  AlreadyReviewed: 'Bu sorğuya artıq qərar verilib.',
+  NoApprover: 'İkinci təsdiq üçün təsdiq hüququ olan başqa şəxs lazımdır — «Səlahiyyətlər»də birinə «Öz düzəlişini təsdiqləmək» verin.',
 }
+
+/** The words for a correction that was not made, naming who can make it when the server says (one's own day). */
+export function correctionError(data: unknown, fallback: string, messages: Record<string, string> = CORRECTION_ERROR): string {
+  const d = data && typeof data === 'object' ? (data as { error?: unknown; correctors?: unknown }) : null
+  const code = typeof d?.error === 'string' ? d.error : ''
+  const names = Array.isArray(d?.correctors) ? (d!.correctors as string[]) : []
+  if (code === 'OwnAttendance' && names.length > 0)
+    return `Öz gününüzü düzəldə bilməzsiniz — bu günü ${names.join(', ')} düzəldə bilər.`
+  return messages[code] ?? fallback
+}
+
+/** A correction to one's own day that the company has sent for a second approval. */
+export const AWAITING_APPROVAL = 'Düzəliş təsdiqə göndərildi — ikinci şəxs təsdiqləyəndə tətbiq olunacaq.'
 
 interface AskOptions {
   title: string

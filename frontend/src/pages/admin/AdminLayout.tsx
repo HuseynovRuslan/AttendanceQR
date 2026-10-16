@@ -31,6 +31,7 @@ import {
   IconShield,
   IconSun,
   IconTable,
+  IconPencil,
   IconUser,
   IconUsers,
   IconX,
@@ -63,6 +64,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/geofence-fit': { title: 'Radius uyğunsuzluğu', sub: 'Filialda dayanıb skan vura bilməyən işçilər' },
   '/admin/field-visits': { title: 'Sahə ziyarətləri', sub: 'Səyyar işçilər — tapşır, görülən işi və şəkli yoxla' },
   '/admin/open-records': { title: 'Çıxışı unudulan günlər', sub: 'Giriş edib çıxış etməyən günlər' },
+  '/admin/self-corrections': { title: 'Öz düzəlişləri', sub: 'Öz gününə edilən düzəlişlər — səbəb və əvvəlki vaxtlarla' },
   '/admin/locations': { title: 'Filiallar', sub: 'Filial əlavə et / redaktə et' },
   '/admin/non-working-days': { title: 'Qeyri-iş günləri', sub: 'Bayram və istirahət günləri' },
   '/admin/leaves': { title: 'Məzuniyyət / İcazə', sub: 'Təsdiqlənmiş yoxluq qeydləri' },
@@ -183,6 +185,7 @@ export function AdminLayout() {
       links: [
         { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
         { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconTable },
+        { to: '/admin/self-corrections', label: 'Öz düzəlişləri', Icon: IconPencil },
         ...(payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconMoney }] : []),
       ],
     },

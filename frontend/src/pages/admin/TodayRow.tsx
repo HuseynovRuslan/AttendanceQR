@@ -178,6 +178,15 @@ function Row({
             📴 oflayn
           </span>
         )}
+        {r.selfCorrected && (
+          <span
+            className="tag"
+            title="Bu günü işçi özü düzəldib — şirkətdə başqa düzəliş edən yox idi. Səbəb və əvvəlki vaxtlar «Öz düzəlişləri»ndədir."
+            style={{ marginLeft: 6, background: 'var(--clay-bg, #FDECEA)', color: 'var(--clay, #B91C1C)' }}
+          >
+            öz düzəlişi
+          </span>
+        )}
         {r.lateArrivalReason && (
           <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
             Gec: {r.lateArrivalReason}

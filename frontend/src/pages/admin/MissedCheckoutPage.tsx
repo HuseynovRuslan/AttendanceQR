@@ -5,7 +5,7 @@ import {
   rejectMissedCheckout,
   type MissedCheckoutPending,
 } from '../../api/admin'
-import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
+import { correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { IconCheck, IconX } from '../../components/icons'
 import { fmtDayMonth, fmtTime } from '../../lib/format'
 import { useHolds } from '../../auth/AccessContext'
@@ -58,8 +58,7 @@ export function MissedCheckoutPage() {
       setRows((rs) => rs.filter((x) => x.id !== row.id))
       return
     }
-    const code = (r.data as { error?: string } | null)?.error ?? ''
-    setError(CORRECTION_ERROR[code] ?? (r.status === 403 ? 'Bu işçinin tələbinə qərar verə bilməzsiniz.' : 'Alınmadı — yenidən cəhd edin.'))
+    setError(correctionError(r.data, r.status === 403 ? 'Bu işçinin tələbinə qərar verə bilməzsiniz.' : 'Alınmadı — yenidən cəhd edin.'))
   }
 
   return (

@@ -27,7 +27,7 @@ import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../compo
 import { useAuth } from '../../auth/AuthContext'
 import { useAccess, useHolds, useScopedRole } from '../../auth/AccessContext'
 import { listFailureText } from '../../lib/listFailure'
-import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
+import { AWAITING_APPROVAL, CORRECTION_ERROR, correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { PersonAccessCard } from '../../components/PersonAccessCard'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
 import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
@@ -56,8 +56,6 @@ const CREATE_ERROR: Record<string, string> = {
   ...CORRECTION_ERROR,
 }
 
-const errorCodeOf = (data: unknown) =>
-  data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
 
 /** One employee's full profile: identity + this-month summary + recent attendance + photos + devices,
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
@@ -117,6 +115,8 @@ export function EmployeeProfilePage() {
   const [photoModal, setPhotoModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
   const [photoBusyId, setPhotoBusyId] = useState<string | null>(null)
   const [editRecId, setEditRecId] = useState<string | null>(null)
+  /** A correction to one's own day sent for a second approval — said, not shown as an error. */
+  const [recNote, setRecNote] = useState<string | null>(null)
   const [editIn, setEditIn] = useState('')
   const [editOut, setEditOut] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -329,7 +329,8 @@ export function EmployeeProfilePage() {
     const { status, data } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut), reason)
     setRecBusy(false)
     if (status === 200) { setEditRecId(null); void load() }
-    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd dəyişmədi')
+    else if (status === 202) { setEditRecId(null); setRecNote(AWAITING_APPROVAL) }
+    else setRecErr(correctionError(data, 'Qeyd dəyişmədi', CREATE_ERROR))
   }
 
   async function clearCheckout(recordId: string) {
@@ -339,7 +340,8 @@ export function EmployeeProfilePage() {
     const { status, data } = await adminClearCheckout(recordId, reason)
     setRecBusy(false)
     if (status === 200) void load()
-    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Çıxış silinmədi')
+    else if (status === 202) setRecNote(AWAITING_APPROVAL)
+    else setRecErr(correctionError(data, 'Çıxış silinmədi', CREATE_ERROR))
   }
 
   /**
@@ -363,7 +365,7 @@ export function EmployeeProfilePage() {
     const { status, data } = await adminDeleteRecord(r.recordId, reason)
     setRecBusy(false)
     if (status === 200) void load()
-    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd silinmədi')
+    else setRecErr(correctionError(data, 'Qeyd silinmədi', CREATE_ERROR))
   }
 
   async function viewRecordPhoto(r: AttendanceRecord) {
@@ -390,12 +392,12 @@ export function EmployeeProfilePage() {
     setRecBusy(true); setRecErr(null)
     const { status, data } = await adminCreateRecord(emp.id, times.date, times.checkInIso, times.checkOutIso, reason)
     setRecBusy(false)
-    if (status === 200) {
+    if (status === 200 || status === 202) {
       setShowCreate(false); setCrDate(''); setCrIn(''); setCrOut('')
-      void load()
+      if (status === 202) setRecNote(AWAITING_APPROVAL)
+      else void load()
     } else {
-      const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
-      setRecErr(CREATE_ERROR[code] ?? (status === 403 ? CREATE_ERROR.Forbidden : 'Qeyd yaradılmadı'))
+      setRecErr(correctionError(data, status === 403 ? CREATE_ERROR.Forbidden : 'Qeyd yaradılmadı', CREATE_ERROR))
     }
   }
 
@@ -600,6 +602,7 @@ export function EmployeeProfilePage() {
         </div>
 
         {recErr && <div className="fb fb-err" style={{ marginBottom: 10 }}><IconX /><span>{recErr}</span></div>}
+        {recNote && <div className="fb fb-ok" style={{ marginBottom: 10 }}><span>{recNote}</span></div>}
 
         {showCreate && (
           <div className="card card-pad" style={{ marginBottom: 12, background: 'var(--c50)' }}>
@@ -684,6 +687,13 @@ export function EmployeeProfilePage() {
                         )}
                         {r.manualByName && (
                           <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>Əl ilə daxil edilib · {r.manualByName}</div>
+                        )}
+                        {/* The person fixed this day themselves — only possible where nobody else could;
+                            the old times and the reason are kept on «Öz düzəlişləri». */}
+                        {r.selfCorrected && (
+                          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--clay)', fontWeight: 700 }}>
+                            Öz düzəlişi — işçi bu günü özü düzəldib
+                          </div>
                         )}
                         {r.closedByFieldVisit && (
                           <div style={{ fontSize: 11, marginTop: 2, color: 'var(--c600)' }}>📍 Ərazi çıxışı ilə bağlandı</div>

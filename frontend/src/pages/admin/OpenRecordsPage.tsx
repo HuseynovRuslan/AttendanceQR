@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
+import { AWAITING_APPROVAL, CORRECTION_ERROR, correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { adminUpdateRecord, closeOpenDays, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
 import { fmtDate, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
@@ -100,9 +100,11 @@ export function OpenRecordsPage() {
       return
     }
     setDone(
-      data.skipped > 0
-        ? `${data.closed} gün bağlandı · ${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)`
-        : `${data.closed} gün bağlandı`,
+      [
+        `${data.closed} gün bağlandı`,
+        data.awaiting ? `${data.awaiting} gün (öz gününüz) təsdiqə göndərildi` : null,
+        data.skipped > 0 ? `${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)` : null,
+      ].filter(Boolean).join(' · '),
     )
     setPicked(new Set())
     await load()
@@ -130,9 +132,10 @@ export function OpenRecordsPage() {
     const { status, data } = await adminUpdateRecord(r.recordId, undefined, iso, reason)
     if (status === 200) {
       setRows((prev) => (prev ?? []).filter((x) => x.recordId !== r.recordId))
+    } else if (status === 202) {
+      setDone(AWAITING_APPROVAL)
     } else {
-      const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
-      setError(CLOSE_ERROR[code] ?? 'Bağlanmadı')
+      setError(correctionError(data, 'Bağlanmadı', CLOSE_ERROR))
     }
     setBusyId(null)
   }

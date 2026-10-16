@@ -100,6 +100,9 @@ export const PANEL_PAGES: PanelPage[] = [
   // ── Reports ────────────────────────────────────────────────────────────────────────────────────
   { path: 'reports', label: 'Hesabat', roles: BOTH, perms: ['attendance.view'] },
   { path: 'tabel', label: 'Aylıq tabel', roles: BOTH, perms: ['attendance.view'] },
+  // Corrections somebody made to their OWN day — only possible where nobody else could, so the place they are
+  // seen by everybody who reads the days (and answered, where the company asks for a second approval).
+  { path: 'self-corrections', label: 'Öz düzəlişləri', roles: BOTH, perms: ['attendance.view'] },
   // Owner's call, 2026-08-28. A branch manager who cannot see what their own staff are owed has to
   // ask the admin about every question of it. The server drops peers' and the admin's own salary from
   // a manager's table — the attribute alone was never the boundary.

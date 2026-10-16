@@ -79,6 +79,7 @@ const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => (
 const ShiftMismatchPage = lazy(() => import('./pages/admin/ShiftMismatchPage').then(m => ({ default: m.ShiftMismatchPage })))
 const GeofenceFitPage = lazy(() => import('./pages/admin/GeofenceFitPage').then(m => ({ default: m.GeofenceFitPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
+const SelfCorrectionsPage = lazy(() => import('./pages/admin/SelfCorrectionsPage').then(m => ({ default: m.SelfCorrectionsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
 const FieldVisitsPage = lazy(() => import('./pages/FieldVisitsPage').then(m => ({ default: m.FieldVisitsPage })))
@@ -392,6 +393,8 @@ function AppRoutes() {
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
         <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
+        {/* Corrections somebody made to their own day (the single-admin rule) — read by whoever sees the days. */}
+        <Route path="self-corrections" element={<PanelPage path="self-corrections"><SelfCorrectionsPage /></PanelPage>} />
         {/* The manager's own roster screen is retired: since Phase 4 there is one staff list, which reads
             the manager's own endpoints for a manager. Kept as a redirect for bookmarks and open tabs. */}
         <Route path="my-employees" element={<Navigate to="/admin/employees" replace />} />

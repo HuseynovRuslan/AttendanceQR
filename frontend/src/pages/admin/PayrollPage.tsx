@@ -70,6 +70,8 @@ export function PayrollPage() {
   }
 
   const noSalarySet = report && report.rows.length > 0 && report.rows.every((r) => r.monthlySalary == null)
+  // A column for days somebody corrected themselves (the single-admin rule) — only when there is one.
+  const hasSelf = !!report?.rows.some((r) => (r.selfCorrectedDays ?? 0) > 0)
 
   return (
     <div>
@@ -150,6 +152,7 @@ export function PayrollPage() {
                 <th className="num">İcazə</th>
                 <th className="num">Çıxılan</th>
                 <th className="num">Ödəniləcək</th>
+                {hasSelf && <th className="num" title="İşçinin özü düzəltdiyi günlər">Öz düzəlişi</th>}
               </tr>
             </thead>
             <tbody>
@@ -177,6 +180,11 @@ export function PayrollPage() {
                   <td data-label="Ödəniləcək" className="num mono" style={{ fontWeight: 700, color: 'var(--c900)' }}>
                     {r.monthlySalary == null ? '—' : azn(r.payable)}
                   </td>
+                  {hasSelf && (
+                    <td data-label="Öz düzəlişi" className="num mono" style={{ color: r.selfCorrectedDays ? 'var(--clay)' : undefined }}>
+                      {r.selfCorrectedDays || ''}
+                    </td>
+                  )}
                 </tr>
               ))}
               {report.rows.length === 0 && (
