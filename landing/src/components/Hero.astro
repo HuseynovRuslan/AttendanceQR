@@ -4,6 +4,7 @@ import { useTranslations, localizedPath, type Lang } from "../i18n/ui";
 import { LOGO_WORD } from "../data/brand";
 import qrPoster from "../assets/images/product/qrlog.png";
 import appShot from "../assets/images/product/qrlog-app.png";
+import PhoneFrame from "./PhoneFrame.astro";
 
 const { lang } = Astro.props as { lang: Lang };
 const t = useTranslations(lang);
@@ -39,9 +40,9 @@ const card = `absolute z-20 ${cardWhite} hover:scale-105`;
 const cardLive = `absolute z-20 ${cardSkin} border-emerald-500/20 bg-white/95 hover:scale-105`;
 // The check-in note is the one card that is not always floating: while the scene is narrow it sits in
 // the flow underneath, and only takes the pointer lift once it floats.
+const cardFlow = `${cardWhite} @md:hover:scale-105`;
 // Dörd kartın hər biri öz animate-float-* sinfi ilə yavaş-yavaş üzür (ayrı müddət və faza: styles/tailwind.css).
 // Üzmə `translate` xassəsindədir, hover:scale-105 isə `scale`-də — ikisi toqquşmur, toplanır.
-const cardFlow = `${cardWhite} @md:hover:scale-105`;
 // No text size in here either: the "+181" badge needs a smaller one than the initials do.
 const avatar =
   "flex size-6 shrink-0 items-center justify-center rounded-full font-bold ring-2 ring-white @md:size-7";
@@ -90,6 +91,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             ></span>
             <span
               class="absolute right-0 bottom-0 size-[0.3em] border-r-[0.05em] border-b-[0.05em] border-brand"
+            ></span>
             <!--
               Skan xətti: künclərin arasında yuxarıdan aşağı enib-qalxır (hərəkəti aşağıdakı <style>
               təsvir edir). Hər ölçü `em`-dədir: 1em = başlığın şrift ölçüsü, o da ekrana görə 42px-dən
@@ -99,7 +101,6 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             -->
             <span
               class="hero-scan-line absolute inset-x-[0.1em] h-[0.045em] rounded-full bg-linear-to-r from-transparent via-brand to-transparent shadow-[0_0_0.3em_rgba(21,94,239,.55)]"
-            ></span>
             ></span>
           </span>
         </span>{t("hero.title.b")}
@@ -220,11 +221,11 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         >
         </div>
 
-        <figcaption
+        <!-- <figcaption
           class="absolute top-0 left-0 z-30 text-[10px] leading-none font-bold tracking-[0.18em] text-slate-400 uppercase @md:text-[11px]"
         >
           {t("hero.d.label")}
-        </figcaption>
+        </figcaption> -->
 
         <!--
           The printed poster, turned a few degrees away from the reader and standing up again when
@@ -279,18 +280,17 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         </div>
 
         <!--
-          The phone: a shell of hardware around the app's own screen — a dark bezel, a hairline of
-          light on its edge where a real phone catches it, and one deep shadow rather than a flat
-          box. It stands up straight under the pointer.
+          Telefon: ortaq PhoneFrame komponenti (titan çərçivə, bezel, Dynamic Island, yan düymələr, 3D
+          qalınlıq, yavaş üzmə). Burada yalnız onun YERİ, ENİ və POZASI verilir; ekranın içi (tətbiqin şəkli)
+          komponentin `<slot />`-una düşür. Ətraflı izah: PhoneFrame.astro-nun başında.
 
-          The bezel and the radius are given twice because they are proportions of the PHONE, and
-          the phone is 52% of the scene while the scene is narrow but 36% of it once it is wide —
-          a single `cqw` number would round the corners half again too far in the wide state.
-          The screenshot keeps its own ratio (h-auto, and the real 1170×2532 on the attributes),
-          so nothing is cropped and nothing shifts while it loads.
+          Yer və en əvvəlki kimidir (top/left/w). Dar halda telefon 4% sola sürüşüb ki, əyilmiş telefon
+          səhnədən çıxmasın. Poza CSS dəyişənləridir: `--rx` (arxaya əyilmə, + = üst uzaqlaşır),
+          `--ry` (yana dönmə, − = sağ kənar və düymələr görünür), `--rz` (yana əyilmə, + = üst sağa əyilir).
+          Siçan üstünə gələndə telefon düzəlir (`hover:`).
         -->
-        <div
-          class="absolute top-[4%] left-[44%] z-10 w-[52%] rotate-1 rounded-[7cqw] border-[1.7cqw] border-slate-900 bg-slate-900 shadow-[0_4cqw_9cqw_-3cqw_rgb(15_23_42/0.55)] ring-1 ring-white/20 transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:left-[42%] @md:w-[42%] @md:rotate-2 @md:rotate-y-3 @md:rounded-[5cqw] @md:border-[1.2cqw]"
+        <PhoneFrame
+          class="absolute top-[4%] left-[40%] z-10 w-[52%] [--rx:15deg] [--ry:-20deg] [--rz:6deg] hover:[--rx:3deg] hover:[--ry:-6deg] hover:[--rz:2deg] @md:left-[42%] @md:w-[42%] @md:[--rx:22deg] @md:[--ry:-30deg] @md:[--rz:13deg] @md:hover:[--rx:4deg] @md:hover:[--ry:-8deg] @md:hover:[--rz:2deg]"
         >
           <!--
             640, not 512 like the poster: the widest DESKTOP paint is the same 253 CSS px (2x = 507),
@@ -298,18 +298,18 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             viewport at 3x asks for 545. The source is 1170 wide, so nothing is upscaled.
           -->
           <Image
-            class="h-auto w-full rounded-[5.3cqw] @md:rounded-[3.8cqw]"
+            class="block h-auto w-full"
             src={appShot}
             alt={t("hero.d.shotAlt")}
             width={640}
             loading="eager"
             decoding="async"
           />
-        </div>
+        </PhoneFrame>
 
         <!-- The scan that starts it: the name on this note is the name on the screen behind it. -->
         <div
-          class={`${card} animate-float-scan top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[56%] @md:w-[40%]`}
+          class={`${card} animate-float-scan top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[16%] @md:w-[40%]`}
         >
           <span
             class="grid size-7 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-600 @md:size-8 @md:text-[11px]"

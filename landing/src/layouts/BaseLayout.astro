@@ -5,7 +5,7 @@
  * Props: lang (dil), path (dil prefiksi olmadan marşrut), title və description (verilməsə ui.ts-dəki
  * meta mətnləri), home (ana səhifə), heroTone (loader-in fonu), noindex (axtarışdan gizlət).
  * Necə işləyir: <head>-də SEO, sosial kart, şriftlər və schema.org datası; <body>-də loader, Header,
- * Footer, WhatsApp və "yuxarı" düymələri; sondakı skript səhifədəki canlı hissələri (sayğac, FAQ) işə salır.
+ * Footer, WhatsApp və "yuxarı" düymələri; sondakı skript səhifədəki canlı hissələri (saat, scroll ilə görünmə, sayğac) işə salır.
  */
 
 // Sıra vacibdir: qatların (cascade layers) sırasını tailwind.css elan edir, global-layered.css isə
@@ -189,13 +189,14 @@ const websiteLd = {
     <!--
       --font-sans və --font-mono-nun şriftləri (bax styles/tailwind.css). Onest əsas şriftdir: yoxlanan
       pulsuz şriftlər içində Azərbaycan hərflərini (Ə, İ, Ğ, Ş), rus əlifbasını və ₼ işarəsini birlikdə
-      daşıyan yeganəsidir; beş qalınlıqda (400–800) yüklənir. IBM Plex Mono kiçik mono yazılar
-      üçündür.
+      daşıyan yeganəsidir; 200 və 400–800 qalınlıqlarında yüklənir. 200 yalnız 404 səhifəsindəki nazik
+      "404" üçündür (font-extralight). 300 yüklənmir: font-light yazsan brauzer ona ən yaxın yüngül
+      qalınlığı, yəni 200-ü götürər. IBM Plex Mono kiçik mono yazılar üçündür.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Onest:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Onest:wght@200;400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
 
@@ -353,47 +354,13 @@ const websiteLd = {
         })
       }
 
-      // ---------- FAQ akkordeonu ----------
-      // Eyni anda yalnız bir cavab açıq qalır: yeni sual açılmazdan əvvəl açıq olanların hamısı bağlanır.
-      function closeAllFaqItems() {
-        document.querySelectorAll('.faq-item.open').forEach((openItem) => {
-          openItem.classList.remove('open')
-          const openAnswer = openItem.querySelector('.faq-a') as HTMLElement
-          openAnswer.style.maxHeight = '0px'
-          const openQuestion = openItem.querySelector('.faq-q')
-          if (openQuestion) {
-            openQuestion.setAttribute('aria-expanded', 'false')
-          }
-        })
-      }
-
-      // Kliklənən sual bağlıdırsa, açılır; açıqdırsa, bağlanır (closeAllFaqItems onu da bağlayır).
-      function toggleFaqItem(question: Element) {
-        const item = question.parentElement as HTMLElement
-        const answer = item.querySelector('.faq-a') as HTMLElement
-        const wasOpen = item.classList.contains('open')
-        closeAllFaqItems()
-        if (!wasOpen) {
-          item.classList.add('open')
-          // CSS "height: auto"-nu animasiya edə bilmir, max-height-i isə edə bilir (global.css-də
-          // transition). Ona görə cavabın real hündürlüyünü (scrollHeight) max-height-ə yazırıq.
-          answer.style.maxHeight = answer.scrollHeight + 'px'
-          question.setAttribute('aria-expanded', 'true')
-        }
-      }
-
-      function setupFaqAccordion() {
-        document.querySelectorAll('.faq-q').forEach((question) => {
-          question.addEventListener('click', () => toggleFaqItem(question))
-        })
-      }
+      // FAQ akkordeonu burada deyil: FAQ.astro öz skriptini özü daşıyır.
 
       // ---------- İşə salma ----------
       // Hissələr bir-birindən asılı deyil: hər biri öz elementini tapıb işə düşür.
       startClock()
       startScrollReveal()
       startCounters()
-      setupFaqAccordion()
     </script>
   </body>
 </html>

@@ -1,0 +1,326 @@
+---
+/*
+ * «Kimlər üçün» bölməsinin 1-ci kartının vizualı: izometrik xəritə, obyektin GPS zonası və tikinti binası.
+ * Harada işlənir: yalnız Audience.astro-da, `.aud-visual` qutusunun içində (qutu aria-hidden-dir).
+ * Props: lang — səhifənin dili (etiket və koordinat başlığının tərcüməsi üçün).
+ * Necə işləyir: düz SVG xəritə CSS ilə yatırılır; bina, sancaq və etiketlər xəritənin üstündə ayrıca,
+ * dik qatdadır. Kart ekrana girəndə Audience.astro-nun skripti ona `is-live` sinfi verir, canlanma CSS-dədir.
+ */
+// İkon öz faylından idxal olunur — niyə kökdən yox, Audience.astro-nun başındakı şərhdə yazılıb.
+import LocateFixed from '@lucide/astro/icons/locate-fixed'
+import { useTranslations, type Lang } from '../i18n/ui'
+
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+// Koordinat bütün dillərdə eynidir, ona görə tərcümə faylında (ui.ts) yox, burada saxlanır.
+const COORDINATES = '40.3794° N · 49.8672° E'
+
+// Obyektin ətrafındakı üç boz sancaq. x və y — xəritənin mərkəzindən piksel məsafəsi (mənfi = sola /
+// yuxarı), delay — canlananda neçə saniyə sonra düşür. Sancaqlar bir-birinə oxşayır, ona görə
+// massivdən çəkilir: yeni sancaq əlavə etmək üçün bir sətir kifayətdir.
+const sidePins = [
+  { x: -132, y: -64, delay: '1.1s' },
+  { x: 116, y: -92, delay: '1.2s' },
+  { x: 124, y: 36, delay: '1.3s' },
+]
+---
+
+<div class="map-root">
+  <!--
+    Xəritə. `.iso-fade` kənarları əridir (mask), `.iso-plane` isə düz SVG-ni izometrik yatırır —
+    necə işlədiyi aşağıdakı <style>-da izah olunub. SVG-nin içindəki rənglər illüstrasiya rəngləridir.
+  -->
+  <div class="iso-fade">
+    <div class="iso-plane">
+      <svg class="block" width="700" height="700" viewBox="0 0 700 700" fill="none">
+        <rect width="700" height="700" fill="#F3F6FB"></rect>
+        <!-- məhəllə blokları -->
+        <g fill="#E1E7F0">
+          <rect x="40" y="40" width="160" height="130" rx="10"></rect>
+          <rect x="230" y="40" width="110" height="130" rx="10"></rect>
+          <rect x="370" y="40" width="130" height="90" rx="10"></rect>
+          <rect x="530" y="40" width="130" height="170" rx="10"></rect>
+          <rect x="40" y="200" width="120" height="170" rx="10"></rect>
+          <rect x="540" y="240" width="120" height="130" rx="10"></rect>
+          <rect x="40" y="400" width="160" height="120" rx="10"></rect>
+          <rect x="530" y="400" width="130" height="120" rx="10"></rect>
+          <rect x="40" y="550" width="140" height="110" rx="10"></rect>
+          <rect x="210" y="550" width="150" height="110" rx="10"></rect>
+          <rect x="390" y="550" width="120" height="110" rx="10"></rect>
+          <rect x="540" y="550" width="120" height="110" rx="10"></rect>
+        </g>
+        <!-- yollar: ağ zolaq və üstündə nöqtəli ortaxətt -->
+        <g stroke="#FFFFFF" stroke-width="16" stroke-linecap="round">
+          <path d="M0 185H700M0 535H700M215 0V700M515 0V700"></path>
+        </g>
+        <g stroke="#E2E8F0" stroke-width="1" stroke-dasharray="7 9">
+          <path d="M0 185H700M0 535H700M215 0V700M515 0V700"></path>
+        </g>
+        <!-- obyektin sahəsi -->
+        <rect x="300" y="300" width="100" height="100" rx="8" fill="#DCE6FA"></rect>
+        <!-- zona (geofence): işçi bu dairənin içində olmalıdır -->
+        <g class="geo-zone">
+          <circle
+            cx="350"
+            cy="350"
+            r="122"
+            fill="rgba(21,94,239,.08)"
+            stroke="#155EEF"
+            stroke-opacity=".6"
+            stroke-width="2"
+            stroke-dasharray="8 8"></circle>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Dik qat: bina və tikinti krani. İzometrik görünüşü əl ilə çəkilib, xəritə kimi yatırılmır. -->
+  <svg
+    class="bld absolute"
+    style="left:calc(50% - 70px); top:calc(var(--map-cy) - 122px)"
+    width="150"
+    height="150"
+    viewBox="0 0 150 150"
+    fill="none"
+  >
+    <!-- kran -->
+    <path d="M112 112V22" stroke="#94A3B8" stroke-width="2.4" stroke-linecap="round"></path>
+    <path d="M70 26 136 18" stroke="#94A3B8" stroke-width="2.4" stroke-linecap="round"></path>
+    <path d="M112 22 70 26M112 32 76 26" stroke="#CBD5E1" stroke-width="1.2"></path>
+    <path d="M84 25v22" stroke="#94A3B8" stroke-width="1"></path>
+    <rect x="80" y="47" width="8" height="5" rx="1" fill="#94A3B8"></rect>
+    <!-- bina: sol üz, sağ üz, üst -->
+    <path d="M20.5 120 70 144.7V94.7L20.5 70Z" fill="#C9D6EF"></path>
+    <path d="M70 144.7 119.5 120V70L70 94.7Z" fill="#AEC2EA"></path>
+    <path d="M20.5 70 70 45.3 119.5 70 70 94.7Z" fill="#FFFFFF" stroke="#C9D7F6"></path>
+    <!-- mərtəbə xətləri -->
+    <g stroke="#FFFFFF" stroke-opacity=".7" stroke-width="1.2">
+      <path d="M20.5 82.5 70 107.2 119.5 82.5M20.5 95 70 119.7 119.5 95M20.5 107.5 70 132.2 119.5 107.5"
+      ></path>
+    </g>
+    <!-- üstdə tikilməkdə olan karkas -->
+    <path d="M45 70V58M70 82V70M95 70V58M70 57V45" stroke="#94A3B8" stroke-width="1.6" stroke-linecap="round"
+    ></path>
+  </svg>
+
+  <!-- Mərkəz sancağı: ən sonda yuxarıdan düşür -->
+  <svg
+    class="pin-drop absolute"
+    style="left:calc(50% - 14px); top:calc(var(--map-cy) - 112px)"
+    width="28"
+    height="36"
+    viewBox="0 0 28 36"
+    fill="none"
+  >
+    <path
+      d="M14 1C7 1 1.5 6.4 1.5 13.2 1.5 22.4 14 35 14 35S26.5 22.4 26.5 13.2C26.5 6.4 21 1 14 1Z"
+      fill="#155EEF"></path>
+    <circle cx="14" cy="13" r="4.8" fill="#fff"></circle>
+  </svg>
+
+  <!-- Ətrafdakı digər obyektlər (boz sancaqlar) -->
+  {
+    sidePins.map((pin) => (
+      <svg
+        class="rise absolute"
+        style={`left:calc(50% + ${pin.x}px); top:calc(var(--map-cy) + ${pin.y}px); --t:${pin.delay}`}
+        width="14"
+        height="18"
+        viewBox="0 0 14 18"
+      >
+        <path
+          d="M7 .8C3.5.8.8 3.5.8 6.9.8 11.5 7 17.3 7 17.3s6.2-5.8 6.2-10.4C13.2 3.5 10.5.8 7 .8Z"
+          fill="#94A3B8"></path>
+        <circle cx="7" cy="6.8" r="2.3" fill="#fff"></circle>
+      </svg>
+    ))
+  }
+
+  <!-- Obyekt etiketi. Yeri vizualın eninə görə dəyişir — bax <style>-dakı @container qaydası. -->
+  <div
+    class="map-label rise absolute rounded-xl border border-slate-200/80 bg-white px-3 py-2"
+    style="--t:1.15s"
+  >
+    <p class="text-[12.5px] font-semibold whitespace-nowrap">{t('aud.map.site')}</p>
+    <p class="mt-0.5 flex items-center gap-1.5 text-[11px] whitespace-nowrap text-slate-500">
+      <span class="map-ok-dot h-1.5 w-1.5 rounded-full"></span>{t('aud.map.verified')}
+    </p>
+  </div>
+
+  <!--
+    Radius nişanı, zonanın aşağı kənarında. `-translate-x-1/2` onu özünün yarısı qədər sola çəkib
+    ortalayır. Tailwind v4 bunu ayrıca `translate` xassəsi ilə yazır, `.rise` isə `transform`
+    işlədir — iki ayrı xassə toplanır, biri o birini silmir.
+  -->
+  <div
+    class="map-radius rise absolute -translate-x-1/2 rounded-full bg-brand px-2.5 py-1 font-mono text-[11.5px] font-medium text-white"
+    style="left:50%; top:calc(var(--map-cy) + 50px); --t:1.3s"
+  >
+    {t('aud.map.radius')}
+  </div>
+
+  <!-- Koordinat çipi: yalnız enli vizualda görünür (bax <style>) -->
+  <div
+    class="map-coords rise absolute right-3 bottom-3 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white/95 px-3 py-2 shadow-xs"
+    style="--t:1.45s"
+  >
+    <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-50 text-brand">
+      <LocateFixed size={15} />
+    </span>
+    <span>
+      <span class="block text-[10.5px] text-slate-500">{t('aud.map.coordsLabel')}</span>
+      <span class="block font-mono text-[11.5px] font-medium tracking-tight">{COORDINATES}</span>
+    </span>
+  </div>
+</div>
+
+<style>
+  /* ---------- Bu vizuala xas dəyərlər ---------- */
+  .map-root {
+    position: absolute;
+    inset: 0;
+    /* Xəritənin mərkəzi qutunun yuxarıdan 46%-dədir (50% yox): aşağıda radius nişanına yer qalsın.
+       Bütün sancaq və etiket yerləri bu rəqəmə görə hesablanır. */
+    --map-cy: 46%;
+    --map-ok: #22c55e; /* «GPS təsdiqləndi» nöqtəsinin yaşıl rəngi (yalnız bu mockup-da) */
+    --map-label-shadow: 0 10px 24px -14px rgb(15 23 42 / 0.35); /* etiketin kölgəsi: slate-900-un 35%-i */
+    --map-badge-shadow: 0 6px 14px -6px rgb(21 94 239 / 0.7); /* «150 m» nişanının kölgəsi: brand-in 70%-i */
+  }
+
+  .map-ok-dot {
+    background: var(--map-ok);
+  }
+
+  .map-label {
+    box-shadow: var(--map-label-shadow);
+  }
+
+  .map-radius {
+    box-shadow: var(--map-badge-shadow);
+  }
+
+  /* ---------- İzometrik xəritə ----------
+     Düz kvadrat SVG-ni iki addımla "yerə uzandırırıq". `transform` sağdan sola oxunur: əvvəl
+     rotateZ(-45deg) kvadratı romb kimi dayandırır, sonra rotateX(60deg) onu geri yıxıb yerə
+     uzandırır. Burada `perspective` YOXDUR: uzaq və yaxın hissə eyni ölçüdə qalır — "izometrik"
+     görünüşün sirri budur.
+     700px kvadratın yarısı 350px-dir: margin onun mərkəzini (50%, --map-cy) nöqtəsinə qoyur.
+     Kvadrat qutudan çox böyükdür, artığını `.aud-visual`-ın overflow: hidden-ı kəsir. */
+  .iso-plane {
+    position: absolute;
+    left: 50%;
+    top: var(--map-cy);
+    width: 700px;
+    height: 700px;
+    margin: -350px 0 0 -350px;
+    transform: rotateX(60deg) rotateZ(-45deg);
+  }
+
+  /* Xəritənin kənarları tədricən əriyir: yatırılmış kvadratın küncləri görünməsin. */
+  .iso-fade {
+    position: absolute;
+    inset: 0;
+    -webkit-mask-image: radial-gradient(70% 68% at 50% var(--map-cy), #000 45%, transparent 100%);
+    mask-image: radial-gradient(70% 68% at 50% var(--map-cy), #000 45%, transparent 100%);
+  }
+
+  /* SVG elementinin öz mərkəzi ətrafında böyüməsi üçün: fill-box elementin özünün qutusunu götürür. */
+  .geo-zone {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  /* ---------- Etiketlər: @container ----------
+     @media ekranın eninə baxır, @container isə BU vizual qutusunun eninə (`.aud-visual` —
+     Audience.astro-da container-type: inline-size). Eyni ekranda qutunun eni dəyişir (1024px-də
+     üç kart dardır, 1440px-də enlidir, telefonda bir kart tam enlidir), ona görə ekran eni burada
+     yanlış cavab verərdi.
+     Dar qutuda (316px-dən az) etiket sol aşağı küncə keçir və koordinat çipi gizlənir — yoxsa etiket
+     sancağın üstünə düşüb kəsilərdi. Enli qutuda etiket sancağın solunda durur. */
+  .map-label {
+    left: 12px;
+    bottom: 12px;
+  }
+
+  .map-coords {
+    display: none;
+  }
+
+  @container (min-width: 316px) {
+    .map-label {
+      left: auto;
+      bottom: auto;
+      right: calc(50% + 18px);
+      top: calc(var(--map-cy) - 128px);
+    }
+
+    .map-coords {
+      display: flex;
+    }
+  }
+
+  /* ---------- Canlanma ----------
+     Qayda: yuxarıdakı kimi əsas CSS = SON vəziyyət. Gizli başlanğıc vəziyyət yalnız skript bölməyə
+     `data-anim` yazanda qüvvəyə minir, bu yoxdursa (JS söndürülüb və ya hərəkət azaldılıb) hər şey
+     dərhal tam görünür. `is-live` kartdadır (Audience.astro), ona görə selektor `:global()`-dır —
+     Astro adi selektoru bu komponentin elementlərinə bağlayır, kartın sinfi isə kənardadır.
+     https://docs.astro.build/en/guides/styling/#global-styles */
+  :global([data-anim]) .geo-zone {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  :global([data-anim]) .bld {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  :global([data-anim]) .pin-drop {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+
+  :global([data-anim]) .rise {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  /* Ardıcıllıq: zona (0.15s) → bina (0.45s) → sancaq düşür (0.95s) → sancaqlar və etiketlər (1.1s–1.45s). */
+  :global([data-anim] .is-live) .geo-zone {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.7s ease 0.15s,
+      transform 1s var(--aud-ease) 0.15s;
+  }
+
+  :global([data-anim] .is-live) .bld {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.5s ease 0.45s,
+      transform 0.8s var(--aud-ease) 0.45s;
+  }
+
+  /* Sancaq düşəndə azca "sıçrayır": 1.5 olan əyri nöqtəsi hədəfi bir az keçib geri qayıdır. */
+  :global([data-anim] .is-live) .pin-drop {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.3s ease 0.95s,
+      transform 0.55s cubic-bezier(0.3, 1.5, 0.5, 1) 0.95s;
+  }
+
+  /* `--t` — hər elementin öz gecikməsidir, markup-da style="--t:1.15s" kimi yazılıb. */
+  :global([data-anim] .is-live) .rise {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.5s ease var(--t, 0.2s),
+      transform 0.65s var(--aud-ease) var(--t, 0.2s);
+  }
+</style>
