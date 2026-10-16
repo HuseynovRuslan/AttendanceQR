@@ -45,6 +45,22 @@ public static class LocationScopeRules
         };
     }
 
+    /// <summary>
+    /// The role today's code paths should take for this caller and this permission. In Legacy and Shadow it is
+    /// their own role, untouched. In a company switched to Enforced it is what the permission model gives them:
+    /// the right company-wide reads as Admin, over some branches as Manager (and the manager-shaped lists then
+    /// narrow to those branches — see <see cref="ManagedLocationIdsAsync"/>), nowhere as Employee (own records).
+    /// A bridge, so the reports and boards that grew up around the two roles keep their tested paths.
+    /// </summary>
+    public static async Task<EmployeeRole> EffectiveRoleAsync(
+        AppDbContext db, Guid callerId, EmployeeRole role, string permission, CancellationToken ct)
+    {
+        if (db.AuthzObserver is not { } observer || await observer.ModeAsync(db, ct) != AuthzMode.Enforced)
+            return role;
+        var scope = await observer.ScopeAsync(db, callerId, role, permission, ct);
+        return scope.Company ? EmployeeRole.Admin : scope.Branches.Count > 0 ? EmployeeRole.Manager : EmployeeRole.Employee;
+    }
+
     // Today's rules, unchanged. In Legacy and Shadow the public methods return exactly what these return (the
     // model only watches — docs/strukturlar-ve-selahiyyetler.md §4.3); in Enforced the observer's answer.
     private static Task<List<Guid>> LegacyManagedAsync(AppDbContext db, Guid managerId, CancellationToken ct)
