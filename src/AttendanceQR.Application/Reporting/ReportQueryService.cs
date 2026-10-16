@@ -72,6 +72,14 @@ public interface IReportQueryService
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
     /// <summary>
+    /// The role an Excel export of the summary or the tabel runs under. Today's role in Legacy and Shadow; in a
+    /// company switched to Enforced, «attendance.export»'s — and the report built for the file is held under it
+    /// (LocationScopeRules.EffectiveRoleAsync), so a role that may look at the days but not take them away as a
+    /// file gets its own rows only.
+    /// </summary>
+    Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
     /// The monthly timesheet grid ("Aylıq Tabel"): one row per in-scope employee, one code per day.
     /// Built on the same per-day computation as the summary, so it shares its scope authority and its
     /// day-counting — the tabel and the summary can never disagree about who worked when.
@@ -988,6 +996,9 @@ public sealed class ReportQueryService : IReportQueryService
             .ToList();
         return (ReportAccess.Allowed, days);
     }
+
+    public Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default) =>
+        LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceExport, ct);
 
     public async Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)

@@ -28,7 +28,12 @@ public static class LocationScope
     {
         if (db.AuthzObserver is { } observer && await observer.ModeAsync(db, ct) == AuthzMode.Enforced)
         {
-            var scope = await LocationScopeRules.ScopeAsync(db, requesterId, role, AccessPermissions.AttendanceView, ct);
+            // The request's role is already the model's (EffectiveRoleAsync): plain staff see their own records,
+            // whatever their rights — the payroll refused them does not come back through its summary.
+            if (role == EmployeeRole.Employee)
+                return new ScopedSummaryQuery(ReportAccess.Allowed, baseQuery.Where(s => s.EmployeeId == requesterId), "Own records");
+            // Where the days may be seen AND every right of the request reaches (the payroll's own, too).
+            var scope = await LocationScopeRules.RequestScopeAsync(db, requesterId, role, AccessPermissions.AttendanceView, ct);
             if (scope.Company)
                 return requestedLocationId is Guid companyLoc
                     ? new ScopedSummaryQuery(ReportAccess.Allowed, baseQuery.Where(s => s.LocationId == companyLoc), $"Location {companyLoc}")

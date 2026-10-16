@@ -83,8 +83,9 @@ public sealed class PermissionGateHandler : AuthorizationHandler<RolesAuthorizat
 /// authorization and before any action reads <c>User.Role()</c>. So every check written as «a manager is
 /// narrowed to their branches» narrows a timekeeper too — to the branches the model gives them — instead of
 /// reading «not a manager» as «an admin»; and the endpoint's permission becomes the request's
-/// (<see cref="IAuthzObserver.RequestPermission"/>), so «my branches» means the branches where this right is
-/// held. The token's own role is kept beside it as «token_role».
+/// (<see cref="IAuthzObserver.RequestPermissions"/>), so «my branches» means the branches where this right is
+/// held, and the projected role is the request's ceiling (<see cref="IAuthzObserver.RoleCeiling"/>) — nothing
+/// called inside it can make it more. The token's own role is kept beside it as «token_role».
 ///
 /// Legacy and Shadow: the role is not touched; only the request's permission is noted, for the shadow to
 /// measure the rules Enforced will use. Endpoints with no [Permission] are never touched.
@@ -103,13 +104,15 @@ public sealed class AuthzEnforcedMiddleware
             && context.GetEndpoint()?.Metadata.GetMetadata<PermissionAttribute>() is { } permission
             && db.AuthzObserver is { } observer)
         {
-            observer.RequestPermission = permission.Key;
+            observer.AddRequestPermission(permission.Key);
             var tokenRole = context.User.FindFirstValue("role");
-            if (Enum.TryParse<EmployeeRole>(tokenRole, out var role))
+            if (Enum.TryParse<EmployeeRole>(tokenRole, out var role)
+                && await observer.ModeAsync(db, context.RequestAborted) == AuthzMode.Enforced)
             {
-                // Non-Enforced: the token's role comes back unchanged. Unreadable in Enforced: plain staff.
+                // Unreadable in Enforced: plain staff.
                 var projected = await observer.ProjectRoleAsync(
                     db, context.User.EmployeeId(), role, permission.Key, context.RequestAborted);
+                observer.RoleCeiling = projected;
                 if (projected != role)
                     context.User = WithRole(context.User, projected, tokenRole!);
             }

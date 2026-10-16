@@ -18,8 +18,8 @@ namespace AttendanceQR.Infrastructure.Services;
 public static class LocationScopeRules
 {
     /// <summary>The locations a manager oversees (their ManagedLocations set) — in a company switched to
-    /// Enforced, the branches the caller holds «employees.view» over, and the request's own right too (see
-    /// IAuthzObserver.RequestPermission).</summary>
+    /// Enforced, the branches the caller holds «employees.view» over, and every right of the request too (see
+    /// IAuthzObserver.RequestPermissions).</summary>
     public static async Task<List<Guid>> ManagedLocationIdsAsync(AppDbContext db, Guid managerId, CancellationToken ct)
     {
         var managed = await LegacyManagedAsync(db, managerId, ct);
@@ -51,16 +51,34 @@ public static class LocationScopeRules
     /// their own role, untouched. In a company switched to Enforced it is Access.AccessProjection's answer: the
     /// Company administrator reads as Admin; anybody else holding the permission as Manager, and the
     /// manager-shaped lists then narrow to where they hold it (<see cref="ManagedLocationIdsAsync"/> — the
-    /// report's permission becomes the request's, for exactly that); nobody else as Employee (own records).
+    /// report's permission joins the request's, for exactly that); nobody else as Employee (own records).
     /// A bridge, so the reports and boards that grew up around the two roles keep their tested paths.
+    ///
+    /// A report called inside another — the payroll prices a summary — is held under the role the outer one
+    /// got (IAuthzObserver.RoleCeiling): a timekeeper refused the payroll is plain staff for it, and the summary
+    /// it builds on must not hand them back their branch because they hold «attendance.view» there.
     /// </summary>
     public static async Task<EmployeeRole> EffectiveRoleAsync(
         AppDbContext db, Guid callerId, EmployeeRole role, string permission, CancellationToken ct)
     {
         if (db.AuthzObserver is not { } observer || await observer.ModeAsync(db, ct) != AuthzMode.Enforced)
             return role;
-        observer.RequestPermission = permission;
-        return await observer.ProjectRoleAsync(db, callerId, role, permission, ct);
+        observer.AddRequestPermission(permission);
+        var projected = await observer.ProjectRoleAsync(db, callerId, role, permission, ct);
+        if (observer.RoleCeiling is { } ceiling && ceiling < projected)
+            projected = ceiling;
+        observer.RoleCeiling = projected;
+        return projected;
+    }
+
+    /// <summary>Where <paramref name="permission"/> and every right of this request reach — what a report narrows
+    /// itself to in Enforced (IAuthzObserver.RequestScopeAsync); today's scope elsewhere.</summary>
+    public static async Task<Access.ScopeAnswer> RequestScopeAsync(
+        AppDbContext db, Guid callerId, EmployeeRole role, string permission, CancellationToken ct)
+    {
+        if (db.AuthzObserver is { } observer)
+            return await observer.RequestScopeAsync(db, callerId, role, permission, ct);
+        return await ScopeAsync(db, callerId, role, permission, ct);
     }
 
     // Today's rules, unchanged. In Legacy and Shadow the public methods return exactly what these return (the

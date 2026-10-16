@@ -180,7 +180,8 @@ public class AuthzEnforcedMatrixTests
     private static AppDbContext Decided(AccessWorld w, string? requestPermission = null)
     {
         var observer = Observer(w);
-        observer.RequestPermission = requestPermission;
+        if (requestPermission is not null)
+            observer.AddRequestPermission(requestPermission);
         return w.Context(AccessWorld.TenantA, observer);
     }
 
@@ -208,7 +209,7 @@ public class AuthzEnforcedMatrixTests
         ClaimsPrincipal? seen = null;
         var middleware = new AuthzEnforcedMiddleware(ctx => { seen = ctx.User; return Task.CompletedTask; });
         await middleware.InvokeAsync(http, db);
-        Assert.Equal(permission, db.AuthzObserver!.RequestPermission);
+        Assert.Contains(permission, db.AuthzObserver!.RequestPermissions);
         return seen!;
     }
 
@@ -348,6 +349,141 @@ public class AuthzEnforcedMatrixTests
         await SetModeAsync(w, AuthzMode.Legacy);
         using var legacy = Decided(w, AccessPermissions.EmployeesResetPin);
         Assert.True(await LocationScopeRules.EnforcedCredentialTargetAsync(legacy, w.E2, EmployeeRole.Employee, w.E1, default));
+    }
+
+    // ─────────────────────────── a report inside a report ───────────────────────────
+
+    /// <summary>Finished days for everybody in company A — the reports read these; with none, every scope test
+    /// would pass for the harmless reason that there is nothing to show.</summary>
+    private static async Task SeedDaysAsync(AccessWorld w, DateOnly from, DateOnly to)
+    {
+        using var db = w.Context(AccessWorld.TenantA);
+        foreach (var e in db.Employees.ToList())
+        {
+            e.MonthlySalary = 700m;
+            for (var d = from; d <= to; d = d.AddDays(1))
+                db.DailySummaries.Add(new DailySummary
+                {
+                    TenantId = AccessWorld.TenantA, EmployeeId = e.Id, LocationId = e.LocationId, SummaryDate = d,
+                    Status = DailySummaryStatus.OnTime, WorkedMinutes = 480,
+                });
+        }
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_report_called_inside_another_never_hands_back_what_the_outer_one_refused()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        // E2 keeps B1's time: «attendance.view» at B1, no «payroll.view» anywhere.
+        await GiveAsync(w, w.E2, AccessRoleTemplates.Timekeeper, w.B1);
+        await SetModeAsync(w, AuthzMode.Enforced);
+        var month = new DateOnly(2026, 9, 1);
+        await SeedDaysAsync(w, month, month.AddDays(4));
+
+        // Through a path with no gate of its own (the assistant's tools are one): the payroll is plain staff's —
+        // their own row at most, never B1's, although the summary it is built on is something they may read.
+        using (var db = Decided(w))
+        {
+            var (access, payroll) = await new ReportQueryService(db, new AppOptions { TimeZone = "UTC" })
+                .GetPayrollAsync(month, month.AddDays(4), null, w.E2, EmployeeRole.Employee);
+            Assert.True(access == ReportAccess.Forbidden || payroll!.Rows.All(r => r.EmployeeId == w.E2));
+        }
+        // The summary on its own: their branch, as a timekeeper's board.
+        using (var db = Decided(w))
+        {
+            var (access, summary) = await new ReportQueryService(db, new AppOptions { TimeZone = "UTC" })
+                .GetSummaryAsync(month, month.AddDays(4), null, w.E2, EmployeeRole.Employee);
+            Assert.Equal(ReportAccess.Allowed, access);
+            Assert.NotEmpty(summary!.Rows);
+            // B1's people — and their own row, which is always theirs.
+            Assert.All(summary.Rows, r => Assert.True(r.EmployeeId == w.E2 || w.HomeOf(r.EmployeeId) == w.B1));
+            Assert.Contains(summary.Rows, r => r.EmployeeId == w.E1);
+        }
+    }
+
+    [Fact]
+    public async Task A_payroll_right_at_one_branch_prices_that_branch_only_though_the_days_are_seen_at_two()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        using (var db = w.Context(AccessWorld.TenantA))
+        {
+            // A company-made role: pay at B1. The timekeeper role at B1 and B2 sees the days at both.
+            var pay = new AccessRole
+            {
+                TenantId = AccessWorld.TenantA, Name = "Maaş (B1)", Description = "",
+                Permissions = [AccessPermissions.PayrollView, AccessPermissions.EmployeesView, AccessPermissions.AttendanceView],
+            };
+            db.AccessRoles.Add(pay);
+            db.RoleAssignments.Add(new RoleAssignment
+            {
+                TenantId = AccessWorld.TenantA, EmployeeId = w.E3, AccessRoleId = pay.Id, Scope = AccessScopeType.Branch,
+                LocationId = w.B1, CreatedByEmployeeId = w.Admin1,
+            });
+            await db.SaveChangesAsync();
+        }
+        await GiveAsync(w, w.E3, AccessRoleTemplates.Timekeeper, w.B1);
+        await GiveAsync(w, w.E3, AccessRoleTemplates.Timekeeper, w.B2);
+        await SetModeAsync(w, AuthzMode.Enforced);
+        var month = new DateOnly(2026, 9, 1);
+        await SeedDaysAsync(w, month, month.AddDays(4));
+
+        using var payDb = Decided(w, AccessPermissions.PayrollView);
+        var (access, payroll) = await new ReportQueryService(payDb, new AppOptions { TimeZone = "UTC" })
+            .GetPayrollAsync(month, month.AddDays(4), null, w.E3, EmployeeRole.Manager);
+        Assert.Equal(ReportAccess.Allowed, access);
+        Assert.NotEmpty(payroll!.Rows);
+        // B1's people (and one's own row) — never B2's, whose days they may see but whose pay they may not.
+        Assert.All(payroll.Rows, r => Assert.True(r.EmployeeId == w.E3 || w.HomeOf(r.EmployeeId) == w.B1));
+        Assert.Contains(payroll.Rows, r => r.EmployeeId == w.E1);
+        Assert.DoesNotContain(payroll.Rows, r => r.EmployeeId == w.E2);
+
+        // The days themselves, asked for on their own: both branches.
+        using var dayDb = Decided(w);
+        var (_, summary) = await new ReportQueryService(dayDb, new AppOptions { TimeZone = "UTC" })
+            .GetSummaryAsync(month, month.AddDays(4), null, w.E3, EmployeeRole.Employee);
+        var homes = summary!.Rows.Select(r => w.HomeOf(r.EmployeeId)).Distinct().ToList();
+        Assert.Contains(w.B2, homes);
+    }
+
+    [Fact]
+    public async Task An_excel_file_is_the_export_rights_to_take()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        await GiveAsync(w, w.E2, AccessRoleTemplates.Timekeeper, w.B1);   // carries «attendance.export»
+        using (var db = w.Context(AccessWorld.TenantA))
+        {
+            var look = new AccessRole
+            {
+                TenantId = AccessWorld.TenantA, Name = "Yalnız baxış", Description = "",
+                Permissions = [AccessPermissions.AttendanceView, AccessPermissions.EmployeesView],
+            };
+            db.AccessRoles.Add(look);
+            db.RoleAssignments.Add(new RoleAssignment
+            {
+                TenantId = AccessWorld.TenantA, EmployeeId = w.E3, AccessRoleId = look.Id, Scope = AccessScopeType.Branch,
+                LocationId = w.B1, CreatedByEmployeeId = w.Admin1,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await SetModeAsync(w, AuthzMode.Legacy);
+        using (var db = Decided(w))
+            Assert.Equal(EmployeeRole.Employee, await new ReportQueryService(db, new AppOptions()).ExportRoleAsync(w.E2, EmployeeRole.Employee));
+
+        await SetModeAsync(w, AuthzMode.Enforced);
+        async Task<EmployeeRole> ExportAs(Guid who, EmployeeRole token)
+        {
+            using var db = Decided(w);
+            return await new ReportQueryService(db, new AppOptions()).ExportRoleAsync(who, token);
+        }
+        Assert.Equal(EmployeeRole.Manager, await ExportAs(w.E2, EmployeeRole.Employee));
+        Assert.Equal(EmployeeRole.Employee, await ExportAs(w.E3, EmployeeRole.Employee));   // looks, takes no file
+        Assert.Equal(EmployeeRole.Manager, await ExportAs(w.M1, EmployeeRole.Manager));
+        Assert.Equal(EmployeeRole.Admin, await ExportAs(w.Admin1, EmployeeRole.Admin));
     }
 
     // ─────────────────────────── the manager desk's rows ───────────────────────────
