@@ -26,6 +26,10 @@ public interface IAuthzShadowSink
 /// for a company in Shadow mode, makes the same decision with the permission model. Today's answer is the
 /// one that is used; a different answer is recorded. Never throws and never changes a decision — a failure
 /// here costs one row of evidence, never a request.
+///
+/// Since Phase 5 it also DECIDES, for a company switched to Enforced: the Decide*/Scope methods return the
+/// permission model's answer there, and today's everywhere else (Legacy and Shadow are untouched). In Enforced
+/// an answer that cannot be computed is «no» — a permission check that fails open is not a permission check.
 /// </summary>
 public interface IAuthzObserver
 {
@@ -36,6 +40,37 @@ public interface IAuthzObserver
     Task ObserveManagedSetAsync(
         AppDbContext db, Guid callerId, EmployeeRole callerRole, IReadOnlyCollection<Guid> legacy,
         CancellationToken ct = default);
+
+    /// <summary>The company's answer to one of today's rules: the model's in Enforced, today's otherwise (Shadow
+    /// records a difference, as before).</summary>
+    Task<bool> DecideScopeAsync(
+        AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
+        CancellationToken ct = default);
+
+    /// <summary>The branches a manager-shaped list is narrowed to: in Enforced, where the caller holds
+    /// «employees.view» (every branch for company-wide); otherwise today's ManagedLocations.</summary>
+    Task<IReadOnlyCollection<Guid>> DecideManagedSetAsync(
+        AppDbContext db, Guid callerId, EmployeeRole callerRole, IReadOnlyCollection<Guid> legacy,
+        CancellationToken ct = default);
+
+    /// <summary>Where the caller may use <paramref name="permission"/>: the whole company, some branches, or
+    /// nowhere. Today's answer (Admin — everywhere; Manager — their ManagedLocations; else nowhere) in Legacy
+    /// and Shadow, the model's in Enforced.</summary>
+    Task<ScopeAnswer> ScopeAsync(
+        AppDbContext db, Guid callerId, EmployeeRole callerRole, string permission, CancellationToken ct = default);
+
+    /// <summary>The company's mode, as the deciding methods read it.</summary>
+    Task<AuthzMode> ModeAsync(AppDbContext db, CancellationToken ct = default);
+}
+
+/// <summary>Where one permission reaches for one caller.</summary>
+public sealed record ScopeAnswer(bool Company, IReadOnlySet<Guid> Branches)
+{
+    public static ScopeAnswer Nowhere { get; } = new(false, new HashSet<Guid>());
+    public static ScopeAnswer Everywhere { get; } = new(true, new HashSet<Guid>());
+
+    public bool Any => Company || Branches.Count > 0;
+    public bool Covers(Guid locationId) => Company || Branches.Contains(locationId);
 }
 
 public static class ShadowRules
@@ -137,6 +172,76 @@ public sealed class AuthzObserver : IAuthzObserver
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Authz shadow: {Rule} could not be compared", rule);
+        }
+    }
+
+    public Task<AuthzMode> ModeAsync(AppDbContext db, CancellationToken ct = default) => ModeAsync(db, _cache, ct);
+
+    public async Task<bool> DecideScopeAsync(
+        AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
+        CancellationToken ct = default)
+    {
+        if (await ModeAsync(db, _cache, ct) != AuthzMode.Enforced)
+        {
+            await ObserveScopeAsync(db, rule, callerId, callerRole, targetId, legacy, ct);
+            return legacy;
+        }
+        try
+        {
+            var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
+            var home = await HomeOfAsync(db, targetId, ct);
+            if (!home.Found)
+                return false;
+            var callerHome = await HomeOfAsync(db, callerId, ct);
+            return ShadowRules.Decide(rule, graph.For(callerId), targetId, home.Home, graph.For(targetId),
+                _operatorIds.Contains(targetId), callerHome.Found ? callerHome.Home : null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Authz enforced: {Rule} could not be decided — refused", rule);
+            return false;
+        }
+    }
+
+    public async Task<IReadOnlyCollection<Guid>> DecideManagedSetAsync(
+        AppDbContext db, Guid callerId, EmployeeRole callerRole, IReadOnlyCollection<Guid> legacy,
+        CancellationToken ct = default)
+    {
+        if (await ModeAsync(db, _cache, ct) != AuthzMode.Enforced)
+        {
+            await ObserveManagedSetAsync(db, callerId, callerRole, legacy, ct);
+            return legacy;
+        }
+        var scope = await ScopeAsync(db, callerId, callerRole, AccessPermissions.EmployeesView, ct);
+        return scope.Company
+            ? await db.Locations.AsNoTracking().Select(l => l.Id).ToListAsync(ct)
+            : scope.Branches.ToList();
+    }
+
+    public async Task<ScopeAnswer> ScopeAsync(
+        AppDbContext db, Guid callerId, EmployeeRole callerRole, string permission, CancellationToken ct = default)
+    {
+        if (await ModeAsync(db, _cache, ct) != AuthzMode.Enforced)
+            return callerRole switch
+            {
+                EmployeeRole.Admin => ScopeAnswer.Everywhere,
+                EmployeeRole.Manager => new ScopeAnswer(false, (await db.ManagedLocations.AsNoTracking()
+                    .Where(m => m.EmployeeId == callerId).Select(m => m.LocationId).ToListAsync(ct)).ToHashSet()),
+                _ => ScopeAnswer.Nowhere,
+            };
+        try
+        {
+            var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
+            var access = graph.For(callerId);
+            if (access.HasAtCompany(permission))
+                return ScopeAnswer.Everywhere;
+            var branches = access.BranchesFor(permission);
+            return branches is null ? ScopeAnswer.Everywhere : new ScopeAnswer(false, branches.ToHashSet());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Authz enforced: scope of {Permission} could not be read — nowhere", permission);
+            return ScopeAnswer.Nowhere;
         }
     }
 

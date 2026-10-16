@@ -17,17 +17,36 @@ namespace AttendanceQR.Infrastructure.Services;
 /// </summary>
 public static class LocationScopeRules
 {
-    /// <summary>The locations a manager oversees (their ManagedLocations set).</summary>
+    /// <summary>The locations a manager oversees (their ManagedLocations set) — in a company switched to
+    /// Enforced, the branches the caller holds «employees.view» over.</summary>
     public static async Task<List<Guid>> ManagedLocationIdsAsync(AppDbContext db, Guid managerId, CancellationToken ct)
     {
         var managed = await LegacyManagedAsync(db, managerId, ct);
         if (db.AuthzObserver is { } observer)
-            await observer.ObserveManagedSetAsync(db, managerId, EmployeeRole.Manager, managed, ct);
+            return (await observer.DecideManagedSetAsync(db, managerId, EmployeeRole.Manager, managed, ct)).ToList();
         return managed;
     }
 
-    // Today's rules, unchanged. The public methods return exactly what these return; the permission
-    // model only watches (Services.Access.AuthzObserver) — see docs/strukturlar-ve-selahiyyetler.md §4.3.
+    /// <summary>
+    /// Where <paramref name="callerId"/> may use <paramref name="permission"/> — the whole company, some branches,
+    /// or nowhere. What every list and board narrows itself by. Today: an admin everywhere, a manager over their
+    /// ManagedLocations, anybody else nowhere; in a company switched to Enforced, the permission model.
+    /// </summary>
+    public static async Task<Access.ScopeAnswer> ScopeAsync(
+        AppDbContext db, Guid callerId, EmployeeRole role, string permission, CancellationToken ct)
+    {
+        if (db.AuthzObserver is { } observer)
+            return await observer.ScopeAsync(db, callerId, role, permission, ct);
+        return role switch
+        {
+            EmployeeRole.Admin => Access.ScopeAnswer.Everywhere,
+            EmployeeRole.Manager => new Access.ScopeAnswer(false, (await LegacyManagedAsync(db, callerId, ct)).ToHashSet()),
+            _ => Access.ScopeAnswer.Nowhere,
+        };
+    }
+
+    // Today's rules, unchanged. In Legacy and Shadow the public methods return exactly what these return (the
+    // model only watches — docs/strukturlar-ve-selahiyyetler.md §4.3); in Enforced the observer's answer.
     private static Task<List<Guid>> LegacyManagedAsync(AppDbContext db, Guid managerId, CancellationToken ct)
         => db.ManagedLocations
             .Where(m => m.EmployeeId == managerId)
@@ -55,7 +74,9 @@ public static class LocationScopeRules
     {
         var allowed = await LegacyCanAccessAsync(db, requesterId, role, targetEmployeeId, ct);
         if (db.AuthzObserver is { } observer)
-            await observer.ObserveScopeAsync(db, Access.ShadowRules.CanAccess, requesterId, role, targetEmployeeId, allowed, ct);
+            // One's own records stay one's own in every mode — the model's rule is about other people.
+            return requesterId == targetEmployeeId
+                || await observer.DecideScopeAsync(db, Access.ShadowRules.CanAccess, requesterId, role, targetEmployeeId, allowed, ct);
         return allowed;
     }
 
@@ -115,7 +136,7 @@ public static class LocationScopeRules
     {
         var allowed = await LegacyCanScheduleAsync(db, requesterId, role, targetEmployeeId, ct);
         if (db.AuthzObserver is { } observer)
-            await observer.ObserveScopeAsync(db, Access.ShadowRules.CanSchedule, requesterId, role, targetEmployeeId, allowed, ct);
+            return await observer.DecideScopeAsync(db, Access.ShadowRules.CanSchedule, requesterId, role, targetEmployeeId, allowed, ct);
         return allowed;
     }
 
@@ -153,7 +174,7 @@ public static class LocationScopeRules
     {
         var allowed = await LegacyCanManageAsync(db, requesterId, role, targetEmployeeId, ct);
         if (db.AuthzObserver is { } observer)
-            await observer.ObserveScopeAsync(db, Access.ShadowRules.CanManage, requesterId, role, targetEmployeeId, allowed, ct);
+            return await observer.DecideScopeAsync(db, Access.ShadowRules.CanManage, requesterId, role, targetEmployeeId, allowed, ct);
         return allowed;
     }
 
@@ -169,7 +190,7 @@ public static class LocationScopeRules
         var allowed = requesterId != targetEmployeeId
                       && await LegacyCanManageAsync(db, requesterId, role, targetEmployeeId, ct);
         if (db.AuthzObserver is { } observer)
-            await observer.ObserveScopeAsync(db, Access.ShadowRules.CorrectAttendance, requesterId, role, targetEmployeeId, allowed, ct);
+            return await observer.DecideScopeAsync(db, Access.ShadowRules.CorrectAttendance, requesterId, role, targetEmployeeId, allowed, ct);
         return allowed;
     }
 
