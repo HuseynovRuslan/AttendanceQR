@@ -3,6 +3,7 @@ import { RowActions } from '../../components/RowActions'
 import { BulkInvitePage } from './BulkInvitePage'
 import { initials } from './todayShift'
 import { PositionSelect } from '../../components/PositionSelect'
+import { fenceSelectFrom, requireGeofenceFrom } from '../../lib/fenceOverride'
 import { NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { COMPANY_TZ, fmtFullDateTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
@@ -384,7 +385,7 @@ export function EmployeesPage() {
       photoExempt: e.photoExempt === true,
       canFieldCheckIn: e.canFieldCheckIn === true,
       qrlessOverride: e.qrlessCheckInOverride == null ? '' : e.qrlessCheckInOverride ? 'on' : 'off',
-      fenceOverride: e.requireGeofenceOverride == null ? '' : e.requireGeofenceOverride ? 'off' : 'on',
+      fenceOverride: fenceSelectFrom(e.requireGeofenceOverride),
       canShareDevice: e.canShareDevice === true,
       managedLocationIds: e.managedLocationIds ?? [],
       cycle: e.workCycleDays
@@ -437,8 +438,9 @@ export function EmployeesPage() {
       // '' means "follow the branch" and must reach the server as null, not as false — false is a
       // pinned exception that would override a branch which already has the setting on.
       qrlessCheckInOverride: form.qrlessOverride === '' ? null : form.qrlessOverride === 'on',
-      // Inverted on purpose: the admin picks «GPS divarı», and the field stores "is it required".
-      requireGeofenceOverride: form.fenceOverride === '' ? null : form.fenceOverride === 'off',
+      // «on» = «Radiusdan kənarda girişi rədd et» = the wall IS required. See lib/fenceOverride — this was
+      // the other way round until 2026-10-15, and every choice meant its opposite.
+      requireGeofenceOverride: requireGeofenceFrom(form.fenceOverride),
       // Sent on create too now, so a schedule (day/night shift) assigned at creation is persisted.
       workStart: form.workStart || null,
       workEnd: form.workEnd || null,
