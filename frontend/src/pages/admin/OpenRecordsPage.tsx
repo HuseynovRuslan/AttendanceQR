@@ -4,6 +4,7 @@ import { CORRECTION_ERROR, useCorrectionReason } from '../../components/Correcti
 import { adminUpdateRecord, closeOpenDays, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
 import { fmtDate, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
+import { useHolds } from '../../auth/AccessContext'
 
 // datetime-local <-> ISO, matching EmployeesPage. The input reads/writes the admin's local time; the
 // wire is always UTC ISO.
@@ -32,6 +33,8 @@ const CLOSE_ERROR: Record<string, string> = {
 }
 
 export function OpenRecordsPage() {
+  // The list is «attendance.view»; closing a day is a correction — «attendance.correct».
+  const mayCorrect = useHolds('attendance.correct', true)
   const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   const [rows, setRows] = useState<OpenRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -186,7 +189,7 @@ export function OpenRecordsPage() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {mayCorrect && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 className="btn btn-sm"
                 onClick={() => setPicked(new Set(picked.size === closableCount ? [] : closable.map((r) => r.recordId)))}
@@ -201,7 +204,7 @@ export function OpenRecordsPage() {
               >
                 <IconCheck /> {bulkBusy ? 'Bağlanır…' : `Seçilmişləri bağla (${picked.size})`}
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -296,7 +299,7 @@ export function OpenRecordsPage() {
                   />
                 </td>
                 <td data-label="">
-                  {canClose(r) ? (
+                  {canClose(r) && mayCorrect ? (
                     <button className="btn btn-primary btn-sm" disabled={busyId === r.recordId} onClick={() => close(r)}>
                       <IconCheck /> Bağla
                     </button>

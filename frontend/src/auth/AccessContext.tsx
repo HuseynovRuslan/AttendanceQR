@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { getMyAccess, type MyAccess } from '../api/me'
 import { useAuth } from './AuthContext'
+import type { Role } from '../lib/jwt'
 
 /**
  * The panel's copy of GET /api/me/access, read once when the panel opens and again whenever the tab comes
@@ -57,4 +58,34 @@ export function AccessProvider({ children }: { children: ReactNode }) {
 
 export function useAccess(): AccessState {
   return useContext(AccessCtx)
+}
+
+/**
+ * The role a page should take to pick its endpoints, for one permission (Phase 5).
+ *
+ * Every screen grew up asking «Admin or Manager?» to choose between the company-wide endpoints and the
+ * manager's narrowed twins. In a company switched to Enforced that question is the permission model's, and
+ * the answer is the server's own (AccessProjection): the Company administrator → the admin endpoints;
+ * anybody else holding the right → the narrowed ones, which the server narrows to where they hold it (a
+ * company-wide observer gets every branch, still without salaries, roles or numbers); not held → null.
+ * Anywhere else it is the token's role, as before.
+ */
+export function useScopedRole(permission: string): Role | null {
+  const { role } = useAuth()
+  const { access } = useAccess()
+  return scopedRole(role, access, permission)
+}
+
+/** The rule behind useScopedRole — the server's AccessProjection, read on the panel's side. */
+export function scopedRole(role: Role | null, access: MyAccess | null, permission: string): Role | null {
+  if (access?.mode !== 'Enforced') return role
+  if (access.companyAdmin) return 'Admin'
+  return access.permissions.some((p) => p.key === permission) ? 'Manager' : null
+}
+
+/** Whether a button's own right is held — the permission model's answer in Enforced, the given role rule elsewhere. */
+export function useHolds(permission: string, legacy: boolean): boolean {
+  const { access } = useAccess()
+  if (access?.mode !== 'Enforced') return legacy
+  return access.permissions.some((p) => p.key === permission)
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getShiftMismatch, type ShiftMismatchReport } from '../../api/admin'
 import { recomputeDays } from '../../api/attendance'
-import { useAuth } from '../../auth/AuthContext'
+import { useScopedRole } from '../../auth/AccessContext'
 import { fmtDate } from '../../lib/format'
 
 /**
@@ -25,7 +25,8 @@ import { fmtDate } from '../../lib/format'
 const HOURS = (t: string) => t.slice(0, 5)
 
 export function ShiftMismatchPage() {
-  const { role } = useAuth()
+  // Recomputing the summaries is company-wide — the Company administrator's in Enforced.
+  const role = useScopedRole('schedules.view')
   const isAdmin = role === 'Admin'
   const [days, setDays] = useState(21)
   const [report, setReport] = useState<ShiftMismatchReport | null>(null)

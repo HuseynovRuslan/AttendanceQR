@@ -18,7 +18,7 @@ import {
   getManagerSchedules,
   updateManagerSchedule,
 } from '../../api/manager'
-import { useAuth } from '../../auth/AuthContext'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
 import { listFailureText } from '../../lib/listFailure'
@@ -84,7 +84,10 @@ const EMPTY: FormState = {
 }
 
 export function SchedulesPage() {
-  const { role } = useAuth()
+  // The shifts' shape by «schedules.view» — in Enforced the narrowed one for anybody but the Company
+  // administrator; the writes are «schedules.manage» (see mayManage below).
+  const role = useScopedRole('schedules.view')
+  const mayManage = useHolds('schedules.manage', true)
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
   const isManager = role === 'Manager'
   // Same screen, different surface: a manager's writes are scope-checked server-side.
@@ -268,7 +271,7 @@ export function SchedulesPage() {
           növbədəki <b>bütün</b> işçilərə — keçmiş günlərin hesabatına da — təsir edir.
           {isManager && ' Başqa filialın işçisi olan növbəni dəyişə bilməzsiniz.'}
         </p>
-        <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>
+        {mayManage && <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>}
       </div>
 
       {/* Ərazi üzrə ayır: filter the per-shift counts and the expander to one branch. */}
@@ -519,8 +522,10 @@ export function SchedulesPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
-                          <button className="btn btn-sm" onClick={() => startEdit(s)}>Redaktə</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => void remove(s)}><IconTrash /></button>
+                          {mayManage && <>
+                            <button className="btn btn-sm" onClick={() => startEdit(s)}>Redaktə</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => void remove(s)}><IconTrash /></button>
+                          </>}
                         </div>
                       </td>
                     </tr>

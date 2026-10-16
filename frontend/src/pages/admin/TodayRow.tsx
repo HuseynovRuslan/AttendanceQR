@@ -38,6 +38,8 @@ export interface TodayRowProps {
   /** Still at work — the figure is counting up, so it takes the company's accent. */
   running: boolean
   mayViewPhotos: boolean
+  /** May file a reason (a leave) from the board — false for a role without «leaves.manage». */
+  mayGiveReason: boolean
   assigning: boolean
   photoBusy: boolean
   onPosition: (position: string) => void
@@ -50,12 +52,12 @@ const PAST_INCOMPLETE = { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' 
 
 function Row({
   r, showLocCol, showPosition, showSchedule, showWorked, isToday,
-  workedText, running, mayViewPhotos, assigning, photoBusy,
+  workedText, running, mayViewPhotos, mayGiveReason, assigning, photoBusy,
   onPosition, onLocation, onReason, onPhoto,
 }: TodayRowProps) {
   const hours = showSchedule ? shiftHours(r) : null
-  const canGiveReason = r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
-    || ((r.status === 'OnLeave' || r.status === 'Permission') && !!r.leaveId)
+  const canGiveReason = mayGiveReason && (r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
+    || ((r.status === 'OnLeave' || r.status === 'Permission') && !!r.leaveId))
 
   return (
     <tr>

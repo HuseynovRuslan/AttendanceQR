@@ -25,7 +25,7 @@ import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompa
 import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
-import { useAccess } from '../../auth/AccessContext'
+import { useAccess, useHolds, useScopedRole } from '../../auth/AccessContext'
 import { listFailureText } from '../../lib/listFailure'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { PersonAccessCard } from '../../components/PersonAccessCard'
@@ -66,9 +66,16 @@ export function EmployeeProfilePage() {
   const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
-  const { role, employeeId: myId } = useAuth()
+  const { employeeId: myId } = useAuth()
   const { access } = useAccess()
+  // The card's shape by «employees.view» (useScopedRole). What it offers on top asks for its own right in
+  // Enforced: correcting a day «attendance.correct», a selfie «attendance.photos.view», a roster day
+  // «schedules.assign» — a timekeeper edits a profile but does not rewrite a paid day.
+  const role = useScopedRole('employees.view')
   const isManager = role === 'Manager'
+  const mayCorrect = useHolds('attendance.correct', true)
+  const mayViewPhotos = useHolds('attendance.photos.view', true)
+  const mayRoster = useHolds('schedules.assign', true)
   /**
    * Whether this caller may ACT on the person whose card is open.
    *
@@ -548,7 +555,7 @@ export function EmployeeProfilePage() {
 
       {/* The days this person worked somebody else's shift. Sits with how their days are DECIDED,
           directly under the month figures it changes — not down among the address fields. */}
-      {id && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
+      {id && mayRoster && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
 
       {/* Personal */}
       {/* Roles and where — for whoever the access API admits: the admin, and anybody whose role carries
@@ -585,7 +592,7 @@ export function EmployeeProfilePage() {
               is the manager who saw them. This button stayed hidden anyway, so the manager had to ask
               an admin for every one — which is how «gecə növbədən çıxdığı günü necə qeyd edim»
               reached the owner. */}
-          {manageable && (
+          {manageable && mayCorrect && (
             <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setShowCreate((v) => !v); setRecErr(null) }}>
               + Qeyd əlavə et
             </button>
@@ -691,7 +698,7 @@ export function EmployeeProfilePage() {
                           {/* Menecer də baxa bilir (2026-09-04) — amma yalnız idarə etdiyi adamların:
                               server `LocationScopeRules` ilə əhatəni yoxlayır. Səyyar gündə düymə
                               yoxdur, çünki şəkil qeydə bağlıdır və belə gündə qeyd yoxdur. */}
-                          {r.checkInAtUtc && !r.isFieldDay && (
+                          {r.checkInAtUtc && !r.isFieldDay && mayViewPhotos && (
                             <button className="btn btn-sm" disabled={photoBusyId === r.recordId} onClick={() => void viewRecordPhoto(r)}>
                               <IconCamera /> {photoBusyId === r.recordId ? '…' : 'Şəklə bax'}
                             </button>
@@ -703,7 +710,7 @@ export function EmployeeProfilePage() {
                           {/* …and only where this viewer may correct the day — the same `manageable` the
                               «+ Qeyd əlavə et» button above already waits on. A manager's own day and a
                               fellow manager's were offered all three and refused with a bare error. */}
-                          {!r.isFieldDay && manageable && (
+                          {!r.isFieldDay && manageable && mayCorrect && (
                             <>
                               <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
                               {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}

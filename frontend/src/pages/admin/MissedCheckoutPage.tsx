@@ -8,8 +8,11 @@ import {
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { IconCheck, IconX } from '../../components/icons'
 import { fmtDayMonth, fmtTime } from '../../lib/format'
+import { useHolds } from '../../auth/AccessContext'
 
 export function MissedCheckoutPage() {
+  // Deciding a missed check-out writes the day — «attendance.correct».
+  const mayCorrect = useHolds('attendance.correct', true)
   const [rows, setRows] = useState<MissedCheckoutPending[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -114,6 +117,7 @@ export function MissedCheckoutPage() {
                     </span>
                   </td>
                   <td data-label="">
+                    {mayCorrect && <>
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.id}
@@ -130,6 +134,7 @@ export function MissedCheckoutPage() {
                     >
                       <IconX /> Rədd
                     </button>
+                    </>}
                   </td>
                 </tr>
               ))}

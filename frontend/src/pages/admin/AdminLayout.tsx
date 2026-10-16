@@ -79,9 +79,15 @@ export function AdminLayout() {
   const { access } = useAccess()
   const branding = useBranding()
   const location = useLocation()
-  const isAdmin = role === 'Admin'
-  // Somebody whose panel comes only from a role in the new model — plain staff by today's role.
-  const modelOnly = role !== 'Admin' && role !== 'Manager'
+  const enforced = access?.mode === 'Enforced'
+  const isAdmin = enforced ? !!access?.companyAdmin : role === 'Admin'
+  // Somebody whose panel comes only from a role in the new model — plain staff by today's role. Today's manager
+  // stays today's manager after the switch (the model mirrors them), and so does an admin who is still the
+  // Company administrator; a token admin the model no longer makes one is named by their roles instead.
+  const modelOnly = role === 'Admin' ? enforced && !access?.companyAdmin : role !== 'Manager'
+  // The bell and the shelf counts: today the admin's; in Enforced whoever holds «dashboard.view» — the server
+  // narrows every count to the people they hold that line's right over.
+  const hasBell = enforced ? !!access?.permissions.some((p) => p.key === 'dashboard.view') : isAdmin
 
   // Per-tenant plan switches. A hidden menu item is only cosmetic — the backend 403s these anyway
   // (see [RequireFeature]); this just stops offering a screen that would refuse.
@@ -102,11 +108,11 @@ export function AdminLayout() {
   // is done, and an idle tab doesn't poll. A failed fetch just means no badges — never an error.
   const [badges, setBadges] = useState<SidebarBadges | null>(null)
   useEffect(() => {
-    if (!isAdmin) return
+    if (!hasBell) return
     void getSidebarBadges().then((r) => {
       if (r.status === 200 && r.data && 'deviceChanges' in r.data) setBadges(r.data)
     }).catch(() => {})
-  }, [isAdmin, location.pathname])
+  }, [hasBell, location.pathname])
 
   const badgeFor: Record<string, number | undefined> = {
     '/admin/device-changes': badges?.deviceChanges,
@@ -337,7 +343,7 @@ export function AdminLayout() {
                   </>}
             </div>
           </div>
-          <div className="topbar-right">{isAdmin && <NotificationBell />}</div>
+          <div className="topbar-right">{hasBell && <NotificationBell />}</div>
         </div>
         <div className="content">
           <Outlet />

@@ -15,6 +15,7 @@ import {
 import { usePolling } from '../../lib/usePolling'
 import { IconCheck, IconPhone, IconTrash, IconX } from '../../components/icons'
 import { fmtDateTime, fmtFullDateTime } from '../../lib/format'
+import { useHolds } from '../../auth/AccessContext'
 
 const ORIGIN: Record<DeviceBinding['boundVia'], { label: string; cls: string }> = {
   Activation: { label: 'Aktivləşdirmə', cls: 'bg-slate-100 text-slate-600' },
@@ -23,6 +24,8 @@ const ORIGIN: Record<DeviceBinding['boundVia'], { label: string; cls: string }> 
 }
 
 export function DeviceChangesPage() {
+  // Seeing the requests is «devices.view»; deciding one is «devices.approve» (an observer-like role reads it).
+  const mayApprove = useHolds('devices.approve', true)
   const [rows, setRows] = useState<PendingDeviceChange[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadedOnce, setLoadedOnce] = useState(false)
@@ -109,14 +112,16 @@ export function DeviceChangesPage() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-primary btn-sm" disabled={busyId === r.requestId} onClick={() => act(r.requestId, 'approve')}>
-                    <IconCheck /> Təsdiqlə
-                  </button>
-                  <button className="btn btn-danger btn-sm" disabled={busyId === r.requestId} onClick={() => act(r.requestId, 'reject')}>
-                    <IconX /> Rədd et
-                  </button>
-                </div>
+                {mayApprove && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-primary btn-sm" disabled={busyId === r.requestId} onClick={() => act(r.requestId, 'approve')}>
+                      <IconCheck /> Təsdiqlə
+                    </button>
+                    <button className="btn btn-danger btn-sm" disabled={busyId === r.requestId} onClick={() => act(r.requestId, 'reject')}>
+                      <IconX /> Rədd et
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -137,6 +142,8 @@ export function DeviceChangesPage() {
  * the right call for a worker with no phone; not being able to see that it happened never is.
  */
 function SharedDevices() {
+  // Taking a phone off accounts is «devices.revoke».
+  const mayRevoke = useHolds('devices.revoke', true)
   const [devices, setDevices] = useState<SharedDevice[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -189,9 +196,11 @@ function SharedDevices() {
               <span style={{ fontWeight: 700 }}>{d.label ?? 'Naməlum cihaz'}</span>
               <span className="badge b-sick" style={{ marginLeft: 8 }}>{d.accountCount} hesab</span>
             </div>
-            <button className="btn btn-sm" disabled={busy === d.fingerprint} onClick={() => void revokeAll(d)}>
-              Telefon itib — hamısını ayır
-            </button>
+            {mayRevoke && (
+              <button className="btn btn-sm" disabled={busy === d.fingerprint} onClick={() => void revokeAll(d)}>
+                Telefon itib — hamısını ayır
+              </button>
+            )}
           </div>
           <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {d.employees.map((e) => (
@@ -213,6 +222,7 @@ function SharedDevices() {
 /** Every active binding. An employee legitimately holds several (Safari + the installed PWA), so the
  *  signal to look for is not "more than one" but an unfamiliar device on somebody's row. */
 function BoundDevices() {
+  const mayRevoke = useHolds('devices.revoke', true)
   const [all, setAll] = useState<DeviceBinding[] | null>(null)
   const [autoOnly, setAutoOnly] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -288,9 +298,11 @@ function BoundDevices() {
                 <td data-label="Bağlanıb" className="mono">{fmtDateTime(b.boundAtUtc)}</td>
                 <td data-label="Son istifadə" className="mono">{fmtDateTime(b.lastSeenAtUtc)}</td>
                 <td data-label="">
-                  <button className="btn btn-danger btn-sm" disabled={busyId === b.id} onClick={() => revoke(b)}>
-                    <IconTrash /> Ləğv et
-                  </button>
+                  {mayRevoke && (
+                    <button className="btn btn-danger btn-sm" disabled={busyId === b.id} onClick={() => revoke(b)}>
+                      <IconTrash /> Ləğv et
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

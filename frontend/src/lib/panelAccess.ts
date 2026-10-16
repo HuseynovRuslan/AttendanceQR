@@ -40,6 +40,10 @@ export interface PanelPage {
 export interface PanelAccess {
   panel: boolean
   permissions: { key: string }[]
+  /** The company's permission mode. In 'Enforced' the permissions open the pages — the roles no longer do. */
+  mode?: string
+  /** Holds the Company administrator role company-wide — whose the admin-only pages are in Enforced. */
+  companyAdmin?: boolean
 }
 
 const BOTH: Role[] = ['Admin', 'Manager']
@@ -139,6 +143,18 @@ function holds(access: PanelAccess | null | undefined, perms: string[]): boolean
 }
 
 /**
+ * What the permission model opens — the panel of a company switched to Enforced, and what «after the switch»
+ * means anywhere else. A page today's admin alone may open is the company-wide shape of something (the
+ * admin's staff list, a holiday, the subscription): it stays the Company administrator's, exactly as the
+ * server keeps its endpoints. Everything else opens for whoever holds one of its permissions.
+ */
+function modelOpens(page: PanelPage, access: PanelAccess | null | undefined): boolean {
+  if (!holds(access, page.perms)) return false
+  if (MODEL_GATED.has(page.path) || page.roles.includes('Manager')) return true
+  return !!access?.companyAdmin
+}
+
+/**
  * May this person open this page TODAY?
  *
  * Their role decides, as it always has — except for the two pages the model opens already (see
@@ -151,6 +167,9 @@ function holds(access: PanelAccess | null | undefined, perms: string[]): boolean
 export function canOpen(path: string, role: Role | null | undefined, access?: PanelAccess | null): boolean {
   const page = BY_PATH.get(path)
   if (!page) return false
+  // A company switched to Enforced (Phase 5): the permission model opens every page, for everybody —
+  // the role in the token decides nothing any more, the same as on the server.
+  if (access?.mode === 'Enforced') return modelOpens(page, access)
   if (role && page.roles.includes(role)) return true
   return MODEL_GATED.has(path) && holds(access, page.perms)
 }
@@ -158,7 +177,7 @@ export function canOpen(path: string, role: Role | null | undefined, access?: Pa
 /** Would the permission model open this page — what the panel will look like after the switch. */
 export function wouldOpen(path: string, access: PanelAccess | null | undefined): boolean {
   const page = BY_PATH.get(path)
-  return !!page && holds(access, page.perms)
+  return !!page && modelOpens(page, access)
 }
 
 /** Every path this person may open today — the sidebar filters against this. */
@@ -168,6 +187,8 @@ export function pagesFor(role: Role | null | undefined, access?: PanelAccess | n
 
 /** Pages the model would open for this person that their role does not open yet — «keçiddən sonra». */
 export function pagesAfterSwitch(role: Role | null | undefined, access: PanelAccess | null | undefined): Set<string> {
+  // After the switch there is no «after the switch».
+  if (access?.mode === 'Enforced') return new Set()
   return new Set(
     PANEL_PAGES.filter((p) => !canOpen(p.path, role, access) && wouldOpen(p.path, access)).map((p) => p.path),
   )
