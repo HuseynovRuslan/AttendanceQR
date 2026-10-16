@@ -119,4 +119,7 @@ public sealed class AccessGraph
 
     public EffectiveAccess For(Guid employeeId) =>
         new(employeeId, _byEmployee.TryGetValue(employeeId, out var grants) ? grants : []);
+
+    /// <summary>Everybody who holds at least one live assignment.</summary>
+    public IEnumerable<Guid> People => _byEmployee.Keys;
 }

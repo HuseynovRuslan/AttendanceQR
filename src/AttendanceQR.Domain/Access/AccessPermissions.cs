@@ -18,6 +18,10 @@ public static class AccessPermissions
     public const string AttendanceCorrect = "attendance.correct";
     public const string AttendanceFraud = "attendance.fraud";
     public const string AttendanceMaintenance = "attendance.maintenance";
+    /// <summary>Approving a correction somebody made to their own day, where the company asks for a second pair of
+    /// eyes (Tenant.SelfCorrectionNeedsApproval) — a right of its own, so that looking at the days never means
+    /// signing off another person's pay: an owner given «Müşahidəçi» plus this confirms, without correcting.</summary>
+    public const string AttendanceSelfCorrectionApprove = "attendance.self_correction.approve";
 
     public const string EmployeesView = "employees.view";
     public const string EmployeesContactsView = "employees.contacts.view";
@@ -94,6 +98,7 @@ public static class AccessPermissions
         [AttendanceCorrect] = "Davamiyyətə əl ilə düzəliş",
         [AttendanceFraud] = "Saxtakarlıq: günü ləğv etmək, foto xəbərdarlığı",
         [AttendanceMaintenance] = "Xülasələri yenidən hesablamaq",
+        [AttendanceSelfCorrectionApprove] = "Öz düzəlişini təsdiqləmək",
         [EmployeesView] = "İşçiləri görmək",
         [EmployeesContactsView] = "Telefon və e-poçtu görmək",
         [EmployeesCreate] = "İşçi əlavə etmək",

@@ -342,6 +342,29 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             r++;
         }
 
+        // Days a person corrected themselves (the single-admin rule): a column of its own, after the rest, and
+        // only when there is one — every other sheet keeps the layout the accountants copy from.
+        if (report.Rows.Any(x => x.SelfCorrectedDays > 0))
+        {
+            var col = PayrollHeaders.Length + 1;
+            var head = ws.Cell(headerRow, col);
+            head.Value = "Öz düzəlişi (gün)";
+            head.Style.Font.Bold = true;
+            head.Style.Fill.BackgroundColor = XLColor.LightGray;
+            head.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            var line = headerRow + 1;
+            foreach (var row in report.Rows)
+            {
+                if (row.SelfCorrectedDays > 0)
+                {
+                    ws.Cell(line, col).Value = row.SelfCorrectedDays;
+                    ws.Cell(line, col).Style.Fill.BackgroundColor = XLColor.LightPink;
+                }
+                ws.Cell(line, col).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                line++;
+            }
+        }
+
         ws.Cell(r, 1).Value = "CƏMİ";
         ws.Cell(r, 3).Value = report.TotalMonthlySalary;
         ws.Cell(r, 15).Value = report.TotalDeduction;
@@ -405,7 +428,11 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             for (var d = 0; d < days; d++)
             {
                 var cell = ws.Cell(row, 3 + d);
-                cell.Value = r.Days[d];
+                // A day the person corrected themselves: the code, a star, and a colour — on paper too.
+                var own = r.SelfCorrectedDays?.Contains(d + 1) == true;
+                cell.Value = own ? r.Days[d] + "*" : r.Days[d];
+                if (own)
+                    cell.Style.Fill.BackgroundColor = XLColor.LightPink;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             }
             ws.Cell(row, 2 + days + 1).Value = r.WorkedDays;
@@ -431,6 +458,13 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(lr, 1).Value = item.Code;
             ws.Cell(lr, 1).Style.Font.Bold = true;
             ws.Cell(lr, 2).Value = item.Label;
+            lr++;
+        }
+        if (report.Rows.Any(x => x.SelfCorrectedDays is { Count: > 0 }))
+        {
+            ws.Cell(lr, 1).Value = "*";
+            ws.Cell(lr, 1).Style.Font.Bold = true;
+            ws.Cell(lr, 2).Value = "Öz düzəlişi — işçi bu günü özü düzəldib (şirkətdə başqa düzəliş edən yox idi)";
             lr++;
         }
 

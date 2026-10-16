@@ -56,6 +56,7 @@ public class AppDbContext : DbContext
     public DbSet<ShiftOverride> ShiftOverrides => Set<ShiftOverride>();
 
     public DbSet<AbsenceMark> AbsenceMarks => Set<AbsenceMark>();
+    public DbSet<AttendanceSelfCorrection> AttendanceSelfCorrections => Set<AttendanceSelfCorrection>();
     public DbSet<ProcessedScan> ProcessedScans => Set<ProcessedScan>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
@@ -168,6 +169,18 @@ public class AppDbContext : DbContext
             .IsUnique();
         // Read per date, exactly like the overrides above it.
         modelBuilder.Entity<AbsenceMark>().HasIndex(a => new { a.TenantId, a.Date });
+
+        // The self-correction ledger: append-only. Read «which of these days were one's own work» per person and
+        // date range (the board, the profile, the tabel, the payroll), and newest-first for the list.
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasIndex(c => new { c.TenantId, c.EmployeeId, c.AttendanceDate });
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasIndex(c => new { c.TenantId, c.AtUtc });
+        // One answer per waiting correction: two approvers pressing at once get one approval and one 23505, never
+        // two applications of the same change.
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasIndex(c => c.DecisionForId).IsUnique()
+            .HasFilter("\"DecisionForId\" IS NOT NULL");
+        modelBuilder.Entity<AttendanceSelfCorrection>().Property(c => c.Kind).HasMaxLength(40);
+        modelBuilder.Entity<AttendanceSelfCorrection>().Property(c => c.Reason).HasMaxLength(500);
         modelBuilder.Entity<ProcessedScan>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Announcement>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AnnouncementRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

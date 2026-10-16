@@ -574,6 +574,8 @@ public sealed class ReportQueryService : IReportQueryService
         // The same computed day rows the summary uses — status + worked minutes per employee per day,
         // scoped to the caller. Reusing it is what keeps the tabel honest against every other report.
         var (access, dayRows, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
+        // The cells a person corrected themselves (the single-admin rule) — marked on the grid and in the file.
+        var selfDays = await SelfCorrection.DaysAsync(_db, from, to, null, ct);
         if (access == ReportAccess.Forbidden)
             return (ReportAccess.Forbidden, null);
 
@@ -740,7 +742,8 @@ public sealed class ReportQueryService : IReportQueryService
                 e.Id, e.FullName,
                 positionById.GetValueOrDefault(e.Id),
                 locationNames.GetValueOrDefault(e.LocationId, ""),
-                codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1)));
+                codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1),
+                selfDays.Where(x => x.EmployeeId == e.Id).Select(x => x.Date.Day).Order().ToList()));
         }
 
         // Overlay admin-declared non-working days (bayram) as B, on the cells that are otherwise empty
@@ -1012,6 +1015,10 @@ public sealed class ReportQueryService : IReportQueryService
             return (ReportAccess.Forbidden, null);
 
         var ids = summary.Rows.Select(r => r.EmployeeId).ToList();
+        // Days a person corrected themselves (the single-admin rule) — counted on their line, so the
+        // accountant sees them before paying.
+        var selfDays = (await SelfCorrection.DaysAsync(_db, from, to, ids, ct))
+            .GroupBy(x => x.EmployeeId).ToDictionary(g => g.Key, g => g.Count());
 
         // A MANAGER sees what their own staff are owed — and not what their peers or the admin at the
         // same branch are paid. The scope this is built on deliberately carries every role (it feeds
@@ -1056,7 +1063,8 @@ public sealed class ReportQueryService : IReportQueryService
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,
                 scheduled, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.OvertimeHours,
                 perDay, deduction, payable, r.EarlyLeaveHours, r.EarlyArriveHours,
-                r.VacationDays, r.SickDays, r.UnpaidDays, r.RestDays, r.TripDays);
+                r.VacationDays, r.SickDays, r.UnpaidDays, r.RestDays, r.TripDays,
+                selfDays.GetValueOrDefault(r.EmployeeId));
         })
         .OrderBy(r => r.EmployeeName)
         .ToList();
@@ -1160,6 +1168,8 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(a => new { a.EmployeeId, a.CreatedByEmployeeId })
             .ToListAsync(ct);
         var markedAbsent = markRows.Select(m => m.EmployeeId).ToHashSet();
+        // Days the person corrected themselves (the single-admin rule) — «öz düzəlişi» on the row.
+        var selfCorrected = (await SelfCorrection.DaysAsync(_db, day, day, null, ct)).Select(x => x.EmployeeId).ToHashSet();
         // Who said so — a day that costs somebody a day's pay carries the name of whoever decided it,
         // exactly as an assigned leave does.
         var markerIds = markRows.Where(m => m.CreatedByEmployeeId != null)
@@ -1214,7 +1224,8 @@ public sealed class ReportQueryService : IReportQueryService
                     // day with its own hours shows the clock it was actually measured by.
                     hours.Start.ToString("HH:mm"), hours.End.ToString("HH:mm"), d.Shift.ScheduleName,
                     d.Shift.HasSecondWindow ? d.Shift.SecondStart!.Value.ToString("HH:mm") : null,
-                    d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null);
+                    d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null,
+                    selfCorrected.Contains(d.Employee.Id));
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

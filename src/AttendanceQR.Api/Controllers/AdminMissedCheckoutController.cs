@@ -113,10 +113,19 @@ public class AdminMissedCheckoutController : ControllerBase
         // Approving WRITES the target's checkout, so this is the manage rule, not mere visibility:
         // a manager may close only their own branches' Role==Employee days — never an admin's, a
         // fellow manager's, or (unlike CanAccess) their OWN request, which would be self-approval.
-        // Never one's own request: deciding it is correcting one's own day (the owner, 2026-10-15).
-        if (mc.EmployeeId == callerId)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
-        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, callerId, role, mc.EmployeeId, ct))
+        // Never one's own request: deciding it is correcting one's own day (the owner, 2026-10-15) — unless
+        // nobody else in the company could decide it (SelfCorrection, the single-admin rule of 2026-10-16).
+        var own = mc.EmployeeId == callerId;
+        if (own)
+        {
+            var verdict = await SelfCorrection.AskAsync(_db, callerId, role, User.IsImpersonating(), ct);
+            if (verdict.Refused)
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance", correctors = verdict.Correctors });
+            // A second approval is asked for the day itself: the record's own edit sends it there.
+            if (verdict.Answer == SelfCorrectionAnswer.AwaitApproval)
+                return Conflict(new { error = "SelfCorrectionNeedsApproval" });
+        }
+        else if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, callerId, role, mc.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == mc.AttendanceRecordId, ct);
@@ -124,15 +133,21 @@ public class AdminMissedCheckoutController : ControllerBase
             return NotFound(new { error = "RecordNotFound" });
 
         // Only write the checkout if the day is still open (an admin may have closed it in the meantime).
+        var beforeOut = record.CheckOutAtUtc;
         if (record.CheckOutAtUtc is null)
             record.CheckOutAtUtc = mc.RequestedCheckOutAtUtc;
 
         mc.Status = MissedCheckoutStatus.Approved;
         mc.ReviewedByEmployeeId = callerId;
         mc.ReviewedAtUtc = DateTime.UtcNow;
-        _db.AuditLogs.Add(CorrectionReason.Audit(mc.EmployeeId, callerId, HttpContext.Connection.RemoteIpAddress?.ToString(),
-            $"Unudulmuş çıxış təsdiqləndi, record {record.Id}: {record.AttendanceDate:yyyy-MM-dd} çıxış "
-            + $"{mc.RequestedCheckOutAtUtc:HH:mm} UTC (işçinin səbəbi: {mc.Reason})", reason));
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (own)
+            SelfCorrection.Record(_db, mc.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.MissedCheckout,
+                record.CheckInAtUtc, beforeOut, record.CheckInAtUtc, record.CheckOutAtUtc, reason, awaitsApproval: false, ip);
+        else
+            _db.AuditLogs.Add(CorrectionReason.Audit(mc.EmployeeId, callerId, ip,
+                $"Unudulmuş çıxış təsdiqləndi, record {record.Id}: {record.AttendanceDate:yyyy-MM-dd} çıxış "
+                + $"{mc.RequestedCheckOutAtUtc:HH:mm} UTC (işçinin səbəbi: {mc.Reason})", reason));
         await _db.SaveChangesAsync(ct);
 
         await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, ct);
@@ -158,10 +173,15 @@ public class AdminMissedCheckoutController : ControllerBase
             return Conflict(new { error = "AlreadyReviewed" });
 
         // Same manage rule as Approve — rejecting is also a review decision over the target's day.
-        // Never one's own request: deciding it is correcting one's own day (the owner, 2026-10-15).
+        // Never one's own request: deciding it is correcting one's own day (the owner, 2026-10-15) — unless
+        // nobody else could decide it; withdrawing it changes no time, so it waits for nobody.
         if (mc.EmployeeId == callerId)
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
-        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, callerId, role, mc.EmployeeId, ct))
+        {
+            var verdict = await SelfCorrection.AskAsync(_db, callerId, role, User.IsImpersonating(), ct);
+            if (verdict.Refused)
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance", correctors = verdict.Correctors });
+        }
+        else if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, callerId, role, mc.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         mc.Status = MissedCheckoutStatus.Rejected;
