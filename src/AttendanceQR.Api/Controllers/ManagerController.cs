@@ -88,8 +88,7 @@ public class ManagerController : ControllerBase
         Guid id, IActionResult? outOfScope = null)
     {
         var result = await LegacyManageableEmployeeAsync(id, outOfScope);
-        await ObserveAsync(ShadowRules.ManageableEmployee, id, result.Employee is not null);
-        return result;
+        return await DecideAsync(ShadowRules.ManageableEmployee, id, result);
     }
 
     private async Task<(Employee? Employee, IActionResult? Error)> LegacyManageableEmployeeAsync(
@@ -132,8 +131,7 @@ public class ManagerController : ControllerBase
     private async Task<(Employee? Employee, IActionResult? Error)> CredentialTargetAsync(Guid id)
     {
         var result = await LegacyCredentialTargetAsync(id);
-        await ObserveAsync(ShadowRules.CredentialTarget, id, result.Employee is not null);
-        return result;
+        return await DecideAsync(ShadowRules.CredentialTarget, id, result);
     }
 
     private async Task<(Employee? Employee, IActionResult? Error)> LegacyCredentialTargetAsync(Guid id)
@@ -208,14 +206,29 @@ public class ManagerController : ControllerBase
         Guid id, IActionResult outOfScope)
     {
         var result = await LegacyLeaveSubjectAsync(id, outOfScope);
-        await ObserveAsync(ShadowRules.LeaveSubject, id, result.Employee is not null);
-        return result;
+        return await DecideAsync(ShadowRules.LeaveSubject, id, result);
     }
 
-    // Today's manager-desk answer, told to the permission model's shadow (Services.Access) — never changed by it.
-    private Task ObserveAsync(string rule, Guid targetId, bool allowed) =>
-        _db.AuthzObserver?.ObserveScopeAsync(_db, rule, M15(), EmployeeRole.Manager, targetId, allowed, HttpContext.RequestAborted)
-        ?? Task.CompletedTask;
+    /// <summary>
+    /// Today's manager-desk answer, given to the company's mode. In Legacy and Shadow it is returned as it is
+    /// (Shadow records a disagreement). In a company switched to Enforced the permission model's answer is the
+    /// one that counts (Phase 5): a «no» where today said yes is refused, a «yes» where today said no loads the
+    /// person — a timekeeper who is plain staff by today's role reaches their own branches' people.
+    /// </summary>
+    private async Task<(Employee? Employee, IActionResult? Error)> DecideAsync(
+        string rule, Guid targetId, (Employee? Employee, IActionResult? Error) today)
+    {
+        var legacy = today.Employee is not null;
+        var decided = _db.AuthzObserver is { } observer
+            ? await observer.DecideScopeAsync(_db, rule, M15(), User.Role(), targetId, legacy, HttpContext.RequestAborted)
+            : legacy;
+        if (decided == legacy)
+            return today;
+        if (!decided)
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" }));
+        var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == targetId, HttpContext.RequestAborted);
+        return target is null ? (null, NotFound(new { error = "EmployeeNotFound" })) : (target, null);
+    }
 
     private async Task<(Employee? Employee, IActionResult? Error)> LegacyLeaveSubjectAsync(
         Guid id, IActionResult outOfScope)
