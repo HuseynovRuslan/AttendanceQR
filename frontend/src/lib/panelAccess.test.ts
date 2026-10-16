@@ -123,13 +123,20 @@ const TIMEKEEPER = [
   'schedules.manage', 'schedules.assign', 'leaves.view', 'leaves.manage', 'field_visits.view', 'notifications.staff_alerts',
 ]
 
-const holding = (keys: string[]): PanelAccess => ({ panel: true, permissions: keys.map((key) => ({ key })) })
+const holding = (keys: string[], extra: Partial<PanelAccess> = {}): PanelAccess =>
+  ({ panel: true, permissions: keys.map((key) => ({ key })), ...extra })
+/** Today's admin in the model: the Company administrator role, company-wide — every key, and the admin's shape. */
+const companyAdmin = (extra: Partial<PanelAccess> = {}) => holding(ALL_KEYS, { companyAdmin: true, ...extra })
+const OBSERVER = [
+  'dashboard.view', 'attendance.view', 'attendance.export', 'employees.view', 'leaves.view', 'schedules.view',
+  'locations.view', 'field_visits.view',
+]
 
 describe('the switch takes nothing away from today’s admins and managers', () => {
   // The owner's third check for Phase 4. When the permission column starts deciding (Phase 5), every page
   // an admin or a manager opens today must still open, and nothing must open that does not today.
   it('opens for an admin exactly what the role opens', () => {
-    const differ = PANEL_PAGES.filter((p) => wouldOpen(p.path, holding(ALL_KEYS)) !== canOpen(p.path, 'Admin'))
+    const differ = PANEL_PAGES.filter((p) => wouldOpen(p.path, companyAdmin()) !== canOpen(p.path, 'Admin'))
     expect(differ.map((p) => p.path)).toEqual([])
   })
 
@@ -172,3 +179,41 @@ describe('somebody whose panel comes only from a new role', () => {
   })
 })
 
+
+describe('a company switched to Enforced (Phase 5)', () => {
+  const enforced = (keys: string[], extra: Partial<PanelAccess> = {}) => holding(keys, { mode: 'Enforced', ...extra })
+
+  it('opens for today’s admin and manager exactly what their roles open today — whatever the token says', () => {
+    for (const p of PANEL_PAGES) {
+      expect(canOpen(p.path, 'Admin', companyAdmin({ mode: 'Enforced' })), p.path).toBe(canOpen(p.path, 'Admin'))
+      expect(canOpen(p.path, 'Manager', enforced([...LEGACY_MANAGER, ...PIN_HELPER])), p.path).toBe(canOpen(p.path, 'Manager'))
+    }
+  })
+
+  it('opens a timekeeper’s daily pages and nothing their role does not carry', () => {
+    const keeper = enforced(TIMEKEEPER)
+    for (const path of ['today', 'employees', 'employees/:id', 'leaves', 'schedules', 'pin-resets', 'device-changes', 'my-area'])
+      expect(canOpen(path, 'Employee', keeper), path).toBe(true)
+    for (const path of ['payroll', 'billing', 'positions', 'access', 'tasks', 'locations', 'bulk-invite', 'equipment'])
+      expect(canOpen(path, 'Employee', keeper), path).toBe(false)
+  })
+
+  it('keeps every admin-only page the Company administrator’s — a company-wide observer is still an observer', () => {
+    const observer = enforced(OBSERVER)
+    const adminOnly = PANEL_PAGES.filter((p) => !p.roles.includes('Manager') && p.path !== 'access')
+    for (const p of adminOnly) expect(canOpen(p.path, 'Employee', observer), p.path).toBe(false)
+    // …and a custom role carrying an admin-only key does not open that page either, nor promise it.
+    expect(canOpen('positions', 'Employee', enforced(['positions.manage']))).toBe(false)
+    expect(wouldOpen('positions', holding(['positions.manage']))).toBe(false)
+  })
+
+  it('takes the panel from a token admin whose company role was taken away', () => {
+    expect(canOpen('dashboard', 'Admin', enforced([]))).toBe(false)
+    expect(canOpen('employees', 'Admin', enforced(['employees.view']))).toBe(true)
+    expect(canOpen('billing', 'Admin', enforced(['employees.view']))).toBe(false)
+  })
+
+  it('has no «after the switch» any more', () => {
+    expect(pagesAfterSwitch('Employee', enforced(TIMEKEEPER)).size).toBe(0)
+  })
+})

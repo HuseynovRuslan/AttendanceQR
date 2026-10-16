@@ -268,6 +268,71 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("AttendanceRecords", (string)null);
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.AttendanceSelfCorrection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("AttendanceDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("AwaitsApproval")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("CheckInAfterUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CheckInBeforeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CheckOutAfterUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CheckOutBeforeUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecisionForId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("RecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DecisionForId")
+                        .IsUnique()
+                        .HasFilter("\"DecisionForId\" IS NOT NULL");
+
+                    b.HasIndex("TenantId", "AtUtc");
+
+                    b.HasIndex("TenantId", "EmployeeId", "AttendanceDate");
+
+                    b.ToTable("AttendanceSelfCorrections");
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1762,6 +1827,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Plan")
                         .HasColumnType("text");
+
+                    b.Property<bool>("SelfCorrectionNeedsApproval")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Slug")
                         .IsRequired()

@@ -9,6 +9,8 @@ import {
 // --- reports / today -------------------------------------------------------
 
 export interface DayAttendanceRow {
+  /** The person corrected this day themselves — only where nobody else could; «öz düzəlişi» on the row. */
+  selfCorrected?: boolean
   employeeId: string
   employeeName: string
   locationId: string
@@ -484,6 +486,8 @@ export interface PayrollRow {
   perDay: number
   deduction: number
   payable: number
+  /** Days in the period the person corrected themselves — the accountant sees them before paying. */
+  selfCorrectedDays?: number
 }
 
 export interface PayrollReport {
@@ -1613,6 +1617,28 @@ export interface TenantDeletable {
   rows: Record<string, number>
 }
 
+/** A correction somebody in the company made to their OWN day (the single-admin rule) — the platform's view. */
+export interface SuperSelfCorrection {
+  employeeName: string
+  date: string
+  kind: string
+  checkInBeforeUtc: string | null
+  checkOutBeforeUtc: string | null
+  checkInAfterUtc: string | null
+  checkOutAfterUtc: string | null
+  reason: string
+  atUtc: string
+  awaitsApproval: boolean
+}
+
+/** GET /api/super/tenants/{id} — read here for its self-corrections: a company's only admin fixing their own
+ *  pay is exactly what nobody inside that company can look over. */
+export function getSuperTenantSelfCorrections(id: string) {
+  return apiRequest<{ selfCorrections: { last90Days: number; latest: SuperSelfCorrection[] } } | { error: string }>(
+    `/api/super/tenants/${id}`,
+  )
+}
+
 /** DELETE /api/super/tenants/{id} — permanent. `confirm` must be the company's own display name. */
 export function deleteTenant(id: string, confirm: string) {
   return apiRequest<DeleteTenantResult | { error: string }>(
@@ -1752,6 +1778,8 @@ export interface TabelLegendItem {
 }
 
 export interface TabelRow {
+  /** Days of the month (1-based) the person corrected themselves — marked on the grid. */
+  selfCorrectedDays?: number[] | null
   employeeId: string
   employeeName: string
   position: string | null

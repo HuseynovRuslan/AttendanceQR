@@ -817,3 +817,96 @@ ilə «… Səbəb: …» formasında. Ekranlarda bir dialoq var, hər yolun öz
 
 - Sayğac və zəng hələ yalnız admindədir.
 - Faza 5: qərar yeni modelə keçir, vahid `/api/employees`, əkiz endpoint-lər ləqəbə çevrilir.
+
+## 18. Faza 5 — Enforced rejimi və tək adminin öz düzəlişi (2026-10-16, branch `feat/permissions-phase5`)
+
+### 18.1 Sahibin qərarları
+
+1. Faza 5 yalnız feature branch-dədir; main və production-a getmir.
+2. Staging-də yalnız `test` şirkəti Faza 5 hazır olanda `Enforced`-a keçir.
+3. Tək admin problemi «təklif olunduğu kimi» qəbul edildi (§18.6): əlavə admin tələb olunmur.
+
+### 18.2 Enforced-da kim nə görür — bir qayda
+
+Ekranların və əməliyyatların çoxu iki formada yazılıb: admin forması (bütün şirkət, maaş, rol) və menecer
+forması (öz filialları, maaşsız, rolsuz). Model bu iki formanı əvəz etmir, kimin hansını aldığını deyir
+(`AccessProjection`):
+
+- Şirkət administratoru rolu şirkət səviyyəsində — admin forması;
+- sorğunun icazəsini harasa sahib olan hər kəs — menecer forması, icazəni sahib olduğu filiallar qədər;
+- qalan hər kəs — adi işçi (yalnız öz qeydləri).
+
+Şirkət səviyyəsində müşahidəçi də menecer formasını alır: bütün filialları görür, amma maaş, rol, telefon
+nömrəsi və selfi gəlmir — bunlar ayrıca icazələrdir. Qayda üç yerdə eynidir: sorğunun rolu
+(`AuthzEnforcedMiddleware`), hesabatlar (`EffectiveRoleAsync`) və panel (`/api/me/access` → `companyAdmin`).
+
+### 18.3 Qapı və sahə
+
+- Endpoint-in qapısını model həll edir. Bu gün yalnız adminin keçdiyi endpoint Enforced-da da Şirkət
+  administratorunda qalır, çünki bir şeyin şirkət boyu formasıdır. İstisna `Scoped` işarəli endpoint-dir:
+  cavabını özü daraldır (zəng, öz düzəlişinin təsdiqi).
+- Sorğunun hüquqları yığılır: endpoint-in öz icazəsi və hər hesabatın icazəsi. «Mənim filiallarım» onların
+  hamısının kəsişməsidir. İç-içə çağırış xarici sorğunun verdiyindən geniş ola bilməz: maaş cədvəli
+  qurduğu xülasəyə görə filial qazandırmır, sorğunun rolu ilk proyeksiyada tavan alır.
+- Qeydə baxmaq və toxunmaq sorğunun öz hüququ ilə yoxlanır: tabelçi günləri görür, selfini görmür; telefon
+  təsdiqi `devices.approve` istəyir, `attendance.correct` yox.
+- Hesab əməliyyatı (PIN, giriş nömrəsi) ciddi qaydadır: yalnız yuxarıdan. PIN növbəsi də bu qaydanı soruşur:
+  bir tabelçi digərinin PIN-ini ala bilməz.
+- Excel ixracı (xülasə, tabel) `attendance.export` istəyir. Yalnız baxa bilən rol öz sətrini alır.
+
+### 18.4 Panel
+
+- Menyu, marşrut və «Mənim sahəm» eyni cədvəldən oxunur. «Keçiddən sonra» bölməsi Enforced-da yoxa çıxır.
+  Bu gün yalnız adminin açdığı səhifə Şirkət administratorunda qalır, serverdə olduğu kimi.
+- Səhifə endpoint-i rola görə yox, modelə görə seçir (`useScopedRole`). Düymə öz icazəsini istəyir
+  (`useHolds`). Müşahidəçi oxuyur, heç nə basmır.
+- Menecer masasının sətirləri modelin cavabını daşıyır: «idarə edə bilər», telefon və e-poçt.
+- Zəng və sol menyu sayğacları `dashboard.view` sahibinə açılır. Hər sətir həmin sətrin hüququ olan
+  insanlarla daralır.
+- StaffAlerts: alıcılar filialda `notifications.staff_alerts` sahibləridir, işin öz hüququ ilə (yeni telefon
+  — `devices.approve`, PIN — hesab qaydası). Filialda heç kim yoxdursa, şirkət səviyyəsindəkilər.
+
+### 18.5 Legacy və Shadow
+
+Heç bir qərar dəyişmir. Shadow yeni qaydaları ölçür: qeydə baxmaq və toxunmaq sorğunun hüququ ilə.
+
+### 18.6 Tək adminin öz düzəlişi
+
+Öz gününə düzəliş qadağası qalır, bir istisna ilə: şirkətdə həmin günü düzəldə biləcək başqa aktiv şəxs
+yoxdursa. «Düzəldə bilər» şirkətin öz qaydasıdır: bu gün Legacy-də, Enforced-da modeldə. İkinci admin və ya
+adminin filialı üzrə hüquqlu şəxs yaranan gün istisna özü bağlanır. Başqası varsa, ekran onun adını deyir.
+
+- Səbəb məcburidir (3–500 hərf). Öz günü heç vaxt silinmir.
+- `AttendanceSelfCorrections` yalnız əlavə olunan jurnaldır: əvvəlki və sonrakı vaxtlar, səbəb. Gün yeni
+  vaxtla hesablanır, köhnəsi jurnalda həmişəlik qalır. Sətir yazılandan sonra dəyişmir və silinmir.
+- Ayrıca audit hadisələri: `AttendanceSelfCorrected`, `SelfCorrectionDecided`, `SelfCorrectionSettingChanged`.
+- «Öz düzəlişi» nişanı lövhədə, profildə, tabeldə (`*`) və maaş cədvəlində görünür. Bu nişan Excel-ə də düşür,
+  sütun yalnız belə gün olanda əlavə olunur. Panelin «Öz düzəlişləri» səhifəsi və platforma konsolu (son 90
+  gün) onları göstərir.
+- İstəyə bağlı ikinci təsdiq (`Tenant.SelfCorrectionNeedsApproval`). Açıq olanda düzəliş tətbiq olunmur,
+  gözləyir. Qərarı `attendance.self_correction.approve` hüququ olan başqa şəxs səbəblə verir: məsələn,
+  müşahidəçi rolu və bu hüquq verilmiş sahib — düzəldən yox, təsdiq edən. Ayar yalnız belə şəxs olanda
+  açılır. Gün arada dəyişibsə təsdiq üstünə yazmır (`RecordChanged`). Bir sorğuya bir qərar (unikal indeks).
+- Dəstək sessiyası heç vaxt «öz» gününü düzəltmir.
+- Yollar: saat redaktəsi, əl ilə qeyd, çıxışı ləğv, açıq günləri bağlama, unudulmuş çıxış sorğusu. Silmə və
+  ləğv yolları dəyişmir.
+
+### 18.7 Testlər
+
+- Backend 1357 test, frontend 475 test (52 fayl), build yaşıl.
+- Bu günün admin və menecerləri üçün hər endpoint-in qapısı və hər qayda keçiddən əvvəl və sonra eynidir:
+  yaddaşda 1500+ cavab, staging-in real məlumatında 888 qapı qərarı və 19 200 qayda cavabı. Bir dürüst fərq
+  var: operatorun sətri menecer siyahısında bu gün «redaktə oluna bilər» görünür, saxlamada isə rədd olunur;
+  Enforced bunu əvvəlcədən düz deyir.
+- Yeni rollar yalnız icazələri çatan yerdə keçir. Müşahidəçi heç bir yazma endpoint-indən keçmir.
+- Staging-də real PostgreSQL ilə probe: qapı, qaydalar, tabelçi və müşahidəçi axınları, tək adminin öz
+  düzəlişi. Yeni miqrasiya tranzaksiyada tətbiq olundu, yazılar geri qaytarıldı, baza izi eyni qaldı.
+
+### 18.8 Hələ hazır olmayanlar
+
+- Yalnız adminin bu gün keçdiyi bölmələr — elan, vəzifələr, bayramlar, abunə, inventar, toplu idxal,
+  silmə və s. — Enforced-da yenə yalnız Şirkət administratorundadır. Belə icazəni şirkət səviyyəsində
+  daşıyan fərdi rol hələ onları açmır.
+- Tapşırıqlar lövhəsi: tapşırıq yalnız admin və menecerə verilir, yeni rollara yox.
+- Öz düzəlişində ikinci təsdiq rejimində unudulmuş çıxış sorğusu təsdiqə getmir. Düzəliş qeydin özündən
+  edilir.

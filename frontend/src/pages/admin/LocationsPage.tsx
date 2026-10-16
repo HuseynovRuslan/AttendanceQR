@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { RowActions } from '../../components/RowActions'
 import { formatCoord, isShortMapLink, parseCoords } from '../../lib/geoLink'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../auth/AuthContext'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import {
   createLocation,
   createSchedule,
@@ -77,8 +77,12 @@ function inUseMessage(name: string, employees: number, history: number): string 
 }
 
 export function LocationsPage() {
-  const { role } = useAuth()
+  // Admin's shape for the Company administrator, the narrowed one for everybody else in Enforced. Below,
+  // each action asks for its own right: an observer sees the branches and touches none of them.
+  const role = useScopedRole('locations.view')
   const isManager = role === 'Manager'
+  const mayEdit = useHolds('locations.update', true)
+  const mayPrint = useHolds('locations.qr_print', true)
   // Pasting a map link beats typing two long decimals — see geoLink for the shapes Google produces.
   const [mapLink, setMapLink] = useState('')
   const [linkNote, setLinkNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -643,7 +647,7 @@ export function LocationsPage() {
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <RowActions
                       primary={
-                        l.isActive
+                        l.isActive && mayPrint
                           ? {
                               label: 'Çap üçün QR',
                               icon: <IconQr />,
@@ -656,13 +660,13 @@ export function LocationsPage() {
                         {
                           label: 'Kiosk aç',
                           icon: <IconQr />,
-                          hidden: !l.isActive,
+                          hidden: !l.isActive || !mayPrint,
                           onClick: () => window.open(`/kiosk/${l.id}`, '_blank', 'noopener,noreferrer'),
                           title: 'Bu filialın kiosk QR ekranını yeni tabda aç',
                         },
                         {
                           label: copiedId === l.id ? 'Kopyalandı ✓' : 'Linki kopyala',
-                          hidden: !l.isActive,
+                          hidden: !l.isActive || !mayPrint,
                           onClick: () => copyKioskLink(l),
                           title: 'Kiosk linkini kopyala',
                         },
@@ -673,7 +677,7 @@ export function LocationsPage() {
                           onClick: () => toggleActive(l),
                           title: l.isActive ? 'Kiosku dayandır (məlumat silinmir)' : 'Yenidən aktiv et',
                         },
-                        { label: 'Redaktə', onClick: () => startEdit(l) },
+                        { label: 'Redaktə', hidden: !mayEdit, onClick: () => startEdit(l) },
                         {
                           // Deleting a branch is not a manager's call, and neither is adding one: a
                           // branch is 5 ₼ a month on the customer's bill, so the count of them belongs

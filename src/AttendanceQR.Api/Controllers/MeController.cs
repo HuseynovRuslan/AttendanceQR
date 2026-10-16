@@ -64,8 +64,14 @@ public class MeController : ControllerBase
             // the panel shows what the model would open beside it, marked as coming after the switch.
             legacyRole = legacyRole.ToString(),
             // Whether the panel is this person's at all: today's two panel roles, or any role in the new model
-            // (a timekeeper who is plain staff today sees their area and what will open for them).
-            panel = legacyRole is EmployeeRole.Admin or EmployeeRole.Manager || access.Grants.Count > 0,
+            // (a timekeeper who is plain staff today sees their area and what will open for them). Once the
+            // company is switched to Enforced, only the model: the token's role opens nothing any more.
+            panel = mode == AuthzMode.Enforced
+                ? access.Grants.Count > 0
+                : legacyRole is EmployeeRole.Admin or EmployeeRole.Manager || access.Grants.Count > 0,
+            // The Company administrator role, company-wide — who gets the admin's shape of a screen in Enforced
+            // (AccessProjection). Everybody else with a right gets the narrowed shape, over where they hold it.
+            companyAdmin = AccessProjection.IsCompanyAdmin(access),
             permissions = access.Permissions.Order().Select(key => new
             {
                 key,

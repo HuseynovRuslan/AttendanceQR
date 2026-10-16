@@ -88,7 +88,8 @@ public class ReportsController : ControllerBase
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {
         var requesterId = User.EmployeeId();
-        var role = User.Role();
+        // Enforced: the file is «attendance.export»'s to take (see ExportRoleAsync); today's role elsewhere.
+        var role = await _reports.ExportRoleAsync(requesterId, User.Role(), HttpContext.RequestAborted);
 
         // Same scope path as the JSON summary — export can't sidestep it.
         var (access, report) = await _reports.GetSummaryAsync(
@@ -259,8 +260,10 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> TabelExport(
         [FromQuery] int year, [FromQuery] int month, [FromQuery] Guid? locationId)
     {
+        // Enforced: the file is «attendance.export»'s to take (see ExportRoleAsync); today's role elsewhere.
+        var role = await _reports.ExportRoleAsync(User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
         var (access, report) = await _reports.GetTabelAsync(
-            year, month, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+            year, month, locationId, User.EmployeeId(), role, HttpContext.RequestAborted);
 
         if (access == ReportAccess.Forbidden)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });

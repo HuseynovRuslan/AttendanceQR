@@ -158,7 +158,9 @@ public sealed record PayrollRow(
     // between it and the four types above is not a trip count — it is days a summary marked OnLeave
     // that no surviving LeaveRecord covers (a record deleted after the night job ran). Carried
     // explicitly rather than computed, or the sheet would print that residue under «Ezamiyyət».
-    int TripDays = 0);
+    int TripDays = 0,
+    /// <summary>Days in the period the person corrected themselves — the accountant sees them before paying.</summary>
+    int SelfCorrectedDays = 0);
 
 /// <summary>The payroll report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record PayrollReport(
@@ -281,7 +283,10 @@ public sealed record DayAttendanceRow(
     /// ordinary shift, and sent because printing the morning window alone would hide half the hours
     /// on precisely the days where the schedule is the thing worth reading.</summary>
     string? SecondShiftStart = null,
-    string? SecondShiftEnd = null);
+    string? SecondShiftEnd = null,
+    /// <summary>The person corrected this day themselves — allowed only where nobody else could (see
+    /// AttendanceSelfCorrection), and shown as «öz düzəlişi» wherever the day is.</summary>
+    bool SelfCorrected = false);
 
 /// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
 /// check-out. Only ever sent for a day worked in more than one stretch.</summary>
@@ -400,7 +405,9 @@ public sealed record TabelRow(
     int WorkedDays,
     int AbsentDays,
     int LeaveDays,
-    double WorkedHours);
+    double WorkedHours,
+    /// <summary>Days of the month (1-based) the person corrected themselves — «öz düzəlişi» on those cells.</summary>
+    IReadOnlyList<int>? SelfCorrectedDays = null);
 
 public sealed record TabelLegendItem(string Code, string Label);
 

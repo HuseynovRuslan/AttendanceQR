@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import { useScopedRole } from '../auth/AccessContext'
 
 /**
  * An employee's name, linking to their profile card (/admin/employees/:id).
@@ -13,7 +13,9 @@ import { useAuth } from '../auth/AuthContext'
  * branch. This only decides whether a name looks clickable.
  */
 export function EmployeeLink({ id, name }: { id: string | null | undefined; name: string }) {
-  const { role } = useAuth()
+  // Outside the panel there is no access context and this is the token's role, as before; in a company
+  // switched to Enforced, whoever may open a profile («employees.view»).
+  const role = useScopedRole('employees.view')
   // No id (e.g. a pre-auth rejected scan) or an employee's own view → plain text.
   if ((role !== 'Admin' && role !== 'Manager') || !id) return <>{name}</>
   return (

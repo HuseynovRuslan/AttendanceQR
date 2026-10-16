@@ -9,8 +9,11 @@ export interface MyAccess {
   mode: 'Legacy' | 'Shadow' | 'Enforced'
   /** The role today's gates read — until the switch (Phase 5) it, not the model, opens the pages. */
   legacyRole: 'Admin' | 'Manager' | 'Employee'
-  /** Today's two panel roles, or any role in the new model. */
+  /** Today's two panel roles, or any role in the new model — in Enforced, only the model. */
   panel: boolean
+  /** Holds the Company administrator role company-wide: in Enforced, the one who gets the admin's shape of a
+   *  screen. Everybody else with a right gets the narrowed (manager's) shape, over where they hold it. */
+  companyAdmin: boolean
   permissions: { key: string; label: string; company: boolean; locationIds: string[] }[]
   assignments: {
     roleId: string

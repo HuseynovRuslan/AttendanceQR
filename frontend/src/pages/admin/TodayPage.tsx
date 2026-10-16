@@ -8,7 +8,7 @@ import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRo
 import { getImpersonation } from '../../api/client'
 import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
-import { useAuth } from '../../auth/AuthContext'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
 import { STATUS_MAP, dayLabel } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
@@ -74,14 +74,21 @@ function Th({ col, label, sortBy, desc, onSort }: {
 }
 
 export function TodayPage() {
-  const { role } = useAuth()
+  // The board's shape — the admin's or the narrowed one — and, in a company switched to Enforced, the
+  // permission model's: a timekeeper gets the narrowed board over their branches (see useScopedRole).
+  const role = useScopedRole('attendance.view')
+  // Filing a reason is a leave: the leave endpoints of whoever holds «leaves.manage».
+  const leaveRole = useScopedRole('leaves.manage')
   // A manager may look at the selfies of the people they manage again (owner's call, 2026-09-04):
   // they are who stands at the site and notices, and routing every suspect photograph through one
   // admin did not make the data safer, it made the check not happen. The server scopes it to their
   // own branches; ACTING on what they see — voiding a day, sending a warning — stays Admin-only, so
-  // canAct below is deliberately narrower than this.
-  const mayViewPhotos = role === 'Admin' || role === 'Manager'
+  // canAct below is deliberately narrower than this. In Enforced a selfie is its own right: a timekeeper
+  // or an observer follows the day without the faces.
+  const mayViewPhotos = useHolds('attendance.photos.view', role === 'Admin' || role === 'Manager')
   const mayAct = role === 'Admin'
+  // The pencil on an absent row files a leave — not an observer's to press.
+  const mayGiveReason = useHolds('leaves.manage', true)
   const [assigningId, setAssigningId] = useState<string | null>(null)
   // Which absent row's reason menu is open, and where to float it. A pencil next to the Qayıb badge
   // opens a dropdown; it is position:fixed so the table's overflow never clips it.
@@ -205,8 +212,8 @@ export function TodayPage() {
   async function assignLeave(employeeId: string, type: LeaveType, existingLeaveId?: string | null) {
     setAssigningId(employeeId)
     // Changing an already-assigned reason: drop the old single-day leave first, then add the new one.
-    if (existingLeaveId) await (role === 'Manager' ? deleteManagerLeave(existingLeaveId) : deleteLeave(existingLeaveId))
-    const res = role === 'Manager'
+    if (existingLeaveId) await (leaveRole === 'Manager' ? deleteManagerLeave(existingLeaveId) : deleteLeave(existingLeaveId))
+    const res = leaveRole === 'Manager'
       ? await createManagerLeave({ employeeIds: [employeeId], fromDate: date, toDate: date, type, note: null })
       : await addLeave({ employeeIds: [employeeId], fromDate: date, toDate: date, type })
     setAssigningId(null)
@@ -276,7 +283,7 @@ export function TodayPage() {
   // Undo a mistaken reason — delete the single-day leave so the row goes back to Qayıb.
   async function removeLeave(employeeId: string, leaveId: string) {
     setAssigningId(employeeId)
-    const res = role === 'Manager' ? await deleteManagerLeave(leaveId) : await deleteLeave(leaveId)
+    const res = leaveRole === 'Manager' ? await deleteManagerLeave(leaveId) : await deleteLeave(leaveId)
     setAssigningId(null)
     setReasonFor(null)
     if (res.status === 200) await load()
@@ -929,6 +936,7 @@ export function TodayPage() {
                         workedText={formatWorked(worked)}
                         running={running}
                         mayViewPhotos={mayViewPhotos}
+                        mayGiveReason={mayGiveReason}
                         assigning={assigningId === r.employeeId}
                         photoBusy={busyId !== null && busyId === r.recordId}
                         onPosition={pickPosition}

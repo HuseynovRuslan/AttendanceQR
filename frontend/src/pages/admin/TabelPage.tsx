@@ -167,9 +167,19 @@ export function TabelPage() {
                     <div className="tb-name">{r.employeeName}</div>
                     {r.position && <div className="tb-pos">{r.position}</div>}
                   </th>
-                  {r.days.map((code, i) => (
-                    <td key={i} className={code ? CODE_CLASS[code] ?? '' : 'tb-future'}>{code}</td>
-                  ))}
+                  {r.days.map((code, i) => {
+                    // A day the person corrected themselves: the code, a star, and a word on hover.
+                    const own = r.selfCorrectedDays?.includes(i + 1) === true
+                    return (
+                      <td
+                        key={i}
+                        className={`${code ? CODE_CLASS[code] ?? '' : 'tb-future'}${own ? ' tb-self' : ''}`}
+                        title={own ? 'Öz düzəlişi — işçi bu günü özü düzəldib' : undefined}
+                      >
+                        {code}{own && '*'}
+                      </td>
+                    )
+                  })}
                   <td className="tb-total-col tb-total-work">{r.workedDays}</td>
                   <td className="tb-total-col tb-total-absent">{r.absentDays || ''}</td>
                   <td className="tb-total-col">{r.workedHours || ''}</td>
