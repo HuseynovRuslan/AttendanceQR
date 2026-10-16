@@ -25,4 +25,10 @@ public sealed class PermissionAttribute : Attribute
     /// <summary>The other role has its own route doing the same thing (the admin and manager twins), so a gate
     /// difference here is not a difference in what anybody can do. Recorded as «Twin», not «Gate».</summary>
     public bool Twin { get; init; }
+
+    /// <summary>Admin-only today, but the action narrows its own answer to the caller's area
+    /// (LocationScopeRules.ScopeAsync) — so a company switched to Enforced opens it to whoever holds the
+    /// permission anywhere. Without it an admin-only endpoint stays the Company administrator's in Enforced
+    /// (PermissionGateHandler), because it is the company-wide shape of something.</summary>
+    public bool Scoped { get; init; }
 }

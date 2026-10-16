@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Application.Common;
@@ -594,7 +595,10 @@ public class AttendanceController : ControllerBase
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
 
-        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, role, record.EmployeeId, ct))
+        // A selfie is its own right in the model («attendance.photos.view»): a timekeeper or an observer sees
+        // their people's days, not their faces. Read in Enforced only — today the scope alone decides.
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, role, record.EmployeeId, ct,
+                AccessPermissions.AttendancePhotosView))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var referenceKey = await _db.Employees

@@ -61,6 +61,31 @@ public interface IAuthzObserver
 
     /// <summary>The company's mode, as the deciding methods read it.</summary>
     Task<AuthzMode> ModeAsync(AppDbContext db, CancellationToken ct = default);
+
+    /// <summary>
+    /// The right this request stands for — the endpoint's [Permission] (AuthzEnforcedMiddleware), or a report's
+    /// own (LocationScopeRules.EffectiveRoleAsync). A list narrowed to «my branches» and «may I act on this
+    /// person» then ask for it as well as for «employees.view»: a timekeeper who sees two branches but approves
+    /// phones at one approves at that one. Null: the rules' own permissions, as in Phase 3.
+    /// </summary>
+    string? RequestPermission { get; set; }
+
+    /// <summary>The role today's code paths take for this caller (AccessProjection.RoleFor) in a company switched
+    /// to Enforced; their own role anywhere else. Unreadable in Enforced → plain staff.</summary>
+    Task<EmployeeRole> ProjectRoleAsync(
+        AppDbContext db, Guid callerId, EmployeeRole callerRole, string permission, CancellationToken ct = default);
+
+    /// <summary>The company's live assignments, loaded once per request.</summary>
+    Task<AccessGraph> GraphAsync(AppDbContext db, CancellationToken ct = default);
+
+    /// <summary>The platform operators — never a target of the account rules.</summary>
+    IReadOnlySet<Guid> OperatorIds { get; }
+
+    /// <summary><see cref="DecideScopeAsync(AppDbContext, string, Guid, EmployeeRole, Guid, bool, CancellationToken)"/>,
+    /// naming what the records are where the request does not (LocationScopeRules.CanAccessEmployeeAsync).</summary>
+    Task<bool> DecideScopeAsync(
+        AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
+        string? permission, CancellationToken ct = default);
 }
 
 /// <summary>Where one permission reaches for one caller.</summary>
@@ -90,20 +115,34 @@ public static class ShadowRules
     /// <paramref name="actorHome"/> is the caller's own branch: the strict account rule needs it to read
     /// today's colleague rule in the reverse direction.
     /// </summary>
+    /// <param name="permission">The right the request stands for (IAuthzObserver.RequestPermission), read by the two
+    /// rules about a person's RECORDS: seeing them needs that right at the person's branch as well as
+    /// «employees.view» (a timekeeper sees their people's days, not their selfies), and acting on them needs that
+    /// right — approving a phone is «devices.approve», not «attendance.correct». Null — the rule's own, as before.
+    /// Today's admins and managers hold every right of their role over the same branches, so for them the answer
+    /// is the same either way (AuthzEnforcedTests).</param>
     public static bool Decide(
         string rule, EffectiveAccess actor, Guid targetId, Guid targetHome, EffectiveAccess target, bool targetIsOperator,
-        Guid? actorHome = null) =>
+        Guid? actorHome = null, string? permission = null) =>
         rule switch
         {
             // See a person's records.
-            CanAccess => AccessRules.CanSee(actor, AccessPermissions.EmployeesView, targetId, targetHome),
+            CanAccess => AccessRules.CanSee(actor, AccessPermissions.EmployeesView, targetId, targetHome)
+                         && (permission is null || AccessRules.CanSee(actor, permission, targetId, targetHome)),
             // Roster a person (shift overrides) — today a manager may roster themselves even off their branches.
             CanSchedule => actor.Has(AccessPermissions.SchedulesAssign)
                            && (targetId == actor.EmployeeId || actor.Covers(AccessPermissions.SchedulesAssign, targetHome)),
             // Act on a person's records (devices, requests). Operators are not refused here — today's rule does not
             // refuse them either; the credential paths below do. Records, not accounts: not strict.
-            CanManage => AccessRules.CanActOn(actor, AccessPermissions.AttendanceCorrect, targetId, targetHome, target,
-                targetIsOperator, refuseOperators: false, refuseSelf: false),
+            CanManage => permission is null
+                ? AccessRules.CanActOn(actor, AccessPermissions.AttendanceCorrect, targetId, targetHome, target,
+                    targetIsOperator, refuseOperators: false, refuseSelf: false)
+                // The request's right, over somebody the actor can see: «employees.view» keeps a company-wide right
+                // (today's PIN helper) from reaching people at branches the actor does not run.
+                : AccessRules.CanActOn(actor, permission, targetId, targetHome, target,
+                      targetIsOperator, refuseOperators: false, refuseSelf: false)
+                  && AccessRules.CanActOn(actor, AccessPermissions.EmployeesView, targetId, targetHome, target,
+                      targetIsOperator, refuseOperators: false, refuseSelf: false),
             // Correct a person's attendance — never one's own (the owner, 2026-10-15), whoever one is.
             CorrectAttendance => AccessRules.CanActOn(actor, AccessPermissions.AttendanceCorrect, targetId, targetHome, target,
                 targetIsOperator, refuseOperators: false, refuseSelf: true),
@@ -130,6 +169,34 @@ public sealed class AuthzObserver : IAuthzObserver
     private AccessGraph? _graph;
     private readonly Dictionary<Guid, (Guid Home, bool Found)> _homes = new();
 
+    public string? RequestPermission { get; set; }
+
+    public IReadOnlySet<Guid> OperatorIds => _operatorIds;
+
+    /// <summary>The permission Decide reads for <paramref name="rule"/>: an explicit one, else the request's —
+    /// only for the two rules about records (see ShadowRules.Decide).</summary>
+    private string? PermissionFor(string rule, string? permission) =>
+        rule is ShadowRules.CanAccess or ShadowRules.CanManage ? permission ?? RequestPermission : null;
+
+    public async Task<AccessGraph> GraphAsync(AppDbContext db, CancellationToken ct = default) =>
+        _graph ??= await AccessGraph.LoadAsync(db, ct);
+
+    public async Task<EmployeeRole> ProjectRoleAsync(
+        AppDbContext db, Guid callerId, EmployeeRole callerRole, string permission, CancellationToken ct = default)
+    {
+        if (await ModeAsync(db, _cache, ct) != AuthzMode.Enforced)
+            return callerRole;
+        try
+        {
+            return AccessProjection.RoleFor((await GraphAsync(db, ct)).For(callerId), permission);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Authz enforced: role for {Permission} could not be read — plain staff", permission);
+            return EmployeeRole.Employee;
+        }
+    }
+
     public AuthzObserver(IAuthzShadowSink sink, IMemoryCache cache, ILogger<AuthzObserver> logger, OperatorAllowlist operators)
     {
         _sink = sink;
@@ -150,22 +217,27 @@ public sealed class AuthzObserver : IAuthzObserver
         return mode;
     }
 
-    public async Task ObserveScopeAsync(
+    public Task ObserveScopeAsync(
         AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        ObserveScopeAsync(db, rule, callerId, callerRole, targetId, legacy, null, ct);
+
+    private async Task ObserveScopeAsync(
+        AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
+        string? permission, CancellationToken ct)
     {
         try
         {
             if (await ModeAsync(db, _cache, ct) != AuthzMode.Shadow)
                 return;
-            var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
+            var graph = await GraphAsync(db, ct);
             var home = await HomeOfAsync(db, targetId, ct);
             if (!home.Found)
                 return; // today's rule answered for a person who is not there; nothing to compare
             var callerHome = await HomeOfAsync(db, callerId, ct);
 
             var decided = ShadowRules.Decide(rule, graph.For(callerId), targetId, home.Home, graph.For(targetId),
-                _operatorIds.Contains(targetId), callerHome.Found ? callerHome.Home : null);
+                _operatorIds.Contains(targetId), callerHome.Found ? callerHome.Home : null, PermissionFor(rule, permission));
             if (decided != legacy)
                 await _sink.RecordAsync(db, new ShadowRecord(db.CurrentTenantId, rule, $"{rule} as {callerRole}", callerId, targetId.ToString(), legacy, decided), ct);
         }
@@ -177,24 +249,29 @@ public sealed class AuthzObserver : IAuthzObserver
 
     public Task<AuthzMode> ModeAsync(AppDbContext db, CancellationToken ct = default) => ModeAsync(db, _cache, ct);
 
+    public Task<bool> DecideScopeAsync(
+        AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
+        CancellationToken ct = default) =>
+        DecideScopeAsync(db, rule, callerId, callerRole, targetId, legacy, null, ct);
+
     public async Task<bool> DecideScopeAsync(
         AppDbContext db, string rule, Guid callerId, EmployeeRole callerRole, Guid targetId, bool legacy,
-        CancellationToken ct = default)
+        string? permission, CancellationToken ct = default)
     {
         if (await ModeAsync(db, _cache, ct) != AuthzMode.Enforced)
         {
-            await ObserveScopeAsync(db, rule, callerId, callerRole, targetId, legacy, ct);
+            await ObserveScopeAsync(db, rule, callerId, callerRole, targetId, legacy, permission, ct);
             return legacy;
         }
         try
         {
-            var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
+            var graph = await GraphAsync(db, ct);
             var home = await HomeOfAsync(db, targetId, ct);
             if (!home.Found)
                 return false;
             var callerHome = await HomeOfAsync(db, callerId, ct);
             return ShadowRules.Decide(rule, graph.For(callerId), targetId, home.Home, graph.For(targetId),
-                _operatorIds.Contains(targetId), callerHome.Found ? callerHome.Home : null);
+                _operatorIds.Contains(targetId), callerHome.Found ? callerHome.Home : null, PermissionFor(rule, permission));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -212,10 +289,16 @@ public sealed class AuthzObserver : IAuthzObserver
             await ObserveManagedSetAsync(db, callerId, callerRole, legacy, ct);
             return legacy;
         }
-        var scope = await ScopeAsync(db, callerId, callerRole, AccessPermissions.EmployeesView, ct);
-        return scope.Company
-            ? await db.Locations.AsNoTracking().Select(l => l.Id).ToListAsync(ct)
-            : scope.Branches.ToList();
+        // Where the caller sees people, and — where the request names its own right — holds that right too.
+        var seen = await ScopeAsync(db, callerId, callerRole, AccessPermissions.EmployeesView, ct);
+        var used = RequestPermission is { } p && p != AccessPermissions.EmployeesView
+            ? await ScopeAsync(db, callerId, callerRole, p, ct)
+            : seen;
+        if (seen.Company && used.Company)
+            return await db.Locations.AsNoTracking().Select(l => l.Id).ToListAsync(ct);
+        if (seen.Company)
+            return used.Branches.ToList();
+        return used.Company ? seen.Branches.ToList() : seen.Branches.Intersect(used.Branches).ToList();
     }
 
     public async Task<ScopeAnswer> ScopeAsync(
@@ -231,8 +314,7 @@ public sealed class AuthzObserver : IAuthzObserver
             };
         try
         {
-            var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
-            var access = graph.For(callerId);
+            var access = (await GraphAsync(db, ct)).For(callerId);
             if (access.HasAtCompany(permission))
                 return ScopeAnswer.Everywhere;
             var branches = access.BranchesFor(permission);
@@ -263,7 +345,7 @@ public sealed class AuthzObserver : IAuthzObserver
             // Today only a manager's set means anything; every caller asks for the Manager role first.
             if (callerRole != EmployeeRole.Manager || await ModeAsync(db, _cache, ct) != AuthzMode.Shadow)
                 return;
-            var graph = _graph ??= await AccessGraph.LoadAsync(db, ct);
+            var graph = await GraphAsync(db, ct);
             var caller = graph.For(callerId);
             if (caller.HasAtCompany(AccessPermissions.EmployeesView))
                 return;

@@ -18,7 +18,8 @@ namespace AttendanceQR.Infrastructure.Services;
 public static class LocationScopeRules
 {
     /// <summary>The locations a manager oversees (their ManagedLocations set) — in a company switched to
-    /// Enforced, the branches the caller holds «employees.view» over.</summary>
+    /// Enforced, the branches the caller holds «employees.view» over, and the request's own right too (see
+    /// IAuthzObserver.RequestPermission).</summary>
     public static async Task<List<Guid>> ManagedLocationIdsAsync(AppDbContext db, Guid managerId, CancellationToken ct)
     {
         var managed = await LegacyManagedAsync(db, managerId, ct);
@@ -47,9 +48,10 @@ public static class LocationScopeRules
 
     /// <summary>
     /// The role today's code paths should take for this caller and this permission. In Legacy and Shadow it is
-    /// their own role, untouched. In a company switched to Enforced it is what the permission model gives them:
-    /// the right company-wide reads as Admin, over some branches as Manager (and the manager-shaped lists then
-    /// narrow to those branches — see <see cref="ManagedLocationIdsAsync"/>), nowhere as Employee (own records).
+    /// their own role, untouched. In a company switched to Enforced it is Access.AccessProjection's answer: the
+    /// Company administrator reads as Admin; anybody else holding the permission as Manager, and the
+    /// manager-shaped lists then narrow to where they hold it (<see cref="ManagedLocationIdsAsync"/> — the
+    /// report's permission becomes the request's, for exactly that); nobody else as Employee (own records).
     /// A bridge, so the reports and boards that grew up around the two roles keep their tested paths.
     /// </summary>
     public static async Task<EmployeeRole> EffectiveRoleAsync(
@@ -57,8 +59,8 @@ public static class LocationScopeRules
     {
         if (db.AuthzObserver is not { } observer || await observer.ModeAsync(db, ct) != AuthzMode.Enforced)
             return role;
-        var scope = await observer.ScopeAsync(db, callerId, role, permission, ct);
-        return scope.Company ? EmployeeRole.Admin : scope.Branches.Count > 0 ? EmployeeRole.Manager : EmployeeRole.Employee;
+        observer.RequestPermission = permission;
+        return await observer.ProjectRoleAsync(db, callerId, role, permission, ct);
     }
 
     // Today's rules, unchanged. In Legacy and Shadow the public methods return exactly what these return (the
@@ -85,14 +87,18 @@ public static class LocationScopeRules
     /// <see cref="CanManageEmployeeAsync"/>. This one only decides who is visible, and the answer is
     /// everyone at the branches they manage.
     /// </summary>
+    /// <param name="permission">What the records are, where it is not the request's own [Permission] (an
+    /// endpoint the employee app shares): «attendance.photos.view» for a selfie, «attendance.view» for a day.
+    /// Read only in Enforced — today's admins and managers hold both wherever they see people.</param>
     public static async Task<bool> CanAccessEmployeeAsync(
-        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct,
+        string? permission = null)
     {
         var allowed = await LegacyCanAccessAsync(db, requesterId, role, targetEmployeeId, ct);
         if (db.AuthzObserver is { } observer)
             // One's own records stay one's own in every mode — the model's rule is about other people.
             return requesterId == targetEmployeeId
-                || await observer.DecideScopeAsync(db, Access.ShadowRules.CanAccess, requesterId, role, targetEmployeeId, allowed, ct);
+                || await observer.DecideScopeAsync(db, Access.ShadowRules.CanAccess, requesterId, role, targetEmployeeId, allowed, permission, ct);
         return allowed;
     }
 
@@ -208,6 +214,23 @@ public static class LocationScopeRules
         if (db.AuthzObserver is { } observer)
             return await observer.DecideScopeAsync(db, Access.ShadowRules.CorrectAttendance, requesterId, role, targetEmployeeId, allowed, ct);
         return allowed;
+    }
+
+    /// <summary>
+    /// In a company switched to Enforced: may the caller hand this person a new PIN or login number, by the
+    /// model's strict account rule (ShadowRules.CredentialTarget — only from above, never a colleague of the same
+    /// rank, never an operator, never oneself). True anywhere else, where the call site's own checks decide
+    /// exactly as before. For a path that mints a credential behind a check written for RECORDS — the PIN-reset
+    /// queue asks <see cref="CanManageEmployeeAsync"/>, which in Enforced would let one timekeeper answer
+    /// another's request and read their new PIN.
+    /// </summary>
+    public static async Task<bool> EnforcedCredentialTargetAsync(
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+    {
+        if (db.AuthzObserver is not { } observer || await observer.ModeAsync(db, ct) != AuthzMode.Enforced)
+            return true;
+        return await observer.DecideScopeAsync(db, Access.ShadowRules.CredentialTarget, requesterId, role, targetEmployeeId,
+            legacy: false, ct);
     }
 
     private static async Task<bool> LegacyCanManageAsync(

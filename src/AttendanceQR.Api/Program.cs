@@ -721,6 +721,9 @@ app.UseViewOnlyBoundary();
 
 // Shadow mode's gate comparison — decides nothing, see AuthzShadowMiddleware.
 app.UseMiddleware<AuthzShadowMiddleware>();
+// Enforced mode's role: what the permission model makes of the caller for this endpoint, before authorization
+// and every action read it — see AuthzEnforcedMiddleware. Touches nothing in Legacy or Shadow.
+app.UseMiddleware<AuthzEnforcedMiddleware>();
 
 app.UseAuthorization();
 

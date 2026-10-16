@@ -55,8 +55,10 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
     public async Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
         Guid targetEmployeeId, Guid requesterId, EmployeeRole requesterRole, CancellationToken ct = default)
     {
-        // One central rule (LocationScopeRules) — the same manager scope the reports/export use.
-        var allowed = await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, requesterRole, targetEmployeeId, ct);
+        // One central rule (LocationScopeRules) — the same manager scope the reports/export use. Somebody's days
+        // are «attendance.view», whatever else the caller may see of them (read in Enforced only).
+        var allowed = await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, requesterRole, targetEmployeeId, ct,
+            Domain.Access.AccessPermissions.AttendanceView);
 
         if (!allowed)
             return (AttendanceAccess.Forbidden, Array.Empty<AttendanceRecordDto>());

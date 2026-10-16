@@ -7,6 +7,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -572,6 +573,10 @@ public class FieldVisitController : ControllerBase
                 .ToListAsync(ct))
               .ToDictionary(x => x.VisitId, x => (x.Total, x.Done));
 
+        // Enforced: the worker's phone only where the caller may see it (EnforcedRows) — an observer follows the
+        // board without being handed the crew's numbers. Today's board elsewhere.
+        var enforced = await EnforcedRows.LoadAsync(_db, me, ct);
+
         var rows = visits.Select(v =>
         {
             names.TryGetValue(v.EmployeeId, out var emp);
@@ -584,7 +589,7 @@ public class FieldVisitController : ControllerBase
                 id = v.Id,
                 employeeId = v.EmployeeId,
                 employeeName = emp?.FullName ?? "(silinib)",
-                phone = emp?.PhoneNumber,
+                phone = emp is null || enforced?.SeesContacts(emp.Id, emp.LocationId) == false ? null : emp.PhoneNumber,
                 locationId = emp?.LocationId,
                 locationName = emp is null ? "" : branchOf.GetValueOrDefault(emp.LocationId, ""),
                 assignedByName = assigner,

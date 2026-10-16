@@ -58,7 +58,7 @@ public class AuthzEnforcedTests
 
     private static readonly (string Name, Rule Ask)[] Rules =
     [
-        ("CanAccess", LocationScopeRules.CanAccessEmployeeAsync),
+        ("CanAccess", (db, c, r, t, ct) => LocationScopeRules.CanAccessEmployeeAsync(db, c, r, t, ct)),
         ("CanSchedule", LocationScopeRules.CanScheduleEmployeeAsync),
         ("CanManage", LocationScopeRules.CanManageEmployeeAsync),
         ("CorrectAttendance", LocationScopeRules.CanCorrectAttendanceAsync),

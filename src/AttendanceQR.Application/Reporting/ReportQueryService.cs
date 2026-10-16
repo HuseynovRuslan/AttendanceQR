@@ -5,6 +5,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Application.Reporting;
@@ -1803,6 +1804,9 @@ public sealed class ReportQueryService : IReportQueryService
 
         var locationNames = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
         var nameById = employees.ToDictionary(e => e.Id, e => (e.FullName, e.LocationId));
+        // Enforced: the phone rides only where the caller may see it (an observer reads the register without
+        // the numbers). Today's rows elsewhere.
+        var enforced = await EnforcedRows.LoadAsync(_db, requesterId, ct);
 
         var rows = new List<StuckDeviceRow>();
         foreach (var (employeeId, evts) in byEmployee)
@@ -1827,7 +1831,7 @@ public sealed class ReportQueryService : IReportQueryService
             rows.Add(new StuckDeviceRow(
                 employeeId, fullName,
                 locationNames.TryGetValue(locationId, out var ln) ? ln : "-",
-                phones.TryGetValue(employeeId, out var ph) ? ph : null,
+                phones.TryGetValue(employeeId, out var ph) && enforced?.SeesContacts(employeeId, locationId) != false ? ph : null,
                 lastFailure, evts.Count,
                 string.Join(", ", reasons),
                 platform,
