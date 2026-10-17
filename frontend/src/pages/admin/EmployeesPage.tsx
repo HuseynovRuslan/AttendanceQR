@@ -106,6 +106,7 @@ const ERRORS: Record<string, string> = {
   // A branch manager's own refusals (their endpoints, since the one staff list).
   NameRequired: 'Ad tələb olunur',
   LocationNotManaged: 'Bu filial sizə aid deyil',
+  DeactivateNotAllowed: 'İşçini işdən çıxartmaq və ya qaytarmaq hüququnuz yoxdur',
   CannotDeactivateManager: 'Meneceri yalnız admin deaktiv edə bilər',
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
@@ -293,7 +294,7 @@ export function EmployeesPage() {
   const [mgrAll, setMgrAll] = useState<ManagerEmployee[] | null>(null)
   /** The card a manager is editing: a colleague they may not switch off, and a branch that may not be
    *  among theirs (a colleague stays where they are). */
-  const [mgrEditing, setMgrEditing] = useState<{ isColleague: boolean; locationName: string } | null>(null)
+  const [mgrEditing, setMgrEditing] = useState<{ isColleague: boolean; deactivatable: boolean; locationName: string } | null>(null)
   // ONE page of the roster — twenty-five rows, narrowed and ordered in SQL. This used to be every
   // employee in the company, with every device binding each of them had ever had.
   const [rows, setRows] = useState<AdminEmployeeRow[]>([])
@@ -640,7 +641,7 @@ export function EmployeesPage() {
     const e = data
     const parts = splitName(e.firstName, e.lastName, e.fullName)
     setEditingId(e.id)
-    setMgrEditing({ isColleague: e.isColleague === true, locationName: e.locationName })
+    setMgrEditing({ isColleague: e.isColleague === true, deactivatable: e.deactivatable === true, locationName: e.locationName })
     setForm({
       ...EMPTY,
       firstName: parts.first,
@@ -1728,7 +1729,7 @@ ${back}`,
                 <select
                   className="inp"
                   value={form.isActive ? '1' : '0'}
-                  disabled={isSelf || (isManager && mgrEditing?.isColleague === true)}
+                  disabled={isSelf || (isManager && (mgrEditing?.isColleague === true || mgrEditing?.deactivatable === false))}
                   onChange={(e) => set('isActive', e.target.value === '1')}
                 >
                   <option value="1">Aktiv</option>
@@ -1739,6 +1740,11 @@ ${back}`,
                 )}
                 {isManager && mgrEditing?.isColleague && (
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Meneceri yalnız admin deaktiv edə bilər</div>
+                )}
+                {/* «employees.deactivate» is not part of every role that edits people (the Tabelçi's is not);
+                    the server refuses the change, and this keeps the form from offering it. */}
+                {isManager && !mgrEditing?.isColleague && mgrEditing?.deactivatable === false && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>İşdən çıxartmaq hüququnuz yoxdur</div>
                 )}
               </div>
             </div>

@@ -63,6 +63,13 @@ public class ManagerController : ControllerBase
     private async Task<bool> ManagesLocationAsync(Guid locationId) =>
         (await ManagedLocationIdsAsync()).Contains(locationId);
 
+    /// <summary>May the caller switch a person at <paramref name="locationId"/> off or back on — «employees.deactivate»
+    /// over that branch. Answered by the same scope every list narrows by, so the tenant filter and the branch
+    /// boundary hold exactly as they do there.</summary>
+    private async Task<bool> MayDeactivateAsync(Guid locationId, CancellationToken ct) =>
+        (await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesDeactivate, ct))
+        .Covers(locationId);
+
     /// <summary>
     /// THE authorization decision for a manager acting ON another account — every mutating
     /// per-employee endpoint below (profile edit, PIN reset, leaves) goes through here and nowhere
@@ -637,6 +644,8 @@ public class ManagerController : ControllerBase
             // Deliberately absent: MonthlySalary and Role. Not hidden in the UI — never sent.
             // Whether this manager may ACT on this person is a separate question, answered per write.
             manageable = mayAct,
+            // Switching them off or back on — a right of its own (see UpdateEmployee), and never a colleague's.
+            deactivatable = mayAct && !IsColleague(e, managed) && await MayDeactivateAsync(e.LocationId, ct),
             credentialsManageable = mayResetCredentials,
             // A fellow manager: editable, but not switched off from here — the card hides that button.
             isColleague = IsColleague(e, managed),
@@ -727,6 +736,13 @@ public class ManagerController : ControllerBase
         // colleague's edit is for their details and their days, not for removing them.
         if (colleague && request.IsActive != employee.IsActive)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotDeactivateManager" });
+        // Switching somebody off — or back on — is a right of its own, «employees.deactivate», over the branch
+        // they work at now; «employees.update» there is not enough. The Tabelçi template carries the one and not
+        // the other, and until 2026-10-17 that made no difference: this flag rode in on the profile edit and
+        // nothing asked. Today's managers hold both over their branches (Legacy and Shadow: their
+        // ManagedLocations), so for them nothing changes.
+        if (request.IsActive != employee.IsActive && !await MayDeactivateAsync(employee.LocationId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeactivateNotAllowed" });
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();

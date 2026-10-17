@@ -1191,6 +1191,14 @@ public class AdminController : ControllerBase
         if (User.IsImpersonating() && request.Role == EmployeeRole.Admin && employee.Role != EmployeeRole.Admin)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
 
+        // Switching somebody off or back on is «employees.deactivate», asked here as on the manager desk
+        // (ManagerController.UpdateEmployee). Whoever reaches this endpoint holds it today — the admin, the
+        // Company administrator — so this is the same rule written where the flag is written, not a new door.
+        if (employee.IsActive != request.IsActive
+            && !(await LocationScopeRules.ScopeAsync(_db, User.EmployeeId(), User.Role(), AccessPermissions.EmployeesDeactivate,
+                HttpContext.RequestAborted)).Covers(employee.LocationId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeactivateNotAllowed" });
+
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
 

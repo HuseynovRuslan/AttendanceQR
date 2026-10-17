@@ -21,6 +21,9 @@ export interface ManagerEmployee {
   credentialsManageable?: boolean
   /** Not ordinary staff — another manager, or the admin who clocks in at this branch. */
   isColleague?: boolean
+  /** May this caller switch the person off or back on — «employees.deactivate» over their branch, which
+   *  `manageable` («employees.update») does not imply. Only the single card sends it. */
+  deactivatable?: boolean
   fullName: string
   firstName: string | null
   lastName: string | null
