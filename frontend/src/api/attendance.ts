@@ -399,20 +399,24 @@ export function adminDeleteRecord(recordId: string, reason: string) {
  */
 export function voidFraudRecord(
   recordId: string,
-  opts: { reason?: string; revokeDevice?: boolean; notifyEmployee?: boolean } = {},
+  reason: string,
+  opts: { revokeDevice?: boolean; notifyEmployee?: boolean } = {},
 ) {
   return apiRequest<{ voided: string; devicesRevoked: number; notified: number }>(
     `/api/admin/attendance/${recordId}/void-fraud`,
     { method: 'POST', body: {
-      reason: opts.reason ?? null,
+      reason,
       revokeDevice: opts.revokeDevice ?? false,
       notifyEmployee: opts.notifyEmployee ?? true,
     } },
   )
 }
 
-export function unvoidRecord(recordId: string) {
-  return apiRequest<{ unvoided: string }>(`/api/admin/attendance/${recordId}/unvoid`, { method: 'POST' })
+export function unvoidRecord(recordId: string, reason: string) {
+  return apiRequest<{ unvoided: string }>(`/api/admin/attendance/${recordId}/unvoid`, {
+    method: 'POST',
+    body: { reason },
+  })
 }
 
 /**

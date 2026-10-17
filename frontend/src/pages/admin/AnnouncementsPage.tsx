@@ -7,10 +7,11 @@ import {
   type AdminAnnouncement,
   type AnnouncementAudience,
 } from '../../api/announcements'
-import { getEmployees, type AdminEmployee } from '../../api/admin'
+import { getEmployeeSelection, type EmployeeSelectionRow } from '../../api/admin'
 import { sendTestPush } from '../../lib/push'
 import { IconSend, IconTrash, IconX } from '../../components/icons'
 import { fmtDateOfInstant, fmtFullDateTime } from '../../lib/format'
+import { listFailureText } from '../../lib/listFailure'
 
 const AUDIENCE: { value: AnnouncementAudience; label: string; hint: string }[] = [
   { value: 'All', label: '👥 Hamı', hint: 'Bütün işçilər' },
@@ -28,7 +29,7 @@ const AUDIENCE_LABEL: Record<AnnouncementAudience, string> = {
 
 export function AnnouncementsPage() {
   const [items, setItems] = useState<AdminAnnouncement[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<EmployeeSelectionRow[]>([])
 
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
@@ -44,9 +45,17 @@ export function AnnouncementsPage() {
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  /** Why the list did not come: the feature is off for this company (the menu hides it, a URL still
+   *  opens it), or the request failed. Either way not «Hələ elan yoxdur». */
+  const [listFailure, setListFailure] = useState<string | null>(null)
+
   async function load() {
-    const [a, e] = await Promise.all([getAdminAnnouncements(), getEmployees()])
+    const [a, e] = await Promise.all([getAdminAnnouncements(), getEmployeeSelection()])
     if (a.status === 200 && Array.isArray(a.data)) setItems(a.data)
+    const code = (a.data as { error?: string } | null)?.error
+    setListFailure(a.status === 200 ? null
+      : code === 'FeatureDisabled' ? 'Elanlar şirkətiniz üçün söndürülüb — açmaq üçün QRLog dəstəyinə yazın.'
+        : listFailureText(a.status))
     if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data.filter((x) => x.isActive))
   }
 
@@ -229,7 +238,9 @@ export function AnnouncementsPage() {
 
       <div className="card card-pad">
         <div className="card-title">Elanlar</div>
-        {items.length === 0 ? (
+        {listFailure ? (
+          <div className="muted" style={{ padding: '16px 0' }}>{listFailure}</div>
+        ) : items.length === 0 ? (
           <div className="muted" style={{ padding: '16px 0' }}>Hələ elan yoxdur</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

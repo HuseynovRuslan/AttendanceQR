@@ -1,9 +1,9 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
-/** /admin index — Admin lands on the dashboard overview, Manager on the today board (no
- * cross-location breakdown to show them). */
+/** /admin → the screen this person starts their day on. Somebody whose panel comes only from a role in
+ *  the new model starts on «Mənim sahəm» — the rest of the panel opens for them after the switch. */
 export function AdminIndexRedirect() {
   const { role } = useAuth()
-  return <Navigate to={role === 'Admin' ? 'dashboard' : 'today'} replace />
+  return <Navigate to={role === 'Admin' ? 'dashboard' : role === 'Manager' ? 'today' : 'my-area'} replace />
 }

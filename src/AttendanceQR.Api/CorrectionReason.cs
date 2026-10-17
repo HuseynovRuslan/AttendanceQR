@@ -1,3 +1,6 @@
+using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
+
 namespace AttendanceQR.Api;
 
 /// <summary>
@@ -17,5 +20,22 @@ public static class CorrectionReason
     {
         var trimmed = reason?.Trim();
         return trimmed is { Length: >= Min and <= Max } ? trimmed : null;
+    }
+
+    /// <summary>
+    /// The audit line of a correction that has no attendance row of its own to name — an absence mark, a
+    /// missed check-out decision, a voided day restored. Same event and same shape as the record edits:
+    /// who, what, and why in their own words, so one search finds every correction to a person's days.
+    /// </summary>
+    public static AuditLog Audit(Guid employeeId, Guid actorId, string? ip, string what, string reason)
+    {
+        var text = $"By {actorId}: {what}. Səbəb: {reason}";
+        return new AuditLog
+        {
+            EmployeeId = employeeId,
+            EventType = AuditEventType.RecordEditedByAdmin,
+            Reason = text.Length <= 1000 ? text : text[..1000],
+            IpAddress = ip,
+        };
     }
 }

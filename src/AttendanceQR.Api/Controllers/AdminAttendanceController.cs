@@ -525,6 +525,10 @@ public class AdminAttendanceController : ControllerBase
         [FromServices] IPushNotifier pushNotifier)
     {
         var ct = HttpContext.RequestAborted;
+        // Required since 2026-10-15 like every correction; the old fallback wording («Giriş şəkli saxtadır»)
+        // is now the screen's first preset, chosen by a person rather than filled in for them.
+        if (CorrectionReason.Clean(request.Reason) is not { } voidReason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
         if (record is null)
@@ -549,9 +553,7 @@ public class AdminAttendanceController : ControllerBase
 
         record.VoidedAtUtc = DateTime.UtcNow;
         record.VoidedByEmployeeId = requesterId;
-        record.VoidReason = string.IsNullOrWhiteSpace(request.Reason)
-            ? "Giriş şəkli saxtadır (üz yoxlaması uyğunsuzluğu)"
-            : request.Reason.Trim();
+        record.VoidReason = voidReason;
 
         // Spelled out, because the row itself will read as an ordinary voided record a month from now
         // and this line is what says who decided, when, on what evidence, and with what score.
@@ -563,7 +565,8 @@ public class AdminAttendanceController : ControllerBase
                    + $"{record.CheckInAtUtc:HH:mm} UTC, face {record.FaceMatchStatus}"
                    + (record.FaceMatchScore is int sc ? $" {sc}%" : "")
                    + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}")
-                   + $" — {record.VoidReason}",
+                   // «Səbəb:» like every other correction's line, so one search finds them all.
+                   + $". Səbəb: {record.VoidReason}",
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
@@ -635,9 +638,12 @@ public class AdminAttendanceController : ControllerBase
     /// a photograph of a face, and people get those wrong.</summary>
     [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/unvoid")]
-    public async Task<IActionResult> Unvoid(Guid recordId)
+    public async Task<IActionResult> Unvoid(
+        Guid recordId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
         var ct = HttpContext.RequestAborted;
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
         if (record is null)
@@ -655,7 +661,8 @@ public class AdminAttendanceController : ControllerBase
         {
             EmployeeId = record.EmployeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = $"Void reversed by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd}",
+            Reason = Cap($"Void reversed by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd} "
+                         + $"(ləğvin səbəbi: {record.VoidReason}). Səbəb: {reason}"),
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 

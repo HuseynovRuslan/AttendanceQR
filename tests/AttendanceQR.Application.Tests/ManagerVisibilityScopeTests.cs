@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Security.Claims;
+using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
@@ -247,7 +248,7 @@ public class ManagerVisibilityScopeTests
 
         foreach (var req in new[] { adminReq, ownReq })
         {
-            var result = await controller.Approve(req.Id);
+            var result = await controller.Approve(req.Id, new AttendanceCorrectionRequest("İşçinin dediyi saat təsdiqləndi"));
             var obj = Assert.IsType<ObjectResult>(result);
             Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
         }
@@ -261,7 +262,7 @@ public class ManagerVisibilityScopeTests
     {
         using var h = new Harness();
         var req = h.Request(h.SameBranchEmployeeId);
-        var result = await h.MissedCheckout(h.ManagerId, EmployeeRole.Manager).Approve(req.Id);
+        var result = await h.MissedCheckout(h.ManagerId, EmployeeRole.Manager).Approve(req.Id, new AttendanceCorrectionRequest("İşçinin dediyi saat təsdiqləndi"));
         Assert.IsType<OkObjectResult>(result);
         var record = h.Db.AttendanceRecords.AsNoTracking().Single(r => r.EmployeeId == h.SameBranchEmployeeId);
         Assert.NotNull(record.CheckOutAtUtc); // the day actually closed

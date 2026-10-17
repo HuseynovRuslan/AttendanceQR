@@ -683,3 +683,137 @@ Bazada hamısı düzgündür:
 - Telefonla staging-də real QR skanı — sahibdədir. Prod təsdiqindən əvvəl mütləq edilməlidir.
 - Faza 4: vahid panel. Təyinat hüququ olan operator öz ekranını orada alacaq.
 - Faza 5: qərar yeni modelə keçir; hesabat endpoint-ləri öz icazə yoxlamasını alır (§14.4).
+
+## 17. Faza 4 — vahid panel (2026-10-15, branch `feat/permissions-phase4`)
+
+### 17.1 Sahibin qərarları
+
+1. Operator başqa operator təyin etmir. Yalnız özündən aşağı rolları — tabelçi və müşahidəçi — öz
+   sahəsində verir. Bu, Faza 3-ün `NotBelowYou` və `AssigneeNotBelowYou` qaydalarıdır.
+2. `test` kölgə rejimində qalır. Legacy və Shadow-da faktiki icazə qərarları dəyişmir. Yeganə istisna
+   sahibin seçdiyi qapıdır: «Səlahiyyətlər» API-si (§17.3).
+3. Main merge və prod deploy yoxdur.
+
+### 17.2 Davamiyyət düzəlişi — 11 yolun hamısında səbəb və audit
+
+Faza 3-də öz gününə düzəliş 9 yolda bağlandı, amma səbəb yalnız 5 yolda məcburi idi: saat redaktəsi,
+əl ilə qeyd, açıq günləri bağlama, çıxışı ləğv, silmə. Faza 4 qalan 6 yolu da eyni qaydaya salır:
+
+| Yol | Faza 3 | Faza 4 |
+|---|---|---|
+| «Qayıb yaz» | öz günü bağlı, qeyd istəyə bağlı, audit yox | səbəb məcburi (qeydin özü), audit |
+| «Qayıbı geri al» | öz günü bağlı, səbəb yox, audit yox | səbəb gövdədə, audit qoyulanda yazılan qeydlə |
+| Unudulmuş çıxışı təsdiq | öz günü bağlı, audit yox | səbəb, audit işçinin öz səbəbi ilə |
+| Unudulmuş çıxışı rədd | öz günü bağlı, audit yox | səbəb, audit |
+| Saxta girişi ləğv | öz günü bağlı, səbəb boşdursa avtomatik mətn | səbəb məcburi, köhnə mətn ekranda ilk hazır variantdır |
+| Ləğvi geri al | öz günü bağlı, səbəb yox | səbəb, audit ləğvin səbəbi ilə |
+
+Hamısı eyni qaydadır: 3–500 hərf, əl ilə yoxlanır (record atributu yox), audit `RecordEditedByAdmin`
+ilə «… Səbəb: …» formasında. Ekranlarda bir dialoq var, hər yolun öz hazır variantları ilə.
+
+### 17.3 «Səlahiyyətlər» API-si — modelin açdığı yeganə qapı
+
+- Qapı: bugünkü admin (əvvəlki kimi) **və ya** hüququ yeni modeldə hardasa olan şəxs. Görmək üçün
+  `assignments.view`, vermək və geri almaq üçün `assignments.manage` lazımdır. Bugünkü rolu nə olursa olsun.
+- Harada edə biləcəyi hər əməliyyatın öz qaydasıdır (`CanGrant`, `CanRevoke`, `CanSeeArea`) və dəyişmir.
+- «Təyin edilə bilənlər» cavabı şirkət boyu olmayan şəxsə yalnız öz sahəsinin adlarını qaytarır.
+- Bu controller-də `[Permission]` yoxdur. Kölgə bugünkü qapını modellə müqayisə edir, burada isə qapının
+  özü modeldir.
+- Şablon «Struktur operatoru»nda `assignments.manage` standart olaraq **yoxdur** (§3.4: «istəyə bağlı,
+  sahib seçir»). Şirkət onu «Rollar»da bir kliklə əlavə edir. Bundan sonra operator öz strukturunda
+  tabelçi və müşahidəçi təyin edir.
+
+### 17.4 Panel
+
+- `GET /api/me/access` qaytarır: `legacyRole`, `panel`, rolların və strukturların adları, şəxsin çatdığı
+  filiallar.
+- Panel bu cavabı açılanda və tab yenidən görünəndə oxuyur. Rol verilən adam çıxıb-girmədən görür.
+- `panelAccess`-də hər səhifə iki sütun daşıyır: bugünkü rollar və yeni modeldə səhifəni açan icazələr.
+  - Keçidə qədər qərarı rol verir.
+  - İcazə sütunu yalnız «keçiddən sonra nə açılacaq»ı göstərir.
+  - Test: admin və bugünkü menecer üçün iki sütun eyni səhifələri açır. Keçid heç kimdən funksiya
+    almır.
+- Menyudakı rol şərtləri silindi. Sətir yalnız cədvəllə açılır və bağlanır.
+- Yeni rolu olan adam bu gün adi işçi ola bilər. Belə adam:
+  - panelə girir;
+  - «Mənim sahəm»i görür: rollar, filiallar, hüquqlar, indi açıq olanlar və keçiddən sonra açılacaqlar;
+  - menyuda «Keçiddən sonra açılacaq» bölməsini boz rəngdə görür;
+  - işçi menyusunda «İdarəetmə paneli» sətrini görür. Skan ekranı bu sorğunu gözləmir.
+
+### 17.5 Bir işçi siyahısı
+
+- `/admin/employees` admin və menecer üçün birdir.
+  - Menecer üçün məlumat öz endpoint-lərindən gəlir: öz filialları, maaşsız, rolsuz.
+  - Hər sətirdə serverin «dəyişə bilərmi» cavabı var. Həmkar sətri yalnız baxış üçündür.
+  - Toplu icazə menecer marşrutu ilə gedir: icazəsi olmayan sətirlər ötürülür.
+  - Şirkət üzrə PIN masası siyahının üstündədir.
+  - Redaktə şəxsin öz kartından oxunur, siyahı sətrindən yox.
+- Menecer formasında vəzifə artıq kataloqdan seçilir. Əvvəl sərbəst mətn idi.
+- `/admin/my-employees` vahid siyahıya yönləndirilir. Köhnə menecer səhifəsi silindi.
+- Vahid `/api/employees` endpoint-i Faza 5-ə saxlanıldı: onun sahəsini yeni model qərar verməlidir.
+  Faza 4-də ekran birdir, məlumat isə mövcud iki əkiz endpoint-dən gəlir. Beləliklə kimin nəyi gördüyü
+  dəyişmir.
+
+### 17.6 Yolda tapılan xətalar
+
+- **Menecer siyahısı fərdi QR-siz və GPS ayarlarını silirdi.**
+  - Siyahı sorğusu bu iki sahəni oxuyurdu, amma cavabda atırdı.
+  - Redaktə forması sətri geri göndərdiyi üçün hər saxlama onları sıfırlayırdı.
+  - Əvvəlki düzəliş (439243a) yalnız formanı düzəltmişdi. Forma sahəni siyahı sətrindən oxuyur, sətirdə isə
+    sahə yox idi. Ona görə xəta production-da qalır.
+  - Düzəliş main-dən `fix/manager-roster-overrides` branch-indədir (draft PR #23). Faza 4-ə əcdad kimi merge
+    olunub, yəni bir düzəlişdir, iki deyil. Main + hotfix + Faza 4 sınaqda konfliktsiz birləşir.
+  - Faza 4-də köhnə menecer səhifəsi silindiyi üçün 439243a-nın forma köməkçisi istifadəsiz qalmışdı, silindi.
+    Vahid səhifə redaktəni şəxsin öz kartından oxuyur.
+- **Fərdi GPS divarı seçimi tərsinə yazılırdı** (production-da da var).
+  - «Radiusdan kənarda girişi rədd et» seçmək `false` yazırdı, yəni divarı söndürürdü.
+  - Saxlanmış `true` «yalnız ölç» kimi göstərilirdi.
+  - Dəyər gediş-qayıdışda dəyişmədiyi üçün görünmürdü, amma hər seçim əksini edirdi.
+  - Düzəliş main-dən `fix/geofence-override-direction` branch-indədir (2e1da54), Faza 4-ə merge olunub.
+    Çevirmə `lib/fenceOverride`-dadır və testlə bağlanıb. Data dəyişdirilmir.
+- **«Girişi ləğv et» audit sətri** səbəbi « — …» ilə yazırdı, digər on yol isə «Səbəb: …» ilə. Bunu
+  staging-də real PostgreSQL probe-u tapdı. İndi format eynidir.
+- **Toplu «Növbəni ləğv et» köhnə vəziyyəti oxuyurdu.** Ya heç nə etmirdi, ya da seçilmiş növbəni təyin
+  edirdi.
+- **Profildə menecerin «Redaktə et»i işləmirdi.**
+- **Yeniləmə hesabı girişsiz qoya bilirdi.** İndi telefon və ya email tələb olunur (`NeedEmailOrPhone`),
+  dəvətdə olduğu kimi.
+- **403 ≠ boş.** Yeddi səhifədə gəlməyən siyahı «Qeyd yoxdur» kimi çəkilirdi: Məzuniyyət, Doğum günləri,
+  Tapşırıqlar, Növbələr, Filiallar, İşçilər, Elanlar, həmçinin profilin alt siyahıları. İndi boş sətir
+  «icazəniz yoxdur» və ya «yüklənmədi» deyir.
+  - Menecerin aça bildiyi heç bir əsas siyahı yalnız admin üçün olan endpoint-dən gəlmir (yoxlandı).
+  - Normal istifadədə 403 yalnız funksiyası söndürülmüş «Elanlar»da yaranırdı.
+
+### 17.7 Testlər və ölçülər
+
+- Backend 1323 test. Frontend 457 test (51 fayl), build yaşıl.
+- Komponent testləri jsdom ilə, yalnız `@vitest-environment jsdom` yazan fayllarda işləyir. Qalan testlər node-da
+  qalır. Real komponentlər render olunur, yalnız şəbəkə saxtadır. Əhatə olunanlar:
+  - operator, tabelçi və müşahidəçi üçün menyu;
+  - icazəsiz düymələrin gizlədilməsi;
+  - müşahidəçinin redaktə edə bilməməsi;
+  - köhnə admin və menecer ekranları;
+  - 403 ilə boş siyahının fərqi;
+  - rol və filial dəyişəndə tab-a qayıdışda yenilənmə;
+  - menecerin saxlamasının fərdi ayarları kartdan göndərməsi.
+- Brauzer testi lokal aparıldı: Chrome, Vite, hər rol üçün saxta API. Lokal Docker olmadığı üçün backend lokal
+  qalxmadı. Backend məntiqi staging-də real PostgreSQL ilə yoxlanıldı:
+  - Faza 4 build-i konteynerin içində probe ilə işlədildi;
+  - yazılar geri qaytarıldı, baza izi əvvəl və sonra eyni qaldı.
+- Probe nəticələri:
+  - 186 qərarda köhnə admin və menecer heç bir səhifəni itirmir;
+  - operatorun təyin etdiyi tabelçi növbəti sorğuda tək, düzgün filialı görür, `TokenVersion` dəyişmir;
+  - altı yeni yolun hər biri səbəbsiz rədd olunur, səbəblə qəbul olunur və audit-ə yazılır;
+  - menecer siyahısı formanın göndərdiyi hər sahəni daşıyır;
+  - `/api/me/access` median 3–5 ms çəkir.
+- İşçi tətbiqinin ilkin yükləməsi: 129,5 → 130,8 KB gzip (+1,3 KB, +1%). Bütün JS: +1,6 KB, çünki köhnə menecer
+  səhifəsi silindi.
+- Sorğu sayı:
+  - menecerin siyahısı açılanda 5 sorğu, əvvəl də 5 idi; vəzifələr artıq yalnız forma açılanda oxunur;
+  - filtr və səhifə dəyişəndə 0 sorğu;
+  - panel hər açılanda və tab hər qayıdanda +1 (`/api/me/access`).
+
+### 17.8 Açıq qalanlar
+
+- Sayğac və zəng hələ yalnız admindədir.
+- Faza 5: qərar yeni modelə keçir, vahid `/api/employees`, əkiz endpoint-lər ləqəbə çevrilir.

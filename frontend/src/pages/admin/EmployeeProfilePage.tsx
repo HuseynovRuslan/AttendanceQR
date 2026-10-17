@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  getEmployees,
+  getEmployee,
   getSummary,
   getEmployeeDays,
   getDeviceBindings,
@@ -25,6 +25,8 @@ import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompa
 import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
+import { useAccess } from '../../auth/AccessContext'
+import { listFailureText } from '../../lib/listFailure'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { PersonAccessCard } from '../../components/PersonAccessCard'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
@@ -65,6 +67,7 @@ export function EmployeeProfilePage() {
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
   const { role, employeeId: myId } = useAuth()
+  const { access } = useAccess()
   const isManager = role === 'Manager'
   /**
    * Whether this caller may ACT on the person whose card is open.
@@ -91,6 +94,8 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
+  /** Which of the card's lists did not come (their status) — so «yoxdur» is said only when it is true. */
+  const [failed, setFailed] = useState<{ attendance?: number; devices?: number; summary?: number }>({})
   const [equipment, setEquipment] = useState<EquipmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -131,7 +136,7 @@ export function EmployeeProfilePage() {
     // is unscoped and carries monthlySalary, so it must never be the thing a manager's screen fetches
     // and filters client-side.
     const [empRes, attRes, devRes, sumRes, daysRes, equipRes] = await Promise.all([
-      isManager ? getManagerEmployee(id) : getEmployees(),
+      isManager ? getManagerEmployee(id) : getEmployee(id),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
@@ -147,10 +152,14 @@ export function EmployeeProfilePage() {
       ? null
       : Array.isArray(empRes.data)
         ? empRes.data.find((e) => e.id === id) ?? null
-        // The manager row is the same shape minus salary and role — which is the point, so the cast
-        // goes through unknown rather than pretending the two types overlap. The fields this screen
-        // reads (identity, hours, shift, flags) are present on both; salary it never displays, and
-        // role only decorates a badge.
+        // BOTH sides now answer with one employee, so this is the branch that runs. The admin screen
+        // used to ask for the entire roster and pick a row out of it in the browser — nine hundred
+        // people loaded to show one, on every profile opened.
+        //
+        // The manager row is the same shape minus salary and role, so the cast goes through unknown
+        // rather than pretending the two types overlap. The fields this screen reads (identity,
+        // hours, shift, flags) are present on both; salary it never displays, and role only
+        // decorates a badge.
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
@@ -165,6 +174,11 @@ export function EmployeeProfilePage() {
     }
     const recs = attRes.status === 200 && Array.isArray(attRes.data) ? attRes.data : []
     setRecords(recs)
+    setFailed({
+      attendance: attRes.status === 200 ? undefined : attRes.status,
+      devices: devRes.status === 200 ? undefined : devRes.status,
+      summary: sumRes.status === 200 ? undefined : sumRes.status,
+    })
     if (devRes.status === 200 && Array.isArray(devRes.data)) setDevices(devRes.data.filter((d) => d.employeeId === id))
     if (equipRes?.status === 200 && Array.isArray(equipRes.data)) setEquipment(equipRes.data)
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
@@ -444,7 +458,9 @@ export function EmployeeProfilePage() {
             {manageable && (
               <button
                 className="btn btn-primary btn-sm"
-                onClick={() => navigate(`/admin/${isManager ? 'my-employees' : 'employees'}?edit=${emp.id}`)}
+                // One staff list for both since Phase 4, and it opens a manager's edit from their own
+                // card. The old manager address redirected without the ?edit= and opened nothing.
+                onClick={() => navigate(`/admin/employees?edit=${emp.id}`)}
               >
                 Redaktə et
               </button>
@@ -524,7 +540,9 @@ export function EmployeeProfilePage() {
             {openMetric && <MetricBreakdown metric={openMetric} days={monthDays} onClose={() => setOpenMetric(null)} />}
           </>
         ) : (
-          <p className="muted" style={{ fontSize: 13 }}>Bu ay üçün məlumat yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.summary != null ? listFailureText(failed.summary) : 'Bu ay üçün məlumat yoxdur.'}
+          </p>
         )}
       </div>
 
@@ -533,8 +551,11 @@ export function EmployeeProfilePage() {
       {id && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
 
       {/* Personal */}
-      {/* Roles and where — admin only while the access API is (Phase 3); the card hides itself otherwise. */}
-      {role === 'Admin' && emp && <PersonAccessCard employeeId={emp.id} fullName={emp.fullName} />}
+      {/* Roles and where — for whoever the access API admits: the admin, and anybody whose role carries
+          «assignments.view» (the server narrows it to their own area). */}
+      {(role === 'Admin' || access?.permissions.some((p) => p.key === 'assignments.view')) && emp && (
+        <PersonAccessCard employeeId={emp.id} fullName={emp.fullName} />
+      )}
 
       <div className="card card-pad">
         <div className="card-title">Şəxsi məlumat</div>
@@ -609,7 +630,9 @@ export function EmployeeProfilePage() {
         )}
 
         {recent.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Qeyd yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.attendance != null ? listFailureText(failed.attendance) : 'Qeyd yoxdur.'}
+          </p>
         ) : (
           <div className="tbl-wrap tbl-cards">
             <table>
@@ -742,7 +765,9 @@ export function EmployeeProfilePage() {
       <div className="card card-pad">
         <div className="card-title">Cihazlar</div>
         {devices.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Bağlı cihaz yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.devices != null ? listFailureText(failed.devices) : 'Bağlı cihaz yoxdur.'}
+          </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {devices.map((d) => (

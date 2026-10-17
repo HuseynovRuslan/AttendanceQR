@@ -3,6 +3,7 @@ import { sendPhotoWarning, voidFraudRecord } from '../api/attendance'
 import { getImpersonation } from '../api/client'
 import { IconX } from './icons'
 import { FaceFlagBadge } from './FaceFlagBadge'
+import { CORRECTION_ERROR, useCorrectionReason } from './CorrectionReason'
 import { fmtTime } from '../lib/format'
 
 interface PhotoCompareModalProps {
@@ -40,6 +41,8 @@ export function PhotoCompareModal({
   const [done, setDone] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const [message, setMessage] = useState('')
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const correction = useCorrectionReason()
 
   /**
    * Say it without taking anything away.
@@ -92,16 +95,29 @@ export function PhotoCompareModal({
    */
   async function act(revokeDevice: boolean) {
     if (!recordId) return
-    const question = revokeDevice
-      ? 'Bu giriş ləğv edilsin (Qayıb yazılsın), işçiyə bildiriş getsin VƏ cihaz bağlaması silinsin?\n\n' +
-        'Diqqət: ortaq briqada telefonunda bu, həmin telefondan istifadə edən BÜTÜN işçiləri çıxarır.'
-      : 'Bu giriş ləğv edilsin (Qayıb yazılsın) və işçiyə bildiriş getsin?\n\n' +
-        'Şəkil silinmir — sübut olaraq qalır, və qərar geri qaytarıla bilər.'
-    if (!window.confirm(question)) return
+    // The reason the window.confirm used to fill in by itself is now the first preset — a person picks
+    // it (the owner's rule of 2026-10-15: every correction says why, in somebody's words).
+    const why = await correction.ask({
+      title: revokeDevice ? 'Girişi ləğv et və cihaz bağlamasını sil' : 'Girişi ləğv et',
+      detail: revokeDevice
+        ? 'Gün Qayıb sayılır, işçiyə bildiriş gedir VƏ cihaz bağlaması silinir. Diqqət: ortaq briqada ' +
+          'telefonunda bu, həmin telefondan istifadə edən BÜTÜN işçiləri çıxarır.'
+        : 'Gün Qayıb sayılır və işçiyə bildiriş gedir. Şəkil silinmir — sübut olaraq qalır, və qərar geri qaytarıla bilər.',
+      confirmLabel: 'Girişi ləğv et',
+      cancelLabel: 'Geri qayıt',
+      danger: true,
+      presets: [
+        'Giriş şəkli saxtadır (üz yoxlaması uyğunsuzluğu)',
+        'Şəkildəki adam başqasıdır',
+        'Şəkil ekrandan və ya fotodan çəkilib',
+      ],
+    })
+    if (why === null) return
 
     setBusy(true)
     setFailed(false)
-    const { status, data } = await voidFraudRecord(recordId, { revokeDevice })
+    setRefusal(null)
+    const { status, data } = await voidFraudRecord(recordId, why, { revokeDevice })
     setBusy(false)
     if (status === 200 && data && 'voided' in data) {
       setDone(revokeDevice
@@ -110,10 +126,12 @@ export function PhotoCompareModal({
       onActed?.()
       return
     }
+    const code = (data as { error?: string } | null)?.error ?? ''
+    if (CORRECTION_ERROR[code]) { setRefusal(CORRECTION_ERROR[code]); return }
     setFailed(true)
   }
 
-  // Close on Escape.
+  // Close on Escape. (The reason dialog over it takes its own Escape first — see CorrectionReason.)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -122,7 +140,11 @@ export function PhotoCompareModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // The reason dialog is a SIBLING of the overlay, not a child: React bubbles clicks through the
+  // component tree, and inside it a click on the dialog's backdrop would reach the overlay's onClose.
   return (
+    <>
+    {correction.dialog}
     <div
       onClick={onClose}
       style={{
@@ -232,12 +254,14 @@ export function PhotoCompareModal({
                   </button>
                 </div>
                 {failed && <div className="photo-audit-fail">Alınmadı — yenidən cəhd edin.</div>}
+                {refusal && <div className="photo-audit-fail">{refusal}</div>}
               </>
             )}
           </div>
         )}
       </div>
     </div>
+    </>
   )
 }
 

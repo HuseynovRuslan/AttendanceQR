@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
-import { canOpen } from '../../lib/panelAccess'
+import { useAccess } from '../../auth/AccessContext'
+import { canOpen, PANEL_PAGES, pagesAfterSwitch } from '../../lib/panelAccess'
 import { getImpersonation } from '../../api/client'
 import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/BrandingContext'
 import { BrandLogo } from '../../components/BrandLogo'
@@ -30,6 +31,7 @@ import {
   IconShield,
   IconSun,
   IconTable,
+  IconUser,
   IconUsers,
   IconX,
 } from '../../components/icons'
@@ -48,10 +50,10 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
   '/admin/birthdays': { title: 'Doğum günləri', sub: 'Bu ay doğum günü olan işçilər' },
   '/admin/tabel': { title: 'Aylıq tabel', sub: 'Günlər üzrə davamiyyət cədvəli — çap və Excel' },
-  '/admin/my-employees': { title: 'İşçilər', sub: 'Öz filialınızın işçiləri — əlavə et, redaktə et' },
   '/admin/my-leaves': { title: 'Məzuniyyət / İcazə', sub: 'Öz işçiləriniz üçün icazə və məzuniyyət' },
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/access': { title: 'Səlahiyyətlər', sub: 'Kimə hansı rol, harada — verilən hüquq növbəti açılışdan qüvvədədir' },
+  '/admin/my-area': { title: 'Mənim sahəm', sub: 'Rollarınız, filiallarınız və paneldə sizə nəyin açıldığı' },
   '/admin/equipment': { title: 'Kompüter inventarizasiyası', sub: 'İT avadanlıqlarının siyahısı — kimdə nə var' },
   '/admin/schedules': { title: 'Növbələr', sub: 'Saatlar, iş günləri və rotasiya — bir dəfə qurulur, işçilərə təyin edilir' },
   '/admin/payroll': { title: 'Maaş', sub: 'Aylıq maaş − qayıb = ödəniləcək; Excel-ə çıxar' },
@@ -74,10 +76,12 @@ const MOBILE_BREAKPOINT = 680
 
 export function AdminLayout() {
   const { role, email, logout } = useAuth()
+  const { access } = useAccess()
   const branding = useBranding()
   const location = useLocation()
   const isAdmin = role === 'Admin'
-  const isManager = role === 'Manager'
+  // Somebody whose panel comes only from a role in the new model — plain staff by today's role.
+  const modelOnly = role !== 'Admin' && role !== 'Manager'
 
   // Per-tenant plan switches. A hidden menu item is only cosmetic — the backend 403s these anyway
   // (see [RequireFeature]); this just stops offering a screen that would refuse.
@@ -141,9 +145,12 @@ export function AdminLayout() {
     {
       title: null, // the everyday landing screens need no caption over them
       links: [
+        // Their landing page, on top, for somebody the old roles do not know; for everybody else it sits
+        // under Tənzimləmələr beside Səlahiyyətlər.
+        ...(modelOnly ? [{ to: '/admin/my-area', label: 'Mənim sahəm', Icon: IconUser }] : []),
         { to: '/admin/dashboard', label: 'İdarəetmə paneli', Icon: IconHome },
-        ...(isAdmin || isManager ? [{ to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck }] : []),
-        ...(isAdmin && announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
+        { to: '/admin/tasks', label: 'Tapşırıqlar', Icon: IconCheck },
+        ...(announcementsOn ? [{ to: '/admin/announcements', label: 'Elanlar', Icon: IconBell }] : []),
       ],
     },
     {
@@ -170,19 +177,19 @@ export function AdminLayout() {
       links: [
         { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
         { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconTable },
-        ...((isAdmin || isManager) && payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconMoney }] : []),
+        ...(payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconMoney }] : []),
       ],
     },
     {
       title: 'İşçilər',
       links: [
-        ...(isAdmin ? [{ to: '/admin/employees', label: 'İşçilər', Icon: IconUsers }] : []),
-        ...(isManager ? [{ to: '/admin/my-employees', label: 'İşçilər', Icon: IconUsers }] : []),
-        ...(isAdmin ? [{ to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
-        ...(isManager ? [{ to: '/admin/my-leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun }] : []),
+        // One staff list and one leave register for admins and managers alike since Phase 4 — what each
+        // of them sees in it is the server's answer for them.
+        { to: '/admin/employees', label: 'İşçilər', Icon: IconUsers },
+        { to: '/admin/leaves', label: 'Məzuniyyət / İcazə', Icon: IconSun },
         { to: '/admin/schedules', label: 'Növbələr', Icon: IconRefresh },
-        ...(isAdmin ? [{ to: '/admin/positions', label: 'Vəzifələr', Icon: IconBriefcase }] : []),
-        ...(isAdmin ? [{ to: '/admin/equipment', label: 'Kompüter inventarizasiyası', Icon: IconLaptop }] : []),
+        { to: '/admin/positions', label: 'Vəzifələr', Icon: IconBriefcase },
+        { to: '/admin/equipment', label: 'Kompüter inventarizasiyası', Icon: IconLaptop },
         { to: '/admin/birthdays', label: 'Doğum günləri', Icon: IconGift },
       ],
     },
@@ -200,20 +207,33 @@ export function AdminLayout() {
         // A manager sees and edits the branches they manage — they are the one who knows where the
         // poster hangs and how wide the yard is. Creating and deleting stays with the admin.
         { to: '/admin/locations', label: 'Filiallar', Icon: IconBuilding },
-        ...(isAdmin ? [{ to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar }] : []),
-        ...(isAdmin ? [{ to: '/admin/access', label: 'Səlahiyyətlər', Icon: IconShield }] : []),
+        { to: '/admin/non-working-days', label: 'Qeyri-iş günləri', Icon: IconCalendar },
+        // Admins, and — the one page the new model opens before the switch — whoever holds the right to
+        // see assignments: a structure operator making their own timekeepers.
+        { to: '/admin/access', label: 'Səlahiyyətlər', Icon: IconShield },
+        ...(!modelOnly ? [{ to: '/admin/my-area', label: 'Mənim sahəm', Icon: IconUser }] : []),
         // What the company pays for the product, and whether it is settled. Admin only — a manager
         // runs a branch, not the contract.
-        ...(isAdmin ? [{ to: '/admin/billing', label: 'Abunəlik', Icon: IconMoney }] : []),
+        { to: '/admin/billing', label: 'Abunəlik', Icon: IconMoney },
       ],
     },
   ]
     // Every row is checked against the SAME table the router uses, so a link can no longer outlive
     // the route behind it. That is not hypothetical: seven rows were opened here while the routes
     // stayed shut, and for two commits a manager tapped them and was silently bounced back to the
-    // today board — indistinguishable, from their side, from a mis-tap.
-    .map((s) => ({ ...s, links: s.links.filter((l) => canOpen(l.to.replace('/admin/', ''), role)) }))
+    // today board — indistinguishable, from their side, from a mis-tap. Since Phase 4 the table is the
+    // ONLY place a row is decided — the role conditions that used to sit in this array are gone.
+    .map((s) => ({ ...s, links: s.links.filter((l) => canOpen(l.to.replace('/admin/', ''), role, access)) }))
     .filter((s) => s.links.length > 0)
+
+  // What the person's new role will open once the company switches — shown, greyed, rather than hidden,
+  // so a timekeeper sees why their menu is short today and what it will hold.
+  const later = pagesAfterSwitch(role, access)
+  const laterPages = PANEL_PAGES.filter((p) => p.menu !== false && later.has(p.path))
+  // Their roles' names under the e-mail, for somebody the old two labels do not describe.
+  const roleLabel = modelOnly
+    ? [...new Set((access?.assignments ?? []).map((a) => a.roleName).filter(Boolean))].join(', ') || 'Panel'
+    : ROLE_LABEL[role ?? ''] ?? role
 
   return (
     <div className="app">
@@ -238,7 +258,7 @@ export function AdminLayout() {
             <span className="role-dot" style={{ background: ROLE_DOT[role ?? ''] ?? '#7CB342' }} />
             <div>
               <div className="role-name">{email ?? '—'}</div>
-              <div className="role-area">{ROLE_LABEL[role ?? ''] ?? role}</div>
+              <div className="role-area">{roleLabel}</div>
             </div>
           </div>
         </div>
@@ -258,6 +278,16 @@ export function AdminLayout() {
               ))}
             </div>
           ))}
+          {laterPages.length > 0 && (
+            <div className="nav-section nav-later">
+              <div className="nav-section-title">Keçiddən sonra açılacaq</div>
+              {laterPages.map((p) => (
+                <div key={p.path} className="nav-item disabled" title="Rolunuz bunu əhatə edir — şirkət yeni qaydaya keçəndə açılacaq">
+                  <span className="nav-label">{p.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="sidebar-footer">

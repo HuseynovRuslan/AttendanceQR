@@ -15,7 +15,10 @@ import {
   type BulkPinResult,
   deleteEmployee,
   getAdminLocations,
+  getEmployee,
   getEmployees,
+  getEmployeeSelection,
+  getEmployeeStats,
   getSchedules,
   invite,
   reinviteEmployee,
@@ -24,12 +27,28 @@ import {
   resetPin,
   resetReferencePhoto,
   updateEmployee,
-  type AdminEmployee,
+  type AdminEmployeeRow,
   type AdminLocation,
+  type EmployeeSelectionRow,
+  type EmployeeStats,
   type InviteResult,
   type Schedule,
 } from '../../api/admin'
 import { getGroupCompanies } from '../../api/tenant'
+import {
+  bulkPermissionAsManager,
+  createManagerEmployee,
+  getManagerEmployee,
+  getManagerEmployees,
+  getManagerLocations,
+  getManagerSchedules,
+  resetManagerEmployeePin,
+  updateManagerEmployee,
+  type ManagerEmployee,
+  type ManagerEmployeeInput,
+} from '../../api/manager'
+import { rosterPage, rosterSelection, rosterStats, type ManagerRosterRow } from '../../lib/managerRoster'
+import { CredentialDesk } from '../manager/CredentialDesk'
 import {
   adminClearCheckout,
   adminCreateRecord,
@@ -41,6 +60,7 @@ import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { StatusBadge } from '../../components/StatusBadge'
+import { listFailureText } from '../../lib/listFailure'
 import {
   IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
   IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
@@ -82,6 +102,10 @@ function cycleLabel(days: number, onDays: number): string {
 }
 
 const ERRORS: Record<string, string> = {
+  // A branch manager's own refusals (their endpoints, since the one staff list).
+  NameRequired: 'Ad tələb olunur',
+  LocationNotManaged: 'Bu filial sizə aid deyil',
+  CannotDeactivateManager: 'Meneceri yalnız admin deaktiv edə bilər',
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
   NeedEmailOrPhone: 'Telefon nömrəsi və ya email lazımdır',
@@ -210,8 +234,39 @@ function readEmpCols(): EmpCols {
   }
 }
 
-/** How many rows one page of the list holds. 914 people is not a scroll. */
+/** How many rows one page of the list holds — and how many the SERVER is asked for. */
 const PAGE_SIZE = 25
+
+/** A branch in the pickers — all the page reads of one, whichever endpoint it came from. */
+type BranchOption = Pick<AdminLocation, 'id' | 'name'>
+/** A shift in the pickers. A manager's shift list carries no branch, so it is offered for every branch;
+ *  the server refuses another site's shift either way (ScheduleBelongsToOtherBranch). */
+type ShiftOption = Pick<Schedule, 'id' | 'name' | 'shiftStart' | 'shiftEnd' | 'isOvernight'> & { locationId: string | null }
+
+/** Until the first /stats answers. Shown as zeros rather than as an empty card. */
+const ZERO_STATS: EmployeeStats = {
+  total: 0, activated: 0, notStarted: 0, noPush: 0, noDevice: 0, leftCount: 0,
+}
+
+/**
+ * A list row, reduced to what a bulk action decides from.
+ *
+ * The selection has to survive paging — tick four people on page 1, three on page 2, press «icazə
+ * ver» — so it cannot be «the ticked rows of the list currently loaded». It holds these instead, and
+ * /employees/selection returns the identical shape for «Hamısını seç».
+ */
+function selRow(e: AdminEmployeeRow): EmployeeSelectionRow {
+  return {
+    id: e.id,
+    fullName: e.fullName,
+    locationName: e.locationName,
+    isActive: e.isActive,
+    activated: e.activated,
+    mustChangePin: e.mustChangePin,
+    canShareDevice: e.canShareDevice === true,
+    canFieldCheckIn: e.canFieldCheckIn === true,
+  }
+}
 
 function splitName(first: string | null | undefined, last: string | null | undefined, full: string): { first: string; last: string } {
   if (first || last) return { first: first ?? '', last: last ?? '' }
@@ -222,9 +277,31 @@ function splitName(first: string | null | undefined, last: string | null | undef
 
 export function EmployeesPage() {
   const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
-  const [rows, setRows] = useState<AdminEmployee[]>([])
-  const [locations, setLocations] = useState<AdminLocation[]>([])
-  const [schedules, setSchedules] = useState<Schedule[]>([])
+  // ONE staff list for admins and branch managers (Phase 4). A manager's list is their own roster —
+  // GET /api/manager/employees: their branches, no salary, no role, no colleague's contacts — and every
+  // write goes through their own endpoints, which the server checks row by row. The page only draws
+  // what each of them could already do; nothing a manager could not do before opens here.
+  const { role } = useAuth()
+  const isManager = role === 'Manager'
+  /** A manager's whole roster, filtered and paged in the browser — see lib/managerRoster. */
+  const [mgrAll, setMgrAll] = useState<ManagerEmployee[] | null>(null)
+  /** The card a manager is editing: a colleague they may not switch off, and a branch that may not be
+   *  among theirs (a colleague stays where they are). */
+  const [mgrEditing, setMgrEditing] = useState<{ isColleague: boolean; locationName: string } | null>(null)
+  // ONE page of the roster — twenty-five rows, narrowed and ordered in SQL. This used to be every
+  // employee in the company, with every device binding each of them had ever had.
+  const [rows, setRows] = useState<AdminEmployeeRow[]>([])
+  /** How many people the current filters match in total, for the pager and «Hamısını seç». */
+  const [total, setTotal] = useState(0)
+  /** The headline counts, which a page of twenty-five cannot compute. See getEmployeeStats. */
+  const [stats, setStats] = useState<EmployeeStats>(ZERO_STATS)
+  const [listing, setListing] = useState(true)
+  /** The list's own request failed (its status). The empty row says so instead of «Hələ işçi yoxdur». */
+  const [listFailed, setListFailed] = useState<number | null>(null)
+  /** Whether the branch list came — so «no branch assigned yet» is said only when it is true. */
+  const [locsLoaded, setLocsLoaded] = useState(false)
+  const [locations, setLocations] = useState<BranchOption[]>([])
+  const [schedules, setSchedules] = useState<ShiftOption[]>([])
   /** The other companies in this owner's group — the «Sənəd üzrə şirkət» picker. Empty for a tenant
    *  that has none configured, and the field then falls back to a plain text box rather than an
    *  empty dropdown nobody can get past. */
@@ -232,7 +309,8 @@ export function EmployeesPage() {
   /** The shift the bulk strip will apply; 'none' clears instead. */
   const [bulkShift, setBulkShift] = useState('')
   const navigate = useNavigate()
-  const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [filterLoc, setFilterLocRaw] = useState<string | null>(null)
   // Leavers stay (their days are in the tabel and pay) but off the everyday list — «deaktiv etdim, adlar
   // yenə qalır». One button shows them, to bring somebody back or delete a never-used account.
   const [showLeft, setShowLeft] = useState(false)
@@ -246,19 +324,23 @@ export function EmployeesPage() {
    * could be on at once — an intersection nobody ever wants, which left the list empty and looking
    * broken. One select, one answer.
    */
-  const [statusSel, setStatusSel] = useState<StatusSel>('')
-  const [roleFilter, setRoleFilter] = useState<string>('')
-  /** Ticked rows. Empty means «everything on screen» — see the note on bulkTargets. */
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [page, setPage] = useState(1)
+  const [statusSel, setStatusSelRaw] = useState<StatusSel>('')
+  const [roleFilter, setRoleFilterRaw] = useState<string>('')
+  /**
+   * The ticked people, by id, each carrying the flags a bulk action reads.
+   *
+   * A Map rather than a Set of ids because the list is paged now: the rows a selection refers to are
+   * often not the rows on screen, so the data has to travel with the tick.
+   */
+  const [selected, setSelected] = useState<Map<string, EmployeeSelectionRow>>(() => new Map())
+  const [selectingAll, setSelectingAll] = useState(false)
   const [empColsOpen, setEmpColsOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [empCols, setEmpCols] = useState<EmpCols>(readEmpCols)
   const searchRef = useRef<HTMLInputElement>(null)
-  // The keydown listener is registered once and must not go stale: it reads the CURRENT filtered
-  // list through a ref rather than closing over the one that existed at mount.
-  const visibleRef = useRef<AdminEmployee[]>([])
   const [search, setSearch] = useState('')
+  /** What the server is actually asked for — the box, debounced, so typing is not a request a letter. */
+  const [searchQ, setSearchQ] = useState('')
   const [showForm, setShowForm] = useState(false)
   // Adding can be one-at-a-time or in bulk — both live under the single "İşçi əlavə et" button now
   // (Toplu əlavə was removed from the sidebar). Editing always uses the single form.
@@ -271,6 +353,8 @@ export function EmployeesPage() {
   const isSelf = editingId !== null && editingId === myId
   const [ok, setOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  /** Reading one employee for the edit form — the «Redaktə» button waits on this. */
+  const [formBusy, setFormBusy] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null)
   const [resettingId, setResettingId] = useState<string | null>(null)
@@ -280,7 +364,7 @@ export function EmployeesPage() {
   const [pinReset, setPinReset] = useState<{ name: string; pin: string } | null>(null)
 
   // Attendance-correction panel (view + fix one employee's raw records).
-  const [attendanceEmployee, setAttendanceEmployee] = useState<AdminEmployee | null>(null)
+  const [attendanceEmployee, setAttendanceEmployee] = useState<AdminEmployeeRow | null>(null)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [attendanceLoading, setAttendanceLoading] = useState(false)
   const [attendanceError, setAttendanceError] = useState<string | null>(null)
@@ -293,37 +377,121 @@ export function EmployeesPage() {
   const [createCheckOut, setCreateCheckOut] = useState('')
   const [savingRecord, setSavingRecord] = useState(false)
 
+  /** Everything the current filters mean, in the shape the three endpoints take. */
+  const query = {
+    page, pageSize: PAGE_SIZE,
+    search: searchQ, status: statusSel, locationId: filterLoc, role: roleFilter, showLeft,
+  }
+  // Responses can come back out of order — a slow «Ə» answering after the «Əl» that replaced it would
+  // put the wrong page on screen. Only the newest request is allowed to write state.
+  const reqSeq = useRef(0)
+
+  /**
+   * One page of the list, plus the counts above it.
+   *
+   * Also what every mutation on this screen calls when it is done, which is why it re-reads BOTH:
+   * deactivating somebody moves them out of the list and out of the headline numbers at once.
+   */
   async function refresh() {
-    const [emp, locs, scheds, group] = await Promise.all([
-      getEmployees(), getAdminLocations(), getSchedules(), getGroupCompanies(),
-    ])
-    if (emp.status === 200 && Array.isArray(emp.data)) setRows(emp.data)
-    if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
-    if (scheds.status === 200 && Array.isArray(scheds.data)) setSchedules(scheds.data)
-    if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
+    const seq = ++reqSeq.current
+    setListing(true)
+    if (isManager) {
+      // Their roster, whole: the page, the counts and «Hamısını seç» are all computed from it below.
+      const { status, data } = await getManagerEmployees()
+      if (seq !== reqSeq.current) return
+      setListing(false)
+      if (status === 200 && Array.isArray(data)) setMgrAll(data)
+      setListFailed(status === 200 ? null : status)
+      return
+    }
+    const [emp, st] = await Promise.all([getEmployees(query), getEmployeeStats(filterLoc)])
+    if (seq !== reqSeq.current) return
+    setListing(false)
+    if (emp.status === 200 && emp.data && 'items' in emp.data) {
+      setRows(emp.data.items)
+      setTotal(emp.data.total)
+    }
+    setListFailed(emp.status === 200 ? null : emp.status)
+    if (st.status === 200 && st.data) setStats(st.data)
   }
 
+  // Branches, shifts and the group's companies do not depend on the filters and are read once.
   useEffect(() => {
-    void refresh()
+    void (async () => {
+      if (isManager) {
+        const [locs, scheds, group] = await Promise.all([
+          getManagerLocations(), getManagerSchedules(), getGroupCompanies(),
+        ])
+        if (locs.status === 200 && Array.isArray(locs.data)) {
+          setLocations(locs.data)
+          setLocsLoaded(true)
+        }
+        if (scheds.status === 200 && Array.isArray(scheds.data)) {
+          setSchedules(scheds.data.map((sc) => ({ ...sc, locationId: null })))
+        }
+        if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
+        return
+      }
+      const [locs, scheds, group] = await Promise.all([
+        getAdminLocations(), getSchedules(), getGroupCompanies(),
+      ])
+      if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data)
+      if (scheds.status === 200 && Array.isArray(scheds.data)) setSchedules(scheds.data)
+      if (group.status === 200 && Array.isArray(group.data)) setGroupCompanies(group.data)
+    })()
   }, [])
+
+  // The box is debounced before it becomes a query: a name typed at speed is one request, not nine.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchQ((prev) => {
+        const next = search.trim()
+        if (next !== prev) setPage(1)
+        return next
+      })
+    }, 250)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // The list is re-read whenever what it is asked for changes, and nowhere else. A manager's roster is
+  // read once and again after each write; a filter or a page turn only recomputes it (the next effect).
+  useEffect(() => {
+    if (isManager && mgrAll) return
+    void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchQ, statusSel, filterLoc, roleFilter, showLeft])
+
+  useEffect(() => {
+    if (!isManager || !mgrAll) return
+    const { items, total: n } = rosterPage(mgrAll, { page, pageSize: PAGE_SIZE, search: searchQ, locationId: filterLoc, showLeft })
+    setRows(items)
+    setTotal(n)
+    setStats(rosterStats(mgrAll, filterLoc))
+  }, [isManager, mgrAll, page, searchQ, filterLoc, showLeft])
+
+  /**
+   * Any filter change also sends the reader back to page 1.
+   *
+   * In the setter rather than in an effect on purpose: an effect would let one request go out for
+   * page 7 of a result that no longer has seven pages, and then a second for page 1.
+   */
+  function setFilterLoc(v: string | null) { setFilterLocRaw(v); setPage(1) }
+  function setStatusSel(v: StatusSel | ((p: StatusSel) => StatusSel)) { setStatusSelRaw(v); setPage(1) }
+  function setRoleFilter(v: string) { setRoleFilterRaw(v); setPage(1) }
 
   // Opened from an employee's profile ("Redaktə et" → /admin/employees?edit=<id>): jump straight into
   // that employee's edit form once the list has loaded, then drop the query param.
   const [searchParams, setSearchParams] = useSearchParams()
+  // It used to wait for the whole roster to arrive and then look the employee up in it, so opening
+  // «Redaktə et» on somebody who would have landed on page 7 only worked because page 7 was loaded
+  // too. Now it reads that one employee.
   useEffect(() => {
     const eid = searchParams.get('edit')
-    if (!eid || rows.length === 0) return
-    const target = rows.find((r) => r.id === eid)
-    if (target) {
-      startEdit(target)
-      setSearchParams({}, { replace: true })
-    }
+    if (!eid) return
+    setSearchParams({}, { replace: true })
+    void startEdit(eid)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, searchParams])
-
-  // Any change to the filters sends the reader back to page 1. Without this, a search that matches
-  // four people lands on page 7 of the old result and reads as «no results».
-  useEffect(() => { setPage(1) }, [filterLoc, statusSel, roleFilter, search, showLeft])
+  }, [searchParams])
 
   // ⌘K focuses the search box; ⌘A selects every row the filters have left on screen.
   //
@@ -346,11 +514,38 @@ export function EmployeesPage() {
         || (el instanceof HTMLElement && el.isContentEditable)
       if (typing) return
       e.preventDefault()
-      setSelected(new Set(visibleRef.current.map((r) => r.id)))
+      void selectAll()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQ, statusSel, filterLoc, roleFilter, showLeft])
+
+  /**
+   * Tick EVERY person the filters match — all of them, not the twenty-five on screen.
+   *
+   * This is the one thing server-side paging could quietly have broken. «Hamısını seç» and ⌘A are
+   * what make «grant this to the whole branch» one press, and a branch is routinely forty people; if
+   * the phrase had come to mean «this page», a permission meant for a brigade would have reached the
+   * first page of it and nobody would have noticed. The server returns the whole matching set — ids
+   * and the handful of flags a bulk action reads, nothing else.
+   */
+  async function selectAll() {
+    if (isManager) {
+      setSelected(new Map(rosterSelection(mgrAll ?? [], { search: searchQ, locationId: filterLoc, showLeft }).map((r) => [r.id, r])))
+      return
+    }
+    setSelectingAll(true)
+    const { status, data } = await getEmployeeSelection({
+      search: searchQ, status: statusSel, locationId: filterLoc, role: roleFilter, showLeft,
+    })
+    setSelectingAll(false)
+    if (status !== 200 || !Array.isArray(data)) {
+      setError('Seçim alınmadı')
+      return
+    }
+    setSelected(new Map(data.map((r) => [r.id, r])))
+  }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -366,7 +561,27 @@ export function EmployeesPage() {
     setShowForm(true)
   }
 
-  function startEdit(e: AdminEmployee) {
+  /**
+   * Open the edit form on one employee, read FROM THE DETAIL ENDPOINT.
+   *
+   * Never from the list row. `EmployeeUpdateRequest` null-defaults every field it is not handed, so
+   * saving a form filled from a list row would blank whatever the list does not carry — the email,
+   * the salary, the per-person geofence and QR-less overrides, the rotation anchor. The list stopped
+   * carrying those on purpose; this is the other half of that change.
+   */
+  async function startEdit(id: string) {
+    if (isManager) {
+      await startEditAsManager(id)
+      return
+    }
+    setFormBusy(true)
+    const { status, data } = await getEmployee(id)
+    setFormBusy(false)
+    if (status !== 200 || !data || 'error' in data) {
+      setError('İşçi məlumatı gəlmədi')
+      return
+    }
+    const e = data
     setEditingId(e.id)
     const parts = splitName(e.firstName, e.lastName, e.fullName)
     setForm({
@@ -403,9 +618,59 @@ export function EmployeesPage() {
     setShowForm(true)
   }
 
+  /**
+   * A manager's edit, read from THEIR single card (GET /api/manager/employees/{id}) — the same rule as
+   * above: never from the list row, because the update writes every field it is handed. The card carries
+   * everything the manager's update round-trips, and no salary or role, which their update never reads.
+   */
+  async function startEditAsManager(id: string) {
+    setFormBusy(true)
+    const { status, data } = await getManagerEmployee(id)
+    setFormBusy(false)
+    if (status !== 200 || !data || 'error' in data) {
+      setError('İşçi məlumatı gəlmədi')
+      return
+    }
+    const e = data
+    const parts = splitName(e.firstName, e.lastName, e.fullName)
+    setEditingId(e.id)
+    setMgrEditing({ isColleague: e.isColleague === true, locationName: e.locationName })
+    setForm({
+      ...EMPTY,
+      firstName: parts.first,
+      lastName: parts.last,
+      fatherName: e.fatherName ?? '',
+      position: e.position ?? '',
+      paperEmployer: e.paperEmployer ?? '',
+      paperSite: e.paperSite ?? '',
+      birthYear: e.birthYear != null ? String(e.birthYear) : '',
+      birthDate: e.birthDate ?? '',
+      email: e.email ?? '',
+      phoneNumber: e.phoneNumber ?? '',
+      locationId: e.locationId,
+      isActive: e.isActive,
+      workStart: e.workStart ?? '',
+      workEnd: e.workEnd ?? '',
+      photoExempt: e.photoExempt === true,
+      canFieldCheckIn: e.canFieldCheckIn === true,
+      qrlessOverride: e.qrlessCheckInOverride == null ? '' : e.qrlessCheckInOverride ? 'on' : 'off',
+      fenceOverride: fenceSelectFrom(e.requireGeofenceOverride),
+      canShareDevice: e.canShareDevice === true,
+      cycle: e.workCycleDays
+        ? { days: e.workCycleDays, onDays: e.workCycleOnDays ?? 1, anchor: e.workCycleAnchor ?? '' }
+        : NO_CYCLE,
+      scheduleId: e.scheduleId ?? '',
+    })
+    setError(null)
+    setOk(null)
+    setLink(null)
+    setShowForm(true)
+  }
+
   function closeForm() {
     setShowForm(false)
     setEditingId(null)
+    setMgrEditing(null)
     setError(null)
   }
 
@@ -460,6 +725,12 @@ export function EmployeesPage() {
       workCycleAnchor: form.cycle.days ? form.cycle.anchor || null : null,
       activateWithPin,
     }
+
+    if (isManager) {
+      await submitAsManager(payload)
+      return
+    }
+
     const res = editingId
       ? await updateEmployee(editingId, {
           ...payload,
@@ -491,7 +762,57 @@ export function EmployeesPage() {
     }
   }
 
-  async function onDelete(e: AdminEmployee) {
+  /**
+   * A manager's save, through their own endpoints. Only what their request carries is sent: no salary,
+   * no role, no managed branches, no shared-phone flag (their per-person update never reads it) — the
+   * server would ignore them anyway, and a body that names them would only look like it could.
+   */
+  async function submitAsManager(payload: {
+    fullName: string; firstName: string | null; lastName: string | null; email: string | null
+    phoneNumber: string | null; locationId: string; fatherName: string | null; position: string | null
+    paperEmployer: string | null; paperSite: string | null; birthYear: number | null; birthDate: string | null
+    photoExempt: boolean; canFieldCheckIn: boolean
+    qrlessCheckInOverride: boolean | null; requireGeofenceOverride: boolean | null
+    workStart: string | null; workEnd: string | null; scheduleId: string | null
+    workCycleDays: number | null; workCycleOnDays: number | null; workCycleAnchor: string | null
+  }) {
+    const input: ManagerEmployeeInput = {
+      fullName: payload.fullName, firstName: payload.firstName, lastName: payload.lastName,
+      email: payload.email, phoneNumber: payload.phoneNumber, fatherName: payload.fatherName,
+      position: payload.position, locationId: payload.locationId,
+      birthDate: payload.birthDate, birthYear: payload.birthYear,
+      workStart: payload.workStart, workEnd: payload.workEnd, scheduleId: payload.scheduleId,
+      workCycleDays: payload.workCycleDays, workCycleOnDays: payload.workCycleOnDays, workCycleAnchor: payload.workCycleAnchor,
+      photoExempt: payload.photoExempt, canFieldCheckIn: payload.canFieldCheckIn,
+      qrlessCheckInOverride: payload.qrlessCheckInOverride, requireGeofenceOverride: payload.requireGeofenceOverride,
+      paperEmployer: payload.paperEmployer, paperSite: payload.paperSite,
+      isActive: editingId ? form.isActive : true,
+    }
+    const res = editingId ? await updateManagerEmployee(editingId, input) : await createManagerEmployee(input)
+    setSaving(false)
+    if (res.status === 200 && res.data && 'id' in res.data) {
+      await refresh()
+      // A new account opens with a temporary PIN, shown once — the same card a PIN reset uses.
+      const tempPin = 'tempPin' in res.data ? (res.data as { tempPin?: string }).tempPin : undefined
+      if (tempPin) setPinReset({ name: input.fullName, pin: tempPin })
+      else setOk('İşçi yeniləndi')
+      closeForm()
+    } else {
+      const code = res.data && 'error' in res.data ? res.data.error : ''
+      setError(ERRORS[code] ?? 'Yadda saxlanmadı')
+    }
+  }
+
+  /** Drop ids the list no longer has — a selection outlives the rows it was made from now. */
+  function deselect(ids: Iterable<string>) {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      for (const id of ids) next.delete(id)
+      return next
+    })
+  }
+
+  async function onDelete(e: AdminEmployeeRow) {
     if (!window.confirm(`"${e.fullName}" işçisi silinsin?`)) return
     setError(null)
     setOk(null)
@@ -508,6 +829,7 @@ export function EmployeesPage() {
         const forced = await deleteEmployee(e.id, true)
         setDeletingId(null)
         if (forced.status === 200) {
+          deselect([e.id])
           await refresh()
         } else {
           setError('Silinmədi')
@@ -518,6 +840,7 @@ export function EmployeesPage() {
 
     setDeletingId(null)
     if (status === 200) {
+      deselect([e.id])
       await refresh()
     } else if (data && typeof data === 'object' && 'error' in data) {
       setError(ERRORS[(data as { error: string }).error] ?? 'Silinmədi')
@@ -526,7 +849,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onResetAttendance(e: AdminEmployee) {
+  async function onResetAttendance(e: AdminEmployeeRow) {
     if (
       !window.confirm(
         `"${e.fullName}" üçün BÜTÜN giriş/çıxış tarixçəsi silinsin? Hesab və cihaz bağlantısı qalır — yenidən skan testi edə bilərsiniz.`,
@@ -546,7 +869,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onReinvite(e: AdminEmployee) {
+  async function onReinvite(e: AdminEmployeeRow) {
     setError(null)
     setOk(null)
     setLinkBusyId(e.id)
@@ -560,11 +883,11 @@ export function EmployeesPage() {
     }
   }
 
-  async function onResetPin(e: AdminEmployee) {
+  async function onResetPin(e: AdminEmployeeRow) {
     if (!window.confirm(`"${e.fullName}" üçün PIN sıfırlansın? Yeni müvəqqəti PIN veriləcək — işçi girib öz PIN-ini dəyişməlidir.`)) return
     setError(null)
     setOk(null)
-    const { status, data } = await resetPin(e.id)
+    const { status, data } = isManager ? await resetManagerEmployeePin(e.id) : await resetPin(e.id)
     if (status === 200 && data && 'tempPin' in data) {
       setPinReset({ name: e.fullName, pin: data.tempPin })
     } else if (data && 'error' in data && data.error === 'NotActivated') {
@@ -575,7 +898,7 @@ export function EmployeesPage() {
     }
   }
 
-  async function onResetReference(e: AdminEmployee) {
+  async function onResetReference(e: AdminEmployeeRow) {
     if (!window.confirm(`"${e.fullName}" üçün referans şəkli sıfırlansın? İşçi növbəti dəfə öz telefonu ilə giriş edəndə yeni referans avtomatik yaranacaq.`)) return
     setRefBusy(true)
     setError(null)
@@ -596,7 +919,7 @@ export function EmployeesPage() {
     else setError('Referanslar sıfırlanmadı')
   }
 
-  async function openAttendance(e: AdminEmployee) {
+  async function openAttendance(e: AdminEmployeeRow) {
     setAttendanceEmployee(e)
     setAttendanceError(null)
     setEditingRecordId(null)
@@ -724,10 +1047,13 @@ export function EmployeesPage() {
    * strip beside it: the filters above ARE the selection, and it is the branch filter that makes this
    * safe to press — a crew is what a branch filter leaves on screen.
    */
-  async function applyShift(targets: AdminEmployee[]) {
-    if (!bulkShift || targets.length === 0) return
-    const clearing = bulkShift === 'none'
-    const shift = schedules.find((s) => s.id === bulkShift)
+  async function applyShift(targets: EmployeeSelectionRow[], shiftId: string = bulkShift) {
+    // The shift arrives as an argument. «Növbəni ləğv et» used to set bulkShift to 'none' and call this
+    // in the same click, so this read the value from BEFORE the click: nothing happened when no shift was
+    // picked, and the picked shift was ASSIGNED when one was — the opposite of what the button says.
+    if (!shiftId || targets.length === 0) return
+    const clearing = shiftId === 'none'
+    const shift = schedules.find((s) => s.id === shiftId)
     if (!clearing && !shift) return
 
     if (!window.confirm(
@@ -744,7 +1070,7 @@ export function EmployeesPage() {
     )) return
 
     setSharing(true)
-    const { status, data } = await bulkSchedule(targets.map((t) => t.id), clearing ? null : bulkShift)
+    const { status, data } = await bulkSchedule(targets.map((t) => t.id), clearing ? null : shiftId)
     setSharing(false)
     if (status === 200 && data && !('error' in data)) {
       await refresh()
@@ -758,8 +1084,8 @@ export function EmployeesPage() {
     }
   }
 
-  async function setPermission(targets: AdminEmployee[], permission: BulkPermission, allowed: boolean) {
-    const has = (t: AdminEmployee) =>
+  async function setPermission(targets: EmployeeSelectionRow[], permission: BulkPermission, allowed: boolean) {
+    const has = (t: EmployeeSelectionRow) =>
       (permission === 'ShareDevice' ? t.canShareDevice : t.canFieldCheckIn) === true
     const affected = targets.filter((t) => has(t) !== allowed)
     if (affected.length === 0) return
@@ -785,9 +1111,20 @@ ${back}`,
     )) return
 
     setSharing(true)
-    const { status } = await bulkPermission(affected.map((t) => t.id), permission, allowed)
+    // A manager's own route narrows it to their branches' plain staff and skips the rest, rather than
+    // failing the call over one name they may not act on.
+    const { status } = isManager
+      ? await bulkPermissionAsManager(affected.map((t) => t.id), permission, allowed)
+      : await bulkPermission(affected.map((t) => t.id), permission, allowed)
     setSharing(false)
     if (status === 200) {
+      const changed = new Set(affected.map((t) => t.id))
+      setSelected((prev) => new Map([...prev].map(([id, r]) => [
+        id,
+        changed.has(id)
+          ? permission === 'ShareDevice' ? { ...r, canShareDevice: allowed } : { ...r, canFieldCheckIn: allowed }
+          : r,
+      ])))
       await refresh()
       setOk(allowed ? `${affected.length} nəfərə icazə verildi` : `${affected.length} nəfərdən icazə alındı`)
     } else {
@@ -799,7 +1136,7 @@ ${back}`,
   const [issuing, setIssuing] = useState(false)
   const [pinCopied, setPinCopied] = useState(false)
 
-  async function issuePins(targets: AdminEmployee[]) {
+  async function issuePins(targets: EmployeeSelectionRow[]) {
     if (targets.length === 0) return
     const names = targets.length === 1 ? `"${targets[0].fullName}"` : `${targets.length} nəfər`
     if (!window.confirm(
@@ -819,74 +1156,43 @@ ${back}`,
     }
   }
 
-  const q = search.trim().toLowerCase()
-  const leftCount = rows.filter((r) => !r.isActive).length
-  const visible = rows.filter((r) => {
-    if (showLeft ? r.isActive : !r.isActive) return false
-    if (filterLoc && r.locationId !== filterLoc) return false
-    if (roleFilter && r.role !== roleFilter) return false
-    // "Not started" = has never signed in and chosen their own PIN. Two different states mean the
-    // same thing to whoever is chasing them: an invite link nobody opened (never activated), and a
-    // temporary PIN nobody used (activated at creation, still on it).
-    if (statusSel === 'activated' && !(r.activated && !r.mustChangePin)) return false
-    if (statusSel === 'pending' && r.activated) return false
-    if (statusSel === 'notstarted' && r.activated && !r.mustChangePin) return false
-    if (statusSel === 'nopush' && r.pushEnabled) return false
-    if (statusSel === 'nodevice' && r.hasDevice) return false
-    if (q && !`${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.id}`.toLowerCase().includes(q)) return false
-    return true
-  })
-
-  // Reach = the share of employees who can actually be reached, over the branch currently in view.
-  // Only active, activated staff count — a deactivated or not-yet-onboarded person needs no reminder,
-  // and counting them would understate how well the reachable ones are covered.
-
-  // Onboarding progress for the branch in view: who is actually using the app, and who has not
-  // started. During a rollout this is the number the owner asks for every day, and it was only
-  // visible as a side effect of the PIN-reissue strip.
-  const onboardPool = rows.filter((r) => r.isActive && (!filterLoc || r.locationId === filterLoc))
-  const started = onboardPool.filter((r) => r.activated && !r.mustChangePin).length
-  const notStarted = onboardPool.length - started
-
-  const reachPool = rows.filter((r) => r.isActive && r.activated && (!filterLoc || r.locationId === filterLoc))
-  const reachOn = reachPool.filter((r) => r.pushEnabled).length
-  const noPushCount = reachPool.length - reachOn
-  const noDeviceCount = onboardPool.filter((r) => !r.hasDevice).length
-
   /**
-   * Who a bulk action applies to — the ticked rows, and only those.
+   * Who a bulk action applies to — the ticked people, and only those.
    *
-   * It used to fall back to «everything on screen» when nothing was ticked, because this page's
-   * idiom was «the filters ARE the selection»: ~260 workers own no phone and whole brigades work at
-   * poster-less sites, so ticking a box per person is an afternoon nobody finishes. That speed is
-   * kept, but the implicitness is not — ⌘A, or «Hamısını seç», puts the whole filtered list in the
-   * selection in one press. An action that takes a permission AWAY must never run against a set the
+   * It used to fall back to «everything on screen» when nothing was ticked, because this page's idiom
+   * was «the filters ARE the selection»: ~260 workers own no phone and whole brigades work at
+   * poster-less sites, so ticking a box per person is an afternoon nobody finishes. That speed is kept
+   * — ⌘A, or «Hamısını seç», puts every person the filter matches in the selection in one press — but
+   * the implicitness is not. An action that takes a permission AWAY must never run against a set the
    * admin did not say out loud.
    */
-  const bulkTargets = visible.filter((r) => selected.has(r.id))
+  const bulkTargets = [...selected.values()]
   /** Of those, the ones still holding an admin-issued PIN they have never used. */
   const bulkPendingPin = bulkTargets.filter((r) => r.isActive && r.activated && r.mustChangePin)
 
-  // Paging is over the FILTERED list, and any change to the filters sends the reader back to page 1 —
-  // otherwise a search that matches four people lands on page 7 and reads as "no results".
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE))
-  const pageSafe = Math.min(page, pageCount)
-  const pageRows = visible.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE)
-  const allOnPageTicked = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))
+  // The pager counts the whole matching set, which only the server knows now.
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  /** A manager's row with the server's answer about it — they tick and bulk-change only their own
+   *  branches' plain staff; a colleague is changed one at a time. */
+  const mgr = (e: AdminEmployeeRow) => e as ManagerRosterRow
+  const tickable = (e: AdminEmployeeRow) => !isManager || (mgr(e).manageable && !mgr(e).isColleague)
+  const tickableRows = rows.filter(tickable)
+  const allOnPageTicked = tickableRows.length > 0 && tickableRows.every((r) => selected.has(r.id))
 
-  function toggleRow(id: string) {
+  function toggleRow(e: AdminEmployeeRow) {
+    if (!tickable(e)) return
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
+      const next = new Map(prev)
+      if (next.has(e.id)) next.delete(e.id); else next.set(e.id, selRow(e))
       return next
     })
   }
 
   function togglePage() {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (allOnPageTicked) pageRows.forEach((r) => next.delete(r.id))
-      else pageRows.forEach((r) => next.add(r.id))
+      const next = new Map(prev)
+      if (allOnPageTicked) tickableRows.forEach((r) => next.delete(r.id))
+      else tickableRows.forEach((r) => next.set(r.id, selRow(r)))
       return next
     })
   }
@@ -899,12 +1205,16 @@ ${back}`,
     })
   }
 
-  visibleRef.current = visible
-
   const activeFilterCount =
-    (filterLoc ? 1 : 0) + (statusSel ? 1 : 0) + (roleFilter ? 1 : 0) + (q ? 1 : 0)
+    (filterLoc ? 1 : 0) + (statusSel ? 1 : 0) + (roleFilter ? 1 : 0) + (search.trim() ? 1 : 0)
+  // A manager's roster carries no role, device, notification or last-seen facts, so those columns are
+  // not theirs to switch on — a column of dashes would read as «nobody has a phone bound».
+  const MANAGER_HIDDEN: (keyof EmpCols)[] = ['role', 'device', 'push', 'lastActive']
+  const cols: EmpCols = isManager
+    ? { ...empCols, role: false, device: false, push: false, lastActive: false }
+    : empCols
   // Tick column + name + actions, plus whichever optional columns are on.
-  const empColCount = 3 + Object.values(empCols).filter(Boolean).length
+  const empColCount = 3 + Object.values(cols).filter(Boolean).length
 
   function resetFilters() {
     setFilterLoc(null)
@@ -920,29 +1230,47 @@ ${back}`,
         <div>
           <h1 className="att-title">İşçilər</h1>
           <div className="att-sub">
-            Komandanı, giriş icazələrini və mobil tətbiq aktivliyini vahid mərkəzdən idarə edin
+            {isManager
+              ? 'Öz filiallarınızın işçiləri — əlavə edin, redaktə edin, PIN verin'
+              : 'Komandanı, giriş icazələrini və mobil tətbiq aktivliyini vahid mərkəzdən idarə edin'}
           </div>
         </div>
         <div className="att-head-act">
-          {(leftCount > 0 || showLeft) && (
-            <button className={`btn btn-sm${showLeft ? ' btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
+          {(stats.leftCount > 0 || showLeft) && (
+            <button
+              className={`btn btn-sm${showLeft ? ' btn-primary' : ''}`}
+              onClick={() => { setShowLeft((v) => !v); setPage(1) }}
+            >
               <IconUserX />
-              {showLeft ? 'Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
+              {showLeft ? 'Aktiv işçilər' : `İşdən çıxanlar (${stats.leftCount})`}
+            </button>
+          )}
+          {!isManager && (
+            <button
+              className="btn btn-sm"
+              disabled={refBusy}
+              onClick={onResetAllReferences}
+              title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir"
+            >
+              <IconRefresh /> Referansları sıfırla
             </button>
           )}
           <button
-            className="btn btn-sm"
-            disabled={refBusy}
-            onClick={onResetAllReferences}
-            title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir"
+            className="btn btn-sm btn-primary"
+            disabled={isManager && locations.length === 0}
+            onClick={showForm && !editingId ? closeForm : startAdd}
           >
-            <IconRefresh /> Referansları sıfırla
-          </button>
-          <button className="btn btn-sm btn-primary" onClick={showForm && !editingId ? closeForm : startAdd}>
             <IconUsers /> İşçi əlavə et
           </button>
         </div>
       </div>
+
+      {isManager && locsLoaded && locations.length === 0 && (
+        <div className="fb fb-err" style={{ marginBottom: 14 }}>
+          <IconAlert />
+          <span>Sizə hələ filial təyin edilməyib — admin ilə əlaqə saxlayın.</span>
+        </div>
+      )}
 
       {/* Three numbers, and the second two are the rollout question somebody asks every morning:
           how many of these people are actually on the app yet. */}
@@ -950,22 +1278,22 @@ ${back}`,
         {([
           {
             key: 'total', tint: 'blue', Icon: IconUsers,
-            label: 'Ümumi işçi sayı', value: onboardPool.length,
+            label: 'Ümumi işçi sayı', value: stats.total,
             note: filterLoc ? locations.find((l) => l.id === filterLoc)?.name ?? '' : 'Bütün filiallar üzrə',
             noteCls: 'emp-note-blue',
           },
           {
             key: 'on', tint: 'leaf', Icon: IconCheck,
-            label: 'Aktivləşdirilib', value: started,
-            note: onboardPool.length > 0
-              ? `${Math.round((started / onboardPool.length) * 1000) / 10}% tətbiqə qoşulub` : '—',
+            label: 'Aktivləşdirilib', value: stats.activated,
+            note: stats.total > 0
+              ? `${Math.round((stats.activated / stats.total) * 1000) / 10}% tətbiqə qoşulub` : '—',
             noteCls: 'emp-note-leaf',
           },
           {
             key: 'off', tint: 'amber', Icon: IconX,
-            label: 'Aktivləşdirilməyib', value: notStarted,
-            note: onboardPool.length > 0
-              ? `${Math.round((notStarted / onboardPool.length) * 1000) / 10}% aktivləşdirmə gözləyir` : '—',
+            label: 'Aktivləşdirilməyib', value: stats.notStarted,
+            note: stats.total > 0
+              ? `${Math.round((stats.notStarted / stats.total) * 1000) / 10}% aktivləşdirmə gözləyir` : '—',
             noteCls: 'emp-note-amber',
           },
         ]).map(({ key, tint, Icon, label, value, note, noteCls }) => (
@@ -983,7 +1311,7 @@ ${back}`,
         ))}
       </div>
 
-      <div className="emp-panels">
+      {!isManager && <div className="emp-panels">
         {/* Not a dashboard: every tile here is a FILTER, and pressing it leaves the list showing
             exactly the people the number counted. A figure nobody can act on is a figure nobody
             reads twice. */}
@@ -994,9 +1322,9 @@ ${back}`,
           </div>
           <div className="emp-attn">
             {([
-              { sel: 'notstarted' as StatusSel, n: notStarted, sev: 'high', sevLabel: 'Yüksək', text: 'Tətbiqi heç vaxt açmayıb' },
-              { sel: 'nopush' as StatusSel, n: noPushCount, sev: 'mid', sevLabel: 'Orta', text: 'Bildiriş çatmır' },
-              { sel: 'nodevice' as StatusSel, n: noDeviceCount, sev: 'low', sevLabel: 'Yoxlayın', text: 'Cihaz bağlanmayıb' },
+              { sel: 'notstarted' as StatusSel, n: stats.notStarted, sev: 'high', sevLabel: 'Yüksək', text: 'Tətbiqi heç vaxt açmayıb' },
+              { sel: 'nopush' as StatusSel, n: stats.noPush, sev: 'mid', sevLabel: 'Orta', text: 'Bildiriş çatmır' },
+              { sel: 'nodevice' as StatusSel, n: stats.noDevice, sev: 'low', sevLabel: 'Yoxlayın', text: 'Cihaz bağlanmayıb' },
             ]).map((a) => (
               <button
                 key={a.sel}
@@ -1012,7 +1340,7 @@ ${back}`,
             ))}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* The reissued PINs. Shown until closed, with a copy button and a print button, because the
           accident this feature exists for was a page refresh between "issued" and "written down". */}
@@ -1176,7 +1504,7 @@ ${back}`,
       {/* add / edit form */}
       {/* Add flow: a single-vs-bulk switch shown only when adding (editing is always the single form).
           Toplu əlavə used to be its own page; it now lives here so onboarding is one button. */}
-      {showForm && !editingId && (
+      {showForm && !editingId && !isManager && (
         <div className="chip-row" style={{ marginBottom: 10 }}>
           <span className={`chip${addMode === 'single' ? ' active' : ''}`} onClick={() => setAddMode('single')}>
             Tək-tək
@@ -1187,13 +1515,13 @@ ${back}`,
         </div>
       )}
 
-      {showForm && !editingId && addMode === 'bulk' && (
+      {showForm && !editingId && addMode === 'bulk' && !isManager && (
         <div className="card card-pad" style={{ marginBottom: 16, maxWidth: 900 }}>
           <BulkInvitePage />
         </div>
       )}
 
-      {showForm && (editingId || addMode === 'single') && (
+      {showForm && (editingId || addMode === 'single' || isManager) && (
         <form onSubmit={onSubmit} className="card card-pad" style={{ marginBottom: 16, maxWidth: 760 }}>
           <div style={{ fontWeight: 700, color: 'var(--c900)', marginBottom: 14 }}>
             {editingId ? 'İşçini redaktə et' : 'Yeni işçi'}
@@ -1220,7 +1548,7 @@ ${back}`,
           <div className="form-row cols2">
             <div>
               <label className="form-label">Vəzifə</label>
-              <PositionSelect value={form.position} onChange={(v) => set('position', v)} />
+              <PositionSelect value={form.position} onChange={(v) => set('position', v)} manager={isManager} />
             </div>
             <div>
               <label className="form-label">Doğum tarixi</label>
@@ -1302,7 +1630,8 @@ ${back}`,
           </div>
 
           <div className="form-row cols2">
-            <div>
+            {/* A manager sets no role — their update never reads one. */}
+            {!isManager && <div>
               <label className="form-label">Rol</label>
               {/* Same reason as Status: demoting yourself out of Admin locks you out of this panel,
                   and there may be no one else who can put you back. */}
@@ -1319,10 +1648,16 @@ ${back}`,
               {isSelf && (
                 <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Öz rolunuzu dəyişə bilməzsiniz</div>
               )}
-            </div>
+            </div>}
             <div>
               <label className="form-label">Filial</label>
               <select className="inp" value={form.locationId} onChange={(e) => set('locationId', e.target.value)}>
+                {/* A colleague a manager may edit usually works at a branch that is not theirs, and stays
+                    there — the server refuses to move them. Their branch is shown, not swapped for the
+                    first option the manager happens to run. */}
+                {isManager && form.locationId && !locations.some((l) => l.id === form.locationId) && (
+                  <option value={form.locationId}>{mgrEditing?.locationName || 'Hazırkı filial'}</option>
+                )}
                 {locations.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -1385,7 +1720,7 @@ ${back}`,
                 <select
                   className="inp"
                   value={form.isActive ? '1' : '0'}
-                  disabled={isSelf}
+                  disabled={isSelf || (isManager && mgrEditing?.isColleague === true)}
                   onChange={(e) => set('isActive', e.target.value === '1')}
                 >
                   <option value="1">Aktiv</option>
@@ -1394,10 +1729,15 @@ ${back}`,
                 {isSelf && (
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Öz hesabınızı deaktiv edə bilməzsiniz</div>
                 )}
+                {isManager && mgrEditing?.isColleague && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Meneceri yalnız admin deaktiv edə bilər</div>
+                )}
               </div>
             </div>
           )}
 
+          {/* Salary never leaves the server for a manager, and their update never reads it. */}
+          {!isManager && <>
           <div className="form-row cols2">
             <div>
               <label className="form-label">Aylıq maaş (AZN)</label>
@@ -1417,6 +1757,7 @@ ${back}`,
           <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: -6, marginBottom: 4 }}>
             Maaş hesabatı üçün. Boş buraxsanız işçi maaş cədvəlinə düşmür.
           </p>
+          </>}
 
           {/* Someone who refuses to be photographed will point the camera at the ceiling instead —
               which reads as a verified check-in and quietly teaches everyone else the same trick.
@@ -1504,7 +1845,9 @@ ${back}`,
               worker, and this hands it away for whoever is on the shared handset. Off by default and
               granted per person, so a brigade phone is a decision the company makes and can see —
               before, any employee could quietly assemble one and nothing showed it. */}
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '10px 0 4px' }}>
+          {/* A manager grants this in bulk over their own staff (the bar above the list); their per-person
+              update does not read it, so it is not offered here as if it did. */}
+          {!isManager && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '10px 0 4px' }}>
             <input
               type="checkbox"
               checked={form.canShareDevice}
@@ -1518,7 +1861,7 @@ ${back}`,
                 Bağlı olsa, bu işçi yalnız öz cihazından skan edə bilər.
               </span>
             </span>
-          </label>
+          </label>}
 
           {/* One shift control. A person's hours, work-days and rotation all come from the named shift
               chosen here; shifts are created and edited in the Növbələr panel, not retyped per person.
@@ -1571,7 +1914,8 @@ ${back}`,
               has a credential, and replacing it is "PIN sıfırla" on their row. The PIN is the default
               because it is what works for the people added one at a time: a link has to reach a phone
               that can open it, and four digits can be read out loud across a yard. */}
-          {!editingId && (
+          {/* A manager's new person always starts on a temporary PIN — their endpoint issues nothing else. */}
+          {!editingId && !isManager && (
             <div style={{ marginBottom: 14 }}>
               <label className="form-label">İlk giriş necə verilsin?</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1759,6 +2103,10 @@ ${back}`,
         </div>
       )}
 
+      {/* A new PIN or login number for plain staff anywhere in the company, and for a fellow manager at
+          their own branches — the reach a manager has had since 2026-09-14. The server decides who. */}
+      {isManager && !showForm && <CredentialDesk />}
+
       {/* employees table */}
       <div className="att-table">
         {/* The contextual bar.
@@ -1782,12 +2130,13 @@ ${back}`,
           : (
             <div className="emp-bar on">
               <div className="emp-bar-l">
-                <button className="emp-bar-x" onClick={() => setSelected(new Set())} title="Seçimi sil" aria-label="Seçimi sil">
+                <button className="emp-bar-x" onClick={() => setSelected(new Map())} title="Seçimi sil" aria-label="Seçimi sil">
                   <IconX />
                 </button>
                 <span className="emp-bar-n"><b>{selected.size}</b> işçi seçildi</span>
                 <span className="emp-bar-sep" />
-                {schedules.length > 0 && (
+                {/* No bulk shift endpoint for a manager — they set a shift one person at a time. */}
+                {schedules.length > 0 && !isManager && (
                   <>
                     <select
                       className="emp-bar-sel"
@@ -1831,17 +2180,19 @@ ${back}`,
                     <>
                       <div className="att-backdrop" onClick={() => setMoreOpen(false)} />
                       <div className="emp-more">
-                        <button
-                          className="emp-more-i"
-                          disabled={issuing || bulkPendingPin.length === 0}
-                          onClick={() => { setMoreOpen(false); void issuePins(bulkPendingPin) }}
-                        >
-                          <IconKey />
-                          <span>
-                            Müvəqqəti PIN ver
-                            <i>{bulkPendingPin.length} nəfər hələ heç vaxt girməyib</i>
-                          </span>
-                        </button>
+                        {!isManager && (
+                          <button
+                            className="emp-more-i"
+                            disabled={issuing || bulkPendingPin.length === 0}
+                            onClick={() => { setMoreOpen(false); void issuePins(bulkPendingPin) }}
+                          >
+                            <IconKey />
+                            <span>
+                              Müvəqqəti PIN ver
+                              <i>{bulkPendingPin.length} nəfər hələ heç vaxt girməyib</i>
+                            </span>
+                          </button>
+                        )}
                         {/* Taking something away sits apart and is drawn as what it is. The three
                             below each remove an ability somebody is relying on today — a brigade's
                             shared phone, a field worker's only way to clock in, a crew's hours. */}
@@ -1868,17 +2219,19 @@ ${back}`,
                             <i>Plakatsız sahədə işləyənin yeganə giriş yolu bağlanır</i>
                           </span>
                         </button>
-                        <button
-                          className="emp-more-i danger"
-                          disabled={sharing}
-                          onClick={() => { setMoreOpen(false); setBulkShift('none'); void applyShift(bulkTargets) }}
-                        >
-                          <IconCalendar />
-                          <span>
-                            Növbəni ləğv et
-                            <i>Öz saatına, o da yoxdursa filialın saatına qayıdır</i>
-                          </span>
-                        </button>
+                        {!isManager && (
+                          <button
+                            className="emp-more-i danger"
+                            disabled={sharing}
+                            onClick={() => { setMoreOpen(false); void applyShift(bulkTargets, 'none') }}
+                          >
+                            <IconCalendar />
+                            <span>
+                              Növbəni ləğv et
+                              <i>Öz saatına, o da yoxdursa filialın saatına qayıdır</i>
+                            </span>
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -1886,9 +2239,9 @@ ${back}`,
               </div>
               <div className="emp-bar-r">
                 <span className="emp-bar-note">Seçilmiş işçilərə tətbiq olunur</span>
-                {selected.size < visible.length && (
-                  <button className="emp-bar-all" onClick={() => setSelected(new Set(visible.map((r) => r.id)))}>
-                    Hamısını seç ({visible.length})
+                {selected.size < total && (
+                  <button className="emp-bar-all" disabled={selectingAll} onClick={() => void selectAll()}>
+                    {selectingAll ? 'Seçilir…' : `Hamısını seç (${total})`}
                   </button>
                 )}
               </div>
@@ -1898,11 +2251,11 @@ ${back}`,
         <div className="att-tbar">
           <div>
             <span className="att-tbar-t">İşçi siyahısı</span>
-            <span className="att-tbar-n">{visible.length} nəticə</span>
+            <span className="att-tbar-n">{listing ? '…' : `${total} nəticə`}</span>
           </div>
           <div className="att-tbar-a">
             {selected.size > 0 && (
-              <button className="att-reset" onClick={() => setSelected(new Set())}>
+              <button className="att-reset" onClick={() => setSelected(new Map())}>
                 {selected.size} seçilib — seçimi götür
               </button>
             )}
@@ -1922,7 +2275,7 @@ ${back}`,
                     ['push', 'Bildiriş'],
                     ['lastActive', 'Son aktivlik'],
                     ['status', 'Qeydiyyat'],
-                  ] as [keyof EmpCols, string][]).map(([key, label]) => (
+                  ] as [keyof EmpCols, string][]).filter(([key]) => !isManager || !MANAGER_HIDDEN.includes(key)).map(([key, label]) => (
                     <label key={key} className="att-opt">
                       <input type="checkbox" checked={empCols[key]} onChange={() => toggleEmpCol(key)} />
                       <span className="att-opt-t">{label}</span>
@@ -1956,7 +2309,8 @@ ${back}`,
                 : <span className="att-kbd">⌘K</span>}
             </span>
           </div>
-          <div className="att-f">
+          {/* Status reads push, device and PIN facts a manager's roster does not carry. */}
+          {!isManager && <div className="att-f">
             <span className="att-f-lbl">Status</span>
             <select
               className="emp-sel"
@@ -1966,8 +2320,9 @@ ${back}`,
             >
               {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-          </div>
-          <div className="att-f">
+          </div>}
+          {/* Only the branches this person may see — and none at all for a manager who runs one. */}
+          {(!isManager || locations.length > 1) && <div className="att-f">
             <span className="att-f-lbl">Filial</span>
             <select
               className="emp-sel"
@@ -1978,8 +2333,8 @@ ${back}`,
               <option value="">Bütün filiallar</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
-          </div>
-          <div className="att-f">
+          </div>}
+          {!isManager && <div className="att-f">
             <span className="att-f-lbl">Rol</span>
             <select
               className="emp-sel"
@@ -1990,7 +2345,7 @@ ${back}`,
               <option value="">Bütün rollar</option>
               {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-          </div>
+          </div>}
           {activeFilterCount > 0 && (
             <button className="att-reset" style={{ alignSelf: 'flex-end', height: 38 }} onClick={resetFilters}>
               Sıfırla
@@ -2012,24 +2367,25 @@ ${back}`,
                 />
               </th>
               <th>İşçi / telefon / ID</th>
-              {empCols.position && <th>Vəzifə</th>}
-              {empCols.location && <th>Filial</th>}
-              {empCols.role && <th>Rol</th>}
-              {empCols.device && <th>Cihaz</th>}
-              {empCols.push && <th>Bildiriş</th>}
-              {empCols.lastActive && <th>Son aktivlik</th>}
-              {empCols.status && <th>Qeydiyyat</th>}
+              {cols.position && <th>Vəzifə</th>}
+              {cols.location && <th>Filial</th>}
+              {cols.role && <th>Rol</th>}
+              {cols.device && <th>Cihaz</th>}
+              {cols.push && <th>Bildiriş</th>}
+              {cols.lastActive && <th>Son aktivlik</th>}
+              {cols.status && <th>Qeydiyyat</th>}
               <th style={{ textAlign: 'right' }}>Əməliyyat</th>
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((e) => (
+            {rows.map((e) => (
               <tr key={e.id} className={selected.has(e.id) ? 'emp-on' : undefined} style={{ opacity: e.isActive ? 1 : 0.55 }}>
                 <td className="emp-tick" data-label="">
                   <input
                     type="checkbox"
                     checked={selected.has(e.id)}
-                    onChange={() => toggleRow(e.id)}
+                    disabled={!tickable(e)}
+                    onChange={() => toggleRow(e)}
                     aria-label={`${e.fullName} — seç`}
                   />
                 </td>
@@ -2045,6 +2401,10 @@ ${back}`,
                       <span className="tag" style={{ marginLeft: 8, background: 'rgba(154,52,18,0.12)', color: '#9a3412' }}>
                         Deaktiv
                       </span>
+                    )}
+                    {/* A fellow manager, or the admin who clocks in at the branch — in a manager's list. */}
+                    {isManager && mgr(e).isColleague && (
+                      <span className="tag" style={{ marginLeft: 8 }}>{mgr(e).manageable ? 'menecer' : 'həmkar'}</span>
                     )}
                   </div>
                   {/* Phone, birth date and id on ONE line, as the design has it. They were three
@@ -2062,8 +2422,8 @@ ${back}`,
                     </span>
                   </span>
                 </td>
-                {empCols.position && <td data-label="Vəzifə">{e.position || '—'}</td>}
-                {empCols.location && <td data-label="Filial">
+                {cols.position && <td data-label="Vəzifə">{e.position || '—'}</td>}
+                {cols.location && <td data-label="Filial">
                   {e.locationName ?? '—'}
                   {/* Shown right under the branch, because the whole point is the CONTRAST between
                       where this person works and where their paperwork says they belong. On its own
@@ -2095,7 +2455,7 @@ ${back}`,
                     </div>
                   )}
                 </td>}
-                {empCols.role && <td data-label="Rol">
+                {cols.role && <td data-label="Rol">
                   {ROLE_LABEL[e.role] ?? e.role}
                   {/* A manager with no branches is not a lesser manager — they see nothing at all.
                       That is invisible from the admin's side unless the list says so. */}
@@ -2111,22 +2471,42 @@ ${back}`,
                     )
                   )}
                 </td>}
-                {empCols.device && <td data-label="Cihaz">{deviceBadge(e.hasDevice, e.deviceLabel)}</td>}
-                {empCols.push && <td data-label="Bildiriş">
+                {cols.device && <td data-label="Cihaz">{deviceBadge(e.hasDevice, e.deviceLabel)}</td>}
+                {cols.push && <td data-label="Bildiriş">
                   {/* Whether an announcement/reminder actually reaches this person's phone. */}
                   {e.pushEnabled
                     ? pill('Açıq', '#2e7d32', 'rgba(124,179,66,0.15)')
                     : pill('Bağlı', '#9a3412', 'rgba(154,52,18,0.12)')}
                 </td>}
-                {empCols.lastActive && <td data-label="Son aktivlik">{lastActiveBadge(e.lastActiveAtUtc)}</td>}
-                {empCols.status && <td data-label="Qeydiyyat">{statusBadge(e.activated)}</td>}
+                {cols.lastActive && <td data-label="Son aktivlik">{lastActiveBadge(e.lastActiveAtUtc)}</td>}
+                {cols.status && <td data-label="Qeydiyyat">{statusBadge(e.activated)}</td>}
                 <td data-label="Əməliyyat">
                   {/* One button, then a ⋯ menu. Six buttons a row wrapped onto two lines, pushed the
                       columns people actually read out of view, and left a red "Sil" one mis-tap from
                       every other action — see RowActions. */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    {/* A manager acts only where the server said they may: edit and a new PIN for their
+                        own people; a row they may not change is read-only, and says why. */}
+                    {isManager ? (
+                      mgr(e).manageable ? (
+                        <RowActions
+                          primary={{ label: 'Redaktə', onClick: () => void startEdit(e.id), disabled: formBusy }}
+                          actions={[
+                            {
+                              label: 'PIN sıfırla',
+                              icon: <IconPhone />,
+                              hidden: !e.activated || e.id === myId,
+                              onClick: () => onResetPin(e),
+                              title: 'İşçi PIN-ini unudubsa — müvəqqəti PIN ver',
+                            },
+                          ]}
+                        />
+                      ) : (
+                        <span className="muted" style={{ fontSize: 12 }}>yalnız baxış</span>
+                      )
+                    ) : (
                     <RowActions
-                      primary={{ label: 'Redaktə', onClick: () => startEdit(e) }}
+                      primary={{ label: 'Redaktə', onClick: () => void startEdit(e.id), disabled: formBusy }}
                       actions={[
                         {
                           label: 'Qeyd. linki',
@@ -2169,14 +2549,21 @@ ${back}`,
                         },
                       ]}
                     />
+                    )}
                   </div>
                 </td>
               </tr>
             ))}
-            {visible.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td colSpan={empColCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  {rows.length === 0 ? 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın' : 'Bu axtarış/filial üzrə işçi yoxdur'}
+                  {listing
+                    ? 'Yüklənir…'
+                    : listFailed != null
+                      ? listFailureText(listFailed)
+                      : activeFilterCount > 0 || showLeft
+                      ? 'Bu axtarış/filial üzrə işçi yoxdur'
+                      : 'Hələ işçi yoxdur — “İşçi əlavə et” ilə başlayın'}
                 </td>
               </tr>
             )}
@@ -2189,27 +2576,27 @@ ${back}`,
             person», «who has not started» — is answered by the filters above, not by scrolling. */}
         <div className="att-foot">
           <span>
-            {visible.length === 0
+            {total === 0
               ? '0 nəticə'
               : <>
-                  <b>{(pageSafe - 1) * PAGE_SIZE + 1}–{Math.min(pageSafe * PAGE_SIZE, visible.length)}</b>
-                  {' / '}{visible.length} nəticə · səhifədə {PAGE_SIZE}
+                  <b>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}</b>
+                  {' / '}{total} nəticə · səhifədə {PAGE_SIZE}
                 </>}
           </span>
           {pageCount > 1 && (
             <div className="emp-pager">
               <button
                 className="att-step"
-                disabled={pageSafe <= 1}
+                disabled={page <= 1 || listing}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 aria-label="Əvvəlki səhifə"
               >
                 <IconChevronLeft />
               </button>
-              <span className="emp-pager-n">{pageSafe} / {pageCount}</span>
+              <span className="emp-pager-n">{page} / {pageCount}</span>
               <button
                 className="att-step"
-                disabled={pageSafe >= pageCount}
+                disabled={page >= pageCount || listing}
                 onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                 aria-label="Növbəti səhifə"
               >

@@ -12,6 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- So a test can compile the real roster query against the real Npgsql provider. See
+         EmployeeListQueryTranslationTests: the rest of the suite runs on EF Core InMemory, which
+         happily executes LINQ that Postgres cannot translate at all. -->
+    <InternalsVisibleTo Include="AttendanceQR.Application.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
