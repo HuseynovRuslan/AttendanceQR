@@ -4,10 +4,10 @@ import { useTranslations, localizedPath, type Lang } from "../i18n/ui";
 import { LOGO_WORD } from "../data/brand";
 import qrPoster from "../assets/images/product/qrlog.png";
 import appShot from "../assets/images/product/qrlog-app.png";
+import PhoneFrame from "./PhoneFrame.astro";
 
 const { lang } = Astro.props as { lang: Lang };
 const t = useTranslations(lang);
-const home = localizedPath(lang, "/");
 
 // The same derivative the header preloads, so the poster wordmark costs no extra request.
 const logoWord = await getImage(LOGO_WORD);
@@ -41,6 +41,8 @@ const cardLive = `absolute z-20 ${cardSkin} border-emerald-500/20 bg-white/95 ho
 // The check-in note is the one card that is not always floating: while the scene is narrow it sits in
 // the flow underneath, and only takes the pointer lift once it floats.
 const cardFlow = `${cardWhite} @md:hover:scale-105`;
+// Dörd kartın hər biri öz animate-float-* sinfi ilə yavaş-yavaş üzür (ayrı müddət və faza: styles/tailwind.css).
+// Üzmə `translate` xassəsindədir, hover:scale-105 isə `scale`-də — ikisi toqquşmur, toplanır.
 // No text size in here either: the "+181" badge needs a smaller one than the initials do.
 const avatar =
   "flex size-6 shrink-0 items-center justify-center rounded-full font-bold ring-2 ring-white @md:size-7";
@@ -75,7 +77,8 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         <span
           class="relative inline-flex whitespace-nowrap px-[0.16em] py-[0.04em]"
         >
-          {t("hero.title.hl")}
+          <!-- Ayrıca <span>: skan xətti ortadan keçəndə yalnız söz mavi olur (bax: aşağıdakı <style>). -->
+          <span class="hero-scan-word">{t("hero.title.hl")}</span>
           <span aria-hidden="true" class="absolute inset-0">
             <span
               class="absolute top-0 left-0 size-[0.3em] border-t-[0.05em] border-l-[0.05em] border-brand"
@@ -88,6 +91,16 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             ></span>
             <span
               class="absolute right-0 bottom-0 size-[0.3em] border-r-[0.05em] border-b-[0.05em] border-brand"
+            ></span>
+            <!--
+              Skan xətti: künclərin arasında yuxarıdan aşağı enib-qalxır (hərəkəti aşağıdakı <style>
+              təsvir edir). Hər ölçü `em`-dədir: 1em = başlığın şrift ölçüsü, o da ekrana görə 42px-dən
+              76px-ə qədər dəyişir. Ona görə xəttin qalınlığı (0.045em), kənarlardan boşluğu (0.1em) və
+              işığının yayılması (0.3em) başlıqla birlikdə böyüyüb-kiçilir; px yazsaydıq, kiçik ekranda
+              xətt həddindən artıq qalın görünərdi. Rəng: kənarları şəffaf, ortası mavi olan gradient.
+            -->
+            <span
+              class="hero-scan-line absolute inset-x-[0.1em] h-[0.045em] rounded-full bg-linear-to-r from-transparent via-brand to-transparent shadow-[0_0_0.3em_rgba(21,94,239,.55)]"
             ></span>
           </span>
         </span>{t("hero.title.b")}
@@ -103,17 +116,21 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
       </p>
 
       <div class="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+        {/* data-hero-cta: Header.astro-dakı skript bu düyməni izləyir. Düymə ekranda görünərkən
+            header-dəki "Əlaqə saxlayın" gizlənir, düymə ekrandan çıxanda header-dəki açılır —
+            beləcə eyni düymə ekranda heç vaxt iki dəfə görünmür. Atributu silmə. */}
         <a
           class={`${btnBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-lg shadow-brand/25 hover:from-brand-600 hover:to-brand-700 hover:shadow-xl hover:shadow-brand/30 active:scale-[0.99]`}
           href={localizedPath(lang, "/elaqe/")}
+          data-hero-cta
         >
           {t("cta.btn1")}
         </a>
         <a
-          class={`${btnBase} border border-stone-300/70 bg-white text-stone-800 hover:border-stone-400 hover:bg-stone-50`}
-          href={`${home}#how`}
+          class={`${btnBase} border border-stone-300/70 bg-white text-stone-800 hover:border-brand hover:text-brand`}
+          href={localizedPath(lang, "/haqqimizda/")}
         >
-          {t("hero.cta2")}
+          {t("nav.about")}
         </a>
       </div>
     </div>
@@ -204,11 +221,11 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         >
         </div>
 
-        <figcaption
+        <!-- <figcaption
           class="absolute top-0 left-0 z-30 text-[10px] leading-none font-bold tracking-[0.18em] text-slate-400 uppercase @md:text-[11px]"
         >
           {t("hero.d.label")}
-        </figcaption>
+        </figcaption> -->
 
         <!--
           The printed poster, turned a few degrees away from the reader and standing up again when
@@ -263,18 +280,17 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         </div>
 
         <!--
-          The phone: a shell of hardware around the app's own screen — a dark bezel, a hairline of
-          light on its edge where a real phone catches it, and one deep shadow rather than a flat
-          box. It stands up straight under the pointer.
+          Telefon: ortaq PhoneFrame komponenti (titan çərçivə, bezel, Dynamic Island, yan düymələr, 3D
+          qalınlıq, yavaş üzmə). Burada yalnız onun YERİ, ENİ və POZASI verilir; ekranın içi (tətbiqin şəkli)
+          komponentin `<slot />`-una düşür. Ətraflı izah: PhoneFrame.astro-nun başında.
 
-          The bezel and the radius are given twice because they are proportions of the PHONE, and
-          the phone is 52% of the scene while the scene is narrow but 36% of it once it is wide —
-          a single `cqw` number would round the corners half again too far in the wide state.
-          The screenshot keeps its own ratio (h-auto, and the real 1170×2532 on the attributes),
-          so nothing is cropped and nothing shifts while it loads.
+          Yer və en əvvəlki kimidir (top/left/w). Dar halda telefon 4% sola sürüşüb ki, əyilmiş telefon
+          səhnədən çıxmasın. Poza CSS dəyişənləridir: `--rx` (arxaya əyilmə, + = üst uzaqlaşır),
+          `--ry` (yana dönmə, − = sağ kənar və düymələr görünür), `--rz` (yana əyilmə, + = üst sağa əyilir).
+          Siçan üstünə gələndə telefon düzəlir (`hover:`).
         -->
-        <div
-          class="absolute top-[4%] left-[44%] z-10 w-[52%] rotate-1 rounded-[7cqw] border-[1.7cqw] border-slate-900 bg-slate-900 shadow-[0_4cqw_9cqw_-3cqw_rgb(15_23_42/0.55)] ring-1 ring-white/20 transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:left-[42%] @md:w-[42%] @md:rotate-2 @md:rotate-y-3 @md:rounded-[5cqw] @md:border-[1.2cqw]"
+        <PhoneFrame
+          class="absolute top-[4%] left-[40%] z-10 w-[52%] [--rx:15deg] [--ry:-20deg] [--rz:6deg] hover:[--rx:3deg] hover:[--ry:-6deg] hover:[--rz:2deg] @md:left-[42%] @md:w-[42%] @md:[--rx:22deg] @md:[--ry:-30deg] @md:[--rz:13deg] @md:hover:[--rx:4deg] @md:hover:[--ry:-8deg] @md:hover:[--rz:2deg]"
         >
           <!--
             640, not 512 like the poster: the widest DESKTOP paint is the same 253 CSS px (2x = 507),
@@ -282,18 +298,18 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             viewport at 3x asks for 545. The source is 1170 wide, so nothing is upscaled.
           -->
           <Image
-            class="h-auto w-full rounded-[5.3cqw] @md:rounded-[3.8cqw]"
+            class="block h-auto w-full"
             src={appShot}
             alt={t("hero.d.shotAlt")}
             width={640}
             loading="eager"
             decoding="async"
           />
-        </div>
+        </PhoneFrame>
 
         <!-- The scan that starts it: the name on this note is the name on the screen behind it. -->
         <div
-          class={`${card} top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[56%] @md:w-[40%]`}
+          class={`${card} animate-float-scan top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[16%] @md:w-[40%]`}
         >
           <span
             class="grid size-7 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-600 @md:size-8 @md:text-[11px]"
@@ -324,7 +340,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           can do without.
         -->
         <div
-          class={`${card} hidden items-start gap-2 @md:top-[26%] @md:left-[68%] @md:flex @md:w-[36%]`}
+          class={`${card} animate-float-offline hidden items-start gap-2 @md:top-[26%] @md:left-[68%] @md:flex @md:w-[36%]`}
         >
           <span
             class="grid size-7 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"
@@ -368,7 +384,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           under the sentence while the card is narrow rather than squeezing it to two words a line.
         -->
         <div
-          class={`${cardLive} bottom-[2%] left-[-1%] w-[70%] @md:top-[72%] @md:bottom-auto @md:left-[-2%] @md:w-[40%]`}
+          class={`${cardLive} animate-float-live bottom-[2%] left-[-1%] w-[70%] @md:top-[72%] @md:bottom-auto @md:left-[-2%] @md:w-[40%]`}
         >
           <p
             class="flex items-center gap-2 text-[11px] font-semibold text-slate-900 @md:text-[12px]"
@@ -424,7 +440,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         лица" is half again as wide as "Üz uyğunluğu", and a cell sized for one truncates the other.
       -->
       <div
-        class={`${cardFlow} relative z-20 mt-3 w-full @md:absolute @md:top-[67%] @md:left-[46%] @md:mt-0 @md:w-[42%]`}
+        class={`${cardFlow} relative z-20 mt-3 w-full @md:absolute @md:animate-float-recorded @md:top-[67%] @md:left-[46%] @md:mt-0 @md:w-[42%]`}
       >
         <div class="flex items-center gap-2">
           <span
@@ -498,3 +514,75 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
     </ul>
   </div>
 </section>
+
+<style>
+  /* ---------- Skan animasiyası: "skan" sözünün ətrafındakı xətt və sözün rəngi ----------
+     @keyframes — animasiyanın addımlarını təsvir edən CSS qaydasıdır: "dövrün hansı faizində element necə
+     görünsün". `animation` xassəsi isə o addımları elementə qoşur: ad, müddət, sürət əyrisi, təkrar sayı.
+     Xətt və söz EYNİ anda, eyni 3 saniyəlik dövrlə başlayır, ona görə söz məhz xətt ortadan keçəndə yanır.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/animation */
+
+  /* Skan xətti: başlanğıc yeri künclərin arasında yuxarıdadır (qutunun hündürlüyünün 14%-i), `animation`
+     xətti 3 saniyəlik dövrlə hərəkət etdirir. `ease-in-out` — hər yarım dövrdə yavaş başlayıb, ortada
+     sürətlənib, sonda yenə yavaşlayır; `infinite` — sonsuz təkrar. Qalınlıq, uzunluq, rəng və işıq
+     Tailwind siniflərindədir (Hero.astro-da `hero-scan-line` elementi). */
+  .hero-scan-line {
+    top: 14%;
+    animation: hero-scan 3s ease-in-out infinite;
+  }
+
+  /* Xəttin yolu: 0%-də yuxarıda (14%), 50%-də aşağıda (82%), 100%-də yenə yuxarıda. Yəni bir dövr = enmək
+     + qalxmaq. Xətt sözün ortasından (≈48%) dövrün 25%-də (enəndə) və 75%-də (qalxanda) keçir — aşağıdakı
+     söz animasiyasının faizləri buradan gəlir. Ad "hero-" ilə başlayır: Astro @keyframes adlarını təcrid
+     etmir, global.css-də isə onlarla keyframe var. */
+  @keyframes hero-scan {
+    0%,
+    100% {
+      top: 14%;
+    }
+    50% {
+      top: 82%;
+    }
+  }
+
+  /* Söz: eyni 3 saniyəlik dövr, eyni əyri. Rəngi aşağıdakı addımlar dəyişir. */
+  .hero-scan-word {
+    animation: hero-hit 3s ease-in-out infinite;
+  }
+
+  /* "Oxundu" hissi: xətt sözün ortasından keçəndə (22–28% və 72–78%) söz mavi olur, qalan vaxt öz rəngində
+     qalır. `inherit` — "valideynin (başlığın) rəngini götür", yəni qara. Faizlər arasında rəng yumşaq keçir
+     (17→22%, 28→33%), mavi yalnız ~0.2 saniyə tam görünür. var(--color-brand) — saytın mavisi (#155EEF),
+     styles/tailwind.css-də təyin olunub. */
+  @keyframes hero-hit {
+    0%,
+    17%,
+    33%,
+    67%,
+    83%,
+    100% {
+      color: inherit;
+    }
+    22%,
+    28%,
+    72%,
+    78% {
+      color: var(--color-brand);
+    }
+  }
+
+  /* "Hərəkəti azalt" — istifadəçinin sistemdə "animasiyaları azaldın" seçdiyini bildirən media şərti
+     (prefers-reduced-motion). Belə adam üçün heç nə hərəkət etmir: söz öz rəngində qalır, xətt isə
+     gizlədilir. Xətt ortada dayansaydı, sözün üstündən çəkilmiş cızıq kimi oxunardı.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .hero-scan-line {
+      animation: none;
+      opacity: 0;
+    }
+
+    .hero-scan-word {
+      animation: none;
+    }
+  }
+</style>

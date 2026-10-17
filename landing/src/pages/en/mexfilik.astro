@@ -1,0 +1,10 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import PrivacyBody from '../../components/PrivacyBody.astro'
+import { useTranslations } from '../../i18n/ui'
+const lang = 'en' as const
+const t = useTranslations(lang)
+---
+<BaseLayout lang={lang} path="/mexfilik/" title={t('priv.metaTitle')} description={t('priv.metaDesc')}>
+  <PrivacyBody lang={lang} />
+</BaseLayout>

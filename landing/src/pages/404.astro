@@ -1,21 +1,208 @@
 ---
+/*
+ * 404 səhifəsi. Caddy bu faylı (dist/404.html) bütün tapılmayan ünvanlar üçün verir, /ru/... və /en/...
+ * da daxil. Fayl AZ dilində bir dəfə yaranır, ona görə RU və EN mətnləri HTML-də data-ru / data-en
+ * atributlarında durur (ui.ts-dən götürülür); ünvan /ru/ və ya /en/ ilə başlayanda aşağıdakı skript
+ * onlarla əvəz edir. JS işləməsə AZ mətni qalır. Solda mətn, sağda NotFoundScene (mobildə yuxarıda).
+ */
+import ArrowLeft from '@lucide/astro/icons/arrow-left'
+import ArrowRight from '@lucide/astro/icons/arrow-right'
 import BaseLayout from '../layouts/BaseLayout.astro'
-import PageHero from '../components/PageHero.astro'
-import { useTranslations, localizedPath } from '../i18n/ui'
+import NotFoundScene from '../components/NotFoundScene.astro'
+import { useTranslations, localizedPath, htmlLang } from '../i18n/ui'
 
 // Caddy serves this file for any unmatched path (see the `handle_errors` block in the Caddyfile).
 const lang = 'az' as const
 const t = useTranslations(lang)
+const tRu = useTranslations('ru')
+const tEn = useTranslations('en')
+
+// Düymə və linkin ortaq fokus halqası: saytın qaydası (Hero.astro-dakı focusRing ilə eynidir).
+const focusRing =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
 ---
 
-<BaseLayout lang={lang} path="/404/" title={`404 — ${t('nf.title')}`} description={t('nf.sub')} noindex heroTone="white">
-  <PageHero title="404" subtitle={t('nf.title')} />
-  <section class="prose-section">
-    <div class="wrap prose" style="text-align:center">
-      <p class="lead">{t('nf.sub')}</p>
-      <p class="prose-cta" style="justify-content:center">
-        <a class="btn btn-primary" href={localizedPath(lang, '/')}>{t('nf.btn')}</a>
+<BaseLayout
+  lang={lang}
+  path="/404/"  
+  title={`404 — ${t('nf.title')}`}
+  description={t('nf.sub')}
+  noindex
+  heroTone="white"
+>
+  <!--
+    BaseLayout məzmunu artıq <main id="main">-ə qoyur, ona görə burada <section> var (iki <main> olmaz).
+    Header `position: fixed`-dir və yer tutmur, ona görə yuxarı boşluq = header hündürlüyü (--header-h,
+    global.css) + 1rem. Alt boşluq pb-24 (96px): footer yuxarıdakı bölmənin üstünə 48px minir
+    (Footer.astro), məzmun ondan yuxarıda qalmalıdır.
+    `data-nf-page` və `data-html-lang-*` — aşağıdakı skript onları oxuyur.
+  -->
+  <section
+    class="wrap grid min-h-[78vh] items-center gap-6 pt-[calc(var(--header-h)+1rem)] pb-24 lg:grid-cols-[0.9fr_1.1fr] lg:gap-10"
+    data-nf-page
+    data-html-lang-ru={htmlLang.ru}
+    data-html-lang-en={htmlLang.en}
+  >
+    <!-- Səhnə: mobildə mətndən yuxarıda (order-first), lg-dən sağda (lg:order-last). -->
+    <div class="order-first lg:order-last">
+      <NotFoundScene />
+    </div>
+
+    <!-- Mətn. `nf-rise` + `--i`: hər element növbə ilə yuxarı qalxaraq görünür (aşağıdakı <style>). -->
+    <div class="max-w-[31rem]">
+      <p
+        class="nf-rise text-[5rem] leading-[0.9] font-extralight tracking-[-0.05em] text-[#C9CED8] select-none sm:text-[7.5rem] lg:text-[9rem]"
+        style="--i:0"
+        aria-hidden="true"
+      >
+        404
       </p>
+
+      <h1
+        class="nf-rise mt-4 text-[2.125rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance text-ink sm:text-[2.875rem]"
+        style="--i:1"
+        data-ru={tRu('nf.title')}
+        data-en={tEn('nf.title')}
+      >
+        {t('nf.title')}
+      </h1>
+
+      <p
+        class="nf-rise mt-5 text-[1rem] leading-[1.7] text-pretty text-ink2 sm:text-[1.0625rem]"
+        style="--i:2"
+        data-ru={tRu('nf.sub')}
+        data-en={tEn('nf.sub')}
+      >
+        {t('nf.sub')}
+      </p>
+
+      <div class="nf-rise mt-8 flex flex-wrap items-center gap-x-7 gap-y-4" style="--i:3">
+        <!-- Əsas düymə: Header-dəki "Əlaqə saxlayın" ilə eyni mavi, hover-də 2px yuxarı qalxır (-translate-y-0.5). -->
+        <a
+          class={`group inline-flex h-12 items-center gap-2 rounded-2xl bg-brand px-6 text-[0.9375rem] leading-normal font-semibold text-white shadow-[0_0.875rem_1.75rem_-0.875rem_rgba(21,94,239,.75)] transition hover:-translate-y-0.5 hover:bg-brand-600 ${focusRing}`}
+          href={localizedPath(lang, '/')}
+          data-href-ru={localizedPath('ru', '/')}
+          data-href-en={localizedPath('en', '/')}
+        >
+          <ArrowLeft
+            class="size-[1.05rem] transition group-hover:-translate-x-0.5"
+            stroke-width={2.2}
+            aria-hidden="true"
+          />
+          <span data-ru={tRu('nf.btn')} data-en={tEn('nf.btn')}>{t('nf.btn')}</span>
+        </a>
+
+        <!-- İkinci seçim düymə yox, ox işarəli mavi mətn linkidir: ana düymənin yanında sakit qalır. -->
+        <a
+          class={`group inline-flex items-center gap-2 rounded-lg text-[0.9375rem] leading-normal font-medium text-brand transition hover:text-brand-600 ${focusRing}`}
+          href={localizedPath(lang, '/elaqe/')}
+          data-href-ru={localizedPath('ru', '/elaqe/')}
+          data-href-en={localizedPath('en', '/elaqe/')}
+        >
+          <span data-ru={tRu('cta.btn1')} data-en={tEn('cta.btn1')}>{t('cta.btn1')}</span>
+          <ArrowRight
+            class="size-[1.05rem] transition group-hover:translate-x-1"
+            aria-hidden="true"
+          />
+        </a>
+      </div>
     </div>
   </section>
 </BaseLayout>
+
+<style>
+  /* Giriş animasiyası: mətn elementləri növbə ilə yuxarı qalxaraq görünür.
+     @keyframes — animasiyanın addımlarını təsvir edən CSS qaydası; `animation` onu elementə qoşur.
+     `both` — animasiyanın gecikməsi bitənə qədər element başlanğıc vəziyyətdə (görünməz) durur.
+     Hər elementin gecikməsi = onun sıra nömrəsi (--i, HTML-də) × --nf-rise-step.
+     https://developer.mozilla.org/en-US/docs/Web/CSS/animation-fill-mode */
+  .nf-rise {
+    --nf-rise-time: 0.7s; /* bir elementin görünmə müddəti */
+    --nf-rise-step: 80ms; /* ardıcıl iki element arasında fərq */
+    animation: nf-rise var(--nf-rise-time) cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * var(--nf-rise-step));
+  }
+  @keyframes nf-rise {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* "Hərəkəti azalt" açıq olanda mətn animasiyasız, birbaşa görünür. */
+  @media (prefers-reduced-motion: reduce) {
+    .nf-rise {
+      animation: none;
+    }
+  }
+</style>
+
+<script>
+  // ---------- Dil seçimi ----------
+  // Bu səhifə bir dəfə AZ dilində yaranır, amma /ru/blabla/ açan adam rusca mətn görməlidir. Skript
+  // ünvana baxır və HTML-dəki data-ru / data-en atributlarındakı mətnləri (ui.ts-dən gəlib) səhifəyə
+  // qoyur. Header və footer bu səhifədə AZ qalır (onlar başqa komponentlərdir, ona toxunmuruq).
+  // Skript işləməsə heç nə dəyişmir: AZ mətni təhlükəsiz vəziyyətdir.
+
+  // Dil prefiksləri. AZ prefikssizdir (/), ona görə siyahıda yoxdur: AZ üçün dəyişməli heç nə yoxdur.
+  const SWITCHABLE_LANGS = ['ru', 'en']
+
+  // "/ru" və ya "/ru/..." ilə başlayırsa 'ru' qaytarır, heç biri deyilsə null (yəni AZ qalır).
+  function detectLang(pathname: string): string | null {
+    for (const lang of SWITCHABLE_LANGS) {
+      const isThisLang = pathname === `/${lang}` || pathname.startsWith(`/${lang}/`)
+      if (isThisLang) {
+        return lang
+      }
+    }
+    return null
+  }
+
+  // data-ru="..." olan hər elementin mətnini həmin atributdakı mətnlə əvəz edir.
+  function translateTexts(lang: string) {
+    const elements = document.querySelectorAll(`[data-${lang}]`)
+    for (const element of elements) {
+      const text = element.getAttribute(`data-${lang}`)
+      if (text) {
+        element.textContent = text
+      }
+    }
+  }
+
+  // data-href-ru="/ru/" olan hər linkin ünvanını həmin atributdakı ünvanla əvəz edir.
+  function translateLinks(lang: string) {
+    const links = document.querySelectorAll(`[data-href-${lang}]`)
+    for (const link of links) {
+      const href = link.getAttribute(`data-href-${lang}`)
+      if (href) {
+        link.setAttribute('href', href)
+      }
+    }
+  }
+
+  // <html lang> (ekran oxuyucu və brauzer dili bilsin) və brauzer tabının başlığı.
+  // Başlığın formatı ("404 — ...") 404.astro-nun yuxarıdakı title={...} ifadəsi ilə eynidir.
+  function translateDocument(lang: string) {
+    const page = document.querySelector('[data-nf-page]')
+    const htmlLangValue = page?.getAttribute(`data-html-lang-${lang}`)
+    if (htmlLangValue) {
+      document.documentElement.lang = htmlLangValue
+    }
+
+    const heading = document.querySelector('h1')
+    if (heading) {
+      document.title = `404 — ${heading.textContent}`
+    }
+  }
+
+  const detectedLang = detectLang(location.pathname)
+  if (detectedLang) {
+    translateTexts(detectedLang)
+    translateLinks(detectedLang)
+    translateDocument(detectedLang)
+  }
+</script>

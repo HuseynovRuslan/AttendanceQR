@@ -26,23 +26,29 @@ export const SITE = {
   // (Footer, ContactBody) rəqəmlərdən və +-dan başqa hər şeyi silir, ona görə buradakı boşluqlar
   // yalnız oxumaq üçündür.
   phone: '+994 50 600 16 55',
-  // `phone`-dan FƏRQLİ nömrədir, qəsdən: WhatsApp-da cavab verən budur (sahibkar təsdiqləyib,
-  // 2026-09). `phone` kimi oxumaq üçün yazılıb; wa.me linkini aşağıdakı whatsappUrl() bunun
-  // rəqəmlərindən qurur. /elaqe/-də, footer-də və üzən WhatsApp düyməsində görünür.
+  // `phone` ilə EYNİ nömrədir (+994 50 600 16 55): həm zəngə, həm WhatsApp-a cavab verən budur.
+  // Ayrıca saxlanılır ki, bir gün WhatsApp başqa nömrəyə keçsə, yalnız bu sətir dəyişsin. `phone` kimi
+  // oxumaq üçün yazılıb; wa.me linkini aşağıdakı whatsappUrl() bunun rəqəmlərindən qurur. /elaqe/-də
+  // və üzən WhatsApp düyməsində görünür.
   whatsapp: '+994 50 600 16 55',
   address: 'Bakı, Azərbaycan',
   // Android tətbiqi (frontend/android, paket az.qrlog.app). iPhone üçün mağaza tətbiqi yoxdur —
   // orada brauzerdən PWA kimi işləyir. GooglePlayBadge.astro-ya bax.
   playStore: 'https://play.google.com/store/apps/details?id=az.qrlog.app',
+  // Footer-dəki Instagram düyməsi (Footer.astro). Hələlik yeganə sosial şəbəkədir: başqa şəbəkə əlavə
+  // olunanda footer-dəki həmin blokun dizaynı da dəyişəcək. Link və yazılan ad ayrıdır, çünki ad
+  // linkdən avtomatik çıxarılmır (linkdə sondakı / və s. ola bilər).
+  instagram: 'https://www.instagram.com/qrlog.az/',
+  instagramHandle: '@qrlog.az',
 } as const
 
 /**
  * SITE.whatsapp nömrəsinə wa.me linki qurur. `text` verilsə, çat açılanda həmin mesaj artıq yazılmış
- * olur. Nümunə: whatsappUrl() → 'https://wa.me/994512409767'.
+ * olur. Nümunə: whatsappUrl() → 'https://wa.me/994506001655'.
  */
 export function whatsappUrl(text?: string): string {
   // wa.me nömrəni yalnız rəqəmlərlə qəbul edir — nə +, nə boşluq. /\D/g — "rəqəm olmayan hər simvol"
-  // (g — hamısı), yəni '+994 51 240 97 67' → '994512409767'.
+  // (g — hamısı), yəni '+994 50 600 16 55' → '994506001655'.
   const digitsOnly = SITE.whatsapp.replace(/\D/g, '')
   const chatUrl = `https://wa.me/${digitsOnly}`
 
@@ -69,9 +75,14 @@ export function whatsappUrl(text?: string): string {
 // `enabled` ana səhifədəki bölməni və footer-dəki linki göstərir; `showPlans` isə plan cədvəlinin
 // özünü (false = cədvəlin yerində price.quoteTitle kartı — "Qiymət fərdi hesablanır"). İkisi də
 // true = qiymətlər açıqdır.
-// DİQQƏT: tətbiqin daxili hesab sistemi (Domain/Pricing.cs) hələ köhnə pilləli tarifləri işlədir və
-// lokasiya haqqı orada yoxdur — bu dərc olunmuş rəqəmlərlə kiməsə hesab kəsməzdən əvvəl onu
-// uyğunlaşdır.
+// DİQQƏT: tətbiqin hesab sistemi (src/AttendanceQR.Domain/Pricing.cs) artıq bu dərc olunmuş modelə
+// keçib (2026-10-10-da koda qarşı yoxlanıb): RatePerEmployee işçi sayına görə 4 / 3.5 / 3 ₼ seçir
+// (≤10 / ≤50 / qalanı), LocationMonthlyFee isə hər AKTİV lokasiyaya 5 ₼ əlavə edir. Enterprise-ın
+// razılaşdırılmış qiyməti Tenant.MonthlyPriceOverride-dadır və düsturu tam əvəz edir; o yoxdursa,
+// kod 101+ üçün də 3 ₼ ilə hesablayır. Bütün funksiyalar hər paketdə açıqdır: TenantFeatures yalnız
+// operatorun bir şirkət üçün söndürdüyü funksiyaları saxlayır, paketə və ya işçi sayına görə heç nə bağlanmır.
+// Bu rəqəmlərdən birini dəyişsən, Pricing.cs-i və tests/…/PricingTests.cs-i də dəyiş — yoxsa müştəriyə
+// saytdakından fərqli hesab kəsilər.
 // ---------------------------------------------------------------------------------------------
 export const PRICING = {
   enabled: true,
@@ -85,6 +96,37 @@ export const PRICING = {
     { id: 4, amount: null, featured: false, featureCount: 3 },
   ],
 } as const
+
+// ---------------------------------------------------------------------------------------------
+// REAL İSTİFADƏ RƏQƏMLƏRİ (STATS) — «Rəqəmlərlə» zolağı (Stats.astro).
+//
+// Rəqəmlər super admin panelindən (İcmal + Şirkətlər) götürülüb, 2026-10-13. Burada DƏQİQ rəqəm yazılır;
+// saytda Stats.astro onu aşağı yuvarlaqlaşdırıb «+» ilə göstərir (1 069 → «1 000+», 556 → «550+»), ona
+// görə «+» həmişə doğrudur. Aşağı yuvarlaqlaşdırmaq qəsdəndir: sayt heç vaxt real rəqəmdən çox göstərməsin.
+//
+// Rəqəmləri yeniləmək — 3 addım: 1) rəqəmləri panelə görə dəyiş, 2) `updatedAt`-i həmin günün tarixi et
+// (zolaqdakı nişanda «Oktyabr 2026» kimi çıxır), 3) saytı yenidən build et.
+// Zolağı gizlətmək üçün `show: false` kifayətdir (PRICING.enabled kimi). Rəqəmlərdən biri boşdursa
+// (null və ya 0), Stats.astro `show: true` olsa belə heç nə göstərmir — yarımçıq zolaq olmasın.
+//
+// Tip açıq yazılıb (`as const` yox): `null` yazmağa icazə verilir və TypeScript onu yoxlaya bilir.
+// `as const` ilə `companies: 5` yalnız «5» tipi olardı, `companies: null` isə xəta verərdi.
+// ---------------------------------------------------------------------------------------------
+export const STATS: {
+  show: boolean
+  companies: number | null
+  employees: number | null
+  locations: number | null
+  dailyCheckins: number | null
+  updatedAt: string
+} = {
+  show: true,
+  companies: 5, // aktiv şirkətlər
+  employees: 1069, // aktiv işçilər, bütün şirkətlər üzrə
+  locations: 89, // filiallar
+  dailyCheckins: 556, // bir iş günündə gələn işçilər (İcmal → «gəlib»)
+  updatedAt: '2026-10-13', // rəqəmlərin götürüldüyü gün (YYYY-MM-DD)
+}
 
 // ---------------------------------------------------------------------------------------------
 // MÜŞTƏRİLƏR (CUSTOMERS) — QRLog-u həqiqətən işlədən şirkətlər; hər biri razılıq verdikdən sonra
