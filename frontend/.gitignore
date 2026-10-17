@@ -18,3 +18,5 @@ public/version.json
 /test-results/
 /playwright-report/
 /blob-report/
+# Role sessions and the run's world (tokens) — written by global setup, deleted by teardown
+/e2e/.auth/

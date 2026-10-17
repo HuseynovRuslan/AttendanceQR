@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
@@ -34,15 +35,17 @@ public class AdminEquipmentController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var pattern = $"%{q.Trim()}%";
+            // SearchText, not ILIKE: ILIKE folds case by the database locale, which pairs «I» with 'i' where
+            // Azerbaijani pairs it with 'ı' — the staff search's rule, one rule for every search box.
+            var key = SearchText.Fold(q.Trim());
             query = query.Where(r =>
-                EF.Functions.ILike(r.FullName, pattern)
-                || (r.Position != null && EF.Functions.ILike(r.Position, pattern))
-                || (r.Area != null && EF.Functions.ILike(r.Area, pattern))
-                || (r.Equipment != null && EF.Functions.ILike(r.Equipment, pattern))
-                || (r.SystemUnit != null && EF.Functions.ILike(r.SystemUnit, pattern))
-                || (r.Monitor != null && EF.Functions.ILike(r.Monitor, pattern))
-                || (r.OtherEquipment != null && EF.Functions.ILike(r.OtherEquipment, pattern)));
+                SearchText.Fold(r.FullName).Contains(key)
+                || (r.Position != null && SearchText.Fold(r.Position).Contains(key))
+                || (r.Area != null && SearchText.Fold(r.Area).Contains(key))
+                || (r.Equipment != null && SearchText.Fold(r.Equipment).Contains(key))
+                || (r.SystemUnit != null && SearchText.Fold(r.SystemUnit).Contains(key))
+                || (r.Monitor != null && SearchText.Fold(r.Monitor).Contains(key))
+                || (r.OtherEquipment != null && SearchText.Fold(r.OtherEquipment).Contains(key)));
         }
 
         var records = await query.OrderBy(r => r.RowNo).ToListAsync(ct);

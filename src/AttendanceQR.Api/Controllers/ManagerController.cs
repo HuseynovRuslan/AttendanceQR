@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -62,6 +63,13 @@ public class ManagerController : ControllerBase
     /// <summary>True when the location is one this manager oversees. The gate for creating/moving.</summary>
     private async Task<bool> ManagesLocationAsync(Guid locationId) =>
         (await ManagedLocationIdsAsync()).Contains(locationId);
+
+    /// <summary>May the caller switch a person at <paramref name="locationId"/> off or back on — «employees.deactivate»
+    /// over that branch. Answered by the same scope every list narrows by, so the tenant filter and the branch
+    /// boundary hold exactly as they do there.</summary>
+    private async Task<bool> MayDeactivateAsync(Guid locationId, CancellationToken ct) =>
+        (await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesDeactivate, ct))
+        .Covers(locationId);
 
     /// <summary>
     /// THE authorization decision for a manager acting ON another account — every mutating
@@ -260,6 +268,31 @@ public class ManagerController : ControllerBase
         => source.Where(e => (managed.Contains(e.LocationId) && !operatorIds.Contains(e.Id)) || e.Id == self);
 
     // --- reference data (for the manager's own forms) ---------------------------
+
+    // GET /api/manager/employee-branches — the branches the staff screen offers: every branch the caller sees
+    // people at, each saying whether a person may be ADDED there and MOVED there by this caller. The same scope
+    // CreateEmployee and UpdateEmployee then check (ManagesLocationAsync under «employees.create» /
+    // «employees.update»), so the form never offers a branch the save refuses.
+    //
+    // Why not /locations: that one is the branch list itself and asks «locations.view». A Tabelçi does not
+    // hold it — by design, their role is people, not sites — and the staff form read its branches from there,
+    // so «İşçi əlavə et» sat disabled for every Tabelçi (E2E, 2026-10-17). Handing them «locations.view» to fix
+    // it would open the branches screen as well. This answers with ids and names of their own area only.
+    [Permission(AccessPermissions.EmployeesView, Twin = true)]
+    [HttpGet("employee-branches")]
+    public async Task<IActionResult> EmployeeBranches()
+    {
+        var ct = HttpContext.RequestAborted;
+        var seen = await ManagedLocationIdsAsync();
+        var create = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesCreate, ct);
+        var move = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesUpdate, ct);
+        var rows = await _db.Locations
+            .Where(l => seen.Contains(l.Id))
+            .OrderBy(l => l.Name)
+            .Select(l => new { l.Id, l.Name })
+            .ToListAsync(ct);
+        return Ok(rows.Select(l => new { id = l.Id, name = l.Name, canCreate = create.Covers(l.Id), canMove = move.Covers(l.Id) }));
+    }
 
     // GET /api/manager/locations — the branches this manager may file against, for dropdowns.
     [Permission(AccessPermissions.LocationsView, Twin = true)]
@@ -637,6 +670,8 @@ public class ManagerController : ControllerBase
             // Deliberately absent: MonthlySalary and Role. Not hidden in the UI — never sent.
             // Whether this manager may ACT on this person is a separate question, answered per write.
             manageable = mayAct,
+            // Switching them off or back on — a right of its own (see UpdateEmployee), and never a colleague's.
+            deactivatable = mayAct && !IsColleague(e, managed) && await MayDeactivateAsync(e.LocationId, ct),
             credentialsManageable = mayResetCredentials,
             // A fellow manager: editable, but not switched off from here — the card hides that button.
             isColleague = IsColleague(e, managed),
@@ -727,6 +762,13 @@ public class ManagerController : ControllerBase
         // colleague's edit is for their details and their days, not for removing them.
         if (colleague && request.IsActive != employee.IsActive)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotDeactivateManager" });
+        // Switching somebody off — or back on — is a right of its own, «employees.deactivate», over the branch
+        // they work at now; «employees.update» there is not enough. The Tabelçi template carries the one and not
+        // the other, and until 2026-10-17 that made no difference: this flag rode in on the profile edit and
+        // nothing asked. Today's managers hold both over their branches (Legacy and Shadow: their
+        // ManagedLocations), so for them nothing changes.
+        if (request.IsActive != employee.IsActive && !await MayDeactivateAsync(employee.LocationId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeactivateNotAllowed" });
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
@@ -855,14 +897,14 @@ public class ManagerController : ControllerBase
             return Ok(Array.Empty<object>());
 
         var self = M15();
-        var lowered = term.ToLower();
+        var lowered = SearchText.Fold(term);
         var digits = new string(term.Where(char.IsDigit).ToArray());
         var byPhone = digits.Length >= 3;
         var managed = await ManagedLocationIdsAsync();
 
         var matching = _db.Employees
             .Where(e => e.IsActive && e.Id != self && !_operatorIds.Contains(e.Id)
-                        && (e.FullName.ToLower().Contains(lowered)
+                        && (SearchText.Fold(e.FullName).Contains(lowered)
                             || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))));
 
         var enforced = await EnforcedRowsAsync();

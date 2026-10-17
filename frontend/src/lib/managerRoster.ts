@@ -1,5 +1,6 @@
 import type { AdminEmployeeRow, EmployeeSelectionRow, EmployeeStats } from '../api/admin'
 import type { ManagerEmployee } from '../api/manager'
+import { matchesSearch } from './searchFold'
 
 /**
  * A branch manager's staff list, drawn by the same page the admin's is (Phase 4 — one staff list).
@@ -66,12 +67,9 @@ export function toRosterRow(e: ManagerEmployee): ManagerRosterRow {
 function matches(e: ManagerEmployee, q: Omit<RosterQuery, 'page' | 'pageSize'>): boolean {
   if (q.showLeft ? e.isActive : !e.isActive) return false
   if (q.locationId && e.locationId !== q.locationId) return false
-  const s = q.search.trim().toLocaleLowerCase('az')
-  if (!s) return true
-  // The admin list's four fields, plus the branch name the manager's old screen searched too.
-  return `${e.fullName} ${e.phoneNumber ?? ''} ${e.position ?? ''} ${e.locationName ?? ''} ${e.id}`
-    .toLocaleLowerCase('az')
-    .includes(s)
+  // The admin list's four fields, plus the branch name the manager's old screen searched too — by the
+  // server's own search rule (searchFold), so both lists find the same people.
+  return matchesSearch(q.search, `${e.fullName} ${e.phoneNumber ?? ''} ${e.position ?? ''} ${e.locationName ?? ''} ${e.id}`)
 }
 
 /** Everybody the filters match, in the order an Azerbaijani reader expects. */
