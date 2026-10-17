@@ -104,4 +104,13 @@ public class Location : ITenantScoped
     /// The admin form says so in those words.
     /// </summary>
     public bool RequireGeofence { get; set; } = true;
+
+    /// <summary>
+    /// The structure this branch is grouped under, or null — and null is a full answer, not a gap:
+    /// structures are optional, and a company that uses none never sees them. Moving a branch changes this
+    /// one column and nothing else; attendance belongs to the person and the branch, so its history stays
+    /// exactly where it was. A structure from another company cannot be set here — the foreign key is
+    /// (TenantId, StructureId), so the database refuses it as well as the code.
+    /// </summary>
+    public Guid? StructureId { get; set; }
 }
