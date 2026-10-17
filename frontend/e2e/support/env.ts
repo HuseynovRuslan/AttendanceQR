@@ -55,7 +55,7 @@ export function adminCredentials(): Credentials {
   if (missing.length) {
     throw new E2EConfigError(
       `${missing.join(' və ')} təyin olunmayıb. Staging test şirkətinin admin girişini mühitin secret-lərinə ` +
-        'əlavə edin (cloud mühiti: Environment → Edit; CI: repository secret). Fayl oxunmur.',
+        'əlavə edin (cloud mühiti: Environment → Edit; CI: `staging-e2e` environment secret-i). Fayl oxunmur.',
     )
   }
   return { phone: phone!, pin: pin! }
