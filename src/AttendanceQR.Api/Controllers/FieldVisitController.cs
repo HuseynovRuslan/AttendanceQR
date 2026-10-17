@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -446,6 +447,7 @@ public class FieldVisitController : ControllerBase
     // ------------------------------------------------------------------ manager / admin (assign, board) ----
 
     // POST /api/field-visits — a manager assigns a visit to a worker (optionally pinning a target).
+    [Permission(AccessPermissions.FieldVisitsManage)]
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Assign([FromBody] AssignFieldVisitRequest req)
@@ -517,6 +519,7 @@ public class FieldVisitController : ControllerBase
     }
 
     // GET /api/field-visits?date=yyyy-MM-dd — the board for a day (defaults to today).
+    [Permission(AccessPermissions.FieldVisitsView)]
     [HttpGet]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Board([FromQuery] DateOnly? date)
@@ -613,6 +616,7 @@ public class FieldVisitController : ControllerBase
     }
 
     // GET /api/field-visits/assignable — active workers to assign a visit to (for the assign dropdown).
+    [Permission(AccessPermissions.FieldVisitsView)]
     [HttpGet("assignable")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Assignable()
@@ -667,6 +671,7 @@ public class FieldVisitController : ControllerBase
     /// Re-reviewable on purpose: a manager who marked «həll olunmadı», had it put right and came back
     /// must be able to say so. The latest verdict stands, with its own time and name against it.
     /// </summary>
+    [Permission(AccessPermissions.FieldVisitsManage)]
     [HttpPost("{id:guid}/review")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Review(Guid id, [FromBody] ReviewFieldVisitRequest request)
@@ -697,6 +702,7 @@ public class FieldVisitController : ControllerBase
         return Ok(Project(visit, null, items.GetValueOrDefault(visit.Id)));
     }
 
+    [Permission(AccessPermissions.FieldVisitsDiscard)]
     [HttpPost("{id:guid}/discard")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Discard(Guid id, [FromBody] DiscardVisitRequest? request = null)
@@ -738,6 +744,7 @@ public class FieldVisitController : ControllerBase
     }
 
     // POST /api/field-visits/{id}/cancel — call off an assignment the worker hasn't started.
+    [Permission(AccessPermissions.FieldVisitsManage)]
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Cancel(Guid id)
@@ -759,6 +766,7 @@ public class FieldVisitController : ControllerBase
     // A CheckedIn visit whose day has passed reads as zero field time (no duration), which pays wrong;
     // this is the field-side counterpart of /admin/open-records. The admin doesn't know the real
     // departure time, so the checkout is stamped "now" (no GPS) and flagged — a cleanup, not a record.
+    [Permission(AccessPermissions.FieldVisitsManage)]
     [HttpPost("{id:guid}/force-checkout")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ForceCheckOut(Guid id, [FromBody] ForceCheckOutRequest? request = null)
@@ -855,6 +863,7 @@ public class FieldVisitController : ControllerBase
     // selfie has its slot and has to be argued for on its own merits.
 
     // GET /api/field-visits/{id}/checklist — the lines + per-item tick times, for the visit detail.
+    [Permission(AccessPermissions.FieldVisitsView)]
     [HttpGet("{id:guid}/checklist")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> Checklist(Guid id)
@@ -878,6 +887,7 @@ public class FieldVisitController : ControllerBase
     // GET /api/field-visits/{id}/work-photo — a short-lived url for the İŞ ŞƏKLİ. This endpoint can
     // only ever resolve WorkPhotoKey; there is no code path here that returns a selfie. The scope is
     // the same as the deleted selfie one — a work photo still places a named worker somewhere.
+    [Permission(AccessPermissions.FieldVisitsView)]
     [HttpGet("{id:guid}/work-photo")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> WorkPhoto(Guid id)

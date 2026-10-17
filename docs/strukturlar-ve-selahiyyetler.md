@@ -220,7 +220,7 @@ Kilidli olan yalnız «Şirkət administratoru»dur: bərpa yolu itməsin deyə 
 | Rol | Adətən sahə | İcazələr | İstəyə bağlı (sahib seçir) |
 |---|---|---|---|
 | **Şirkət administratoru** 🔒 | Şirkət | Hamısı | — |
-| **Struktur operatoru** | Struktur | panel; davamiyyət (oxu, export); işçi (görmək, əlaqə, yaratmaq, dəyişmək, işdən çıxartmaq, PIN, nömrə); telefon (görmək, təsdiq, ləğv); növbə (görmək, idarə, təyin); məzuniyyət; filial (görmək, QR çapı); sahə ziyarətləri; təyinat (görmək, idarə — yalnız Tabelçi və Müşahidəçi); bildirişlər | `attendance.correct`, `field_checkin.grant`, `checkin_rules.override`, `locations.update` |
+| **Struktur operatoru** | Struktur | panel; davamiyyət (oxu, export); işçi (görmək, əlaqə, yaratmaq, dəyişmək, işdən çıxartmaq, PIN, nömrə); telefon (görmək, təsdiq, ləğv); növbə (görmək, idarə, təyin); məzuniyyət; filial (görmək, QR çapı); sahə ziyarətləri; təyinatları görmək; bildirişlər | `assignments.manage` (tabelçiyə filial təyin etmək — tapşırıqda «icazəlidirsə»), `attendance.correct`, `field_checkin.grant`, `checkin_rules.override`, `locations.update` |
 | **Tabelçi** | Filial(lar) | panel; davamiyyət (oxu, export); işçi (görmək, əlaqə, yaratmaq, dəyişmək, PIN); telefon (görmək, təsdiq); növbə (görmək, təyin); məzuniyyət; sahə ziyarətləri (oxu); bildirişlər | `attendance.correct`, `field_checkin.grant` |
 | **Müşahidəçi** | Struktur və ya filial | panel; davamiyyət (oxu, export); işçi (görmək); məzuniyyət (oxu); növbə (oxu); filial (oxu); sahə ziyarətləri (oxu). **Heç bir yazı yoxdur.** | — |
 | **Filial meneceri (köhnə qayda)** | Filial(lar) | Bugünkü menecerin dəqiq icazələri, §3.3-ün «Menecer» sütunu | Keçid rolu: sahib adamları yeni rollara keçirdikcə boşalır |
@@ -424,3 +424,155 @@ Qaydalar:
 3. **Bildirişlər** keçiddən sonra filialda əməliyyat icazəsi olan tabelçi və operatora gedir,
    yalnız izləyən menecerə getmir. Keçidə qədər bugünkü kimi menecerə gedir. ✅
 4. **T1 + T2** — ayrıca branch-də indi düzəldilir və deploy olunur. ✅
+
+---
+
+## 14. Faza 2 — qurulub (2026-10-15, branch `feat/permissions-phase2`)
+
+Hələ heç nəyi **qərar vermir**. Bütün şirkətlər `Legacy` rejimindədir. Bugünkü rollar və sahə qaydaları
+olduğu kimi işləyir, yeni model yalnız hesablayır, müqayisə edir və `/api/me/access`-i doldurur.
+
+### 14.1 Nə var
+
+| Hissə | Harada |
+|---|---|
+| İcazə kataloqu (58 açar, Azərbaycanca adlar, 14-ü yalnız şirkət sahəsində) | `Domain/Access/AccessPermissions.cs` |
+| 6 rol şablonu | `Domain/Access/AccessRoleTemplates.cs` |
+| `AccessRoles`, `RoleAssignments`, `AuthzShadowEvents` cədvəlləri, `Tenants.AuthzMode` (0 = Legacy) | miqrasiya `AddAccessRoles` — yalnız əlavə edir, data yazmır |
+| Bugünkü Admin və Menecer girişinin sistem təyinatlarına köçürülməsi | `AccessSeeder`. Hər start-da və rolu və ya menecer filiallarını dəyişən 4 yazıdan sonra işləyir. İnsanın verdiyi təyinata toxunmur. |
+| Kim nə edə bilər, harada | `AccessGraph` / `EffectiveAccess` — sorğuda bazadan, tokendən yox |
+| Üstünlük, özünə vermə qadağası, şirkət icazəsi, operator qorunması | `AccessRules` |
+| Bugünkü hər sahə qaydasının yeni modeldəki cavabı (bir cədvəl) | `ShadowRules.Decide` |
+| Kölgə: sahə qaydaları | `AuthzObserver` — `LocationScopeRules` və menecer masasının üç köməkçisi ona deyir |
+| Kölgə: qapı (endpoint) | `AuthzShadowMiddleware` + 109 `[Permission]` qeydi |
+| «Mənim icazələrim» | `GET /api/me/access` |
+
+### 14.2 İşləyərkən dəqiqləşən qaydalar
+
+- **Həmkar qaydası.** Təmiz «üstünlük» qaydası Bakı Abadlıqda 9 menecer cütündən həmkar hüququnu alardı.
+  Bu, prod datasında yalnız oxuma ilə ölçülüb. Ona görə köhnə menecer rolu `PeersManageable` daşıyır:
+  - hədəfin evi olan filialda eyni rolu daşıyan həmkar onu idarə edə bilir — bu, bugünkü qaydadır;
+  - başqa yerdə yaşayıb eyni filialları idarə edən idarə edə bilmir — bu da bugünkü kimidir.
+
+  Yeni rollar ciddi qaydanı işlədir.
+- **Özünə yox.** PIN, giriş nömrəsi və profil kimi hesab əməliyyatları heç vaxt adamın özünə tətbiq olunmur.
+  Bu gün də belədir, bərabərlik testi bunu tapdı: PIN köməkçisi şirkət sahəsində olduğu üçün menecer öz
+  PIN-ini sıfırlaya bilərdi. Öz qeydlərinə düzəliş isə yalnız şirkət sahəsində mümkündür: admin edə
+  bilər, menecer edə bilməz, bugünkü kimi.
+- **`AtCompany`.** Şirkət boyu siyahılar, cəmlər və ayarlar icazənin şirkət sahəsində olmasını tələb edir.
+  Admin-ə xas endpoint-lərin bugünkü «yalnız admin» qapısı belə dəqiq köçürülür.
+- **`Twin`.** Menecer üçün `/api/manager/*` və admin üçün onun əkiz yolları olan endpoint-lərdə qapı
+  fərqi var. Amma həmin güc o biri yolla eynilə mövcuddur. Belə hallar «Gate» yox, «Twin» kimi yazılır.
+- **Şirkət silmə sırası.** `TenantPurge` cədvəlləri əlifba ilə deyil, xarici açarlara görə silir. Əvvəlki
+  sıra sadəcə şanslı idi, təyinatlar onu pozdu.
+
+### 14.3 Köhnə və yeni qərarlar arasında fərq
+
+- **Testlərdə: 0.**
+  - Bugünkü 3 sahə qaydası × 13 nəfər × 13 hədəf.
+  - Menecer masasının 3 qaydası × 5 menecer × 13 hədəf.
+  - Hər menecerin filial dəsti.
+  - 3 hesab növü (admin, menecer, işçi) × hər `[Permission]` endpoint-i.
+- **Prod datasında, yalnız oxuma ilə:** köçürməni pozacaq heç nə yoxdur.
+  - 159 `ManagedLocations` sətri: şirkət uyğunsuzluğu 0, menecer olmayanın sətri 0.
+  - Filialsız menecer yoxdur.
+  - Gözlənilən təyinatlar: 11 şirkət administratoru, 159 köhnə menecer, 39 PIN köməkçisi.
+- **Qəsdən fərq, sahibin qərarı:** şirkət boyu növbə yaratmaq və silmək yeni modeldə şirkət sahəsi tələb
+  edir. Kod hələ köhnə qaydanı işlədir, bu dəyişiklik Faza 5-də qüvvəyə minəcək.
+
+### 14.4 Hələ yoxdur
+
+- Rol və təyinat ekranı, API — Faza 3.
+- Vahid panel; siyahıların və StaffAlerts alıcılarının yeni modelə keçməsi — Faza 4.
+- Qərarın yeni modelə verilməsi (`Enforced`) — Faza 5.
+- Hesabat endpoint-lərinin **qapısı** (`ReportsController` yalnız `[Authorize]` daşıyır, `[Permission]` yox).
+  Onların **sahəsi** isə müqayisə olunur: tabel, hesabat, lövhə və maaş menecerin filiallarını
+  `LocationScopeRules.ManagedLocationIdsAsync`-dən alır və hər sorğuda `ManagedSet` kimi yoxlanılır.
+  Adminin şirkət sahəsi müqayisə olunmur. Faza 5-də bu endpoint-lərə öz icazə yoxlaması lazımdır.
+
+### 14.5 Növbəti addımlar (hər biri ayrıca təsdiqlə)
+
+1. ~~Staging-də miqrasiya və uzlaşdırma real PostgreSQL-də. Staging şirkətlərindən birini `Shadow`-a keçirib
+   `AuthzShadowEvents`-ə baxmaq.~~ Edildi — §15.
+2. Prod deploy. Bütün şirkətlər `Legacy` qalır, yalnız təyinatlar yaranır.
+3. Bakı Abadlıq `Shadow` rejiminə, ən azı 3 iş günü.
+4. `AuthzShadowEvents` hesabatı. Hər «Gate» və sahə fərqinin izahı olmalıdır.
+
+## 15. Faza 2 — staging yoxlaması (2026-10-15)
+
+Staging əvvəl `a452e8d`, düzəlişdən sonra `4af121e` idi. Production-a və Bakı Abadlığa toxunulmayıb. Real
+data üzərində yoxlamaları konteynerin içində işləyən probe etdi: deploy olunmuş DLL-lərlə, konteynerin öz
+bağlantısı ilə. Bütün müvəqqəti yazılar geri qaytarılan tranzaksiyada idi, bazanın md5 izi əvvəl və sonra
+eynidir.
+
+### 15.1 Yoxlamalar
+
+| # | Yoxlama | Nəticə |
+|---|---|---|
+| 1 | Staging-in prod bazasına çıxışı | Konfiqurasiyada yoxdur: staging-in bağlantısı öz bazasına baxır, prod parolu staging mühitində yoxdur. Şəbəkə barədə — §15.4. |
+| 2 | Backup | `qrlog_stg-2026-10-15-pre-access.dump`: 8,5 MB, 37 cədvəl. Saylar ayrıca fayldadır. |
+| 3 | Miqrasiya və köçürmə real PG-də | `AddAccessRoles` tətbiq olundu. CK, 4 kompozit FK və `NULLS NOT DISTINCT` unique yerindədir. Gözlənilən və faktiki sistem sətirləri arasında fərq 0, şirkətlərarası bağlantı 0. Mövcud cədvəllərin sayları dəyişməyib. |
+| 4 | Təkrar işləmə və əl ilə təyinatlar | İkinci restart 0 dəyişiklik verdi, md5 eyni qaldı. Əl ilə verilən 3 təyinat toxunulmaz qaldı. İki qüsur tapıldı və düzəldildi — §15.2. |
+| 5 | Shadow, real API | `test` Shadow-dadır. Admin keçidlərində fərq 0. Nəzarət testində adminin təyinatı müvəqqəti ləğv edildi: 11 endpoint «bu gün ✓ / yeni ✗» kimi yazıldı və sorğuların hamısı 200 qaytardı — kölgə heç nəyi bloklamır. Sətir eyni Id ilə bərpa olundu, test hadisələri silindi. Menecer sessiyası ilə yoxlama gözləyir. |
+| 6 | Siyahıların əhatəsi | Hər menecer üçün 10 siyahı icazəsinin hamısında yeni dəst bugünkü `ManagedLocations` ilə eynidir: 3/2/2/9 filial, 39/41/152/170 işçi. Admin şirkət boyu görür. 909 adi işçinin heç birində siyahı icazəsi yoxdur. |
+| 7 | Yeni rollar | Müvəqqəti 2 struktur və 9 təyinat yaradıldı, sonra geri qaytarıldı. Yoxlananlar: qapı (145 endpoint), «kimə» (19 hal), təyinat vermə (21 cəhd). Hamısı gözlənildiyi kimidir. |
+| 8 | Həmkar qaydası | Real 4 menecer cütündə bugünkü və yeni cavab eynidir. İstisna olmasaydı, 2 icazə itərdi. İstisna yalnız köhnə menecer rolundadır, yeni rollarda yoxdur (TK1 ↔ TK3). |
+| 9 | Əlavə yük | Qraf 1,1 ms (21 təyinat), 600 əlavə təyinatla 3,2 ms. Rejim sorğusu 0,25 ms və 30 s keşlənir. Bir qərar 10 µs. Brauzerdə median Legacy-də 60 ms, Shadow-da 65 ms; nəzarət endpoint-ində 63/66 ms — fərq şəbəkə səs-küyü qədərdir. |
+| 10 | QR skan | Faza 1–2 skan, kiosk və giriş fayllarında heç bir sətri dəyişməyib. Skan endpoint-ləri `[Permission]` daşımır, ona görə middleware bazaya getmədən qayıdır. Telefonla real skan gözləyir. |
+
+Real datada bərabərlik: 6 qayda üzrə 57 582 qərar, fərq 0.
+
+### 15.2 Tapılan və düzəldilən qüsurlar (`4dd8ac6`)
+
+In-memory testlər unique index və FK yoxlamır. Ona görə hər üç qüsur yalnız real PostgreSQL-də göründü.
+
+1. **Əl ilə verilən sətirlə toqquşma.** Rol əl ilə verilib, sonra eyni açarı sistem də istəyəndə reconcile
+   ikinci aktiv sətir əlavə edirdi. Məsələn, menecerə əl ilə admin verilir, sonra formada `Role=Admin`
+   olur. Nəticə 23505 idi və həmin şirkətin bütün reconcile-ı hər start-da sınırdı. İndi insanın sətri
+   sistemin sətrini əvəz edir. İnsan onu götürərsə, növbəti reconcile sistemin öz sətrini qoyur.
+2. **Bir şirkətin xətası hamısını saxlayırdı.** Startup-da bütün şirkətlər bir context-i bölüşür. Bir
+   şirkətin xətası dövrdən çıxırdı və sonrakı şirkətlər reconcile olunmurdu. Staging-də sınaq halı
+   başqa şirkətin filialına baxan pozuq `ManagedLocations` sətri idi (23503). İndi hər şirkət ayrıca
+   işlənir, xəta olanda onun yazılmamış sətirləri atılır.
+3. **Yazıdan sonra qalan sətirlər.** `ReconcileAfterWriteAsync` uğursuz olanda yazılmamış sətirlər context-də
+   qalırdı və sorğunun növbəti save-i onları təkrar edib sınardı. İndi atılır.
+
+Testlər:
+- 3 reconcile testi — düzəliş olmadan sınır.
+- 3 dual-write testi (`AccessDualWriteTests`): `AdminController.Update`-dən sonra yeni model dərhal dəyişir.
+  Reconcile çağırışı silinsə, sınırlar.
+
+Backend 1268/1268.
+
+### 15.3 Gözlənilən fərqlər və Faza 3-dən əvvəl sahibin qərarı
+
+- **Köhnə menecer → struktur operatoru.** Bu gün menecer öz filialında işləyən operatoru idarə edə bilir,
+  yeni modeldə isə yox: operatorun strukturu boyu hüququ menecerdə yoxdur. Operator təyin olunan kimi
+  Shadow-da «bu gün ✓ / yeni ✗» görünəcək. **Sual:** sərt qayda davamiyyət düzəlişinə də aiddir, yoxsa
+  yalnız hesab əməliyyatlarına (PIN, profil)?
+- **Təyinat alanın evi.** Təyinat hüququ olan operator öz strukturuna müşahidəçini strukturdan kənarda
+  işləyən adama da verə bilir. Səbəb: `CanGrant` sahəni yoxlayır, alanı yox. **Sual:** belə qalsın, yoxsa
+  məhdudlaşsın?
+- **Eyni səviyyə.** Təyinat hüququ olan operator öz səviyyəsində rol verə bilir: başqa operatora, hətta
+  təyinat hüququ olan rola. Qayda «öz hüquqlarının alt çoxluğu»dur və bərabərliyi də əhatə edir. Eyni
+  səviyyəli iki operator bir-birinin PIN-ini və profilini dəyişə bilir — bu, bugünkü həmkar qaydasının
+  yeni rollardakı qarşılığıdır.
+- **Faza 3 ekranı.** Təyinat ekranı «bu hüquq artıq sistemdən gəlir» halını özü göstərməlidir, yoxsa
+  istifadəçi 23505 alar.
+
+### 15.4 Şəbəkə ayrılması
+
+Staging-in prod bazasına qoşulmadığı konfiqurasiya səviyyəsində təsdiqləndi. Şəbəkə səviyyəsində ayrılma
+barədə infra qeydi bu sənədə yox, sahibə ayrıca verilib, çünki repo açıqdır. Prod infra dəyişikliyidir: ayrıca
+təsdiqlə və pik saatlardan kənarda edilir.
+
+### 15.5 Staging-in indiki vəziyyəti və geri dönüş
+
+- **Rejimlər:** `test` = `Shadow` (1), `bax` və `loadtest` = `Legacy` (0).
+  - Geri qaytarmaq: `UPDATE "Tenants" SET "AuthzMode" = 0 WHERE "Slug" = 'test';`
+  - Dəyişiklik 30 s keşdən sonra qüvvəyə minir.
+- **Test filialları:** `test`-in 4 menecerinə 16 `ManagedLocations` sətri yazılıb.
+  - Geri qaytarmaq: `DELETE FROM "ManagedLocations" WHERE "TenantId" = (SELECT "Id" FROM "Tenants" WHERE "Slug" = 'test');`
+  - Sonra backend restart.
+- **Kod:** əvvəlki staging commit-inə qayıtmaq olar. Yeni cədvəllər əlavədir, köhnə kod onları oxumur.
+- **Tam geri dönüş:** `qrlog_stg-2026-10-15-pre-access.dump`.

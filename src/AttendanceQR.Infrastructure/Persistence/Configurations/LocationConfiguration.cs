@@ -12,6 +12,10 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
 
         builder.HasKey(l => l.Id);
 
+        // (TenantId, Id) is what a branch-scoped role assignment points at — so it can only name a branch of
+        // its own company.
+        builder.HasAlternateKey(l => new { l.TenantId, l.Id });
+
         builder.Property(l => l.Name)
             .IsRequired()
             .HasMaxLength(200);

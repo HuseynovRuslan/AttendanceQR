@@ -1,5 +1,6 @@
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -16,6 +17,7 @@ namespace AttendanceQR.Api.Controllers;
 /// linking to the live board). Always reflects current state, so there's nothing to "dismiss" —
 /// approving a device change or the day rolling over naturally drops the count on the next poll.
 /// </summary>
+[Permission(AccessPermissions.DashboardView, AtCompany = true)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/notifications")]

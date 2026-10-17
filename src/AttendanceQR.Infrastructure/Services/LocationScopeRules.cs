@@ -18,7 +18,17 @@ namespace AttendanceQR.Infrastructure.Services;
 public static class LocationScopeRules
 {
     /// <summary>The locations a manager oversees (their ManagedLocations set).</summary>
-    public static Task<List<Guid>> ManagedLocationIdsAsync(AppDbContext db, Guid managerId, CancellationToken ct)
+    public static async Task<List<Guid>> ManagedLocationIdsAsync(AppDbContext db, Guid managerId, CancellationToken ct)
+    {
+        var managed = await LegacyManagedAsync(db, managerId, ct);
+        if (db.AuthzObserver is { } observer)
+            await observer.ObserveManagedSetAsync(db, managerId, EmployeeRole.Manager, managed, ct);
+        return managed;
+    }
+
+    // Today's rules, unchanged. The public methods return exactly what these return; the permission
+    // model only watches (Services.Access.AuthzObserver) — see docs/strukturlar-ve-selahiyyetler.md §4.3.
+    private static Task<List<Guid>> LegacyManagedAsync(AppDbContext db, Guid managerId, CancellationToken ct)
         => db.ManagedLocations
             .Where(m => m.EmployeeId == managerId)
             .Select(m => m.LocationId)
@@ -43,6 +53,15 @@ public static class LocationScopeRules
     public static async Task<bool> CanAccessEmployeeAsync(
         AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
     {
+        var allowed = await LegacyCanAccessAsync(db, requesterId, role, targetEmployeeId, ct);
+        if (db.AuthzObserver is { } observer)
+            await observer.ObserveScopeAsync(db, Access.ShadowRules.CanAccess, requesterId, role, targetEmployeeId, allowed, ct);
+        return allowed;
+    }
+
+    private static async Task<bool> LegacyCanAccessAsync(
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+    {
         // Everyone can always see their own records.
         if (requesterId == targetEmployeeId)
             return true;
@@ -63,7 +82,7 @@ public static class LocationScopeRules
         if (location is not Guid branch)
             return false;
 
-        var managed = await ManagedLocationIdsAsync(db, requesterId, ct);
+        var managed = await LegacyManagedAsync(db, requesterId, ct);
         return managed.Contains(branch);
     }
 
@@ -94,13 +113,22 @@ public static class LocationScopeRules
     public static async Task<bool> CanScheduleEmployeeAsync(
         AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
     {
+        var allowed = await LegacyCanScheduleAsync(db, requesterId, role, targetEmployeeId, ct);
+        if (db.AuthzObserver is { } observer)
+            await observer.ObserveScopeAsync(db, Access.ShadowRules.CanSchedule, requesterId, role, targetEmployeeId, allowed, ct);
+        return allowed;
+    }
+
+    private static async Task<bool> LegacyCanScheduleAsync(
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+    {
         if (role == EmployeeRole.Admin)
             return true;
         if (role != EmployeeRole.Manager)
             return false;
 
         // Anyone standing at a branch this manager runs, whatever their role — including themselves.
-        return await CanAccessEmployeeAsync(db, requesterId, role, targetEmployeeId, ct);
+        return await LegacyCanAccessAsync(db, requesterId, role, targetEmployeeId, ct);
     }
 
     /// <summary>
@@ -123,6 +151,15 @@ public static class LocationScopeRules
     public static async Task<bool> CanManageEmployeeAsync(
         AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
     {
+        var allowed = await LegacyCanManageAsync(db, requesterId, role, targetEmployeeId, ct);
+        if (db.AuthzObserver is { } observer)
+            await observer.ObserveScopeAsync(db, Access.ShadowRules.CanManage, requesterId, role, targetEmployeeId, allowed, ct);
+        return allowed;
+    }
+
+    private static async Task<bool> LegacyCanManageAsync(
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+    {
         if (role == EmployeeRole.Admin)
             return true;
         if (role != EmployeeRole.Manager)
@@ -139,7 +176,7 @@ public static class LocationScopeRules
         if (target.Role == EmployeeRole.Manager ? targetEmployeeId == requesterId : target.Role != EmployeeRole.Employee)
             return false;
 
-        var managed = await ManagedLocationIdsAsync(db, requesterId, ct);
+        var managed = await LegacyManagedAsync(db, requesterId, ct);
         return managed.Contains(target.LocationId);
     }
 }

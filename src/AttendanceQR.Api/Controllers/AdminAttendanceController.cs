@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -49,6 +50,7 @@ public class AdminAttendanceController : ControllerBase
     // These are the "forgot / couldn't scan to check out" days: the nightly summary marks them
     // Incomplete with 0 minutes worked, so a full day silently reads as zero until an admin closes it.
     // Today is excluded on purpose — an open record for today is just someone still at work.
+    [Permission(AccessPermissions.AttendanceView)]
     [HttpGet("open")]
     public async Task<IActionResult> Open()
     {
@@ -102,6 +104,7 @@ public class AdminAttendanceController : ControllerBase
         }));
     }
 
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPut("{recordId:guid}")]
     public async Task<IActionResult> Update(Guid recordId, [FromBody] AdminAttendanceUpdateRequest request)
     {
@@ -174,6 +177,7 @@ public class AdminAttendanceController : ControllerBase
     /// TODAY is never closed, whatever is sent: a shift still running is not a forgotten check-out —
     /// the same rule the board and «Saatlarım» apply.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("close-open")]
     public async Task<IActionResult> CloseOpenDays([FromBody] CloseOpenDaysRequest request)
     {
@@ -272,6 +276,7 @@ public class AdminAttendanceController : ControllerBase
     // only. A manager cannot write a day onto an admin or onto another manager, which is the 2026-08-08
     // boundary — and writing attendance for the account that can reset PINs is not a smaller version
     // of resetting one.
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AdminAttendanceCreateRequest request)
     {
@@ -323,6 +328,7 @@ public class AdminAttendanceController : ControllerBase
     // Undo an accidental check-out — clears CheckOutAtUtc so the employee is "checked in, not out"
     // again and can check out properly later. The Update endpoint can't do this (a null CheckOutAtUtc
     // there means "leave as-is"), so an accidental double-scan check-out needs this explicit action.
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{recordId:guid}/clear-checkout")]
     public async Task<IActionResult> ClearCheckOut(Guid recordId)
     {
@@ -365,6 +371,7 @@ public class AdminAttendanceController : ControllerBase
     /// (EmployeeId, Type, RelatedDate) unique index means a second press cannot accuse the same
     /// person twice for the same day — the guard is the database's, not the button's.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/send-photo-warning")]
     public async Task<IActionResult> SendPhotoWarning(
         Guid recordId,
@@ -484,6 +491,7 @@ public class AdminAttendanceController : ControllerBase
     /// The warning to the employee is sent LAST and its failure is not fatal: the record of what
     /// happened must not depend on whether a phone had a live push subscription.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/void-fraud")]
     public async Task<IActionResult> VoidFraud(
         Guid recordId,
@@ -596,6 +604,7 @@ public class AdminAttendanceController : ControllerBase
 
     /// <summary>Undo of the above. It exists because the judgement being undone is a judgement about
     /// a photograph of a face, and people get those wrong.</summary>
+    [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/unvoid")]
     public async Task<IActionResult> Unvoid(Guid recordId)
     {
@@ -648,6 +657,7 @@ public class AdminAttendanceController : ControllerBase
     /// Storage is cleaned after the row is committed and a failure there is logged, not returned: the
     /// record is gone either way, and the audit line carries the key so a leftover can still be found.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpDelete("{recordId:guid}")]
     public async Task<IActionResult> Delete(Guid recordId)
     {
@@ -724,6 +734,7 @@ public class AdminAttendanceController : ControllerBase
     ///
     /// Admin-only and capped at 92 days: it walks the whole tenant per day.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceMaintenance)]
     [HttpPost("recompute")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Recompute([FromQuery] DateOnly from, [FromQuery] DateOnly to)
@@ -755,6 +766,7 @@ public class AdminAttendanceController : ControllerBase
     // Re-queue a background face-match for every record that has a check-in photo — e.g. after the
     // references were corrected, to (re)score the history. Returns how many were queued.
     // Admin-only by its own attribute: a paid Rekognition call per record, tenant-wide.
+    [Permission(AccessPermissions.AttendanceMaintenance)]
     [HttpPost("recheck-faces")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RecheckFaces()

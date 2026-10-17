@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -39,6 +40,7 @@ public class AbsenceMarksController : ControllerBase
     }
 
     /// <summary>One employee's marked days, recent first — so a profile can show them and undo one.</summary>
+    [Permission(AccessPermissions.AttendanceView)]
     [HttpGet("employee/{employeeId:guid}")]
     public async Task<IActionResult> ForEmployee(Guid employeeId)
     {
@@ -63,6 +65,7 @@ public class AbsenceMarksController : ControllerBase
     /// and a leave is a decision that they need not have; overruling either from here would let one
     /// screen quietly contradict another, and the one being contradicted is the one holding proof.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost]
     public async Task<IActionResult> Mark([FromBody] AbsenceMarkRequest request)
     {
@@ -118,6 +121,7 @@ public class AbsenceMarksController : ControllerBase
     }
 
     /// <summary>Takes the mark off again and rebuilds the day without it.</summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpDelete]
     public async Task<IActionResult> Unmark([FromQuery] Guid employeeId, [FromQuery] DateOnly date)
     {

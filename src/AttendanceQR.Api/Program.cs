@@ -15,6 +15,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services.Access;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -244,6 +245,13 @@ if (hasExpiryExemptHash
         "QrToken:ExpiryExemptTokenSha256 must be a 64-character hexadecimal SHA-256 fingerprint.");
 // Read once: the list only changes with a restart, which is also what the off switch below relies on.
 var operatorIds = appOptions.SuperAdminIdList();
+
+// The permission model (docs/strukturlar-ve-selahiyyetler.md). Until a company is switched to Enforced it
+// decides nothing: in Shadow mode the observer and AuthzShadowMiddleware compare it with today's roles and
+// record every disagreement in AuthzShadowEvents.
+builder.Services.AddSingleton(new OperatorAllowlist(operatorIds.ToHashSet()));
+builder.Services.AddSingleton<IAuthzShadowSink, DbShadowSink>();
+builder.Services.AddScoped<IAuthzObserver, AuthzObserver>();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -591,6 +599,19 @@ using (var scope = app.Services.CreateScope())
                 seedSlug, seedPhone);
         }
     }
+
+    // The permission model mirrors today's Admin and Manager access as system assignments, re-derived on every
+    // start so drift heals itself (AccessSeeder). Non-fatal: authorization still runs on today's roles.
+    try
+    {
+        var changed = await AccessSeeder.ReconcileAllAsync(db, startupLogger);
+        if (changed > 0)
+            startupLogger.LogInformation("Access reconcile: {Changed} role/assignment row(s) brought in line.", changed);
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex, "Access reconcile skipped (non-fatal).");
+    }
 }
 
 // Ensure the photo-audit bucket exists (once, at startup). Non-fatal and skipped entirely when
@@ -695,6 +716,9 @@ app.UseImpersonationBoundary();
 // A «baxış rejimi» session reads a company and writes nothing. Placed beside the impersonation
 // boundary and before authorization for the same reason: one gate, ahead of every controller.
 app.UseViewOnlyBoundary();
+
+// Shadow mode's gate comparison — decides nothing, see AuthzShadowMiddleware.
+app.UseMiddleware<AuthzShadowMiddleware>();
 
 app.UseAuthorization();
 

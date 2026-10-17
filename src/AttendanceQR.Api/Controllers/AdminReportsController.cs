@@ -1,10 +1,12 @@
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AttendanceQR.Api.Controllers;
 
 /// <summary>Manual trigger for summary generation — used for testing and re-computation.</summary>
+[Permission(AccessPermissions.AttendanceMaintenance)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/reports")]
