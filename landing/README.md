@@ -36,8 +36,9 @@ edir — Node 20.11-də `astro check` `ERR_REQUIRE_ESM` ilə düşür. Lokal Nod
 Səhifə slug-ları hər üç dildə azərbaycanca qalır (`/ru/qiymet/`, `/en/elaqe/`) — köhnə azərbaycanca
 URL-lər artıq indeksdədir və onları dəyişmək qazanc gətirmirdi.
 
-Bloq (`/bloq/`), `/mexfilik/` və `/hesab-silinmesi/` yalnız azərbaycancadır — `src/i18n/ui.ts` →
-`azOnlyRoutes`. Hüquqi iki səhifəyə hər dilin footer-i link verir (`hreflang="az"` ilə). Bloq linki
+Bloq (`/bloq/`) və `/mexfilik/` yalnız azərbaycancadır — `src/i18n/ui.ts` → `azOnlyRoutes`. Məxfilik
+səhifəsinə hər dilin footer-i link verir (`hreflang="az"` ilə). `/hesab-silinmesi/` üç dildədir
+(`/ru/hesab-silinmesi/`, `/en/hesab-silinmesi/`), footer-də hər dil öz səhifəsinə aparır. Bloq linki
 footer-dən müvəqqəti çıxarılıb — bloqda üç məqalə olanda `Footer.astro`-dakı şərhə alınmış sətri qaytarın.
 
 ## Struktur
@@ -45,7 +46,7 @@ footer-dən müvəqqəti çıxarılıb — bloqda üç məqalə olanda `Footer.a
 ```
 src/
   assets/images/             # build-in hash-layıb /_astro/-ya yazdığı ikili fayllar
-    brand/                   #   logo-word, logo-mark-white
+    brand/                   #   logo-word (header), logo-word-white (footer: «QR» ağ, «Log» mavi)
     badges/                  #   Google-un rəsmi Google Play nişanları (EN, RU) — dəyişdirilmir
     customers/               #   müştəri loqoları (site.ts → CUSTOMERS)
     product/                 #   poster QR-ı, tətbiq ekranı
@@ -124,10 +125,19 @@ utility class-ları birbaşa yazmaq olar.
   bütün qiymət bölməsini və naviqasiyadakı yerini birdən söndürür.
 - **Əlaqə (e-poçt, telefon, WhatsApp):** `src/data/site.ts` → `SITE`. `phone` boşdursa saytda heç
   bir telefon linki görünmür — işləməyən nömrə göstərməkdənsə heç nə göstərməmək seçildi. WhatsApp
-  nömrəsi telefondan fərqlidir (qəsdən); `wa.me` linkini `whatsappUrl()` qurur. Onu `/elaqe/`,
-  footer və hər səhifədəki üzən düymə (`WhatsAppButton.astro`) işlədir. Bütün CTA düymələri
-  (header, hero, qiymət planları, CTA zolağı) `/elaqe/` səhifəsinə yönəlir.
+  nömrəsi telefondan fərqlidir (qəsdən); `wa.me` linkini `whatsappUrl()` qurur. Onu `/elaqe/`
+  və hər səhifədəki üzən düymə (`WhatsAppButton.astro`) işlədir (footer-dəki WhatsApp sətri
+  müvəqqəti şərhdədir). Bütün CTA düymələri
+  (header, hero, qiymət planları) `/elaqe/` səhifəsinə yönəlir. Ayrıca «çağırış zolağı» (CTA bölməsi)
+  yoxdur: o, header-dəki «Əlaqə saxlayın» düyməsini təkrarladığı üçün silindi.
 - **Google Play linki:** `SITE.playStore`; nişan `GooglePlayBadge.astro`-dadır (Pwa bölməsi, footer).
+- **Instagram:** `SITE.instagram` (link) və `SITE.instagramHandle` (düymədə yazılan ad); footer-dəki düyməni
+  `Footer.astro` çəkir.
+- **«Rəqəmlərlə» zolağı (real rəqəmlər):** `src/data/site.ts` → `STATS`. Super admin panelindən (İcmal +
+  Şirkətlər) götürülən DƏQİQ rəqəmlər yazılır, saytda `Stats.astro` onları aşağı yuvarlaqlaşdırıb «+» ilə
+  göstərir (1 069 → «1 000+»). Yeniləmək — 3 addım: rəqəmləri dəyiş, `updatedAt`-i həmin günün tarixi et,
+  saytı yenidən build et. Zolağı gizlətmək üçün `show: false`; rəqəmlərdən biri `null` və ya `0`-dırsa zolaq
+  özü-özünə gizlənir. Rəqəmləri markup-a və ya `ui.ts`-ə yazmayın — yalnız `STATS`-da olsun.
 - **Müştəri rəyləri:** `src/data/site.ts` → `TESTIMONIALS`. Siyahı boş olduğu müddətdə bölmə
   ümumiyyətlə render olunmur. Ora yalnız **adı və vəzifəsi ilə paylaşılmasına icazə verilmiş** real
   sitatlar əlavə edin.
@@ -143,7 +153,7 @@ istifadə statistikası, uydurma reytinq (JSON-LD-də `aggregateRating` yoxdur),
 loqoları və rəyləri, GDPR/“uçtan-uca şifrələmə” iddiaları, App Store vədi (iPhone-da məhsul
 PWA-dır; Android tətbiqi isə həqiqətən Google Play-dədir — `az.qrlog.app`) və “dinamik QR” (poster
 sabitdir — kod dəyişmir). Yoxlamalar dörddür — QR imzası, məkan (GPS), cihaz, üz — və sayı hər
-yerdə eyni olmalıdır (Hero, Stats, İş prinsipi, Saxtaya qarşı qoruma, Haqqımızda, meta təsvir).
+yerdə eyni olmalıdır (Hero, İş prinsipi, Saxtaya qarşı qoruma, Haqqımızda, meta təsvir).
 
 ## Deploy
 

@@ -1,84 +1,814 @@
 ---
-import { useTranslations, localizedPath, type Lang } from '../i18n/ui'
+/*
+ * «Qiymət» bölməsi: dörd paket kartı (ad, təsvir, qiymət, üç bənd, düymə) və altda bir qeyd sətri.
+ * Harada işlənir: yalnız Landing.astro-da (ana səhifə, `#pricing` bölməsi; AZ/RU/EN). Ayrıca «Qiymət»
+ * səhifəsi yoxdur: köhnə /qiymet/ ünvanı astro.config.mjs-dəki `redirects` ilə bu bölməyə yönləndirilir.
+ * Props: lang — səhifənin dili.
+ * Necə işləyir: kartlar src/data/site.ts-dəki PRICING və src/i18n/ui.ts-dəki `price.*` mətnlərindən qurulur.
+ * «Biznes» kartının kənarında CSS ilə fırlanan «ilan» var. Faylın sonundakı skript kartları bir-bir göstərir
+ * və qiymət rəqəmlərini 0-dan sayır; JS işləməsə, hər şey olduğu kimi görünür.
+ */
+
+// İkonlar ayrı-ayrı fayllardan idxal olunur (`@lucide/astro/icons/<ad>`) — səbəbi Audience.astro-nun
+// başındakı şərhdədir (paketin kök faylı ~1700 ikonu yükləyir, dev server yavaşlayır).
+import Check from '@lucide/astro/icons/check'
+import ArrowRight from '@lucide/astro/icons/arrow-right'
+import Info from '@lucide/astro/icons/info'
+import { useTranslations, localizedPath, type Lang, type UIKey } from '../i18n/ui'
 import { PRICING } from '../data/site'
 
 interface Props {
   lang: Lang
-  /** The /qiymet/ page renders the same block with its own <h1>, so it hides the section heading. */
-  bare?: boolean
 }
-const { lang, bare = false } = Astro.props
+const { lang } = Astro.props
 const t = useTranslations(lang)
 const contact = localizedPath(lang, '/elaqe/')
-const check = '<path d="m5 13 4 4L19 7"/>'
 
-// Amounts come from PRICING in src/data/site.ts. While showPlans is false the plan table is not
-// rendered at all — the page keeps its heading and answers with "we quote per organisation".
-// Hiding only the nav link would have left these pages live and indexable with invented numbers on
-// them, which is the failure this guard exists to prevent.
-const plans = PRICING.plans.map((p) => ({
-  amount: p.amount as string | null,
-  featured: p.featured as boolean,
-  name: t(`price.p${p.id}n` as any),
-  desc: t(`price.p${p.id}d` as any),
-  fallbackAmount: t(`price.p${p.id}a` as any),
-  cta: t(`price.p${p.id}c` as any),
-  features: Array.from({ length: p.featureCount }, (_, n) => t(`price.p${p.id}f${n + 1}` as any)),
+// ---------- Ölçülər ----------
+// İkonların ölçüsü (px) və xəttinin qalınlığı: bənd işarəsi, düymədəki ox, qeyddəki info.
+const CHECK_ICON_SIZE = 16
+const CHECK_ICON_STROKE = 2.5
+const ARROW_ICON_SIZE = 17
+const ARROW_ICON_STROKE = 2
+const INFO_ICON_SIZE = 16
+const INFO_ICON_STROKE = 2
+
+// ---------- «İlan»ın quyruğu ----------
+// İlan Biznes kartının kənarı boyunca fırlanan nazik xəttdir. SVG xəttinə «uzunluq boyu gradient» vermək
+// olmur, ona görə quyruq 12 solğun qatdan qurulur: hamısı başdan başlayır, uzunluqları 24, 22 … 2-dir.
+// Başa yaxın yerdə bütün qatlar üst-üstə düşür (tünd), quyruğun ucunda yalnız ən uzunu qalır (solğun).
+// Cədvəl: [qatın uzunluğu (xəttin 100 hissəsindən), şəffaflığı].
+// Şəffaflıq düsturu: k qat üst-üstə düşəndə rəngin cəmi sıxlığı T(k) = 0.8·k/12 olmalıdır (başda 0.8,
+// üstünə baş gələndə 1). k-cı qatın öz şəffaflığı a(k) = 1 − (1 − T(k)) / (1 − T(k−1)).
+// Beləcə rəng başdan quyruğa doğru bərabər addımlarla solur. Rəqəmlər bu düsturla hesablanıb və
+// 3 onluq işarəyə yuvarlaqlaşdırılıb; yenisini hesablamaq lazım gəlsə, düsturu işlət.
+type TailLayer = [length: number, opacity: number]
+const SNAKE_TAIL: TailLayer[] = [
+  [24, 0.067],
+  [22, 0.071],
+  [20, 0.077],
+  [18, 0.083],
+  [16, 0.091],
+  [14, 0.1],
+  [12, 0.111],
+  [10, 0.125],
+  [8, 0.143],
+  [6, 0.167],
+  [4, 0.2],
+  [2, 0.25],
+]
+const SNAKE_PATH_LENGTH = 100 // xəttin bütün uzunluğu «100 hissə» sayılır (pathLength)
+const SNAKE_HEAD_LENGTH = 3 // başın uzunluğu: 100 hissədən 3-ü
+const SNAKE_RADIUS = 23.5 // kartın küncünün radiusu (24) − xəttin yarım qalınlığı kimi, kənarın ortasına düşür
+
+// SVG-nin `stroke-dasharray` dəyəri «görünən hissə + boşluq» yazılır. Cəmi HƏMİŞƏ 100 olmalıdır:
+// əks halda xətt başlanğıc nöqtəsindən keçəndə qırılır.
+function dashArray(visibleLength: number): string {
+  return `${visibleLength} ${SNAKE_PATH_LENGTH - visibleLength}`
+}
+
+// ---------- Qiymət sətri ----------
+// Məbləğ site.ts-də mətndir ('3.5 ₼'). Sayğac üçün rəqəmi ('3.5') valyutadan ('₼') ayırırıq.
+// Nümunənin izahı:
+//   ^        sətrin əvvəli
+//   ([\d.]+) bir və ya bir neçə rəqəm/nöqtə → 1-ci qrup («3.5»)
+//   \s*      aradakı boşluq (ola da bilər, olmaya da)
+//   (.*)     qalan hər şey → 2-ci qrup («₼»)
+const AMOUNT_PATTERN = /^([\d.]+)\s*(.*)$/
+
+interface PlanPrice {
+  /** '3.5' — yalnız sayıla bilən qiymətdə; yoxdursa sayğac işləmir və `plainText` göstərilir. */
+  countNumber: string | null
+  currency: string
+  plainText: string
+  /** «/ işçi / ay» yazısı: «Fərdi» qiymətdə yoxdur. */
+  showPer: boolean
+}
+
+function buildPrice(amount: string | null, fallbackText: string): PlanPrice {
+  // Enterprise: site.ts-də məbləğ null-dur, qiymətin yerində price.p4a («Fərdi») durur.
+  if (amount === null) {
+    return { countNumber: null, currency: '', plainText: fallbackText, showPer: false }
+  }
+  const match = AMOUNT_PATTERN.exec(amount)
+  // Format tanınmadısa (məs. '4 USD/ay'), sətri olduğu kimi göstəririk və saymırıq.
+  if (match === null) {
+    return { countNumber: null, currency: '', plainText: amount, showPer: true }
+  }
+  return { countNumber: match[1], currency: match[2], plainText: amount, showPer: true }
+}
+
+// ---------- Paketlər ----------
+// Paketin mətnini ui.ts-dən götürür: planText(2, 'n') → t('price.p2n'). `as UIKey` — açarı
+// mətn parçalarından qurduğumuz üçün TypeScript onu özü yoxlaya bilmir; açar ui.ts-də yoxdursa,
+// t() AZ mətnə qayıdır.
+function planText(planId: number, part: string): string {
+  return t(`price.p${planId}${part}` as UIKey)
+}
+
+// Məbləğlər src/data/site.ts-dəki PRICING-dən gəlir. showPlans false olanda cədvəl ümumiyyətlə çəkilmir:
+// yalnız linki gizlətsək, ana səhifədəki bölmə uydurma rəqəmlərlə açıq və indekslənən qalardı —
+// bu qoruma məhz onun üçündür.
+const plans = PRICING.plans.map((plan) => ({
+  featured: plan.featured as boolean,
+  name: planText(plan.id, 'n'),
+  desc: planText(plan.id, 'd'),
+  cta: planText(plan.id, 'c'),
+  features: Array.from({ length: plan.featureCount }, (_, index) => planText(plan.id, `f${index + 1}`)),
+  ...buildPrice(plan.amount, planText(plan.id, 'a')),
 }))
+
+// Qiymətlər gizlədiləndə başlığın altındakı cümlə də «qiymət fərdi hesablanır» deməlidir.
+const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
 ---
 
-<section class="price relative" id="pricing">
+<section id="pricing" aria-labelledby="pricing-title" class="relative bg-page py-20 lg:py-28">
   <!--
-    Üst xətt: yuxarıdakı «Təhlükəsizlik» bölməsi ilə eyni fondadır (#F6F5F1) və aralarında heç nə
-    qalmayıb, ona görə sərhəd görünmürdü. Xətt digər bölmələrdəki ilə eynidir (hair tokeni, kənarlara
-    doğru əriyir). /qiymet/ səhifəsində (bare) yuxarıda ağ PageHero var, xətt oraya lazım deyil.
+    Üst xətt: yuxarıdakı «Təhlükəsizlik» (bg-white) ilə bu bölmənin fonu (bg-page) fərqlidir, ona görə
+    aralarında dəqiq BİR xətt qalır. Security.astro-da alt xətt yoxdur, yoxsa bu xətt ikiqat olardı.
   -->
-  {!bare && <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>}
-  <div class="wrap">
-    {!bare && (
-      <div class="sec-head rv">
-        <span class="eyebrow">{t('price.eyebrow')}</span>
-        <h2>{t('price.title')}</h2>
-        <p>{t('price.sub')}</p>
-      </div>
-    )}
-    {!PRICING.showPlans && (
-      <div class="quote-card rv">
-        <h3>{t('price.quoteTitle')}</h3>
-        <p>{t('price.quoteText')}</p>
-        <a href={contact} class="btn btn-primary">{t('price.quoteBtn')}</a>
-      </div>
-    )}
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
 
-    {PRICING.showPlans && (
-    <div class="plans">
-      {plans.map((p, i) => (
-        <div class={`plan rv d${i + 1}${p.featured ? ' feat-plan' : ''}`}>
-          {p.featured && <span class="tag">{t('price.popular')}</span>}
-          <h3>{p.name}</h3>
-          <div class="pdesc">{p.desc}</div>
-          <div class="amt">
-            {p.amount ? <>{p.amount}<small>{t('price.mo')}</small></> : p.fallbackAmount}
-          </div>
-          <ul>
-            {p.features.map((f) => (
-              <li><svg viewBox="0 0 24 24" set:html={check} /><span>{f}</span></li>
-            ))}
-          </ul>
-          <a href={contact} class={`btn ${p.featured ? 'btn-primary' : 'btn-ghost'}`}>{p.cta}</a>
-        </div>
-      ))}
+  <div class="wrap">
+    <div class="max-w-155">
+      <span class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('price.eyebrow')}
+      </span>
+      <h2
+        id="pricing-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('price.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[52ch] text-[15px] leading-[1.75] text-pretty text-ink2">{subtitle}</p>
     </div>
-    )}
-    {PRICING.showPlans && <p class="price-note rv">{t('price.note')}</p>}
+
+    <div class="mt-12 lg:mt-16">
+      {/* showPlans === false: kartların yerində «Qiymət fərdi hesablanır» kartı. */}
+      {
+        !PRICING.showPlans && (
+          <div class="plan-quote">
+            <h3 class="plan-quote-title">{t('price.quoteTitle')}</h3>
+            <p class="plan-quote-text">{t('price.quoteText')}</p>
+            <a href={contact} class="plan-cta plan-cta-solid">
+              <span>{t('price.quoteBtn')}</span>
+              <span class="plan-cta-arrow">
+                <ArrowRight size={ARROW_ICON_SIZE} stroke-width={ARROW_ICON_STROKE} />
+              </span>
+            </a>
+          </div>
+        )
+      }
+
+      {/*
+        Şəbəkə: mobildə 1 sütun, sm-dən 2, xl-dən (1280px) 4 sütun, aralıq 20px.
+        1024px-də 2×2 olması QƏSDƏNDİR: 4 sütunda kartlar çox dar olurdu və qiymət sətri qırılırdı.
+        `--i` kartın sıra nömrəsidir: CSS onu giriş animasiyasının gecikməsini hesablamaq üçün oxuyur.
+      */}
+      {
+        PRICING.showPlans && (
+          <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            {plans.map((plan, index) => (
+              <article class={plan.featured ? 'plan-card is-featured' : 'plan-card'} style={`--i:${index}`}>
+                <div class="plan-body">
+                  <div class="flex items-start justify-between gap-3">
+                    <h3 class="plan-name">{plan.name}</h3>
+                    {/* Mətn ui.ts-də artıq böyük hərflədir, ona görə CSS-də text-transform yoxdur. */}
+                    {plan.featured && <span class="plan-badge">{t('price.popular')}</span>}
+                  </div>
+
+                  <p class="plan-desc">{plan.desc}</p>
+
+                  {/*
+                    Qiymət: həqiqi rəqəm HTML-dədir (`data-plan-count`). JS işləməsə, ekran oxuyucu və axtarış
+                    sistemi də elə onu görür; skript yalnız animasiya üçün müvəqqəti 0-dan sayır.
+                    Atributun adı qəsdən `data-count` DEYİL: BaseLayout.astro `[data-count]` olan hər elementi
+                    öz sayğacı ilə tutur, o isə onluq rəqəmləri atır (3.5 → 4).
+                    Rəqəm və ₼ bir qrupdadır (nowrap): dar ekranda ₼ rəqəmdən ayrılıb alt sətrə düşə bilməz.
+                  */}
+                  <p class="plan-price">
+                    {plan.countNumber !== null && (
+                      <span class="plan-figure">
+                        <span class="plan-amt tabular-nums" data-plan-count={plan.countNumber}>{plan.countNumber}</span>
+                        <span class="plan-cur">{plan.currency}</span>
+                      </span>
+                    )}
+                    {plan.countNumber === null && <span class="plan-amt plan-amt-text">{plan.plainText}</span>}
+                    {/* price.mo-nun əvvəlində boşluq var (' / işçi / ay'): trim() edirik, aranı CSS verir. */}
+                    {plan.showPer && <span class="plan-per">{t('price.mo').trim()}</span>}
+                  </p>
+
+                  <ul class="plan-feats">
+                    {plan.features.map((feature) => (
+                      <li>
+                        <span class="plan-check">
+                          <Check size={CHECK_ICON_SIZE} stroke-width={CHECK_ICON_STROKE} />
+                        </span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <a href={contact} class={plan.featured ? 'plan-cta plan-cta-solid' : 'plan-cta plan-cta-line'}>
+                    <span>{plan.cta}</span>
+                    <span class="plan-cta-arrow">
+                      <ArrowRight size={ARROW_ICON_SIZE} stroke-width={ARROW_ICON_STROKE} />
+                    </span>
+                  </a>
+                </div>
+
+                {/* İlan yalnız seçilmiş kartdadır; bəzəkdir, ekran oxuyucu görməsin. İzahı <style>-dadır. */}
+                {plan.featured && (
+                  <svg class="snake" aria-hidden="true">
+                    {SNAKE_TAIL.map(([length, opacity]) => (
+                      <rect
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        rx={SNAKE_RADIUS}
+                        pathLength={SNAKE_PATH_LENGTH}
+                        stroke-dasharray={dashArray(length)}
+                        stroke-opacity={opacity}
+                      />
+                    ))}
+                    {/* Baş: qısa və tam parlaq. */}
+                    <rect
+                      class="snake-head"
+                      x="0"
+                      y="0"
+                      width="100%"
+                      height="100%"
+                      rx={SNAKE_RADIUS}
+                      pathLength={SNAKE_PATH_LENGTH}
+                      stroke-dasharray={dashArray(SNAKE_HEAD_LENGTH)}
+                    />
+                  </svg>
+                )}
+              </article>
+            ))}
+          </div>
+        )
+      }
+
+      {
+        PRICING.showPlans && (
+          <p class="mt-10 flex items-start gap-2.5 text-[13.5px] leading-[1.6] text-ink2 lg:justify-center">
+            <Info size={INFO_ICON_SIZE} stroke-width={INFO_ICON_STROKE} class="mt-0.5 shrink-0 text-ink2/70" />
+            <span>{t('price.note')}</span>
+          </p>
+        )
+      }
+    </div>
   </div>
 </section>
 
 <style>
-  /* Xəttin kənarlara doğru əriməsi. Eyni qayda HowItWorks, AdminPanel və Modules-də də var — orada
-     scoped-dur, ona görə burada da təkrarlanır. */
+  /* ---------- Bu bölməyə xas dəyərlər ---------- */
+  #pricing {
+    --plan-border: rgb(226 232 240 / 0.9); /* kartın 1px kənarı (Tailwind-in slate-200 rəngi, 90%) */
+    --plan-border-hover: #b7cbf7; /* adi kartın hover kənarı: brand mavisinin açıq çaları (Security-dəki ilə eyni) */
+    --plan-featured-border-from: #a9c2f7; /* seçilmiş kartın kənarı, yuxarı sol: açıq mavi — ilan onun üstündə aydın görünsün */
+    --plan-featured-border-to: #d8e3fc; /* seçilmiş kartın kənarı, aşağı sağ */
+    --plan-featured-border-still: linear-gradient(160deg, #155eef, #7aa2f7 55%, #c7d7fb); /* «hərəkəti azalt»: ilanın əvəzinə sabit mavi kənar */
+    --plan-featured-fill: #f5f8ff; /* seçilmiş kartın içinin yuxarı hissəsi (ağa doğru solur) */
+    --plan-divider: #eef0f4; /* qiymətin altındakı ayırıcı xətt */
+    --plan-cta-border: #d6dbe4; /* çərçivəli düymənin kənarı */
+    --plan-feat-text: #292524; /* bənd mətni (Tailwind-in stone-800 rəngi) */
+    --plan-amt-size: 46px; /* qiymət rəqəminin ölçüsü: «Fərdi» yazısının sətir hündürlüyü də buna bərabərdir */
+    /* Saytın bölmələrində işlənən yumşaq əyri (Security, Kimlər üçün). */
+    --plan-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    /* Kölgələr: mavi olanlar brand rəngindən qurulur, beləcə brand dəyişsə, kölgə də dəyişir. */
+    --plan-shadow-featured: 0 30px 60px -30px color-mix(in oklab, var(--color-brand) 45%, transparent);
+    --plan-shadow-featured-hover: 0 36px 70px -30px color-mix(in oklab, var(--color-brand) 55%, transparent);
+    --plan-shadow-hover: 0 28px 50px -32px rgb(15 23 42 / 0.35);
+    --plan-shadow-cta: 0 12px 24px -12px color-mix(in oklab, var(--color-brand) 75%, transparent);
+  }
+
+  /* ---------- Bölmənin qabığı ---------- */
+
+  /* Üst xəttin kənarlara doğru əriməsi. Eyni qayda Security, HowItWorks, AdminPanel və Modules-də də var —
+     orada scoped-dur, ona görə burada da təkrarlanır. */
   .edge-rule {
     -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
     mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
   }
+
+  /* ---------- Kart ----------
+     Kənar `border` ilə yox, FONLA çəkilir: xarici qutu `padding: 1px` və kənar rəngində fon alır, içindəki
+     ağ qutu (.plan-body) onun üstünü örtür, 1px-lik halqa qalır. Belə olanda seçilmiş kartın kənarına
+     rəng əvəzinə GRADIENT vermək olur (`border` gradient qəbul etmir). */
+  .plan-card {
+    /* Kartın dayandığı yerdən yuxarı qalxma məsafəsi. Hover "bu məsafədən 4px da yuxarı" deməkdir,
+       ona görə Biznes kartının 10px-lik qalxması hover-i pozmur (aşağıda xl üçün dəyişir). */
+    --plan-lift: 0px;
+    position: relative;
+    /* Arxadakı işıq (::before, z-index: -1) kartın DAXİLİNDƏ qalsın, bölmənin fonunun arxasına düşməsin. */
+    isolation: isolate;
+    border-radius: 24px;
+    padding: 1px;
+    background: var(--plan-border);
+    transform: translateY(var(--plan-lift));
+    transition:
+      transform 0.45s var(--plan-ease),
+      box-shadow 0.45s ease,
+      background-color 0.3s ease;
+  }
+
+  .plan-body {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-radius: 23px;
+    background: #fff;
+    padding: 28px;
+    /* Tailwind-in Preflight-ı yoxdur: global.css body-yə 1.6, başlıqlara 1.08 verir. Kartın ölçüləri
+       1.5 üzərində seçilib, ona görə burada açıq yazılıb. */
+    line-height: 1.5;
+  }
+
+  .plan-name {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.5;
+  }
+
+  /* min-height: 3.1em = 2 sətirlik yer. Təsvir bir kartda 1, digərində 2 sətir olsa da, qiymətlər eyni xətdə durur. */
+  .plan-desc {
+    margin-top: 6px;
+    min-height: 3.1em;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--color-ink2);
+  }
+
+  /* Seçilmiş kartın "Populyar" nişanı: brand rəngli pill. */
+  .plan-badge {
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--color-brand);
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #fff;
+  }
+
+  /* ---------- Qiymət ---------- */
+  .plan-price {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 26px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--plan-divider);
+  }
+
+  /* Rəqəm + ₼ bir qrupdur: flex-wrap yalnız qrupu və «/ işçi / ay»-ı bir-birindən ayıra bilər. */
+  .plan-figure {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .plan-amt {
+    font-size: var(--plan-amt-size);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.035em;
+  }
+
+  /* «Fərdi»: kiçik şrift, amma sətir hündürlüyü rəqəmlə eynidir — ayırıcı xətt və bəndlər digər kartlarla eyni xətdə başlayır. */
+  .plan-amt-text {
+    font-size: 40px;
+    line-height: var(--plan-amt-size);
+  }
+
+  .plan-cur {
+    margin-left: 2px;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .plan-per {
+    margin-left: 6px;
+    font-size: 13.5px;
+    color: var(--color-ink2);
+  }
+
+  /* ---------- Bəndlər ---------- */
+  /* Preflight olmadığına görə list-none və sıfır boşluqlar açıq yazılıb. */
+  .plan-feats {
+    list-style: none;
+    display: grid;
+    gap: 12px;
+    margin: 22px 0 28px;
+    padding: 0;
+    font-size: 14.5px;
+    color: var(--plan-feat-text);
+  }
+
+  .plan-feats li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .plan-check {
+    display: flex;
+    flex-shrink: 0;
+    margin-top: 3px;
+    color: var(--color-brand);
+  }
+
+  /* ---------- Düymələr ----------
+     Sinif adları `.btn`/`.badge` deyil: global.css-də həmin adlar var və başqa bölmələrə aiddir. */
+  .plan-cta {
+    margin-top: auto; /* düymə kartın ən altında durur */
+    display: inline-flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    padding: 13px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-decoration: none;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .plan-cta-arrow {
+    display: inline-flex;
+    transition: transform 0.2s ease;
+  }
+
+  .plan-cta:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 3px;
+  }
+
+  /* Adi kartlarda çərçivəli düymə: açıq fonda aydın görünür (köhnə dizaynda ağ yazı ağ-boz fonda itirdi). */
+  .plan-cta-line {
+    border-color: var(--plan-cta-border);
+    background: #fff;
+    color: var(--color-ink);
+  }
+
+  /* Seçilmiş kartda dolu düymə. */
+  .plan-cta-solid {
+    background: var(--color-brand);
+    color: #fff;
+    box-shadow: var(--plan-shadow-cta);
+  }
+
+  /* ---------- Seçilmiş kart (Biznes) ----------
+     Qara kart yox: kənarı açıq mavi, üstündə nazik mavi «ilan» fırlanır, arxasında zəif mavi işıq var. */
+  .plan-card.is-featured {
+    background: linear-gradient(160deg, var(--plan-featured-border-from), var(--plan-featured-border-to));
+    box-shadow: var(--plan-shadow-featured);
+  }
+
+  .plan-card.is-featured .plan-body {
+    background: linear-gradient(180deg, var(--plan-featured-fill) 0%, #fff 38%);
+  }
+
+  /* Arxadakı zəif mavi işıq: kartdan yuxarıya və yanlara çıxır, 8px bulanıqdır. */
+  .plan-card.is-featured::before {
+    content: '';
+    position: absolute;
+    inset: -24px -10px auto;
+    height: 70%;
+    z-index: -1;
+    border-radius: 40px;
+    background: radial-gradient(60% 60% at 50% 30%, color-mix(in oklab, var(--color-brand) 16%, transparent), transparent 70%);
+    filter: blur(8px);
+  }
+
+  /* Yalnız 4 kart bir sırada olanda (xl = 1280px) Biznes 10px yuxarıda durur. */
+  @media (min-width: 1280px) {
+    .plan-card.is-featured {
+      --plan-lift: -10px;
+    }
+  }
+
+  /* ---------- «İlan» — Biznes kartının kənarı boyunca fırlanan nazik xətt ----------
+     Necə işləyir:
+     1) Kartın kənarına tam oturan SVG düzbucaqlı (<rect>) çəkilir: içi boşdur, yalnız xətti var.
+     2) pathLength="100" — xəttin bütün uzunluğu kartın ölçüsündən asılı olmayaraq «100 hissə» sayılır.
+     3) stroke-dasharray="3 97" — 100 hissədən yalnız 3-ü görünür, 97-si boşdur. Görünən hissə ilanın başıdır.
+     4) stroke-dashoffset 0 → 100 — görünən hissə xətt boyunca sürüşür, ilan kartın ətrafında dövr edir.
+     Hamar quyruq: başdan başlayan, getdikcə qısalan 12 solğun xətt (HTML-də, SNAKE_TAIL massivindən). */
+  .snake {
+    position: absolute;
+    /* Xəttin ortası 1px-lik kənarın tam ortasına düşsün: 0.5px içəridən başlayır, 1px dar və alçaqdır. */
+    top: 0.5px;
+    left: 0.5px;
+    width: calc(100% - 1px);
+    height: calc(100% - 1px);
+    overflow: visible;
+    pointer-events: none;
+    /* Güzgü: ilan saat əqrəbi istiqamətində getsin. <rect> simmetrikdir, forması dəyişmir. */
+    transform: scaleX(-1);
+    /* İlanın ətrafında çox zəif mavi işıq. */
+    filter: drop-shadow(0 0 3px color-mix(in oklab, var(--color-brand) 45%, transparent));
+    transition: opacity 0.35s ease;
+  }
+
+  /* Nazik xətt: 1.5px. Hər qatın şəffaflığı HTML-də (stroke-opacity). 7 saniyədə bir dövr — sakit temp.
+     Animasiya JS-dən asılı deyil: JS söndürülsə də ilan fırlanır. */
+  .snake rect {
+    fill: none;
+    stroke: var(--color-brand);
+    stroke-width: 1.5;
+    animation: price-snake 7s linear infinite;
+  }
+
+  /* Baş: tam parlaq, ucu yumru. */
+  .snake .snake-head {
+    stroke-opacity: 1;
+    stroke-linecap: round;
+  }
+
+  /* @keyframes adı Astro-da scope olunmur: global.css-də otuza yaxın keyframe var, ona görə `price-` prefiksi. */
+  @keyframes price-snake {
+    from {
+      stroke-dashoffset: 0;
+    }
+    to {
+      stroke-dashoffset: 100;
+    }
+  }
+
+  /* ---------- «Qiymət fərdi hesablanır» kartı (PRICING.showPlans === false) ---------- */
+  .plan-quote {
+    max-width: 640px;
+    margin-inline: auto;
+    border: 1px solid var(--plan-border);
+    border-radius: 24px;
+    background: #fff;
+    padding: 28px;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  @media (min-width: 640px) {
+    .plan-quote {
+      padding: 32px;
+    }
+  }
+
+  .plan-quote-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+
+  .plan-quote-text {
+    max-width: 52ch;
+    margin: 12px auto 0;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--color-ink2);
+  }
+
+  /* Bu kartda düymə kartın eni qədər yox, mətnə görə enlidir. */
+  .plan-quote .plan-cta {
+    width: auto;
+    margin-top: 24px;
+    padding-inline: 28px;
+  }
+
+  /* ---------- Giriş animasiyası (bir dəfə) ---------- */
+
+  /* Gizli başlanğıc YALNIZ `[data-anim]` altındadır. Atribut olmayanda — JS söndürülüb və ya «hərəkəti
+     azalt» seçilib — heç bir qayda işləmir və kartlar adi halda tam görünür. */
+  [data-anim] .plan-card {
+    opacity: 0;
+    translate: 0 16px;
+  }
+
+  /* Niyə ayrıca `translate` xassəsi, `transform` yox: `transform` hover-də qalxma və Biznes kartının
+     10px-lik yuxarı durması üçündür. Giriş də `transform` işlətsəydi, iki qayda bir-birini əzərdi.
+     `--i` kartın sıra nömrəsidir: kartlar 90ms fasilə ilə bir-bir çıxır (skriptdəki CARD_STEP ilə eyni). */
+  [data-anim].is-live .plan-card {
+    opacity: 1;
+    translate: 0 0;
+    transition:
+      opacity 0.6s ease calc(var(--i) * 90ms),
+      translate 0.7s var(--plan-ease) calc(var(--i) * 90ms),
+      transform 0.45s var(--plan-ease),
+      box-shadow 0.45s ease,
+      background-color 0.3s ease;
+  }
+
+  /* ---------- Hover (yalnız siçanlı cihazlarda) ----------
+     Telefonda toxunuşdan sonra hover «ilişib» qalır, ona görə yalnız `hover: hover` olan cihazlarda. */
+  @media (hover: hover) {
+    .plan-card:hover {
+      transform: translateY(calc(var(--plan-lift) - 4px));
+      box-shadow: var(--plan-shadow-hover);
+    }
+
+    .plan-card:not(.is-featured):hover {
+      background-color: var(--plan-border-hover);
+    }
+
+    .plan-card.is-featured:hover {
+      box-shadow: var(--plan-shadow-featured-hover);
+    }
+
+    /* Siçan kartın üstünə gələndə ilan yavaşca yox olur, çəkiləndə geri gəlir. */
+    .plan-card.is-featured:hover .snake {
+      opacity: 0;
+    }
+
+    .plan-cta-line:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .plan-cta-solid:hover {
+      background: var(--color-brand-600);
+      transform: translateY(-1px);
+    }
+
+    .plan-cta:hover .plan-cta-arrow {
+      transform: translateX(3px);
+    }
+  }
+
+  /* ---------- Hərəkəti azalt ----------
+     Skriptin özü də bu halda `data-anim` yazmır (kartlar dərhal görünür, rəqəmlər son dəyərdədir).
+     Burada isə qalanı: ilan gizlənir, kənar sabit mavi olur, hover-də kart qalxmır — yalnız rənglər
+     dəyişir. Biznes kartının 10px-lik duruşu hərəkət deyil, yerləşmədir — qalır. */
+  @media (prefers-reduced-motion: reduce) {
+    .snake {
+      display: none;
+    }
+
+    .plan-card.is-featured {
+      background: var(--plan-featured-border-still);
+    }
+
+    [data-anim] .plan-card {
+      opacity: 1;
+      translate: none;
+    }
+
+    .plan-card,
+    .plan-cta,
+    .plan-cta-arrow {
+      transition: none !important;
+    }
+
+    /* Hover-də kart öz yerində qalır (Biznes üçün bu, 10px-lik duruşdur), düymə qalxmır, ox sürüşmür. */
+    .plan-card:hover {
+      transform: translateY(var(--plan-lift));
+    }
+
+    .plan-cta-solid:hover,
+    .plan-cta:hover .plan-cta-arrow {
+      transform: none;
+    }
+  }
 </style>
+
+<script>
+  // ---------- Sabitlər ----------
+  const SECTION_ID = 'pricing'
+  // Bölmənin neçə hissəsi ekranda olanda animasiya başlasın (0.2 = 20%).
+  const LIVE_THRESHOLD = 0.2
+  // Rəqəm sayğacı: nə qədər davam etsin, kartın görünməsindən nə qədər sonra başlasın (ms).
+  const COUNT_DURATION = 1100
+  const COUNT_START = 150
+  // Kartlar arası gecikmə (ms). CSS-dəki `calc(var(--i) * 90ms)` ilə EYNİ olmalıdır: rəqəm öz kartı ilə başlasın.
+  const CARD_STEP = 90
+
+  // Sistemdə «hərəkəti azalt» seçilibsə, heç nə gizlədilmir və canlanmır: hər şey dərhal son vəziyyətdə
+  // görünür. https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
+  function isMotionReduced(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  // ---------- Rəqəm sayğacı ----------
+  // Əvvəl sürətli, sonda yavaşlayan hərəkət (easeOutCubic): progress 0…1 → nəticə 0…1.
+  function easeOutCubic(progress: number): number {
+    return 1 - Math.pow(1 - progress, 3)
+  }
+
+  // Rəqəmin onluq hissəsində neçə işarə var: '3.5' → 1, '4' → 0. Sayğac eyni sayda işarə göstərməlidir:
+  // yoxsa rəqəmin eni dəyişər və ₼ yerindən oynayar.
+  function countDecimals(numberText: string): number {
+    const afterDot = numberText.split('.')[1]
+    if (afterDot === undefined) {
+      return 0
+    }
+    return afterDot.length
+  }
+
+  // Rəqəmi 0-dan hədəfə qədər requestAnimationFrame ilə artırır (brauzer funksiyanı ekranın hər yenilənməsində
+  // çağırır — hamar animasiya üçün): https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
+  function animateNumber(element: HTMLElement, target: number, decimals: number, finalText: string): void {
+    const startTime = performance.now()
+
+    function drawFrame(now: number): void {
+      // Math.max(0, …): ilk kadrın vaxtı bəzən startTime-dan bir az əvvəl olur; mənfi rəqəm "-0.0" kimi görünərdi.
+      const elapsed = Math.max(0, now - startTime)
+      const progress = Math.min(elapsed / COUNT_DURATION, 1)
+      element.textContent = (target * easeOutCubic(progress)).toFixed(decimals)
+
+      if (progress < 1) {
+        requestAnimationFrame(drawFrame)
+      } else {
+        // Sonda yuvarlaqlaşdırma xətası qalmasın deyə dəqiq ilkin mətn yazılır ('3.5', '4').
+        element.textContent = finalText
+      }
+    }
+
+    requestAnimationFrame(drawFrame)
+  }
+
+  // Bir kartın rəqəmini sayır. Həqiqi dəyər HTML-dədir (`data-plan-count`): JS işləməsə, istifadəçi onu görür.
+  function countUp(element: HTMLElement, delay: number): void {
+    const finalText = element.dataset.planCount ?? ''
+    const target = parseFloat(finalText)
+    if (Number.isNaN(target)) {
+      return
+    }
+    const decimals = countDecimals(finalText)
+
+    // Rəqəm dərhal 0-a ('0.0' və ya '0') qoyulur. Bu an kart hələ görünmür (opacity: 0), ona görə sıçrayış
+    // görünmür. Eyni sayda işarə olduğu üçün eni dəyişmir.
+    element.textContent = (0).toFixed(decimals)
+    window.setTimeout(() => animateNumber(element, target, decimals, finalText), delay)
+  }
+
+  // ---------- Giriş ----------
+  // Bölmə ekrana girəndə: `is-live` sinfi kartları CSS ilə bir-bir göstərir, rəqəmlər isə öz kartının
+  // gecikməsi ilə sayılmağa başlayır.
+  function startEntrance(section: HTMLElement): void {
+    section.classList.add('is-live')
+
+    section.querySelectorAll<HTMLElement>('.plan-card').forEach((card, index) => {
+      const numberElement = card.querySelector<HTMLElement>('[data-plan-count]')
+      // «Fərdi» kartında sayılan rəqəm yoxdur — onu keçirik.
+      if (numberElement) {
+        countUp(numberElement, COUNT_START + index * CARD_STEP)
+      }
+    })
+  }
+
+  // Bölmə ekrana ilk dəfə kifayət qədər girəndə animasiyanı başladır və izləməyi DAYANDIRIR: animasiya BİR dəfə
+  // oynanır. IntersectionObserver scroll hadisəsini dinləmədən elementin ekrana girdiyini bildirir:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+  function startWhenVisible(section: HTMLElement): void {
+    const observer = new IntersectionObserver(
+      function (entries) {
+        if (!entries[0].isIntersecting) {
+          return
+        }
+        startEntrance(section)
+        observer.disconnect()
+      },
+      { threshold: LIVE_THRESHOLD }
+    )
+    observer.observe(section)
+  }
+
+  // Layihədə Astro View Transitions (ClientRouter) işlənmir — BaseLayout onu idxal etmir — ona görə bu
+  // skript səhifə başına bir dəfə işləyir. ClientRouter əlavə olunsa: initPricing-i `astro:page-load`-da
+  // çağırın, `astro:before-swap`-da isə observer-i `disconnect()` edin.
+  function initPricing(): void {
+    const section = document.getElementById(SECTION_ID)
+    if (!section || isMotionReduced() || !('IntersectionObserver' in window)) {
+      return
+    }
+    // PRICING.showPlans === false olanda kart yoxdur — canlandırılacaq heç nə yoxdur.
+    if (!section.querySelector('.plan-card')) {
+      return
+    }
+
+    // `data-anim` PROGRESSIVE ENHANCEMENT-dir: gizli başlanğıc vəziyyət CSS-də yalnız `[data-anim]`
+    // altındadır, atribut isə yalnız JS işləyəndə yazılır. JS söndürülübsə, skript yüklənməyibsə və ya
+    // hərəkət azaldılıbsa atribut yoxdur — kartlar və düz rəqəmlər adi halda tam görünür.
+    section.dataset.anim = 'on'
+    startWhenVisible(section)
+  }
+
+  initPricing()
+</script>

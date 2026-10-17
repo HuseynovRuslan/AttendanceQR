@@ -11,6 +11,16 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   site: 'https://qrlog.az',
   trailingSlash: 'always',
+  // Yönləndirmə (redirect) — köhnə ünvana gələn adamı yeni ünvana göndərmək. Ayrıca «Qiymət» səhifəsi
+  // silindi (qiymətlər ana səhifənin #pricing bölməsindədir), amma /qiymet/ Google-da indekslənib və
+  // kiminsə əlfəcinində ola bilər. Statik sayt build olunanda Astro hər ünvan üçün kiçik HTML faylı yaradır
+  // (dist/qiymet/index.html): içində `<meta http-equiv="refresh" content="0;url=/#pricing">` var,
+  // brauzer onu açan kimi yeni ünvana keçir, `#pricing` hissəsi də itmir.
+  redirects: {
+    '/qiymet/': '/#pricing',
+    '/ru/qiymet/': '/ru/#pricing',
+    '/en/qiymet/': '/en/#pricing',
+  },
   i18n: {
     defaultLocale: 'az',
     locales: ['az', 'ru', 'en'],
