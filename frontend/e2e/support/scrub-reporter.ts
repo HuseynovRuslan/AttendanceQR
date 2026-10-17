@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import type { FullResult, Reporter } from '@playwright/test/reporter'
+import { e2eSettings } from './env'
 
 // Last reporter in the list: by the time it runs, the HTML report has copied every trace. It then
 // takes credentials out of everything the run left behind, and fails the run if anything survives.
@@ -43,7 +44,7 @@ const LINK_BOX = /(\["[A-Z]+",\{"class":"link-box"[^}]*\},")([^"]+)(")/g
 /** Phone numbers of the accounts in use, in every spelling the API accepts (last 9 digits match). */
 function phonePatterns(): RegExp[] {
   const cores = new Set<string>()
-  for (const [k, v] of Object.entries(process.env)) {
+  for (const [k, v] of Object.entries(e2eSettings())) {
     if (/^E2E_.*_PHONE$/.test(k) && v) {
       const digits = v.replace(/\D/g, '')
       if (digits.length >= 9) cores.add(digits.slice(-9))
@@ -53,6 +54,13 @@ function phonePatterns(): RegExp[] {
     const spaced = c.split('').join('[\\s-]?')
     return new RegExp(`(?<![0-9])(?:\\+?994[\\s-]?|0)?${spaced}(?![0-9])`, 'g')
   })
+}
+
+/** Logins that are e-mail addresses (the admin's, read in setup) — redacted wherever they appear. */
+function emailPatterns(): RegExp[] {
+  return Object.entries(e2eSettings())
+    .filter(([k, v]) => /^E2E_.*_EMAIL$/.test(k) && v && v.includes('@'))
+    .map(([, v]) => new RegExp(v!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'))
 }
 
 function scrubText(text: string, phones: RegExp[]): { text: string; hits: number } {
@@ -132,7 +140,7 @@ function* walk(dir: string): Generator<string> {
 const EMBEDDED = /(data:application\/zip;base64,)([A-Za-z0-9+/=]+)/
 
 export async function scrubArtifacts(dirs: string[]): Promise<{ files: number; hits: number }> {
-  const phones = phonePatterns()
+  const phones = [...phonePatterns(), ...emailPatterns()]
   let files = 0
   let hits = 0
   for (const dir of dirs) {

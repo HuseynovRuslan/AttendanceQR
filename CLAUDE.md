@@ -71,7 +71,7 @@ poster; a free-text position input — job titles come from the `JobPositions` c
     docker compose up --build          # local: frontend 8081, backend 8080, postgres 15432
     dotnet test                        # 134 backend tests
     cd frontend && npm run build       # typecheck + build
-    cd frontend && npm run e2e         # Playwright smoke test against test.qrlog.az (E2E_BASE_URL)
+    cd frontend && npm run e2e         # role E2E suite against test.qrlog.az — see frontend/e2e/README.md
 
 Push to `staging` and it deploys itself to https://test.qrlog.az within a couple of minutes.
 Production is deployed by hand from `main`, and **never between 07:30–09:30 or 17:00–19:00** — those

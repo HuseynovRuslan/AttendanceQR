@@ -53,6 +53,10 @@ export default async function globalSetup(): Promise<void> {
   }
   const admin = new Direct(adminToken)
   world.adminId = tokenSubject(adminToken)
+  // The admin can also sign in with their e-mail, which the sidebar prints: the scrubber redacts
+  // it from every artifact (this process's env is the reporter's).
+  const adminCard = await admin.get<{ email?: string }>(`/api/admin/employees/${world.adminId}`)
+  if (adminCard.body?.email) process.env.E2E_ADMIN_EMAIL = adminCard.body.email
 
   const me = await admin.ok<{ mode: string; companyAdmin: boolean }>('GET', '/api/me/access')
   world.mode = me.mode

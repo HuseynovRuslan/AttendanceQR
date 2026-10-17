@@ -18,6 +18,13 @@ function fromFile(): Record<string, string> {
 
 const file = fromFile()
 
+/** Every E2E_* setting, from the environment and the local file together. */
+export function e2eSettings(): Record<string, string> {
+  const out: Record<string, string> = { ...file }
+  for (const [k, v] of Object.entries(process.env)) if (k.startsWith('E2E_') && v) out[k] = v
+  return out
+}
+
 export function envValue(name: string): string | undefined {
   const v = process.env[name] ?? file[name]
   return v ? v : undefined
