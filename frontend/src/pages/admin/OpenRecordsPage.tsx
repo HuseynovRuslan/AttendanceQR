@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
+import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { adminUpdateRecord, closeOpenDays, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
 import { fmtDate, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
@@ -26,9 +27,12 @@ const CLOSE_ERROR: Record<string, string> = {
   CheckOutInFuture: 'Çıxış vaxtı gələcəkdə ola bilməz',
   CheckOutBeforeCheckIn: 'Çıxış girişdən əvvəl ola bilməz',
   RecordNotFound: 'Bu gün artıq bağlanıb — səhifəni yeniləyin',
+  // Since 2026-10-15: every correction says why, and nobody closes their own day.
+  ...CORRECTION_ERROR,
 }
 
 export function OpenRecordsPage() {
+  const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   const [rows, setRows] = useState<OpenRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -73,18 +77,23 @@ export function OpenRecordsPage() {
   async function closePicked() {
     const ids = [...picked]
     if (ids.length === 0) return
-    if (!window.confirm(
-      `${ids.length} gün bağlanacaq. Hər gün həmin işçinin öz növbəsinin bitmə saatı ilə yazılacaq. Davam edilsin?`,
-    )) return
+    // One reason for the batch, written into each day's audit line.
+    const reason = await askReason({
+      title: `${ids.length} gün bağlansın?`,
+      detail: 'Hər gün həmin işçinin öz növbəsinin bitmə saatı ilə yazılacaq. Öz gününüz varsa, toxunulmur.',
+      confirmLabel: 'Bağla',
+    })
+    if (!reason) return
 
     setBulkBusy(true)
     setError(null)
     setDone(null)
-    const { status, data } = await closeOpenDays(ids)
+    const { status, data } = await closeOpenDays(ids, reason)
     setBulkBusy(false)
 
     if (status !== 200 || !data || 'error' in data) {
-      setError('Bağlanmadı')
+      const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
+      setError(CLOSE_ERROR[code] ?? 'Bağlanmadı')
       return
     }
     setDone(
@@ -107,11 +116,15 @@ export function OpenRecordsPage() {
       setError('Çıxış girişdən əvvəl ola bilməz')
       return
     }
-    if (!window.confirm(`${r.employeeName} · ${fmtDate(r.attendanceDate)} — çıxış vaxtı ${fmtTime(iso)} kimi təyin edilsin?`))
-      return
+    const reason = await askReason({
+      title: `${r.employeeName} · ${fmtDate(r.attendanceDate)}`,
+      detail: `Çıxış vaxtı ${fmtTime(iso)} kimi yazılacaq.`,
+      confirmLabel: 'Bağla',
+    })
+    if (!reason) return
     setBusyId(r.recordId)
     setError(null)
-    const { status, data } = await adminUpdateRecord(r.recordId, undefined, iso)
+    const { status, data } = await adminUpdateRecord(r.recordId, undefined, iso, reason)
     if (status === 200) {
       setRows((prev) => (prev ?? []).filter((x) => x.recordId !== r.recordId))
     } else {
@@ -132,6 +145,7 @@ export function OpenRecordsPage() {
 
   return (
     <div>
+      {reasonDialog}
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Çıxışı unudulan günlər</h1>
         <div className="muted" style={{ fontSize: 13 }}>

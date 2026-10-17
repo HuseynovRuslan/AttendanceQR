@@ -25,6 +25,8 @@ import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompa
 import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
+import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
+import { PersonAccessCard } from '../../components/PersonAccessCard'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
 import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
 
@@ -48,6 +50,8 @@ const CREATE_ERROR: Record<string, string> = {
   OutOfScope: 'Bu qeydi dəyişə bilməzsiniz — menecer yalnız öz ərazisindəki adi işçilərin qeydini düzəldir',
   NothingToUpdate: 'Heç nə dəyişmədi',
   RecordNotFound: 'Qeyd tapılmadı — səhifəni yeniləyin',
+  // Since 2026-10-15: every correction says why, and nobody corrects their own day.
+  ...CORRECTION_ERROR,
 }
 
 const errorCodeOf = (data: unknown) =>
@@ -57,6 +61,7 @@ const errorCodeOf = (data: unknown) =>
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
  * from existing admin endpoints — no new backend. Reached at /admin/employees/:id. */
 export function EmployeeProfilePage() {
+  const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
   const { role, employeeId: myId } = useAuth()
@@ -297,17 +302,20 @@ export function EmployeeProfilePage() {
 
   async function saveEditRecord() {
     if (!editRecId) return
+    const reason = await askReason({ title: 'Qeyd dəyişdirilsin?', detail: 'Giriş və çıxış vaxtı yeni dəyərlərlə yazılacaq.', confirmLabel: 'Yadda saxla' })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut))
+    const { status, data } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut), reason)
     setRecBusy(false)
     if (status === 200) { setEditRecId(null); void load() }
     else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd dəyişmədi')
   }
 
   async function clearCheckout(recordId: string) {
-    if (!window.confirm('Çıxış qeydi silinsin? İşçi yenidən çıxış edə biləcək.')) return
+    const reason = await askReason({ title: 'Çıxış qeydi silinsin?', detail: 'İşçi yenidən çıxış edə biləcək.', confirmLabel: 'Çıxışı sil' })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminClearCheckout(recordId)
+    const { status, data } = await adminClearCheckout(recordId, reason)
     setRecBusy(false)
     if (status === 200) void load()
     else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Çıxış silinmədi')
@@ -323,15 +331,15 @@ export function EmployeeProfilePage() {
    */
   async function deleteRecord(r: AttendanceRecord) {
     const when = `${fmtDate(r.attendanceDate)} ${fmtTime(r.checkInAtUtc)}${r.checkOutAtUtc ? `–${fmtTime(r.checkOutAtUtc)}` : ''}`
-    if (!window.confirm(
-      `${when} qeydi tamamilə silinsin?
-
-` +
-      'Geri qaytarmaq mümkün deyil. Giriş şəkli də silinir. ' +
-      'Yalnız heç bir işi əks etdirməyən səhv qeydlər üçün istifadə edin — ' +
-      'saatı düzəltmək lazımdırsa «Redaktə» edin.')) return
+    const reason = await askReason({
+      title: `${when} qeydi tamamilə silinsin?`,
+      detail: 'Geri qaytarmaq mümkün deyil. Giriş şəkli də silinir. Yalnız heç bir işi əks etdirməyən səhv qeydlər üçün istifadə edin — saatı düzəltmək lazımdırsa «Redaktə» edin.',
+      confirmLabel: 'Qeydi sil',
+      danger: true,
+    })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminDeleteRecord(r.recordId)
+    const { status, data } = await adminDeleteRecord(r.recordId, reason)
     setRecBusy(false)
     if (status === 200) void load()
     else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd silinmədi')
@@ -356,8 +364,10 @@ export function EmployeeProfilePage() {
     // See manualRecordTimes — a night built from one date is what made this form refuse nights.
     const times = manualRecordTimes(crDate, crIn, crOut || undefined)
     if (!emp || !times) { setRecErr('Tarix və giriş vaxtı seçin'); return }
+    const reason = await askReason({ title: 'Qeyd əlavə edilsin?', detail: 'İşçinin skan etmədiyi gün üçün əl ilə qeyd yazılır.', confirmLabel: 'Əlavə et' })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminCreateRecord(emp.id, times.date, times.checkInIso, times.checkOutIso)
+    const { status, data } = await adminCreateRecord(emp.id, times.date, times.checkInIso, times.checkOutIso, reason)
     setRecBusy(false)
     if (status === 200) {
       setShowCreate(false); setCrDate(''); setCrIn(''); setCrOut('')
@@ -385,6 +395,7 @@ export function EmployeeProfilePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {reasonDialog}
       <Link to="/admin/employees" className="btn btn-sm" style={{ alignSelf: 'flex-start' }}>← İşçilər</Link>
 
       {/* Header */}
@@ -522,6 +533,9 @@ export function EmployeeProfilePage() {
       {id && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
 
       {/* Personal */}
+      {/* Roles and where — admin only while the access API is (Phase 3); the card hides itself otherwise. */}
+      {role === 'Admin' && emp && <PersonAccessCard employeeId={emp.id} fullName={emp.fullName} />}
+
       <div className="card card-pad">
         <div className="card-title">Şəxsi məlumat</div>
         <div className="form-row cols2" style={{ marginBottom: 0 }}>

@@ -62,6 +62,7 @@ const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
+const AccessPage = lazy(() => import('./pages/admin/AccessPage').then(m => ({ default: m.AccessPage })))
 const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
 const SchedulesPage = lazy(() => import('./pages/admin/SchedulesPage').then(m => ({ default: m.SchedulesPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
@@ -405,6 +406,8 @@ function AppRoutes() {
               </PanelPage>
           }
         />
+        {/* Roles and who holds them where — Phase 3. Admin only while the access API is. */}
+        <Route path="access" element={<PanelPage path="access"><AccessPage /></PanelPage>} />
         {/* Equipment register — Admin only: it spans every office and site, and is not a branch
             screen. Arrived from `staging` wrapped in <AdminOnly>, which main replaced with the
             access table; see lib/panelAccess. */}

@@ -157,6 +157,22 @@ public static class LocationScopeRules
         return allowed;
     }
 
+    /// <summary>
+    /// Whether <paramref name="requesterId"/> may CORRECT <paramref name="targetEmployeeId"/>'s attendance —
+    /// edit, create, close, clear or delete a day, mark an absence, decide a missed check-out. Today's manage
+    /// rule, with one thing the owner ruled out on 2026-10-15: one's OWN attendance, whoever one is — an
+    /// admin included. The day a person is paid for is never fixed by that person.
+    /// </summary>
+    public static async Task<bool> CanCorrectAttendanceAsync(
+        AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
+    {
+        var allowed = requesterId != targetEmployeeId
+                      && await LegacyCanManageAsync(db, requesterId, role, targetEmployeeId, ct);
+        if (db.AuthzObserver is { } observer)
+            await observer.ObserveScopeAsync(db, Access.ShadowRules.CorrectAttendance, requesterId, role, targetEmployeeId, allowed, ct);
+        return allowed;
+    }
+
     private static async Task<bool> LegacyCanManageAsync(
         AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
     {

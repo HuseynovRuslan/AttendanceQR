@@ -108,7 +108,10 @@ public class AdminMissedCheckoutController : ControllerBase
         // Approving WRITES the target's checkout, so this is the manage rule, not mere visibility:
         // a manager may close only their own branches' Role==Employee days — never an admin's, a
         // fellow manager's, or (unlike CanAccess) their OWN request, which would be self-approval.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, callerId, role, mc.EmployeeId, ct))
+        // Never one's own request: deciding it is correcting one's own day (the owner, 2026-10-15).
+        if (mc.EmployeeId == callerId)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, callerId, role, mc.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == mc.AttendanceRecordId, ct);
@@ -144,7 +147,10 @@ public class AdminMissedCheckoutController : ControllerBase
             return Conflict(new { error = "AlreadyReviewed" });
 
         // Same manage rule as Approve — rejecting is also a review decision over the target's day.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, callerId, role, mc.EmployeeId, ct))
+        // Never one's own request: deciding it is correcting one's own day (the owner, 2026-10-15).
+        if (mc.EmployeeId == callerId)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, callerId, role, mc.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         mc.Status = MissedCheckoutStatus.Rejected;
