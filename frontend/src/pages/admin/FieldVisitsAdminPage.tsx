@@ -23,6 +23,7 @@ import {
 } from '../../api/fieldVisits'
 import { getPosition, isJunkTargetLabel } from '../../lib/geo'
 import { fmtTime } from '../../lib/format'
+import { matchesSearch } from '../../lib/searchFold'
 
 // Resolved once: the key does not change while the page is open.
 const BASE = basemap()
@@ -429,7 +430,6 @@ export function FieldVisitsAdminPage() {
   )
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
     return rows.filter((v) => {
       // «Hamısı» means everything that HAPPENED, and a cancelled visit did not. They used to sit in
       // the default view for ever — a discarded phantom, a test row somebody made — with nothing an
@@ -444,7 +444,7 @@ export function FieldVisitsAdminPage() {
       if (onlySelf && !v.selfReported) return false
       if (onlyPhoto && !v.hasWorkPhoto) return false
       if (filterLoc && v.locationId !== filterLoc) return false
-      if (q && !(v.employeeName.toLowerCase().includes(q) || (v.phone ?? '').toLowerCase().includes(q))) return false
+      if (!matchesSearch(search, v.employeeName, v.phone)) return false
       return true
     })
   }, [rows, statusFilter, search, onlyFlagged, onlySelf, onlyPhoto, filterLoc])

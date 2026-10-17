@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -100,11 +101,13 @@ public class AdminController : ControllerBase
         {
             // Same four fields the browser used to search: name, phone, job title and the id prefix
             // the list prints.
-            var s = search.Trim().ToLower();
+            // Azerbaijani-safe on both sides, by one rule (SearchText): lowering the text here and the name in
+            // Postgres disagreed about «İ», and «İsmayılov» found nobody.
+            var s = SearchText.Fold(search.Trim());
             q = q.Where(e =>
-                e.FullName.ToLower().Contains(s)
+                SearchText.Fold(e.FullName).Contains(s)
                 || (e.PhoneNumber != null && e.PhoneNumber.Contains(s))
-                || (e.Position != null && e.Position.ToLower().Contains(s))
+                || (e.Position != null && SearchText.Fold(e.Position).Contains(s))
                 || e.Id.ToString().Contains(s));
         }
 

@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { matchesSearch } from '../../lib/searchFold'
 
 /**
  * The pieces every operator screen was missing, written once.
@@ -221,9 +222,7 @@ export function useTableSort<T>(initial: keyof T & string, initialDir: SortDir =
 
 // ----------------------------------------------------------------- match ----
 
-/** Case- and locale-folded «does this row match what was typed». */
+/** Case- and locale-folded «does this row match what was typed» — the product's one search rule. */
 export function matches(query: string, ...fields: (string | null | undefined)[]): boolean {
-  const q = query.trim().toLocaleLowerCase('az-AZ')
-  if (!q) return true
-  return fields.some((f) => (f ?? '').toLocaleLowerCase('az-AZ').includes(q))
+  return matchesSearch(query, ...fields)
 }

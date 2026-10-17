@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -268,11 +269,11 @@ public class AdminAccessController : ControllerBase
         var text = search?.Trim();
         if (string.IsNullOrEmpty(text) || text.Length < 2)
             return Ok(Array.Empty<object>());
-        var lower = text.ToLower();
+        var lower = SearchText.Fold(text);
         var rows = await _db.Employees.AsNoTracking()
             .Where(e => e.IsActive
                         && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower()))
-                        && (e.FullName.ToLower().Contains(lower) || (e.PhoneNumber != null && e.PhoneNumber.Contains(text))))
+                        && (SearchText.Fold(e.FullName).Contains(lower) || (e.PhoneNumber != null && e.PhoneNumber.Contains(text))))
             .OrderBy(e => e.FullName)
             .Take(60)
             .Select(e => new { e.Id, e.FullName, e.LocationId, e.Position })

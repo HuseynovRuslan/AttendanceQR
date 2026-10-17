@@ -14,6 +14,7 @@ import { IconAlert, IconBuilding, IconCheck, IconClock, IconMapPin, IconPhone, I
 import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { bucketOf, countToday, type TodayBucket } from './todayCounts'
 import { fmtTime } from '../../lib/format'
+import { matchesSearch } from '../../lib/searchFold'
 
 /**
  * The admin's live "today" board, dressed as the group panel a director reacted to — but in white,
@@ -390,11 +391,7 @@ export function DashboardPage() {
 
   // Name or branch, folded — the same match the rest of the product uses for Azerbaijani text.
   const shownActivity = useMemo(() => {
-    const q = feedQuery.trim().toLocaleLowerCase('az-AZ')
-    if (!q) return activity
-    return activity.filter(
-      (e) => e.name.toLocaleLowerCase('az-AZ').includes(q) || e.loc.toLocaleLowerCase('az-AZ').includes(q),
-    )
+    return activity.filter((e) => matchesSearch(feedQuery, e.name, e.loc))
   }, [activity, feedQuery])
 
   // The board hangs on a wall in Baku; it shows Baku's time whatever the machine driving it thinks.

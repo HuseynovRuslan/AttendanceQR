@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -896,14 +897,14 @@ public class ManagerController : ControllerBase
             return Ok(Array.Empty<object>());
 
         var self = M15();
-        var lowered = term.ToLower();
+        var lowered = SearchText.Fold(term);
         var digits = new string(term.Where(char.IsDigit).ToArray());
         var byPhone = digits.Length >= 3;
         var managed = await ManagedLocationIdsAsync();
 
         var matching = _db.Employees
             .Where(e => e.IsActive && e.Id != self && !_operatorIds.Contains(e.Id)
-                        && (e.FullName.ToLower().Contains(lowered)
+                        && (SearchText.Fold(e.FullName).Contains(lowered)
                             || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))));
 
         var enforced = await EnforcedRowsAsync();
