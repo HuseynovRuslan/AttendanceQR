@@ -1,0 +1,10 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import AccountDeletionBody from '../../components/AccountDeletionBody.astro'
+import { useTranslations } from '../../i18n/ui'
+const lang = 'ru' as const
+const t = useTranslations(lang)
+---
+<BaseLayout lang={lang} path="/hesab-silinmesi/" title={t('del.metaTitle')} description={t('del.metaDesc')}>
+  <AccountDeletionBody lang={lang} />
+</BaseLayout>

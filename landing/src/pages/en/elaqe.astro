@@ -1,12 +1,10 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro'
-import PageHero from '../../components/PageHero.astro'
 import ContactBody from '../../components/ContactBody.astro'
 import { useTranslations } from '../../i18n/ui'
 const lang = 'en' as const
 const t = useTranslations(lang)
 ---
-<BaseLayout lang={lang} path="/elaqe/" title={t('contact.metaTitle')} description={t('contact.metaDesc')} heroTone="white">
-  <PageHero title={t('contact.title')} subtitle={t('contact.sub')} />
+<BaseLayout lang={lang} path="/elaqe/" title={t('contact.metaTitle')} description={t('contact.metaDesc')}>
   <ContactBody lang={lang} />
 </BaseLayout>

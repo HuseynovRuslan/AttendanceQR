@@ -343,6 +343,58 @@ public class ScanHandlerTests
         Assert.False(await h.Db.AuditLogs.AnyAsync(a => a.EventType == AuditEventType.CheckInOutsideFence));
     }
 
+    // --- the fence for ONE person (Employee.RequireGeofenceOverride): null, true, false ------------
+    // The admin form wrote these the wrong way round until 2026-10-16 (lib/fenceOverride). These pin
+    // what each stored value DOES at the scan, so the form and the server can be checked against it.
+
+    [Fact]
+    public async Task A_personal_false_records_an_outside_scan_while_the_branch_stays_fenced()
+    {
+        // «Rədd etmə — yalnız ölç» for this one person: the scan is taken and its distance written down.
+        using var h = new Harness();
+        h.Db.Employees.Single(e => e.Id == h.EmployeeId).RequireGeofenceOverride = false;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.015));
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.True(await h.Db.AuditLogs.AnyAsync(a => a.EventType == AuditEventType.CheckInOutsideFence));
+    }
+
+    [Fact]
+    public async Task A_personal_true_refuses_an_outside_scan_even_where_the_branch_only_measures()
+    {
+        // «Radiusdan kənarda girişi rədd et» for this one person, at a branch whose wall is down.
+        using var h = new Harness();
+        h.Location.RequireGeofence = false;
+        h.Db.Employees.Single(e => e.Id == h.EmployeeId).RequireGeofenceOverride = true;
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.015));
+
+        Assert.Equal("OutsideRadius", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task With_no_personal_value_the_branch_decides(bool branchFenced)
+    {
+        // null — «Filiala görə» — is not false: it asks the branch, both ways round.
+        using var h = new Harness();
+        h.Location.RequireGeofence = branchFenced;
+        Assert.Null(h.Db.Employees.Single(e => e.Id == h.EmployeeId).RequireGeofenceOverride);
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.015));
+
+        if (branchFenced)
+            Assert.Equal("OutsideRadius", Error(result));
+        else
+            Assert.Equal("CheckIn", Action(result));
+    }
+
     [Fact]
     public async Task A_QRless_check_in_compares_the_face_in_the_request_and_a_mismatch_flags_but_never_blocks()
     {

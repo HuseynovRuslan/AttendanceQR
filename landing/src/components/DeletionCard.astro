@@ -1,0 +1,198 @@
+---
+import Check from '@lucide/astro/icons/check'
+import { useTranslations, type Lang } from '../i18n/ui'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Kartın sətirləri. `d` — bu sətrin silinmə gecikməsi (saniyə), `w` — boz zolağın eni (dəyərin təxmini eni).
+// Nümunə işçinin adı, şirkəti, nömrəsi və PIN-i tərcümə olunmur.
+const rows = [
+  { label: t('del.cardPhone'), value: '+994 50 ••• •• 12', d: 0.35, w: '72%' },
+  { label: t('del.cardRole'), value: t('del.cardRoleV'), d: 0.7, w: '58%' },
+  { label: t('del.cardDevice'), value: t('del.cardDeviceV'), d: 1.05, w: '80%' },
+  { label: 'PIN', value: '••••', d: 1.4, w: '28%' },
+]
+---
+
+<!-- Bütün kart bir şəkil kimi təsvir olunur (role="img" + aria-label); içindəkilər ekran oxuyucudan gizlədilir. -->
+<div
+  role="img"
+  aria-label={t('del.cardAria')}
+  class="relative w-[300px] max-w-full overflow-hidden rounded-[22px] bg-white p-[18px] pb-16 shadow-[0_30px_60px_-28px_rgb(17_18_17/0.35)] ring-1 ring-black/[0.04]"
+>
+  <div aria-hidden="true">
+    <!-- Yuxarı: avatar + ad + şirkət. Altında nazik xətt. -->
+    <div class="flex items-center gap-3 pb-4">
+      <!-- Avatar: əsl dairə (açıq mavi fon, mavi "ƏM") və üstündə boz yer tutucu dairə. -->
+      <span class="relative size-[46px] shrink-0">
+        <span
+          class="del-real grid size-full place-items-center rounded-full bg-[#EAF1FE] text-[15px] font-semibold text-brand"
+          style="--d:0s">ƏM</span
+        >
+        <span class="del-ghost absolute inset-0 rounded-full bg-[#EFEDEC]" style="--d:0s"></span>
+      </span>
+
+      <!-- Ad və şirkət: əsl mətn və üstündə iki boz zolaq. -->
+      <span class="relative min-w-0 flex-1">
+        <span class="del-real block" style="--d:0s">
+          <span class="block truncate text-[15px] leading-tight font-semibold text-ink">Əli Məmmədov</span>
+          <span class="mt-0.5 block truncate text-[12.5px] text-stone-500">TechCorp MMC</span>
+        </span>
+        <span class="del-ghost absolute inset-0 flex flex-col justify-center gap-2" style="--d:0s">
+          <span class="h-[9px] w-[70%] rounded-full bg-[#EFEDEC]"></span>
+          <span class="h-[8px] w-[45%] rounded-full bg-[#EFEDEC]"></span>
+        </span>
+      </span>
+    </div>
+
+    <!-- 4 sətir: solda mono etiket, sağda dəyər. Aralarında nazik xətt. -->
+    <dl class="m-0">
+      {
+        rows.map((row) => (
+          <div class="flex items-center gap-3 border-t border-[#EFEDEC] py-3">
+            <dt class="w-[76px] shrink-0 font-mono text-[10px] tracking-[0.1em] text-ink2 uppercase">{row.label}</dt>
+            <dd class="relative m-0 min-w-0 flex-1 text-[13.5px] font-medium text-ink">
+              <span class="del-real block truncate" style={`--d:${row.d}s`}>
+                {row.value}
+              </span>
+              <span
+                class="del-ghost absolute top-1/2 left-0 h-[9px] -translate-y-1/2 rounded-full bg-[#EFEDEC]"
+                style={`--d:${row.d}s; width:${row.w}`}
+              />
+            </dd> 
+          </div>
+        ))
+      }
+    </dl>
+
+    <!-- Skan xətti: 46px hündür, aşağı kənarı parlaq mavi gradient. Kartın başından sonuna keçir. -->
+    <span
+      class="del-scan pointer-events-none absolute inset-x-0 top-0 h-[46px] bg-[linear-gradient(to_bottom,transparent,rgb(21_94_239/0.1)_70%,rgb(21_94_239/0.45))] shadow-[0_2px_10px_rgb(21_94_239/0.45)]"
+    ></span>
+
+    <!-- "Silindi" nişanı: sağ aşağıda, yaşıl, check ikonu ilə. -->
+    <span
+      class="del-done absolute right-[18px] bottom-[18px] inline-flex items-center gap-1.5 rounded-full bg-[#E7F6EF] px-3 py-1.5 text-[12.5px] font-semibold text-[#12805C]"
+    >
+      <Check size={14} stroke-width={3} />
+      {t('del.cardDone')}
+    </span>
+  </div>
+</div>
+
+<style>
+  /* Bütün animasiyalar 10 saniyəlik dövrdədir. @keyframes adı Astro-da scope olunmur, ona görə hamısı `del-` ilə
+     başlayır: global.css-də otuza yaxın keyframe adı var, toqquşmasın. Əsas stil (animasiyasız) həmişə
+     "dəyər görünür" halıdır, ona görə animasiya söndürüləndə kart dəyərlərlə dolu qalır. */
+
+  /* Əsl dəyər: skan xətti keçəndən sonra bulanıqlaşıb itir, dövrün sonunda geri qayıdır.
+     `--d` — bu elementin gecikməsi; sətirlər bir-birindən 0.35s gec silinir. */
+  .del-real {
+    animation: del-real 10s ease-in-out infinite;
+    animation-delay: var(--d, 0s);
+  }
+
+  @keyframes del-real {
+    0%,
+    31% {
+      opacity: 1;
+      filter: blur(0);
+    }
+    36%,
+    87% {
+      opacity: 0;
+      filter: blur(4px);
+    }
+    92%,
+    100% {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+
+  /* Boz yer tutucu: əsl dəyər itəndə görünür, qayıdanda yox olur. */
+  .del-ghost {
+    opacity: 0;
+    animation: del-ghost 10s ease-in-out infinite;
+    animation-delay: var(--d, 0s);
+  }
+
+  @keyframes del-ghost {
+    0%,
+    31% {
+      opacity: 0;
+    }
+    36%,
+    87% {
+      opacity: 1;
+    }
+    92%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Skan xətti: 30%-də kartın üstündə görünür, 47%-ə qədər aşağı enir (top: 100%), sonra görünməz olur. */
+  .del-scan {
+    opacity: 0;
+    animation: del-scan 10s ease-in-out infinite;
+  }
+
+  @keyframes del-scan {
+    0%,
+    30% {
+      top: -46px;
+      opacity: 0;
+    }
+    31% {
+      opacity: 1;
+    }
+    47% {
+      top: 100%;
+      opacity: 1;
+    }
+    48%,
+    100% {
+      top: 100%;
+      opacity: 0;
+    }
+  }
+
+  /* "Silindi" nişanı: ~54%-də azca yuxarı qalxaraq çıxır, ~88%-ə qədər qalır. */
+  .del-done {
+    opacity: 0;
+    animation: del-done 10s ease-in-out infinite;
+  }
+
+  @keyframes del-done {
+    0%,
+    53% {
+      opacity: 0;
+      transform: translateY(6px) scale(0.92);
+    }
+    57%,
+    88% {
+      opacity: 1;
+      transform: none;
+    }
+    91%,
+    100% {
+      opacity: 0;
+      transform: none;
+    }
+  }
+
+  /* Hərəkəti azalt: animasiya yoxdur, kart dəyərlərlə dolu qalır, skan xətti və "Silindi" nişanı gizlidir. */
+  @media (prefers-reduced-motion: reduce) {
+    .del-real,
+    .del-ghost {
+      animation: none;
+    }
+
+    .del-scan,
+    .del-done {
+      display: none;
+    }
+  }
+</style>

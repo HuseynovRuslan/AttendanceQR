@@ -5,7 +5,7 @@
  * Props: lang — səhifənin dili; path — dil prefiksi olmadan cari ünvan (dil seçimi və açıq
  * səhifənin linkini işarələmək — aria-current — üçün).
  * Necə işləyir: HTML build zamanı hazırlanır; aşağıdakı <script> menyuları açıb-bağlayır, aşağı
- * sürüşəndə zolağı gizlədir, yuxarı sürüşəndə geri gətirir.
+ * sürüşəndə şəffaf zolağı şüşə qapsula çevirir. Zolaq heç vaxt gizlənmir, həmişə ekranın yuxarısında qalır.
  */
 import { AZ, RU, US } from "country-flag-icons/string/3x2";
 import {
@@ -14,7 +14,7 @@ import {
   availableLangs,
   type Lang,
 } from "../i18n/ui";
-import { SITE } from "../data/site";
+import { SITE, PRICING } from "../data/site";
 import { getImage } from "astro:assets";
 import { LOGO_WORD } from "../data/brand";
 
@@ -53,23 +53,31 @@ const langMeta: Record<Lang, { name: string; flag: string }> = {
 };
 
 // Bölmə linkləri tam ünvandır (ana səhifə + #hash), ona görə eyni header /elaqe/ və /bloq/
-// səhifələrində də işləyir. `page` ayrıca səhifə olan linkləri işarələyir ki, hazırda açıq olan
-// səhifənin linki bunu göstərə bilsin (aria-current="page").
+// səhifələrində də işləyir: ana səhifədə klik həmin bölməyə hamar sürüşür, başqa səhifədən klik
+// ana səhifəni açıb bölməyə düşür. Ayrıca «Qiymət» səhifəsi yoxdur — «Qiymət» də eyni cür bölmə
+// linkidir (#pricing).
+// `isVisible: false` olan link menyuya düşmür (aşağıdakı filter). «Qiymət» bölməsi ana səhifədə
+// yalnız site.ts → PRICING.enabled olanda var, ona görə link də yalnız onda görünür. Footer-də
+// eyni qayda işləyir.
+// `page` — ayrıca səhifəyə aparan link üçündür (məs. "/haqqimizda/"): hazırda açıq olan səhifənin
+// linki bununla işarələnir (aria-current="page"). Hazırda heç bir link `page` almır; massivin tipi
+// onu ona görə elan edir ki, gələcəkdə əlavə olunan link bu sahəni yaza bilsin.
 // Burada "Əlaqə" linki yoxdur: aşağıdakı "Əlaqə saxlayın" düyməsi elə həmin səhifəyə aparır, eyni
 // yerə fərqli sözlərlə aparan iki element isə iki ayrı yer kimi oxunur. Footer-də bu link qalır.
+interface NavLink {
+  href: string;
+  label: string;
+  isVisible: boolean;
+  page?: string;
+}
 const home = localizedPath(lang, "/");
-const links = [
-  { href: `${home}#how`, label: t("nav.how") },
-  { href: `${home}#modules`, label: t("nav.modules") },
-  // Həmişə görünür: /qiymet/ səhifəsi tarif cədvəli olsa da, olmasa da var. Tariflər söndürüləndə o,
-  // qiymət sualına fərdi təkliflə cavab verir — insanlar elə bu səhifəni axtarır.
-  {
-    href: localizedPath(lang, "/qiymet/"),
-    label: t("nav.pricing"),
-    page: "/qiymet/",
-  },
-  { href: `${home}#faq`, label: t("nav.faq") },
+const allLinks: NavLink[] = [
+  { href: `${home}#how`, label: t("nav.how"), isVisible: true },
+  { href: `${home}#modules`, label: t("nav.modules"), isVisible: true },
+  { href: `${home}#pricing`, label: t("nav.pricing"), isVisible: PRICING.enabled },
+  { href: `${home}#faq`, label: t("nav.faq"), isVisible: true },
 ];
+const links = allLinks.filter((link) => link.isVisible);
 
 // İşçilərin daxil olduğu tətbiq — bütün şirkətlər üçün eyni ünvan.
 const appUrl = "https://app.qrlog.az";
@@ -92,6 +100,34 @@ const buttonGhost = `${buttonBase} text-stone-700 hover:bg-stone-100 hover:text-
 const buttonPrimary = `${buttonBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
 const flagBox =
   "block h-3.5 w-[21px] shrink-0 overflow-hidden rounded-[3px] ring-1 ring-stone-900/10 [&>svg]:block [&>svg]:size-full";
+
+// ---- Zolağın "şəffaf zolaq → üzən şüşə qapsul" animasiyası ----
+// Səhifənin yuxarısında zolaq düzdür: fonsuz, çərçivəsiz, kölgəsiz (barFlat). Aşağı sürüşəndə skript
+// ona `data-scrolled` verir və zolaq 0.4 saniyəyə qapsula çevrilir: ağ şüşə fon, çərçivə, kölgə
+// (barGlass) və kənarlardan içəri daralma (barNarrow). Hamısı CSS keçididir, JS yalnız atributu qoyur.
+// Mobil menyu açılanda (`data-open`) də şüşə fon lazımdır, yoxsa menyunun yazıları səhifənin
+// üstündə çılpaq qalar. Tailwind yalnız tam yazılmış sinif adlarını tapır, ona görə hər sinif iki
+// variantla ayrıca yazılıb.
+// backdrop-saturate yalnız şüşə halında: şəffaf zolaqda qalsaydı, onun arxasındakı hero fonunun
+// rəngi zolaq boyu doyunlaşıb ayrıca bir lent kimi seçilərdi.
+const barFlat =
+  "border-transparent bg-transparent shadow-none backdrop-blur-[0px] backdrop-saturate-100";
+const barGlass =
+  "data-scrolled:border-stone-200/60 data-open:border-stone-200/60 data-scrolled:bg-white/90 data-open:bg-white/90 data-scrolled:shadow-md data-open:shadow-md data-scrolled:shadow-stone-900/5 data-open:shadow-stone-900/5 data-scrolled:backdrop-blur-xl data-open:backdrop-blur-xl data-scrolled:backdrop-saturate-150 data-open:backdrop-saturate-150";
+// Hər tərəfdən 32px daralır (yalnız `sm`-dən yuxarı: telefonda zolaq onsuz da ekranın kənarına yaxındır).
+// Həm eni, həm max-eni dəyişir: dar ekranda max-en işləmir, geniş ekranda isə en işləmir.
+const barNarrow =
+  "sm:data-scrolled:w-[calc(100%-4rem)] sm:data-scrolled:max-w-[calc(var(--maxw)-96px)]";
+// Zolağın içindəki sətrin kənar boşluğu. Düz halda zolağın çərçivəsi görünmür, ona görə loqo hero
+// başlığı ilə eyni xətdə durmalıdır: səhifənin yan boşluğu `lg`-dən yuxarı 32px, aşağı 22px-dir
+// (global.css .wrap), zolaq isə ekranın kənarından 16px içəridədir. `lg`-dən yuxarı 16px (pl-4)
+// loqonu mətnlə üst-üstə salır, dar ekranda bu çox olardı, ona görə orada 6px (pl-1.5).
+// Qapsulda (data-scrolled) və menyu açıq olanda (data-open) boşluq hər yerdə 16/12px olur.
+const rowEdge =
+  "pl-1.5 pr-1.5 lg:pl-4 lg:pr-3 group-data-scrolled/header:pl-4 group-data-scrolled/header:pr-3 group-data-open/header:pl-4 group-data-open/header:pr-3 transition-[padding] duration-400 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none";
+// Animasiyanın müddəti və əyrisi: saytın başqa bölmələrindəki yumşaq əyri (cubic-bezier(0.22,0.61,0.36,1)).
+const barMotion =
+  "transition-[width,max-width,background-color,border-color,box-shadow,backdrop-filter] duration-400 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none";
 ---
 
 <!--
@@ -101,19 +137,18 @@ const flagBox =
   hündürlüyü geri verir (--header-h). <header> klikləri özündən keçirir (pointer-events-none),
   ona görə onun şəffaf kənarlarının altındakı səhifə kliklənə bilir.
 
-  Sürüşmə davranışı bu elementdədir: `data-hidden` bütün zolağı transform ilə ekrandan çıxarır,
-  brauzer isə bunu layout-a toxunmadan (compositor-da) canlandırır. Nə vaxt gizlənəcəyinə
-  aşağıdakı skript qərar verir.
+  Zolağın özü ([data-header-bar]) səhifənin yuxarısında şəffafdır; aşağı sürüşəndə şüşə qapsula
+  çevrilib daralır (yuxarıdakı barFlat / barGlass / barNarrow sabitləri).
 -->
 <header
   data-header
-  class="pointer-events-none fixed inset-x-0 top-0 z-50 p-3 transition-transform duration-300 ease-out data-hidden:-translate-y-full motion-reduce:transition-none sm:p-4"
+  class="pointer-events-none fixed inset-x-0 top-0 z-50 p-3 sm:p-4"
 >
   <div
     data-header-bar
-    class="group/header pointer-events-auto relative mx-auto max-w-[calc(var(--maxw)-32px)] rounded-2xl border border-stone-200/60 bg-white/80 shadow-sm backdrop-blur-xl backdrop-saturate-150 transition-[background-color,box-shadow] duration-300 data-scrolled:bg-white/95 data-scrolled:shadow-md data-scrolled:shadow-stone-900/5"
+    class={`group/header pointer-events-auto relative mx-auto w-full max-w-[calc(var(--maxw)-32px)] rounded-2xl border ${barFlat} ${barGlass} ${barNarrow} ${barMotion}`}
   >
-    <div class="flex h-16 items-center gap-3 pl-4 pr-3 lg:gap-8">
+    <div class={`flex h-16 items-center gap-3 lg:gap-8 ${rowEdge}`}>
       <a class={`shrink-0 rounded-md ${focusRing}`} href={home} aria-label={SITE.name}>
         <img
           class="h-6.5 w-auto sm:h-7"
@@ -221,12 +256,34 @@ const flagBox =
         <a class={`${buttonGhost} hidden px-4 py-2.5 sm:inline-flex`} href={appUrl}>
           {t("cta.login")}
         </a>
-        <a
-          class={`${buttonPrimary} hidden px-5 py-2.5 min-[540px]:inline-flex`}
-          href={contactHref}
+        <!--
+          Bu düymə ana səhifədə hero-dakı "Əlaqə saxlayın" ekranda görünərkən gizlidir (eni sıfırdır),
+          o ekrandan çıxanda yumşaq açılır — beləcə eyni düymə ekranda heç vaxt iki dəfə görünmür, amma
+          səhifənin hər yerində əlçatan qalır. Başqa səhifələrdə hero düyməsi yoxdur, ona görə bu düymə
+          həmişə görünür. Nə vaxt gizlənəcəyini aşağıdakı skriptdəki setupHeaderCta() qərar verir: o,
+          zolağa (`[data-header-bar]`) `data-cta-hidden` atributu qoyur, bu sinifləri isə həmin atribut
+          idarə edir (`group-data-cta-hidden/header:`: "qrup — zolaq — həmin atributa malikdirsə").
+
+          Niyə grid? `width: auto` animasiya olunmur — brauzer "auto"-dan rəqəmə keçidi hesablaya bilmir.
+          `grid-template-columns` isə `1fr → 0fr` animasiya olunur: tək sütunun eni düymənin öz eni ilə
+          sıfır arasında hamar dəyişir. Düymə (`<a>`) sütuna sıxılır (`min-w-0`), taşan mətn
+          `overflow-hidden` ilə kəsilir.
+          Padding (px-5 py-2.5) düymənin özündə yox, içindəki <span>-dadır. Elementin padding-i heç
+          vaxt sıfırdan kiçik ola bilməz: padding düymədə olsaydı, "gizli" halda da sütun 40px enində
+          qalardı (yer tutardı, "Daxil ol" lazımsız yerə sola itələnərdi). <span>-da isə düymənin özü
+          həqiqətən sıfır enə düşür.
+        -->
+        <div
+          class="hidden min-[540px]:grid grid-cols-[1fr] transition-[grid-template-columns,opacity] duration-450 ease-out motion-reduce:transition-none group-data-cta-hidden/header:pointer-events-none group-data-cta-hidden/header:grid-cols-[0fr] group-data-cta-hidden/header:opacity-0"
         >
-          {t("cta.btn1")}
-        </a>
+          <a
+            class={`${buttonPrimary} inline-flex min-w-0 overflow-hidden whitespace-nowrap`}
+            href={contactHref}
+            data-header-cta
+          >
+            <span class="shrink-0 px-5 py-2.5">{t("cta.btn1")}</span>
+          </a>
+        </div>
 
         <button
           type="button"
@@ -256,8 +313,12 @@ const flagBox =
       data-menu
     >
       <div class="min-h-0 overflow-hidden">
+        <!-- data-lenis-prevent: bu siyahının öz scroll-u var. Atribut olmasa, hamar scroll (Lenis) təkəri
+             tutub səhifəni sürüşdürər, siyahı isə yerində qalar. Menyu açıq olanda Lenis onsuz da dayanır
+             (SmoothScroll.astro). -->
         <div
           class="mx-2 max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain border-t border-stone-200/70 pb-3 pt-2"
+          data-lenis-prevent
         >
           <nav aria-label={t("a11y.nav")}>
             <ul class="list-none">
@@ -295,25 +356,23 @@ const flagBox =
 
 <script>
   // Header-in davranışı dörd hissədir: dil menyusu, mobil menyu, onların bağlanması və sürüşəndə
-  // zolağın gizlənməsi. Hər hissə aşağıda öz setup...() funksiyasındadır; hamısı faylın sonunda
-  // çağırılır.
+  // zolağın şüşə qapsula çevrilməsi. Hər hissə aşağıda öz setup...() funksiyasındadır; hamısı faylın
+  // sonunda çağırılır.
 
-  // Bu qədər (px) aşağı sürüşəndən sonra zolaq daha qatı fon və kölgə alır (data-scrolled).
+  // Bu qədər (px) aşağı sürüşəndən sonra şəffaf zolaq şüşə qapsula çevrilir (data-scrolled).
   const SCROLLED_AFTER_PX = 8;
-  // Bundan kiçik hərəkət (px) sürüşmə sayılmır: toxunuş, kənarda "rezin" sıçrayışı, trackpad titrəməsi.
-  const SCROLL_JITTER_PX = 6;
-  // "Oxu xətti" — səhifənin əslində oxunduğu yer: 0.5 = ekran hündürlüyünün yarısı, yəni ortası.
-  const READING_LINE_RATIO = 0.5;
   // Tailwind-in `lg` sərhədi: bu enlikdən burger düyməsi və mobil menyu gizlənir (lg:hidden).
   const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
+  // Header-in hündürlüyü global.css-dəki --header-h dəyişənindən oxunur (90px, 640px-dən geniş ekranda
+  // 98px). Dəyişən nədənsə oxunmasa, bu ehtiyat dəyər işləyir.
+  const FALLBACK_HEADER_HEIGHT_PX = 90;
 
   // <HTMLElement> TypeScript-ə hansı növ element qayıtdığını deyir (yalnız tip üçündür, işləmə
   // zamanı yoxlanmır) — onsuz nəticə sadəcə Element olur və .focus() kimi metodlar tip xətası verir.
   // https://www.typescriptlang.org/docs/handbook/2/generics.html
-  const header = document.querySelector<HTMLElement>("[data-header]");
-  const bar = header?.querySelector<HTMLElement>("[data-header-bar]");
+  const bar = document.querySelector<HTMLElement>("[data-header-bar]");
 
-  if (header && bar) {
+  if (bar) {
     const menuButton = bar.querySelector<HTMLButtonElement>("[data-menu-trigger]");
     const mobileMenu = bar.querySelector<HTMLElement>("[data-menu]");
     const langDropdown = bar.querySelector<HTMLElement>("[data-lang]");
@@ -327,14 +386,9 @@ const flagBox =
     // görünüşü idarə edir (group-data-open:* sinifləri), aria-expanded isə ekran oxuyucusuna xəbər
     // verir. Onları əl ilə dəyişmə — setLangDropdownOpen() və setMobileMenuOpen() ikisini birlikdə
     // yeniləyir.
-    // Aşağıdakı dəyişənlər zolağın sürüşəndə gizlənməsi üçündür, amma onlara yalnız sürüşmə hissəsi
-    // toxunmur: isHidden-i revealHeader() də dəyişir (onu panellərin açılması, focusin və pageshow
-    // çağırır), lastScrollY-ni isə pageshow da yeniləyir. isScrolled və lastScrollY-in əsl başlanğıc
-    // dəyəri setupScrollHide()-da oxunur.
-    let isHidden = false; // zolaq yuxarı çəkilib gizlənibmi — `data-hidden`-in kopyası
+    // Yeganə JS dəyişəni zolağın "sürüşdürülmüş" görünüşü üçündür; onun əsl başlanğıc dəyəri
+    // setupScrolledLook()-da oxunur.
     let isScrolled = false; // zolaq "sürüşdürülmüş" görünüşdədirmi — `data-scrolled`-in kopyası
-    let lastScrollY = 0; // son dəfə nəzərə alınan sürüşmə mövqeyi
-    let frameRequested = false; // növbəti kadr üçün yeniləmə artıq istənibmi
 
     // ---------- Panelləri açıb-bağlamaq ----------
     const isMobileMenuOpen = () => bar.hasAttribute("data-open");
@@ -344,22 +398,13 @@ const flagBox =
       return langDropdown.hasAttribute("data-open");
     };
 
-    // Gizlənmiş zolağı geri gətirir; zolaq artıq görünürsə, heç nə etmir.
-    const revealHeader = () => {
-      if (!isHidden) return;
-      isHidden = false;
-      header.removeAttribute("data-hidden");
-    };
-
-    // Eyni anda yalnız bir panel açıq ola bilər, ona görə açılan panel o birini bağlayır. Zolaq
-    // gizlənibsə, onu da geri gətirir — açıq panel ekrandan kənarda qalmamalıdır.
+    // Eyni anda yalnız bir panel açıq ola bilər, ona görə açılan panel o birini bağlayır.
     const setLangDropdownOpen = (open: boolean) => {
       if (!langDropdown || !langButton) return;
       langDropdown.toggleAttribute("data-open", open);
       langButton.setAttribute("aria-expanded", String(open));
       if (open) {
         setMobileMenuOpen(false);
-        revealHeader();
       }
     };
 
@@ -369,7 +414,6 @@ const flagBox =
       menuButton.setAttribute("aria-expanded", String(open));
       if (open) {
         setLangDropdownOpen(false);
-        revealHeader();
       }
     };
 
@@ -478,8 +522,7 @@ const flagBox =
     };
 
     // Brauzerin "Geri" düyməsi ilə qayıdanda səhifə tərk edildiyi kimi bərpa olunur (bfcache) — açıq
-    // menyu da daxil olmaqla. Ona görə panelləri bağlayırıq, gizlənmiş zolağı geri gətiririk və
-    // sürüşmə hesabını bərpa olunan mövqedən yenidən başladırıq.
+    // menyu da daxil olmaqla. Ona görə panelləri bağlayırıq.
     // event.persisted yalnız səhifə bfcache-dən qayıdanda true olur:
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event
     // https://developer.mozilla.org/en-US/docs/Glossary/bfcache
@@ -487,8 +530,6 @@ const flagBox =
       if (!event.persisted) return;
       setLangDropdownOpen(false);
       setMobileMenuOpen(false);
-      revealHeader();
-      lastScrollY = window.scrollY; // sürüşmə hesabı bərpa olunan mövqedən yenidən başlasın
     };
 
     const setupClosing = () => {
@@ -499,30 +540,12 @@ const flagBox =
     };
 
     // ---------- Sürüşmə (scroll) ----------
-    // Aşağı oxuyanda zolaq yoldan çəkilir, yuxarı sürüşəndə dərhal geri gəlir. "Oxu xətti" ekranın
-    // ortasıdır — səhifə əslində orada oxunur. Bu xətt hələ birinci ekranın içindədirsə, heç nə
-    // gizlənmir: səhifənin yuxarısında loqo, menyu və hər iki düymə ziyarətçinin gözlədiyi yerdə qalır.
-    //
-    // Sürüşmə zamanı iş azdır: kadrda bir requestAnimationFrame çağırışı, bir neçə oxuma, atributa
-    // yazı isə yalnız vəziyyət həqiqətən dəyişəndə. Zolaq sonra transform ilə hərəkət edir və bunu
-    // brauzer özü (compositor) edir — nə layout, nə də arxadakı səhifənin yenidən çəkilməsi.
+    // Zolaq heç vaxt gizlənmir: həmişə ekranın yuxarısında durur. Sürüşəndə yalnız görünüşü dəyişir —
+    // səhifənin yuxarısında şəffafdır, bir az aşağı düşəndə şüşə qapsula çevrilir. Skript burada
+    // yalnız `data-scrolled` atributunu qoyub-götürür, qalan hər şeyi CSS edir.
 
-    // Zolağın içində klaviatura fokusu varmı? Toxunuşla fokus almış düymə sayılmır.
-    const isKeyboardFocusInside = () => {
-      const focusedElement = document.activeElement;
-      if (!focusedElement || !header.contains(focusedElement)) return false;
-      // :focus-visible brauzerin özünün "görünən fokus" dediyi haldır (adətən klaviatura ilə gələn
-      // fokus). Safari 15.4-dən köhnə versiyalar bu seçicidə xəta atır; orada təhlükəsiz cavab
-      // zolağı yerində saxlamaqdır.
-      // https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible
-      try {
-        return focusedElement.matches(":focus-visible");
-      } catch {
-        return true;
-      }
-    };
-
-    // Zolağın "sürüşdürülmüş" görünüşünü (daha qatı fon və kölgə) yalnız vəziyyət dəyişəndə yeniləyir.
+    // Zolağın "sürüşdürülmüş" görünüşünü (şüşə qapsul) yalnız vəziyyət dəyişəndə yeniləyir. Animasiyanı
+    // özü CSS çəkir (barGlass, barNarrow): burada yalnız atribut qoyulub-götürülür.
     const updateScrolledLook = (scrollTop: number) => {
       const nowScrolled = scrollTop > SCROLLED_AFTER_PX;
       if (nowScrolled !== isScrolled) {
@@ -531,59 +554,66 @@ const flagBox =
       }
     };
 
-    // Zolaq yalnız aşağı sürüşəndə (scrollDelta > 0) və oxu xətti birinci ekranı keçəndə gizlənir.
-    // Açıq panelin və ya klaviatura fokusunun altından heç vaxt çəkilmir. Sadəcə toxunulduğu üçün
-    // fokusda qalan düymə sayılmır, yoxsa burgerə bir toxunuşdan sonra zolaq ziyarətin sonunadək
-    // yerində bərkiyib qalardı.
-    const updateHiddenState = (scrollDelta: number, readingLine: number) => {
-      const isPinned = isMobileMenuOpen() || isLangDropdownOpen() || isKeyboardFocusInside();
-      const shouldHide = !isPinned && scrollDelta > 0 && readingLine > window.innerHeight;
-      if (shouldHide !== isHidden) {
-        isHidden = shouldHide;
-        header.toggleAttribute("data-hidden", shouldHide);
+    const setupScrolledLook = () => {
+      // Safari-də səhifənin yuxarısındakı "rezin" sıçrayışında scrollY mənfi ola bilər, ona görə
+      // Math.max ilə 0-dan aşağı düşməyə qoymuruq.
+      // passive: brauzerə deyir ki, bu dinləyici preventDefault() çağırmayacaq və scroll gözləməyə
+      // bilər. https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#passive
+      window.addEventListener("scroll", () => updateScrolledLook(Math.max(window.scrollY, 0)), {
+        passive: true,
+      });
+
+      // Səhifə ortadan yenidən yüklənəndə zolaq elə əvvəldən "sürüşdürülmüş" görünüşdə olur.
+      updateScrolledLook(Math.max(window.scrollY, 0));
+    };
+
+    // ---------- Header-dəki "Əlaqə saxlayın" düyməsi ----------
+    // Hero-dakı "Əlaqə saxlayın" (`data-hero-cta`) ekranda görünərkən header-dəki düymə gizlənir,
+    // ekrandan çıxanda açılır. Skript yalnız `data-cta-hidden` atributunu qoyub-götürür (görünüşü
+    // markupdakı `group-data-cta-hidden/header:` sinifləri çəkir) və gizli düyməni klaviaturadan və
+    // ekran oxuyucudan da çıxarır.
+    // `data-*` atributu ilə idarə etmək — vəziyyəti JS dəyişənində yox, elementin özündə saxlamaq
+    // deməkdir: CSS atributu görür və görünüşü özü dəyişir.
+    // `tabindex="-1"` — elementi Tab ardıcıllığından çıxarır (fokus ona düşmür). `aria-hidden="true"` —
+    // ekran oxuyucuya "bu element yoxdur" deyir. Gizli düymə sıfır enlidir, ona fokus düşsəydi,
+    // klaviaturadan istifadə edən adam görünməyən düymədə itərdi.
+    const setHeaderCtaHidden = (headerCta: HTMLElement, isHidden: boolean) => {
+      bar.toggleAttribute("data-cta-hidden", isHidden);
+      if (isHidden) {
+        headerCta.setAttribute("tabindex", "-1");
+        headerCta.setAttribute("aria-hidden", "true");
+      } else {
+        headerCta.removeAttribute("tabindex");
+        headerCta.removeAttribute("aria-hidden");
       }
     };
 
-    // Kadrda bir dəfə işləyir: nə qədər və hansı istiqamətdə sürüşüldüyünü hesablayıb zolağı yeniləyir.
-    const updateOnScroll = () => {
-      frameRequested = false;
-      // Safari-də səhifənin yuxarısındakı "rezin" sıçrayışında scrollY mənfi ola bilər
-      const scrollTop = Math.max(window.scrollY, 0);
-      const readingLine = scrollTop + window.innerHeight * READING_LINE_RATIO;
-      const scrollDelta = scrollTop - lastScrollY;
-      // Kiçik hərəkətdə lastScrollY dəyişmir, ona görə bir neçə kiçik addım toplanıb sonda sayılır
-      if (Math.abs(scrollDelta) < SCROLL_JITTER_PX) return;
-      lastScrollY = scrollTop;
+    // IntersectionObserver — element ekrana girəndə və ya ekrandan çıxanda xəbər verən brauzer aləti
+    // (scroll hadisəsini hər an dinləməyə ehtiyac qalmır).
+    // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
+    // rootMargin ekranın yuxarı kənarını header-in hündürlüyü qədər aşağı çəkir: hero düyməsinin
+    // header-in altında qalan hissəsi "görünür" sayılmasın. Dəyər səhifə açılanda bir dəfə oxunur;
+    // pəncərə sonradan 640px sərhədini keçsə, 8px fərq (90 ↔ 98) əhəmiyyətsizdir.
+    const setupHeaderCta = () => {
+      const heroCta = document.querySelector("[data-hero-cta]");
+      const headerCta = bar.querySelector<HTMLElement>("[data-header-cta]");
+      // Hero düyməsi yoxdursa (başqa səhifə) və ya brauzer IntersectionObserver-i tanımırsa, heç nə
+      // etmirik: heç bir atribut qoyulmur, header düyməsi həmişə görünür.
+      if (!heroCta || !headerCta || !("IntersectionObserver" in window)) return;
 
-      updateScrolledLook(scrollTop);
-      updateHiddenState(scrollDelta, readingLine);
-    };
+      const headerHeight =
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) ||
+        FALLBACK_HEADER_HEIGHT_PX;
 
-    // scroll hadisəsi çox tez-tez gəlir. requestAnimationFrame hesablamanı növbəti kadr çəkilməzdən
-    // dərhal əvvələ köçürür, frameRequested isə eyni kadr üçün ikinci çağırışın növbəyə düşməsinin
-    // qarşısını alır.
-    // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
-    const requestScrollUpdate = () => {
-      if (frameRequested) return;
-      frameRequested = true;
-      requestAnimationFrame(updateOnScroll);
-    };
-
-    const setupScrollHide = () => {
-      lastScrollY = window.scrollY;
-      // passive: brauzerə deyir ki, bu dinləyici preventDefault() çağırmayacaq. scroll hadisəsini
-      // onsuz da ləğv etmək olmur, ona görə burada o, sadəcə niyyəti açıq göstərir; sürüşməni
-      // əslində sürətləndirdiyi yer touchmove və wheel dinləyiciləridir.
-      // https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#passive
-      window.addEventListener("scroll", requestScrollUpdate, { passive: true });
-
-      // Səhifə ortadan yenidən yüklənəndə zolaq elə əvvəldən "sürüşdürülmüş" görünüşdə olur.
-      isScrolled = window.scrollY > SCROLLED_AFTER_PX;
-      bar.toggleAttribute("data-scrolled", isScrolled);
-
-      // Fokus zolağın içinə düşəndə (məsələn, Tab ilə) gizlənmiş zolaq geri çıxır — fokuslanan
-      // element ekrandan kənarda qalmamalıdır.
-      header.addEventListener("focusin", revealHeader);
+      const observer = new IntersectionObserver(
+        (entries) => {
+          // Bir neçə xəbər birlikdə gəlsə, ən sonuncusu həqiqi vəziyyətdir.
+          const latestEntry = entries[entries.length - 1];
+          setHeaderCtaHidden(headerCta, latestEntry.isIntersecting);
+        },
+        { rootMargin: `-${headerHeight}px 0px 0px 0px` }
+      );
+      observer.observe(heroCta);
     };
 
     // const ilə yazılmış funksiyanı təyin olunduğu sətirdən əvvəl çağırmaq olmur (xəta verir), ona görə
@@ -591,6 +621,7 @@ const flagBox =
     setupLanguageMenu();
     setupMobileMenu();
     setupClosing();
-    setupScrollHide();
+    setupScrolledLook();
+    setupHeaderCta();
   }
 </script>
