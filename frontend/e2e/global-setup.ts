@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { Direct, LoginError, loginToken } from './support/api'
-import { credentials } from './support/env'
+import { Direct, LoginError, companyName, loginToken } from './support/api'
+import { E2EConfigError, EXPECTED_COMPANY, adminCredentials } from './support/env'
 import { TEMPLATE_PERMISSIONS } from './support/expectations'
 import {
   ensureBranches,
@@ -19,51 +19,56 @@ import { AUTH_DIR, PEOPLE, ROLE_KEYS, WORLD_FILE, pinVar, type PersonKey, type R
 // session. Idempotent: everything is looked up by its E2E name first and only created when missing,
 // so a second run reuses the first run's branches, structure, shifts and people.
 //
-// Credentials. Only the company administrator's are given to the suite. Every other account is an
-// E2E person the admin created through the admin's own "İşçi əlavə et → Müvəqqəti PIN" path; each
-// run the admin resets their PIN (the same "PIN sıfırla" a person would press), the run signs in
-// with the temporary PIN and sets a new random one through /set-pin's endpoint — the flow every new
-// employee goes through. Those PINs live in this process's memory only. Teardown resets them again,
+// Anything that stops it is an error with its reason, never a silent skip: a CI job without the secret, a
+// wrong company, a login refused — each fails the run before a single test, and says why.
+//
+// Credentials. Only the company administrator's are given to the suite, through the environment. Every
+// other account is an E2E person the admin created through the admin's own "İşçi əlavə et → Müvəqqəti
+// PIN" path; each run the admin resets their PIN (the same "PIN sıfırla" a person would press), the run
+// signs in with the temporary PIN and sets a new random one through /set-pin's endpoint — the flow every
+// new employee goes through. Those PINs live in this process's memory only. Teardown resets them again,
 // which also retires every session this run created. Login binds no device (binding happens at
 // activation-by-link and at scan, neither of which the suite does), so nothing here goes around
 // device binding.
 
+function writeSecret(path: string, value: string): void {
+  writeFileSync(path, value, { mode: 0o600 })
+}
+
 export default async function globalSetup(): Promise<void> {
   rmSync(AUTH_DIR, { recursive: true, force: true })
-  mkdirSync(AUTH_DIR, { recursive: true })
-  const runId = new Date().toISOString().replace(/\D/g, '').slice(2, 14)
-  const world = { runId, roleBlocked: {}, rolesEdited: {}, sessions: {}, logins: {} } as World
-  const save = () => writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2))
+  mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 })
+  const adminCreds = adminCredentials()
 
-  const adminCreds = credentials('E2E_ADMIN')
-  if (!adminCreds) {
-    world.blocked = 'Admin giriş məlumatı yoxdur: E2E_ADMIN_PHONE və E2E_ADMIN_PIN (env və ya frontend/.env.e2e.local)'
-    return save()
+  // Whose data this is, before anything is written: the API's own answer for the staging site.
+  const company = await companyName().catch((e: Error) => {
+    throw new E2EConfigError(`staging API-yə qoşulmaq olmadı: ${e.message}`)
+  })
+  if (company !== EXPECTED_COMPANY) {
+    throw new E2EConfigError(`API «${company ?? '—'}» şirkətini qaytardı, gözlənilən «${EXPECTED_COMPANY}» — heç nə yazılmadı`)
   }
 
   let adminToken: string
   try {
     adminToken = await loginToken(adminCreds)
   } catch (e) {
-    world.blocked =
-      e instanceof LoginError
-        ? `Admin girişi alınmadı (HTTP ${e.status}${e.code ? `, ${e.code}` : ''})`
-        : `Staging-ə qoşulmaq olmadı: ${(e as Error).message}`
-    return save()
+    throw e instanceof LoginError
+      ? new E2EConfigError(`admin girişi alınmadı (HTTP ${e.status}${e.code ? `, ${e.code}` : ''}) — E2E_ADMIN_* secret-lərini yoxlayın`)
+      : e
   }
   const admin = new Direct(adminToken)
+  const runId = new Date().toISOString().replace(/\D/g, '').slice(2, 14)
+  const world = { runId, rolesEdited: {}, sessions: {}, tokens: {}, logins: {} } as unknown as World
   world.adminId = tokenSubject(adminToken)
-  // The admin can also sign in with their e-mail, which the sidebar prints: the scrubber redacts
-  // it from every artifact (this process's env is the reporter's).
+  // The admin can also sign in with their e-mail, which pages print: the scrubber redacts it from every
+  // artifact (this process's env is the reporter's).
   const adminCard = await admin.get<{ email?: string }>(`/api/admin/employees/${world.adminId}`)
   if (adminCard.body?.email) process.env.E2E_ADMIN_EMAIL = adminCard.body.email
 
   const me = await admin.ok<{ mode: string; companyAdmin: boolean }>('GET', '/api/me/access')
   world.mode = me.mode
-  if (!me.companyAdmin) {
-    world.blocked = 'Verilən hesab şirkət administratoru deyil — test dünyasını qura bilmir'
-    return save()
-  }
+  if (!me.companyAdmin) throw new E2EConfigError('verilən hesab şirkət administratoru deyil — test dünyasını qura bilmir')
+  if (me.mode !== 'Enforced') throw new E2EConfigError(`şirkət ${me.mode} rejimindədir; bu dəst Enforced üçündür`)
 
   const roles = await admin.ok<{ id: string; templateKey: string; permissions: string[]; archived: boolean }[]>(
     'GET',
@@ -100,20 +105,20 @@ export default async function globalSetup(): Promise<void> {
     await ensureGrant(admin, key, world.people[key].id, world.roles, world.structureId, world.branches)
   }
 
-  // Sessions. The admin's comes from the login above; each E2E person gets new credentials.
-  // The admin's login is a real phone number: it stays in the environment, not in world.json.
+  // Sessions: the admin's from the login above; each E2E person gets new credentials. The browser gets a
+  // display token (storage state); the real one gets a file of its own, read only outside the page.
   world.logins.admin = ''
-  writeFileSync((world.sessions.admin = `${AUTH_DIR}admin.json`), storageState(adminToken))
+  writeSecret((world.tokens.admin = `${AUTH_DIR}admin.token`), adminToken)
+  writeSecret((world.sessions.admin = `${AUTH_DIR}admin.json`), storageState(adminToken))
   for (const role of ROLE_KEYS.filter((r): r is Exclude<RoleKey, 'admin'> => r !== 'admin')) {
     const person = world.people[role]
     world.logins[role] = person.email
-    try {
-      const { pin, token } = await rotate(admin, person.id, person.email)
-      process.env[pinVar(role)] = pin
-      writeFileSync((world.sessions[role] = `${AUTH_DIR}${role}.json`), storageState(token))
-    } catch (e) {
-      world.roleBlocked[role] = `Hesab hazırlana bilmədi: ${(e as Error).message}`
-    }
+    const { pin, token } = await rotate(admin, person.id, person.email).catch((e: Error) => {
+      throw new E2EConfigError(`${role} hesabı hazırlana bilmədi: ${e.message}`)
+    })
+    process.env[pinVar(role)] = pin
+    writeSecret((world.tokens[role] = `${AUTH_DIR}${role}.token`), token)
+    writeSecret((world.sessions[role] = `${AUTH_DIR}${role}.json`), storageState(token))
   }
-  save()
+  writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2))
 }

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './support/fixtures'
 
 // Smoke test: the site is up and a signed-out visitor lands on the login screen. Read-only — it
 // never submits the form.

@@ -1,37 +1,83 @@
 import { readFileSync } from 'node:fs'
 import { test as base, expect, type Browser, type BrowserContext, type Page, type TestInfo } from '@playwright/test'
-import { Api, Direct } from './api'
-import { loadWorld, ROLE_TITLES, type RoleKey, type World } from './world'
+import { Direct, RoleApi } from './api'
+import { API_URL, isProductionHost } from './env'
+import { displayToken } from './provision'
+import { loadWorld, ROLE_KEYS, type RoleKey, type World } from './world'
 
 export { expect }
 
 export const world: World = loadWorld()
 
-// Two things on screen are credentials: who is signed in (the sidebar shows the login — the admin's
-// is a real address) and the box a fresh temporary PIN or invite link is shown in. Both are blurred
-// on every page so no screenshot or screencast frame carries them; tests read the DOM, untouched.
-const MASK_IDENTITY = `(() => {
+/** A role's real token — for the transport layer and the API helpers, never for a page. */
+export function tokenOf(role: RoleKey): string {
+  return readFileSync(world.tokens[role], 'utf8')
+}
+
+/** What the role's page holds in its storage instead (provision.displayToken). */
+export function displayOf(role: RoleKey): string {
+  return displayToken(tokenOf(role))
+}
+
+// Display token → real token, for every role of this run.
+const REAL = new Map(ROLE_KEYS.map((r) => [`Bearer ${displayOf(r)}`, `Bearer ${tokenOf(r)}`]))
+
+// Blurred on every page so no screenshot or screencast frame carries them: a fresh temporary PIN or invite
+// link (`.link-box`), and who is signed in (the sidebar prints the login — with a display token there is no
+// e-mail to print, but the UI-login spec's session is a real one).
+const MASK = `(() => {
   const add = () => {
     const s = document.createElement('style')
-    s.textContent = '.sidebar-role .role-name,.link-box{filter:blur(8px)!important}'
+    s.textContent = '.link-box,.sidebar-role .role-name{filter:blur(8px)!important}'
     ;(document.head || document.documentElement).appendChild(s)
   }
   if (document.documentElement) add(); else document.addEventListener('DOMContentLoaded', add)
 })()`
 
-export function tokenOf(role: RoleKey): string {
-  const state = JSON.parse(readFileSync(world.sessions[role], 'utf8'))
-  return state.origins[0].localStorage[0].value as string
+/**
+ * What every browser context of the suite gets before its first page:
+ *  - signed-in API requests made on the real token without the browser ever holding it. The page holds a
+ *    display token (provision.displayToken); a request carrying one is sent on to the real API by this
+ *    process, with the real token, and the server's answer is handed back to the page as it came — status,
+ *    headers and body. A trace records a request as the BROWSER made it, so only the display token is in it.
+ *    (Swapping the header on the browser's own request does not do this: the trace records the swapped
+ *    header — checked, 2026-10-17.) Nothing is answered by the suite itself: every answer is the server's;
+ *  - a wall around production: any request to a QRLog host that is not staging is aborted and recorded, and
+ *    the test that made it fails (see the fixtures below);
+ *  - the mask above.
+ */
+async function harden(ctx: BrowserContext, blocked: string[]): Promise<void> {
+  await ctx.route(
+    (url) => isProductionHost(url.hostname),
+    async (route) => {
+      blocked.push(new URL(route.request().url()).hostname)
+      await route.abort('blockedbyclient')
+    },
+  )
+  await ctx.route(`${API_URL}/**`, async (route) => {
+    const request = route.request()
+    const real = REAL.get(request.headers()['authorization'] ?? '')
+    if (!real) return route.fallback()
+    const headers: Record<string, string> = { ...request.headers(), authorization: real }
+    delete headers.host
+    const res = await fetch(request.url(), {
+      method: request.method(),
+      headers,
+      body: request.postDataBuffer() ? new Uint8Array(request.postDataBuffer()!) : undefined,
+      redirect: 'manual',
+    })
+    // The body arrives decoded, so the encoding headers that described it on the wire no longer do.
+    const answer: Record<string, string> = {}
+    res.headers.forEach((v, k) => {
+      if (!['content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(k)) answer[k] = v
+    })
+    await route.fulfill({ status: res.status, headers: answer, body: Buffer.from(await res.arrayBuffer()) })
+  })
+  await ctx.addInitScript(MASK)
 }
 
-/** Skips the calling test, with the reason, when the suite or this role could not be set up. */
-export function needs(...roles: RoleKey[]): void {
-  base.skip(!!world.blocked, world.blocked ?? '')
-  for (const r of roles) {
-    const why = world.roleBlocked?.[r]
-    base.skip(!!why, `${ROLE_TITLES[r]}: ${why}`)
-  }
-  base.skip(world.mode !== 'Enforced', `Şirkət ${world.mode} rejimindədir; bu testlər Enforced üçündür`)
+function noProductionTraffic(blocked: string[]) {
+  expect(blocked, 'production QRLog host-una sorğu göndərildi və bloklandı').toEqual([])
 }
 
 /** Fails the test up front when the template role it relies on was edited in the company. */
@@ -40,43 +86,44 @@ export function templateIntact(template: string): void {
   expect(edited, `«${template}» şablon rolu şirkətdə dəyişdirilib: ${edited}`).toBeUndefined()
 }
 
-async function signedInContext(browser: Browser, role: RoleKey): Promise<BrowserContext> {
+async function signedInContext(browser: Browser, role: RoleKey, blocked: string[]): Promise<BrowserContext> {
   const ctx = await browser.newContext({ storageState: world.sessions[role] })
-  await ctx.addInitScript(MASK_IDENTITY)
+  await harden(ctx, blocked)
   return ctx
 }
 
 type Fixtures = {
   /** A page signed in as `role`, in its own context — several roles can be open in one test. */
   pageAs: (role: RoleKey) => Promise<Page>
-  /** The API as `role`, traced (the tokens are scrubbed from the trace after the run). */
-  apiAs: (role: RoleKey) => Promise<Api>
-  /** The company administrator's API, untraced: the one credential no run can rotate. */
+  /** The API as `role`: each call a report step, nothing traced. */
+  apiAs: (role: RoleKey) => Promise<RoleApi>
+  /** The company administrator's API, outside the test's steps — setup-like work inside a test. */
   admin: Direct
+  /** Hosts a page of this test tried to reach and the production wall stopped. */
+  blockedHosts: string[]
 }
 
 export const test = base.extend<Fixtures>({
-  context: async ({ context }, use) => {
-    await context.addInitScript(MASK_IDENTITY)
+  blockedHosts: async ({}, use) => {
+    const blocked: string[] = []
+    await use(blocked)
+    noProductionTraffic(blocked)
+  },
+  context: async ({ context, blockedHosts }, use) => {
+    await harden(context, blockedHosts)
     await use(context)
   },
-  pageAs: async ({ browser }, use) => {
+  pageAs: async ({ browser, blockedHosts }, use) => {
     const opened: BrowserContext[] = []
     await use(async (role) => {
-      const ctx = await signedInContext(browser, role)
+      const ctx = await signedInContext(browser, role, blockedHosts)
       opened.push(ctx)
       return ctx.newPage()
     })
     for (const c of opened) await c.close()
   },
   apiAs: async ({}, use) => {
-    const opened: Api[] = []
-    await use(async (role) => {
-      const api = await Api.as(tokenOf(role))
-      opened.push(api)
-      return api
-    })
-    for (const a of opened) await a.dispose()
+    await use(async (role) => new RoleApi(role, tokenOf(role)))
   },
   admin: async ({}, use) => {
     await use(new Direct(tokenOf('admin')))

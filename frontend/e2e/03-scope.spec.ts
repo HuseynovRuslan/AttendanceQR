@@ -1,4 +1,4 @@
-import { test, expect, world, needs, shot } from './support/fixtures'
+import { test, expect, world, shot } from './support/fixtures'
 import { NAMES, PEOPLE, ROLE_TITLES, type Branch, type PersonKey, type RoleKey } from './support/world'
 
 // Structure and branch limits. The E2E world:
@@ -26,7 +26,6 @@ for (const role of Object.keys(REACH) as (keyof typeof REACH)[]) {
     test.use({ storageState: world.sessions?.[role] })
 
     test('server yalnız öz filiallarını verir (API)', async ({ apiAs }) => {
-      needs(role)
       const api = await apiAs(role)
 
       // Reach is read off employees.view. (`branches` is every branch reached by ANY right — for the
@@ -56,7 +55,6 @@ for (const role of Object.keys(REACH) as (keyof typeof REACH)[]) {
     })
 
     test('işçi siyahısı yalnız öz filiallarını göstərir (UI)', async ({ page }, testInfo) => {
-      needs(role)
       await page.goto('/admin/employees')
       await page.getByPlaceholder('Ad, telefon nömrəsi və ya işçi ID-si üzrə axtarın').fill('E2E İşçi')
       for (const b of inside) {
@@ -69,7 +67,6 @@ for (const role of Object.keys(REACH) as (keyof typeof REACH)[]) {
     })
 
     test('başqa filialın işçisinin kartı URL ilə açılmır (UI)', async ({ page }, testInfo) => {
-      needs(role)
       const b = outside[0]
       await page.goto(`/admin/employees/${world.people[WORKER[b]].id}`)
       await expect(page.getByText('İşçi tapılmadı.')).toBeVisible()
@@ -77,7 +74,6 @@ for (const role of Object.keys(REACH) as (keyof typeof REACH)[]) {
     })
 
     test('«Mənim sahəm» filialları düz sayır (UI)', async ({ page }, testInfo) => {
-      needs(role)
       await page.goto('/admin/my-area')
       if (role === 'menecer') {
         // The old-rule manager also holds the company-wide PIN desk, so every branch is listed.
@@ -93,7 +89,6 @@ for (const role of Object.keys(REACH) as (keyof typeof REACH)[]) {
 
 test.describe('Sahədən kənara yazı', () => {
   test('Tabelçi başqa filiala işçi əlavə edə bilmir', async ({ apiAs, admin }) => {
-    needs('tabelci')
     const api = await apiAs('tabelci')
     const r = await api.post('/api/manager/employees', {
       fullName: `${NAMES.created} kənar ${world.runId}`,
@@ -109,7 +104,6 @@ test.describe('Sahədən kənara yazı', () => {
   })
 
   test('Struktur operatoru strukturdan kənar işçini dəyişə bilmir', async ({ apiAs }) => {
-    needs('operator')
     const api = await apiAs('operator')
     const r = await api.put(`/api/manager/employees/${world.people.workerB.id}`, {
       fullName: PEOPLE.workerB.name,
@@ -123,7 +117,6 @@ test.describe('Sahədən kənara yazı', () => {
   })
 
   test('Köhnə Manager öz filialından kənar işçini görmür və dəyişmir', async ({ apiAs }) => {
-    needs('menecer')
     const api = await apiAs('menecer')
     expect((await api.get(`/api/manager/employees/${world.people.workerA1.id}`)).status()).toBe(404)
     const r = await api.put(`/api/manager/employees/${world.people.workerA1.id}`, {
@@ -138,7 +131,6 @@ test.describe('Sahədən kənara yazı', () => {
   })
 
   test('Sahəli rollar admin endpoint-lərinə buraxılmır', async ({ apiAs }) => {
-    needs('operator', 'tabelci', 'musahideci', 'menecer')
     for (const role of ['operator', 'tabelci', 'musahideci', 'menecer'] as const) {
       const api = await apiAs(role)
       expect((await api.get('/api/admin/employees')).status(), `${role}: admin işçi siyahısı`).toBe(403)

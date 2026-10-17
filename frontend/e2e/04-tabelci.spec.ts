@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
-import { test, expect, world, needs, shot, tokenOf } from './support/fixtures'
+import { test, expect, world, shot, tokenOf } from './support/fixtures'
 import { Direct } from './support/api'
+import { updateBody } from './support/provision'
 import { NAMES } from './support/world'
 
 // The Tabelçi's own work: adding a person to their branch, editing them, moving them to another
@@ -9,21 +10,9 @@ import { NAMES } from './support/world'
 
 const created: string[] = []
 test.afterAll(async () => {
-  if (world.blocked || !world.sessions?.admin) return
   const admin = new Direct(tokenOf('admin'))
   for (const id of created) await admin.delete(`/api/admin/employees/${id}?force=true`)
 })
-
-// Defects these tests found on staging. Marked expected-to-fail so the suite stays a regression
-// signal; the day one is fixed its test "unexpectedly passes" and the marker must come off.
-const KNOWN = {
-  deactivate:
-    'MƏLUM QÜSUR: employees.deactivate heç yerdə yoxlanmır — Tabelçi PUT /api/manager/employees/{id} ' +
-    'isActive:false ilə işçini deaktiv edir (gözlənilən: 403).',
-  addButton:
-    'MƏLUM QÜSUR: Tabelçidə locations.view yoxdur → GET /api/manager/locations 403 → filial siyahısı boş ' +
-    'qalır və «İşçi əlavə et» deaktivdir (EmployeesPage: disabled={isManager && locations.length === 0}).',
-}
 
 const MAIL = 'e2e.qrlog.invalid'
 let seq = 0
@@ -66,7 +55,6 @@ const field = (page: Page, label: string) =>
 
 test.describe('Tabelçi — API', () => {
   test('işçi əlavə edir, redaktə edir, növbəsini dəyişir', async ({ apiAs }) => {
-    needs('tabelci')
     const api = await apiAs('tabelci')
     const name = `${NAMES.created} API ${uniq()}`
 
@@ -104,10 +92,9 @@ test.describe('Tabelçi — API', () => {
     })
   })
 
-  test('işdən çıxartma hüququ olmadan işçini deaktiv edə bilmir', async ({ apiAs }) => {
-    // Tabelçi does not hold employees.deactivate (AccessRoleTemplates: timekeeper).
-    needs('tabelci')
-    test.fail(true, KNOWN.deactivate)
+  // Regression (staging E2E, 2026-10-17, fixed in fix/e2e-findings): a Tabelçi does not hold
+  // «employees.deactivate» (AccessRoleTemplates: timekeeper), and the profile edit let them switch people off.
+  test('işdən çıxartma hüququ olmadan işçini deaktiv də, yenidən aktiv də edə bilmir', async ({ apiAs, admin }) => {
     const api = await apiAs('tabelci')
     const add = await api.post('/api/manager/employees', {
       fullName: `${NAMES.created} deaktiv ${uniq()}`,
@@ -121,11 +108,35 @@ test.describe('Tabelçi — API', () => {
     const { id } = await add.json()
     created.push(id)
     const e = await api.json(`/api/manager/employees/${id}`)
+    expect(e.manageable, 'redaktə edə bilir').toBe(true)
+    expect(e.deactivatable, 'kart deaktiv hüququ olmadığını deyir').toBe(false)
 
-    const r = await api.put(`/api/manager/employees/${id}`, managerBody(e, { isActive: false }))
-    const after = await api.json(`/api/manager/employees/${id}`)
-    expect(after.isActive, 'işçi aktiv qalmalıdır').toBe(true)
-    expect(r.status()).toBe(403)
+    const off = await api.put(`/api/manager/employees/${id}`, managerBody(e, { isActive: false }))
+    expect(off.status()).toBe(403)
+    expect((await off.json()).error).toBe('DeactivateNotAllowed')
+    expect((await api.json(`/api/manager/employees/${id}`)).isActive, 'işçi aktiv qalmalıdır').toBe(true)
+
+    // Back on is the same right: the admin switches the person off, the Tabelçi may not undo it.
+    const card = await admin.ok('GET', `/api/admin/employees/${id}`)
+    await admin.ok('PUT', `/api/admin/employees/${id}`, updateBody(card, { isActive: false }))
+    const offCard = await api.json(`/api/manager/employees/${id}`)
+    const on = await api.put(`/api/manager/employees/${id}`, managerBody(offCard, { isActive: true }))
+    expect(on.status()).toBe(403)
+    expect((await api.json(`/api/manager/employees/${id}`)).isActive, 'işçi deaktiv qalmalıdır').toBe(false)
+  })
+
+  // Regression (2026-10-17): the staff form's branches came from /locations («locations.view»), which a
+  // Tabelçi does not hold. Their own branches come from /employee-branches now — and only those.
+  test('filial seçimləri yalnız öz sahəsindəndir, locations.view verilmir', async ({ apiAs }) => {
+    const api = await apiAs('tabelci')
+    const branches = await api.json<{ id: string; name: string; canCreate: boolean; canMove: boolean }[]>(
+      '/api/manager/employee-branches',
+    )
+    expect(branches.map((b) => b.id)).toEqual([world.branches.A1])
+    expect(branches[0]).toMatchObject({ canCreate: true, canMove: true })
+    // The branch list itself stays closed to them.
+    expect((await api.get('/api/manager/locations')).status()).toBe(403)
+    expect((await api.get('/api/admin/locations')).status()).toBe(403)
   })
 })
 
@@ -133,8 +144,6 @@ test.describe('Tabelçi — UI', () => {
   test.use({ storageState: world.sessions?.tabelci })
 
   test('«İşçi əlavə et» ilə öz filialına işçi əlavə edir', async ({ page, apiAs }, testInfo) => {
-    needs('tabelci')
-    test.fail(true, KNOWN.addButton)
     await page.goto('/admin/employees')
     await expect(page.getByRole('heading', { name: 'İşçilər', exact: true })).toBeVisible()
     const addButton = page.getByRole('button', { name: 'İşçi əlavə et' })
@@ -166,7 +175,6 @@ test.describe('Tabelçi — UI', () => {
   })
 
   test('ekrandan redaktə edir və növbəsini dəyişir', async ({ page, apiAs }, testInfo) => {
-    needs('tabelci')
     const api = await apiAs('tabelci')
     const name = `${NAMES.created} redaktə ${uniq()}`
     const add = await api.post('/api/manager/employees', {
@@ -211,5 +219,13 @@ test.describe('Tabelçi — UI', () => {
 
     const e = await api.json(`/api/manager/employees/${id}`)
     expect(e).toMatchObject({ fatherName: 'Ekranoğlu', scheduleId: world.shifts.evening, locationId: world.branches.A1 })
+  })
+
+  test('işçi kartında «Redaktə et» var, «Deaktiv et» yoxdur', async ({ page }, testInfo) => {
+    await page.goto(`/admin/employees/${world.people.workerA1.id}`)
+    await expect(page.getByRole('button', { name: 'Redaktə et', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Deaktiv et', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Aktiv et', exact: true })).toHaveCount(0)
+    await shot(page, testInfo, 'tabelci-isci-karti')
   })
 })

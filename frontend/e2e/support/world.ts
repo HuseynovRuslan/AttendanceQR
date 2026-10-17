@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { E2EConfigError } from './env'
 
 // Everything the suite creates on staging, by name. All of it lives in the staging `test` company,
 // is prefixed "E2E", and is found again by that name on the next run rather than created twice.
@@ -93,10 +94,6 @@ export const PEOPLE: Record<PersonKey, PersonSpec> = {
 }
 
 export interface World {
-  /** Set when nothing can run (no admin credentials, staging unreachable…), with the reason. */
-  blocked?: string
-  /** Set per role when that role cannot run, with the reason. */
-  roleBlocked: Partial<Record<RoleKey, string>>
   mode: string
   runId: string
   branches: Record<Branch, string>
@@ -109,15 +106,18 @@ export interface World {
   people: Record<PersonKey, { id: string; name: string; email: string }>
   /** The admin's employee id (from the token). */
   adminId: string
-  /** Logins for the UI login test: identifiers only, never a PIN. */
+  /** Logins for the UI login test: E2E identifiers only (the admin's stays in the environment), never a PIN. */
   logins: Record<RoleKey, string>
-  /** Storage-state files holding each role's session. */
+  /** Storage-state files: the browser's session, holding only a display token (provision.displayToken). */
   sessions: Record<RoleKey, string>
+  /** The real tokens, one file each — read by the transport layer and the API helpers, never by a page. */
+  tokens: Record<RoleKey, string>
 }
 
+/** What global setup left for the workers. Missing means setup did not finish — its own error says why. */
 export function loadWorld(): World {
   if (!existsSync(WORLD_FILE)) {
-    return { blocked: 'Qlobal setup işləməyib (e2e/.auth/world.json yoxdur)' } as World
+    throw new E2EConfigError('qlobal setup tamamlanmayıb (e2e/.auth/world.json yoxdur) — setup-un xətasına baxın')
   }
   return JSON.parse(readFileSync(WORLD_FILE, 'utf8')) as World
 }

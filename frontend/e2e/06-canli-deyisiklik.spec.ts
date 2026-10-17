@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { test, expect, world, needs, shot, sidebar, refreshAccess, tokenOf } from './support/fixtures'
+import { test, expect, world, shot, sidebar, refreshAccess, displayOf } from './support/fixtures'
 import { ensureGrant, updateBody } from './support/provision'
 import { NAMES, PEOPLE } from './support/world'
 
@@ -12,7 +12,8 @@ const SEARCH = 'Ad, telefon nömrəsi və ya işçi ID-si üzrə axtarın'
 
 async function sameSession(page: Page, token: string) {
   await expect(page).not.toHaveURL(/\/login/)
-  expect(await page.evaluate(() => localStorage.getItem('attendanceqr.jwt')), 'eyni token').toBe(token)
+  // The page still holds the session it started with: nothing logged it out or swapped it.
+  expect(await page.evaluate(() => localStorage.getItem('attendanceqr.jwt')), 'eyni sessiya').toBe(token)
 }
 
 async function openFromSidebar(page: Page, label: RegExp) {
@@ -20,10 +21,9 @@ async function openFromSidebar(page: Page, label: RegExp) {
 }
 
 test('Tabelçiyə filial verilir və geri alınır — yenidən girişsiz', async ({ pageAs, apiAs, admin }, testInfo) => {
-  needs('tabelci')
   const page = await pageAs('tabelci')
   const api = await apiAs('tabelci')
-  const token = tokenOf('tabelci')
+  const token = displayOf('tabelci')
   const a2Worker = world.people.workerA2.id
 
   await page.goto('/admin/my-area')
@@ -75,10 +75,9 @@ test('Tabelçiyə filial verilir və geri alınır — yenidən girişsiz', asyn
 })
 
 test('Müşahidəçiyə Tabelçi rolu verilir və geri alınır — yenidən girişsiz', async ({ pageAs, apiAs, admin }, testInfo) => {
-  needs('musahideci')
   const page = await pageAs('musahideci')
   const api = await apiAs('musahideci')
-  const token = tokenOf('musahideci')
+  const token = displayOf('musahideci')
   const addButton = page.getByRole('button', { name: 'İşçi əlavə et' })
 
   await page.goto('/admin/employees')
@@ -130,10 +129,9 @@ test('Müşahidəçiyə Tabelçi rolu verilir və geri alınır — yenidən gir
 })
 
 test('Müşahidəçinin yeganə rolu alınanda panel bağlanır, qaytarılanda açılır', async ({ pageAs, apiAs, admin }, testInfo) => {
-  needs('musahideci')
   const page = await pageAs('musahideci')
   const api = await apiAs('musahideci')
-  const token = tokenOf('musahideci')
+  const token = displayOf('musahideci')
   const person = world.people.musahideci.id
 
   await page.goto('/admin/dashboard')
@@ -173,10 +171,9 @@ test('Müşahidəçinin yeganə rolu alınanda panel bağlanır, qaytarılanda a
 test('Köhnə Manager-ə filial əlavə olunur və alınır — yenidən girişsiz', async ({ pageAs, apiAs, admin }, testInfo) => {
   // The old model's grant is the employee card's «Rəhbərlik etdiyi filiallar»; the access model
   // mirrors it as a system assignment on the next write.
-  needs('menecer')
   const page = await pageAs('menecer')
   const api = await apiAs('menecer')
-  const token = tokenOf('menecer')
+  const token = displayOf('menecer')
   const person = world.people.menecer.id
   const a2Worker = world.people.workerA2.id
 

@@ -1,4 +1,4 @@
-import { test, expect, world, needs, shot } from './support/fixtures'
+import { test, expect, world, shot } from './support/fixtures'
 import { NAMES, PEOPLE } from './support/world'
 
 // The company administrator: the whole company in one list, and the access screen that shows who
@@ -10,7 +10,6 @@ test.describe('Admin (Şirkət administratoru)', () => {
   test.use({ storageState: world.sessions?.admin })
 
   test('işçi siyahısında bütün filialların işçiləri var', async ({ page }, testInfo) => {
-    needs('admin')
     await page.goto('/admin/employees')
     await page.getByPlaceholder(SEARCH).fill('E2E')
     for (const key of ['workerA1', 'workerA2', 'workerB'] as const) {
@@ -20,7 +19,6 @@ test.describe('Admin (Şirkət administratoru)', () => {
   })
 
   test('«Səlahiyyətlər»: E2E rolları və struktur görünür', async ({ page }, testInfo) => {
-    needs('admin')
     await page.goto('/admin/access')
     const grants: [string, string][] = [
       [PEOPLE.operator.name, `Struktur: ${NAMES.structure}`],
@@ -43,16 +41,22 @@ test.describe('Admin (Şirkət administratoru)', () => {
     await shot(page, testInfo, 'admin-strukturlar')
   })
 
-  test('axtarış böyük «İ» ilə başlayan adı tapır', async ({ page }, testInfo) => {
-    needs('admin')
-    test.fail(
-      true,
-      'MƏLUM QÜSUR: admin işçi axtarışı (GET /api/admin/employees?search=) böyük «İ» olan adı tapmır — ' +
-        '«E2E İşçi A1», «İsmayılov» 0 nəticə verir. Axtarış sətri C#-da, ad isə PostgreSQL-də lower() olunur.',
-    )
-    await page.goto('/admin/employees')
-    await page.getByPlaceholder(SEARCH).fill(PEOPLE.workerA1.name)
-    await expect(page.getByRole('link', { name: PEOPLE.workerA1.name, exact: true })).toBeVisible()
-    await shot(page, testInfo, 'admin-axtaris-I')
+  // Regression (staging E2E, 2026-10-17, fixed in fix/e2e-findings): the search lowered the text in .NET
+  // and the name in Postgres, which disagree about «İ» — «İsmayılov» found nobody. Every way of typing the
+  // dotted and dotless i must find the person; ş/ç stay themselves.
+  for (const typed of ['E2E İşçi A1', 'e2e işçi a1', 'E2E İŞÇİ A1', 'E2E IŞÇI A1', 'e2e ışçı a1']) {
+    test(`axtarış «${typed}» yazılanda «E2E İşçi A1»-i tapır`, async ({ page }, testInfo) => {
+      await page.goto('/admin/employees')
+      await page.getByPlaceholder(SEARCH).fill(typed)
+      await expect(page.getByRole('link', { name: PEOPLE.workerA1.name, exact: true })).toBeVisible()
+      await expect(page.getByRole('link', { name: PEOPLE.workerA2.name, exact: true })).toHaveCount(0)
+      if (typed === 'E2E IŞÇI A1') await shot(page, testInfo, 'admin-axtaris-I')
+    })
+  }
+
+  test('axtarış ş/ç hərflərini başqa hərflə qarışdırmır', async ({ apiAs }) => {
+    const api = await apiAs('admin')
+    const r = await api.json<{ items: { fullName: string }[] }>(`/api/admin/employees?search=${encodeURIComponent('E2E Isci A1')}`)
+    expect(r.items.map((e) => e.fullName)).not.toContain(PEOPLE.workerA1.name)
   })
 })

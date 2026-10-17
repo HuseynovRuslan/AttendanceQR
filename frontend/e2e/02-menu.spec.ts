@@ -1,4 +1,4 @@
-import { test, expect, world, needs, shot, sidebar, templateIntact } from './support/fixtures'
+import { test, expect, world, shot, sidebar, templateIntact } from './support/fixtures'
 import {
   ADMIN_MUST_HAVE,
   ADMIN_ONLY,
@@ -27,7 +27,6 @@ for (const role of ROLE_KEYS) {
     test.use({ storageState: world.sessions?.[role] })
 
     test('menyu rola uyğundur', async ({ page }, testInfo) => {
-      needs(role)
       const tpl = ROLE_TEMPLATE[role]
       if (tpl) templateIntact(tpl)
 
@@ -46,7 +45,6 @@ for (const role of ROLE_KEYS) {
 
     if (role !== 'admin') {
       test('menyuda olmayan səhifə URL ilə də açılmır', async ({ page }, testInfo) => {
-        needs(role)
         const { path, label } = FORBIDDEN_PAGE[role]
         await page.goto('/admin')
         expect(await sidebar(page)).not.toContain(label)
@@ -57,7 +55,6 @@ for (const role of ROLE_KEYS) {
     }
 
     test('server sessiyaya rolun hüquqlarını verir', async ({ apiAs }) => {
-      needs(role)
       const api = await apiAs(role)
       const me = await api.json<{
         mode: string

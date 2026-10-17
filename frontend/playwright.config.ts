@@ -1,16 +1,16 @@
 import { defineConfig, devices } from '@playwright/test'
 import { WEB_URL } from './e2e/support/env'
 
-// End-to-end tests run against a DEPLOYED site, not a local dev server: staging by default. The
-// role suite writes (it creates E2E branches, people and role grants in the staging `test` company),
-// so e2e/support/env.ts refuses any other host unless E2E_ALLOW_NON_STAGING=1. Never production.
+// End-to-end tests run against a DEPLOYED site, not a local dev server: staging. The role suite writes
+// (E2E branches, people and role grants in the staging `test` company), so e2e/support/env.ts accepts only
+// staging's hosts and a local stack — production is refused there, in every API helper and in every browser
+// context, with no override.
 //
 // @playwright/test is pinned exactly: each release expects one browser build, and the cloud
 // sessions ship that build pre-installed (/opt/pw-browsers). On a laptop, run
 // `npx playwright install chromium` once.
 //
-// Credentials: E2E_ADMIN_PHONE / E2E_ADMIN_PIN from the environment or frontend/.env.e2e.local
-// (git-ignored). See e2e/README.md.
+// Credentials: E2E_ADMIN_PHONE / E2E_ADMIN_PIN, from the environment only (a secret). See e2e/README.md.
 export default defineConfig({
   testDir: './e2e',
   globalSetup: './e2e/global-setup.ts',

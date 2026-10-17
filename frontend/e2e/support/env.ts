@@ -1,53 +1,62 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+// Where the suite runs and with whose credentials — both decided here, once, and refused loudly.
+//
+// Credentials come from the process environment ONLY: the cloud environment's secrets, a CI secret, or
+// variables set for one command on a laptop. There is no file to read them from, so there is no file to
+// commit by mistake. Nothing here is ever printed: a missing value is reported by its NAME.
 
-// Credentials for the E2E accounts. They come from the process environment (the cloud environment's
-// settings, a CI secret) or from frontend/.env.e2e.local, which `.env.*.local` keeps out of git.
-// Nothing here is ever printed: a missing value is reported by its NAME only.
-const FILE = fileURLToPath(new URL('../../.env.e2e.local', import.meta.url))
-
-function fromFile(): Record<string, string> {
-  if (!existsSync(FILE)) return {}
-  const out: Record<string, string> = {}
-  for (const line of readFileSync(FILE, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line)
-    if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2')
+export class E2EConfigError extends Error {
+  constructor(message: string) {
+    super(`E2E konfiqurasiya xətası: ${message}`)
+    this.name = 'E2EConfigError'
   }
-  return out
-}
-
-const file = fromFile()
-
-/** Every E2E_* setting, from the environment and the local file together. */
-export function e2eSettings(): Record<string, string> {
-  const out: Record<string, string> = { ...file }
-  for (const [k, v] of Object.entries(process.env)) if (k.startsWith('E2E_') && v) out[k] = v
-  return out
 }
 
 export function envValue(name: string): string | undefined {
-  const v = process.env[name] ?? file[name]
-  return v ? v : undefined
+  const v = process.env[name]
+  return v ? v.trim() : undefined
 }
 
 export const WEB_URL = envValue('E2E_BASE_URL') ?? 'https://test.qrlog.az'
 export const API_URL = envValue('E2E_API_URL') ?? 'https://api-test.qrlog.az'
 
-// The suite writes: it creates employees, structures and role assignments. It must never do that to
-// a company people clock in at, so anything but the staging host needs an explicit opt-in.
-const host = new URL(WEB_URL).hostname
-export const IS_STAGING = host === 'test.qrlog.az' || host === 'localhost' || host === '127.0.0.1'
-if (!IS_STAGING && envValue('E2E_ALLOW_NON_STAGING') !== '1') {
-  throw new Error(`E2E: ${host} staging deyil. Yazı edən testlər yalnız test.qrlog.az-da işləyir.`)
+// The suite WRITES — E2E branches, people, role grants, PIN resets. The only hosts it may ever talk to are
+// staging's two and a local stack. Not an opt-in, not an override: a production host is refused here, by
+// every request helper (support/api.ts) and by every browser context (support/fixtures.ts).
+const ALLOWED_HOSTS = new Set(['test.qrlog.az', 'api-test.qrlog.az', 'localhost', '127.0.0.1'])
+
+/** A QRLog host that is not staging — production, a company subdomain, the app shell, the operator console. */
+export function isProductionHost(host: string): boolean {
+  const h = host.toLowerCase()
+  return (h === 'qrlog.az' || h.endsWith('.qrlog.az')) && !ALLOWED_HOSTS.has(h)
 }
+
+export function assertAllowedUrl(url: string): void {
+  const host = new URL(url).hostname.toLowerCase()
+  if (isProductionHost(host)) throw new E2EConfigError(`${host} production-dır — E2E testləri orada işləmir`)
+  if (!ALLOWED_HOSTS.has(host)) throw new E2EConfigError(`${host} icazəli deyil (yalnız ${[...ALLOWED_HOSTS].join(', ')})`)
+}
+
+assertAllowedUrl(WEB_URL)
+assertAllowedUrl(API_URL)
+
+/** The staging company the suite may write to, checked against the API's own answer before anything is. */
+export const EXPECTED_COMPANY = envValue('E2E_EXPECT_COMPANY') ?? 'Test şirkəti'
 
 export interface Credentials {
   phone: string
   pin: string
 }
 
-export function credentials(prefix: string): Credentials | undefined {
-  const phone = envValue(`${prefix}_PHONE`)
-  const pin = envValue(`${prefix}_PIN`)
-  return phone && pin ? { phone, pin } : undefined
+/** The admin given to the suite. Missing → a configuration error, never a silent skip. */
+export function adminCredentials(): Credentials {
+  const phone = envValue('E2E_ADMIN_PHONE')
+  const pin = envValue('E2E_ADMIN_PIN')
+  const missing = [!phone && 'E2E_ADMIN_PHONE', !pin && 'E2E_ADMIN_PIN'].filter(Boolean)
+  if (missing.length) {
+    throw new E2EConfigError(
+      `${missing.join(' və ')} təyin olunmayıb. Staging test şirkətinin admin girişini mühitin secret-lərinə ` +
+        'əlavə edin (cloud mühiti: Environment → Edit; CI: repository secret). Fayl oxunmur.',
+    )
+  }
+  return { phone: phone!, pin: pin! }
 }

@@ -1,5 +1,5 @@
-import { test, expect, world, needs, shot } from './support/fixtures'
-import { credentials, type Credentials } from './support/env'
+import { test, expect, world, shot } from './support/fixtures'
+import { adminCredentials, type Credentials } from './support/env'
 import { strongPin } from './support/provision'
 import { enterSecret, pasteSecret } from './support/secrets'
 import { ROLE_KEYS, ROLE_TITLES, pinVar, type RoleKey } from './support/world'
@@ -11,7 +11,7 @@ import { ROLE_KEYS, ROLE_TITLES, pinVar, type RoleKey } from './support/world'
 test.use({ trace: 'off', screenshot: 'off' })
 
 function loginOf(role: RoleKey): Credentials | undefined {
-  if (role === 'admin') return credentials('E2E_ADMIN')
+  if (role === 'admin') return adminCredentials()
   const pin = process.env[pinVar(role)]
   const login = world.logins?.[role]
   return pin && login ? { phone: login, pin } : undefined
@@ -37,9 +37,8 @@ const PANEL_DIRECT: Record<RoleKey, boolean> = {
 
 for (const role of ROLE_KEYS) {
   test(`${ROLE_TITLES[role]}: login ekranından real giriş`, async ({ page }, testInfo) => {
-    needs(role)
     const creds = loginOf(role)
-    test.skip(!creds, `${ROLE_TITLES[role]}: giriş məlumatı yoxdur`)
+    expect(creds, `${ROLE_TITLES[role]}: giriş məlumatı yoxdur — setup PIN-i verməyib`).toBeDefined()
 
     await signIn(page, creds!)
 
@@ -65,9 +64,8 @@ for (const role of ROLE_KEYS) {
 test('Yanlış PIN rədd olunur, düzgün PIN ilə sonra giriş alınır', async ({ page }, testInfo) => {
   // On an E2E account, never on the admin's: one failure is recorded against the login, and the
   // successful login right after clears it.
-  needs('tabelci')
   const creds = loginOf('tabelci')
-  test.skip(!creds, 'Tabelçi: giriş məlumatı yoxdur')
+  expect(creds, 'Tabelçi: giriş məlumatı yoxdur — setup PIN-i verməyib').toBeDefined()
 
   let wrong = strongPin()
   while (wrong === creds!.pin) wrong = strongPin()

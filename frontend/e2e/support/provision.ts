@@ -21,10 +21,23 @@ export function strongPin(): string {
   }
 }
 
+/**
+ * The session as the browser holds it: the real token's header and claims, minus the e-mail, and no signature.
+ * The app only ever decodes the claims (who, which role, temporary PIN or not); the server would refuse this
+ * token outright. The real one is put on each API request at the transport layer (support/fixtures.ts), so it
+ * is never in the page, its storage, a screenshot or a trace — only this stand-in is.
+ */
+export function displayToken(token: string): string {
+  const [header, payload] = token.split('.')
+  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>
+  delete claims.email
+  return `${header}.${Buffer.from(JSON.stringify(claims), 'utf8').toString('base64url')}.e2e`
+}
+
 export function storageState(token: string): string {
   return JSON.stringify({
     cookies: [],
-    origins: [{ origin: new URL(WEB_URL).origin, localStorage: [{ name: 'attendanceqr.jwt', value: token }] }],
+    origins: [{ origin: new URL(WEB_URL).origin, localStorage: [{ name: 'attendanceqr.jwt', value: displayToken(token) }] }],
   })
 }
 

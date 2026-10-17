@@ -1,4 +1,5 @@
-import { test, expect, world, needs, shot } from './support/fixtures'
+import { test, expect, world, shot } from './support/fixtures'
+import type { Answer } from './support/api'
 import { updateBody } from './support/provision'
 import { NAMES, PEOPLE } from './support/world'
 
@@ -11,7 +12,6 @@ test.describe('Müşahidəçi — UI-da dəyişiklik imkanı yoxdur', () => {
   test.use({ storageState: world.sessions?.musahideci })
 
   test('işçilər: əlavə et və redaktə düymələri yoxdur', async ({ page }, testInfo) => {
-    needs('musahideci')
     await page.goto('/admin/employees')
     await page.getByPlaceholder('Ad, telefon nömrəsi və ya işçi ID-si üzrə axtarın').fill(PEOPLE.workerA1.name)
     const link = page.getByRole('link', { name: PEOPLE.workerA1.name, exact: true })
@@ -24,7 +24,6 @@ test.describe('Müşahidəçi — UI-da dəyişiklik imkanı yoxdur', () => {
   })
 
   test('işçi kartı: redaktə, deaktiv, PIN düymələri yoxdur', async ({ page }, testInfo) => {
-    needs('musahideci')
     await page.goto(`/admin/employees/${world.people.workerA1.id}`)
     await expect(page.getByText(PEOPLE.workerA1.name).first()).toBeVisible()
     await expect(page.getByText(/Bu hesabın məlumatlarını dəyişə bilmirsiniz/)).toBeVisible()
@@ -35,7 +34,6 @@ test.describe('Müşahidəçi — UI-da dəyişiklik imkanı yoxdur', () => {
   })
 
   test('növbələr və filiallar: yaratma və redaktə yoxdur', async ({ page }, testInfo) => {
-    needs('musahideci')
     await page.goto('/admin/schedules')
     await expect(page.getByText(NAMES.shiftMorning).first()).toBeVisible()
     await expect(page.getByRole('button', { name: /Yeni növbə/ })).toHaveCount(0)
@@ -52,7 +50,6 @@ test.describe('Müşahidəçi — UI-da dəyişiklik imkanı yoxdur', () => {
 
 test.describe('Müşahidəçi — API yazıları rədd edir', () => {
   test('hər yazı 403 alır və heç nə dəyişmir', async ({ apiAs, admin }) => {
-    needs('musahideci')
     const api = await apiAs('musahideci')
     const target = world.people.workerA1.id
     const before = await admin.ok('GET', `/api/admin/employees/${target}`)
@@ -62,7 +59,7 @@ test.describe('Müşahidəçi — API yazıları rədd edir', () => {
     const asSeen = await api.json(`/api/manager/employees/${target}`)
     const loc = (await admin.ok<any[]>('GET', '/api/admin/locations')).find((l) => l.id === world.branches.A1)
 
-    const attempts: [string, () => Promise<import('@playwright/test').APIResponse>][] = [
+    const attempts: [string, () => Promise<Answer>][] = [
       ['işçi əlavə etmək', () =>
         api.post('/api/manager/employees', {
           fullName: tryName, email: `musahideci-${world.runId}@e2e.qrlog.invalid`,

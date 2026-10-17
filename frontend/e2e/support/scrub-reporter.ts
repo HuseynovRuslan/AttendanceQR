@@ -2,7 +2,6 @@ import { createRequire } from 'node:module'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import type { FullResult, Reporter } from '@playwright/test/reporter'
-import { e2eSettings } from './env'
 
 // Last reporter in the list: by the time it runs, the HTML report has copied every trace. It then
 // takes credentials out of everything the run left behind, and fails the run if anything survives.
@@ -44,7 +43,7 @@ const LINK_BOX = /(\["[A-Z]+",\{"class":"link-box"[^}]*\},")([^"]+)(")/g
 /** Phone numbers of the accounts in use, in every spelling the API accepts (last 9 digits match). */
 function phonePatterns(): RegExp[] {
   const cores = new Set<string>()
-  for (const [k, v] of Object.entries(e2eSettings())) {
+  for (const [k, v] of Object.entries(process.env)) {
     if (/^E2E_.*_PHONE$/.test(k) && v) {
       const digits = v.replace(/\D/g, '')
       if (digits.length >= 9) cores.add(digits.slice(-9))
@@ -58,17 +57,24 @@ function phonePatterns(): RegExp[] {
 
 /** Logins that are e-mail addresses (the admin's, read in setup) — redacted wherever they appear. */
 function emailPatterns(): RegExp[] {
-  return Object.entries(e2eSettings())
+  return Object.entries(process.env)
     .filter(([k, v]) => /^E2E_.*_EMAIL$/.test(k) && v && v.includes('@'))
     .map(([, v]) => new RegExp(v!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'))
 }
 
-function scrubText(text: string, phones: RegExp[]): { text: string; hits: number } {
-  let hits = 0
-  let out = text.replace(JWT, () => (hits++, 'eyJ***REDACTED***'))
-  out = out.replace(KEYED, (m, a: string, v: string, b: string) => (v && v !== '***' ? (hits++, `${a}***${b}`) : m))
-  out = out.replace(LINK_BOX, (m, a: string, v: string, b: string) => (v !== '***' ? (hits++, `${a}***${b}`) : m))
-  for (const p of phones) out = out.replace(p, () => (hits++, '***'))
+type Counts = { jwt: number; credentialField: number; tempPinBox: number; identifier: number }
+const zero = (): Counts => ({ jwt: 0, credentialField: 0, tempPinBox: 0, identifier: 0 })
+const total = (c: Counts) => c.jwt + c.credentialField + c.tempPinBox + c.identifier
+function add(a: Counts, b: Counts): Counts {
+  return { jwt: a.jwt + b.jwt, credentialField: a.credentialField + b.credentialField, tempPinBox: a.tempPinBox + b.tempPinBox, identifier: a.identifier + b.identifier }
+}
+
+function scrubText(text: string, phones: RegExp[]): { text: string; hits: Counts } {
+  const hits = zero()
+  let out = text.replace(JWT, () => (hits.jwt++, 'eyJ***REDACTED***'))
+  out = out.replace(KEYED, (m, a: string, v: string, b: string) => (v && v !== '***' ? (hits.credentialField++, `${a}***${b}`) : m))
+  out = out.replace(LINK_BOX, (m, a: string, v: string, b: string) => (v !== '***' ? (hits.tempPinBox++, `${a}***${b}`) : m))
+  for (const p of phones) out = out.replace(p, () => (hits.identifier++, '***'))
   return { text: out, hits }
 }
 
@@ -114,18 +120,18 @@ function writeZip(entries: Entry[]): Promise<Buffer> {
   })
 }
 
-async function scrubZip(buf: Buffer, phones: RegExp[]): Promise<{ buf: Buffer; hits: number }> {
+async function scrubZip(buf: Buffer, phones: RegExp[]): Promise<{ buf: Buffer; hits: Counts }> {
   const entries = await readZip(buf)
-  let hits = 0
+  let hits = zero()
   for (const e of entries) {
     if (!isText(e.name, e.data)) continue
     const r = scrubText(e.data.toString('utf8'), phones)
-    if (r.hits) {
-      hits += r.hits
+    if (total(r.hits)) {
+      hits = add(hits, r.hits)
       e.data = Buffer.from(r.text, 'utf8')
     }
   }
-  return { buf: hits ? await writeZip(entries) : buf, hits }
+  return { buf: total(hits) ? await writeZip(entries) : buf, hits }
 }
 
 function* walk(dir: string): Generator<string> {
@@ -139,17 +145,17 @@ function* walk(dir: string): Generator<string> {
 
 const EMBEDDED = /(data:application\/zip;base64,)([A-Za-z0-9+/=]+)/
 
-export async function scrubArtifacts(dirs: string[]): Promise<{ files: number; hits: number }> {
+export async function scrubArtifacts(dirs: string[]): Promise<{ files: number; hits: Counts }> {
   const phones = [...phonePatterns(), ...emailPatterns()]
   let files = 0
-  let hits = 0
+  let hits = zero()
   for (const dir of dirs) {
     for (const file of walk(dir)) {
       // The trace viewer's own static files never contain run data.
       if (file.includes(`${join('playwright-report', 'trace')}`)) continue
       const ext = extname(file).toLowerCase()
       const data = readFileSync(file)
-      let r: { buf: Buffer; hits: number } | undefined
+      let r: { buf: Buffer; hits: Counts } | undefined
       if (ext === '.zip') {
         r = await scrubZip(data, phones)
       } else if (ext === '.html' && EMBEDDED.test(data.toString('utf8'))) {
@@ -162,10 +168,10 @@ export async function scrubArtifacts(dirs: string[]): Promise<{ files: number; h
         const t = scrubText(data.toString('utf8'), phones)
         r = { buf: Buffer.from(t.text, 'utf8'), hits: t.hits }
       }
-      if (r?.hits) {
+      if (r && total(r.hits)) {
         writeFileSync(file, r.buf)
         files++
-        hits += r.hits
+        hits = add(hits, r.hits)
       }
     }
   }
@@ -183,9 +189,17 @@ export default class ScrubReporter implements Reporter {
     // Second pass must find nothing: if it does, something is in a shape the first pass cannot
     // clean, and the run is failed rather than leaving credentials behind silently.
     const second = await scrubArtifacts(dirs)
-    console.log(`\n[e2e] Artefaktlar təmizləndi: ${first.hits} gizli dəyər ${first.files} faylda silindi.`)
-    if (second.hits) {
-      console.log(`[e2e] DİQQƏT: ikinci yoxlamada ${second.hits} dəyər qaldı — run uğursuz sayılır.`)
+    const h = first.hits
+    // Tokens and the suite's PINs are kept out at the source (support/api.ts, support/fixtures.ts, 01-login),
+    // so JWT is expected to be 0. What remains comes in the API's own answers, which a trace records as the
+    // server sent them: the temporary PIN of an «E2E Yeni» person a test adds (deleted by the end of the run)
+    // and the admin's own contact details in their profile.
+    console.log(
+      `\n[e2e] Artefakt yoxlaması: JWT ${h.jwt}, credential sahəsi ${h.credentialField}, ` +
+        `müvəqqəti PIN qutusu ${h.tempPinBox}, admin identifikatoru ${h.identifier} — ${first.files} faylda silindi.`,
+    )
+    if (total(second.hits)) {
+      console.log(`[e2e] DİQQƏT: ikinci yoxlamada ${total(second.hits)} dəyər qaldı — run uğursuz sayılır.`)
       return { status: 'failed' }
     }
   }
