@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "node scripts/version.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
+    "@playwright/test": "1.56.1",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",

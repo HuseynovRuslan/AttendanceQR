@@ -84,5 +84,18 @@ public enum AuditEventType
 
     // A role itself was created, edited, archived or restored — its permission set is everybody's who holds
     // it, so every change is on the record. Written against the employee who did it.
-    AccessRoleChanged = 24
+    AccessRoleChanged = 24,
+
+    // Somebody corrected their OWN day — allowed only where the company had nobody else who could (see
+    // AttendanceSelfCorrection). Its own event, never folded into RecordEditedByAdmin: «who fixed their own pay»
+    // is one search. The reason «{kind}: {before} → {after}. Səbəb: {why}»; the same times are kept for good in
+    // AttendanceSelfCorrections.
+    AttendanceSelfCorrected = 25,
+
+    // A self-correction that waited for approval was approved (and applied) or rejected. Written against the
+    // person whose day it is; the reason names the approver and their reason.
+    SelfCorrectionDecided = 26,
+
+    // The company switched «a self-correction waits for a second approval» on or off. Written against who did it.
+    SelfCorrectionSettingChanged = 27
 }

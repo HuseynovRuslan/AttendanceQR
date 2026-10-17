@@ -1,9 +1,11 @@
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Application.Reporting;
@@ -68,6 +70,14 @@ public interface IReportQueryService
     /// </summary>
     Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
+    /// <summary>
+    /// The role an Excel export of the summary or the tabel runs under. Today's role in Legacy and Shadow; in a
+    /// company switched to Enforced, «attendance.export»'s — and the report built for the file is held under it
+    /// (LocationScopeRules.EffectiveRoleAsync), so a role that may look at the days but not take them away as a
+    /// file gets its own rows only.
+    /// </summary>
+    Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
     /// <summary>
     /// The monthly timesheet grid ("Aylıq Tabel"): one row per in-scope employee, one code per day.
@@ -551,6 +561,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, TabelReport? Report)> GetTabelAsync(
         int year, int month, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
         if (month is < 1 or > 12)
             return (ReportAccess.Forbidden, null);
 
@@ -562,6 +574,8 @@ public sealed class ReportQueryService : IReportQueryService
         // The same computed day rows the summary uses — status + worked minutes per employee per day,
         // scoped to the caller. Reusing it is what keeps the tabel honest against every other report.
         var (access, dayRows, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
+        // The cells a person corrected themselves (the single-admin rule) — marked on the grid and in the file.
+        var selfDays = await SelfCorrection.DaysAsync(_db, from, to, null, ct);
         if (access == ReportAccess.Forbidden)
             return (ReportAccess.Forbidden, null);
 
@@ -728,7 +742,8 @@ public sealed class ReportQueryService : IReportQueryService
                 e.Id, e.FullName,
                 positionById.GetValueOrDefault(e.Id),
                 locationNames.GetValueOrDefault(e.LocationId, ""),
-                codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1)));
+                codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1),
+                selfDays.Where(x => x.EmployeeId == e.Id).Select(x => x.Date.Day).Order().ToList()));
         }
 
         // Overlay admin-declared non-working days (bayram) as B, on the cells that are otherwise empty
@@ -778,6 +793,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, AttendanceReport? Report)> GetSummaryAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
         // Same scope authority for JSON and Excel — export cannot bypass it. Today is computed live
         // rather than read from DailySummary; see LoadDayRowsAsync.
         var (access, dayRows, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
@@ -949,6 +966,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, IReadOnlyList<EmployeeDayRow> Days)> GetEmployeeDaysAsync(
         Guid employeeId, DateOnly from, DateOnly to, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
         // Same rows the summary is built from, filtered to one person. LoadDayRowsAsync applies the
         // caller's scope, so a manager asking for someone outside their branches simply gets nothing.
         var (access, dayRows, _) = await LoadDayRowsAsync(from, to, null, requesterId, role, ct);
@@ -981,9 +1000,14 @@ public sealed class ReportQueryService : IReportQueryService
         return (ReportAccess.Allowed, days);
     }
 
+    public Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default) =>
+        LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceExport, ct);
+
     public async Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.PayrollView, ct);
         // Reuse the summary — same scope check, same day-counting — then price it. Nothing here can see
         // a wider scope than GetSummaryAsync already allowed.
         var (access, summary) = await GetSummaryAsync(from, to, locationId, requesterId, role, ct);
@@ -991,6 +1015,10 @@ public sealed class ReportQueryService : IReportQueryService
             return (ReportAccess.Forbidden, null);
 
         var ids = summary.Rows.Select(r => r.EmployeeId).ToList();
+        // Days a person corrected themselves (the single-admin rule) — counted on their line, so the
+        // accountant sees them before paying.
+        var selfDays = (await SelfCorrection.DaysAsync(_db, from, to, ids, ct))
+            .GroupBy(x => x.EmployeeId).ToDictionary(g => g.Key, g => g.Count());
 
         // A MANAGER sees what their own staff are owed — and not what their peers or the admin at the
         // same branch are paid. The scope this is built on deliberately carries every role (it feeds
@@ -1035,7 +1063,8 @@ public sealed class ReportQueryService : IReportQueryService
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,
                 scheduled, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.OvertimeHours,
                 perDay, deduction, payable, r.EarlyLeaveHours, r.EarlyArriveHours,
-                r.VacationDays, r.SickDays, r.UnpaidDays, r.RestDays, r.TripDays);
+                r.VacationDays, r.SickDays, r.UnpaidDays, r.RestDays, r.TripDays,
+                selfDays.GetValueOrDefault(r.EmployeeId));
         })
         .OrderBy(r => r.EmployeeName)
         .ToList();
@@ -1071,6 +1100,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<IReadOnlyList<LocationDto>> GetVisibleLocationsAsync(
         Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
         IQueryable<Domain.Entities.Location> query = _db.Locations;
 
         if (role == EmployeeRole.Manager)
@@ -1097,6 +1128,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<IReadOnlyList<DayAttendanceRow>> GetTodayAttendanceAsync(
         Guid requesterId, EmployeeRole role, DateOnly? date = null, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
         // Defaults to the local "today"; a past date shows that day's board (same computation, so the
         // live board and any historical day read identically).
         var day = date ?? LocalToday();
@@ -1135,6 +1168,8 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(a => new { a.EmployeeId, a.CreatedByEmployeeId })
             .ToListAsync(ct);
         var markedAbsent = markRows.Select(m => m.EmployeeId).ToHashSet();
+        // Days the person corrected themselves (the single-admin rule) — «öz düzəlişi» on the row.
+        var selfCorrected = (await SelfCorrection.DaysAsync(_db, day, day, null, ct)).Select(x => x.EmployeeId).ToHashSet();
         // Who said so — a day that costs somebody a day's pay carries the name of whoever decided it,
         // exactly as an assigned leave does.
         var markerIds = markRows.Where(m => m.CreatedByEmployeeId != null)
@@ -1189,7 +1224,8 @@ public sealed class ReportQueryService : IReportQueryService
                     // day with its own hours shows the clock it was actually measured by.
                     hours.Start.ToString("HH:mm"), hours.End.ToString("HH:mm"), d.Shift.ScheduleName,
                     d.Shift.HasSecondWindow ? d.Shift.SecondStart!.Value.ToString("HH:mm") : null,
-                    d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null);
+                    d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null,
+                    selfCorrected.Contains(d.Employee.Id));
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();
@@ -1294,6 +1330,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, ProblemsReport? Report)> GetProblemsAsync(
         DateOnly from, DateOnly to, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
         // An employee has no business seeing everyone else's failed scans.
         if (role == EmployeeRole.Employee)
             return (ReportAccess.Forbidden, null);
@@ -1408,6 +1446,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, DashboardReport? Report)> GetDashboardAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.DashboardView, ct);
         // Same scope authority as GetSummaryAsync — one rule for every reporting view. Today is
         // computed live rather than read from DailySummary; see LoadDayRowsAsync.
         var (access, summaries, label) = await LoadDayRowsAsync(from, to, locationId, requesterId, role, ct);
@@ -1532,6 +1572,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, GeofenceFitReport? Report)> GetGeofenceFitAsync(
         int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.LocationsView, ct);
         if (role != EmployeeRole.Admin && role != EmployeeRole.Manager)
             return (ReportAccess.Forbidden, null);
 
@@ -1627,6 +1669,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, ShiftMismatchReport? Report)> GetShiftMismatchAsync(
         int days, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.SchedulesView, ct);
         // Whose shift is wrong is a scheduling question about other people; an employee has no
         // business with it, the same boundary the other reports draw.
         if (role == EmployeeRole.Employee)
@@ -1738,6 +1782,8 @@ public sealed class ReportQueryService : IReportQueryService
     public async Task<(ReportAccess Access, IReadOnlyList<StuckDeviceRow> Rows)> GetStuckDevicesAsync(
         Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
+        // Enforced (Phase 5): the role the model gives for this report; today's role otherwise.
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.DevicesView, ct);
         // The register behind "kimdir, necə tapaq": measured on 02.09, twenty-odd people were still
         // GPS-blocked and the only way to name them was a hand-written SQL. A stuck phone loses a
         // recorded day EVERY day until a human touches it, so the list has to be a screen an admin
@@ -1780,6 +1826,9 @@ public sealed class ReportQueryService : IReportQueryService
 
         var locationNames = await _db.Locations.ToDictionaryAsync(l => l.Id, l => l.Name, ct);
         var nameById = employees.ToDictionary(e => e.Id, e => (e.FullName, e.LocationId));
+        // Enforced: the phone rides only where the caller may see it (an observer reads the register without
+        // the numbers). Today's rows elsewhere.
+        var enforced = await EnforcedRows.LoadAsync(_db, requesterId, ct);
 
         var rows = new List<StuckDeviceRow>();
         foreach (var (employeeId, evts) in byEmployee)
@@ -1804,7 +1853,7 @@ public sealed class ReportQueryService : IReportQueryService
             rows.Add(new StuckDeviceRow(
                 employeeId, fullName,
                 locationNames.TryGetValue(locationId, out var ln) ? ln : "-",
-                phones.TryGetValue(employeeId, out var ph) ? ph : null,
+                phones.TryGetValue(employeeId, out var ph) && enforced?.SeesContacts(employeeId, locationId) != false ? ph : null,
                 lastFailure, evts.Count,
                 string.Join(", ", reasons),
                 platform,

@@ -88,8 +88,7 @@ public class ManagerController : ControllerBase
         Guid id, IActionResult? outOfScope = null)
     {
         var result = await LegacyManageableEmployeeAsync(id, outOfScope);
-        await ObserveAsync(ShadowRules.ManageableEmployee, id, result.Employee is not null);
-        return result;
+        return await DecideAsync(ShadowRules.ManageableEmployee, id, result);
     }
 
     private async Task<(Employee? Employee, IActionResult? Error)> LegacyManageableEmployeeAsync(
@@ -132,8 +131,7 @@ public class ManagerController : ControllerBase
     private async Task<(Employee? Employee, IActionResult? Error)> CredentialTargetAsync(Guid id)
     {
         var result = await LegacyCredentialTargetAsync(id);
-        await ObserveAsync(ShadowRules.CredentialTarget, id, result.Employee is not null);
-        return result;
+        return await DecideAsync(ShadowRules.CredentialTarget, id, result);
     }
 
     private async Task<(Employee? Employee, IActionResult? Error)> LegacyCredentialTargetAsync(Guid id)
@@ -186,6 +184,10 @@ public class ManagerController : ControllerBase
     private static string? Tail(string? phone) =>
         string.IsNullOrEmpty(phone) ? null : phone.Length <= 4 ? phone : phone[^4..];
 
+    /// <summary>The model's per-row answers in a company switched to Enforced; null anywhere else (see EnforcedRows).</summary>
+    private Task<EnforcedRows?> EnforcedRowsAsync() =>
+        EnforcedRows.LoadAsync(_db, M15(), HttpContext.RequestAborted);
+
     /// <summary>
     /// Who a LEAVE may be filed for: anyone at this manager's own branches, including a fellow manager
     /// or an admin who works there, plus the manager THEMSELVES.
@@ -208,14 +210,29 @@ public class ManagerController : ControllerBase
         Guid id, IActionResult outOfScope)
     {
         var result = await LegacyLeaveSubjectAsync(id, outOfScope);
-        await ObserveAsync(ShadowRules.LeaveSubject, id, result.Employee is not null);
-        return result;
+        return await DecideAsync(ShadowRules.LeaveSubject, id, result);
     }
 
-    // Today's manager-desk answer, told to the permission model's shadow (Services.Access) — never changed by it.
-    private Task ObserveAsync(string rule, Guid targetId, bool allowed) =>
-        _db.AuthzObserver?.ObserveScopeAsync(_db, rule, M15(), EmployeeRole.Manager, targetId, allowed, HttpContext.RequestAborted)
-        ?? Task.CompletedTask;
+    /// <summary>
+    /// Today's manager-desk answer, given to the company's mode. In Legacy and Shadow it is returned as it is
+    /// (Shadow records a disagreement). In a company switched to Enforced the permission model's answer is the
+    /// one that counts (Phase 5): a «no» where today said yes is refused, a «yes» where today said no loads the
+    /// person — a timekeeper who is plain staff by today's role reaches their own branches' people.
+    /// </summary>
+    private async Task<(Employee? Employee, IActionResult? Error)> DecideAsync(
+        string rule, Guid targetId, (Employee? Employee, IActionResult? Error) today)
+    {
+        var legacy = today.Employee is not null;
+        var decided = _db.AuthzObserver is { } observer
+            ? await observer.DecideScopeAsync(_db, rule, M15(), User.Role(), targetId, legacy, HttpContext.RequestAborted)
+            : legacy;
+        if (decided == legacy)
+            return today;
+        if (!decided)
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" }));
+        var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == targetId, HttpContext.RequestAborted);
+        return target is null ? (null, NotFound(new { error = "EmployeeNotFound" })) : (target, null);
+    }
 
     private async Task<(Employee? Employee, IActionResult? Error)> LegacyLeaveSubjectAsync(
         Guid id, IActionResult outOfScope)
@@ -510,9 +527,15 @@ public class ManagerController : ControllerBase
             })
             .ToListAsync(HttpContext.RequestAborted);
 
+        var enforced = await EnforcedRowsAsync();
         return Ok(rows.Select(r => new
         {
-            r.id, r.isSelf, r.manageable, r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.paperEmployer, r.paperSite, r.phoneNumber, r.email, r.locationId,
+            r.id, r.isSelf,
+            manageable = enforced?.Allows(ShadowRules.ManageableEmployee, r.id, r.locationId) ?? r.manageable,
+            r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.paperEmployer, r.paperSite,
+            phoneNumber = enforced is null || enforced.SeesContacts(r.id, r.locationId) ? r.phoneNumber : null,
+            email = enforced is null || enforced.SeesContacts(r.id, r.locationId) ? r.email : null,
+            r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn,
             // Was projected above and then dropped here, so the manager's screen counted zero however
@@ -573,6 +596,12 @@ public class ManagerController : ControllerBase
         var mayResetCredentials = (e.Role == EmployeeRole.Employee
                                    || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
                                   && e.Id != M15() && !_operatorIds.Contains(e.Id);
+        if (await EnforcedRowsAsync() is { } enforced)
+        {
+            mayAct = enforced.Allows(ShadowRules.ManageableEmployee, e.Id, e.LocationId);
+            ownContacts = enforced.SeesContacts(e.Id, e.LocationId);
+            mayResetCredentials = enforced.Allows(ShadowRules.CredentialTarget, e.Id, e.LocationId);
+        }
 
         return Ok(new
         {
@@ -831,22 +860,41 @@ public class ManagerController : ControllerBase
         var byPhone = digits.Length >= 3;
         var managed = await ManagedLocationIdsAsync();
 
-        var rows = await _db.Employees
-            .Where(e => e.IsActive && e.Id != self
-                        // Plain staff anywhere; a fellow manager only at the caller's own branches.
-                        && (e.Role == EmployeeRole.Employee
-                            || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
-                        && !_operatorIds.Contains(e.Id)
+        var matching = _db.Employees
+            .Where(e => e.IsActive && e.Id != self && !_operatorIds.Contains(e.Id)
                         && (e.FullName.ToLower().Contains(lowered)
-                            || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))))
+                            || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))));
+
+        var enforced = await EnforcedRowsAsync();
+        IQueryable<Employee> candidates;
+        if (enforced is null)
+        {
+            // Plain staff anywhere; a fellow manager only at the caller's own branches.
+            candidates = matching.Where(e => e.Role == EmployeeRole.Employee
+                                             || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)));
+        }
+        else
+        {
+            // Enforced: wherever the caller holds «employees.reset_pin» (today's managers: the whole company, as
+            // above), then the model's own rule person by person below — it is the one that decides the reset.
+            var reach = await LocationScopeRules.ScopeAsync(_db, self, User.Role(), AccessPermissions.EmployeesResetPin, ct);
+            var branches = reach.Branches.ToList();
+            candidates = reach.Company ? matching : matching.Where(e => branches.Contains(e.LocationId));
+        }
+
+        var found = await candidates
             .OrderBy(e => e.FullName)
-            .Take(20)
+            // A few more in Enforced: the rule below may set some of them aside.
+            .Take(enforced is null ? 20 : 60)
             .Select(e => new
             {
                 e.Id, e.FullName, e.Position, e.Role, e.PhoneNumber, e.LocationId,
                 Activated = e.ActivatedAtUtc != null,
             })
             .ToListAsync(ct);
+        var rows = enforced is null
+            ? found
+            : found.Where(e => enforced.Allows(ShadowRules.CredentialTarget, e.Id, e.LocationId)).Take(20).ToList();
 
         var locationIds = rows.Select(r => r.LocationId).Distinct().ToList();
         var locationNames = await _db.Locations.Where(l => locationIds.Contains(l.Id))

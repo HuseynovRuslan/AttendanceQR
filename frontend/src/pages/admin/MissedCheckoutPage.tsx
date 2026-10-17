@@ -5,11 +5,14 @@ import {
   rejectMissedCheckout,
   type MissedCheckoutPending,
 } from '../../api/admin'
-import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
+import { correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { IconCheck, IconX } from '../../components/icons'
 import { fmtDayMonth, fmtTime } from '../../lib/format'
+import { useHolds } from '../../auth/AccessContext'
 
 export function MissedCheckoutPage() {
+  // Deciding a missed check-out writes the day — «attendance.correct».
+  const mayCorrect = useHolds('attendance.correct', true)
   const [rows, setRows] = useState<MissedCheckoutPending[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -55,8 +58,7 @@ export function MissedCheckoutPage() {
       setRows((rs) => rs.filter((x) => x.id !== row.id))
       return
     }
-    const code = (r.data as { error?: string } | null)?.error ?? ''
-    setError(CORRECTION_ERROR[code] ?? (r.status === 403 ? 'Bu işçinin tələbinə qərar verə bilməzsiniz.' : 'Alınmadı — yenidən cəhd edin.'))
+    setError(correctionError(r.data, r.status === 403 ? 'Bu işçinin tələbinə qərar verə bilməzsiniz.' : 'Alınmadı — yenidən cəhd edin.'))
   }
 
   return (
@@ -114,6 +116,7 @@ export function MissedCheckoutPage() {
                     </span>
                   </td>
                   <td data-label="">
+                    {mayCorrect && <>
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.id}
@@ -130,6 +133,7 @@ export function MissedCheckoutPage() {
                     >
                       <IconX /> Rədd
                     </button>
+                    </>}
                   </td>
                 </tr>
               ))}

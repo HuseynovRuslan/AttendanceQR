@@ -16,7 +16,8 @@ namespace AttendanceQR.Application.Tests;
 /// Every endpoint today's roles guard names the permission it stands for — so an endpoint added next year
 /// without one fails here, not silently in Shadow mode — and, for the three kinds of account that exist today
 /// (an admin, a branch manager, plain staff), today's gate and the permission gate give the same answer. The
-/// only allowed difference is a twin route: the manager's own copy of an admin endpoint, or the reverse.
+/// only allowed differences are a twin route — the manager's own copy of an admin endpoint, or the reverse — and
+/// an admin-only endpoint marked Scoped, which narrows its own answer to the caller's area.
 /// </summary>
 public class PermissionCoverageTests
 {
@@ -73,7 +74,9 @@ public class PermissionCoverageTests
                 var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim("role", role)], "test"));
                 var legacy = AuthzShadowMiddleware.LegacyAllows(AuthzShadowMiddleware.AuthorizeAttributesOf(action), permission, user);
                 var decided = AuthzShadowMiddleware.NewAllows(permission, access);
-                if (legacy == decided || (permission.Twin && decided && !legacy))
+                // A twin route, or an admin-only endpoint that narrows itself (Scoped — the bell): a «yes» where
+                // today says no is the manager's own copy, not a new door.
+                if (legacy == decided || ((permission.Twin || permission.Scoped) && decided && !legacy))
                     continue;
                 mismatches.Add($"{Name(action)} as {role}: bu gün {legacy}, yeni {decided}");
             }

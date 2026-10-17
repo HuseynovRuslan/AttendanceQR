@@ -15,6 +15,12 @@ public record AdminAttendanceCreateRequest(
 /// <param name="Reason">Why — required (CorrectionReason); kept in the audit line.</param>
 public record AttendanceCorrectionRequest(string? Reason = null);
 
+/// <summary>The answer to a self-correction that waits for approval — and why, as for every correction.</summary>
+public record SelfCorrectionDecisionRequest(bool Approve, string? Reason = null);
+
+/// <summary>Whether a self-correction waits for a second approval in this company.</summary>
+public record SelfCorrectionSettingRequest(bool NeedsApproval);
+
 /// <summary>
 /// «Saxta giriş» — void one scan whose selfie is not the person it claims to be.
 ///

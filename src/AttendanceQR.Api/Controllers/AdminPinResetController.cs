@@ -6,6 +6,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -71,9 +72,23 @@ public class AdminPinResetController : ControllerBase
                 employeeName = e.FullName,
                 phoneNumber = e.PhoneNumber,
                 email = e.Email,
-                requestedAtUtc = r.RequestedAtUtc
+                requestedAtUtc = r.RequestedAtUtc,
+                locationId = e.LocationId,
             })
             .ToListAsync(ct);
+
+        // A company switched to Enforced: only the requests this caller may answer by the model's account rule
+        // (Resolve asks the same), and a phone or e-mail only where they may see it. Today's rows elsewhere.
+        if (await EnforcedRows.LoadAsync(_db, User.EmployeeId(), ct) is { } enforced)
+            return Ok(rows
+                .Where(r => enforced.Allows(ShadowRules.CredentialTarget, r.employeeId, r.locationId))
+                .Select(r => new
+                {
+                    r.requestId, r.employeeId, r.employeeName,
+                    phoneNumber = enforced.SeesContacts(r.employeeId, r.locationId) ? r.phoneNumber : null,
+                    email = enforced.SeesContacts(r.employeeId, r.locationId) ? r.email : null,
+                    r.requestedAtUtc, r.locationId,
+                }));
         return Ok(rows);
     }
 
@@ -103,7 +118,8 @@ public class AdminPinResetController : ControllerBase
         // The same boundary the list applies, re-checked on the action — a request id guessed or held
         // from before a branch reassignment must not resolve into a PIN. Checked before the atomic
         // claim below so a refusal does not consume somebody else's queue entry.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct))
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct)
+            || !await LocationScopeRules.EnforcedCredentialTargetAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         // An impersonation session must not mint a credential for a privileged account: this endpoint

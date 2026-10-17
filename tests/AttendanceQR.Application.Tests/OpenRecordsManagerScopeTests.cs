@@ -448,7 +448,13 @@ public class OpenRecordsManagerScopeTests
             "AdminAttendanceController.cs"));
         var create = body[body.IndexOf("public async Task<IActionResult> Create(")..];
         create = create[..create.IndexOf("_db.AttendanceRecords.Add")];
-        Assert.Contains("CanCorrectAttendanceAsync", create);
+        // Since 2026-10-16 through CorrectorAsync: today's rule for somebody else's day, the single-admin rule
+        // (SelfCorrection) for one's own. Both must stay in it.
+        Assert.Contains("CorrectorAsync(", create);
+        var corrector = body[body.IndexOf("private async Task<(IActionResult? Refusal, SelfCorrectionAnswer? Self)> CorrectorAsync(")..];
+        corrector = corrector[..corrector.IndexOf("return (null, null);")];
+        Assert.Contains("CanCorrectAttendanceAsync", corrector);
+        Assert.Contains("SelfCorrection.AskAsync", corrector);
     }
 
     /// <summary>Walks up from the test binary to the repository root.</summary>

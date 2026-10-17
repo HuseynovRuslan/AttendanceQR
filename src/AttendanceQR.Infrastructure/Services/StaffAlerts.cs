@@ -1,7 +1,9 @@
 using System.Threading.Channels;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Infrastructure.Services;
@@ -133,6 +135,10 @@ public enum StaffAlertOutcome { Sent, Recovered, AlreadyHandled, AlreadyAlerted,
 /// Delivers one due alert: to the managers of the person's own branch — the people standing there —
 /// or, where a branch has none, to the company's admins. Once per person, problem and day, recorded as
 /// <see cref="AuditEventType.StaffAlertSent"/> so the next refusal knows it has been said.
+///
+/// In a company switched to Enforced the permission model names them instead (<see cref="ModelRecipientsAsync"/>):
+/// whoever holds «notifications.staff_alerts» over the person's branch — a timekeeper or an operator as much as
+/// a manager — and, where nobody below company level does, the company-wide holders.
 /// </summary>
 public static class StaffAlertDispatcher
 {
@@ -185,20 +191,31 @@ public static class StaffAlertDispatcher
         if (already)
             return StaffAlertOutcome.AlreadyAlerted;
 
-        // A manager's PIN queue holds only their plain staff (AdminPinResetController), so a PIN request from
-        // anyone else — a manager who forgot theirs — goes to the admins, who can see it.
-        var managersCanAct = alert.Kind != StaffAlertKinds.PinResetRequested || employee.Role == EmployeeRole.Employee;
-        List<Guid> managers = !managersCanAct ? [] : await (
-            from ml in db.ManagedLocations
-            join m in db.Employees on ml.EmployeeId equals m.Id
-            where ml.LocationId == employee.LocationId && m.IsActive && m.Role == EmployeeRole.Manager
-                  && m.Id != alert.EmployeeId
-            select m.Id).Distinct().ToListAsync(ct);
-        var recipients = managers.Count > 0
-            ? managers
-            : await db.Employees
-                .Where(e => e.IsActive && e.Role == EmployeeRole.Admin && e.Id != alert.EmployeeId)
-                .Select(e => e.Id).ToListAsync(ct);
+        var mode = await db.Tenants.AsNoTracking()
+            .Where(t => t.Id == alert.TenantId).Select(t => t.AuthzMode).FirstOrDefaultAsync(ct);
+        List<Guid> managers;
+        List<Guid> recipients;
+        if (mode == AuthzMode.Enforced)
+        {
+            (managers, recipients) = await ModelRecipientsAsync(db, alert, employee.LocationId, ct);
+        }
+        else
+        {
+            // A manager's PIN queue holds only their plain staff (AdminPinResetController), so a PIN request from
+            // anyone else — a manager who forgot theirs — goes to the admins, who can see it.
+            var managersCanAct = alert.Kind != StaffAlertKinds.PinResetRequested || employee.Role == EmployeeRole.Employee;
+            managers = !managersCanAct ? [] : await (
+                from ml in db.ManagedLocations
+                join m in db.Employees on ml.EmployeeId equals m.Id
+                where ml.LocationId == employee.LocationId && m.IsActive && m.Role == EmployeeRole.Manager
+                      && m.Id != alert.EmployeeId
+                select m.Id).Distinct().ToListAsync(ct);
+            recipients = managers.Count > 0
+                ? managers
+                : await db.Employees
+                    .Where(e => e.IsActive && e.Role == EmployeeRole.Admin && e.Id != alert.EmployeeId)
+                    .Select(e => e.Id).ToListAsync(ct);
+        }
         if (recipients.Count == 0)
             return StaffAlertOutcome.NoRecipients;
 
@@ -215,5 +232,41 @@ public static class StaffAlertDispatcher
         });
         await db.SaveChangesAsync(ct);
         return StaffAlertOutcome.Sent;
+    }
+
+    /// <summary>
+    /// The recipients a company switched to Enforced gets: every active person (not the subject) who holds
+    /// «notifications.staff_alerts» over the subject's branch and can act on what the alert is about — a new phone
+    /// wants «devices.approve» there, a forgotten PIN the model's account rule (only from above, never an
+    /// operator), or the push sends somebody to a screen that refuses them. Those below company level are the
+    /// people at the site (the first list); where there are none, the company-wide holders hear it.
+    /// </summary>
+    public static async Task<(List<Guid> Local, List<Guid> Recipients)> ModelRecipientsAsync(
+        AppDbContext db, StaffAlert alert, Guid home, CancellationToken ct = default)
+    {
+        var graph = db.AuthzObserver is { } observer ? await observer.GraphAsync(db, ct) : await AccessGraph.LoadAsync(db, ct);
+        var operators = db.AuthzObserver?.OperatorIds ?? new HashSet<Guid>();
+        var subject = graph.For(alert.EmployeeId);
+        var people = await db.Employees.AsNoTracking()
+            .Where(e => e.IsActive && e.Id != alert.EmployeeId)
+            .Select(e => new { e.Id, e.LocationId })
+            .ToListAsync(ct);
+
+        bool CanAct(EffectiveAccess holder, Guid holderHome) => alert.Kind switch
+        {
+            StaffAlertKinds.PinResetRequested => ShadowRules.Decide(ShadowRules.CredentialTarget, holder, alert.EmployeeId,
+                home, subject, operators.Contains(alert.EmployeeId), holderHome),
+            StaffAlertKinds.DeviceChangeRequested => holder.Covers(AccessPermissions.DevicesApprove, home),
+            _ => true,
+        };
+
+        var holders = people
+            .Select(p => (p.Id, Access: graph.For(p.Id), Home: p.LocationId))
+            .Where(h => h.Access.Covers(AccessPermissions.NotificationsStaffAlerts, home) && CanAct(h.Access, h.Home))
+            .ToList();
+        var local = holders
+            .Where(h => !h.Access.HasAtCompany(AccessPermissions.NotificationsStaffAlerts))
+            .Select(h => h.Id).ToList();
+        return (local, local.Count > 0 ? local : holders.Select(h => h.Id).ToList());
     }
 }

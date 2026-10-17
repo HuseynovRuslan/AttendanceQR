@@ -23,10 +23,13 @@ export function AdminRoute({ children }: { children: ReactNode }) {
 }
 
 /** Today's two panel roles walk straight in, without waiting on anything; anybody else waits for
- *  /api/me/access to say whether the panel is theirs. */
+ *  /api/me/access to say whether the panel is theirs. In a company switched to Enforced the answer, once it
+ *  is in, is the model's alone — an admin whose company role was taken away is sent to their scan screen,
+ *  exactly as the server now refuses them. */
 function PanelDoor({ children }: { children: ReactNode }) {
   const { role } = useAuth()
   const { access, loading } = useAccess()
+  if (access?.mode === 'Enforced') return access.panel ? <>{children}</> : <Navigate to="/scan" replace />
   if (role === 'Admin' || role === 'Manager') return <>{children}</>
   if (loading) {
     return (
@@ -53,6 +56,18 @@ export function PanelPage({ path, children }: { path: string; children: ReactNod
   const { role } = useAuth()
   const { access } = useAccess()
   if (canOpen(path, role, access)) return <>{children}</>
+
+  if (access?.mode === 'Enforced') {
+    return (
+      <div className="card card-pad" style={{ maxWidth: 520 }}>
+        <div className="card-title">Bu səhifəyə icazəniz yoxdur</div>
+        <p className="muted" style={{ fontSize: 13, lineHeight: 1.7, margin: '8px 0 0' }}>
+          Rolunuz bu bölməni əhatə etmir. Lazımdırsa, şirkətin adminindən rolunuza əlavə etməsini xahiş
+          edin. Nəyə və harada icazəniz olduğunu «Mənim sahəm» səhifəsində görə bilərsiniz.
+        </p>
+      </div>
+    )
+  }
 
   if (wouldOpen(path, access)) {
     return (

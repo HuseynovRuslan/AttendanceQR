@@ -248,10 +248,12 @@ var operatorIds = appOptions.SuperAdminIdList();
 
 // The permission model (docs/strukturlar-ve-selahiyyetler.md). Until a company is switched to Enforced it
 // decides nothing: in Shadow mode the observer and AuthzShadowMiddleware compare it with today's roles and
-// record every disagreement in AuthzShadowEvents.
+// record every disagreement in AuthzShadowEvents. In Enforced it decides (Phase 5): the observer's Decide*
+// and Scope answers, and the gate below on every endpoint that names its permission.
 builder.Services.AddSingleton(new OperatorAllowlist(operatorIds.ToHashSet()));
 builder.Services.AddSingleton<IAuthzShadowSink, DbShadowSink>();
 builder.Services.AddScoped<IAuthzObserver, AuthzObserver>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, PermissionGateHandler>();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -719,6 +721,9 @@ app.UseViewOnlyBoundary();
 
 // Shadow mode's gate comparison — decides nothing, see AuthzShadowMiddleware.
 app.UseMiddleware<AuthzShadowMiddleware>();
+// Enforced mode's role: what the permission model makes of the caller for this endpoint, before authorization
+// and every action read it — see AuthzEnforcedMiddleware. Touches nothing in Legacy or Shadow.
+app.UseMiddleware<AuthzEnforcedMiddleware>();
 
 app.UseAuthorization();
 

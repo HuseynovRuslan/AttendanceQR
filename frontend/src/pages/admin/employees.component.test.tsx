@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EmployeesPage } from './EmployeesPage'
+import { AdminRoute } from '../../components/AdminRoute'
 
 /**
  * The one staff list (Phase 4), rendered in a browser-like DOM for an admin and for a branch manager. The
@@ -12,7 +13,7 @@ import { EmployeesPage } from './EmployeesPage'
 
 type Answer = { status: number; data: unknown }
 const net = vi.hoisted(() => ({
-  role: 'Admin' as 'Admin' | 'Manager',
+  role: 'Admin' as 'Admin' | 'Manager' | 'Employee',
   routes: {} as Record<string, Answer>,
   calls: [] as { method: string; path: string; body: unknown }[],
 }))
@@ -208,5 +209,58 @@ describe('a branch manager on the same screen', () => {
     expect(body.email).toBe('aynur@test.local')
     for (const never of ['monthlySalary', 'role', 'managedLocationIds', 'canShareDevice'])
       expect(never in body).toBe(false)
+  })
+})
+
+describe('a company switched to Enforced: the list follows the role in the model', () => {
+  const TIMEKEEPER = ['dashboard.view', 'attendance.view', 'employees.view', 'employees.contacts.view', 'employees.create',
+    'employees.update', 'employees.reset_pin', 'devices.view', 'devices.approve', 'schedules.view', 'schedules.manage',
+    'schedules.assign', 'leaves.view', 'leaves.manage', 'field_visits.view', 'notifications.staff_alerts']
+  const OBSERVER = ['dashboard.view', 'attendance.view', 'employees.view', 'leaves.view', 'schedules.view',
+    'locations.view', 'field_visits.view']
+
+  /** Behind the real door: plain staff by token waits for /api/me/access, as in the app. */
+  function renderEnforced(tokenRole: 'Admin' | 'Manager' | 'Employee', perms: string[], companyAdmin = false) {
+    net.role = tokenRole
+    net.routes['GET /api/me/access'] = OK({
+      mode: 'Enforced', legacyRole: tokenRole, panel: true, companyAdmin,
+      permissions: perms.map((key) => ({ key, label: key, company: companyAdmin, locationIds: companyAdmin ? [] : ['b1'] })),
+      assignments: [], branches: [{ id: 'b1', name: 'Park', structureId: null }],
+    })
+    return render(
+      <MemoryRouter initialEntries={['/admin/employees']}>
+        <AdminRoute><EmployeesPage /></AdminRoute>
+      </MemoryRouter>,
+    )
+  }
+
+  it('an observer reads their branch through the narrowed endpoints and gets nothing to press', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova', { manageable: false, phoneNumber: null })]))
+    renderEnforced('Employee', OBSERVER)
+    const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    expect(within(row).getByText('yalnız baxış')).toBeTruthy()
+    expect(screen.queryByText('İşçi əlavə et')).toBeNull()
+    expect(screen.queryByText('PIN sıfırla · nömrəni dəyiş')).toBeNull()
+    expect(net.calls.filter((c) => c.path.startsWith('/api/admin/'))).toEqual([])
+  })
+
+  it('a timekeeper adds and edits their own people — the manager’s desk, not the admin’s', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    renderEnforced('Employee', TIMEKEEPER)
+    const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    expect(within(row).getByText('Redaktə')).toBeTruthy()
+    expect(screen.getByText('İşçi əlavə et')).toBeTruthy()
+    expect(screen.getByText('PIN sıfırla · nömrəni dəyiş')).toBeTruthy()
+    expect(net.calls.filter((c) => c.path.startsWith('/api/admin/'))).toEqual([])
+  })
+
+  it('the Company administrator keeps the admin’s list and its company tools', async () => {
+    adminRoutes(OK({ items: [adminRow('a', 'Aynur Həsənova')], total: 1, page: 1, pageSize: 50 }))
+    renderEnforced('Admin', ['employees.view', 'employees.create', 'employees.reset_pin', 'employees.reference_photo'], true)
+    expect(await screen.findByText('Aynur Həsənova')).toBeTruthy()
+    expect(screen.getByText('Referansları sıfırla')).toBeTruthy()
+    expect(net.calls.some((c) => c.path.startsWith('/api/admin/employees'))).toBe(true)
+    expect(net.calls.filter((c) => c.path.startsWith('/api/manager/'))).toEqual([])
   })
 })

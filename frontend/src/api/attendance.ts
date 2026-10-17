@@ -27,6 +27,8 @@ export interface AttendanceRecord {
   closedByFieldVisit?: boolean
   /** No poster scan on this date — the times come from a field visit. recordId is empty for these. */
   isFieldDay?: boolean
+  /** The person corrected this day themselves — only possible where nobody else could; «öz düzəlişi». */
+  selfCorrected?: boolean
   /** Only on /me/today: the day is closed as it stands, but a scan NOW would open another stretch of
    *  it — back at the centre after a field visit, or a split shift's second window. The server's
    *  answer; the phone must not decide «finished» on its own (it used to, and hid the button). */
@@ -339,7 +341,7 @@ export function recomputeDays(from: string, to: string) {
 
 /** The reason is required since 2026-10-15 — one for the batch, written into each day's audit line. */
 export function closeOpenDays(recordIds: string[], reason: string) {
-  return apiRequest<{ closed: number; skipped: number } | { error: string }>(
+  return apiRequest<{ closed: number; skipped: number; awaiting?: number } | { error: string }>(
     '/api/admin/attendance/close-open',
     { method: 'POST', body: { recordIds, reason } },
   )

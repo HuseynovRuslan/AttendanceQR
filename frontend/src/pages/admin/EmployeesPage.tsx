@@ -58,6 +58,7 @@ import {
 } from '../../api/attendance'
 import type { Role } from '../../lib/jwt'
 import { useAuth } from '../../auth/AuthContext'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { StatusBadge } from '../../components/StatusBadge'
 import { listFailureText } from '../../lib/listFailure'
@@ -281,8 +282,13 @@ export function EmployeesPage() {
   // GET /api/manager/employees: their branches, no salary, no role, no colleague's contacts — and every
   // write goes through their own endpoints, which the server checks row by row. The page only draws
   // what each of them could already do; nothing a manager could not do before opens here.
-  const { role } = useAuth()
+  // The list's shape by «employees.view»: the admin's for the Company administrator, the narrowed one for
+  // anybody else in Enforced (useScopedRole). The rows' own «may I act» answers are the server's; what is not
+  // per row asks for its right here — an observer gets the list and nothing to press.
+  const role = useScopedRole('employees.view')
   const isManager = role === 'Manager'
+  const mayCreate = useHolds('employees.create', true)
+  const mayResetPins = useHolds('employees.reset_pin', true)
   /** A manager's whole roster, filtered and paged in the browser — see lib/managerRoster. */
   const [mgrAll, setMgrAll] = useState<ManagerEmployee[] | null>(null)
   /** The card a manager is editing: a colleague they may not switch off, and a branch that may not be
@@ -1255,13 +1261,15 @@ ${back}`,
               <IconRefresh /> Referansları sıfırla
             </button>
           )}
-          <button
-            className="btn btn-sm btn-primary"
-            disabled={isManager && locations.length === 0}
-            onClick={showForm && !editingId ? closeForm : startAdd}
-          >
-            <IconUsers /> İşçi əlavə et
-          </button>
+          {mayCreate && (
+            <button
+              className="btn btn-sm btn-primary"
+              disabled={isManager && locations.length === 0}
+              onClick={showForm && !editingId ? closeForm : startAdd}
+            >
+              <IconUsers /> İşçi əlavə et
+            </button>
+          )}
         </div>
       </div>
 
@@ -2105,7 +2113,7 @@ ${back}`,
 
       {/* A new PIN or login number for plain staff anywhere in the company, and for a fellow manager at
           their own branches — the reach a manager has had since 2026-09-14. The server decides who. */}
-      {isManager && !showForm && <CredentialDesk />}
+      {isManager && !showForm && mayResetPins && <CredentialDesk />}
 
       {/* employees table */}
       <div className="att-table">
@@ -2495,7 +2503,7 @@ ${back}`,
                             {
                               label: 'PIN sıfırla',
                               icon: <IconPhone />,
-                              hidden: !e.activated || e.id === myId,
+                              hidden: !e.activated || e.id === myId || !mayResetPins,
                               onClick: () => onResetPin(e),
                               title: 'İşçi PIN-ini unudubsa — müvəqqəti PIN ver',
                             },

@@ -102,6 +102,7 @@ function access(
     mode: 'Shadow',
     legacyRole,
     panel: true,
+    companyAdmin: legacyRole === 'Admin',
     permissions: perms.map((key) => ({ key, label: key, company: scope === 'Company', locationIds: [] })),
     assignments: [{
       roleId: template, roleName, template, scope,
@@ -258,5 +259,57 @@ describe('a role or a branch given or taken shows without signing out', () => {
 
     await waitFor(() => expect(sidebar(container).links).not.toContain('Səlahiyyətlər'))
     expect(container.textContent).not.toContain('Bilgəh filialı')
+  })
+})
+
+describe('a company switched to Enforced: the permission model opens the panel', () => {
+  const enforced = (a: MyAccess, over: Partial<MyAccess> = {}): MyAccess => ({ ...a, mode: 'Enforced', ...over })
+
+  it('a timekeeper: their daily pages are links now, and nothing waits «after the switch»', async () => {
+    const { container } = await renderPanel('Employee', enforced(access('Employee', TIMEKEEPER, 'Tabelçi', 'timekeeper', [B1])))
+    await waitFor(() => expect(sidebar(container).links).toContain('İşçilər'))
+    const { links, later } = sidebar(container)
+    expect(later).toEqual([])
+    for (const page of ['Mənim sahəm', 'Bugünkü davamiyyət', 'İşçilər', 'PIN sıfırlama', 'Növbələr', 'Cihazlar'])
+      expect(links).toContain(page)
+    for (const page of ['Səlahiyyətlər', 'Filiallar', 'Maaş', 'Abunəlik', 'Vəzifələr', 'Toplu əlavə'])
+      expect(links).not.toContain(page)
+  })
+
+  it('an observer opens the staff list itself now — to read it', async () => {
+    await renderPanel('Employee', enforced(access('Employee', OBSERVER, 'Müşahidəçi', 'observer', [B1])), '/admin/employees')
+    expect(await screen.findByText('İŞÇİ SİYAHISI AÇILDI')).toBeTruthy()
+  })
+
+  it('a company-wide observer is still an observer: no company page opens', async () => {
+    const { container } = await renderPanel('Employee', enforced(access('Employee', OBSERVER, 'Müşahidəçi', 'observer', [B1, B2], 'Company')))
+    await waitFor(() => expect(sidebar(container).links).toContain('İşçilər'))
+    const { links } = sidebar(container)
+    for (const page of ['Elanlar', 'Abunəlik', 'Vəzifələr', 'Qeyri-iş günləri', 'Ayın işçisi', 'Kompüter inventarizasiyası', 'Toplu əlavə'])
+      expect(links).not.toContain(page)
+  })
+
+  it('a refusal says the role does not reach it — no promise of a switch that has happened', async () => {
+    await renderPanel('Employee', enforced(access('Employee', ['dashboard.view'], 'Baxış', 'observer', [B1])), '/admin/today')
+    expect(await screen.findByText('Bu səhifəyə icazəniz yoxdur')).toBeTruthy()
+    expect(screen.getByText(/Rolunuz bu bölməni əhatə etmir/)).toBeTruthy()
+    expect(screen.queryByText('Bu bölmə keçiddən sonra açılacaq')).toBeNull()
+  })
+
+  it('today’s admin and manager see the menu they saw before the switch', async () => {
+    const people = [
+      ['Admin', ALL, 'Şirkət administratoru', 'company_admin', 'Company'],
+      ['Manager', LEGACY_MANAGER, 'Filial meneceri (köhnə qayda)', 'legacy_manager', 'Branch'],
+    ] as const
+    for (const [role, perms, name, template, scope] of people) {
+      const before = await renderPanel(role, access(role, [...perms], name, template, [B1], scope))
+      await waitFor(() => expect(sidebar(before.container).links.length).toBeGreaterThan(3))
+      const menuBefore = sidebar(before.container).links
+      cleanup()
+      const after = await renderPanel(role, enforced(access(role, [...perms], name, template, [B1], scope)))
+      await waitFor(() => expect(sidebar(after.container).links.length).toBeGreaterThan(3))
+      expect(sidebar(after.container).links).toEqual(menuBefore)
+      cleanup()
+    }
   })
 })
