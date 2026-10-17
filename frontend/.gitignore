@@ -13,3 +13,8 @@ dist-ssr
 .idea
 .DS_Store
 public/version.json
+
+# Playwright (npm run e2e) output
+/test-results/
+/playwright-report/
+/blob-report/

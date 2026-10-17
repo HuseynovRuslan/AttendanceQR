@@ -76,6 +76,7 @@ are in `docs/hr-modulu.md` — read that before touching anything named `Leave*`
     docker compose up --build          # local: frontend 8081, backend 8080, postgres 15432
     dotnet test                        # 134 backend tests
     cd frontend && npm run build       # typecheck + build
+    cd frontend && npm run e2e         # Playwright smoke test against test.qrlog.az (E2E_BASE_URL)
 
 Push to `staging` and it deploys itself to https://test.qrlog.az within a couple of minutes.
 Production is deployed by hand from `main`, and **never between 07:30–09:30 or 17:00–19:00** — those

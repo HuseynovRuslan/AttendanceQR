@@ -5,6 +5,7 @@ import { listFailureText } from '../../lib/listFailure'
 import {
   createTask, deleteTask, getTasks, toggleTask, toggleTaskImportant,
   renameTask, setTaskDue, reorderTasks, type TaskRow, assignTask, getAssignable, type Assignable } from '../../api/tasks'
+import { matchesSearch } from '../../lib/searchFold'
 
 type Filter = 'mine' | 'today' | 'important' | 'planned' | 'all'
 
@@ -168,15 +169,14 @@ export function TasksPage() {
   }
   const selDue = selTask ? dueInfo(selTask.dueDate) : null
   // Sorted so the two rows that matter are visible without scrolling: the current assignee, then me.
-  // Azerbaijani casing (İ/i, I/ı) needs the locale-aware lowercase or "İlqar" never matches "ilqar".
-  const az = (s: string) => s.toLocaleLowerCase('az')
   const shownPeople = selTask
     ? [...people]
         .sort((a, b) => {
           const rank = (p: Assignable) => (p.id === selTask.assignedToEmployeeId ? 0 : p.id === employeeId ? 1 : 2)
           return rank(a) - rank(b)
         })
-        .filter((p) => !personQ.trim() || az(p.name).includes(az(personQ.trim())))
+        // Azerbaijani casing (İ/i, I/ı) by the product's one search rule.
+        .filter((p) => matchesSearch(personQ, p.name))
     : []
 
   return (

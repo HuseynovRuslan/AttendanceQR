@@ -13,6 +13,7 @@ import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
 import { groupPermissions, TEMPLATE_HINT } from '../../lib/accessGroups'
 import { fmtDateOfInstant } from '../../lib/format'
+import { matchesSearch } from '../../lib/searchFold'
 
 type Tab = 'assignments' | 'roles' | 'structures'
 type Catalogue = { permissions: PermissionInfo[]; templates: RoleTemplateInfo[] }
@@ -99,11 +100,10 @@ function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>;
   }, [load])
 
   const shown = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase('az')
     return (rows ?? []).filter((a) =>
       (source === 'all' || (source === 'manual' ? !a.system : a.system))
       && (!roleId || a.roleId === roleId)
-      && (!q || (a.employeeName ?? '').toLocaleLowerCase('az').includes(q) || a.area.toLocaleLowerCase('az').includes(q)))
+      && matchesSearch(query, a.employeeName, a.area))
   }, [rows, query, roleId, source])
 
   async function revoke(a: AssignmentRow) {
@@ -565,7 +565,7 @@ function BranchPicker({
   const [picked, setPicked] = useState<Set<string>>(new Set(structure.locations.map((l) => l.id)))
   const [filter, setFilter] = useState('')
   const [busy, setBusy] = useState(false)
-  const shown = branches.filter((b) => !filter.trim() || b.name.toLocaleLowerCase('az').includes(filter.trim().toLocaleLowerCase('az')))
+  const shown = branches.filter((b) => matchesSearch(filter, b.name))
 
   async function save() {
     const before = new Set(structure.locations.map((l) => l.id))

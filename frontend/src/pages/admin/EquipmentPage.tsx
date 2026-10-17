@@ -33,6 +33,7 @@ import {
   IconUser,
   IconX,
 } from '../../components/icons'
+import { matchesSearch } from '../../lib/searchFold'
 
 /**
  * The IT equipment register — who holds what.
@@ -311,11 +312,8 @@ export function EquipmentPage() {
   const visible = useMemo(() => {
     // Same columns the server's `q` searched, so moving the search here changed where it runs and
     // nothing about what it finds.
-    const needle = search.trim().toLocaleLowerCase('az')
     const matches = (r: EquipmentRecord) =>
-      !needle
-      || [r.fullName, r.position, r.area, r.equipment, r.systemUnit, r.monitor, r.otherEquipment]
-        .some((v) => v?.toLocaleLowerCase('az').includes(needle))
+      matchesSearch(search, r.fullName, r.position, r.area, r.equipment, r.systemUnit, r.monitor, r.otherEquipment)
 
     return rows.filter((r) => {
       if (!matches(r)) return false

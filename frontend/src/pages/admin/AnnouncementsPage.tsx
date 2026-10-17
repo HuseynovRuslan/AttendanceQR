@@ -12,6 +12,7 @@ import { sendTestPush } from '../../lib/push'
 import { IconSend, IconTrash, IconX } from '../../components/icons'
 import { fmtDateOfInstant, fmtFullDateTime } from '../../lib/format'
 import { listFailureText } from '../../lib/listFailure'
+import { matchesSearch } from '../../lib/searchFold'
 
 const AUDIENCE: { value: AnnouncementAudience; label: string; hint: string }[] = [
   { value: 'All', label: '👥 Hamı', hint: 'Bütün işçilər' },
@@ -64,8 +65,7 @@ export function AnnouncementsPage() {
   }, [])
 
   const filteredEmployees = useMemo(() => {
-    const q = empSearch.trim().toLowerCase()
-    return q ? employees.filter((e) => e.fullName.toLowerCase().includes(q)) : employees
+    return employees.filter((e) => matchesSearch(empSearch, e.fullName))
   }, [employees, empSearch])
 
   function toggleRecipient(id: string) {

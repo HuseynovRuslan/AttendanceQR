@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -32,5 +33,7 @@ export default defineConfig({
     // a laptop abroad). Everyone who uses this app is in Baku; the tests should say so out loud
     // rather than depend on where they happen to run.
     env: { TZ: 'Asia/Baku' },
+    // e2e/ holds Playwright specs (`npm run e2e`); vitest would pick up their *.spec.ts and fail.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
   },
 })
