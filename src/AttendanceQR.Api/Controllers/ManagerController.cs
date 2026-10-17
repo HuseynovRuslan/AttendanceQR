@@ -268,6 +268,31 @@ public class ManagerController : ControllerBase
 
     // --- reference data (for the manager's own forms) ---------------------------
 
+    // GET /api/manager/employee-branches — the branches the staff screen offers: every branch the caller sees
+    // people at, each saying whether a person may be ADDED there and MOVED there by this caller. The same scope
+    // CreateEmployee and UpdateEmployee then check (ManagesLocationAsync under «employees.create» /
+    // «employees.update»), so the form never offers a branch the save refuses.
+    //
+    // Why not /locations: that one is the branch list itself and asks «locations.view». A Tabelçi does not
+    // hold it — by design, their role is people, not sites — and the staff form read its branches from there,
+    // so «İşçi əlavə et» sat disabled for every Tabelçi (E2E, 2026-10-17). Handing them «locations.view» to fix
+    // it would open the branches screen as well. This answers with ids and names of their own area only.
+    [Permission(AccessPermissions.EmployeesView, Twin = true)]
+    [HttpGet("employee-branches")]
+    public async Task<IActionResult> EmployeeBranches()
+    {
+        var ct = HttpContext.RequestAborted;
+        var seen = await ManagedLocationIdsAsync();
+        var create = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesCreate, ct);
+        var move = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesUpdate, ct);
+        var rows = await _db.Locations
+            .Where(l => seen.Contains(l.Id))
+            .OrderBy(l => l.Name)
+            .Select(l => new { l.Id, l.Name })
+            .ToListAsync(ct);
+        return Ok(rows.Select(l => new { id = l.Id, name = l.Name, canCreate = create.Covers(l.Id), canMove = move.Covers(l.Id) }));
+    }
+
     // GET /api/manager/locations — the branches this manager may file against, for dropdowns.
     [Permission(AccessPermissions.LocationsView, Twin = true)]
     [HttpGet("locations")]

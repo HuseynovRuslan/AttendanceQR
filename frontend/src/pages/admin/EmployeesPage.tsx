@@ -40,7 +40,7 @@ import {
   createManagerEmployee,
   getManagerEmployee,
   getManagerEmployees,
-  getManagerLocations,
+  getManagerEmployeeBranches,
   getManagerSchedules,
   resetManagerEmployeePin,
   updateManagerEmployee,
@@ -240,7 +240,9 @@ function readEmpCols(): EmpCols {
 const PAGE_SIZE = 25
 
 /** A branch in the pickers — all the page reads of one, whichever endpoint it came from. */
-type BranchOption = Pick<AdminLocation, 'id' | 'name'>
+// On the manager shape a branch also says whether this caller may add (canCreate) or move (canMove) people
+// there; the admin shape may do both everywhere, so the flags are simply absent.
+type BranchOption = Pick<AdminLocation, 'id' | 'name'> & { canCreate?: boolean; canMove?: boolean }
 /** A shift in the pickers. A manager's shift list carries no branch, so it is offered for every branch;
  *  the server refuses another site's shift either way (ScheduleBelongsToOtherBranch). */
 type ShiftOption = Pick<Schedule, 'id' | 'name' | 'shiftStart' | 'shiftEnd' | 'isOvernight'> & { locationId: string | null }
@@ -308,6 +310,10 @@ export function EmployeesPage() {
   /** Whether the branch list came — so «no branch assigned yet» is said only when it is true. */
   const [locsLoaded, setLocsLoaded] = useState(false)
   const [locations, setLocations] = useState<BranchOption[]>([])
+  // Where the form may put a person: on the manager shape only the branches the server says the caller may add
+  // to (a new person) or move to (an edit) — the same answer the save then checks. Every branch for an admin.
+  const addable = locations.filter((l) => l.canCreate !== false)
+  const movable = locations.filter((l) => l.canMove !== false)
   const [schedules, setSchedules] = useState<ShiftOption[]>([])
   /** The other companies in this owner's group — the «Sənəd üzrə şirkət» picker. Empty for a tenant
    *  that has none configured, and the field then falls back to a plain text box rather than an
@@ -427,7 +433,7 @@ export function EmployeesPage() {
     void (async () => {
       if (isManager) {
         const [locs, scheds, group] = await Promise.all([
-          getManagerLocations(), getManagerSchedules(), getGroupCompanies(),
+          getManagerEmployeeBranches(), getManagerSchedules(), getGroupCompanies(),
         ])
         if (locs.status === 200 && Array.isArray(locs.data)) {
           setLocations(locs.data)
@@ -561,7 +567,7 @@ export function EmployeesPage() {
   function startAdd() {
     setEditingId(null)
     setAddMode('single')
-    setForm({ ...EMPTY, locationId: locations[0]?.id ?? '' })
+    setForm({ ...EMPTY, locationId: addable[0]?.id ?? '' })
     setError(null)
     setOk(null)
     setLink(null)
@@ -1265,7 +1271,7 @@ ${back}`,
           {mayCreate && (
             <button
               className="btn btn-sm btn-primary"
-              disabled={isManager && locations.length === 0}
+              disabled={isManager && addable.length === 0}
               onClick={showForm && !editingId ? closeForm : startAdd}
             >
               <IconUsers /> İşçi əlavə et
@@ -1274,7 +1280,7 @@ ${back}`,
         </div>
       </div>
 
-      {isManager && locsLoaded && locations.length === 0 && (
+      {isManager && mayCreate && locsLoaded && addable.length === 0 && (
         <div className="fb fb-err" style={{ marginBottom: 14 }}>
           <IconAlert />
           <span>Sizə hələ filial təyin edilməyib — admin ilə əlaqə saxlayın.</span>
@@ -1664,10 +1670,10 @@ ${back}`,
                 {/* A colleague a manager may edit usually works at a branch that is not theirs, and stays
                     there — the server refuses to move them. Their branch is shown, not swapped for the
                     first option the manager happens to run. */}
-                {isManager && form.locationId && !locations.some((l) => l.id === form.locationId) && (
+                {isManager && form.locationId && !(editingId ? movable : addable).some((l) => l.id === form.locationId) && (
                   <option value={form.locationId}>{mgrEditing?.locationName || 'Hazırkı filial'}</option>
                 )}
-                {locations.map((l) => (
+                {(editingId ? movable : addable).map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
                   </option>
