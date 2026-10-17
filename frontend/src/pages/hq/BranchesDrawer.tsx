@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { GroupCompany, GroupSite } from '../../api/hq'
 import { HqDrawer } from './HqDrawer'
 import { fmt } from './format'
+import { matchesSearch } from '../../lib/searchFold'
 
 /**
  * Every branch of every company, in one list.
@@ -25,16 +26,11 @@ export function BranchesDrawer({
   const [emptyFirst, setEmptyFirst] = useState(true)
 
   const rows = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase('az-AZ')
     const named = sites.map((s) => ({
       ...s,
       company: companies[s.companyIndex]?.name ?? '',
     }))
-    const filtered = q
-      ? named.filter((s) =>
-          s.name.toLocaleLowerCase('az-AZ').includes(q) ||
-          s.company.toLocaleLowerCase('az-AZ').includes(q))
-      : named
+    const filtered = named.filter((s) => matchesSearch(query, s.name, s.company))
     // Empty first is the default because that is the question this panel answers. The other order is
     // for reading the day the ordinary way round.
     return [...filtered].sort((a, b) =>

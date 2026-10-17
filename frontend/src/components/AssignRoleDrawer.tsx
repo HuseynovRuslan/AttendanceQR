@@ -5,6 +5,7 @@ import {
 } from '../api/access'
 import { SCOPE_LABEL, TEMPLATE_HINT } from '../lib/accessGroups'
 import { IconX } from './icons'
+import { matchesSearch } from '../lib/searchFold'
 
 /**
  * Giving somebody a role, in three steps: who, which role, where. Only what the server says it would allow
@@ -107,8 +108,7 @@ export function AssignRoleDrawer({
   const branchesOffered = useMemo(() => {
     if (!offer || !role) return []
     const allowed = new Set(role.locationIds)
-    const f = branchFilter.trim().toLocaleLowerCase('az')
-    return offer.branches.filter((b) => allowed.has(b.id) && (!f || b.name.toLocaleLowerCase('az').includes(f)))
+    return offer.branches.filter((b) => allowed.has(b.id) && matchesSearch(branchFilter, b.name))
   }, [offer, role, branchFilter])
 
   const ready =

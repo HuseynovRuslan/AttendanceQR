@@ -25,12 +25,13 @@ public partial class SuperAdminController
             return Ok(Array.Empty<object>());
 
         var ct = HttpContext.RequestAborted;
-        var pattern = $"%{term}%";
+        // The staff search's rule (SearchText) — ILIKE pairs «I» with 'i', Azerbaijani with 'ı'.
+        var key = SearchText.Fold(term);
 
         var matches = await _db.Employees.IgnoreQueryFilters()
-            .Where(e => EF.Functions.ILike(e.FullName, pattern)
+            .Where(e => SearchText.Fold(e.FullName).Contains(key)
                 || (e.PhoneNumber != null && e.PhoneNumber.Contains(term))
-                || (e.Email != null && EF.Functions.ILike(e.Email, pattern)))
+                || (e.Email != null && SearchText.Fold(e.Email).Contains(key)))
             .OrderBy(e => e.FullName)
             .Take(Math.Clamp(take, 1, 100))
             .Select(e => new

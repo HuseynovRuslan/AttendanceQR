@@ -89,6 +89,9 @@ export function EmployeeProfilePage() {
   /** The PIN reset reaches further than the edit for a manager — a fellow manager, or staff at another
    *  area (see CredentialTargetAsync) — so it has its own answer instead of riding on `manageable`. */
   const [canResetPin, setCanResetPin] = useState(true)
+  // Switching someone off is a right of its own («employees.deactivate»): a Tabelçi edits the card but
+  // does not hold it, and the server refuses the toggle for them.
+  const [canDeactivate, setCanDeactivate] = useState(true)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -170,10 +173,16 @@ export function EmployeeProfilePage() {
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
-    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean; isColleague?: boolean } | null
+    const flags = found as unknown as {
+      manageable?: boolean
+      credentialsManageable?: boolean
+      isColleague?: boolean
+      deactivatable?: boolean
+    } | null
     setManageable(!isManager || flags?.manageable === true)
     setColleague(isManager && flags?.isColleague === true)
     setCanResetPin(!isManager || flags?.manageable === true || flags?.credentialsManageable === true)
+    setCanDeactivate(!isManager || flags?.deactivatable === true)
     if (!found) {
       setNotFound(true)
       setLoading(false)
@@ -484,7 +493,7 @@ export function EmployeeProfilePage() {
             {!emp.activated && !isManager && (
               <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
             )}
-            {manageable && !colleague && (
+            {manageable && !colleague && canDeactivate && (
               <button className={`btn btn-sm ${emp.isActive ? 'btn-outline-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
                 {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
               </button>

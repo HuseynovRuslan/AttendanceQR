@@ -21,6 +21,9 @@ export interface ManagerEmployee {
   credentialsManageable?: boolean
   /** Not ordinary staff — another manager, or the admin who clocks in at this branch. */
   isColleague?: boolean
+  /** May this caller switch the person off or back on — «employees.deactivate» over their branch, which
+   *  `manageable` («employees.update») does not imply. Only the single card sends it. */
+  deactivatable?: boolean
   fullName: string
   firstName: string | null
   lastName: string | null
@@ -97,6 +100,20 @@ export interface ManagerEmployeeInput {
 
 export function getManagerLocations() {
   return apiRequest<ManagerLocation[]>('/api/manager/locations')
+}
+
+/** A branch on the staff screen: one the caller sees people at, and whether they may add or move people there. */
+export interface EmployeeBranch {
+  id: string
+  name: string
+  canCreate: boolean
+  canMove: boolean
+}
+
+/** GET /api/manager/employee-branches — the staff screen's branches, by «employees.view». Not /locations: that
+ *  asks «locations.view», which a Tabelçi does not hold, and left their «İşçi əlavə et» with nothing to offer. */
+export function getManagerEmployeeBranches() {
+  return apiRequest<EmployeeBranch[]>('/api/manager/employee-branches')
 }
 
 export function getManagerPositions() {

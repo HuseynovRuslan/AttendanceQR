@@ -1,6 +1,8 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 
 namespace AttendanceQR.Infrastructure.Persistence;
 
@@ -93,6 +95,21 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // SearchText.Fold, said in SQL: lower(translate(x, From, To)). One rule for every search box, run by the
+        // database (see SearchText for why .NET's and Postgres' own lowering cannot be mixed). The in-memory
+        // test provider ignores the mapping and runs the C# body — the same rule.
+        modelBuilder.HasDbFunction(typeof(SearchText).GetMethod(nameof(SearchText.Fold), [typeof(string)])!)
+            .HasTranslation(args =>
+            {
+                var text = args[0];
+                var translate = new SqlFunctionExpression("translate",
+                    [text, new SqlConstantExpression(SearchText.From, typeof(string), text.TypeMapping),
+                        new SqlConstantExpression(SearchText.To, typeof(string), text.TypeMapping)],
+                    nullable: true, argumentsPropagateNullability: [true, false, false], typeof(string), text.TypeMapping);
+                return new SqlFunctionExpression("lower", [translate],
+                    nullable: true, argumentsPropagateNullability: [true], typeof(string), text.TypeMapping);
+            });
 
         // Each entity has its own IEntityTypeConfiguration<T> in Persistence/Configurations.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);

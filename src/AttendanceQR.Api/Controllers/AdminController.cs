@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -100,11 +101,13 @@ public class AdminController : ControllerBase
         {
             // Same four fields the browser used to search: name, phone, job title and the id prefix
             // the list prints.
-            var s = search.Trim().ToLower();
+            // Azerbaijani-safe on both sides, by one rule (SearchText): lowering the text here and the name in
+            // Postgres disagreed about «İ», and «İsmayılov» found nobody.
+            var s = SearchText.Fold(search.Trim());
             q = q.Where(e =>
-                e.FullName.ToLower().Contains(s)
+                SearchText.Fold(e.FullName).Contains(s)
                 || (e.PhoneNumber != null && e.PhoneNumber.Contains(s))
-                || (e.Position != null && e.Position.ToLower().Contains(s))
+                || (e.Position != null && SearchText.Fold(e.Position).Contains(s))
                 || e.Id.ToString().Contains(s));
         }
 
@@ -1190,6 +1193,14 @@ public class AdminController : ControllerBase
         // Promotion is account creation by another name — see Invite.
         if (User.IsImpersonating() && request.Role == EmployeeRole.Admin && employee.Role != EmployeeRole.Admin)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotDuringImpersonation" });
+
+        // Switching somebody off or back on is «employees.deactivate», asked here as on the manager desk
+        // (ManagerController.UpdateEmployee). Whoever reaches this endpoint holds it today — the admin, the
+        // Company administrator — so this is the same rule written where the flag is written, not a new door.
+        if (employee.IsActive != request.IsActive
+            && !(await LocationScopeRules.ScopeAsync(_db, User.EmployeeId(), User.Role(), AccessPermissions.EmployeesDeactivate,
+                HttpContext.RequestAborted)).Covers(employee.LocationId))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeactivateNotAllowed" });
 
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });

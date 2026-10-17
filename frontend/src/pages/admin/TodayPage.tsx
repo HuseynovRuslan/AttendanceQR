@@ -20,6 +20,7 @@ import {
 } from '../../components/icons'
 import { fmtLongDate, fmtTime, toCompanyInputValue } from '../../lib/format'
 import { takeRows, useRowWindow } from '../../lib/rowWindow'
+import { matchesSearch } from '../../lib/searchFold'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -364,7 +365,7 @@ export function TodayPage() {
   }), [locFiltered])
   const incompleteLabel = isToday ? 'İşdə' : 'Çıxış yoxdur'
 
-  const q = search.trim().toLowerCase()
+  const q = search.trim()
   const visible = useMemo(() => sortRows(locFiltered.filter((r) => {
     if (lens === 'flagged' && !faceIsFlagged(r.faceMatchStatus)) return false
     // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
@@ -375,7 +376,7 @@ export function TodayPage() {
       if (!matchesLeaveCard(r, statusFilter)) return false
     } else if (statusFilter && bucketOf(r) !== statusFilter) return false
     if (filterPosition && (r.position ?? '') !== filterPosition) return false
-    if (q && !r.employeeName.toLowerCase().includes(q)) return false
+    if (!matchesSearch(q, r.employeeName)) return false
     return true
   }), sortBy, sortDesc), [locFiltered, lens, statusFilter, filterPosition, q, sortBy, sortDesc])
 
@@ -566,7 +567,7 @@ export function TodayPage() {
 
   const locLabel = (id: string) => locations.find((l) => l.id === id)?.name ?? ''
   const locMatches = locations.filter(
-    (l) => !locQuery.trim() || l.name.toLocaleLowerCase('az').includes(locQuery.toLocaleLowerCase('az')),
+    (l) => matchesSearch(locQuery, l.name),
   )
 
   return (

@@ -76,7 +76,7 @@ function managerRoutes(roster: Answer) {
   net.role = 'Manager'
   net.routes = {
     'GET /api/manager/employees': roster,
-    'GET /api/manager/locations': OK([{ id: 'b1', name: 'Park' }]),
+    'GET /api/manager/employee-branches': OK([{ id: 'b1', name: 'Park', canCreate: true, canMove: true }]),
     'GET /api/manager/schedules': OK([]),
     'GET /api/manager/positions': OK([{ name: 'Bağban' }]),
     'GET /api/tenant/group-companies': OK([]),
@@ -253,6 +253,45 @@ describe('a company switched to Enforced: the list follows the role in the model
     expect(screen.getByText('İşçi əlavə et')).toBeTruthy()
     expect(screen.getByText('PIN sıfırla · nömrəni dəyiş')).toBeTruthy()
     expect(net.calls.filter((c) => c.path.startsWith('/api/admin/'))).toEqual([])
+  })
+
+  // E2E, 2026-10-17: the form read its branches from /locations («locations.view»), which a Tabelçi does not
+  // hold — the 403 left the list empty and «İşçi əlavə et» disabled for every Tabelçi.
+  it('a timekeeper’s «İşçi əlavə et» works without «locations.view», offering only where they may add', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    net.routes['GET /api/manager/locations'] = { status: 403, data: null }
+    net.routes['GET /api/manager/employee-branches'] = OK([
+      { id: 'b1', name: 'Park', canCreate: true, canMove: true },
+      { id: 'b2', name: 'Bağ', canCreate: false, canMove: false },
+    ])
+    renderEnforced('Employee', TIMEKEEPER)
+    await screen.findByText('Aynur Həsənova')
+    const add = screen.getByRole('button', { name: /İşçi əlavə et/ }) as HTMLButtonElement
+    await waitFor(() => expect(add.disabled).toBe(false))
+    await act(async () => {
+      fireEvent.click(add)
+    })
+    const branch = [...document.querySelectorAll('form select')].find((el) =>
+      el.previousElementSibling?.textContent === 'Filial') as HTMLSelectElement
+    expect([...branch.options].map((o) => o.textContent)).toEqual(['Park'])
+    expect(net.calls.some((c) => c.path === '/api/manager/locations')).toBe(false)
+  })
+
+  it('a timekeeper cannot switch a person off: the card says so and the status is locked', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    net.routes['GET /api/manager/employees/a'] = OK({ ...managerRow('a', 'Aynur Həsənova'), deactivatable: false })
+    renderEnforced('Employee', TIMEKEEPER)
+    const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    await act(async () => {
+      fireEvent.click(within(row).getByText('Redaktə'))
+    })
+    await screen.findByRole('button', { name: /Yadda saxla/ })
+    const status = [...document.querySelectorAll('form select')].find((el) =>
+      el.previousElementSibling?.textContent === 'Status') as HTMLSelectElement
+    expect(status.disabled).toBe(true)
+    expect(screen.getByText('İşdən çıxartmaq hüququnuz yoxdur')).toBeTruthy()
   })
 
   it('the Company administrator keeps the admin’s list and its company tools', async () => {
