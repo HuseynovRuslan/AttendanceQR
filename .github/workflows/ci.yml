@@ -57,3 +57,18 @@ jobs:
       # `build` is typecheck + bundle in one script — see package.json.
       - run: npm run build
       - run: npm test
+
+  release-scripts:
+    name: Release scripts (shellcheck and gate tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The scripts that stand between a GitHub run and the production server: lint them strictly, and
+      # run every refusal they promise (ops/tests/release-gate.test.sh). shellcheck ships with the runner.
+      - name: shellcheck
+        run: |
+          shellcheck --severity=warning ops/prod-deploy-ssh-gate.sh ops/prod-release.sh \
+            ops/install-prod-release-gate.sh ops/tests/release-gate.test.sh
+          shellcheck --severity=error ops/deploy-prod.sh
+      - name: Gate tests
+        run: bash ops/tests/release-gate.test.sh

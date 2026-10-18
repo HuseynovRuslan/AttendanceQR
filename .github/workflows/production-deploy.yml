@@ -1,85 +1,158 @@
-# Manual release from Claude Code Cloud or local GitHub CLI.
-# Configure GitHub environment "production" with required reviewers,
-# main-only branch restriction and scoped SSH secrets BEFORE enabling.
+# Manual production release — from Claude Code Cloud, a local `gh`, or the GitHub UI (ops/CLOUD-DEPLOY.md).
+#
+#   mode: preflight   every check a deploy would make, on the server too; changes nothing (the default)
+#   mode: deploy      the same checks, then ops/deploy-prod.sh for exactly this run's commit
+#
+# Nothing here runs on push. The `production` environment holds the SSH credentials and admits only
+# runs on main, after a required reviewer approves — a branch, a fork or a pull request can never reach
+# them, and no run reaches the server without a person saying yes. The job that holds the credentials
+# checks out no code and runs no third-party action: only the shell below, from main.
+#
+# The repository is public, and so are these logs: nothing here prints an address or a credential, and
+# the server side prints checks and commit ids only.
 name: QRLog production deploy
+
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'preflight = check everything, change nothing; deploy = release this commit'
+        type: choice
+        options: [preflight, deploy]
+        default: preflight
+      expected_sha:
+        description: 'The main commit you reviewed (full 40-character SHA). Required for deploy — the run refuses if main has moved.'
+        type: string
+        required: false
+
 permissions:
   contents: read
+
 concurrency:
   group: qrlog-production
   cancel-in-progress: false
+
 jobs:
   verify:
-    name: Test exact release commit
+    name: Test the release commit
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Check the requested commit
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          echo "Release commit: $GITHUB_SHA (mode: $MODE)"
+          if [[ "$MODE" == "deploy" || -n "$EXPECTED_SHA" ]]; then
+            if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::expected_sha must be the full 40-character commit, lowercase."
+              exit 1
+            fi
+            if [[ "$EXPECTED_SHA" != "$GITHUB_SHA" ]]; then
+              echo "::error::main is at $GITHUB_SHA, not the reviewed $EXPECTED_SHA — refusing."
+              exit 1
+            fi
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet test --nologo --verbosity quiet
-      - uses: actions/setup-node@v4
+      - name: Backend tests
+        run: dotnet test --nologo --verbosity quiet
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - working-directory: frontend
+      - name: Frontend install
+        working-directory: frontend
         run: npm ci
-      - working-directory: frontend
+      - name: Frontend typecheck and build
+        working-directory: frontend
         run: npm run build
-      - working-directory: frontend
+      - name: Frontend tests
+        working-directory: frontend
         run: npm test
-  deploy:
-    name: Deploy reviewed commit
+
+      - name: Release gate tests
+        run: bash ops/tests/release-gate.test.sh
+
+  release:
+    name: ${{ inputs.mode == 'deploy' && 'Deploy to production' || 'Preflight against production' }}
     needs: verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment:
       name: production
       url: https://app.qrlog.az
     env:
+      MODE: ${{ inputs.mode }}
       PROD_SSH_HOST: ${{ vars.PROD_SSH_HOST }}
       PROD_SSH_USER: ${{ vars.PROD_SSH_USER }}
       PROD_SSH_PORT: ${{ vars.PROD_SSH_PORT }}
     steps:
-      - name: Check Baku deployment window
+      # Runs after the approval, not when the run was queued: an approval given at 08:00 does not start
+      # a deploy in the morning peak. The server refuses the peaks again on its own.
+      - name: Check the Baku time window and the configuration
         shell: bash
         run: |
           set -euo pipefail
-          hour=$(TZ=Asia/Baku date +%-H)
-          minute=$(TZ=Asia/Baku date +%-M)
-          now=$((hour * 60 + minute))
+          now=$((10#$(TZ=Asia/Baku date +%H) * 60 + 10#$(TZ=Asia/Baku date +%M)))
           if (( (now >= 450 && now < 570) || (now >= 1020 && now < 1140) )); then
-            echo 'REFUSING: QRLog attendance peak in Asia/Baku.' >&2
+            if [[ "$MODE" == "deploy" ]]; then
+              echo "::error::$(TZ=Asia/Baku date +%H:%M) Asia/Baku is a scan peak (07:30–09:30 / 17:00–19:00) — refusing to deploy."
+              exit 1
+            fi
+            echo "::notice::$(TZ=Asia/Baku date +%H:%M) Asia/Baku is a scan peak — the preflight will report that a deploy would be refused."
+          fi
+          if [[ -z "${PROD_SSH_HOST:-}" || -z "${PROD_SSH_USER:-}" ]]; then
+            echo "::error::production environment variables PROD_SSH_HOST and PROD_SSH_USER are not set."
             exit 1
           fi
-          [[ -n "${PROD_SSH_HOST:-}" && -n "${PROD_SSH_USER:-}" ]] || exit 1
           port="${PROD_SSH_PORT:-22}"
-          [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( port >= 1 && port <= 65535 ))
-          echo "Approved release: $GITHUB_SHA"
-      - name: Deploy with verified host key and dedicated SSH identity
+          if [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || (( port < 1 || port > 65535 )); then
+            echo "::error::PROD_SSH_PORT is not a port number."
+            exit 1
+          fi
+          echo "::add-mask::$PROD_SSH_HOST"
+
+      - name: Run on the server through the release gate
         shell: bash
         env:
           PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          [[ -n "${PROD_SSH_PRIVATE_KEY:-}" && -n "${PROD_SSH_KNOWN_HOSTS:-}" ]] || exit 1
-          ssh_dir="$RUNNER_TEMP/qrlog-deploy-ssh"
+          if [[ -z "${PROD_SSH_PRIVATE_KEY:-}" || -z "${PROD_SSH_KNOWN_HOSTS:-}" ]]; then
+            echo "::error::production secrets PROD_SSH_PRIVATE_KEY and PROD_SSH_KNOWN_HOSTS are not set."
+            exit 1
+          fi
+          ssh_dir="$RUNNER_TEMP/qrlog-release-ssh"
           install -m 700 -d "$ssh_dir"
           key="$ssh_dir/id_ed25519"
           known_hosts="$ssh_dir/known_hosts"
-          trap 'rm -f "$key" "$known_hosts"' EXIT
-          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > "$key"
-          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > "$known_hosts"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          (umask 077; printf '%s\n' "$PROD_SSH_PRIVATE_KEY" >"$key")
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" | grep -v '^#' >"$known_hosts"
           chmod 600 "$key" "$known_hosts"
-          ssh -p "${PROD_SSH_PORT:-22}" -i "$key" \
-            -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" \
-            -o ConnectTimeout=15 \
-            "$PROD_SSH_USER@$PROD_SSH_HOST" "deploy $GITHUB_SHA"
-      - name: Verify external API health
-        run: curl --fail --silent --show-error --retry 3 --retry-delay 3 --max-time 10 https://api.qrlog.az/health > /dev/null
+          # The key can run nothing but the server's forced command; this text is its only input.
+          # A dropped connection does not stop a deploy already started — it completes or rolls back
+          # by itself on the server (ops/prod-release.sh).
+          ssh -F /dev/null -T -p "${PROD_SSH_PORT:-22}" -i "$key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o PasswordAuthentication=no \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+            "$PROD_SSH_USER@$PROD_SSH_HOST" "$MODE $GITHUB_SHA"
+
+      - name: Check the API from outside
+        if: inputs.mode == 'deploy'
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 --retry-all-errors --max-time 10 https://api.qrlog.az/health >/dev/null

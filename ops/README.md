@@ -228,3 +228,9 @@ production during a quiet hour, with the change already proven everywhere else.
 Never deploy to production between **07:30–09:30** or **17:00–19:00**. Those are the scan peaks: a
 mistake there means people cannot record that they came to work, and the record is what they are
 paid on.
+
+Production releases go through the manual GitHub Actions workflow — from Claude Code Cloud, a local Claude
+Code session, `gh` or the GitHub website alike: preflight first, a person approves, the server checks
+again and deploys exactly one commit of `main`. Setup, modes and what is refused where:
+[CLOUD-DEPLOY.md](CLOUD-DEPLOY.md). `ops/deploy-prod.sh` stays the one script that does the work, by hand
+or from that workflow.

@@ -6,6 +6,14 @@
 # windows means people cannot clock in, and the clock-in is what they are paid on.
 set -euo pipefail
 
+# An approved release (EXPECTED_SHA, set by the GitHub Actions release helper — see ops/CLOUD-DEPLOY.md)
+# never takes an override: nobody is at the server to own the risk, so the peak window and the backup
+# gate below are not optional. Checked before anything else, so a refused call touches nothing.
+if [ -n "${EXPECTED_SHA:-}" ] && [ "${FORCE:-0}" != "0" ]; then
+  echo "REFUSING: FORCE is not accepted for an approved release." >&2
+  exit 1
+fi
+
 APP_DIR=/opt/attendanceqr
 cd "$APP_DIR"
 
@@ -22,6 +30,16 @@ cd "$APP_DIR"
 # leave the watchdog muted.
 DEPLOY_LOCK="$APP_DIR/backups/.deploying"
 mkdir -p "$APP_DIR/backups"
+
+# One deploy at a time — a release from GitHub Actions and one typed at the server must not interleave
+# their resets and rebuilds. flock, not the watchdog's marker file: a killed deploy leaves a stale file
+# behind, but its lock goes with the process.
+exec 9>"$APP_DIR/backups/.deploy.flock"
+if ! flock -n 9; then
+  echo "REFUSING: another deploy is running right now."
+  exit 1
+fi
+
 touch "$DEPLOY_LOCK"
 trap 'rm -f "$DEPLOY_LOCK"' EXIT
 
