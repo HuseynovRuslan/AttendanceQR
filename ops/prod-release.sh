@@ -123,6 +123,30 @@ migration_changes() {
   grep -E '\.cs$' <<<"$files" | grep -vE '(\.Designer\.cs|ModelSnapshot\.cs)$' || true
 }
 
+# What the last finished deploy left running (the record deploy-prod.sh writes), against the checkout.
+# Status 0: they are the same commit. Status 1: the checkout is ahead only in landing/ — the marketing
+# site, which `git pull && ops/build-landing.sh` updates and deploy-prod.sh never builds — so the app is
+# provably the same; prints that. Status 2: anything else, and why — including no record at all: the
+# checkout alone cannot say what runs (a `git pull` moves it without a deploy).
+record_mismatch() {
+  local record=$1 head=$2
+  if [[ -z "$record" ]]; then
+    echo "none yet — record what production runs, once (ops/CLOUD-DEPLOY.md, one-time setup, step 3)"
+    return 2
+  elif [[ "$record" == "unknown" ]]; then
+    echo "the last deploy ended with production unhealthy — check by hand"
+    return 2
+  elif [[ "$record" == "$head" ]]; then
+    return 0
+  elif [[ "$record" =~ ^[0-9a-f]{40}$ ]] && g merge-base --is-ancestor "$record" "$head" 2>/dev/null \
+       && g diff --quiet "$record" "$head" -- . ':(exclude)landing' 2>/dev/null; then
+    echo "the checkout is ahead of the last deploy (${record:0:12}) only in landing/ — the app is the same"
+    return 1
+  fi
+  echo "the last finished deploy was ${record:0:12}, but the checkout is on ${head:0:12} (a failed deploy, or a git pull without one) — deploy by hand"
+  return 2
+}
+
 db_scalar() {
   # The database container's own variables name the user and database, so nothing here carries them.
   docker compose -f "$APP_DIR/docker-compose.prod.yml" --project-directory "$APP_DIR" exec -T db \
@@ -183,15 +207,13 @@ run_checks() {
   head=$(g rev-parse --verify -q 'HEAD^{commit}') || { bad "git: no HEAD in the checkout"; return; }
   note "deployed now: ${head:0:12}"
   record=$(cat "$RECORD" 2>/dev/null || true)
-  if [[ -z "$record" ]]; then
-    note "deploy record: none yet (first release through this path) — the checkout is taken as what runs"
-  elif [[ "$record" == "$head" ]]; then
-    ok "deploy record: the checkout is what the last finished deploy left running"
-  elif [[ "$record" == "unknown" ]]; then
-    bad "deploy record: the last deploy ended with production unhealthy — check by hand"
-  else
-    bad "deploy record: the last finished deploy was ${record:0:12}, but the checkout is on ${head:0:12} (a failed deploy, or a git pull without one) — deploy by hand"
-  fi
+  local verdict verdict_rc=0
+  verdict=$(record_mismatch "$record" "$head") || verdict_rc=$?
+  case $verdict_rc in
+    0) ok "deploy record: the checkout is what the last finished deploy left running" ;;
+    1) ok "deploy record: $verdict" ;;
+    *) bad "deploy record: $verdict" ;;
+  esac
 
   if [[ "$head" == "$sha" ]]; then
     if [[ "$mode" == "deploy" ]]; then

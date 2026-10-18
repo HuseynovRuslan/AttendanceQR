@@ -152,9 +152,9 @@ of the release ceremony the app does:
 
     cd /opt/attendanceqr && git pull && bash ops/build-landing.sh
 
-That pull also moves the checkout past the app version that is running, so automated releases
-([CLOUD-DEPLOY.md](CLOUD-DEPLOY.md)) refuse until the next deploy by hand (`sudo ops/deploy-prod.sh`)
-brings the two together again.
+That pull also moves the checkout past the app version that is running. Automated releases
+([CLOUD-DEPLOY.md](CLOUD-DEPLOY.md)) accept that only while the pull brought nothing but `landing/`
+changes; if it brought app changes too, deploy them by hand (`sudo ops/deploy-prod.sh`) first.
 
 If the Caddyfile changed in the same pull, `caddy reload` will NOT pick it up — the file is
 bind-mounted, and git replaces its inode on pull, so anything run inside the container (validate

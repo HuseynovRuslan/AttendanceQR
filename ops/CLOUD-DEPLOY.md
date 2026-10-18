@@ -73,7 +73,7 @@ An administrator logged in to the server is root already and can run the same ch
 | any command but `preflight <sha>` / `deploy <sha>`, any non-hex or short SHA | | ✔ (gate, then helper) | |
 | the SHA is not the tip of `main` (main moved after approval); a tag posing as `origin/main` | | ✔ | ✔ |
 | the commit is already deployed | | ✔ | |
-| the checkout is not what the last deploy left running (a failed deploy, a `git pull` without one) | | ✔ | |
+| no record of what runs yet; the checkout is not what the last deploy left running (a failed deploy, a `git pull` of more than `landing/`) | | ✔ | |
 | deployed commit not in `main`'s history; tracked files edited on the server | | ✔ | |
 | a pending migration that does anything but add (drop, rename, alter, SQL, data change, hand-built operation); an edited old migration; a migration outside the migrations folder | | ✔ | |
 | production unhealthy before the deploy; Docker down; < 5 GB free; compose invalid | | ✔ | |
@@ -108,9 +108,10 @@ in `/var/log/qrlog-release/`, and the gate and helper write to syslog
 (`journalctl -t qrlog-release-gate -t qrlog-release`). What is running is recorded, root-owned, in
 `/var/lib/qrlog-deploy/deployed-commit` — written only by `deploy-prod.sh`.
 
-A `git pull` in `/opt/attendanceqr` (for the landing site, say) moves the checkout past what is
-running; automated releases then refuse until a deploy by hand (`sudo ops/deploy-prod.sh`) brings the
-two together again.
+A `git pull` in `/opt/attendanceqr` moves the checkout past what is running. If it brought only
+`landing/` changes (the marketing site, which `deploy-prod.sh` never builds), the release check verifies
+that and carries on — the app is the same. Anything else, and automated releases refuse until a deploy
+by hand (`sudo ops/deploy-prod.sh`) brings the two together again.
 
 ## One-time setup
 
@@ -140,6 +141,18 @@ sudo git -C /opt/attendanceqr fetch -q --no-tags origin +refs/heads/main:refs/re
 tmp=$(mktemp -d) && sudo git -C /opt/attendanceqr archive refs/remotes/origin/main ops | tar -x -C "$tmp"
 sudo bash "$tmp/ops/install-prod-release-gate.sh" /tmp/qrlog_actions_deploy.pub
 rm -rf "$tmp" /tmp/qrlog_actions_deploy.pub
+```
+
+Then, once, record what production runs — the checkout alone cannot say (a `git pull` moves it without
+a deploy), so the release check refuses until there is a record. It is the commit of the last
+`ops/deploy-prod.sh` run: the newest `reset: moving to …` line in the reflog, cross-checked against
+when the app image was built. `deploy-prod.sh` keeps the record from then on.
+
+```bash
+sudo git -C /opt/attendanceqr reflog -10 --date=iso | grep 'reset: moving to'
+sudo docker image inspect -f '{{.Created}}' "$(sudo docker inspect -f '{{.Image}}' attendanceqr-backend-1)"
+sudo install -d -m 0755 /var/lib/qrlog-deploy
+echo <full sha of that commit> | sudo tee /var/lib/qrlog-deploy/deployed-commit
 ```
 
 The installer creates the `qrlog-release` account (password locked, in no privileged group), installs the

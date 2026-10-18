@@ -180,6 +180,29 @@ for name in 20261015083814_AddStructures 20261015090651_AddAccessRoles 202610160
   expect_eq "$(unsafe_migration_ops <"$file")" "" "$name is additive"
 done
 
+# The deploy record against the checkout, in a scratch repository (g, the helper's git, pointed at it).
+repo=$(mktemp -d)
+trap 'rm -rf "$repo"' EXIT
+git_t() { git -C "$repo" -c user.name=test -c user.email=test@example.invalid -c core.autocrlf=false "$@"; }
+git_t init -q -b main
+mkdir -p "$repo/landing" "$repo/src"
+echo v1 >"$repo/src/app.txt"; echo v1 >"$repo/landing/index.astro"
+git_t add -A; git_t commit -q -m base; base=$(git_t rev-parse HEAD)
+echo v2 >"$repo/landing/index.astro"; git_t commit -q -am "landing only"; landing=$(git_t rev-parse HEAD)
+echo v2 >"$repo/src/app.txt"; git_t commit -q -am "app change"; app=$(git_t rev-parse HEAD)
+git_t checkout -q -b other "$base"; echo other >"$repo/src/app.txt"; git_t commit -q -am other; other=$(git_t rev-parse HEAD)
+g() { git -C "$repo" "$@"; }
+verdict_of() { record_mismatch "$1" "$2" >/dev/null; echo $?; }
+expect_eq "$(verdict_of "$base" "$base")" "0" "record = checkout agrees"
+expect_eq "$(verdict_of "$base" "$landing")" "1" "a checkout ahead only in landing/ is the same app"
+expect_eq "$(verdict_of "$base" "$app")" "2" "a checkout ahead in the app is refused"
+expect_eq "$(verdict_of "$landing" "$app")" "2" "a checkout ahead in the app after a landing pull is refused"
+expect_eq "$(verdict_of "$other" "$landing")" "2" "a record not in the checkout's history is refused"
+expect_eq "$(verdict_of "" "$base")" "2" "no record is refused — the checkout alone cannot say what runs"
+expect_eq "$(verdict_of unknown "$base")" "2" "an 'unknown' record is refused"
+expect_eq "$(verdict_of "${base:0:12}" "$landing")" "2" "a malformed record is refused"
+unset -f g
+
 # ─── deploy-prod.sh: an approved release never takes FORCE ──────────────────────────────────────────
 out=$(EXPECTED_SHA="$SHA" FORCE=1 bash "$here/deploy-prod.sh" 2>&1)
 expect_eq "$?" "1" "deploy-prod.sh refuses FORCE for an approved release"

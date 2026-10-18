@@ -113,3 +113,8 @@ echo "Next: from your computer, check that the key alone can do nothing:"
 echo "  ssh -i <private key> $USER_NAME@<server> id </dev/null                        → REFUSING (not a command)"
 echo "  ssh -i <private key> $USER_NAME@<server> 'preflight <sha of main>' </dev/null → REFUSING (no approval proof)"
 echo "A preflight that runs needs an approved GitHub run (ops/CLOUD-DEPLOY.md, step 6)."
+if [[ ! -s /var/lib/qrlog-deploy/deployed-commit ]]; then
+  echo
+  echo "Not yet recorded: which commit production runs. Releases refuse until it is —"
+  echo "see ops/CLOUD-DEPLOY.md, one-time setup, step 3."
+fi
