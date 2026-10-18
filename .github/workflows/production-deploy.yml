@@ -1,0 +1,85 @@
+# Manual release from Claude Code Cloud or local GitHub CLI.
+# Configure GitHub environment "production" with required reviewers,
+# main-only branch restriction and scoped SSH secrets BEFORE enabling.
+name: QRLog production deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: qrlog-production
+  cancel-in-progress: false
+jobs:
+  verify:
+    name: Test exact release commit
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet test --nologo --verbosity quiet
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npm test
+  deploy:
+    name: Deploy reviewed commit
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://app.qrlog.az
+    env:
+      PROD_SSH_HOST: ${{ vars.PROD_SSH_HOST }}
+      PROD_SSH_USER: ${{ vars.PROD_SSH_USER }}
+      PROD_SSH_PORT: ${{ vars.PROD_SSH_PORT }}
+    steps:
+      - name: Check Baku deployment window
+        shell: bash
+        run: |
+          set -euo pipefail
+          hour=$(TZ=Asia/Baku date +%-H)
+          minute=$(TZ=Asia/Baku date +%-M)
+          now=$((hour * 60 + minute))
+          if (( (now >= 450 && now < 570) || (now >= 1020 && now < 1140) )); then
+            echo 'REFUSING: QRLog attendance peak in Asia/Baku.' >&2
+            exit 1
+          fi
+          [[ -n "${PROD_SSH_HOST:-}" && -n "${PROD_SSH_USER:-}" ]] || exit 1
+          port="${PROD_SSH_PORT:-22}"
+          [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( port >= 1 && port <= 65535 ))
+          echo "Approved release: $GITHUB_SHA"
+      - name: Deploy with verified host key and dedicated SSH identity
+        shell: bash
+        env:
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "${PROD_SSH_PRIVATE_KEY:-}" && -n "${PROD_SSH_KNOWN_HOSTS:-}" ]] || exit 1
+          ssh_dir="$RUNNER_TEMP/qrlog-deploy-ssh"
+          install -m 700 -d "$ssh_dir"
+          key="$ssh_dir/id_ed25519"
+          known_hosts="$ssh_dir/known_hosts"
+          trap 'rm -f "$key" "$known_hosts"' EXIT
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > "$key"
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > "$known_hosts"
+          chmod 600 "$key" "$known_hosts"
+          ssh -p "${PROD_SSH_PORT:-22}" -i "$key" \
+            -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" \
+            -o ConnectTimeout=15 \
+            "$PROD_SSH_USER@$PROD_SSH_HOST" "deploy $GITHUB_SHA"
+      - name: Verify external API health
+        run: curl --fail --silent --show-error --retry 3 --retry-delay 3 --max-time 10 https://api.qrlog.az/health > /dev/null
