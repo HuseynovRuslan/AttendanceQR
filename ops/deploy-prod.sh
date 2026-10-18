@@ -25,15 +25,15 @@ mkdir -p "$APP_DIR/backups"
 touch "$DEPLOY_LOCK"
 trap 'rm -f "$DEPLOY_LOCK"' EXIT
 
-# Local wall-clock hour (server is UTC+2, same as the staff).
-HOUR=$(date +%-H)
-MIN=$(date +%-M)
+# Use the staff timezone, independent of the server operating-system clock.
+HOUR=$(TZ=Asia/Baku date +%-H)
+MIN=$(TZ=Asia/Baku date +%-M)
 NOWMIN=$((HOUR * 60 + MIN))
 in_window() { [ "$NOWMIN" -ge "$1" ] && [ "$NOWMIN" -lt "$2" ]; }
 
 # 07:30–09:30 and 17:00–19:00.
 if in_window 450 570 || in_window 1020 1140; then
-  echo "REFUSING: $(date +%H:%M) is a scan peak (07:30–09:30 / 17:00–19:00)."
+  echo "REFUSING: $(TZ=Asia/Baku date +%H:%M) (Asia/Baku) is a scan peak (07:30–09:30 / 17:00–19:00)."
   echo "People are clocking in right now. Wait for the window to pass, or override with:"
   echo "    FORCE=1 $0"
   [ "${FORCE:-0}" = "1" ] || exit 1
@@ -46,6 +46,19 @@ PREV=$(git rev-parse HEAD)
 
 echo "→ pulling main"
 git fetch -q origin main
+# An approved cloud release must deploy exactly its tested commit. If someone
+# merged a newer commit after approval, stop before touching the live checkout.
+if [ -n "${EXPECTED_SHA:-}" ]; then
+  if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "REFUSING: malformed EXPECTED_SHA" >&2
+    exit 1
+  fi
+  remote_sha=$(git rev-parse origin/main)
+  if [ "$remote_sha" != "$EXPECTED_SHA" ]; then
+    echo "REFUSING: origin/main changed after release approval" >&2
+    exit 1
+  fi
+fi
 git reset -q --hard origin/main
 git log -1 --pretty='  now on: %h %s'
 
