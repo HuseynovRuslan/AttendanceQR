@@ -5,8 +5,9 @@
 #
 # Nothing here runs on push. The `production` environment holds the SSH credentials and admits only
 # runs on main, after a required reviewer approves — a branch, a fork or a pull request can never reach
-# them, and no run reaches the server without a person saying yes. The job that holds the credentials
-# checks out no code and runs no third-party action: only the shell below, from main.
+# them. The server does not take that on trust: the release job sends the token GitHub issues only to
+# an approved production job, and the server verifies it before doing anything. The job that holds
+# the credentials checks out no code and runs no third-party action: only the shell below, from main.
 #
 # The repository is public, and so are these logs: nothing here prints an address or a credential, and
 # the server side prints checks and commit ids only.
@@ -83,7 +84,9 @@ jobs:
         run: npm test
 
       - name: Release gate tests
-        run: bash ops/tests/release-gate.test.sh
+        run: |
+          bash ops/tests/release-gate.test.sh
+          bash ops/tests/deploy-prod.test.sh
 
   release:
     name: ${{ inputs.mode == 'deploy' && 'Deploy to production' || 'Preflight against production' }}
@@ -91,31 +94,61 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The OIDC token is the server's proof that this job was approved (ops/verify-release-token.py);
+    # the job needs nothing else from GitHub.
+    permissions:
+      id-token: write
     environment:
       name: production
       url: https://app.qrlog.az
     env:
       MODE: ${{ inputs.mode }}
-      PROD_SSH_HOST: ${{ vars.PROD_SSH_HOST }}
-      PROD_SSH_USER: ${{ vars.PROD_SSH_USER }}
-      PROD_SSH_PORT: ${{ vars.PROD_SSH_PORT }}
     steps:
-      # Runs after the approval, not when the run was queued: an approval given at 08:00 does not start
-      # a deploy in the morning peak. The server refuses the peaks again on its own.
-      - name: Check the Baku time window and the configuration
+      # Runs after the approval, not when the run was queued: an approval given at 07:10 does not start
+      # a deploy that would still be running in the morning peak. The server refuses again on its own.
+      - name: Check the Baku time window
         shell: bash
         run: |
           set -euo pipefail
-          now=$((10#$(TZ=Asia/Baku date +%H) * 60 + 10#$(TZ=Asia/Baku date +%M)))
+          read -r h m zone <<<"$(TZ=Asia/Baku date '+%H %M %z')"
+          if [[ "$zone" != "+0400" ]]; then
+            echo "::error::this runner cannot tell the Asia/Baku time — refusing."
+            exit 1
+          fi
+          now=$((10#$h * 60 + 10#$m))
           if (( (now >= 450 && now < 570) || (now >= 1020 && now < 1140) )); then
+            why="a scan peak (07:30–09:30 / 17:00–19:00)"
+          elif (( (now >= 420 && now < 450) || (now >= 990 && now < 1020) )); then
+            why="the half hour before a scan peak (no deploy starts 07:00–09:30 / 16:30–19:00)"
+          else
+            why=""
+          fi
+          if [[ -n "$why" ]]; then
             if [[ "$MODE" == "deploy" ]]; then
-              echo "::error::$(TZ=Asia/Baku date +%H:%M) Asia/Baku is a scan peak (07:30–09:30 / 17:00–19:00) — refusing to deploy."
+              echo "::error::$h:$m Asia/Baku is $why — refusing to deploy."
               exit 1
             fi
-            echo "::notice::$(TZ=Asia/Baku date +%H:%M) Asia/Baku is a scan peak — the preflight will report that a deploy would be refused."
+            echo "::notice::$h:$m Asia/Baku is $why — the preflight will report that a deploy would be refused."
           fi
-          if [[ -z "${PROD_SSH_HOST:-}" || -z "${PROD_SSH_USER:-}" ]]; then
-            echo "::error::production environment variables PROD_SSH_HOST and PROD_SSH_USER are not set."
+
+      - name: Run on the server through the release gate
+        shell: bash
+        env:
+          # The host is a secret, not a variable: variables are printed in every step's log header, and
+          # this log is public. The user name and port are in ops/CLOUD-DEPLOY.md anyway.
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ vars.PROD_SSH_USER }}
+          PROD_SSH_PORT: ${{ vars.PROD_SSH_PORT }}
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PROD_SSH_HOST:-}" || -z "${PROD_SSH_PRIVATE_KEY:-}" || -z "${PROD_SSH_KNOWN_HOSTS:-}" ]]; then
+            echo "::error::production secrets PROD_SSH_HOST, PROD_SSH_PRIVATE_KEY and PROD_SSH_KNOWN_HOSTS must be set."
+            exit 1
+          fi
+          if [[ ! "${PROD_SSH_USER:-}" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+            echo "::error::production variable PROD_SSH_USER is not set to a user name."
             exit 1
           fi
           port="${PROD_SSH_PORT:-22}"
@@ -123,19 +156,21 @@ jobs:
             echo "::error::PROD_SSH_PORT is not a port number."
             exit 1
           fi
-          echo "::add-mask::$PROD_SSH_HOST"
-
-      - name: Run on the server through the release gate
-        shell: bash
-        env:
-          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${PROD_SSH_PRIVATE_KEY:-}" || -z "${PROD_SSH_KNOWN_HOSTS:-}" ]]; then
-            echo "::error::production secrets PROD_SSH_PRIVATE_KEY and PROD_SSH_KNOWN_HOSTS are not set."
+          if [[ ! "$MODE" =~ ^(preflight|deploy)$ ]]; then
+            echo "::error::unknown mode."
             exit 1
           fi
+
+          # GitHub's signed statement that this job — production environment, main, this workflow, this
+          # commit, this mode — passed its approval. The server verifies it; the key alone starts nothing.
+          token=$(curl -fsS --max-time 15 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=qrlog-prod-$MODE" | jq -r '.value // empty')
+          if [[ -z "$token" ]]; then
+            echo "::error::GitHub did not issue this job its approval token."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+
           ssh_dir="$RUNNER_TEMP/qrlog-release-ssh"
           install -m 700 -d "$ssh_dir"
           key="$ssh_dir/id_ed25519"
@@ -144,10 +179,10 @@ jobs:
           (umask 077; printf '%s\n' "$PROD_SSH_PRIVATE_KEY" >"$key")
           printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" | grep -v '^#' >"$known_hosts"
           chmod 600 "$key" "$known_hosts"
-          # The key can run nothing but the server's forced command; this text is its only input.
-          # A dropped connection does not stop a deploy already started — it completes or rolls back
-          # by itself on the server (ops/prod-release.sh).
-          ssh -F /dev/null -T -p "${PROD_SSH_PORT:-22}" -i "$key" \
+          # The key can run nothing but the server's forced command; this text is its only input, and
+          # the token travels on stdin. A dropped connection does not stop a deploy already started —
+          # it completes or rolls back by itself on the server (ops/prod-release.sh).
+          printf '%s\n' "$token" | ssh -F /dev/null -T -p "$port" -i "$key" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o PasswordAuthentication=no \
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" -o GlobalKnownHostsFile=/dev/null \
             -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \

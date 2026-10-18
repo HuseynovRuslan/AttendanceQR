@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # The ONLY thing the GitHub Actions release key can run on the production server.
 #
 # Installed root-owned, outside the repo, at /usr/local/bin/qrlog-prod-deploy-gate, and named as the
@@ -14,7 +14,10 @@
 #
 # The release user has no shell use and no sudo except one line: the root helper below. The command is
 # parsed here and again, independently, by the helper — sudo's argument list is the only thing that
-# crosses, so nothing a client sends can reach a shell. See ops/CLOUD-DEPLOY.md.
+# crosses, so nothing a client sends can reach a shell. stdin passes through untouched: it carries
+# GitHub's proof that the run was approved, which the helper verifies before doing anything (the key
+# alone can start nothing). See ops/CLOUD-DEPLOY.md.
+export LC_ALL=C  # the parser below sees ASCII rules, whatever locale the client sent
 set -euo pipefail
 
 readonly ROOT_HELPER=/usr/local/sbin/qrlog-prod-release

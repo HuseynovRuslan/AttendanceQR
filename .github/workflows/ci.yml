@@ -62,13 +62,18 @@ jobs:
     name: Release scripts (shellcheck and gate tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       # The scripts that stand between a GitHub run and the production server: lint them strictly, and
-      # run every refusal they promise (ops/tests/release-gate.test.sh). shellcheck ships with the runner.
+      # run every refusal and failure path they promise. shellcheck, python3 and openssl ship with the
+      # runner.
       - name: shellcheck
         run: |
           shellcheck --severity=warning ops/prod-deploy-ssh-gate.sh ops/prod-release.sh \
-            ops/install-prod-release-gate.sh ops/tests/release-gate.test.sh
-          shellcheck --severity=error ops/deploy-prod.sh
-      - name: Gate tests
+            ops/install-prod-release-gate.sh ops/deploy-prod.sh \
+            ops/tests/release-gate.test.sh ops/tests/deploy-prod.test.sh
+      - name: Gate and approval-proof tests
         run: bash ops/tests/release-gate.test.sh
+      - name: deploy-prod.sh failure paths
+        run: bash ops/tests/deploy-prod.test.sh
