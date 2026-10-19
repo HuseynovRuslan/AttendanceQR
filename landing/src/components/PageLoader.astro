@@ -545,16 +545,15 @@ const t = useTranslations(lang)
 >
 
 <script is:inline>
-  /* 1400 + 2050 + 800 + 640 → vizör ekranda ən çox 3.49 saniyə. */
   ;(function () {
     if (window.__qrl) return
     window.__qrl = 1
 
-    var MIN = 1400,
-      MAX = 2050,
-      SUCCESS = 800,
-      LEAVE = 640,
-      REVEAL = 900
+    var MIN = 1300,
+      MAX = 2000,
+      SUCCESS = 300,
+      LEAVE = 600,
+      REVEAL = 800
     var root = document.documentElement
     var el = document.getElementById('qrl')
     if (!el) return
