@@ -93,15 +93,18 @@ const contactHref = localizedPath(lang, "/elaqe/");
 // loqodakı "Log") — tailwind.css-ə bax.
 const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
-const buttonBase = `items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-200 ${focusRing}`;
 // "Daxil ol" — ağ fonlu, 1px tam mavi (#155EEF) çərçivəli, mavi yazılı və ikonlu düymə, künclər rounded-xl,
 // kölgə yoxdur. Üstünə gələndə QRLog-un əsas göy rəngi (`brand`) ilə dolur, yazı və ikon ağ olur.
 // Hündürlük sabitdir (h-11 = 44px) ki, "Əlaqə saxlayın" ilə piksel-piksel eyni olsun. Görünmə (inline-flex / flex) və padding çağırılan yerdə verilir, çünki masaüstü və mobil menyuda fərqlidir.
 const buttonLogin = `items-center justify-center gap-2 whitespace-nowrap h-11 rounded-xl! border border-[#155EEF] bg-white text-[15px] font-semibold text-[#155EEF] transition-colors duration-500 hover:border-brand hover:bg-brand hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155EEF]`;
-// Əsas göy düymə — "Əlaqə saxlayın"
-const buttonPrimary = `${buttonBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
 // Menyu linkləri: üstünə gələndə QRLog-un göy rəngi (açıq göy fon + göy yazı).
 const linkHover = "hover:bg-brand-50 hover:text-brand focus-visible:bg-brand-50";
+// Əsas düymə — "Əlaqə saxlayın": tünd (mürəkkəb rəngli), künclər "Daxil ol" kimi rounded-xl. Haşiyə və kölgəsi qəsdən yoxdur:
+// düymə grid-də eni 0-a qədər yığılır, haşiyə və ya kölgə olsaydı yığılanda kəsilib qalardı.
+// "Daxil ol" ilə eyni ölçü və şrift: hündürlük h-11 (44px), künclər rounded-xl, yazı text-[15px] font-semibold.
+const buttonPrimary = `items-center justify-center whitespace-nowrap h-11 rounded-xl! bg-stone-900 text-[15px] font-semibold text-white transition-colors duration-500 hover:bg-stone-700 active:scale-[0.98] ${focusRing}`;
+// Əlaqə düyməsinin sağındakı ox (Lucide "arrow-right"), inline SVG.
+const arrowIcon = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
 const flagBox =
   "block h-3.5 w-[21px] shrink-0 overflow-hidden rounded-[3px] ring-1 ring-stone-900/10 [&>svg]:block [&>svg]:size-full";
 
@@ -300,7 +303,11 @@ const barMotion =
             href={contactHref}
             data-header-cta
           >
-            <span class="shrink-0 px-5 py-2.5">{t("cta.btn1")}</span>
+            {/* Padding burada, düymədə yox (yuxarıdakı izaha bax); h-full düymənin 44px-ni doldurur. */}
+            <span class="inline-flex h-full shrink-0 items-center gap-2 px-5">
+              {t("cta.btn1")}
+              <Fragment set:html={arrowIcon} />
+            </span>
           </a>
         </div>
 
@@ -380,9 +387,12 @@ const barMotion =
               {t("cta.login")}
             </a>
             <a
-              class={`${buttonPrimary} flex px-5 py-3 min-[540px]:hidden`}
-              href={contactHref}>{t("cta.btn1")}</a
+              class={`${buttonPrimary} flex gap-2 px-5 min-[540px]:hidden`}
+              href={contactHref}
             >
+              {t("cta.btn1")}
+              <Fragment set:html={arrowIcon} />
+            </a>
           </div>
         </div>
       </div>
