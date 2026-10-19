@@ -98,6 +98,8 @@ const buttonBase = `items-center justify-center whitespace-nowrap rounded-lg tex
 const buttonGhost = `${buttonBase} text-stone-700 hover:bg-stone-100 hover:text-stone-900`;
 // Əsas göy düymə — "Əlaqə saxlayın"
 const buttonPrimary = `${buttonBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-md shadow-brand/25 hover:bg-brand-600 hover:from-brand-600 hover:to-brand-700 hover:shadow-lg hover:shadow-brand/30 active:scale-[0.98]`;
+// Menyu linkləri: üstünə gələndə QRLog-un göy rəngi (açıq göy fon + göy yazı).
+const linkHover = "hover:bg-brand-50 hover:text-brand focus-visible:bg-brand-50";
 const flagBox =
   "block h-3.5 w-[21px] shrink-0 overflow-hidden rounded-[3px] ring-1 ring-stone-900/10 [&>svg]:block [&>svg]:size-full";
 
@@ -165,7 +167,7 @@ const barMotion =
             links.map((link) => (
               <li>
                 <a
-                  class={`inline-flex h-10 items-center rounded-full px-3 text-[14.5px] font-medium text-stone-600 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 aria-[current=page]:text-brand ${focusRing}`}
+                  class={`inline-flex h-10 items-center rounded-full px-3 text-[14.5px] font-medium text-stone-600 transition-colors duration-200 ${linkHover} aria-[current=page]:text-brand ${focusRing}`}
                   href={link.href}
                   aria-current={link.page === path ? "page" : undefined}
                 >
@@ -183,7 +185,7 @@ const barMotion =
             <div class="group/lang relative" data-lang>
               <button
                 type="button"
-                class={`flex h-10 cursor-pointer items-center gap-2 rounded-full border-0 bg-transparent px-3 text-sm font-semibold text-stone-700 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 group-data-open/lang:bg-stone-100 ${focusRing}`}
+                class={`flex h-10 cursor-pointer items-center gap-2 rounded-full border-0 bg-transparent px-3 text-sm font-semibold text-stone-700 transition-colors duration-200 ${linkHover} group-data-open/lang:bg-brand-50 group-data-open/lang:text-brand ${focusRing}`}
                 aria-expanded="false"
                 aria-controls="lang-menu"
                 aria-label={`${t("a11y.lang")}: ${lang.toUpperCase()} (${langMeta[lang].name})`}
@@ -219,7 +221,7 @@ const barMotion =
                 {otherLangs.map((otherLang) => (
                   <li>
                     <a
-                      class={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 transition-colors duration-150 hover:bg-stone-100 hover:text-stone-900 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand`}
+                      class={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 transition-colors duration-150 hover:bg-brand-50 hover:text-brand focus-visible:bg-brand-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand`}
                       href={localizedPath(otherLang, path)}
                       hreflang={otherLang}
                       lang={otherLang}
@@ -326,7 +328,7 @@ const barMotion =
                 links.map((link) => (
                   <li>
                     <a
-                      class="block rounded-xl px-2 py-3 text-[15px] font-medium text-stone-700 transition-colors duration-200 hover:bg-stone-100 hover:text-stone-900 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand aria-[current=page]:text-brand"
+                      class="block rounded-xl px-2 py-3 text-[15px] font-medium text-stone-700 transition-colors duration-200 hover:bg-brand-50 hover:text-brand focus-visible:bg-brand-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand aria-[current=page]:text-brand"
                       href={link.href}
                       aria-current={link.page === path ? "page" : undefined}
                     >
