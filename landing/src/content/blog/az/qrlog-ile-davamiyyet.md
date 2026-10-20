@@ -2,6 +2,8 @@
 title: "QRLog ilə işçi davamiyyətini necə idarə etmək olar"
 description: "QR kod, GPS və foto təsdiqi ilə işçi giriş-çıxışını qeydə almağın müasir yolu."
 pubDate: 2026-07-11
+category: davamiyyet
+cover: /blog/cover-qr-davamiyyet.svg
 ---
 
 İşçi davamiyyətinin uçotu uzun müddət turniket, barmaq izi cihazı və ya kağız jurnal tələb edirdi.
