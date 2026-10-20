@@ -1,0 +1,246 @@
+---
+/*
+  Bir bloq məqaləsinin səhifəsi (üç dildə). Nazik səhifələr (pages/blog/[...slug], pages/ru/blog/[...slug],
+  pages/en/blog/[...slug]) BaseLayout-u qurub bunu çağırır.
+
+  Hissələr:
+    1. Başlıq     — breadcrumb, kateqoriya/tarix/oxu müddəti, başlıq, giriş cümləsi (700px sütun), geniş üz şəkli
+    2. Gövdə      — eyni 700px sütun: «Qısaca» qutusu, mətn, Paylaş (məqalənin sonunda), CTA
+    3. Əlaqəli    — «Bunları da oxuyun»
+
+  Props: lang — səhifənin dili; post — göstəriləcək məqalə (getPosts-dan).
+*/
+import { render } from 'astro:content'
+// İkonlar ayrı-ayrı fayllardan idxal olunur (paketin kök faylı ~1700 ikonu yükləyir, dev server yavaşlayır).
+import ArrowLeft from '@lucide/astro/icons/arrow-left'
+import ArrowRight from '@lucide/astro/icons/arrow-right'
+import Check from '@lucide/astro/icons/check'
+import Copy from '@lucide/astro/icons/copy'
+import { useTranslations, fmt, localizedPath, type Lang } from '../i18n/ui'
+import { SITE, whatsappUrl } from '../data/site'
+import {
+  getPosts,
+  getRelatedPosts,
+  postSlug,
+  blogPath,
+  dateLocale,
+  categoryKey,
+  readingMinutes,
+  type BlogPost,
+} from '../data/blog'
+
+const { lang, post } = Astro.props as { lang: Lang; post: BlogPost }
+const t = useTranslations(lang)
+const { Content } = await render(post)
+
+const slug = postSlug(post)
+const canonicalUrl = SITE.url + blogPath(lang, slug)
+const categoryName = t(categoryKey[post.data.category])
+const readTime = fmt(t('blog.readTime'), { n: readingMinutes(post) })
+
+// pubDate UTC-yə düşür; timeZone: 'UTC' olmasa, server UTC-dən geridə olanda tarix bir gün geri qaçardı.
+const formatDate = (date: Date) =>
+  date.toLocaleDateString(dateLocale[lang], { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+
+const related = getRelatedPosts(await getPosts(lang), post)
+
+// Axtarış sistemləri üçün məqalə məlumatı (JSON-LD). Şəkil sahəsi yoxdur: SVG onlara uyğun deyil.
+const articleLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: post.data.title,
+  description: post.data.description,
+  datePublished: post.data.pubDate.toISOString(),
+  inLanguage: lang,
+  mainEntityOfPage: canonicalUrl,
+  publisher: { '@type': 'Organization', name: SITE.name, url: SITE.url },
+}
+
+// Markdown mətninin üslubu: markdown HTML-i (h2, p, ul...) sinifsiz gəlir, ona görə üslub atadan, sinifdən-sinfə
+// `[&_h2]:...` (alt element) variantları ilə verilir. Sinif adları TAM yazılıb: Tailwind yalnız tam adları tapır.
+const articleBody = [
+  '[&>:first-child]:mt-0',
+  '[&_h2]:mt-14 [&_h2]:mb-4 [&_h2]:text-[clamp(26px,3.2vw,32px)] [&_h2]:leading-[1.25] [&_h2]:font-bold [&_h2]:tracking-[-0.025em] [&_h2]:text-ink',
+  '[&_h3]:mt-10 [&_h3]:mb-3 [&_h3]:text-[clamp(21px,2.4vw,24px)] [&_h3]:leading-[1.3] [&_h3]:font-bold [&_h3]:text-ink',
+  '[&_p]:mb-[1.45em] [&_p]:text-pretty [&_strong]:font-semibold [&_strong]:text-ink [&_em]:italic',
+  '[&_ul]:mb-[1.45em] [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:marker:text-brand',
+  '[&_ol]:mb-[1.45em] [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:marker:font-semibold [&_ol]:marker:text-brand',
+  '[&_li]:mb-3 [&_li]:pl-1.5 [&_li>p]:mb-0',
+  '[&_blockquote]:my-10 [&_blockquote]:border-l-[3px] [&_blockquote]:border-brand [&_blockquote]:pl-6 [&_blockquote]:text-[1.15em] [&_blockquote]:leading-[1.6] [&_blockquote]:font-medium [&_blockquote]:text-stone-900 [&_blockquote_p]:mb-0',
+  '[&_a]:text-brand [&_a]:underline [&_a]:underline-offset-4 [&_a:hover]:text-brand-700',
+  '[&_hr]:my-12 [&_hr]:border-hair',
+  '[&_img]:my-8 [&_img]:rounded-2xl',
+  '[&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.9em]',
+].join(' ')
+
+// Təkrar edən sinif sətirləri (tam yazılıb ki, Tailwind tapsın).
+const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
+const smallLabel = 'text-[12.5px] font-bold tracking-[0.08em] text-ink2 uppercase'
+const buttonReset = 'cursor-pointer [font:inherit]'
+// Kateqoriya çipi: yazı çipin içində padding ilə dayanır, sətir hündürlüyü leading-4 ilə sabitdir, ona görə
+// yazı çipin düz ortasındadır (əvvəlki kiçik kvadrat yazı ilə dəqiq düzülmürdü). Mətn adi yazılışla qalır.
+const categoryChip =
+  'inline-flex items-center rounded-full bg-brand-50 px-[11px] py-[5px] text-[12.5px] leading-4 font-bold text-brand-700'
+// Bölmə boşluqları: global.css hər <section>-a 104px yuxarı-aşağı padding verir; burada py-0 ilə sıfırlanır
+// və boşluq yalnız içəridəki .wrap-dan gəlir. Footer bölmənin üstünə 32px (lg-də 48px) minir, ona görə
+// son bölmənin alt padding-i = görünən boşluq (64-72px) + mindirmə. «Bunları da oxuyun» yoxdursa son bölmə gövdədir.
+const bodyBottom = related.length > 0 ? 'pb-12 sm:pb-16' : 'pb-24 lg:pb-30'
+const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(`${post.data.title} ${canonicalUrl}`)}`
+---
+
+<script is:inline type="application/ld+json" set:html={JSON.stringify(articleLd)} />
+
+{/* 1. BAŞLIQ. Header sabit olduğu üçün yuxarıdan onun hündürlüyü qədər boşluq. */}
+<section class="bg-white py-0 pt-[calc(var(--header-h)+36px)]">
+  <div class="wrap">
+    <div class="mx-auto max-w-[700px]">
+      <nav aria-label={t('blog.crumb.aria')}>
+        <ol class="m-0 flex list-none flex-wrap items-center gap-2 p-0 text-sm text-ink2">
+          <li>
+            <a href={localizedPath(lang, '/')} class={`hover:text-brand ${focusRing}`}>{t('blog.crumb.home')}</a>
+          </li>
+          <li aria-hidden="true">/</li>
+          <li>
+            <a href={blogPath(lang)} class={`hover:text-brand ${focusRing}`}>{t('nav.blog')}</a>
+          </li>
+          <li aria-hidden="true">/</li>
+          <li class="font-semibold text-ink">{categoryName}</li>
+        </ol>
+      </nav>
+
+      <div class="mt-8">
+        <div class="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-ink2">
+          <span class={categoryChip}>{categoryName}</span>
+          <span class="flex items-center gap-2 text-sm text-ink2">
+            <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+            {/* aria-hidden: ekran oxuyucu ayırıcı işarəni oxumasın. */}
+            <span aria-hidden="true" class="text-stone-400">·</span>
+            <span>{readTime}</span>
+          </span>
+        </div>
+
+        <h1 class="mt-6 text-[clamp(32px,4.6vw,46px)] leading-[1.12] font-bold tracking-[-0.03em] text-balance text-ink">
+          {post.data.title}
+        </h1>
+        <p class="mt-4 text-[19px] leading-[1.55] text-stone-600 sm:text-[21px]">{post.data.description}</p>
+      </div>
+    </div>
+
+    {/* Üz şəkli mətn sütunundan genişdir (1040px). */}
+    {
+      post.data.cover && (
+        <div class="mx-auto mt-8 aspect-[5/2] sm:mt-10 max-w-[1040px] overflow-hidden rounded-[24px] bg-brand-50">
+          <img src={post.data.cover} alt="" width="1200" height="600" fetchpriority="high" class="h-full w-full object-cover" />
+        </div>
+      )
+    }
+  </div>
+</section>
+
+{/* 2. GÖVDƏ. Hamısı bir 700px sütunda: sol kənar başlıqla üst-üstə düşür. Paylaş məqalənin sonundadır. */}
+<section class="bg-white py-0">
+  <div class={`wrap pt-8 sm:pt-12 ${bodyBottom}`}>
+    <article class="mx-auto max-w-[700px] min-w-0 text-[18px] leading-[1.7] text-stone-800 sm:text-[20px] sm:leading-[1.75]">
+      {
+        post.data.summary && (
+          <div class="mb-10 rounded-2xl border border-l-4 border-hair border-l-brand bg-white px-[26px] py-[22px]">
+            <p class="mb-2 text-[12.5px] font-bold tracking-[0.08em] text-brand uppercase">{t('blog.summary.label')}</p>
+            <p class="text-[18px] leading-[1.65] text-stone-800">{post.data.summary}</p>
+          </div>
+        )
+      }
+
+      <div data-article-body class={articleBody}>
+        <Content />
+      </div>
+
+      {/* Məqalənin sonu: solda siyahıya qayıt, sağda Paylaş. Düymə və link blogShare.ts ilə data-* atributları vasitəsilə bağlıdır. */}
+      <div class="mt-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-hair pt-8 sm:mt-14">
+        <a
+          href={blogPath(lang)}
+          class="group inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-stone-600 no-underline transition-colors hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          <ArrowLeft class="size-[18px] transition-transform group-hover:-translate-x-1 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" aria-hidden="true" />
+          {t('blog.back')}
+        </a>
+        <div class="flex flex-wrap items-center gap-3">
+          <p class={`mr-2 ${smallLabel}`}>{t('blog.share.title')}</p>
+          <button
+            type="button"
+            data-copy-link
+            data-url={canonicalUrl}
+            data-label-copied={t('blog.share.copied')}
+            class={`${buttonReset} group/copy inline-flex min-h-11 items-center gap-2 rounded-full border border-hair bg-white px-3.5 text-sm font-semibold text-ink hover:border-stone-400 data-[copied=true]:border-brand data-[copied=true]:bg-brand data-[copied=true]:text-white ${focusRing}`}
+          >
+            <Copy class="size-4 group-data-[copied=true]/copy:hidden" aria-hidden="true" />
+            <Check class="hidden size-4 group-data-[copied=true]/copy:block" aria-hidden="true" />
+            <span data-copy-label>{t('blog.share.copy')}</span>
+          </button>
+          <span class="sr-only" aria-live="polite" data-copy-status></span>
+          <a
+            href={whatsappShareUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t('blog.share.whatsapp')}
+            class={`flex size-11 items-center justify-center rounded-full border border-hair bg-white text-emerald-700 hover:border-stone-400 ${focusRing}`}
+          >
+            <i class="fa-brands fa-whatsapp text-[20px] text-emerald-700" aria-hidden="true"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="mt-8 flex flex-wrap items-center justify-between gap-5 rounded-3xl sm:mt-10 bg-brand p-8">
+        <div>
+          <p class="text-2xl leading-tight font-bold tracking-[-0.02em] text-white">{t('blog.cta.title')}</p>
+          <p class="mt-2 text-base text-white/90">{t('blog.cta.text')}</p>
+        </div>
+        <a
+          href={whatsappUrl(t('wa.message'))}
+          target="_blank"
+          rel="noopener noreferrer"
+          class={`inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-[22px] py-3.5 font-bold text-brand-700 no-underline hover:bg-brand-50 ${focusRing}`}
+        >
+          {t('blog.cta.button')}
+          <ArrowRight class="size-[18px]" aria-hidden="true" />
+        </a>
+      </div>
+    </article>
+  </div>
+</section>
+
+{/* 3. «BUNLARI DA OXUYUN». Footer-in üstünə minməsin deyə alt boşluq böyükdür. */}
+{
+  related.length > 0 && (
+    <section class="border-t border-hair bg-white py-0">
+      <div class="wrap pt-8 pb-24 sm:pt-12 lg:pb-30">
+        <p class={`mb-3 ${smallLabel}`}>{t('blog.related.eyebrow')}</p>
+        <h2 class="mb-7 text-[clamp(26px,3vw,32px)] font-bold tracking-[-0.03em] text-ink">{t('blog.related.title')}</h2>
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-5">
+          {related.map((item) => (
+            <a
+              href={blogPath(lang, postSlug(item))}
+              class={`group flex items-center gap-4 rounded-[22px] border border-hair bg-white p-3 text-ink no-underline transition duration-300 hover:-translate-y-1 hover:border-brand/25 hover:shadow-[0_24px_48px_-24px_rgba(11,67,184,.4)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${focusRing}`}
+            >
+              <div class="h-[100px] w-[150px] flex-none overflow-hidden rounded-[14px] bg-brand-50">
+                {item.data.cover && (
+                  <img src={item.data.cover} alt="" width="1200" height="600" loading="lazy" class="h-full w-full object-cover" />
+                )}
+              </div>
+              <div class="min-w-0">
+                {/* flex w-fit: çip mətn qədər dar qalır və başlığın üstündə ayrı sətirdə durur. */}
+                <span class="flex w-fit items-center rounded-full bg-brand-50 px-[9px] py-[3px] text-xs leading-4 font-bold text-brand-700">
+                  {t(categoryKey[item.data.category])}
+                </span>
+                <p class="mt-1.5 text-[17px] leading-[1.35] font-bold">{item.data.title}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+<script>
+  import './blogShare'
+</script>

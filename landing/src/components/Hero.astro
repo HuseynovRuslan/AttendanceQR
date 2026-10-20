@@ -32,7 +32,7 @@ const atWork = 184;
 // lift under the pointer. The border colour is NOT in here — two border-* utilities on one element
 // race in the stylesheet, and the live card needs a green edge — so each card brings its own.
 const cardSkin =
-  "rounded-2xl border p-2.5 shadow-[0_12px_30px_-14px_rgb(15_23_42/0.45)] backdrop-blur-md transition-transform duration-300 will-change-transform";
+  "rounded-2xl border p-2.5 shadow-[0_12px_30px_-14px_rgb(15_23_42/0.45)] backdrop-blur-md transition-[scale] duration-300 will-change-transform";
 const cardWhite = `${cardSkin} border-white/70 bg-white/90`;
 const card = `absolute z-20 ${cardWhite} hover:scale-105`;
 // The live card is the one that says the system is running, so it carries a green edge and a little
@@ -43,6 +43,8 @@ const cardLive = `absolute z-20 ${cardSkin} border-emerald-500/20 bg-white/95 ho
 const cardFlow = `${cardWhite} @md:hover:scale-105`;
 // Dörd kartın hər biri öz animate-float-* sinfi ilə yavaş-yavaş üzür (ayrı müddət və faza: styles/tailwind.css).
 // Üzmə `translate` xassəsindədir, hover:scale-105 isə `scale`-də — ikisi toqquşmur, toplanır.
+// Siçan izləməsi (heroMotion.ts) isə üçüncü xassəni — `transform`-u — işlədir. Ona görə keçid yalnız `scale`-dədir
+// (`transition-[scale]`): `transition-transform` olsaydı, hər kadrda yazılan transform 300 ms gecikərdi.
 // No text size in here either: the "+181" badge needs a smaller one than the initials do.
 const avatar =
   "flex size-6 shrink-0 items-center justify-center rounded-full font-bold ring-2 ring-white @md:size-7";
@@ -59,13 +61,14 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
   One column on a phone (words, picture, figures), two from `lg` up — picture right, figures under the
   words.
 -->
-<section class="hero" id="top">
+<section class="hero" id="top" data-hero>
   <div
     class="wrap grid items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16"
   >
     <div class="max-w-160 lg:col-start-1 lg:row-start-1">
       <h1
         class="text-[clamp(42px,6.2vw,76px)] leading-[0.98] font-semibold tracking-[-0.045em] text-balance"
+        data-hero-in
       >
         {
           t("hero.title.a")
@@ -111,11 +114,15 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           https://developer.mozilla.org/en-US/docs/Web/CSS/text-wrap */}
       <p
         class="mt-6 max-w-147.5 text-[16px] leading-[1.7] text-pretty text-stone-600 sm:text-[17px]"
+        data-hero-in
       >
         {t("hero.sub")}
       </p>
 
-      <div class="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center">
+      <div
+        class="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center"
+        data-hero-in
+      >
         {/* data-hero-cta: Header.astro-dakı skript bu düyməni izləyir. Düymə ekranda görünərkən
             header-dəki "Əlaqə saxlayın" gizlənir, düymə ekrandan çıxanda header-dəki açılır —
             beləcə eyni düymə ekranda heç vaxt iki dəfə görünmür. Atributu silmə. */}
@@ -165,6 +172,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
     -->
     <div
       class="@container relative isolate mx-auto w-full max-w-160 not-supports-[width:1cqw]:hidden lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mr-0 lg:ml-auto"
+      data-hero-scene
     >
       <!--
         The colour the scene stands in. Two soft blooms in the brand blue and its indigo neighbour,
@@ -200,7 +208,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         inside the figure and nothing else sits between the two.
       -->
       <figure
-        class="relative aspect-5/7 w-full perspective-distant @md:aspect-square"
+        class="relative aspect-5/7 w-full @md:aspect-square"
       >
         <!--
           The halo. It sits over the phone's place and nowhere else, so the device lifts off the
@@ -231,52 +239,77 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           The printed poster, turned a few degrees away from the reader and standing up again when
           the pointer reaches it. The QR is the only picture in it; the words around it are the
           site's own. It holds the back plane — z-0, under everything.
+
+          Poster, telefon və kartlar `data-hero-layer` ilə işarələnib: heroMotion.ts siçan hərəkətini
+          bu qatlara verir. Poster və telefon ayrıca sarğıdadır, çünki onların öz `transform`-u (poza)
+          artıq var; sarğı isə boşdur və siçanı öz içindəki elementlərdən yox buraxmır
+          (`pointer-events-none`), elementlərin özü isə `pointer-events-auto` ilə hover-i saxlayır.
+          Poster sarğısı `perspective-distant`-i figure-dan götürüb: 3D əyilmə yalnız birbaşa uşağa təsir edir.
         -->
         <div
-          class="absolute top-[13%] bottom-[30%] left-0 z-0 flex w-[42%] flex-col -rotate-3 rounded-[3cqw] border border-white/70 bg-white p-[3cqw] shadow-[0_3cqw_5cqw_-2cqw_rgb(15_23_42/0.28)] transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:top-[10%] @md:bottom-[26%] @md:left-0 @md:w-[44%] @md:-rotate-2 @md:-rotate-y-6 @md:rounded-[2cqw] @md:p-[2.2cqw]"
+          class="pointer-events-none absolute inset-0 z-0 perspective-distant"
+          data-hero-layer="poster"
         >
-          <div class="flex items-center justify-between gap-1.5">
-            <img
-              class="h-3 w-auto @md:h-3.5"
-              src={logoWord.src}
-              alt=""
-              width={LOGO_WORD.width}
-              height={LOGO_WORD.height}
-            />
-            <!-- There is no room for it beside the wordmark while the poster is ~120px wide. -->
-            <span class="hidden text-[10px] text-slate-400 @md:inline"
-              >{t("hero.d.site")}</span
+          <div
+            class="pointer-events-auto absolute top-[13%] bottom-[30%] left-0 flex w-[42%] flex-col -rotate-3 rounded-[3cqw] border border-white/70 bg-white p-[3cqw] shadow-[0_3cqw_5cqw_-2cqw_rgb(15_23_42/0.28)] transition-transform duration-500 ease-out will-change-transform hover:rotate-0 hover:rotate-y-0 @md:top-[10%] @md:bottom-[26%] @md:left-0 @md:w-[44%] @md:-rotate-2 @md:-rotate-y-6 @md:rounded-[2cqw] @md:p-[2.2cqw]"
+          >
+            <div class="flex items-center justify-between gap-1.5">
+              <img
+                class="h-3 w-auto @md:h-3.5"
+                src={logoWord.src}
+                alt=""
+                width={LOGO_WORD.width}
+                height={LOGO_WORD.height}
+              />
+              <!-- There is no room for it beside the wordmark while the poster is ~120px wide. -->
+              <span class="hidden text-[10px] text-slate-400 @md:inline"
+                >{t("hero.d.site")}</span
+              >
+            </div>
+            <p
+              class="mt-2 text-[12px] leading-[1.2] font-semibold text-slate-900 @md:text-[13px] @xl:text-[15px]"
             >
-          </div>
-          <p
-            class="mt-2 text-[12px] leading-[1.2] font-semibold text-slate-900 @md:text-[13px] @xl:text-[15px]"
-          >
-            {t("hero.d.poster")}
-          </p>
-          <!--
-            512 = 2x of the widest this is ever painted, and there is a trap in getting to that
-            number. The figure caps at max-w-160 (640px) while @md fires at 28rem (448px), so AT THE
-            CAP it is the @md rules that govern: the poster is 44% wide minus 2.2cqw of padding
-            either side — 253 CSS px, not the 42%/3cqw of the narrow state. 2x of that is 507. A 3x
-            phone asks for less (404), so the desktop band is what sets the size.
+              {t("hero.d.poster")}
+            </p>
+            <!--
+              512 = 2x of the widest this is ever painted, and there is a trap in getting to that
+              number. The figure caps at max-w-160 (640px) while @md fires at 28rem (448px), so AT THE
+              CAP it is the @md rules that govern: the poster is 44% wide minus 2.2cqw of padding
+              either side — 253 CSS px, not the 42%/3cqw of the narrow state. 2x of that is 507. A 3x
+              phone asks for less (404), so the desktop band is what sets the size.
 
-            quality is pushed up because this is a QR: webp's default is tuned for photographs and
-            rings the edges of hard black-and-white geometry.
-          -->
-          <Image
-            class="mt-2 min-h-0 w-full flex-1 object-contain"
-            src={qrPoster}
-            alt=""
-            width={512}
-            quality={90}
-            loading="eager"
-            decoding="async"
-          />
-          <p
-            class="mt-2 hidden text-[10px] leading-[1.35] text-slate-500 @md:line-clamp-2"
-          >
-            {t("hero.d.posterNote")}
-          </p>
+              quality is pushed up because this is a QR: webp's default is tuned for photographs and
+              rings the edges of hard black-and-white geometry.
+            -->
+            <!--
+              Skan ardıcıllığı (heroMotion.ts) bu qutuda oynayır: mavi xətt QR-ın üstündən enir, sonra
+              çərçivə bir anlıq işıqlanır. Hər ikisi `opacity-0`-dır — skript işləməsə heç vaxt görünmürlər.
+            -->
+            <div class="relative mt-2 min-h-0 w-full flex-1" data-hero-qr>
+              <Image
+                class="absolute inset-0 size-full object-contain"
+                src={qrPoster}
+                alt=""
+                width={512}
+                quality={90}
+                loading="eager"
+                decoding="async"
+              />
+              <span
+                aria-hidden="true"
+                class="pointer-events-none absolute inset-0 rounded-lg bg-brand/10 opacity-0 ring-2 ring-brand/60"
+                data-hero-scan-glow></span>
+              <span
+                aria-hidden="true"
+                class="pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded-full bg-linear-to-r from-transparent via-brand to-transparent opacity-0 shadow-[0_0_10px_2px] shadow-brand/50"
+                data-hero-scan-line></span>
+            </div>
+            <p
+              class="mt-2 hidden text-[10px] leading-[1.35] text-slate-500 @md:line-clamp-2"
+            >
+              {t("hero.d.posterNote")}
+            </p>
+          </div>
         </div>
 
         <!--
@@ -289,31 +322,38 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           `--ry` (yana dönmə, − = sağ kənar və düymələr görünür), `--rz` (yana əyilmə, + = üst sağa əyilir).
           Siçan üstünə gələndə telefon düzəlir (`hover:`).
         -->
-        <PhoneFrame
-          class="absolute top-[4%] left-[40%] z-10 w-[52%] [--rx:15deg] [--ry:-20deg] [--rz:6deg] hover:[--rx:3deg] hover:[--ry:-6deg] hover:[--rz:2deg] @md:left-[42%] @md:w-[42%] @md:[--rx:22deg] @md:[--ry:-30deg] @md:[--rz:13deg] @md:hover:[--rx:4deg] @md:hover:[--ry:-8deg] @md:hover:[--rz:2deg]"
+        <div
+          class="pointer-events-none absolute inset-0 z-10"
+          data-hero-layer="phone"
         >
-          <!--
-            640, not 512 like the poster: the widest DESKTOP paint is the same 253 CSS px (2x = 507),
-            but the phone is 52% wide in the narrow state where the poster is 42%, so a 430px
-            viewport at 3x asks for 545. The source is 1170 wide, so nothing is upscaled.
-          -->
-          <Image
-            class="block h-auto w-full"
-            src={appShot}
-            alt={t("hero.d.shotAlt")}
-            width={640}
-            loading="eager"
-            decoding="async"
-          />
-        </PhoneFrame>
+          <PhoneFrame
+            class="pointer-events-auto absolute top-[4%] left-[40%] z-10 w-[52%] [--rx:15deg] [--ry:-20deg] [--rz:6deg] hover:[--rx:3deg] hover:[--ry:-6deg] hover:[--rz:2deg] @md:left-[42%] @md:w-[42%] @md:[--rx:22deg] @md:[--ry:-30deg] @md:[--rz:13deg] @md:hover:[--rx:4deg] @md:hover:[--ry:-8deg] @md:hover:[--rz:2deg]"
+          >
+            <!--
+              640, not 512 like the poster: the widest DESKTOP paint is the same 253 CSS px (2x = 507),
+              but the phone is 52% wide in the narrow state where the poster is 42%, so a 430px
+              viewport at 3x asks for 545. The source is 1170 wide, so nothing is upscaled.
+            -->
+            <Image
+              class="block h-auto w-full"
+              src={appShot}
+              alt={t("hero.d.shotAlt")}
+              width={640}
+              loading="eager"
+              decoding="async"
+            />
+          </PhoneFrame>
+        </div>
 
         <!-- The scan that starts it: the name on this note is the name on the screen behind it. -->
         <div
+          data-hero-layer="card"
           class={`${card} animate-float-scan top-0 left-[34%] flex w-[66%] items-center gap-2 @md:left-[16%] @md:w-[40%]`}
         >
           <span
             class="grid size-7 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-brand-600 @md:size-8 @md:text-[11px]"
             aria-hidden="true"
+            data-hero-scanned
           >
             {person.initials}
           </span>
@@ -340,6 +380,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           can do without.
         -->
         <div
+          data-hero-layer="card"
           class={`${card} animate-float-offline hidden items-start gap-2 @md:top-[26%] @md:left-[68%] @md:flex @md:w-[36%]`}
         >
           <span
@@ -384,6 +425,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
           under the sentence while the card is narrow rather than squeezing it to two words a line.
         -->
         <div
+          data-hero-layer="card"
           class={`${cardLive} animate-float-live bottom-[2%] left-[-1%] w-[70%] @md:top-[72%] @md:bottom-auto @md:left-[-2%] @md:w-[40%]`}
         >
           <p
@@ -417,13 +459,14 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
             <span class="flex shrink-0 -space-x-1" aria-hidden="true">
               {
                 team.map((i) => (
-                  <span class={`${avatar} bg-emerald-50 text-[10px] text-emerald-700 @md:text-[11px]`}>
+                  <span class={`${avatar} bg-emerald-50 text-[10px] text-emerald-700 @md:text-[11px]`} data-hero-avatar>
                     {i}
                   </span>
                 ))
               }
               <span
                 class={`${avatar} bg-slate-100 text-[9px] text-slate-600 @md:text-[10px]`}
+                data-hero-avatar
               >
                 +{atWork - team.length}
               </span>
@@ -440,12 +483,14 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         лица" is half again as wide as "Üz uyğunluğu", and a cell sized for one truncates the other.
       -->
       <div
+        data-hero-layer="card"
         class={`${cardFlow} relative z-20 mt-3 w-full @md:absolute @md:animate-float-recorded @md:top-[67%] @md:left-[46%] @md:mt-0 @md:w-[42%]`}
       >
         <div class="flex items-center gap-2">
           <span
             class="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-500 text-white @md:size-7"
             aria-hidden="true"
+            data-hero-check
           >
             <svg
               class="size-3.5"
@@ -473,7 +518,10 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
         <ul role="list" class="mt-2 flex list-none flex-wrap gap-1">
           {
             checks.map((c) => (
-              <li class="inline-flex items-center gap-1 rounded-lg bg-emerald-50/90 px-1.5 py-1 text-[10px] leading-[1.2] font-medium text-emerald-700 @md:text-[11px]">
+              <li
+                class="inline-flex items-center gap-1 rounded-lg bg-emerald-50/90 px-1.5 py-1 text-[10px] leading-[1.2] font-medium text-emerald-700 @md:text-[11px]"
+                data-hero-pill
+              >
                 <svg
                   class="size-3 shrink-0"
                   viewBox="0 0 24 24"
@@ -498,6 +546,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
       role="list"
       class="grid list-none grid-cols-3 gap-4 border-t border-stone-300/60 pt-7 sm:gap-8 lg:col-start-1 lg:row-start-2"
       aria-label={t("stats.title")}
+      data-hero-in
     >
       {
         stats.map((s) => (
@@ -514,6 +563,12 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
     </ul>
   </div>
 </section>
+
+<script>
+  import { initHeroMotion } from "./heroMotion";
+
+  initHeroMotion();
+</script>
 
 <style>
   /* ---------- Skan animasiyası: "skan" sözünün ətrafındakı xətt və sözün rəngi ----------

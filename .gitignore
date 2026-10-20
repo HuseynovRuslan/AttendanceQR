@@ -508,3 +508,5 @@ android-signing/
 
 # Firebase client config — injected in CI from GOOGLE_SERVICES_JSON_B64 secret, not committed
 frontend/android/app/google-services.json
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

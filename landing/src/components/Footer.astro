@@ -77,9 +77,8 @@ const productLinks = allProductLinks.filter((link) => link.isVisible)
 // «Şirkət» sütunu.
 const companyLinks: FooterLink[] = [
   { label: 'foot.about', href: localizedPath(lang, '/haqqimizda/') },
-  // Bloq linki müvəqqəti gizlidir: bloqda hələ bir məqalə var və tək məqaləyə aparan link saytı
-  // yarımçıq göstərir. Səhifə və məqalə yerindədir — 3 məqalə olanda bu sətri qaytar.
-  // { label: 'foot.blog', href: '/bloq/' },
+  // Bloq üç dildədir (/blog/, /ru/blog/, /en/blog/): ünvanı localizedPath dil prefiksi ilə qurur.
+  { label: 'foot.blog', href: localizedPath(lang, '/blog/') },
   { label: 'nav.contact', href: localizedPath(lang, '/elaqe/') },
 ]
 

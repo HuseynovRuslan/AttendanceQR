@@ -34,7 +34,7 @@ const { lang, path = "/" } = Astro.props;
 const t = useTranslations(lang);
 
 // Dil seçimi yalnız bu səhifənin həqiqətən build olunduğu dilləri təklif edir. Yalnız Azərbaycan
-// dilində olan səhifədə (bloq, 404) isə ümumiyyətlə görünmür: bir elementli açılan siyahı mənasızdır,
+// dilində olan səhifədə (məs. 404) isə ümumiyyətlə görünmür: bir elementli açılan siyahı mənasızdır,
 // olmayan dillərə keçid isə əvvəllər 404-ə aparırdı.
 const routeLangs = availableLangs(path);
 const otherLangs = routeLangs.filter((routeLang) => routeLang !== lang);
@@ -52,7 +52,7 @@ const langMeta: Record<Lang, { name: string; flag: string }> = {
   en: { name: "English", flag: US },
 };
 
-// Bölmə linkləri tam ünvandır (ana səhifə + #hash), ona görə eyni header /elaqe/ və /bloq/
+// Bölmə linkləri tam ünvandır (ana səhifə + #hash), ona görə eyni header /elaqe/ və /blog/
 // səhifələrində də işləyir: ana səhifədə klik həmin bölməyə hamar sürüşür, başqa səhifədən klik
 // ana səhifəni açıb bölməyə düşür. Ayrıca «Qiymət» səhifəsi yoxdur — «Qiymət» də eyni cür bölmə
 // linkidir (#pricing).
@@ -60,8 +60,9 @@ const langMeta: Record<Lang, { name: string; flag: string }> = {
 // yalnız site.ts → PRICING.enabled olanda var, ona görə link də yalnız onda görünür. Footer-də
 // eyni qayda işləyir.
 // `page` — ayrıca səhifəyə aparan link üçündür (məs. "/haqqimizda/"): hazırda açıq olan səhifənin
-// linki bununla işarələnir (aria-current="page"). Hazırda heç bir link `page` almır; massivin tipi
-// onu ona görə elan edir ki, gələcəkdə əlavə olunan link bu sahəni yaza bilsin.
+// linki bununla işarələnir (aria-current="page"). Hazırda yalnız «Bloq» `page` alır: /blog/ siyahısında
+// link mavi görünür (məqalə səhifəsində yox: orada `path` /blog/ deyil, məqalənin öz ünvanıdır).
+// Başqa ayrıca səhifəyə link əlavə olunsa, o da bu sahəni yaza bilər.
 // Burada "Əlaqə" linki yoxdur: aşağıdakı "Əlaqə saxlayın" düyməsi elə həmin səhifəyə aparır, eyni
 // yerə fərqli sözlərlə aparan iki element isə iki ayrı yer kimi oxunur. Footer-də bu link qalır.
 interface NavLink {
@@ -76,6 +77,7 @@ const allLinks: NavLink[] = [
   { href: `${home}#modules`, label: t("nav.modules"), isVisible: true },
   { href: `${home}#pricing`, label: t("nav.pricing"), isVisible: PRICING.enabled },
   { href: `${home}#faq`, label: t("nav.faq"), isVisible: true },
+  { href: localizedPath(lang, "/blog/"), label: t("nav.blog"), isVisible: true, page: "/blog/" },
 ];
 const links = allLinks.filter((link) => link.isVisible);
 

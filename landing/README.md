@@ -36,10 +36,10 @@ edir — Node 20.11-də `astro check` `ERR_REQUIRE_ESM` ilə düşür. Lokal Nod
 Səhifə slug-ları hər üç dildə azərbaycanca qalır (`/ru/qiymet/`, `/en/elaqe/`) — köhnə azərbaycanca
 URL-lər artıq indeksdədir və onları dəyişmək qazanc gətirmirdi.
 
-Bloq (`/bloq/`) və `/mexfilik/` yalnız azərbaycancadır — `src/i18n/ui.ts` → `azOnlyRoutes`. Məxfilik
-səhifəsinə hər dilin footer-i link verir (`hreflang="az"` ilə). `/hesab-silinmesi/` üç dildədir
-(`/ru/hesab-silinmesi/`, `/en/hesab-silinmesi/`), footer-də hər dil öz səhifəsinə aparır. Bloq linki
-footer-dən müvəqqəti çıxarılıb — bloqda üç məqalə olanda `Footer.astro`-dakı şərhə alınmış sətri qaytarın.
+Yalnız `/404/` azərbaycancadır — `src/i18n/ui.ts` → `azOnlyRoutes`. Məxfilik (`/mexfilik/`) və
+`/hesab-silinmesi/` üç dildədir, footer-də hər dil öz səhifəsinə aparır. Bloq üç dildədir: `/blog/`,
+`/ru/blog/`, `/en/blog/` (köhnə `/bloq/` ünvanı `astro.config.mjs`-dəki `redirects` ilə `/blog/`-a
+yönləndirilir). Bloq linki Header-də və Footer-də hər üç dildə aktivdir.
 
 ## Struktur
 
@@ -57,7 +57,7 @@ src/
   data/brand.ts              # header loqosunun tək derivative-i (preload və <img> eyni faylı istəyir)
   i18n/ui.ts                 # BÜTÜN tərcümələr (AZ/RU/EN) — mətn dəyişikliyi burada olur
   layouts/BaseLayout.astro   # SEO <head>, JSON-LD, Header + Footer, qlobal skriptlər
-  pages/                     # index, qiymet, haqqimizda, elaqe, bloq/ (+ ru/ və en/ variantları)
+  pages/                     # index, haqqimizda, elaqe, blog/ (+ ru/ və en/ variantları)
   styles/tailwind.css        # Tailwind v4 + tema (aşağıda: «Stil»)
   styles/global.css          # saytın öz stilləri
   styles/global-layered.css  # global.css-i `base` layer-inə salır
@@ -144,7 +144,8 @@ utility class-ları birbaşa yazmaq olar.
 - **Loqo / og şəkli:** saytda görünən loqolar `src/assets/images/brand/`-dədir; `og-image.png`
   və `logo-mark.png` (apple-touch-icon + JSON-LD) `public/` kökündə qalır — URL-ləri sabit
   olmalıdır.
-- **Yeni bloq yazısı:** `src/content/blog/` içinə `.md` (title, description, pubDate).
+- **Yeni bloq yazısı:** `src/content/blog/{az,ru,en}/` içinə eyni adla üç `.md` (title, description, pubDate,
+  category; ixtiyari: featured, cover, summary). Tərcümə çatışmasa, build xəta verir (`src/data/blog.ts`).
 
 ## Məzmun qaydası
 

@@ -20,6 +20,10 @@ export default defineConfig({
     '/qiymet/': '/#pricing',
     '/ru/qiymet/': '/ru/#pricing',
     '/en/qiymet/': '/en/#pricing',
+    // Bloq /bloq/-dan /blog/-a köçürülüb və üç dildə açılıb. Köhnə ünvan Google-da indekslənmiş və ya
+    // əlfəcinlərdə ola bilər, ona görə həm siyahı, həm mövcud məqalə yeni ünvana yönləndirilir.
+    '/bloq/': '/blog/',
+    '/bloq/qrlog-ile-davamiyyet/': '/blog/qrlog-ile-davamiyyet/',
   },
   i18n: {
     defaultLocale: 'az',

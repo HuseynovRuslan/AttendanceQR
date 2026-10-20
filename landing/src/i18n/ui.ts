@@ -770,7 +770,42 @@ export const ui = {
     'blog.metaDesc':
       'İşçi davamiyyəti, QR sistemləri və uçotun rəqəmsallaşdırılması haqqında məqalələr.',
     'blog.empty': 'Tezliklə ilk məqalələr burada olacaq.',
-    'blog.back': '← Bütün məqalələr',
+    'blog.back': 'Bütün yazılar',
+    'blog.hero.title.a': 'Davamiyyət, komanda və ',
+    'blog.hero.title.hl': 'iş günü',
+    'blog.hero.title.b': ' haqqında',
+    'blog.hero.lead': 'Rəhbərlər və HR üçün praktik yazılar: işçi girişini necə izləmək, saxta qeydiyyatın qarşısını almaq və QRLog-dan tam istifadə etmək.',
+    'blog.hero.imgAlt': 'Skan xətti keçən QR kod və giriş təsdiqi',
+    'blog.cats.aria': 'Kateqoriyalar',
+    'blog.cat.all': 'Hamısı',
+    'blog.cat.davamiyyet': 'Davamiyyət',
+    'blog.cat.hr': 'HR və idarəetmə',
+    'blog.cat.telimat': 'Təlimatlar',
+    'blog.cat.yenilikler': 'Yeniliklər',
+    'blog.featured': 'Seçilmiş',
+    'blog.read': 'Oxu',
+    'blog.readTime': '{n} dəq oxu',
+    'blog.search.placeholder': 'Məqalə axtar...',
+    'blog.search.label': 'Məqalə axtar',
+    'blog.search.clear': 'Axtarışı təmizlə',
+    'blog.search.results': '{n} nəticə',
+    'blog.search.query': '«{q}»',
+    'blog.search.emptyTitle': '«{q}» üçün məqalə tapılmadı',
+    'blog.search.emptyHint': 'Başqa söz yoxlayın və ya axtarışı təmizləyin.',
+    'blog.search.reset': 'Axtarışı təmizlə',
+    'blog.search.widen': 'Bütün kateqoriyalarda axtar',
+    'blog.crumb.aria': 'Naviqasiya yolu',
+    'blog.crumb.home': 'Ana səhifə',
+    'blog.summary.label': 'Qısaca',
+    'blog.share.title': 'Paylaş',
+    'blog.share.copy': 'Linki kopyala',
+    'blog.share.copied': 'Kopyalandı',
+    'blog.share.whatsapp': 'WhatsApp-da paylaş',
+    'blog.related.eyebrow': 'Davam edin',
+    'blog.related.title': 'Bunları da oxuyun',
+    'blog.cta.title': 'QRLog sizin komandada necə işləyəcək?',
+    'blog.cta.text': 'Suallarınızı WhatsApp-da yazın, cavab verək.',
+    'blog.cta.button': 'WhatsApp-da yazın',
 
     'nf.title': 'Səhifə tapılmadı',
     'nf.sub':
@@ -1414,7 +1449,42 @@ export const ui = {
     'blog.metaTitle': 'Блог — QRLog',
     'blog.metaDesc': 'Статьи об учёте посещаемости, QR-системах и цифровизации учёта.',
     'blog.empty': 'Скоро здесь появятся первые статьи.',
-    'blog.back': '← Все статьи',
+    'blog.back': 'Все статьи',
+    'blog.hero.title.a': 'О посещаемости, команде и ',
+    'blog.hero.title.hl': 'рабочем дне',
+    'blog.hero.title.b': '',
+    'blog.hero.lead': 'Практичные статьи для руководителей и HR: как отслеживать приход сотрудников, не допускать фальшивых отметок и использовать QRLog на полную.',
+    'blog.hero.imgAlt': 'QR-код, по которому проходит линия сканирования, и подтверждение входа',
+    'blog.cats.aria': 'Категории',
+    'blog.cat.all': 'Все',
+    'blog.cat.davamiyyet': 'Посещаемость',
+    'blog.cat.hr': 'HR и управление',
+    'blog.cat.telimat': 'Инструкции',
+    'blog.cat.yenilikler': 'Новости',
+    'blog.featured': 'Рекомендуем',
+    'blog.read': 'Читать',
+    'blog.readTime': '{n} мин чтения',
+    'blog.search.placeholder': 'Поиск статей...',
+    'blog.search.label': 'Поиск статей',
+    'blog.search.clear': 'Очистить поиск',
+    'blog.search.results': 'Найдено: {n}',
+    'blog.search.query': '«{q}»',
+    'blog.search.emptyTitle': 'По запросу «{q}» статей не найдено',
+    'blog.search.emptyHint': 'Попробуйте другое слово или очистите поиск.',
+    'blog.search.reset': 'Очистить поиск',
+    'blog.search.widen': 'Искать во всех категориях',
+    'blog.crumb.aria': 'Навигация по сайту',
+    'blog.crumb.home': 'Главная',
+    'blog.summary.label': 'Коротко',
+    'blog.share.title': 'Поделиться',
+    'blog.share.copy': 'Скопировать ссылку',
+    'blog.share.copied': 'Скопировано',
+    'blog.share.whatsapp': 'Поделиться в WhatsApp',
+    'blog.related.eyebrow': 'Читайте дальше',
+    'blog.related.title': 'Читайте также',
+    'blog.cta.title': 'Как QRLog будет работать в вашей команде?',
+    'blog.cta.text': 'Напишите нам в WhatsApp — мы ответим на ваши вопросы.',
+    'blog.cta.button': 'Написать в WhatsApp',
 
     'nf.title': 'Страница не найдена',
     'nf.sub':
@@ -2048,7 +2118,42 @@ export const ui = {
     'blog.metaTitle': 'Blog — QRLog',
     'blog.metaDesc': 'Articles about staff attendance, QR systems and digitising records.',
     'blog.empty': 'The first articles will appear here soon.',
-    'blog.back': '← All articles',
+    'blog.back': 'All articles',
+    'blog.hero.title.a': 'Notes on attendance, teams and the ',
+    'blog.hero.title.hl': 'working day',
+    'blog.hero.title.b': '',
+    'blog.hero.lead': 'Practical articles for managers and HR: how to track staff check-ins, stop fake attendance and get the most out of QRLog.',
+    'blog.hero.imgAlt': 'A QR code with a scan line passing over it and a check-in confirmation',
+    'blog.cats.aria': 'Categories',
+    'blog.cat.all': 'All',
+    'blog.cat.davamiyyet': 'Attendance',
+    'blog.cat.hr': 'HR & management',
+    'blog.cat.telimat': 'Guides',
+    'blog.cat.yenilikler': 'News',
+    'blog.featured': 'Featured',
+    'blog.read': 'Read',
+    'blog.readTime': '{n} min read',
+    'blog.search.placeholder': 'Search articles...',
+    'blog.search.label': 'Search articles',
+    'blog.search.clear': 'Clear search',
+    'blog.search.results': 'Results: {n}',
+    'blog.search.query': '“{q}”',
+    'blog.search.emptyTitle': 'No articles found for “{q}”',
+    'blog.search.emptyHint': 'Try another word or clear the search.',
+    'blog.search.reset': 'Clear search',
+    'blog.search.widen': 'Search all categories',
+    'blog.crumb.aria': 'Breadcrumb',
+    'blog.crumb.home': 'Home',
+    'blog.summary.label': 'In short',
+    'blog.share.title': 'Share',
+    'blog.share.copy': 'Copy link',
+    'blog.share.copied': 'Copied',
+    'blog.share.whatsapp': 'Share on WhatsApp',
+    'blog.related.eyebrow': 'Keep reading',
+    'blog.related.title': 'You may also like',
+    'blog.cta.title': 'How would QRLog work in your team?',
+    'blog.cta.text': 'Ask us on WhatsApp and we will reply.',
+    'blog.cta.button': 'Chat on WhatsApp',
 
     'nf.title': 'Page not found',
     'nf.sub':
@@ -2129,14 +2234,15 @@ export function fmt(template: string, values: Record<string, string | number>): 
 /**
  * Yalnız azərbaycanca olan səhifələr.
  *
- * Bloq azərbaycanca yazılır, 404.html isə bir dəfə yaradılır — ona görə /ru/bloq/ və /en/404/ yoxdur.
+ * 404.html bir dəfə yaradılır — ona görə /ru/404/ və /en/404/ yoxdur. Bloq artıq üç dildədir (/blog/, /ru/blog/,
+ * /en/blog/); məqalələrin slug-ı dillər arasında eynidir və bunu src/data/blog.ts build zamanı yoxlayır.
  * Hüquqi səhifələr (məxfilik, hesabın silinməsi) artıq üç dildədir, ona görə burada yoxdur. Tərcüməsi
  * olmayan səhifə üçün başqa dil təklif etmək kiçik kosmetik səhv deyil: dil seçici oxucunu 404-ə
  * göndərir, hreflang teqləri isə axtarış sistemlərini heç vaxt yaradılmamış ünvanlara yönəldir.
  *
  * Səhifənin tərcüməsi olmayan kimi onu bura əlavə et, tərcüməsi hazır olanda isə buradan sil.
  */
-const azOnlyRoutes = ['/bloq/', '/404/'] as const
+const azOnlyRoutes = ['/404/'] as const
 
 /**
  * Səhifənin həqiqətən hansı dillərdə olduğunu qaytarır. Yuxarıdakı siyahıda olmayan hər səhifə üç
@@ -2145,7 +2251,7 @@ const azOnlyRoutes = ['/bloq/', '/404/'] as const
  */
 export function availableLangs(path = '/'): Lang[] {
   for (const route of azOnlyRoutes) {
-    // startsWith: '/bloq/' bloqun hər yazısını da tutur (məs. '/bloq/qrlog-ile-davamiyyet/').
+    // startsWith: marşrut prefiksi altındakı bütün səhifələri tutur (məs. '/404/' ilə başlayanları).
     if (path.startsWith(route)) {
       return ['az']
     }
