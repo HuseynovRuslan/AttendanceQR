@@ -2234,14 +2234,15 @@ export function fmt(template: string, values: Record<string, string | number>): 
 /**
  * Yalnız azərbaycanca olan səhifələr.
  *
- * Bloq azərbaycanca yazılır, 404.html isə bir dəfə yaradılır — ona görə /ru/bloq/ və /en/404/ yoxdur.
+ * 404.html bir dəfə yaradılır — ona görə /ru/404/ və /en/404/ yoxdur. Bloq artıq üç dildədir (/blog/, /ru/blog/,
+ * /en/blog/); məqalələrin slug-ı dillər arasında eynidir və bunu src/data/blog.ts build zamanı yoxlayır.
  * Hüquqi səhifələr (məxfilik, hesabın silinməsi) artıq üç dildədir, ona görə burada yoxdur. Tərcüməsi
  * olmayan səhifə üçün başqa dil təklif etmək kiçik kosmetik səhv deyil: dil seçici oxucunu 404-ə
  * göndərir, hreflang teqləri isə axtarış sistemlərini heç vaxt yaradılmamış ünvanlara yönəldir.
  *
  * Səhifənin tərcüməsi olmayan kimi onu bura əlavə et, tərcüməsi hazır olanda isə buradan sil.
  */
-const azOnlyRoutes = ['/bloq/', '/404/'] as const
+const azOnlyRoutes = ['/404/'] as const
 
 /**
  * Səhifənin həqiqətən hansı dillərdə olduğunu qaytarır. Yuxarıdakı siyahıda olmayan hər səhifə üç
@@ -2250,7 +2251,7 @@ const azOnlyRoutes = ['/bloq/', '/404/'] as const
  */
 export function availableLangs(path = '/'): Lang[] {
   for (const route of azOnlyRoutes) {
-    // startsWith: '/bloq/' bloqun hər yazısını da tutur (məs. '/bloq/qrlog-ile-davamiyyet/').
+    // startsWith: marşrut prefiksi altındakı bütün səhifələri tutur (məs. '/404/' ilə başlayanları).
     if (path.startsWith(route)) {
       return ['az']
     }
