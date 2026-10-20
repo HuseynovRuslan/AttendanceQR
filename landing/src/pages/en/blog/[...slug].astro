@@ -1,0 +1,23 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro'
+import BlogPost from '../../../components/BlogPost.astro'
+import { getPosts, postSlug, type BlogPost as Post } from '../../../data/blog'
+
+// Ünvanda src/content-dəki dil qovluğu təkrarlanmır: 'en/saxta-giris' məqaləsi /en/blog/saxta-giris/ olur.
+export async function getStaticPaths() {
+  const posts = await getPosts('en')
+  return posts.map((post) => ({ params: { slug: postSlug(post) }, props: { post } }))
+}
+
+const lang = 'en' as const
+const { post } = Astro.props as { post: Post }
+---
+<BaseLayout
+  lang={lang}
+  path={`/blog/${postSlug(post)}/`}
+  title={`${post.data.title} — QRLog`}
+  description={post.data.description}
+  heroTone="white"
+>
+  <BlogPost lang={lang} post={post} />
+</BaseLayout>
