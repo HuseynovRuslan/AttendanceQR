@@ -1,0 +1,71 @@
+---
+// Ekranda olmayan bölmələrin sonsuz CSS animasiyalarını dayandırır, qayıdanda davam etdirir (BaseLayout-da bir dəfə; markup yoxdur).
+// Niyə: brauzer ekrandan kənardakı animasiyanı da hər kadrda hesablayır; ölçmədə bunlar əsas thread-in ~10%-ni, GPU-nun ~30%-ni aparırdı.
+---
+
+<script>
+  // Animasiya bölmə ekrana girməmişdən bu qədər əvvəl davam edir ki, dayanmış kadr görünməsin.
+  const NEAR_SCREEN_MARGIN = '200px 0px'
+  const SECTION_SELECTOR = 'main section, footer'
+
+  // Yalnız özümüzün dayandırdığımız animasiyalar: CSS-də `animation-play-state: paused` yazılıbsa (məs. Problem oxu), toxunmuruq.
+  const pausedByUs = new WeakSet<Animation>()
+
+  function isInfiniteCssAnimation(animation: Animation): animation is CSSAnimation {
+    const isCssAnimation = animation instanceof CSSAnimation
+    return isCssAnimation && animation.effect?.getTiming().iterations === Infinity
+  }
+
+  // CSS-də `animation-play-state: paused` varsa, komponent animasiyanı bilərəkdən saxlayıb: davam etdirmirik.
+  // Elementdə bir neçə animasiya ola bilər, ona görə `animation-name` siyahısında yerini tapırıq.
+  function cssWantsPaused(animation: CSSAnimation): boolean {
+    const effect = animation.effect as KeyframeEffect | null
+    if (!effect || !effect.target) {
+      return false
+    }
+    const style = getComputedStyle(effect.target, effect.pseudoElement)
+    const names = style.animationName.split(', ')
+    const states = style.animationPlayState.split(', ')
+    const position = names.indexOf(animation.animationName)
+    if (position === -1) {
+      return false
+    }
+    return states[position % states.length] === 'paused'
+  }
+
+  function pauseInfiniteAnimations(section: Element): void {
+    for (const animation of section.getAnimations({ subtree: true })) {
+      if (isInfiniteCssAnimation(animation) && animation.playState === 'running') {
+        animation.pause()
+        pausedByUs.add(animation)
+      }
+    }
+  }
+
+  function resumeInfiniteAnimations(section: Element): void {
+    for (const animation of section.getAnimations({ subtree: true })) {
+      if (!pausedByUs.has(animation)) {
+        continue
+      }
+      pausedByUs.delete(animation)
+      if (!cssWantsPaused(animation as CSSAnimation)) {
+        animation.play()
+      }
+    }
+  }
+
+  const observer = new IntersectionObserver(
+    function (entries) {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          resumeInfiniteAnimations(entry.target)
+        } else {
+          pauseInfiniteAnimations(entry.target)
+        }
+      }
+    },
+    { rootMargin: NEAR_SCREEN_MARGIN }
+  )
+
+  document.querySelectorAll(SECTION_SELECTOR).forEach((section) => observer.observe(section))
+</script>
