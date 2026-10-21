@@ -1,23 +1,20 @@
 ---
 /*
- * 404 səhifəsi. Caddy bu faylı (dist/404.html) bütün tapılmayan ünvanlar üçün verir, /ru/... və /en/...
- * da daxil. Fayl AZ dilində bir dəfə yaranır, ona görə RU və EN mətnləri HTML-də data-ru / data-en
- * atributlarında durur (ui.ts-dən götürülür); ünvan /ru/ və ya /en/ ilə başlayanda aşağıdakı skript
- * onlarla əvəz edir. JS işləməsə AZ mətni qalır. Solda mətn, sağda NotFoundScene (mobildə yuxarıda).
+ * 404 səhifəsi: Caddy dist/404.html-i /ru/ və /en/ daxil bütün tapılmayan ünvanlar üçün verir (Caddyfile-dakı handle_errors).
+ * Fayl yalnız AZ dilində yaranır; RU/EN mətnləri data-ru / data-en atributlarındadır, aşağıdakı skript ünvana görə əvəz edir.
  */
 import ArrowLeft from '@lucide/astro/icons/arrow-left'
 import ArrowRight from '@lucide/astro/icons/arrow-right'
 import BaseLayout from '../layouts/BaseLayout.astro'
-import NotFoundScene from '../components/NotFoundScene.astro'
+import NotFoundScene from '../components/Pages/NotFound/NotFoundScene.astro'
 import { useTranslations, localizedPath, htmlLang } from '../i18n/ui'
 
-// Caddy serves this file for any unmatched path (see the `handle_errors` block in the Caddyfile).
 const lang = 'az' as const
 const t = useTranslations(lang)
 const tRu = useTranslations('ru')
 const tEn = useTranslations('en')
 
-// Düymə və linkin ortaq fokus halqası: saytın qaydası (Hero.astro-dakı focusRing ilə eynidir).
+// Hero.astro-dakı focusRing ilə eyni fokus halqası.
 const focusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
 ---
@@ -30,25 +27,17 @@ const focusRing =
   noindex
   heroTone="white"
 >
-  <!--
-    BaseLayout məzmunu artıq <main id="main">-ə qoyur, ona görə burada <section> var (iki <main> olmaz).
-    Header `position: fixed`-dir və yer tutmur, ona görə yuxarı boşluq = header hündürlüyü (--header-h,
-    global.css) + 1rem. Alt boşluq pb-24 (96px): footer yuxarıdakı bölmənin üstünə 48px minir
-    (Footer.astro), məzmun ondan yuxarıda qalmalıdır.
-    `data-nf-page` və `data-html-lang-*` — aşağıdakı skript onları oxuyur.
-  -->
+  <!-- BaseLayout artıq <main> verir, ona görə <section>. pb-24: footer 48px yuxarı minir (Footer.astro). data-nf-page və data-html-lang-* skriptin oxuduğu atributlardır -->
   <section
     class="wrap grid min-h-[78vh] items-center gap-6 pt-[calc(var(--header-h)+1rem)] pb-24 lg:grid-cols-[0.9fr_1.1fr] lg:gap-10"
     data-nf-page
     data-html-lang-ru={htmlLang.ru}
     data-html-lang-en={htmlLang.en}
   >
-    <!-- Səhnə: mobildə mətndən yuxarıda (order-first), lg-dən sağda (lg:order-last). -->
     <div class="order-first lg:order-last">
       <NotFoundScene />
     </div>
 
-    <!-- Mətn. `nf-rise` + `--i`: hər element növbə ilə yuxarı qalxaraq görünür (aşağıdakı <style>). -->
     <div class="max-w-[31rem]">
       <p
         class="nf-rise text-[5rem] leading-[0.9] font-extralight tracking-[-0.05em] text-[#C9CED8] select-none sm:text-[7.5rem] lg:text-[9rem]"
@@ -77,7 +66,6 @@ const focusRing =
       </p>
 
       <div class="nf-rise mt-8 flex flex-wrap items-center gap-x-7 gap-y-4" style="--i:3">
-        <!-- Əsas düymə: Header-dəki "Əlaqə saxlayın" ilə eyni mavi, hover-də 2px yuxarı qalxır (-translate-y-0.5). -->
         <a
           class={`group inline-flex h-12 items-center gap-2 rounded-2xl bg-brand px-6 text-[0.9375rem] leading-normal font-semibold text-white shadow-[0_0.875rem_1.75rem_-0.875rem_rgba(21,94,239,.75)] transition hover:-translate-y-0.5 hover:bg-brand-600 ${focusRing}`}
           href={localizedPath(lang, '/')}
@@ -92,7 +80,6 @@ const focusRing =
           <span data-ru={tRu('nf.btn')} data-en={tEn('nf.btn')}>{t('nf.btn')}</span>
         </a>
 
-        <!-- İkinci seçim düymə yox, ox işarəli mavi mətn linkidir: ana düymənin yanında sakit qalır. -->
         <a
           class={`group inline-flex items-center gap-2 rounded-lg text-[0.9375rem] leading-normal font-medium text-brand transition hover:text-brand-600 ${focusRing}`}
           href={localizedPath(lang, '/elaqe/')}
@@ -111,14 +98,10 @@ const focusRing =
 </BaseLayout>
 
 <style>
-  /* Giriş animasiyası: mətn elementləri növbə ilə yuxarı qalxaraq görünür.
-     @keyframes — animasiyanın addımlarını təsvir edən CSS qaydası; `animation` onu elementə qoşur.
-     `both` — animasiyanın gecikməsi bitənə qədər element başlanğıc vəziyyətdə (görünməz) durur.
-     Hər elementin gecikməsi = onun sıra nömrəsi (--i, HTML-də) × --nf-rise-step.
-     https://developer.mozilla.org/en-US/docs/Web/CSS/animation-fill-mode */
+  /* `both` — gecikmə bitənə qədər element görünməz qalır. Gecikmə = sıra nömrəsi (--i, HTML-də) × --nf-rise-step. */
   .nf-rise {
-    --nf-rise-time: 0.7s; /* bir elementin görünmə müddəti */
-    --nf-rise-step: 80ms; /* ardıcıl iki element arasında fərq */
+    --nf-rise-time: 0.7s;
+    --nf-rise-step: 80ms;
     animation: nf-rise var(--nf-rise-time) cubic-bezier(0.2, 0.7, 0.2, 1) both;
     animation-delay: calc(var(--i, 0) * var(--nf-rise-step));
   }
@@ -133,7 +116,6 @@ const focusRing =
     }
   }
 
-  /* "Hərəkəti azalt" açıq olanda mətn animasiyasız, birbaşa görünür. */
   @media (prefers-reduced-motion: reduce) {
     .nf-rise {
       animation: none;
@@ -142,16 +124,12 @@ const focusRing =
 </style>
 
 <script>
-  // ---------- Dil seçimi ----------
-  // Bu səhifə bir dəfə AZ dilində yaranır, amma /ru/blabla/ açan adam rusca mətn görməlidir. Skript
-  // ünvana baxır və HTML-dəki data-ru / data-en atributlarındakı mətnləri (ui.ts-dən gəlib) səhifəyə
-  // qoyur. Header və footer bu səhifədə AZ qalır (onlar başqa komponentlərdir, ona toxunmuruq).
-  // Skript işləməsə heç nə dəyişmir: AZ mətni təhlükəsiz vəziyyətdir.
+  // Ünvana görə data-ru / data-en mətnlərini səhifəyə qoyur. Header və footer AZ qalır; skript işləməsə də AZ mətni görünür.
 
-  // Dil prefiksləri. AZ prefikssizdir (/), ona görə siyahıda yoxdur: AZ üçün dəyişməli heç nə yoxdur.
+  // AZ prefikssizdir, ona görə siyahıda yoxdur.
   const SWITCHABLE_LANGS = ['ru', 'en']
 
-  // "/ru" və ya "/ru/..." ilə başlayırsa 'ru' qaytarır, heç biri deyilsə null (yəni AZ qalır).
+  // Ünvan /ru və ya /en ilə başlayırsa dili, əks halda null (AZ) qaytarır.
   function detectLang(pathname: string): string | null {
     for (const lang of SWITCHABLE_LANGS) {
       const isThisLang = pathname === `/${lang}` || pathname.startsWith(`/${lang}/`)
@@ -162,7 +140,6 @@ const focusRing =
     return null
   }
 
-  // data-ru="..." olan hər elementin mətnini həmin atributdakı mətnlə əvəz edir.
   function translateTexts(lang: string) {
     const elements = document.querySelectorAll(`[data-${lang}]`)
     for (const element of elements) {
@@ -173,7 +150,6 @@ const focusRing =
     }
   }
 
-  // data-href-ru="/ru/" olan hər linkin ünvanını həmin atributdakı ünvanla əvəz edir.
   function translateLinks(lang: string) {
     const links = document.querySelectorAll(`[data-href-${lang}]`)
     for (const link of links) {
@@ -184,8 +160,7 @@ const focusRing =
     }
   }
 
-  // <html lang> (ekran oxuyucu və brauzer dili bilsin) və brauzer tabının başlığı.
-  // Başlığın formatı ("404 — ...") 404.astro-nun yuxarıdakı title={...} ifadəsi ilə eynidir.
+  // <html lang> və tab başlığı; başlıq formatı ("404 — ...") yuxarıdakı title={...} ilə eyni olmalıdır.
   function translateDocument(lang: string) {
     const page = document.querySelector('[data-nf-page]')
     const htmlLangValue = page?.getAttribute(`data-html-lang-${lang}`)
