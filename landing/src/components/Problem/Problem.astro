@@ -95,28 +95,23 @@ const imageHover =
   <div class="pb-glow pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
   <div class="wrap relative">
-    {/* Başlıq solda, izah sağda (desktop). Üç sətir bir-birinin ardınca gəlir: --i sətrin sırasıdır. */}
-    <div
-      data-reveal
-      class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.72fr)] lg:items-end lg:gap-16"
-    >
-      <div class="max-w-155">
-        <span
-          class="pb-line inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
-          style="--i: 0"
-        >
-          <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
-          {t('prob.eyebrow')}
-        </span>
-        <h2
-          id="problem-title"
-          class="pb-line mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-balance text-ink sm:text-[38px]"
-          style="--i: 1"
-        >
-          {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span>{t('prob.title.b')}
-        </h2>
-      </div>
-      <p class="pb-line max-w-[48ch] text-[16px] leading-[1.7] text-ink2 sm:text-[17px]" style="--i: 2">
+    {/* Başlıq bloku solda, alt-alta: eyebrow → başlıq → izah. Üç sətir bir-birinin ardınca gəlir: --i sətrin sırasıdır. */}
+    <div data-reveal class="max-w-155">
+      <span
+        class="pb-line inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        style="--i: 0"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('prob.eyebrow')}
+      </span>
+      <h2
+        id="problem-title"
+        class="pb-line mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-balance text-ink sm:text-[38px]"
+        style="--i: 1"
+      >
+        {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span>{t('prob.title.b')}
+      </h2>
+      <p class="pb-line mt-5 max-w-[52ch] text-[16px] leading-[1.7] text-balance text-ink2 sm:text-[17px]" style="--i: 2">
         {t('prob.sub')}
       </p>
     </div>
