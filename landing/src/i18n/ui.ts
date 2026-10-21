@@ -148,7 +148,7 @@ export const ui = {
     'prob.title.hl': 'saxtaya',
     'prob.title.b': ' açıqdır',
     'prob.sub':
-      'Kağız jurnal, bahalı terminal və “söz”lə uçot — hər filialda ayrıca dərd, hər ay yenidən.',
+      'Kağız jurnal, bahalı terminal və “söz”lə uçot — hər filialda ayrıca dərd, hər ay yenidən.',
     'prob.p1t': 'Başqasının yerinə giriş',
     'prob.p1d':
       'Bir nəfər bütün briqadanı “gəldi” yaza bilir. Kim həqiqətən gəldi — bilinmir, maaş isə bu qeydə bağlıdır.',
@@ -837,7 +837,7 @@ export const ui = {
     'prob.title.hl': 'подлога',
     'prob.title.b': '',
     'prob.sub':
-      'Бумажный журнал, дорогие терминалы и учёт «со слов» — отдельная головная боль на каждом филиале, каждый месяц.',
+      'Бумажный журнал, дорогие терминалы и учёт «со слов» — отдельная головная боль на каждом филиале, каждый месяц.',
     'prob.p1t': 'Отметка за другого',
     'prob.p1d':
       'Один человек может отметить всю бригаду. Кто пришёл на самом деле — неизвестно, а от этой записи зависит зарплата.',
@@ -1494,7 +1494,7 @@ export const ui = {
     'prob.title.hl': 'fake',
     'prob.title.b': '',
     'prob.sub':
-      'Paper logs, expensive terminals and attendance “on trust” — a separate headache at every site, every month.',
+      'Paper logs, expensive terminals and attendance “on trust” — a separate headache at every site, every month.',
     'prob.p1t': 'Checking in for someone else',
     'prob.p1d':
       'One person can mark a whole crew as present. Who actually showed up is anyone’s guess — and pay depends on that record.',
