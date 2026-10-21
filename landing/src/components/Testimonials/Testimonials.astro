@@ -1,0 +1,32 @@
+---
+import { useTranslations, type Lang } from '../../i18n/ui'
+import { TESTIMONIALS } from '../../data/site'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// TESTIMONIALS boşdursa heç nə çəkilmir. Uydurma müştəri rəyi qoyma: yalnız icazə verilmiş real rəylər.
+---
+
+{TESTIMONIALS.length > 0 && (
+  <section id="testimonials">
+    <div class="wrap">
+      <div class="sec-head rv">
+        <span class="eyebrow">{t('test.eyebrow')}</span>
+        <h2>{t('test.title')}</h2>
+        <p>{t('test.sub')}</p>
+      </div>
+      <div class="test-grid">
+        {TESTIMONIALS.map((it, i) => (
+          <figure class={`quote rv d${(i % 3) + 1}`}>
+            <p>“{it.quote}”</p>
+            <figcaption class="by">
+              <div class="av" style={`background:${it.color}`}>{it.initial}</div>
+              <div class="who"><b>{it.name}</b><span>{it.role}</span></div>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  </section>
+)}
