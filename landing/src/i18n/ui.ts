@@ -1,37 +1,24 @@
-// Saytdakı bütün tərcümə olunan mətnlər. Üç dil, bir düz açar siyahısı — komponent yalnız
-// t('some.key') çağırır, ona görə yeni dilin mətnləri üçün komponentlərə toxunmaq lazım deyil.
-// Yeni dil üçün: bu faylda languages, localeMap, htmlLang, localePrefix-ə və ui-yə yeni blok əlavə
-// et, astro.config.mjs-dəki iki locales siyahısına da yaz, səhifə fayllarını isə src/pages/<dil>/
-// qovluğunda yarat (src/pages/ru/ kimi).
-// Axın: ui.ts → useTranslations(lang) → komponentdə t('açar').
-// Yeni açarı əvvəl az blokuna yaz (UIKey tipi oradan yaranır), sonra ru və en-ə. RU/EN-də
-// unudulan açar səhifədə AZ mətni kimi görünür (aşağıda useTranslations-a bax).
-//
-// Mətnlər məhsulu olduğu kimi təsvir edir: hər filial üçün çap olunmuş, dəyişməyən QR poster; skan
-// zamanı dörd yoxlama (QR imzası, GPS, bağlı cihaz, üz); Excel hesabatlı, azərbaycanca admin panel;
-// Android-də Google Play tətbiqi, iPhone-da PWA.
-// Belə də qalsın — bu səhifədəki hər iddia tətbiqin yerinə yetirməli olduğu bir vəddir.
+// Saytdakı bütün tərcümə olunan mətnlər: üç dil, bir düz açar siyahısı (komponentlər yalnız t('açar') çağırır).
+// Yeni dil: languages, localeMap, htmlLang, localePrefix və ui-yə blok əlavə et, astro.config.mjs-dəki
+// iki locales siyahısına yaz, src/pages/<dil>/ qovluğunu yarat.
+// Yeni açarı əvvəl az blokuna yaz (UIKey tipi oradan yaranır), sonra ru və en-ə; RU/EN-də unudulan
+// açar səhifədə AZ mətni kimi görünür (bax useTranslations).
+// Mətnlər məhsulu olduğu kimi təsvir edir: hər filial üçün çap olunmuş sabit QR poster; skanda dörd yoxlama
+// (QR imzası, GPS, bağlı cihaz, üz); Excel hesabatlı azərbaycanca admin panel; Android-də Google Play,
+// iPhone-da PWA. Hər iddia tətbiqin yerinə yetirməli olduğu vəddir.
 
-// `as const` massivi dəyişməz edir, ona görə TypeScript dəyərləri ('az', 'ru', 'en') dəqiq bilir.
 export const languages = ['az', 'ru', 'en'] as const
-// Lang = 'az' | 'ru' | 'en' — yuxarıdakı massivdən avtomatik yaranır, ayrıca yazmağa ehtiyac yoxdur.
-// [number] "massivin istənilən elementinin tipi" deməkdir:
-// https://www.typescriptlang.org/docs/handbook/2/indexed-access-types.html
 export type Lang = (typeof languages)[number]
 export const defaultLang: Lang = 'az'
 
-// Record<Lang, string> — hər dilə bir mətn. Aşağıdakı üç cədvəldə bir dili yazmağı unutsan,
-// TypeScript dərhal xəta verir: https://www.typescriptlang.org/docs/handbook/utility-types.html#recordkeys-type
-//
-// og:locale meta teqi üçün (BaseLayout.astro). Bu teq alt xəttli formatı gözləyir: az_AZ.
+// og:locale üçün (BaseLayout.astro): alt xəttli format, az_AZ.
 export const localeMap: Record<Lang, string> = {
   az: 'az_AZ',
   ru: 'ru_RU',
   en: 'en_US',
 }
 
-// <html lang="..."> atributu üçün (BaseLayout.astro). Burada format defislidir: az-AZ —
-// og:locale-dan fərqlidir, ona görə ayrıca cədvəldir.
+// <html lang> üçün (BaseLayout.astro): defisli format, az-AZ (og:locale-dan fərqlidir).
 export const htmlLang: Record<Lang, string> = {
   az: 'az-AZ',
   ru: 'ru-RU',
@@ -46,16 +33,10 @@ export const localePrefix: Record<Lang, string> = {
 }
 
 /**
- * Məhsul ekranlarının içindəki mətn: «Rəhbərin bir günü» (AdminPanel*.astro) və «Saxtaya qarşı
- * qoruma» bölməsindəki panel parçası (AntiFraudPanel.astro).
- * Bu ekranlar QRLog admin panelinin özüdür, panel isə yalnız azərbaycancadır — ona görə bu mətnlər
- * üç dildə eynidir: burada bir dəfə yazılır və aşağıdakı hər dil blokuna `...panelUi` ilə köçürülür.
- * /ru/ və /en/ səhifələrində ekranlar lang="az" daşıyır (AdminPanel.astro-ya bax), panel.note isə
- * interfeysin azərbaycanca olduğunu sözlə deyir.
- * Bunları yalnız məhsulun özü tərcümə olunanda tərcümə et.
- *
- * Etiketlər məhsulun öz etiketləridir (frontend/src/pages/admin) — onunla uyğun saxla.
- * {n} {b} {t} {r} yer tutucularını fmt() doldurur: say, filial, saat, səbəb.
+ * Məhsul ekranlarının içindəki mətn: «Rəhbərin bir günü» (AdminPanel*.astro), «Saxtaya qarşı qoruma» (AntiFraudPanel.astro).
+ * Admin panel yalnız azərbaycancadır, ona görə mətnlər üç dildə eynidir və hər dil blokuna `...panelUi` ilə köçürülür;
+ * /ru/ və /en/-də ekranlar lang="az" daşıyır, panel.note bunu sözlə deyir. Yalnız məhsulun özü tərcümə olunanda tərcümə et.
+ * Etiketlər frontend/src/pages/admin-dəki etiketlərlə uyğun qalmalıdır. {n} {b} {t} {r} yer tutucularını fmt() doldurur.
  */
 const panelUi = {
   'panel.ui.total': 'Ümumi işçi',
@@ -65,8 +46,7 @@ const panelUi = {
   'panel.ui.rest': 'İstirahət',
   'panel.ui.dayOff': 'Həftəlik istirahət',
   'panel.ui.live': 'CANLI',
-  // Üzü referansla uyğun gəlməyən giriş: məhsulda qırmızı «⚠ Uyğunsuz 41%» nişanı
-  // (frontend/src/components/FaceFlagBadge.tsx). AdminPanelToday və AntiFraudPanel işlədir.
+  // Üzü referansla uyğun gəlməyən giriş: məhsuldakı qırmızı «⚠ Uyğunsuz 41%» nişanı (FaceFlagBadge.tsx).
   'panel.ui.mismatch': 'Uyğunsuz',
   // 08:15 — İdarəetmə paneli
   'panel.ui.m1.title': 'İdarəetmə paneli',
@@ -99,8 +79,7 @@ const panelUi = {
   'panel.ui.m3.all': 'Bütün işçilər',
   'panel.ui.m3.faceMismatch': 'Üzü uyğun gəlməyənlər',
   'panel.ui.m3.noPhoto': 'Şəkilsizlər',
-  // Giriş də, çıxış da olan gün. Admin lövhəsində «Tamamlayıb» yazılır, «Tamamlandı» yox
-  // (frontend/src/components/StatusBadge.tsx). AntiFraudPanel də bu açarı işlədir.
+  // Admin lövhəsində «Tamamlayıb» yazılır, «Tamamlandı» yox (StatusBadge.tsx).
   'panel.ui.m3.finished': 'Tamamlayıb',
   'panel.ui.m3.thName': 'İşçi',
   'panel.ui.m3.thRole': 'Vəzifə',
@@ -108,8 +87,7 @@ const panelUi = {
   'panel.ui.m3.thIn': 'Giriş',
   'panel.ui.m3.thOut': 'Çıxış',
   'panel.ui.m3.thFace': 'Üz',
-  // «Saxtaya qarşı qoruma» — «Bugünkü davamiyyət» ekranından parça (AntiFraudPanel.astro).
-  // Sütun başlıqları və «Tamamlayıb» yuxarıdakı m3 açarlarındandır.
+  // «Saxtaya qarşı qoruma»: «Bugünkü davamiyyət» ekranından parça (AntiFraudPanel.astro); sütun başlıqları m3 açarlarındandır.
   'panel.ui.af.title': 'Bugünkü davamiyyət',
   'panel.ui.af.branch': 'Baş ofis',
   'panel.ui.af.sample': 'Nümunə',
@@ -135,7 +113,6 @@ export const ui = {
     'nav.about': 'Haqqımızda',
     'nav.menu': 'Menyu',
 
-    'hero.badge': 'Ayrıca cihaz yoxdur — telefonla işləyir',
     'hero.title.a': 'İşçi davamiyyətini bir ',
     'hero.title.hl': 'skan',
     'hero.title.b': ' ilə idarə edin',
@@ -147,11 +124,7 @@ export const ui = {
     'hero.s2l': 'əlavə avadanlıq xərci',
     'hero.s3n': 'Canlı',
     'hero.s3l': 'kim işdədir — anlıq',
-    'hero.assure.a': 'Ayrıca cihaz almadan',
-    'hero.assure.b': 'Həmin gün işə düşür',
-    'hero.assure.c': 'Telefondan işləyir',
-    // Birinci ekrandakı nümunə səhnə: divarda poster, telefonda tətbiq və onların üstündə üzən dörd
-    // kart. Məlumat nümunədir və etiket bunu açıq deyir — rəqəmlər heç bir müştərinin deyil.
+    // Birinci ekrandakı nümunə səhnə: divarda poster, telefonda tətbiq, üstündə dörd kart. Rəqəmlər nümunədir, etiket bunu açıq deyir.
     'hero.d.label': 'Nümunə məlumat',
     'hero.d.site': 'Baş ofis',
     'hero.d.poster': 'Giriş və çıxış üçün skan edin',
@@ -192,17 +165,12 @@ export const ui = {
     'prob.m3t': 'Zəif nəzarət',
     'prob.m3d': 'saxtaya açıq',
     'prob.next': 'Problem aydındır. Bəs həlli?',
-    'scan.live': 'CANLI',
-    'scan.feed': 'Son qeydiyyatlar',
-    'scan.status': 'Qeyd olundu',
-    'scan.demo': 'Nümunə ekran',
 
     'trust.title': 'QRLog bu sahələrdə istifadə olunur',
 
     'stats.title': 'Rəqəmlərlə',
     'stats.sub': 'Real şirkətlərdə, hər gün işləyir',
-    // Dörd rəqəmin izahı (Stats.astro). Mətnlər qəsdən qısadır: 1024px-də ən dar sütuna (~190px) bir sətirdə
-    // sığmalıdır — uzatsan, hər üç dildə 1024px-də yoxla.
+    // Dörd rəqəmin izahı (Stats.astro). Qəsdən qısadır: 1024px-də ən dar sütuna (~190px) bir sətirdə sığmalıdır; uzatsan, hər üç dildə yoxla.
     'stats.s1': 'şirkət QRLog işlədir',
     'stats.s2': 'işçi telefonla giriş edir',
     'stats.s3': 'filialda QR poster asılıb',
@@ -214,8 +182,8 @@ export const ui = {
     'stats.n4': 'Gündəlik giriş',
     // Sağ-yuxarıdakı nişanın mətni; arxasından ay və il gəlir: «QRLog bazasından · Oktyabr 2026».
     'stats.source': 'QRLog bazasından',
-    // 10 000-dən böyük rəqəmin vahidi: «183» + « min» → «183 min+». Başdakı   BÖLÜNMƏYƏN boşluqdur
-    // (adi boşluq yox): rəqəm və söz iki sətrə qırılmasın. İngiliscədə boşluq yoxdur: «183K+».
+    // 10 000-dən böyük rəqəmin vahidi: «183» + « min» → «183 min+». Başdakı boşluq bölünməyən boşluqdur (rəqəm və söz bir sətirdə qalsın);
+    // ingiliscədə boşluq yoxdur: «183K+».
     'stats.thousand': ' min',
 
     'how.eyebrow': 'İş prinsipi',
@@ -230,25 +198,21 @@ export const ui = {
     'how.s3t': 'Rəhbərlik canlı görür',
     'how.s3d':
       'Giriş-çıxış dərhal admin panelə düşür. Tarix üzrə filtrləyin, Excel hesabatı yükləyin, filial üzrə bölün.',
-    // Addımların yanındakı metrik çipləri. Bunlar Hero bölməsindəki eyni üç iddiadır
-    // (hero.s2n, hero.s1n, hero.s3l) — birini dəyişsən, o birini də dəyiş.
+    // Addımların yanındakı çiplər Hero-dakı eyni üç iddiadır (hero.s2n, hero.s1n, hero.s3l): birini dəyişsən, o birini də dəyiş.
     'how.s1m': '0 ₼ avadanlıq',
     'how.s2m': '~10 saniyə',
     'how.s3m': 'anlıq',
-    // 02-ci səhnədə skan anında eyni anda yoxlanan dörd şey — Hero-dakı hero.d.c1–c4 ilə eyni
-    // yoxlamalar, eyni terminlə ("Üz", "Şəkil" yox). Birini dəyişsən, o birini də dəyiş.
+    // 02-ci səhnədə skan anında yoxlanan dörd şey: Hero-dakı hero.d.c1–c4 ilə eyni terminlər ("Üz", "Şəkil" yox); birini dəyişsən, o birini də dəyiş.
     'how.c1': 'QR imzası',
     'how.c2': 'Məkan',
     'how.c3': 'Cihaz',
     'how.c4': 'Üz',
-    // Üç addımın tablist-inin adı — ekran oxuyucusu üçün, gözlə görünmür.
+    // Üç addımın tablist adı: yalnız ekran oxuyucu üçün.
     'how.tabs': 'Necə işləyir',
 
-    // «Modullar» (Modules.astro): özü axan kart slayderi. Kartın mətni `mod.<kart>.name` və
-    // `mod.<kart>.desc` açarlarındadır; kartların sırasını və nömrəsini Modules.astro-dakı `cards`
-    // massivi müəyyən edir. Kartlarda teq yoxdur (ikon → ad → təsvir). Maaş kartı hələlik yoxdur —
-    // maaş hesablaması məhsulda var, amma kart qaytarılanda cümlə yenidən yoxlanmalıdır
-    // (bax: landing README «Məzmun qaydası»).
+    // «Modullar» (Modules.astro): kartın mətni `mod.<kart>.name` və `mod.<kart>.desc` açarlarındadır; sırası
+    // Modules.astro-dakı `cards` massivindədir. Maaş kartı hələlik yoxdur: qaytaranda cümlə yenidən
+    // yoxlanmalıdır (landing README «Məzmun qaydası»).
     'mod.eyebrow': 'Modullar', // həm də slayderin ekran oxuyucu adıdır (aria-label)
     'mod.title': 'Davamiyyətdən sonra da var',
     'mod.sub': 'Hamısı eyni paneldə — hər iş üçün ayrıca sistem lazım deyil.',
@@ -272,8 +236,8 @@ export const ui = {
     'mod.kiosk.name': 'Kiosk rejimi',
     'mod.kiosk.desc': 'Girişdəki planşetdə QR özü yenilənir, işçi öz telefonu ilə skan edir.',
 
-    // «Rəhbərin bir günü» (AdminPanel.astro). Tabların saatları — 08:15, 12:40, 18:30 — dil mətni
-    // deyil, komponentdə data kimi durur. Panel ekranlarının içindəki mətn panelUi-dədir (yuxarıda).
+    // «Rəhbərin bir günü» (AdminPanel.astro). Tabların saatları (08:15, 12:40, 18:30) komponentdə data kimi
+    // durur; ekranların içindəki mətn panelUi-dədir.
     'panel.eyebrow': 'Admin panel',
     'panel.title': 'Rəhbərin bir günü',
     'panel.sub':
@@ -305,9 +269,8 @@ export const ui = {
     'panel.note': 'Ekranlar QRLog panelindəndir · məlumat nümunədir',
     ...panelUi,
 
-    // «Saxtaya qarşı qoruma» (AntiFraud.astro, AntiFraudPanel.astro). Hər iddia 2026-10-02-də məhsul
-    // kodu ilə yoxlanılıb — mətni dəyişəndə kodda da yoxla. Ad, saat və faiz mətn deyil, komponentdə
-    // data kimi durur: {t} — saat, {p} — faiz, fmt() doldurur. Panel parçasının mətni panelUi-dədir.
+    // «Saxtaya qarşı qoruma» (AntiFraud.astro, AntiFraudPanel.astro). Hər iddia 2026-10-02-də məhsul kodu ilə
+    // yoxlanılıb: mətni dəyişəndə kodda da yoxla. {t} — saat, {p} — faiz (fmt() doldurur); panel parçasının mətni panelUi-dədir.
     'af.eyebrow': 'Saxtaya qarşı qoruma',
     'af.title': 'Hər giriş dörd qatda yoxlanılır',
     'af.sub':
@@ -359,10 +322,9 @@ export const ui = {
     'af.rule4.d': 'Kimin etdiyi ilə birlikdə qeydə alınır',
     'af.privacy': 'Selfi yalnız davamiyyəti və şəxsiyyəti təsdiqləmək üçün işlədilir',
 
-    // «Kimlər üçün» (Audience.astro): üç kart — site (obyektlər), chain (filial şəbəkəsi), office (ofis).
-    // Kartlardan sonra vizualların içindəki yazılar gəlir (AudienceMap, AudienceBranches). Poster
-    // şəklinin yazıları burada YOXDUR: o, paneldən çıxan real posterin şəklidir, poster isə məhsulda
-    // yalnız azərbaycancadır (bax AudiencePoster.astro). `{n}/{m}` yer tutucularını fmt() doldurur.
+    // «Kimlər üçün» (Audience.astro): üç kart (site, chain, office), sonra vizualların yazıları (AudienceMap,
+    // AudienceBranches). Poster şəklinin yazıları burada yoxdur: poster məhsulda yalnız azərbaycancadır
+    // (AudiencePoster.astro). {n}/{m} yer tutucularını fmt() doldurur.
     'aud.eyebrow': 'Kimlər üçün',
     'aud.title': 'Komandanız harada işləyir?',
     'aud.sub': 'Sahədə, filiallarda və ya bir binada — hər üçü eyni paneldən idarə olunur.',
@@ -465,10 +427,6 @@ export const ui = {
     'price.quoteBtn': 'Təklif alın',
     'cust.title': 'QRLog-dan istifadə edən şirkətlər',
     'cust.eyebrow': 'ETİBARLI TƏRƏFDAŞLAR',
-    'cust.c1s': 'Abadlıq və şəhər təsərrüfatı',
-    'cust.c2s': 'Peşəkar təmizlik xidmətləri',
-    'cust.c3s': 'Kafe və restoran',
-    'cust.c4s': 'Landşaft və istirahət məkanı',
 
     'faq.eyebrow': 'Suallar',
     'faq.title': 'Tez-tez verilən suallar',
@@ -565,7 +523,6 @@ export const ui = {
       'QRLog ilə əlaqə saxlayın. Davamiyyət sistemi, qiymət və quraşdırma haqqında suallarınızı cavablandıraq.',
     'contact.phone': 'Telefon',
     'contact.email': 'E-poçt',
-    'contact.whatsapp': 'WhatsApp',
     'contact.eyebrow': 'Əlaqə',
     'contact.title.a': 'Bir mesajla',
     'contact.title.hl': 'başlayaq',
@@ -764,8 +721,6 @@ export const ui = {
     'priv.chgT': 'Bu səhifədə dərc olunur',
     'priv.chgD': 'Siyasət yenilənə bilər. Yenilənmə bu səhifədə dərc olunacaq və yuxarıdakı tarix dəyişəcək.',
 
-    'blog.title': 'Bloq',
-    'blog.sub': 'Davamiyyət və QR sistemləri haqqında məqalələr.',
     'blog.metaTitle': 'Bloq — QRLog',
     'blog.metaDesc':
       'İşçi davamiyyəti, QR sistemləri və uçotun rəqəmsallaşdırılması haqqında məqalələr.',
@@ -816,9 +771,8 @@ export const ui = {
     'a11y.lang': 'Dil',
     'a11y.nav': 'Əsas menyu',
 
-    // PageLoader — səhifənin ilk kadrında görünən vizör. `aria` yalnız ekran oxuyucu üçündür,
-    // `scanning` və `done` isə alt yazının iki halıdır: yüklənərkən və "oxundu" anında.
-    // Yazı CSS-də uppercase-ə çevrilir, ona görə mətnlər normal registrdə qalır.
+    // PageLoader: `aria` yalnız ekran oxuyucu üçündür; `scanning` və `done` alt yazının iki halıdır.
+    // CSS yazını uppercase edir, ona görə mətnlər normal registrdədir.
     'loader.aria': 'Səhifə yüklənir',
     'loader.scanning': 'Skan edilir',
     'loader.done': 'Qeydə alındı',
@@ -828,8 +782,7 @@ export const ui = {
     'wa.tooltip': 'WhatsApp-da yazın',
     'wa.message': 'Salam! QRLog haqqında məlumat almaq istəyirəm.',
 
-    // BackToTop — WhatsApp düyməsinin üstündəki "yuxarı" düyməsi. Görünən yazısı yoxdur, bu mətni
-    // yalnız ekran oxuyucusu oxuyur (aria-label).
+    // BackToTop: görünən yazısı yoxdur, mətni yalnız ekran oxuyucu oxuyur (aria-label).
     'top.aria': 'Səhifənin əvvəlinə qayıt',
   },
 
@@ -849,7 +802,6 @@ export const ui = {
     'nav.about': 'О нас',
     'nav.menu': 'Меню',
 
-    'hero.badge': 'Без отдельных устройств — работает с телефона',
     'hero.title.a': 'Учёт посещаемости одним ',
     'hero.title.hl': 'сканом',
     'hero.title.b': '',
@@ -861,9 +813,6 @@ export const ui = {
     'hero.s2l': 'затрат на оборудование',
     'hero.s3n': 'Онлайн',
     'hero.s3l': 'кто на месте — сразу',
-    'hero.assure.a': 'Без отдельных устройств',
-    'hero.assure.b': 'Заработает в тот же день',
-    'hero.assure.c': 'Работает с телефона',
     // Birinci ekrandakı nümunə səhnə (az blokundakı şərhə bax): rəqəmlər heç bir müştərinin deyil.
     'hero.d.label': 'Демонстрационные данные',
     'hero.d.site': 'Главный офис',
@@ -905,10 +854,6 @@ export const ui = {
     'prob.m3t': 'Слабый контроль',
     'prob.m3d': 'открыт для подлога',
     'prob.next': 'С проблемой ясно. А решение?',
-    'scan.live': 'В ЭФИРЕ',
-    'scan.feed': 'Последние отметки',
-    'scan.status': 'Отмечен',
-    'scan.demo': 'Пример экрана',
 
     'trust.title': 'QRLog используют в этих сферах',
 
@@ -997,8 +942,8 @@ export const ui = {
     'panel.next': 'Следующий момент',
     'panel.carousel': 'карусель',
     'panel.slide': 'слайд',
-    // Ekranlar məhsulun özüdür, məhsul isə yalnız azərbaycancadır (panelUi-yə bax). Alt yazı bunu
-    // açıq deyir ki, /ru/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
+    // Ekranlar məhsulun özüdür və yalnız azərbaycancadır (bax panelUi): alt yazı bunu açıq deyir,
+    // /ru/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
     'panel.note': 'Экраны из панели QRLog (интерфейс на азербайджанском) · данные условные',
     ...panelUi,
 
@@ -1148,10 +1093,6 @@ export const ui = {
     'price.quoteBtn': 'Получить предложение',
     'cust.title': 'Компании, работающие на QRLog',
     'cust.eyebrow': 'НАДЕЖНЫЕ ПАРТНЕРЫ',
-    'cust.c1s': 'Городское благоустройство',
-    'cust.c2s': 'Профессиональный клининг',
-    'cust.c3s': 'Кафе и рестораны',
-    'cust.c4s': 'Ландшафт и зона отдыха',
 
     'faq.eyebrow': 'Вопросы',
     'faq.title': 'Часто задаваемые вопросы',
@@ -1244,7 +1185,6 @@ export const ui = {
       'Свяжитесь с QRLog. Ответим на вопросы о системе учёта посещаемости, ценах и внедрении.',
     'contact.phone': 'Телефон',
     'contact.email': 'E-mail',
-    'contact.whatsapp': 'WhatsApp',
     'contact.eyebrow': 'Контакты',
     'contact.title.a': 'Начнём с одного',
     'contact.title.hl': 'сообщения',
@@ -1444,8 +1384,6 @@ export const ui = {
     'priv.chgT': 'Публикуются на этой странице',
     'priv.chgD': 'Политика может обновляться. Изменения публикуются на этой странице, а дата выше обновляется.',
 
-    'blog.title': 'Блог',
-    'blog.sub': 'Статьи о посещаемости и QR-системах.',
     'blog.metaTitle': 'Блог — QRLog',
     'blog.metaDesc': 'Статьи об учёте посещаемости, QR-системах и цифровизации учёта.',
     'blog.empty': 'Скоро здесь появятся первые статьи.',
@@ -1521,7 +1459,6 @@ export const ui = {
     'nav.about': 'About',
     'nav.menu': 'Menu',
 
-    'hero.badge': 'No extra hardware — it runs on a phone',
     'hero.title.a': 'Run staff attendance with a single ',
     'hero.title.hl': 'scan',
     'hero.title.b': '',
@@ -1533,9 +1470,6 @@ export const ui = {
     'hero.s2l': 'spent on hardware',
     'hero.s3n': 'Live',
     'hero.s3l': "who's on site — right now",
-    'hero.assure.a': 'No extra hardware',
-    'hero.assure.b': 'Live the same day',
-    'hero.assure.c': 'Works from a phone',
     // Birinci ekrandakı nümunə səhnə (az blokundakı şərhə bax): rəqəmlər heç bir müştərinin deyil.
     'hero.d.label': 'Sample data',
     'hero.d.site': 'Head office',
@@ -1577,10 +1511,6 @@ export const ui = {
     'prob.m3t': 'Weak control',
     'prob.m3d': 'open to fraud',
     'prob.next': 'That is the problem. What is the fix?',
-    'scan.live': 'LIVE',
-    'scan.feed': 'Recent check-ins',
-    'scan.status': 'Recorded',
-    'scan.demo': 'Sample screen',
 
     'trust.title': 'QRLog is used across these sectors',
 
@@ -1595,7 +1525,7 @@ export const ui = {
     'stats.n3': 'Locations',
     'stats.n4': 'Daily check-ins',
     'stats.source': 'From the QRLog database',
-    // «183» + «K» → «183K+»: no space in English (see az).
+    // «183» + «K» → «183K+»: ingiliscədə boşluq yoxdur (bax az).
     'stats.thousand': 'K',
 
     'how.eyebrow': 'How it works',
@@ -1666,8 +1596,8 @@ export const ui = {
     'panel.next': 'Next moment',
     'panel.carousel': 'carousel',
     'panel.slide': 'slide',
-    // Ekranlar məhsulun özüdür, məhsul isə yalnız azərbaycancadır (panelUi-yə bax). Alt yazı bunu
-    // açıq deyir ki, /en/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
+    // Ekranlar məhsulun özüdür və yalnız azərbaycancadır (bax panelUi): alt yazı bunu açıq deyir,
+    // /en/ səhifəsindəki azərbaycanca mətn səhv kimi görünməsin.
     'panel.note': 'Screens from the QRLog panel (interface in Azerbaijani) · sample data',
     ...panelUi,
 
@@ -1819,10 +1749,6 @@ export const ui = {
     'price.quoteBtn': 'Get a quote',
     'cust.title': 'Companies running QRLog',
     'cust.eyebrow': 'TRUSTED PARTNERS',
-    'cust.c1s': 'Municipal grounds and upkeep',
-    'cust.c2s': 'Professional cleaning services',
-    'cust.c3s': 'Café and restaurant',
-    'cust.c4s': 'Landscaping and leisure venue',
 
     'faq.eyebrow': 'FAQ',
     'faq.title': 'Frequently asked questions',
@@ -1915,7 +1841,6 @@ export const ui = {
       'Contact QRLog. We answer questions about the attendance system, pricing and rollout.',
     'contact.phone': 'Phone',
     'contact.email': 'Email',
-    'contact.whatsapp': 'WhatsApp',
     'contact.eyebrow': 'Contact',
     'contact.title.a': "Let's start with",
     'contact.title.hl': 'one message',
@@ -2113,8 +2038,6 @@ export const ui = {
     'priv.chgT': 'Published on this page',
     'priv.chgD': 'This policy may change. Updates are published here and the date above is updated.',
 
-    'blog.title': 'Blog',
-    'blog.sub': 'Articles about attendance and QR systems.',
     'blog.metaTitle': 'Blog — QRLog',
     'blog.metaDesc': 'Articles about staff attendance, QR systems and digitising records.',
     'blog.empty': 'The first articles will appear here soon.',
@@ -2175,21 +2098,12 @@ export const ui = {
   },
 } as const
 
-// Mümkün açarların siyahısı az blokundan götürülür. Səhv açar yazsan (məs. t('nav.faqq')),
-// redaktor və `npm run check` xəta göstərir.
-// keyof obyektin açarlarının adlarını tip kimi götürür: https://www.typescriptlang.org/docs/handbook/2/keyof-types.html
+// Mümkün açarlar az blokundan götürülür: səhv açar (məs. t('nav.faqq')) redaktorda və `npm run check`-də xəta verir.
 export type UIKey = keyof (typeof ui)['az']
 
-/**
- * Verilən dil üçün t() funksiyasını qaytarır. Komponentdə belə işlənir:
- *   const t = useTranslations(lang)
- *   t('nav.faq') → 'Suallar'
- * Açar bu dildə yoxdursa, AZ mətni qaytarılır — səhifədə boş yer qalmasın.
- */
+/** Verilən dil üçün t() qaytarır: t('nav.faq') → 'Suallar'. Açar bu dildə yoxdursa, AZ mətni qaytarılır. */
 export function useTranslations(lang: Lang) {
-  // `as Record<string, string>` TypeScript-ə bloka sadə «açar → mətn» cədvəli kimi baxmağı deyir.
-  // Beləcə hər dil blokunda eyni açarların olması tələb olunmur: çatışmayan açar sadəcə undefined olur.
-  // https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#type-assertions
+  // Hər dil blokunda eyni açarlar tələb olunmur: çatışmayan açar undefined olur.
   const currentTexts = ui[lang] as Record<string, string>
   const defaultTexts = ui[defaultLang] as Record<string, string>
 
@@ -2205,20 +2119,16 @@ export function useTranslations(lang: Lang) {
 }
 
 /**
- * Tərcümə mətnindəki {n} kimi yer tutucuları doldurur: fmt(t('panel.ui.m2.times'), { n: 3 }) → '3 dəfə'.
- * Dəyəri verilməyən yer tutucu olduğu kimi qalır — yazı səhvi yox olmasın, səhifədə görünsün.
- *
- * Şablonda rəqəm ayrıca durur ('{n} dəfə', 'son {t}') — heç vaxt şəkilçiyə yapışıq yox ('{n}-si').
- * Azərbaycan dilində şəkilçi rəqəmin son səsinə uyğunlaşır (48-i, 43-ü, 40-ı), ona görə sabit
- * şəkilçi rəqəm dəyişən kimi səhv olur.
+ * Mətndəki {n} kimi yer tutucuları doldurur: fmt(t('panel.ui.m2.times'), { n: 3 }) → '3 dəfə'.
+ * Dəyəri verilməyən yer tutucu olduğu kimi qalır (yazı səhvi səhifədə görünsün).
+ * Rəqəm şablonda ayrıca durur ('{n} dəfə'), şəkilçiyə yapışıq yox ('{n}-si'): azərbaycan şəkilçisi
+ * rəqəmin son səsinə görə dəyişir (48-i, 43-ü, 40-ı), sabit şəkilçi səhv olur.
  */
 export function fmt(template: string, values: Record<string, string | number>): string {
-  // Axtarılan nümunə: "{", sonra bir və ya bir neçə latın hərfi / rəqəm / alt xətt, sonra "}".
-  // Mötərizədəki (\w+) hissə yer tutucunun adıdır — fillPlaceholder-ə `name` kimi gəlir.
-  // Sondakı `g` bütün yer tutucuları tapır, təkcə birincini yox.
+  // {ad} nümunəsi: (\w+) yer tutucunun adıdır, `g` hamısını tapır.
   const placeholderPattern = /\{(\w+)\}/g
 
-  // `placeholder` tapılan bütöv mətndir ('{n}'), `name` isə mötərizənin içidir ('n').
+  // `placeholder` tapılan bütöv mətndir ('{n}'), `name` mötərizənin içidir ('n').
   function fillPlaceholder(placeholder: string, name: string): string {
     if (name in values) {
       return String(values[name])
@@ -2226,48 +2136,34 @@ export function fmt(template: string, values: Record<string, string | number>): 
     return placeholder
   }
 
-  // replace hər tapılan yer tutucu üçün fillPlaceholder-i çağırır və onun qaytardığını yerinə qoyur.
-  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace
   return template.replace(placeholderPattern, fillPlaceholder)
 }
 
 /**
- * Yalnız azərbaycanca olan səhifələr.
- *
- * 404.html bir dəfə yaradılır — ona görə /ru/404/ və /en/404/ yoxdur. Bloq artıq üç dildədir (/blog/, /ru/blog/,
- * /en/blog/); məqalələrin slug-ı dillər arasında eynidir və bunu src/data/blog.ts build zamanı yoxlayır.
- * Hüquqi səhifələr (məxfilik, hesabın silinməsi) artıq üç dildədir, ona görə burada yoxdur. Tərcüməsi
- * olmayan səhifə üçün başqa dil təklif etmək kiçik kosmetik səhv deyil: dil seçici oxucunu 404-ə
- * göndərir, hreflang teqləri isə axtarış sistemlərini heç vaxt yaradılmamış ünvanlara yönəldir.
- *
- * Səhifənin tərcüməsi olmayan kimi onu bura əlavə et, tərcüməsi hazır olanda isə buradan sil.
+ * Yalnız azərbaycanca olan səhifələr (404.html bir dəfə yaranır, /ru/404/ və /en/404/ yoxdur).
+ * Tərcüməsi olmayan səhifə üçün başqa dil təklif etmək olmaz: dil seçici oxucunu 404-ə göndərir, hreflang
+ * isə axtarış sistemlərini yaranmamış ünvanlara yönəldir. Tərcüməsi olmayan səhifəni bura əlavə et, hazır olanda sil.
  */
 const azOnlyRoutes = ['/404/'] as const
 
 /**
- * Səhifənin həqiqətən hansı dillərdə olduğunu qaytarır. Yuxarıdakı siyahıda olmayan hər səhifə üç
- * dildə var — ona görə standart cavab boş siyahı yox, tam siyahıdır.
- * Header.astro (dil seçici) və BaseLayout.astro (hreflang teqləri) bunu işlədir.
+ * Səhifənin mövcud olduğu dillər: siyahıda olmayan hər səhifə üç dildədir.
+ * Header.astro (dil seçici) və BaseLayout.astro (hreflang) bunu işlədir.
  */
 export function availableLangs(path = '/'): Lang[] {
   for (const route of azOnlyRoutes) {
-    // startsWith: marşrut prefiksi altındakı bütün səhifələri tutur (məs. '/404/' ilə başlayanları).
+    // startsWith: prefiks altındakı bütün səhifələri tutur.
     if (path.startsWith(route)) {
       return ['az']
     }
   }
-  // Surət qaytarırıq: `languages` dəyişməzdir (as const), çağıran isə adi massiv alır.
+  // Surət: `languages` dəyişməzdir (as const), çağıran isə adi massiv alır.
   return [...languages]
 }
 
 /**
- * Səhifənin verilən dildəki ünvanını qurur — sadəcə dil prefiksi + yol:
- *   localizedPath('az', '/elaqe/') → '/elaqe/'
- *   localizedPath('ru', '/elaqe/') → '/ru/elaqe/'
- *   localizedPath('ru', '/')       → '/ru/'   (ana səhifə də eyni qaydaya düşür)
- *
- * Slug-lar (elaqe, haqqimizda) hər dildə azərbaycanca qalır — bilərəkdən: /haqqimizda/ artıq axtarış
- * sistemlərində indekslənib, slug-ı tərcümə etmək onu heç bir fayda olmadan sındırardı.
+ * Dil prefiksi + yol: localizedPath('ru', '/elaqe/') → '/ru/elaqe/'.
+ * Slug-lar (elaqe, haqqimizda) hər dildə azərbaycanca qalır: /haqqimizda/ artıq indekslənib, tərcümə onu sındırardı.
  */
 export function localizedPath(lang: Lang, path = '/'): string {
   const prefix = localePrefix[lang]
