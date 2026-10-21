@@ -1,0 +1,557 @@
+---
+import { useTranslations, type Lang, type UIKey } from '../../i18n/ui'
+import AdminPanelDashboard from './AdminPanelDashboard.astro'
+import AdminPanelProblems from './AdminPanelProblems.astro'
+import AdminPanelToday from './AdminPanelToday.astro'
+
+/**
+ * «Rəhbərin bir günü» bölməsi: günün üç anı (08:15, 12:40, 18:30), hər birində panelin bir ekranı. Props: lang.
+ * Desktopda anlar 4 saniyədən bir özü dəyişir; lg-dən kiçik ekranda avto-keçid yoxdur, tablar və sürüşdürmə ilədir.
+ * Saat yalnız tablardadır, ekran başlığında yox; bölmə qəsdən sakitdir (xəritə, kursor, toast yoxdur).
+ */
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+// Panel ekranları məhsulun özüdür və yalnız azərbaycancadır (panelUi, i18n/ui.ts). RU/EN səhifəsində
+// ekran lang="az" daşıyır, yoxsa `uppercase` "İŞÇİ"-ni "İŞÇI" yazar və ekran oxuyucu dili səhv seçər.
+const PANEL_LANG: Lang = 'az'
+const screenLang = lang === PANEL_LANG ? undefined : PANEL_LANG
+
+// `at` — slayd açılandan neçə ms sonra ekranda canlı hadisə baş verir.
+const moments = [
+  {
+    time: '08:15',
+    label: 'panel.m1.label',
+    head: 'panel.m1.head',
+    text: 'panel.m1.text',
+    meta: ['panel.m1.meta1', 'panel.m1.meta2'],
+    at: 1700,
+    Screen: AdminPanelDashboard,
+  },
+  {
+    time: '12:40',
+    label: 'panel.m2.label',
+    head: 'panel.m2.head',
+    text: 'panel.m2.text',
+    meta: ['panel.m2.meta1', 'panel.m2.meta2'],
+    at: 1100,
+    Screen: AdminPanelProblems,
+  },
+  {
+    time: '18:30',
+    label: 'panel.m3.label',
+    head: 'panel.m3.head',
+    text: 'panel.m3.text',
+    meta: ['panel.m3.meta1', 'panel.m3.meta2'],
+    at: 1100,
+    Screen: AdminPanelToday,
+  },
+] satisfies {
+  time: string
+  label: UIKey
+  head: UIKey
+  text: UIKey
+  meta: UIKey[]
+  at: number
+  Screen: unknown
+}[]
+
+// Preflight söndürülüb (bax styles/tailwind.css), ona görə `border-0 bg-transparent p-0` lazımdır.
+// Fokus halqası outline-dır, ring yox: forced-colors rejimində box-shadow görünmür.
+// `flex flex-col` məzmunu yuxarıdan başladır, yoxsa 320px-də başlıq iki sətrə düşəndə qonşu vaxtlar aşağı enir.
+const tabClass =
+  'group relative flex min-w-0 cursor-pointer flex-col border-0 bg-transparent p-0 pb-4 text-left focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand'
+const arrowClass =
+  'flex size-10 cursor-pointer items-center justify-center rounded-full border border-[#E7E9EE] bg-white p-0 text-ink transition-colors hover:border-[#C9D3E6] hover:bg-[#F7F9FD] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
+const chipClass =
+  'inline-flex items-center gap-2 rounded-full border border-[#E7E9EE] bg-white px-3 py-1.5'
+---
+
+<section id="panel" aria-labelledby="panel-title" class="relative overflow-hidden bg-page py-20 lg:py-28">
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
+
+  <div class="wrap relative">
+    <div class="max-w-155">
+      <span
+        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('panel.eyebrow')}
+      </span>
+      <h2
+        id="panel-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('panel.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('panel.sub')}</p>
+    </div>
+
+    <div
+      id="panelSlider"
+      data-state="static"
+      role="region"
+      aria-roledescription={t('panel.carousel')}
+      aria-label={t('panel.title')}
+      class="rv d3 mt-10 text-ink lg:mt-14"
+    >
+      <div class="flex items-end gap-6">
+        <div role="tablist" aria-label={t('panel.tablist')} class="grid flex-1 grid-cols-3 gap-4 sm:gap-8">
+          {
+            moments.map((m, i) => {
+              const [hh, mm] = m.time.split(':')
+              return (
+                <button
+                  type="button"
+                  role="tab"
+                  id={`panel-tab-${i + 1}`}
+                  aria-controls={`panel-slide-${i + 1}`}
+                  aria-selected={i === 0 ? 'true' : 'false'}
+                  tabindex={i === 0 ? 0 : -1}
+                  class={tabClass}
+                >
+                  {/* Bir sətirdə: sətir sonu "08 : 15" kimi boşluq verərdi. */}
+                  <span class="block text-[30px] leading-none font-medium tracking-[-0.04em] text-[#B9BFCA] tabular-nums transition-colors duration-300 group-hover:text-slate-500 group-aria-selected:text-ink sm:text-[44px] lg:text-[56px]">
+                    {hh}<span class="transition-colors duration-300 group-aria-selected:text-brand">:</span>{mm}
+                  </span>
+                  <span class="mt-2 block text-[12.5px] leading-snug font-medium text-slate-400 transition-colors duration-300 group-aria-selected:text-ink sm:mt-3 sm:text-[15px]">
+                    {t(m.label)}
+                  </span>
+                  {/* Növbəti ana keçidi bu xəttin animationend hadisəsi verir (setInterval yox). */}
+                  <span class="pbar absolute inset-x-0 bottom-0 h-0.5 overflow-hidden rounded-full bg-[#E3E6EC]">
+                    <i />
+                  </span>
+                </button>
+              )
+            })
+          }
+        </div>
+        <div class="mb-4 hidden shrink-0 gap-2 lg:flex">
+          <button type="button" data-step="-1" aria-controls="panelStage" aria-label={t('panel.prev')} class={arrowClass}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12.8 8H3.2M7 4.2 3.2 8 7 11.8"></path>
+            </svg>
+          </button>
+          <button type="button" data-step="1" aria-controls="panelStage" aria-label={t('panel.next')} class={arrowClass}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3.2 8h9.6M9 4.2 12.8 8 9 11.8"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Üç slayd eyni grid xanasındadır (hündürlük ən hündür slayddan gəlir). Slaydın iki uşağı var, mətn və panel: skript onları bu sıra ilə tapır. */}
+      <div id="panelStage" class="stage mt-10 grid touch-pan-y data-drag:select-none lg:mt-14">
+        {
+          moments.map(({ Screen, ...m }, i) => (
+            <div
+              id={`panel-slide-${i + 1}`}
+              role="tabpanel"
+              aria-roledescription={t('panel.slide')}
+              aria-label={`${i + 1} / ${moments.length}`}
+              aria-hidden={i === 0 ? undefined : 'true'}
+              tabindex={i === 0 ? 0 : -1}
+              data-at={m.at}
+              class="col-start-1 row-start-1 grid content-start gap-8 rounded-[20px] aria-hidden:invisible focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-14"
+            >
+              <div>
+                <h3 class="max-w-[18ch] text-[26px] leading-[1.15] font-semibold tracking-[-0.025em] sm:text-[32px]">
+                  {t(m.head)}
+                </h3>
+                <p class="mt-4 max-w-[42ch] text-[16px] leading-[1.7] text-ink2">{t(m.text)}</p>
+                <ul class="mt-6 flex list-none flex-wrap gap-2 font-mono text-[11.5px] text-slate-500">
+                  {m.meta.map((k) => (
+                    <li class={chipClass}>
+                      <i class="size-1 rounded-full bg-brand" />
+                      {t(k)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div
+                lang={screenLang}
+                class="crop-b @container h-140 overflow-hidden rounded-[20px] border border-[#E7E9EE] bg-[#F3F4F7] p-5 sm:h-120"
+              >
+                <Screen lang={lang} />
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <p class="mt-10 font-mono text-[11px] tracking-[0.12em] text-slate-400 uppercase">{t('panel.note')}</p>
+  </div>
+</section>
+
+<style>
+  /*
+    Ekran komponentlərindəki qarmaqlara (.ap-live, .ap-caps, [hidden]) :global() ilə çatılır; ana
+    seçici (.stage) bu fayldadır. Keyframe adları prefikslidir, çünki Astro @keyframes adını scope etmir.
+  */
+
+  /* HowItWorks-dakı ilə eyni qayda (orada scoped olduğu üçün təkrarlanır). */
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+
+  /* Panel parçası aşağıdan kəsilir: son 72px şəffaflığa əriyir. */
+  .crop-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
+  }
+
+  /* Progress xətti: növbəti ana keçidi bu animasiyanın animationend-i verir, xətt və keçid ayrılmır. */
+  .pbar > i {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-brand);
+  }
+
+  [aria-selected='true'] .pbar > i {
+    animation: ap-fill 4s linear forwards;
+  }
+
+  [data-state='paused'] [aria-selected='true'] .pbar > i {
+    animation-play-state: paused;
+  }
+
+  /* Mobil və reduced motion: avto-keçid yoxdur, aktiv xətt dolu qalır. */
+  [data-state='static'] [aria-selected='true'] .pbar > i {
+    animation: none;
+    width: 100%;
+  }
+
+  @keyframes ap-fill {
+    to {
+      width: 100%;
+    }
+  }
+
+  /* data-swap variantları üçün: `flex` sinfi brauzerin [hidden] qaydasını üstələyir, ona görə burada təkrarlanır. */
+  .stage :global([hidden]) {
+    display: none;
+  }
+
+  /* "CANLI" nişanının nöqtəsi (reduced motion-da global.css söndürür). */
+  .stage :global(.ap-live) {
+    animation: ap-blink 1.8s ease-in-out infinite;
+  }
+
+  @keyframes ap-blink {
+    50% {
+      opacity: 0.25;
+    }
+  }
+
+  /* "CANLI" yazısı: böyük hərflər sətir qutusunda nöqtədən ~2px yuxarıda qalırdı; text-box qutunu hərf hündürlüyünə kəsib ortalayır. */
+  @supports (text-box: trim-both cap alphabetic) {
+    .stage :global(.ap-caps) {
+      text-box: trim-both cap alphabetic;
+      padding-block: calc((1lh - 1cap) / 2);
+    }
+  }
+</style>
+
+<script>
+  /*
+    «Rəhbərin bir günü» slayderi. Vəziyyət root-un data-state atributundadır:
+      running — desktop, bölmə ekrandadır, heç kim oxumur: aktiv xətt 4 s-də dolur, sonra növbəti an
+      paused  — siçan üstündədir, klaviatura fokusu içəridədir, barmaq sürüşdürür və ya bölmə ekranda deyil
+      static  — lg-dən kiçik ekran və ya reduced motion: avto-keçid yoxdur, aktiv xətt dolu
+    init() həm dərhal, həm astro:page-load-da çağırılır (ClientRouter üçün); data-ready təkrar bağlanmağa qoymur.
+  */
+  const EASE = 'cubic-bezier(.22,.61,.36,1)'
+  // Keçiddə mətn və panel fərqli məsafə gedir (dərinlik hissi). [mətn, panel]
+  const TRAVEL = [18, 40]
+  // Sürüşdürəndə slayd barmağın arxasınca müqavimətlə gedir. [mətn, panel]
+  const FOLLOW = [0.18, 0.32]
+
+  let dispose: (() => void) | undefined
+
+  function init() {
+    const root = document.getElementById('panelSlider')
+    const stage = root?.querySelector<HTMLElement>('.stage')
+    if (!root || !stage || root.dataset.ready) return
+    root.dataset.ready = '1'
+
+    const each = (scope: ParentNode, sel: string, fn: (el: HTMLElement) => void) =>
+      scope.querySelectorAll<HTMLElement>(sel).forEach(fn)
+    const kids = (el: Element) => [...el.children] as HTMLElement[]
+    const cancel = (el: Element) => el.getAnimations().forEach((a) => a.cancel())
+
+    const tabs = [...root.querySelectorAll<HTMLElement>('[role=tab]')]
+    const slides = kids(stage)
+    const n = slides.length
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+    const desk = matchMedia('(min-width: 64rem)') // Tailwind-in lg nöqtəsi
+    const ac = new AbortController()
+    const on = <E extends Event>(el: EventTarget, type: string, fn: (e: E) => void) =>
+      el.addEventListener(type, fn as EventListener, { signal: ac.signal })
+
+    let cur = 0
+    let gen = 0 // canlı anın nəsli: yeni an başlayanda köhnəsinin sayğacları dayanır
+    let timer: ReturnType<typeof setTimeout> | undefined // canlı hadisənin taymeri
+    let hideTimer: ReturnType<typeof setTimeout> | undefined // çıxan slaydı çıxış animasiyasından sonra gizlədir
+    let visible = false
+    let over = false
+    let focused = false
+    let drag = false
+
+    const sync = () => {
+      root.dataset.state =
+        reduce || !desk.matches ? 'static' : visible && !over && !focused && !drag ? 'running' : 'paused'
+    }
+
+    // Canlı an: slayd hər açılanda əvvəlcə ilkin hala qayıdır, sonra hadisə təkrarlanır.
+    const base = new Map<Element, string>()
+    each(stage, '[data-a],[data-up]', (el) => base.set(el, el.textContent!))
+
+    // İştirak dairəsi: data-ring="73 75", pathLength="100" olduğu üçün dashoffset = 100 − faiz.
+    // step 0: 0 → 73 (slayd açılanda), step 1: 73 → 75 (hadisədə). CSS transition yox, çünki yarıda geri çevriləndə dairə 0-dan dolmur.
+    const ring = (s: Element, step: 0 | 1, animate: boolean) =>
+      each(s, '[data-ring]', (el) => {
+        const o = [100, ...el.dataset.ring!.split(' ').map((p) => 100 - +p)] // dashoffset: 0%, 73%, 75%
+        cancel(el)
+        el.style.strokeDashoffset = `${o[step + 1]}`
+        if (animate) el.animate({ strokeDashoffset: [o[step], o[step + 1]] }, { duration: 900, easing: EASE })
+      })
+
+    const count = (el: Element, to: number, g: number) => {
+      const raf = requestAnimationFrame
+      let t0 = 0
+      const step = (now: number) => {
+        if (g !== gen) return
+        t0 ||= now
+        const k = Math.min((now - t0) / 900, 1)
+        el.textContent = `${Math.round(to * (1 - (1 - k) ** 3))}`
+        if (k < 1) raf(step)
+      }
+      raf(step)
+    }
+
+    // data-swap="in" hadisədə görünür, "out" gizlənir.
+    const swap = (s: HTMLElement, after: boolean) =>
+      each(s, '[data-swap],[data-flash],[data-enter]', (el) => {
+        cancel(el)
+        if (el.dataset.swap) el.hidden = el.dataset.swap === (after ? 'out' : 'in')
+      })
+
+    // Hadisənin son halı; live=false (reduced motion) olanda eyni hal animasiyasız qurulur.
+    const happen = (s: HTMLElement, live: boolean) => {
+      each(s, '[data-a]', (el) => (el.textContent = el.dataset.a!))
+      swap(s, true)
+      ring(s, 1, live)
+      if (!live) return
+      each(s, '[data-enter]', (el) =>
+        el.animate({ opacity: [0, 1], transform: ['translateY(-6px)', 'none'] }, { duration: 550, easing: EASE })
+      )
+      // 2600 ms: 0.8 s-də rəng gəlir, 1 s qalır, 0.8 s-də gedir (offset 0.31 / 0.69).
+      each(s, '[data-flash]', (el) =>
+        el.animate({ backgroundColor: [el.dataset.flash!, el.dataset.flash!], offset: [0.31, 0.69] }, 2600)
+      )
+    }
+
+    const moment = (i: number) => {
+      const s = slides[i]
+      const g = ++gen
+      clearTimeout(timer)
+      base.forEach((text, el) => s.contains(el) && (el.textContent = text))
+      swap(s, false)
+      if (reduce) return happen(s, false)
+      each(s, '[data-up]', (el) => count(el, +base.get(el)!, g))
+      ring(s, 0, true)
+      timer = setTimeout(() => happen(s, true), +s.dataset.at!)
+    }
+
+    const show = (s: HTMLElement, open: boolean) => {
+      s.tabIndex = open ? 0 : -1
+      if (open) return s.removeAttribute('aria-hidden')
+      s.setAttribute('aria-hidden', 'true')
+      // Çıxış animasiyası (`fill: 'forwards'`) ləğv edilməsə, bu slayda qayıdanda məzmun görünməz qalır.
+      kids(s).forEach((el) => {
+        cancel(el)
+        el.style.transform = ''
+      })
+    }
+
+    // Çıxan slayd olduğu yerdən çıxır (yarımçıq keçiddən və ya barmağın saxladığı yerdən), ona görə
+    // başlanğıc kadr köhnə animasiya ləğv olunmamış oxunur; sonra köhnələr ləğv edilir.
+    const move = (s: HTMLElement, x: number, leaving: boolean) =>
+      kids(s).forEach((el, k) => {
+        const c = getComputedStyle(el)
+        const aside = { opacity: 0, transform: `translateX(${x * TRAVEL[k]}px)` }
+        const frames = leaving
+          ? [{ opacity: c.opacity, transform: c.transform }, aside]
+          : [aside, { opacity: 1, transform: 'none' }]
+        cancel(el)
+        el.style.transform = ''
+        el.animate(
+          frames,
+          leaving
+            ? { duration: 180, easing: 'ease-in', fill: 'forwards' }
+            : { duration: 560, delay: 160 + k * 60, easing: EASE, fill: 'backwards' }
+        )
+      })
+
+    // Cari slayddan başqa hamısı gizlənir (tez keçiddə A → B → C iki slayd birlikdə).
+    const hideOthers = () => slides.forEach((s, k) => k !== cur && show(s, false))
+
+    const go = (to: number, dir?: number) => {
+      const i = (to + n) % n
+      if (i === cur) return
+      const d = dir ?? (i > cur ? 1 : -1)
+      if (!reduce) {
+        move(slides[cur], -d, true)
+        move(slides[i], d, false)
+      }
+      show(slides[i], true)
+      cur = i
+      clearTimeout(hideTimer)
+      if (reduce) hideOthers()
+      else hideTimer = setTimeout(hideOthers, 300)
+      // aria-selected dəyişəndə yeni tabın xəttinin CSS animasiyası sıfırdan başlayır (ayrıca taymer yoxdur).
+      tabs.forEach((tab, k) => {
+        tab.setAttribute('aria-selected', `${k === i}`)
+        tab.tabIndex = k === i ? 0 : -1
+      })
+      moment(i)
+    }
+
+    tabs.forEach((tab, k) => {
+      on(tab, 'click', () => go(k))
+      // Xəttin animationend-i tab-a qədər qalxır. Sonsuz dövr: 18:30-dan sonra yenidən 08:15.
+      on(tab, 'animationend', () => k === cur && go(k + 1, 1))
+    })
+    each(root, '[data-step]', (btn) => {
+      const d = +btn.dataset.step!
+      on(btn, 'click', () => go(cur + d, d))
+    })
+    // [hara, istiqamət]: son andan sonra yenidən birinciyə keçilir, amma məzmun yenə sağdan gəlir.
+    on(root.querySelector('[role=tablist]')!, 'keydown', (e: KeyboardEvent) => {
+      const target = ({ ArrowRight: [cur + 1, 1], ArrowLeft: [cur - 1, -1], Home: [0, -1], End: [n - 1, 1] } as Record<string, number[]>)[e.key]
+      if (!target) return
+      e.preventDefault()
+      go(target[0], target[1])
+      tabs[cur].focus()
+    })
+
+    // Yalnız siçan: toxunuşda "üstündə olmaq" yoxdur.
+    const hover = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      over = e.type === 'pointerenter'
+      sync()
+    }
+    on(root, 'pointerenter', hover)
+    on(root, 'pointerleave', hover)
+    // Siçanla kliklənən düymə də fokus alır; yalnız :focus-visible saxlayır, yoxsa xətt siçan gedəndən sonra donardı.
+    on(root, 'focusin', (e: FocusEvent) => {
+      focused = (e.target as Element).matches(':focus-visible')
+      sync()
+    })
+    on(root, 'focusout', (e: FocusEvent) => {
+      if (root.contains(e.relatedTarget as Node | null)) return
+      focused = false
+      sync()
+    })
+
+    // touch-action: pan-y — şaquli scroll brauzerindir. Buraxanda |dx| > 60 növbəti/əvvəlki an, əks halda 280ms-də yerinə qayıdır.
+    let down = false
+    let x0 = 0
+    let y0 = 0
+    let dx = 0
+    on(stage, 'pointerdown', (e: PointerEvent) => {
+      if (e.button) return
+      down = true
+      x0 = e.clientX
+      y0 = e.clientY
+      dx = 0
+    })
+    on(stage, 'pointermove', (e: PointerEvent) => {
+      if (!down) return
+      dx = e.clientX - x0
+      const ax = Math.abs(dx)
+      if (!drag && ax > 10 && ax > Math.abs(e.clientY - y0) * 1.3) {
+        drag = true
+        stage.setPointerCapture(e.pointerId)
+        stage.dataset.drag = ''
+        getSelection()?.empty()
+        sync()
+      }
+      // Reduced motion: jest işləyir, məzmun barmağın arxasınca getmir.
+      if (drag && !reduce) kids(slides[cur]).forEach((el, k) => (el.style.transform = `translateX(${dx * FOLLOW[k]}px)`))
+    })
+    const release = () => {
+      const was = drag
+      down = drag = false
+      if (!was) return
+      delete stage.dataset.drag
+      sync()
+      if (Math.abs(dx) > 60) return go(cur - Math.sign(dx), -Math.sign(dx))
+      if (!reduce)
+        kids(slides[cur]).forEach((el) => {
+          const from = el.style.transform
+          el.style.transform = ''
+          el.animate({ transform: [from, 'none'] }, { duration: 280, easing: EASE })
+        })
+    }
+    on(stage, 'pointerup', release)
+    on(stage, 'pointercancel', release)
+
+    // isIntersecting 1px görünəndə də true olur, ona görə 0.35 həddini intersectionRatio yoxlayır.
+    const io = new IntersectionObserver(
+      ([e]) => {
+        visible = e.intersectionRatio >= 0.35
+        // Canlı an bölmə ilk dəfə ekrana girəndə başlayır (gen 0 — hələ heç bir an olmayıb).
+        if (visible && !gen) moment(cur)
+        sync()
+      },
+      { threshold: 0.35 }
+    )
+    io.observe(root)
+    on(desk, 'change', sync)
+    sync()
+
+    dispose = () => {
+      ac.abort()
+      io.disconnect()
+      clearTimeout(timer)
+      clearTimeout(hideTimer)
+      gen++
+    }
+  }
+
+  init()
+  document.addEventListener('astro:page-load', init)
+  document.addEventListener('astro:before-swap', () => {
+    dispose?.()
+    dispose = undefined
+  })
+</script>
