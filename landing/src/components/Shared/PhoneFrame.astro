@@ -1,0 +1,94 @@
+---
+/*
+  3D titan iPhone Pro çərçivəsi; ekranın içi <slot />-dadır (Hero.astro, ContactBody.astro). Props: class, ariaLabel (verilsə, telefon bir şəkil kimi oxunur).
+  Poza kökdəki --rx (arxaya), --ry (yana dönmə), --rz (yana əyilmə) dəyişənləri ilə verilir, class-da yazılır; cqw ölçüləri telefonun eninin 1%-dir.
+  Ön üz qəsdən gövdədən ayrıdır (preserve-3d içində mətn bulanır). Bu elementlərdə isolate, overflow, filter OLMAMALIDIR: 3D yastılaşır.
+*/
+interface Props {
+  class?: string
+  ariaLabel?: string
+}
+const { class: className, ariaLabel } = Astro.props
+
+// Qalınlığı yaradan 16 titan qat (0–15).
+const depthLayers = Array.from({ length: 16 }, (_, i) => i)
+
+// Yan düymələrin ortaq görünüşü; sol düymələr sola, sağ düymələr sağa çıxır. Yer (top, h) hər düymədə ayrıdır.
+const sideKey =
+  'absolute w-[2cqw] bg-[linear-gradient(180deg,#d9dade,#6f7279_50%,#c3c5ca)]'
+const keyLeft = `${sideKey} -left-[1.35cqw] rounded-l-[1cqw] shadow-[inset_0.35cqw_0_0_rgb(255_255_255/0.7),inset_-0.45cqw_0_0_rgb(0_0_0/0.25)]`
+const keyRight = `${sideKey} -right-[1.35cqw] rounded-r-[1cqw] shadow-[inset_-0.35cqw_0_0_rgb(255_255_255/0.7),inset_0.45cqw_0_0_rgb(0_0_0/0.25)]`
+---
+
+<div
+  class:list={['@container', className]}
+  role={ariaLabel ? 'img' : undefined}
+  aria-label={ariaLabel}
+>
+  {/* perspective = 5.2 × telefonun eni; --t telefonun qalınlığıdır. */}
+  <div class="relative animate-phone-float perspective-[520cqw] [--t:12.4cqw] motion-reduce:animate-none">
+    <span
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-x-[10%] top-[97%] h-[9.5cqw] animate-phone-shadow rounded-[50%] bg-slate-900/40 blur-[3.3cqw] motion-reduce:animate-none"
+    ></span>
+
+    {/* Gövdə ön üzlə eyni ölçüdədir və onun arxasında durur (DOM-da əvvəl gəlir). */}
+    <div
+      aria-hidden="true"
+      class="absolute inset-0 transform-3d [transform:rotateX(var(--rx,0deg))_rotateY(var(--ry,0deg))_rotate(var(--rz,0deg))] transition-transform duration-800 ease-out motion-reduce:transition-none"
+    >
+      {/* 16 qat: z = -qalınlığın yarısından +yarısına qədər. */}
+      {
+        depthLayers.map((i) => (
+          <span
+            class="absolute inset-0 rounded-[14cqw] bg-[linear-gradient(160deg,#aeb0b7_0%,#6f7279_26%,#bcbec3_48%,#6a6d74_72%,#9b9da4_100%)] [transform:translateZ(calc(var(--t)*(var(--i)/15_-_0.5)))]"
+            style={`--i:${i}`}
+          />
+        ))
+      }
+
+      {/* Alt kənar: dinamik dəlikləri və USB-C. */}
+      <div
+        class="absolute top-full left-[13%] h-[var(--t)] w-[74%] origin-top bg-[linear-gradient(90deg,#8e9097,#cdced3_30%,#7d8088_62%,#b4b6bc)] [transform:translateZ(calc(var(--t)/2))_rotateX(-90deg)]"
+      >
+        <span
+          class="absolute top-1/2 left-[5%] h-[26%] w-[30%] -translate-y-1/2 bg-[radial-gradient(circle,#15161a_0.57cqw,transparent_0.76cqw)] bg-size-[2.26cqw_100%]"
+        ></span>
+        <span
+          class="absolute top-1/2 left-1/2 h-[42%] w-[24%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#15161a]"
+        ></span>
+        <span
+          class="absolute top-1/2 right-[5%] h-[26%] w-[30%] -translate-y-1/2 bg-[radial-gradient(circle,#15161a_0.57cqw,transparent_0.76cqw)] bg-size-[2.26cqw_100%]"
+        ></span>
+      </div>
+
+      {/* Yan düymələr: solda action və səs, sağda güc və kamera. */}
+      <span class={`${keyLeft} top-[17%] h-[4.5%]`}></span>
+      <span class={`${keyLeft} top-[25%] h-[8%]`}></span>
+      <span class={`${keyLeft} top-[35%] h-[8%]`}></span>
+      <span class={`${keyRight} top-[33%] h-[12%]`}></span>
+      <span class={`${keyRight} top-[62%] h-[9%]`}></span>
+    </div>
+
+    {/* Ön üz: gövdənin önündə (translateZ = qalınlığın yarısı), eyni dəyişənləri oxuyur. */}
+    <div
+      class="relative rounded-[14cqw] bg-[linear-gradient(135deg,#fbfbfc_0%,#c9cbd0_30%,#f1f2f4_55%,#b4b6bc_100%)] p-[0.7cqw] [transform:rotateX(var(--rx,0deg))_rotateY(var(--ry,0deg))_rotate(var(--rz,0deg))_translateZ(calc(var(--t)/2))] transition-transform duration-800 ease-out motion-reduce:transition-none"
+    >
+      <div class="rounded-[13.2cqw] bg-[#050506] p-[2cqw]">
+        <div class="relative overflow-hidden rounded-[11.2cqw]">
+          <slot />
+
+          <span
+            aria-hidden="true"
+            class="absolute top-[2.6%] left-1/2 h-[3.3%] w-[30%] -translate-x-1/2 rounded-full bg-black"
+          ></span>
+
+          <span
+            aria-hidden="true"
+            class="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgb(255_255_255/0.22)_0%,transparent_28%,transparent_70%,rgb(255_255_255/0.08)_100%)]"
+          ></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
