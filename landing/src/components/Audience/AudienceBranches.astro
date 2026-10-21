@@ -1,0 +1,190 @@
+---
+/*
+ * «Kimlər üçün» 2-ci kartın vizualı: xəritə sancaqları və əyilmiş filial kartları (CSS 3D).
+ * Yalnız Audience.astro-da `.aud-visual` qutusunun içində işlənir. Props: lang.
+ * Canlanma CSS-dədir; Audience.astro-nun skripti karta `is-live` sinfi verir. Rəqəmlər illüstrasiyadır.
+ */
+import Store from '@lucide/astro/icons/store'
+import { useTranslations, fmt, type Lang, type UIKey } from '../../i18n/ui'
+
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+// left — soldan faiz, top və stemHeight — piksel, delay — ayağın uzanma gecikməsi, main — mavi sancaq (yalnız biri).
+const pins = [
+  { left: '22%', top: 34, stemHeight: 40, delay: '.3s', main: false },
+  { left: '42%', top: 16, stemHeight: 50, delay: '.4s', main: false },
+  { left: '60%', top: 6, stemHeight: 54, delay: '.5s', main: true },
+  { left: '80%', top: 28, stemHeight: 42, delay: '.35s', main: false },
+]
+
+// tone: 'ok' — hamı işdədir, 'warn' — hələ hamı gəlməyib. Sarı gecikmə demək deyil: saytda gecikmə göstərilmir.
+// indent — pillə kimi sağa sürüşmə; delay — sətrin qalxma gecikməsi.
+const rows = [
+  { name: 'aud.branches.n1', present: 8, total: 8, tone: 'ok', indent: '', delay: '.55s' },
+  { name: 'aud.branches.n2', present: 6, total: 7, tone: 'warn', indent: 'ml-2', delay: '.7s' },
+  { name: 'aud.branches.n3', present: 9, total: 9, tone: 'ok', indent: 'ml-4', delay: '.85s' },
+] satisfies {
+  name: UIKey
+  present: number
+  total: number
+  tone: 'ok' | 'warn'
+  indent: string
+  delay: string
+}[]
+---
+
+<div class="branches-root">
+  <div class="branch-lines"></div>
+
+  <div class="absolute inset-x-0 top-0 h-30">
+    {
+      pins.map((pin) => (
+        <div class="absolute flex flex-col items-center" style={`left:${pin.left}; top:${pin.top}px`}>
+          {pin.main ? (
+            <svg width="20" height="25" viewBox="0 0 14 18">
+              <path
+                d="M7 .8C3.5.8.8 3.5.8 6.9.8 11.5 7 17.3 7 17.3s6.2-5.8 6.2-10.4C13.2 3.5 10.5.8 7 .8Z"
+                fill="#155EEF"
+              />
+              <circle cx="7" cy="6.8" r="2.3" fill="#fff" />
+            </svg>
+          ) : (
+            <svg width="16" height="20" viewBox="0 0 14 18">
+              <path
+                d="M7 .8C3.5.8.8 3.5.8 6.9.8 11.5 7 17.3 7 17.3s6.2-5.8 6.2-10.4C13.2 3.5 10.5.8 7 .8Z"
+                fill="#94A3B8"
+              />
+              <circle cx="7" cy="6.8" r="2.3" fill="#fff" />
+            </svg>
+          )}
+          <span
+            class={`stem block w-px bg-linear-to-b to-transparent ${pin.main ? 'from-(--branch-stem-brand)' : 'from-slate-300'}`}
+            style={`height:${pin.stemHeight}px; --t:${pin.delay}`}
+          />
+        </div>
+      ))
+    }
+  </div>
+
+  <div class="absolute top-15.5 left-1/2 w-[min(292px,calc(100%-24px))] -translate-x-1/2">
+    <div class="branch-stack space-y-2.5">
+      {
+        rows.map((row) => (
+          <div
+            class={`branch flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-2.5 ${row.indent}`}
+            style={`--t:${row.delay}`}
+          >
+            <span class="branch-ic flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand">
+              <Store size={16} />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-[13px] font-semibold">{t(row.name)}</p>
+              <p class="text-[11px] whitespace-nowrap text-slate-500">{t('aud.branches.sub')}</p>
+            </div>
+            <span
+              class="branch-chip inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+              data-tone={row.tone}
+            >
+              <span class="branch-dot h-1.5 w-1.5 rounded-full" />
+              {fmt(t('aud.branches.status'), { n: row.present, m: row.total })}
+            </span>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Status rəngləri (yaşıl, sarı) yalnız bu mockup-dadır; saytın aksenti brand-dir. */
+  .branches-root {
+    position: absolute;
+    inset: 0;
+    --branch-ok-bg: #ecfdf3;
+    --branch-ok-text: #15803d; /* fonla 4.7:1 kontrast */
+    --branch-ok-dot: #22c55e;
+    --branch-warn-bg: #fff7e6;
+    --branch-warn-text: #b45309; /* fonla 4.7:1 kontrast */
+    --branch-warn-dot: #f59e0b;
+    --branch-stem-brand: #9db8f5;
+    --branch-lines: #e8edf5;
+    --branch-shadow: 0 14px 28px -18px rgb(15 23 42 / 0.35);
+  }
+
+  .branch-lines {
+    position: absolute;
+    inset: 0;
+    opacity: 0.7;
+    background-image: linear-gradient(90deg, var(--branch-lines) 1px, transparent 1px);
+    background-size: 38px 100%;
+    -webkit-mask-image: linear-gradient(180deg, #000, transparent 85%);
+    mask-image: linear-gradient(180deg, #000, transparent 85%);
+  }
+
+  .branch {
+    box-shadow: var(--branch-shadow);
+  }
+
+  .branch-chip[data-tone='ok'] {
+    background: var(--branch-ok-bg);
+    color: var(--branch-ok-text);
+  }
+
+  .branch-chip[data-tone='ok'] .branch-dot {
+    background: var(--branch-ok-dot);
+  }
+
+  .branch-chip[data-tone='warn'] {
+    background: var(--branch-warn-bg);
+    color: var(--branch-warn-text);
+  }
+
+  .branch-chip[data-tone='warn'] .branch-dot {
+    background: var(--branch-warn-dot);
+  }
+
+  /* ---------- Əyilmiş yığın ----------
+     perspective() transform-un içindədir, valideynə ayrıca lazım deyil (1100px kiçildikcə əyilmə
+     kəskinləşir); preserve-3d sətirləri eyni 3D məkanda saxlayır. */
+  .branch-stack {
+    transform: perspective(1100px) rotateX(18deg) rotateY(-10deg) rotateZ(-3deg);
+    transform-style: preserve-3d;
+  }
+
+  /* Çox dar vizualda (280px-dən az) ikon gizlənir: ada yer qalsın (@container: bax AudienceMap.astro). */
+  @container (max-width: 279px) {
+    .branch-ic {
+      display: none;
+    }
+  }
+
+  /* ---------- Canlanma (qayda: AudienceMap.astro) ---------- */
+  :global([data-anim]) .branch {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  /* Ayaq alt kənarından yuxarı böyüyür. */
+  :global([data-anim]) .stem {
+    transform-origin: bottom;
+    transform: scaleY(0);
+  }
+
+  /* Sətirlər bir-bir qalxır (gecikmə markup-dakı --t: 0.55s / 0.7s / 0.85s). */
+  :global([data-anim] .is-live) .branch {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.5s ease var(--t),
+      transform 0.7s var(--aud-ease) var(--t);
+  }
+
+  :global([data-anim] .is-live) .stem {
+    transform: none;
+    transition: transform 0.7s var(--aud-ease) var(--t);
+  }
+</style>
