@@ -1,0 +1,224 @@
+---
+import { Image } from 'astro:assets'
+import { useTranslations, type Lang } from '../../i18n/ui'
+import imgControl from '../../assets/images/problem/nezaret.png'
+import imgCost from '../../assets/images/problem/elave-xerc.png'
+import imgLate from '../../assets/images/problem/gecikme.png'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// Köhnə üsulun üç xərci (solda) və onları doğuran üç vəziyyət (sağda). Kartın üstündəki etiket
+// soldakı xərc etiketi ilə eyni açardır, ona görə iki sütun bir-birindən ayrılmır.
+const pains = [
+  // identity / buddy-punching → weak control
+  { n: '01', k: 'prob.m3t', t: 'prob.p1t', d: 'prob.p1d', img: imgControl },
+  // per-site hardware → extra cost
+  { n: '02', k: 'prob.m2t', t: 'prob.p2t', d: 'prob.p2d', img: imgCost },
+  // manual / late → time lost
+  { n: '03', k: 'prob.m1t', t: 'prob.p3t', d: 'prob.p3d', img: imgLate },
+]
+
+// Lucide ikonları (clock, coins, shield-alert), 24×24 şəbəkə.
+const costs = [
+  {
+    t: 'prob.m1t',
+    d: 'prob.m1d',
+    p: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  },
+  {
+    t: 'prob.m2t',
+    d: 'prob.m2d',
+    p: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
+  },
+  {
+    t: 'prob.m3t',
+    d: 'prob.m3d',
+    p: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+  },
+]
+
+const iconBox =
+  'grid size-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-brand ring-1 ring-brand/10'
+---
+
+
+<section
+  id="problem"
+  class="relative overflow-hidden bg-linear-to-b from-slate-50 via-white to-slate-50/70"
+>
+  
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute top-1/3 -right-24 -z-10 size-96 rounded-full bg-brand/10 blur-3xl"
+  >
+  </div>
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute -bottom-24 -left-20 -z-10 size-80 rounded-full bg-indigo-400/10 blur-3xl"
+  >
+  </div>
+
+  <div class="wrap relative">
+    <div
+      class="grid items-start gap-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16"
+    >
+      
+      <div class="rv">
+        <span
+          class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        >
+          <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+          {t('prob.eyebrow')}
+        </span>
+
+        <h2
+          class="mt-5 text-[clamp(30px,3.4vw,46px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance"
+        >
+          {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span
+          >{t('prob.title.b')}
+        </h2>
+
+        <p
+          class="mt-5 max-w-135 text-[16px] leading-[1.7] text-stone-600 sm:text-[17px]"
+        >
+          {t('prob.sub')}
+        </p>
+
+        
+        <ul
+          role="list"
+          class="mt-9 grid list-none divide-y divide-stone-300/60 border-y border-stone-300/60 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:grid-cols-1 lg:divide-x-0 lg:divide-y"
+        >
+          {
+            costs.map((c) => (
+              <li class="flex items-center gap-3 py-3.5 sm:px-4 sm:py-4 lg:px-0">
+                <span class={iconBox} aria-hidden="true">
+                  <svg
+                    class="size-[18px]"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={c.p}
+                  />
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-[14px] font-semibold text-slate-900">
+                    {t(c.t as any)}
+                  </span>
+                  <span class="block text-[13px] leading-snug text-stone-500">
+                    {t(c.d as any)}
+                  </span>
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      
+      <ul role="list" class="grid list-none gap-4 sm:gap-5">
+        {
+          pains.map((p, i) => (
+            <li
+              class={`rv d${i + 1} group relative rounded-3xl border border-white/80 bg-white/70 p-5 shadow-[0_18px_44px_-30px_rgb(30_58_138/0.5)] ring-1 ring-slate-900/5 backdrop-blur-sm transition-transform duration-300 will-change-transform hover:-translate-y-1 sm:p-6`}
+            >
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
+                <div class="flex min-w-0 flex-1 items-start gap-4">
+                  <span
+                    class="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-[13px] font-bold text-brand ring-1 ring-brand/10 sm:size-11 sm:text-[14px]"
+                    aria-hidden="true"
+                  >
+                    {p.n}
+                  </span>
+                  <div class="min-w-0">
+                    <p class="text-[11px] font-bold tracking-[0.16em] text-slate-400 uppercase">
+                      {t(p.k as any)}
+                    </p>
+                    <h3 class="mt-1.5 text-[17px] leading-snug font-semibold tracking-[-0.01em] text-slate-900 sm:text-[19px]">
+                      {t(p.t as any)}
+                    </h3>
+                    <p class="mt-2 text-[14px] leading-[1.6] text-stone-600 sm:text-[15px]">
+                      {t(p.d as any)}
+                    </p>
+                  </div>
+                </div>
+                <Image
+                  src={p.img}
+                  alt=""
+                  width={240}
+                  densities={[1, 2]}
+                  loading="lazy"
+                  decoding="async"
+                  class="mx-auto h-auto w-full max-w-[260px] shrink-0 object-contain sm:mx-0 sm:w-[36%] sm:max-w-[240px]"
+                />
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    
+    <div class="mt-14 flex items-center gap-5 sm:mt-16">
+      <span
+        aria-hidden="true"
+        class="hidden h-px flex-1 bg-linear-to-r from-transparent to-stone-300 sm:block"
+      >
+      </span>
+      <a
+        class="group inline-flex items-center gap-3 rounded-full px-4 py-2.5 transition-all duration-300 hover:shadow-brand/15 focus-visible:outline-2 focus-visible:outline-offset-4 "
+        href=#how
+      >
+        
+        <span
+          class="arrow-drift grid size-9 place-items-center rounded-full border border-brand/20 bg-white text-brand shadow-sm transition-[translate,border-color,background-color] duration-300 group-hover:translate-y-1 group-hover:border-brand/60 group-hover:[animation-play-state:paused]"
+          aria-hidden="true"
+        >
+          <svg
+            class="size-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 5v14"></path>
+            <path d="m19 12-7 7-7-7"></path>
+          </svg>
+        </span>
+        <span
+          class="text-[15px] font-semibold text-brand underline-offset-4 group-hover:underline sm:text-[16px]"
+        >
+          {t('prob.next')}
+        </span>
+      </a>
+      <span
+        aria-hidden="true"
+        class="hidden h-px flex-1 bg-linear-to-l from-transparent to-stone-300 sm:block"
+      >
+      </span>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* 5px aşağı-yuxarı. Keyframe adındakı prefiks məqsədlidir: Astro @keyframes adını scope etmir. */
+  @keyframes qr-arrow-drift {
+    0%,
+    100% {
+      transform: translateY(-4px);
+    }
+    50% {
+      transform: translateY(4px);
+    }
+  }
+
+  .arrow-drift {
+    animation: qr-arrow-drift 1.9s ease-in-out infinite;
+  }
+</style>
