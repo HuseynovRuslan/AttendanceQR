@@ -1,6 +1,14 @@
 ---
+/*
+ * «Problem» bölməsi (Landing.astro, AZ/RU/EN): köhnə üsulun üç ağrısı, hər biri böyük illüstrasiya ilə.
+ * Birinci kart (başqasının yerinə giriş) geniş durur — başlıqdakı «saxtaya» sözü ona aiddir; qalan ikisi yan-yanadır.
+ * Bölmə ekrana girəndə əvvəl başlıq, sonra hər kart ayrıca «gəlir»: kart qalxır, şəkil fokusa düşür, mətn sətir-sətir çıxır.
+ * Hərəkət CSS-dədir (<style>), skript yalnız «ekrana girdi» siqnalını (is-in sinfi) verir.
+ * Props: lang.
+ */
 import { Image } from 'astro:assets'
-import { useTranslations, type Lang } from '../../i18n/ui'
+import type { ImageMetadata } from 'astro'
+import { useTranslations, type Lang, type UIKey } from '../../i18n/ui'
 import imgControl from '../../assets/images/problem/nezaret.png'
 import imgCost from '../../assets/images/problem/elave-xerc.png'
 import imgLate from '../../assets/images/problem/gecikme.png'
@@ -8,217 +16,370 @@ import imgLate from '../../assets/images/problem/gecikme.png'
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// Köhnə üsulun üç xərci (solda) və onları doğuran üç vəziyyət (sağda). Kartın üstündəki etiket
-// soldakı xərc etiketi ilə eyni açardır, ona görə iki sütun bir-birindən ayrılmır.
+// Üç ağrı. cost + costNote kartın altındakı qırmızı çipdir: «Zəif nəzarət: saxtaya açıq».
+// entrance — şəklin ekrana gəlmə tərzi (bax <style>, «Şəklin gəlişi»):
+//   drop = kağız vərəq masaya düşür, rise = ağır terminal aşağıdan qalxır, open = Excel pəncərəsi açılır.
+// delayMs — kartın öz gecikməsi. 01 böyük ekranda başlıqla birlikdə ekrana girir — başlıqdan sonra gəlsin deyə 150ms;
+//   02 və 03 desktopda yan-yana durub eyni anda girir — 03 bir az sonra gəlsin deyə 140ms.
+// İkonlar Lucide-dir (shield-alert, coins, clock), 24×24 şəbəkə.
 const pains = [
-  // identity / buddy-punching → weak control
-  { n: '01', k: 'prob.m3t', t: 'prob.p1t', d: 'prob.p1d', img: imgControl },
-  // per-site hardware → extra cost
-  { n: '02', k: 'prob.m2t', t: 'prob.p2t', d: 'prob.p2d', img: imgCost },
-  // manual / late → time lost
-  { n: '03', k: 'prob.m1t', t: 'prob.p3t', d: 'prob.p3d', img: imgLate },
-]
+  {
+    number: '01',
+    title: 'prob.p1t',
+    desc: 'prob.p1d',
+    cost: 'prob.m3t',
+    costNote: 'prob.m3d',
+    icon: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+    image: imgControl,
+    entrance: 'drop',
+    delayMs: 150,
+    wide: true,
+  },
+  {
+    number: '02',
+    title: 'prob.p2t',
+    desc: 'prob.p2d',
+    cost: 'prob.m2t',
+    costNote: 'prob.m2d',
+    icon: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
+    image: imgCost,
+    entrance: 'rise',
+    delayMs: 0,
+    wide: false,
+  },
+  {
+    number: '03',
+    title: 'prob.p3t',
+    desc: 'prob.p3d',
+    cost: 'prob.m1t',
+    costNote: 'prob.m1d',
+    icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    image: imgLate,
+    entrance: 'open',
+    delayMs: 140,
+    wide: false,
+  },
+] satisfies {
+  number: string
+  title: UIKey
+  desc: UIKey
+  cost: UIKey
+  costNote: UIKey
+  icon: string
+  image: ImageMetadata
+  entrance: 'drop' | 'rise' | 'open'
+  delayMs: number
+  wide: boolean
+}[]
 
-// Lucide ikonları (clock, coins, shield-alert), 24×24 şəbəkə.
-const costs = [
-  {
-    t: 'prob.m1t',
-    d: 'prob.m1d',
-    p: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-  },
-  {
-    t: 'prob.m2t',
-    d: 'prob.m2d',
-    p: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
-  },
-  {
-    t: 'prob.m3t',
-    d: 'prob.m3d',
-    p: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
-  },
-]
+// Brauzerə şəklin ekranda təxminən nə qədər en tutacağını deyir ki, srcset-dən uyğun faylı seçsin.
+// Geniş kartda şəkil desktopda ~680px, adi kartda ~560px; lg-dən kiçik ekranda kartlar alt-alta, şəkil ekranın enindədir.
+const WIDE_IMAGE_SIZES = '(min-width: 1024px) 680px, 100vw'
+const CARD_IMAGE_SIZES = '(min-width: 1024px) 560px, 100vw'
+// Hazırlanan fayl enləri (px). Hər şəklin öz eni (~1400–1600px) də əlavə olunur: retina ekranda geniş kart üçün lazımdır.
+const IMAGE_WIDTHS = [480, 800, 1200]
+// 90: qələmin, barmaq izinin incə xətləri kəskin qalsın deyə (Pwa bölməsindəki foto da 90-dır).
+const IMAGE_QUALITY = 90
 
-const iconBox =
-  'grid size-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-brand ring-1 ring-brand/10'
+// Kartın kənarı xətt yox, üç qat kölgədir: 1px kontur + yaxın kölgə + uzaq yumşaq kölgə. Açıq fonda xətdən yumşaq görünür.
+const cardShadow =
+  'shadow-[0_0_0_1px_rgb(17_18_17/0.05),0_1px_2px_rgb(17_18_17/0.04),0_28px_56px_-36px_rgb(17_18_17/0.28)]'
+// Şəklin hover-də yüngülcə qalxması — saytın gəliş əyrisi ilə eyni.
+const imageHover =
+  'transition-[translate,scale] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:group-hover:-translate-y-1.5 motion-safe:group-hover:scale-[1.02]'
 ---
-
 
 <section
   id="problem"
-  class="relative overflow-hidden bg-linear-to-b from-slate-50 via-white to-slate-50/70"
+  aria-labelledby="problem-title"
+  data-prob
+  class="relative overflow-hidden bg-page py-20 lg:py-28"
 >
-  
-  <div
-    aria-hidden="true"
-    class="pointer-events-none absolute top-1/3 -right-24 -z-10 size-96 rounded-full bg-brand/10 blur-3xl"
-  >
-  </div>
-  <div
-    aria-hidden="true"
-    class="pointer-events-none absolute -bottom-24 -left-20 -z-10 size-80 rounded-full bg-indigo-400/10 blur-3xl"
-  >
-  </div>
+  <div class="pb-glow pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
   <div class="wrap relative">
+    {/* Başlıq solda, izah sağda (desktop). Üç sətir bir-birinin ardınca gəlir: --i sətrin sırasıdır. */}
     <div
-      class="grid items-start gap-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16"
+      data-reveal
+      class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.72fr)] lg:items-end lg:gap-16"
     >
-      
-      <div class="rv">
+      <div class="max-w-155">
         <span
-          class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+          class="pb-line inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+          style="--i: 0"
         >
           <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
           {t('prob.eyebrow')}
         </span>
-
         <h2
-          class="mt-5 text-[clamp(30px,3.4vw,46px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance"
+          id="problem-title"
+          class="pb-line mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-balance text-ink sm:text-[38px]"
+          style="--i: 1"
         >
-          {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span
-          >{t('prob.title.b')}
+          {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span>{t('prob.title.b')}
         </h2>
-
-        <p
-          class="mt-5 max-w-135 text-[16px] leading-[1.7] text-stone-600 sm:text-[17px]"
-        >
-          {t('prob.sub')}
-        </p>
-
-        
-        <ul
-          role="list"
-          class="mt-9 grid list-none divide-y divide-stone-300/60 border-y border-stone-300/60 sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:grid-cols-1 lg:divide-x-0 lg:divide-y"
-        >
-          {
-            costs.map((c) => (
-              <li class="flex items-center gap-3 py-3.5 sm:px-4 sm:py-4 lg:px-0">
-                <span class={iconBox} aria-hidden="true">
-                  <svg
-                    class="size-[18px]"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    set:html={c.p}
-                  />
-                </span>
-                <span class="min-w-0">
-                  <span class="block text-[14px] font-semibold text-slate-900">
-                    {t(c.t as any)}
-                  </span>
-                  <span class="block text-[13px] leading-snug text-stone-500">
-                    {t(c.d as any)}
-                  </span>
-                </span>
-              </li>
-            ))
-          }
-        </ul>
       </div>
-
-      
-      <ul role="list" class="grid list-none gap-4 sm:gap-5">
-        {
-          pains.map((p, i) => (
-            <li
-              class={`rv d${i + 1} group relative rounded-3xl border border-white/80 bg-white/70 p-5 shadow-[0_18px_44px_-30px_rgb(30_58_138/0.5)] ring-1 ring-slate-900/5 backdrop-blur-sm transition-transform duration-300 will-change-transform hover:-translate-y-1 sm:p-6`}
-            >
-              <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
-                <div class="flex min-w-0 flex-1 items-start gap-4">
-                  <span
-                    class="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-[13px] font-bold text-brand ring-1 ring-brand/10 sm:size-11 sm:text-[14px]"
-                    aria-hidden="true"
-                  >
-                    {p.n}
-                  </span>
-                  <div class="min-w-0">
-                    <p class="text-[11px] font-bold tracking-[0.16em] text-slate-400 uppercase">
-                      {t(p.k as any)}
-                    </p>
-                    <h3 class="mt-1.5 text-[17px] leading-snug font-semibold tracking-[-0.01em] text-slate-900 sm:text-[19px]">
-                      {t(p.t as any)}
-                    </h3>
-                    <p class="mt-2 text-[14px] leading-[1.6] text-stone-600 sm:text-[15px]">
-                      {t(p.d as any)}
-                    </p>
-                  </div>
-                </div>
-                <Image
-                  src={p.img}
-                  alt=""
-                  width={240}
-                  densities={[1, 2]}
-                  loading="lazy"
-                  decoding="async"
-                  class="mx-auto h-auto w-full max-w-[260px] shrink-0 object-contain sm:mx-0 sm:w-[36%] sm:max-w-[240px]"
-                />
-              </div>
-            </li>
-          ))
-        }
-      </ul>
+      <p class="pb-line max-w-[48ch] text-[16px] leading-[1.7] text-ink2 sm:text-[17px]" style="--i: 2">
+        {t('prob.sub')}
+      </p>
     </div>
 
-    
-    <div class="mt-14 flex items-center gap-5 sm:mt-16">
-      <span
-        aria-hidden="true"
-        class="hidden h-px flex-1 bg-linear-to-r from-transparent to-stone-300 sm:block"
-      >
-      </span>
-      <a
-        class="group inline-flex items-center gap-3 rounded-full px-4 py-2.5 transition-all duration-300 hover:shadow-brand/15 focus-visible:outline-2 focus-visible:outline-offset-4 "
-        href=#how
-      >
-        
-        <span
-          class="arrow-drift grid size-9 place-items-center rounded-full border border-brand/20 bg-white text-brand shadow-sm transition-[translate,border-color,background-color] duration-300 group-hover:translate-y-1 group-hover:border-brand/60 group-hover:[animation-play-state:paused]"
-          aria-hidden="true"
-        >
-          <svg
-            class="size-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+    {/* Planşetdə də kartlar alt-alta durur: yan-yana olsa şəkillər ~270px-ə kiçilir. Bento düzülüşü lg-dən başlayır. */}
+    <ul role="list" class="mt-12 grid list-none gap-4 sm:gap-5 lg:mt-16 lg:grid-cols-2 lg:gap-6">
+      {
+        pains.map((pain) => (
+          <li
+            data-reveal
+            class:list={[
+              `pb-card group relative flex flex-col rounded-[28px] bg-white p-2 ${cardShadow}`,
+              { 'lg:col-span-2 lg:grid lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]': pain.wide },
+            ]}
+            style={`--pb-delay: ${pain.delayMs}ms`}
           >
-            <path d="M12 5v14"></path>
-            <path d="m19 12-7 7-7-7"></path>
-          </svg>
-        </span>
-        <span
-          class="text-[15px] font-semibold text-brand underline-offset-4 group-hover:underline sm:text-[16px]"
+            {/* Səhnə: şəklin dayandığı açıq panel. Hündürlüyü şəkil yox, aspect-ratio verir — şəkil gec yüklənsə də kart atlamır. */}
+            <div
+              class:list={[
+                'relative aspect-16/10 overflow-hidden rounded-[22px] bg-page',
+                { 'lg:order-2 lg:aspect-auto lg:min-h-120': pain.wide },
+              ]}
+            >
+              <div class="pb-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
+              <div class={`pb-art pb-art--${pain.entrance} absolute inset-3 sm:inset-8 lg:inset-10`}>
+                <Image
+                  src={pain.image}
+                  alt=""
+                  widths={[...IMAGE_WIDTHS, pain.image.width]}
+                  sizes={pain.wide ? WIDE_IMAGE_SIZES : CARD_IMAGE_SIZES}
+                  quality={IMAGE_QUALITY}
+                  loading="lazy"
+                  decoding="async"
+                  class={`size-full object-contain ${imageHover}`}
+                />
+              </div>
+            </div>
+
+            <div
+              class:list={[
+                'flex flex-1 flex-col items-start px-4 pt-6 pb-4 sm:px-6 sm:pt-7 sm:pb-5',
+                { 'lg:order-1 lg:justify-center lg:px-12 lg:py-10': pain.wide },
+              ]}
+            >
+              <span
+                class="pb-line inline-flex items-center gap-3 font-mono text-[13px] font-medium text-brand"
+                style="--i: 0"
+              >
+                {pain.number}
+                <span aria-hidden="true" class="h-px w-8 bg-brand/30"></span>
+              </span>
+              <h3
+                class:list={[
+                  'pb-line mt-3 text-[22px] leading-snug font-semibold tracking-tight text-ink sm:text-[24px]',
+                  { 'lg:text-[30px] lg:leading-[1.15]': pain.wide },
+                ]}
+                style="--i: 1"
+              >
+                {t(pain.title)}
+              </h3>
+              <p
+                class:list={[
+                  'pb-line mt-3 max-w-[46ch] text-[15px] leading-[1.65] text-ink2 sm:text-[16px]',
+                  { 'lg:mt-4 lg:text-[17px]': pain.wide },
+                ]}
+                style="--i: 2"
+              >
+                {t(pain.desc)}
+              </p>
+              {/* Adi kartlarda çip aşağıya sıxılır (mt-auto): 02 və 03-ün çipləri eyni xətdə dursun. */}
+              <p class:list={['pb-line pt-5', { 'mt-auto': !pain.wide }]} style="--i: 3">
+                <span class="inline-flex items-center gap-2 rounded-full bg-red-50 py-1 pr-3.5 pl-1 text-[13px] leading-snug text-red-700">
+                  <span
+                    aria-hidden="true"
+                    class="grid size-6 shrink-0 place-items-center rounded-full bg-white text-red-600 ring-1 ring-red-100"
+                  >
+                    <svg
+                      class="size-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      set:html={pain.icon}
+                    />
+                  </span>
+                  <span>
+                    <span class="font-semibold">{t(pain.cost)}:</span> {t(pain.costNote)}
+                  </span>
+                </span>
+              </p>
+            </div>
+          </li>
+        ))
+      }
+    </ul>
+
+    <div data-reveal class="mt-14 sm:mt-16">
+      <div class="pb-line flex items-center gap-5" style="--i: 0">
+        <span aria-hidden="true" class="hidden h-px flex-1 bg-linear-to-r from-transparent to-hair sm:block"></span>
+        <a
+          href="#how"
+          class="group inline-flex items-center gap-3 rounded-full px-4 py-2.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"
         >
-          {t('prob.next')}
-        </span>
-      </a>
-      <span
-        aria-hidden="true"
-        class="hidden h-px flex-1 bg-linear-to-l from-transparent to-stone-300 sm:block"
-      >
-      </span>
+          <span
+            aria-hidden="true"
+            class="grid size-9 place-items-center rounded-full border border-brand/20 bg-white text-brand shadow-sm transition-[translate,border-color] duration-300 group-hover:translate-y-1 group-hover:border-brand/60"
+          >
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14"></path>
+              <path d="m19 12-7 7-7-7"></path>
+            </svg>
+          </span>
+          <span class="text-[15px] font-semibold text-brand underline-offset-4 group-hover:underline sm:text-[16px]">
+            {t('prob.next')}
+          </span>
+        </a>
+        <span aria-hidden="true" class="hidden h-px flex-1 bg-linear-to-l from-transparent to-hair sm:block"></span>
+      </div>
     </div>
   </div>
 </section>
 
 <style>
-  /* 5px aşağı-yuxarı. Keyframe adındakı prefiks məqsədlidir: Astro @keyframes adını scope etmir. */
-  @keyframes qr-arrow-drift {
-    0%,
-    100% {
-      transform: translateY(-4px);
-    }
-    50% {
-      transform: translateY(4px);
-    }
+  /*
+    Hərəkət yalnız skript bölməyə data-anim="on" yazanda işə düşür. JS yoxdursa və ya «hərəkəti azalt»
+    seçilibsə atribut yazılmır və hər şey dərhal, son vəziyyətində görünür.
+    Skript ekrana girən hər [data-reveal] elementinə is-in sinfi verir; aşağıda «gizli başlanğıc» və
+    «is-in olanda son vəziyyət» yazılıb, keçidi brauzer özü edir (CSS transition).
+    Yalnız opacity, translate / scale / rotate və filter dəyişir — səhifənin düzülüşü yerində qalır.
+  */
+  [data-prob] {
+    /* Sürətli başlayıb yumşaq dayanan əyri (expo-out): element «gəlib yerinə oturur», sonda yırğalanmır. */
+    --pb-ease: cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .arrow-drift {
-    animation: qr-arrow-drift 1.9s ease-in-out infinite;
+  /* Sağ yuxarıda zəif brand işığı (Hero və HowItWorks-dakı .glow ilə eyni üsul). */
+  .pb-glow {
+    background: radial-gradient(
+      760px 380px at 88% 6%,
+      color-mix(in oklab, var(--color-brand) 7%, transparent),
+      transparent 70%
+    );
+  }
+
+  /* Səhnədəki nöqtəli şəbəkə — HowItWorks-dakı .stage-grid ilə eyni görünüş, kənarlara doğru itir. */
+  .pb-dots {
+    background-image: radial-gradient(#d7deea 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: 0.7;
+    -webkit-mask-image: radial-gradient(70% 70% at 50% 50%, #000, transparent);
+    mask-image: radial-gradient(70% 70% at 50% 50%, #000, transparent);
+  }
+
+  /* ---------- Başlanğıc (gizli) vəziyyət ---------- */
+  [data-anim='on'] .pb-card {
+    opacity: 0;
+    translate: 0 24px;
+  }
+  [data-anim='on'] .pb-line {
+    opacity: 0;
+    translate: 0 14px;
+    filter: blur(4px);
+  }
+  /* Şəkil bulanıqdan aydına keçir — «fokusa düşmə» hissi yalnız opacity-dən daha canlıdır. */
+  [data-anim='on'] .pb-art {
+    opacity: 0;
+    scale: 0.94;
+    filter: blur(10px);
+  }
+
+  /* ---------- Şəklin gəlişi: hər şəkil öz əşyası kimi gəlir ---------- */
+  /* drop: kağız vərəq yuxarıdan, bir az əyri düşür və masada düzəlir. */
+  [data-anim='on'] .pb-art--drop {
+    translate: 0 -20px;
+    rotate: -4deg;
+  }
+  /* rise: ağır terminal aşağıdan qalxıb yerinə oturur. */
+  [data-anim='on'] .pb-art--rise {
+    translate: 0 32px;
+  }
+  /* open: Excel pəncərəsi kiçikdən açılır (scale digərlərindən aşağıdan başlayır). */
+  [data-anim='on'] .pb-art--open {
+    scale: 0.86;
+  }
+
+  /* ---------- Son vəziyyət (element ekrana girəndən sonra) ---------- */
+  /* --pb-delay kartın öz gecikməsidir (frontmatter-dəki delayMs, li-nin style-ında). */
+  [data-anim='on'] .pb-card.is-in {
+    opacity: 1;
+    translate: none;
+    transition:
+      opacity 700ms var(--pb-ease) var(--pb-delay),
+      translate 900ms var(--pb-ease) var(--pb-delay);
+  }
+  /* Şəkil kartdan 150ms sonra başlayır və ən uzun hərəkətdir: bölmənin əsas «hadisəsi» odur. */
+  [data-anim='on'] .is-in .pb-art {
+    opacity: 1;
+    translate: none;
+    rotate: none;
+    scale: none;
+    filter: none;
+    transition-property: opacity, translate, rotate, scale, filter;
+    transition-duration: 1100ms;
+    transition-timing-function: var(--pb-ease);
+    transition-delay: calc(var(--pb-delay) + 150ms);
+  }
+  /* Başlıq və aşağıdakı keçid: sətirlər dərhal, 80ms aralıqla gəlir. --i sətrin sırasıdır (style="--i: N"). */
+  [data-anim='on'] .is-in .pb-line {
+    opacity: 1;
+    translate: none;
+    filter: none;
+    transition-property: opacity, translate, filter;
+    transition-duration: 700ms;
+    transition-timing-function: var(--pb-ease);
+    transition-delay: calc(var(--i) * 80ms);
+  }
+  /* Kartın içindəki mətn şəkil artıq görünməyə başlayandan sonra (300ms) çıxır. */
+  [data-anim='on'] .pb-card.is-in .pb-line {
+    transition-delay: calc(var(--pb-delay) + 300ms + var(--i) * 80ms);
   }
 </style>
+
+<script>
+  // Element özünün neçə faizi ekrana girəndə «gəlsin» (0.2 = 20%).
+  const REVEAL_THRESHOLD = 0.2
+  // Ekranın ən aşağı 8%-i sayılmır: element kənarda ilişəndə yox, bir az içəri girəndə başlasın.
+  const REVEAL_ROOT_MARGIN = '0px 0px -8% 0px'
+
+  function initProblemReveal(): void {
+    const section = document.querySelector<HTMLElement>('[data-prob]')
+    if (!section) {
+      return
+    }
+
+    // «Hərəkəti azalt» seçilibsə və ya IntersectionObserver yoxdursa `data-anim` yazılmır: hər şey dərhal görünür.
+    const isMotionReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (isMotionReduced || !('IntersectionObserver' in window)) {
+      return
+    }
+
+    section.dataset.anim = 'on'
+    const observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) {
+            return
+          }
+          entry.target.classList.add('is-in')
+          // Hər element bir dəfə gəlir: yuxarı qayıdanda yenidən gizlənib təkrarlanmır.
+          observer.unobserve(entry.target)
+        })
+      },
+      { threshold: REVEAL_THRESHOLD, rootMargin: REVEAL_ROOT_MARGIN }
+    )
+    section.querySelectorAll('[data-reveal]').forEach(function (element) {
+      observer.observe(element)
+    })
+  }
+
+  initProblemReveal()
+</script>
