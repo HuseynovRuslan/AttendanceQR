@@ -127,6 +127,21 @@ export function areaOf(
   return view === 'paper' ? (r.paperSite || r.locationName) : r.locationName
 }
 
+/**
+ * Whether two area names are the same area, the way the server matches a company form's lines:
+ * trimmed, case folded the Azerbaijani way, letters kept apart («ı» is not «i», «ə» is not «e»). The
+ * dialog asks the same question the server will, so it can never offer a choice the server refuses.
+ */
+export function sameArea(a: string, b: string): boolean {
+  return a.trim().localeCompare(b.trim(), 'az', { sensitivity: 'accent' }) === 0
+}
+
+/** The chosen areas a company form has no line for — the ones the server would refuse. Empty means
+ *  the choice fits the form. */
+export function unlistedAreas(chosen: readonly string[], formAreas: readonly string[]): string[] {
+  return chosen.filter((a) => !formAreas.some((f) => sameArea(f, a)))
+}
+
 /** Every area present in a set of rows, in the chosen view — the export dialog's tick list, and what
  *  "all of them" means when the view changes. */
 export function uniqueAreas(

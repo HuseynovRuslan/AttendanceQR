@@ -311,6 +311,19 @@ export function unmarkAbsent(employeeId: string, date: string, reason: string) {
   )
 }
 
+/** A company's own form for the «Xülasə» sheet: its lines (area names) in its order. */
+export interface DayTemplate {
+  key: string
+  name: string
+  areas: string[]
+}
+
+/** GET /api/reports/day-templates — the forms this company can have «Xülasə» printed in. Empty for
+ *  almost every company. */
+export function getDayTemplates() {
+  return apiRequest<DayTemplate[]>('/api/reports/day-templates')
+}
+
 /** POST /api/reports/export-day — send the visible board rows, download a tidy .xlsx. Returns false on
  * failure. Reads the blob directly (not JSON), so it can't ride apiRequest. */
 export async function exportDayXlsx(payload: {
@@ -322,6 +335,10 @@ export async function exportDayXlsx(payload: {
   /** What the board calls each bucket — its words, so the sheet's headings cannot drift from the
    *  screen the file was exported from. Includes «İşdə» / «Çıxış yoxdur», which only the board knows. */
   bucketLabels?: Record<string, string>
+  /** The structure the rows are grouped in. A company form needs the branch view. */
+  view?: 'actual' | 'paper'
+  /** A company form for «Xülasə» (DayTemplate.key); absent for the standard summary. */
+  template?: string
 }): Promise<boolean> {
   const token = getToken()
   try {

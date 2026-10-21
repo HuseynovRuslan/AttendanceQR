@@ -18,6 +18,10 @@ namespace AttendanceQR.Api;
 ///                 site's headline figures, and collapsible so a reader can fold away the sites that
 ///                 are fine.
 ///
+/// A company that keeps its own paper list can have «Xülasə» printed in that list's form instead —
+/// its lines, its order, its headings (<see cref="DaySummaryTemplate"/>). Only when the reader chooses
+/// it; «Davamiyyət» does not change.
+///
 /// The counts are not recomputed here. They arrive already bucketed by the board itself
 /// (todayCounts.ts, which has tests) precisely so the file and the screen cannot disagree — the same
 /// reason the status TEXT is sent rather than derived: the board learned the hard way that
@@ -61,6 +65,32 @@ public static class DayBoardSheet
     private static readonly string[] DetailHeaders =
         ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"];
 
+    private const string Headcount = "headcount";
+
+    /// <summary>
+    /// The columns of a company template's summary (<see cref="DaySummaryTemplate"/>), after «№» and
+    /// «Ərazi» — the headings and the order of the paper list, word for word («Şablon Davamiyyət
+    /// siyahısı», 2026-10-21). Fixed here rather than taken from the board's labels: the list says
+    /// «İşdə» whatever day is exported, where the board says «Çıxış yoxdur» once a day is over, and a
+    /// form whose headings move is not the form. The buckets under them are the board's own.
+    /// </summary>
+    private static readonly (string Source, string Header)[] TemplateColumns =
+    [
+        ("incomplete", "İşdə"),
+        ("rest", "İstirahət (təyin edilmiş)"),
+        ("dayOff", "Həftəlik istirahət"),
+        ("onLeave", "Məzuniyyət"),
+        ("absent", "Qayıb"),
+        ("permission", "İcazə"),
+        ("sick", "Xəstəlik"),
+        ("trip", "Ezamiyyət"),
+        ("unpaid", "Ödənişsiz"),
+        ("pending", "Növbəsi başlamayıb"),
+        (Headcount, "İşçi sayı"),
+        ("present", "Tamamlayıb"),
+        ("onboarding", "Aktivləşdirməyib"),
+    ];
+
     private static readonly XLColor HeaderBlue = XLColor.FromHtml("#1E70C8");
     private static readonly XLColor GroupBand = XLColor.FromHtml("#DCE9F8");
     private static readonly XLColor TotalBand = XLColor.FromHtml("#FFF4CE");
@@ -85,6 +115,13 @@ public static class DayBoardSheet
         }
     }
 
+    /// <summary>The area a row is filed under — its location, trimmed, or «—» when it has none.</summary>
+    public static string AreaOf(string? location)
+        => string.IsNullOrWhiteSpace(location) ? "—" : location.Trim();
+
+    /// <summary>Whether two area names are the same area — the comparison the sheet sorts by.</summary>
+    public static bool SameArea(string a, string b) => Az.Equals(AreaOf(a), AreaOf(b));
+
     public sealed record Row(
         string Name, string Position, string Location, string Status,
         string CheckIn, string CheckOut, string Photo, string? Bucket,
@@ -99,14 +136,19 @@ public static class DayBoardSheet
     /// including the one label only it can decide, «İşdə» versus «Çıxış yoxdur», which depends on
     /// whether the date being exported has finished.
     /// </param>
+    /// <param name="template">
+    /// The company form the reader chose for «Xülasə», or null for the standard one. Every area in
+    /// <paramref name="rows"/> must have a line in it — the caller checks first and answers the client;
+    /// this throws rather than drop an area. Only «Xülasə» changes: «Davamiyyət» is the same either way.
+    /// </param>
     public static byte[] Build(
         string title, IReadOnlyList<Row> rows, string? scopeNote,
-        IReadOnlyDictionary<string, string>? labels)
+        IReadOnlyDictionary<string, string>? labels, DaySummaryTemplate? template = null)
     {
         using var wb = new XLWorkbook();
 
         var groups = rows
-            .GroupBy(r => string.IsNullOrWhiteSpace(r.Location) ? "—" : r.Location.Trim())
+            .GroupBy(r => AreaOf(r.Location))
             .OrderBy(g => g.Key, Az)
             .Select(g => (Site: g.Key, People: g.OrderBy(r => r.Name, Az).ToList()))
             .ToList();
@@ -118,7 +160,10 @@ public static class DayBoardSheet
             return SummaryColumns.First(c => c.Bucket == bucket).Fallback;
         }
 
-        BuildSummary(wb, title, scopeNote, Label, groups);
+        if (template is null)
+            BuildSummary(wb, title, scopeNote, Label, groups);
+        else
+            BuildTemplateSummary(wb, template, groups);
         BuildDetail(wb, title, scopeNote, Label, groups);
 
         using var ms = new MemoryStream();
@@ -192,6 +237,90 @@ public static class DayBoardSheet
             ws.Column(c).Width = 11;
         ws.SheetView.FreezeRows(headerRow);
     }
+
+    /// <summary>
+    /// «Xülasə» in a company's own form: its lines in its order, numbered, under the paper list's
+    /// headings, laid out cell for cell as the list is — headings on row 2, the lines from row 3, CƏMİ
+    /// last with «№» and «Ərazi» merged — so the file can be laid over the list it replaces.
+    ///
+    /// A line no row names is printed with its number and name and nothing else. CƏMİ adds up the lines
+    /// that have rows, from the same counts as the lines themselves.
+    /// </summary>
+    private static void BuildTemplateSummary(
+        XLWorkbook wb, DaySummaryTemplate template, List<(string Site, List<Row> People)> groups)
+    {
+        var unlisted = template.Unlisted(groups.Select(g => g.Site));
+        if (unlisted.Count > 0)
+            throw new ArgumentException(
+                $"No line in «{template.Name}» for: {string.Join(", ", unlisted)}", nameof(template));
+
+        var ws = wb.Worksheets.Add("Xülasə");
+        var cols = TemplateColumns.Length + 2;
+        const int headerRow = 2;
+
+        ws.Cell(headerRow, 1).Value = "№";
+        ws.Cell(headerRow, 2).Value = "Ərazi";
+        for (var i = 0; i < TemplateColumns.Length; i++)
+            ws.Cell(headerRow, i + 3).Value = TemplateColumns[i].Header;
+
+        // Each line's people. A list rather than a lookup by name, so two spellings of one area that
+        // the sheet's comparison treats as the same land on the same line instead of the second
+        // vanishing.
+        var lines = template.Areas
+            .Select((area, i) =>
+            {
+                var mine = groups.Where(g => template.LineOf(g.Site) == i).ToList();
+                return (Area: area, Filled: mine.Count > 0, People: mine.SelectMany(g => g.People).ToList());
+            })
+            .ToList();
+
+        var r = headerRow + 1;
+        for (var i = 0; i < lines.Count; i++, r++)
+        {
+            ws.Cell(r, 1).Value = i + 1;
+            ws.Cell(r, 2).Value = lines[i].Area;
+            if (!lines[i].Filled)
+                continue;
+            for (var c = 0; c < TemplateColumns.Length; c++)
+                ws.Cell(r, c + 3).Value = TemplateValue(lines[i].People, TemplateColumns[c].Source);
+        }
+
+        ws.Cell(r, 1).Value = "CƏMİ";
+        ws.Range(r, 1, r, 2).Merge();
+        for (var c = 0; c < TemplateColumns.Length; c++)
+        {
+            var source = TemplateColumns[c].Source;
+            ws.Cell(r, c + 3).Value = lines.Where(l => l.Filled).Sum(l => TemplateValue(l.People, source));
+        }
+
+        var table = ws.Range(headerRow, 1, r, cols);
+        table.Style.Font.FontName = "Times New Roman";
+        table.Style.Font.FontSize = 12;
+        table.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        table.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        table.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        table.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+
+        var head = ws.Range(headerRow, 1, headerRow, cols);
+        head.Style.Font.Bold = true;
+        head.Style.Font.FontColor = XLColor.White;
+        head.Style.Fill.BackgroundColor = HeaderBlue;
+        head.Style.Alignment.WrapText = true;
+        ws.Row(headerRow).Height = 47.25;
+
+        var total = ws.Range(r, 1, r, cols);
+        total.Style.Font.Bold = true;
+        total.Style.Fill.BackgroundColor = TotalBand;
+
+        // The list's widths (3.29 / 30.71 / 11.71 as Excel stores them, padding included). The other
+        // columns keep the default, as they do there; the headings wrap.
+        ws.Column(1).Width = 2.575;
+        ws.Column(2).Width = 30;
+        ws.Column(3).Width = 11;
+    }
+
+    private static int TemplateValue(List<Row> people, string source)
+        => source == Headcount ? people.Count : Count(people, source);
 
     private static void BuildDetail(
         XLWorkbook wb, string title, string? scopeNote, Func<string, string> label,

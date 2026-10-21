@@ -4,6 +4,7 @@ using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Multitenancy;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,12 +21,15 @@ public class ReportsController : ControllerBase
     private readonly IReportQueryService _reports;
     private readonly IExcelReportExporter _exporter;
     private readonly IMemoryCache _cache;
+    private readonly ITenantContext _tenant;
 
-    public ReportsController(IReportQueryService reports, IExcelReportExporter exporter, IMemoryCache cache)
+    public ReportsController(
+        IReportQueryService reports, IExcelReportExporter exporter, IMemoryCache cache, ITenantContext tenant)
     {
         _reports = reports;
         _exporter = exporter;
         _cache = cache;
+        _tenant = tenant;
     }
 
     [HttpGet("summary")]
@@ -157,6 +161,14 @@ public class ReportsController : ControllerBase
         return Ok(rows);
     }
 
+    // GET /api/reports/day-templates — the company forms this company can have «Xülasə» printed in
+    // (DaySummaryTemplates). Empty for almost every company; the export dialog offers a form only
+    // when this lists one. The lines are area names, the same ones the board already shows.
+    [HttpGet("day-templates")]
+    public IActionResult DayTemplates()
+        => Ok(DaySummaryTemplates.For(_tenant.TenantId)
+            .Select(t => new { key = t.Key, name = t.Name, areas = t.Areas }));
+
     // POST /api/reports/export-day — the workbook the leadership receives every morning.
     //
     // It used to be one flat A-to-Z list of the whole company, which the reader then had to sort by
@@ -187,8 +199,25 @@ public class ReportsController : ControllerBase
                 row.Paper ?? string.Empty))
             .ToList();
 
+        // A company form for «Xülasə», when the reader chose one. Only this company's (a key from
+        // anywhere else is unknown here), only in the branch view — the form's lines are branches, and
+        // the «sənəd üzrə» areas are paperwork names that need not be — and only when every area in the
+        // file has a line: the form refuses an area rather than print a summary without it.
+        DaySummaryTemplate? template = null;
+        if (!string.IsNullOrWhiteSpace(request.Template))
+        {
+            template = DaySummaryTemplates.Find(_tenant.TenantId, request.Template);
+            if (template is null)
+                return BadRequest(new { error = "UnknownTemplate" });
+            if (request.View != "actual")
+                return BadRequest(new { error = "TemplateNeedsActualView" });
+            var unlisted = template.Unlisted(rows.Select(r => r.Location));
+            if (unlisted.Count > 0)
+                return BadRequest(new { error = "AreaNotInTemplate", areas = unlisted });
+        }
+
         var title = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;
-        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels);
+        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels, template);
 
         var safeDate = string.IsNullOrWhiteSpace(request.Date) ? "gun" : request.Date;
         return File(
