@@ -1,0 +1,399 @@
+---
+/*
+  ContactBody — Əlaqə səhifəsinin (/elaqe/) məzmunu; forma yoxdur, kanal sətirləri və WhatsApp yazışma nümunəsi var.
+  İşlənir: pages/elaqe.astro və ru/, en/ qarşılıqları. Props: lang.
+  Əlaqə məlumatları data/site.ts-dən, mətnlər i18n/ui.ts-dən gəlir.
+*/
+import { Image } from 'astro:assets'
+import ArrowRight from '@lucide/astro/icons/arrow-right'
+import ArrowUpRight from '@lucide/astro/icons/arrow-up-right'
+import Camera from '@lucide/astro/icons/camera'
+import Check from '@lucide/astro/icons/check'
+import CheckCheck from '@lucide/astro/icons/check-check'
+import ChevronLeft from '@lucide/astro/icons/chevron-left'
+import Copy from '@lucide/astro/icons/copy'
+import Mic from '@lucide/astro/icons/mic'
+import Phone from '@lucide/astro/icons/phone'
+import Plus from '@lucide/astro/icons/plus'
+import Signal from '@lucide/astro/icons/signal'
+import Video from '@lucide/astro/icons/video'
+import Wifi from '@lucide/astro/icons/wifi'
+import { useTranslations, type Lang } from '../../../i18n/ui'
+import { SITE, whatsappUrl } from '../../../data/site'
+import ContactIcon from '../../Shared/ContactIcon.astro'
+import PhoneFrame from '../../Shared/PhoneFrame.astro'
+import profilePhoto from '../../../assets/images/contact/qrlog-profile.png'
+
+// Poçt proqramında mövzu sətri bununla dolu açılır (hər dildə eyni).
+const EMAIL_SUBJECT = 'QRLog — sorğu'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+// tel: linkinə yalnız rəqəmlər və + lazımdır. Eyni qayda Footer.astro-da da var, dəyişsən ikisini dəyiş.
+const phoneHref = `tel:${SITE.phone.replace(/[^+\d]/g, '')}`
+
+// Forma əvəzinə mailto linki: sayt statikdir, backend yoxdur, <form action="mailto:"> isə mesajı itirə bilir.
+const emailHref = `mailto:${SITE.email}?subject=${encodeURIComponent(EMAIL_SUBJECT)}`
+
+// Kanal sətirləri. icon — ContactIcon-un adı; aria — görünməz linkin adı; external — yeni tabda açılır;
+// copy — varsa kopyala düyməsi çıxır (copyLabel onun adıdır); main — tünd əsas sətir (yalnız WhatsApp).
+const rows = [
+  {
+    key: 'whatsapp',
+    icon: 'whatsapp',
+    label: t('contact.waLabel'),
+    value: SITE.whatsapp,
+    href: whatsappUrl(t('wa.message')),
+    external: true,
+    aria: t('wa.aria'),
+    main: true,
+  },
+  // SITE.phone boşdursa telefon sətri göstərilmir.
+  ...(SITE.phone
+    ? [
+        {
+          key: 'phone',
+          icon: 'phone',
+          label: t('contact.phone'),
+          value: SITE.phone,
+          href: phoneHref,
+          aria: `${t('contact.phone')}: ${SITE.phone}`,
+          copy: SITE.phone,
+          copyLabel: t('contact.copyPhone'),
+        },
+      ]
+    : []),
+  {
+    key: 'email',
+    icon: 'email',
+    label: t('contact.email'),
+    value: SITE.email,
+    href: emailHref,
+    aria: `${t('contact.email')}: ${SITE.email}`,
+    copy: SITE.email,
+    copyLabel: t('contact.copyEmail'),
+  },
+  {
+    key: 'instagram',
+    icon: 'instagram',
+    label: t('contact.instagram'),
+    value: SITE.instagramHandle,
+    href: SITE.instagram,
+    external: true,
+    aria: `Instagram: ${SITE.instagramHandle}`,
+  },
+] as const
+
+const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
+---
+
+<section
+  class="relative overflow-hidden border-b border-hair bg-page pt-[calc(var(--header-h)+48px)] pb-16 sm:pb-24"
+>
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-0 bg-[radial-gradient(#cbd5e1_1.1px,transparent_1.2px)] bg-[size:22px_22px] [mask-image:linear-gradient(100deg,transparent_35%,#000_75%)]"
+  >
+  </div>
+
+  <div class="wrap relative grid items-center gap-14 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-16">
+    <div>
+      <span
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('contact.eyebrow')}
+      </span>
+
+      <h1
+        class="mt-5 text-[clamp(40px,5.6vw,76px)] leading-none font-semibold tracking-[-0.045em] text-ink"
+      >
+        {t('contact.title.a')}{' '}<span class="block text-brand">{t('contact.title.hl')}</span>
+      </h1>
+
+      <p class="mt-6 max-w-[520px] text-[17px] leading-[1.7] text-pretty text-stone-600 sm:text-[19px]">
+        {t('contact.lead')}
+      </p>
+
+      <ul role="list" class="mt-10 flex max-w-[560px] list-none flex-col gap-3">
+        {
+          rows.map((row) => (
+            <li
+              class:list={[
+                'group relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-[20px] border p-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-16px_rgb(17_18_17/0.5)] motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+                'main' in row ? 'border-ink bg-ink text-white' : 'border-hair bg-white text-ink hover:border-stone-400',
+              ]}
+            >
+              {/* Görünməz link bütün sətri örtür; kopyala düyməsi onun üstündə durur (z-10). */}
+              <a
+                href={row.href}
+                aria-label={row.aria}
+                target={'external' in row ? '_blank' : undefined}
+                rel={'external' in row ? 'noopener noreferrer' : undefined}
+                class="absolute inset-0 rounded-[20px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              />
+
+              <span
+                class:list={[
+                  'grid size-[52px] shrink-0 place-items-center rounded-[15px] max-[480px]:size-11',
+                  'main' in row ? 'bg-[#25D366] text-white' : 'bg-page text-ink',
+                ]}
+                aria-hidden="true"
+              >
+                <ContactIcon name={row.icon} size={row.icon === 'whatsapp' ? 28 : 22} />
+              </span>
+
+              <span class="min-w-0">
+                <span
+                  class:list={[
+                    'block font-mono text-[11px] tracking-[0.1em] uppercase',
+                    'main' in row ? 'text-white/60' : 'text-ink2',
+                  ]}
+                >
+                  {row.label}
+                </span>
+                <span class="mt-0.5 block truncate text-[18px] leading-tight font-semibold max-[480px]:text-[16px]">
+                  {row.value}
+                </span>
+              </span>
+
+              {/* Düymədəki data-copy skriptin kopyalayacağı mətndir; skript müvəqqəti data-copied qoyur (stil Tailwind-dədir). */}
+              {'main' in row ? (
+                <span class="inline-flex items-center gap-2 rounded-full bg-white/15 px-3.5 py-2 text-[13px] font-medium text-white">
+                  <span class="max-[480px]:hidden">{t('contact.waOpen')}</span>
+                  <ArrowRight
+                    size={16}
+                    class="transition-transform duration-200 group-hover:translate-x-[3px] motion-reduce:transition-none"
+                  />
+                </span>
+              ) : 'copy' in row ? (
+                <button
+                  type="button"
+                  data-copy={row.copy}
+                  aria-label={row.copyLabel}
+                  class="group/copy relative z-10 grid size-9 cursor-pointer place-items-center rounded-[10px] border border-hair bg-white text-ink2 transition hover:border-stone-400 hover:text-ink data-[copied]:border-emerald-500 data-[copied]:text-emerald-600"
+                >
+                  <Copy size={16} class="group-data-[copied]/copy:hidden" />
+                  <Check size={16} class="hidden group-data-[copied]/copy:block" />
+                </button>
+              ) : (
+                <ArrowUpRight
+                  size={20}
+                  class="text-ink2 transition-transform duration-200 group-hover:translate-x-[3px] motion-reduce:transition-none"
+                />
+              )}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <!-- isolate: parıltı (-z-10) bu qutunun içində qalır, bölmənin fonunun arxasına düşmür -->
+    <div class="relative isolate mx-auto w-full max-w-[360px] lg:mx-0">
+      <div
+        aria-hidden="true"
+        class="contact-glow pointer-events-none absolute -inset-[16%] -z-10 bg-[radial-gradient(circle_at_28%_28%,rgb(21_94_239/0.55),transparent_55%),radial-gradient(circle_at_76%_58%,rgb(37_211_102/0.42),transparent_55%),radial-gradient(circle_at_46%_88%,rgb(124_92_255/0.32),transparent_55%)] blur-[40px]"
+      >
+      </div>
+
+      <PhoneFrame
+        ariaLabel={t('contact.chatAria')}
+        class="relative w-full [--rx:0deg] [--ry:0deg] [--rz:0deg] lg:[--rx:6deg] lg:[--ry:-14deg] lg:[--rz:1.5deg] lg:hover:[--rx:1deg] lg:hover:[--ry:-3deg] lg:hover:[--rz:0deg]"
+      >
+        <div class="flex h-[580px] flex-col bg-[#EFE7DE] sm:h-[640px]">
+          <div class="flex items-center justify-between bg-[#F6F5F3] px-7 pt-3.5 pb-2 text-[13px] font-semibold text-ink">
+            <span>10:05</span>
+            <span class="flex items-center gap-1">
+              <Signal size={15} stroke-width={3} />
+              <Wifi size={15} stroke-width={3} />
+              <span class="relative ml-0.5 h-[11px] w-[22px] rounded-[3.5px] bg-ink">
+                <span class="absolute top-1/2 -right-[2px] h-[4px] w-[1.5px] -translate-y-1/2 rounded-r-full bg-ink/60"></span>
+              </span>
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 border-b border-[#e4dfd7] bg-[#F6F5F3] px-2.5 pb-2.5">
+            <ChevronLeft size={26} class="shrink-0 text-[#0a6e56]" />
+            <!-- scale-[1.6]: loqonun ətrafında boş sahə var, böyütmədən yazı oxunmur (artığını dairə kəsir) -->
+            <span class="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-white ring-1 ring-hair">
+              <Image src={profilePhoto} alt="" width={160} class="size-[80%] scale-[1.6] object-contain" />
+            </span>
+            <span class="min-w-0 flex-1 leading-tight">
+              <span class="block text-[15px] font-semibold text-ink">QRLog</span>
+              <span class="block text-[12px] text-stone-500">{t('contact.chatOnline')}</span>
+            </span>
+            <span class="flex shrink-0 items-center gap-4 pr-1.5 text-[#0a6e56]">
+              <Video size={21} />
+              <Phone size={19} />
+            </span>
+          </div>
+
+          <div
+            class="relative flex-1 overflow-hidden bg-[radial-gradient(rgb(0_0_0/0.045)_1px,transparent_1.3px)] bg-size-[14px_14px]"
+          >
+            <div class="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-3">
+              <div class="flex flex-col items-center gap-1 pb-1">
+                <span class="rounded-lg bg-white px-2.5 py-1 text-[11.5px] text-stone-600 shadow-sm">
+                  {t('contact.chatDay')}
+                </span>
+                <span class="font-mono text-[10px] tracking-[0.1em] text-stone-500 uppercase">
+                  {t('contact.chatSample')}
+                </span>
+              </div>
+
+              <div
+                class="chat-msg max-w-[82%] self-end rounded-xl rounded-tr-sm bg-[#D9FDD3] px-2.5 pt-1.5 pb-1 text-[14px] leading-[1.42] text-[#111b21] shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]"
+                style="animation-delay:0.3s"
+              >
+                {t('wa.message')}
+                <span class="mt-0.5 flex items-center justify-end gap-1 text-[10.5px] text-stone-500">
+                  10:02 <CheckCheck size={15} class="text-[#53bdeb]" />
+                </span>
+              </div>
+
+              <div
+                class="chat-msg max-w-[82%] self-start rounded-xl rounded-tl-sm bg-white px-2.5 pt-1.5 pb-1 text-[14px] leading-[1.42] text-[#111b21] shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]"
+                style="animation-delay:1.3s"
+              >
+                {t('contact.chatReply')}
+                <span class="mt-0.5 block text-right text-[10.5px] text-stone-500">10:03</span>
+              </div>
+
+              <div
+                class="chat-msg max-w-[82%] self-end rounded-xl rounded-tr-sm bg-[#D9FDD3] px-2.5 pt-1.5 pb-1 text-[14px] leading-[1.42] text-[#111b21] shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]"
+                style="animation-delay:2.4s"
+              >
+                {t('contact.chatMe')}
+                <ul role="list" class="mt-1 flex list-none flex-col gap-0.5">
+                  {
+                    chatList.map((item) => (
+                      <li class="flex gap-2">
+                        <span class="mt-[8px] size-1.5 shrink-0 rounded-full bg-[#0a6e56]" />
+                        {item}
+                      </li>
+                    ))
+                  }
+                </ul>
+                <span class="mt-0.5 flex items-center justify-end gap-1 text-[10.5px] text-stone-500">
+                  10:05 <CheckCheck size={15} class="text-[#53bdeb]" />
+                </span>
+              </div>
+
+              <div
+                class="chat-msg flex w-fit items-center gap-1 self-start rounded-xl rounded-tl-sm bg-white px-3 py-3 shadow-[0_1px_0.5px_rgb(11_20_26/0.13)]"
+                style="animation-delay:3.4s"
+              >
+                <span class="chat-dot size-1.5 rounded-full bg-stone-400"></span>
+                <span class="chat-dot size-1.5 rounded-full bg-stone-400" style="animation-delay:0.15s"></span>
+                <span class="chat-dot size-1.5 rounded-full bg-stone-400" style="animation-delay:0.3s"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 bg-[#F6F5F3] px-2.5 pt-2 pb-1.5">
+            <Plus size={24} class="shrink-0 text-stone-600" />
+            <span class="flex h-9 flex-1 items-center rounded-full border border-[#e4dfd7] bg-white px-3.5 text-[14px] text-stone-400">
+              {t('contact.chatInput')}
+            </span>
+            <Camera size={23} class="shrink-0 text-stone-600" />
+            <span class="grid size-10 shrink-0 place-items-center rounded-full bg-[#1DAA61] text-white">
+              <Mic size={20} />
+            </span>
+          </div>
+
+          <div class="bg-[#F6F5F3] pt-1 pb-2">
+            <div class="mx-auto h-1 w-[34%] rounded-full bg-black"></div>
+          </div>
+        </div>
+      </PhoneFrame>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* @keyframes adları Astro-da scope olunmur; toqquşmasın deyə `qr-contact-` prefiksi. */
+
+  /* `both` — gecikmə bitənə qədər mesaj gizli qalır; gecikməni hər mesajın öz animation-delay-i verir. */
+  .chat-msg {
+    animation: qr-contact-msg-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  @keyframes qr-contact-msg-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .chat-dot {
+    animation: qr-contact-dot 1.2s ease-in-out infinite;
+  }
+
+  @keyframes qr-contact-dot {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+    }
+    30% {
+      transform: translateY(-4px);
+    }
+  }
+
+  .contact-glow {
+    animation: qr-contact-glow 8s ease-in-out infinite;
+  }
+
+  @keyframes qr-contact-glow {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.85;
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-msg,
+    .chat-dot,
+    .contact-glow {
+      animation: none;
+    }
+  }
+</style>
+
+<script>
+  // Kopyala düymələri: data-copy mətni buferə yazılır, düymə data-copied ilə müvəqqəti yaşıl olur.
+  const COPIED_MS = 1500
+
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-copy]')
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      const text = button.dataset.copy
+      if (!text) {
+        return
+      }
+
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch {
+        // İcazə yoxdursa (məsələn, http səhifə) səssiz çıxırıq: düymə yaşıl olmur.
+        return
+      }
+
+      button.dataset.copied = ''
+      setTimeout(() => {
+        delete button.dataset.copied
+      }, COPIED_MS)
+    })
+  })
+</script>
