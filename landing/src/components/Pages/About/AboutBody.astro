@@ -1,0 +1,77 @@
+---
+/*
+  "Haqqımızda" səhifəsinin məzmunu: hero (başlıq + QR emblemi) və hekayə ("əvvəl → indi" vizualı).
+  Props: lang. Mətnlər i18n/ui.ts-dəki about.* açarlarındadır.
+*/
+import { useTranslations, type Lang } from '../../../i18n/ui'
+import AboutQrEmblem from './AboutQrEmblem.astro'
+import AboutStoryVisual from './AboutStoryVisual.astro'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+---
+
+<section
+  class="relative overflow-hidden border-b border-hair bg-page pt-[calc(var(--header-h)+48px)] pb-16 sm:pb-20"
+>
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-0 bg-[radial-gradient(#cbd5e1_1.1px,transparent_1.2px)] bg-[size:22px_22px] [mask-image:linear-gradient(100deg,transparent_35%,#000_75%)]"
+  >
+  </div>
+
+  <div class="wrap relative grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
+    <div class="rv">
+      <span
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('about.eyebrow')}
+      </span>
+
+      <h1
+        class="mt-5 text-[clamp(38px,5.4vw,72px)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance text-ink"
+      >
+        {t('about.title.a')}<span class="text-brand">{t('about.title.hl')}</span>{t('about.title.b')}
+      </h1>
+
+      <p class="mt-6 max-w-[600px] text-[17px] leading-[1.7] text-pretty text-stone-600 sm:text-[19px]">
+        {t('about.lead')}
+      </p>
+    </div>
+
+    <!-- Emblemin vizör küncləri 14px kənara çıxır; yan boşluq (mx-3.5) onların kəsilməməsi üçündür -->
+    <div class="rv d2 mx-3.5 lg:mr-3.5 lg:ml-0">
+      <AboutQrEmblem />
+    </div>
+  </div>
+</section>
+
+<section class="bg-white pt-20 pb-24 sm:pt-28">
+  <div
+    class="wrap grid items-center gap-12 lg:grid-cols-2 lg:gap-16"
+  >
+    <div class="rv max-w-[540px]">
+      <span
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('about.story.eyebrow')}
+      </span>
+
+      <h2
+        class="mt-5 text-[clamp(30px,3.4vw,46px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance text-ink"
+      >
+        {t('about.story.title')}
+      </h2>
+
+      <p class="mt-6 text-[16px] leading-[1.75] text-stone-600 sm:text-[17px]">{t('about.story.p1')}</p>
+      <p class="mt-4 text-[16px] leading-[1.75] text-stone-600 sm:text-[17px]">{t('about.story.p2a')}<strong class="font-semibold text-ink">{t('about.story.p2b')}</strong>{t('about.story.p2c')}</p>
+      <p class="mt-4 text-[16px] leading-[1.75] text-stone-600 sm:text-[17px]">{t('about.story.p3')}</p>
+    </div>
+
+    <div class="rv d2">
+      <AboutStoryVisual lang={lang} />
+    </div>
+  </div>
+</section>
