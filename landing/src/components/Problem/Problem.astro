@@ -1,13 +1,17 @@
 ---
 /*
- * «Problem» bölməsi (Landing.astro, AZ/RU/EN): köhnə üsulun üç ağrısı, hər biri böyük illüstrasiya ilə.
- * Birinci kart (başqasının yerinə giriş) geniş durur — başlıqdakı «saxtaya» sözü ona aiddir; qalan ikisi yan-yanadır.
- * Bölmə ekrana girəndə əvvəl başlıq, sonra hər kart ayrıca «gəlir»: kart qalxır, şəkil fokusa düşür, mətn sətir-sətir çıxır.
- * Hərəkət CSS-dədir (<style>), skript yalnız «ekrana girdi» siqnalını (is-in sinfi) verir.
+ * «Problem» bölməsi (Landing.astro, AZ/RU/EN): köhnə üsulun üç ağrısı, hər biri öz illüstrasiyası ilə.
+ * Desktopda üç kart yan-yanadır (şəkil yuxarıda, mətn aşağıda), planşetdə hər kart üfüqi sətirdir, telefonda alt-alta.
+ * Bölmə ekrana girəndə əvvəl başlıq, sonra kartlar soldan sağa «gəlir»: kart qalxır, şəkil fokusa düşür, mətn sətir-sətir çıxır.
+ * Hərəkət CSS-dədir (<style>), skript yalnız «ekrana girdi» siqnalını (is-in sinfi) verir. İkonlar @lucide/astro-dandır.
  * Props: lang.
  */
 import { Image } from 'astro:assets'
 import type { ImageMetadata } from 'astro'
+import ArrowDown from '@lucide/astro/icons/arrow-down'
+import Clock from '@lucide/astro/icons/clock'
+import Coins from '@lucide/astro/icons/coins'
+import ShieldAlert from '@lucide/astro/icons/shield-alert'
 import { useTranslations, type Lang, type UIKey } from '../../i18n/ui'
 import imgControl from '../../assets/images/problem/nezaret.png'
 import imgCost from '../../assets/images/problem/elave-xerc.png'
@@ -16,77 +20,70 @@ import imgLate from '../../assets/images/problem/gecikme.png'
 const { lang } = Astro.props as { lang: Lang }
 const t = useTranslations(lang)
 
-// Üç ağrı. cost + costNote kartın altındakı qırmızı çipdir: «Zəif nəzarət: saxtaya açıq».
+// Üç ağrı. icon + cost + costNote kartın yuxarısındakı qırmızı etiketdir: «🛡 Zəif nəzarət: saxtaya açıq».
 // entrance — şəklin ekrana gəlmə tərzi (bax <style>, «Şəklin gəlişi»):
 //   drop = kağız vərəq masaya düşür, rise = ağır terminal aşağıdan qalxır, open = Excel pəncərəsi açılır.
-// delayMs — kartın öz gecikməsi. 01 böyük ekranda başlıqla birlikdə ekrana girir — başlıqdan sonra gəlsin deyə 150ms;
-//   02 və 03 desktopda yan-yana durub eyni anda girir — 03 bir az sonra gəlsin deyə 140ms.
-// İkonlar Lucide-dir (shield-alert, coins, clock), 24×24 şəbəkə.
-const pains = [
-  {
-    number: '01',
-    title: 'prob.p1t',
-    desc: 'prob.p1d',
-    cost: 'prob.m3t',
-    costNote: 'prob.m3d',
-    icon: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
-    image: imgControl,
-    entrance: 'drop',
-    delayMs: 150,
-    wide: true,
-  },
-  {
-    number: '02',
-    title: 'prob.p2t',
-    desc: 'prob.p2d',
-    cost: 'prob.m2t',
-    costNote: 'prob.m2d',
-    icon: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
-    image: imgCost,
-    entrance: 'rise',
-    delayMs: 0,
-    wide: false,
-  },
-  {
-    number: '03',
-    title: 'prob.p3t',
-    desc: 'prob.p3d',
-    cost: 'prob.m1t',
-    costNote: 'prob.m1d',
-    icon: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-    image: imgLate,
-    entrance: 'open',
-    delayMs: 140,
-    wide: false,
-  },
-] satisfies {
-  number: string
+// delayMs — kartın öz gecikməsi: desktopda üçü eyni anda ekrana girir, soldan sağa bir-birinin ardınca gəlsinlər deyə.
+interface PainCard {
+  icon: typeof ShieldAlert
   title: UIKey
   desc: UIKey
   cost: UIKey
   costNote: UIKey
-  icon: string
   image: ImageMetadata
   entrance: 'drop' | 'rise' | 'open'
   delayMs: number
-  wide: boolean
-}[]
+}
 
-// Brauzerə şəklin ekranda təxminən nə qədər en tutacağını deyir ki, srcset-dən uyğun faylı seçsin.
-// Geniş kartda şəkil desktopda ~680px, adi kartda ~560px; lg-dən kiçik ekranda kartlar alt-alta, şəkil ekranın enindədir.
-const WIDE_IMAGE_SIZES = '(min-width: 1024px) 680px, 100vw'
-const CARD_IMAGE_SIZES = '(min-width: 1024px) 560px, 100vw'
-// Hazırlanan fayl enləri (px). Hər şəklin öz eni (~1400–1600px) də əlavə olunur: retina ekranda geniş kart üçün lazımdır.
+const pains: PainCard[] = [
+  {
+    icon: ShieldAlert,
+    title: 'prob.p1t',
+    desc: 'prob.p1d',
+    cost: 'prob.m3t',
+    costNote: 'prob.m3d',
+    image: imgControl,
+    entrance: 'drop',
+    delayMs: 0,
+  },
+  {
+    icon: Coins,
+    title: 'prob.p2t',
+    desc: 'prob.p2d',
+    cost: 'prob.m2t',
+    costNote: 'prob.m2d',
+    image: imgCost,
+    entrance: 'rise',
+    delayMs: 120,
+  },
+  {
+    icon: Clock,
+    title: 'prob.p3t',
+    desc: 'prob.p3d',
+    cost: 'prob.m1t',
+    costNote: 'prob.m1d',
+    image: imgLate,
+    entrance: 'open',
+    delayMs: 240,
+  },
+]
+
+// Brauzerə şəklin ekranda təxminən nə qədər en tutacağını deyir ki, srcset-dən uyğun faylı seçsin:
+// desktopda (3 sütun) ~400px, planşetdə (şəkil solda) ~340px, telefonda ekranın tam eni.
+const IMAGE_SIZES = '(min-width: 1024px) 400px, (min-width: 768px) 340px, 100vw'
+// Hazırlanan fayl enləri (px). 1200 — 3× sıxlıqlı telefon ekranı üçün (390px × 3).
 const IMAGE_WIDTHS = [480, 800, 1200]
 // 90: qələmin, barmaq izinin incə xətləri kəskin qalsın deyə (Pwa bölməsindəki foto da 90-dır).
 const IMAGE_QUALITY = 90
+// Etiketdəki ikonun ölçüsü (px) — Audience kartlarındakı etiketlə eyni.
+const TAG_ICON_SIZE = 15
 
 // Kartın kənarı xətt yox, üç qat kölgədir: 1px kontur + yaxın kölgə + uzaq yumşaq kölgə. Açıq fonda xətdən yumşaq görünür.
 const cardShadow =
   'shadow-[0_0_0_1px_rgb(17_18_17/0.05),0_1px_2px_rgb(17_18_17/0.04),0_28px_56px_-36px_rgb(17_18_17/0.28)]'
 // Şəklin hover-də yüngülcə qalxması — saytın gəliş əyrisi ilə eyni.
 const imageHover =
-  'transition-[translate,scale] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:group-hover:-translate-y-1.5 motion-safe:group-hover:scale-[1.02]'
+  'transition-[translate,scale] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:scale-[1.03]'
 ---
 
 <section
@@ -124,32 +121,25 @@ const imageHover =
       </p>
     </div>
 
-    {/* Planşetdə də kartlar alt-alta durur: yan-yana olsa şəkillər ~270px-ə kiçilir. Bento düzülüşü lg-dən başlayır. */}
-    <ul role="list" class="mt-12 grid list-none gap-4 sm:gap-5 lg:mt-16 lg:grid-cols-2 lg:gap-6">
+    {/* Telefonda kart = şəkil + mətn alt-alta; md-də şəkil solda, mətn sağda; lg-də üç kart yan-yana, yenə alt-alta. */}
+    <ul role="list" class="mt-12 grid list-none gap-4 sm:gap-5 lg:mt-16 lg:grid-cols-3">
       {
         pains.map((pain) => (
           <li
             data-reveal
-            class:list={[
-              `pb-card group relative flex flex-col rounded-[28px] bg-white p-2 ${cardShadow}`,
-              { 'lg:col-span-2 lg:grid lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]': pain.wide },
-            ]}
+            class={`pb-card group relative flex flex-col rounded-[28px] bg-white p-2 md:grid md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:flex ${cardShadow}`}
             style={`--pb-delay: ${pain.delayMs}ms`}
           >
-            {/* Səhnə: şəklin dayandığı açıq panel. Hündürlüyü şəkil yox, aspect-ratio verir — şəkil gec yüklənsə də kart atlamır. */}
-            <div
-              class:list={[
-                'relative aspect-16/10 overflow-hidden rounded-[22px] bg-page',
-                { 'lg:order-2 lg:aspect-auto lg:min-h-120': pain.wide },
-              ]}
-            >
+            {/* Səhnə: şəklin dayandığı açıq panel. Hündürlüyü şəkil yox, aspect-ratio verir — şəkil gec yüklənsə də kart atlamır.
+                md-də panel mətnin hündürlüyünə uzanır (aspect-auto), lg-də yenə 16:10 olur. */}
+            <div class="relative aspect-16/10 overflow-hidden rounded-[22px] bg-page md:aspect-auto md:min-h-60 lg:aspect-16/10 lg:min-h-0">
               <div class="pb-dots pointer-events-none absolute inset-0" aria-hidden="true"></div>
-              <div class={`pb-art pb-art--${pain.entrance} absolute inset-3 sm:inset-8 lg:inset-10`}>
+              <div class={`pb-art pb-art--${pain.entrance} absolute inset-3 sm:inset-6`}>
                 <Image
                   src={pain.image}
                   alt=""
-                  widths={[...IMAGE_WIDTHS, pain.image.width]}
-                  sizes={pain.wide ? WIDE_IMAGE_SIZES : CARD_IMAGE_SIZES}
+                  widths={IMAGE_WIDTHS}
+                  sizes={IMAGE_SIZES}
                   quality={IMAGE_QUALITY}
                   loading="lazy"
                   decoding="async"
@@ -158,59 +148,27 @@ const imageHover =
               </div>
             </div>
 
-            <div
-              class:list={[
-                'flex flex-1 flex-col items-start px-4 pt-6 pb-4 sm:px-6 sm:pt-7 sm:pb-5',
-                { 'lg:order-1 lg:justify-center lg:px-12 lg:py-10': pain.wide },
-              ]}
-            >
-              <span
-                class="pb-line inline-flex items-center gap-3 font-mono text-[13px] font-medium text-brand"
+            <div class="flex flex-col items-start px-4 pt-5 pb-5 sm:px-5 md:justify-center md:px-7 md:py-6 lg:justify-start lg:px-5 lg:pt-6 lg:pb-6">
+              {/* max-w-full: dar kartda (RU, 1024px) uzun etiket kartdan çıxmır, ikinci sətrə keçir.
+                  Ona görə radius 14px-dir (tam dairəvi yox): bir sətirdə yenə «həb» görünür, iki sətirdə isə yumru qutu olur.
+                  items-start + ikonun mt-0.5-i: iki sətirli halda ikon birinci sətrin yanında qalır. */}
+              <p
+                class="pb-line inline-flex w-fit max-w-full items-start gap-2 rounded-[14px] bg-red-50 py-1.5 pr-3.5 pl-2.5 text-[13px] leading-snug text-red-700"
                 style="--i: 0"
               >
-                {pain.number}
-                <span aria-hidden="true" class="h-px w-8 bg-brand/30"></span>
-              </span>
+                <pain.icon size={TAG_ICON_SIZE} class="mt-0.5 shrink-0" />
+                <span>
+                  <span class="font-semibold">{t(pain.cost)}:</span> {t(pain.costNote)}
+                </span>
+              </p>
               <h3
-                class:list={[
-                  'pb-line mt-3 text-[22px] leading-snug font-semibold tracking-tight text-ink sm:text-[24px]',
-                  { 'lg:text-[30px] lg:leading-[1.15]': pain.wide },
-                ]}
+                class="pb-line mt-4 text-[21px] leading-snug font-semibold tracking-tight text-ink sm:text-[22px]"
                 style="--i: 1"
               >
                 {t(pain.title)}
               </h3>
-              <p
-                class:list={[
-                  'pb-line mt-3 max-w-[46ch] text-[15px] leading-[1.65] text-ink2 sm:text-[16px]',
-                  { 'lg:mt-4 lg:text-[17px]': pain.wide },
-                ]}
-                style="--i: 2"
-              >
+              <p class="pb-line mt-2.5 max-w-[46ch] text-[15px] leading-[1.65] text-ink2" style="--i: 2">
                 {t(pain.desc)}
-              </p>
-              {/* Adi kartlarda çip aşağıya sıxılır (mt-auto): 02 və 03-ün çipləri eyni xətdə dursun. */}
-              <p class:list={['pb-line pt-5', { 'mt-auto': !pain.wide }]} style="--i: 3">
-                <span class="inline-flex items-center gap-2 rounded-full bg-red-50 py-1 pr-3.5 pl-1 text-[13px] leading-snug text-red-700">
-                  <span
-                    aria-hidden="true"
-                    class="grid size-6 shrink-0 place-items-center rounded-full bg-white text-red-600 ring-1 ring-red-100"
-                  >
-                    <svg
-                      class="size-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      set:html={pain.icon}
-                    />
-                  </span>
-                  <span>
-                    <span class="font-semibold">{t(pain.cost)}:</span> {t(pain.costNote)}
-                  </span>
-                </span>
               </p>
             </div>
           </li>
@@ -218,7 +176,7 @@ const imageHover =
       }
     </ul>
 
-    <div data-reveal class="mt-14 sm:mt-16">
+    <div data-reveal class="pb-next mt-14 sm:mt-16">
       <div class="pb-line flex items-center gap-5" style="--i: 0">
         <span aria-hidden="true" class="hidden h-px flex-1 bg-linear-to-r from-transparent to-hair sm:block"></span>
         <a
@@ -229,10 +187,7 @@ const imageHover =
             aria-hidden="true"
             class="grid size-9 place-items-center rounded-full border border-brand/20 bg-white text-brand shadow-sm transition-[translate,border-color] duration-300 group-hover:translate-y-1 group-hover:border-brand/60"
           >
-            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 5v14"></path>
-              <path d="m19 12-7 7-7-7"></path>
-            </svg>
+            <ArrowDown size={16} />
           </span>
           <span class="text-[15px] font-semibold text-brand underline-offset-4 group-hover:underline sm:text-[16px]">
             {t('prob.next')}
@@ -295,12 +250,12 @@ const imageHover =
   /* ---------- Şəklin gəlişi: hər şəkil öz əşyası kimi gəlir ---------- */
   /* drop: kağız vərəq yuxarıdan, bir az əyri düşür və masada düzəlir. */
   [data-anim='on'] .pb-art--drop {
-    translate: 0 -20px;
+    translate: 0 -16px;
     rotate: -4deg;
   }
   /* rise: ağır terminal aşağıdan qalxıb yerinə oturur. */
   [data-anim='on'] .pb-art--rise {
-    translate: 0 32px;
+    translate: 0 24px;
   }
   /* open: Excel pəncərəsi kiçikdən açılır (scale digərlərindən aşağıdan başlayır). */
   [data-anim='on'] .pb-art--open {
@@ -316,7 +271,7 @@ const imageHover =
       opacity 700ms var(--pb-ease) var(--pb-delay),
       translate 900ms var(--pb-ease) var(--pb-delay);
   }
-  /* Şəkil kartdan 150ms sonra başlayır və ən uzun hərəkətdir: bölmənin əsas «hadisəsi» odur. */
+  /* Şəkil kartdan 150ms sonra başlayır və ən uzun hərəkətdir: kartın əsas «hadisəsi» odur. */
   [data-anim='on'] .is-in .pb-art {
     opacity: 1;
     translate: none;
@@ -341,6 +296,10 @@ const imageHover =
   /* Kartın içindəki mətn şəkil artıq görünməyə başlayandan sonra (300ms) çıxır. */
   [data-anim='on'] .pb-card.is-in .pb-line {
     transition-delay: calc(var(--pb-delay) + 300ms + var(--i) * 80ms);
+  }
+  /* «Problem aydındır. Bəs həlli?» keçidi: böyük ekranda kartlarla eyni anda ekrana girir — kartlardan sonra gəlsin. */
+  [data-anim='on'] .pb-next.is-in .pb-line {
+    transition-delay: 500ms;
   }
 </style>
 
