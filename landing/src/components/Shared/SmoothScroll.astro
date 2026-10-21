@@ -1,0 +1,103 @@
+---
+ // Bu komponent səhifəyə Lenis kitabxanasını əlavə edir və onunla hamar sürüşməni işə salır.
+---
+
+<script>
+  import Lenis from 'lenis'
+
+  // ---------- Ayarlar ----------
+  // Bir təkər hərəkətinin sürüşmə müddəti (saniyə); 1.4-dən yuxarı ləng hiss olunur.
+  const SCROLL_DURATION = 1.5
+  // Təkər hərəkətinin məsafə vuruğu (1 = brauzerin özü qədər).
+  const WHEEL_MULTIPLIER = 1
+  // Menyu linkinə və "Yuxarı" düyməsinə klikləyəndə sürüşmənin müddəti (saniyə). Sabitdir: yaxın və uzaq
+  // bölməyə eyni vaxta çatır; təkərlə sürüşməyə (SCROLL_DURATION) təsir etmir.
+  const ANCHOR_DURATION = 1.6
+
+  // Təkərlə sürüşmə üçün easing: sürətlə başlayır, sonda yumşaq dayanır (Lenis sənədindəki easeOutExpo).
+  // progress: keçən vaxtın payı (0 → 1), nəticə: qət olunan məsafənin payı (0 → 1).
+  function easeOutExpo(progress: number): number {
+    return Math.min(1, 1.001 - Math.pow(2, -10 * progress))
+  }
+
+  // Linklərlə sürüşmə üçün easeInOutCubic: yavaş başlayır, ortada sürətlənir, sonda yumşaq dayanır.
+  function anchorEasing(progress: number): number {
+    if (progress < 0.5) {
+      return 4 * progress * progress * progress
+    }
+    return 1 - Math.pow(-2 * progress + 2, 3) / 2
+  }
+
+  // Lenis-in `anchors` seçiminə və "Yuxarı" düyməsinə verilən ortaq ayar.
+  const ANCHOR_SCROLL = { duration: ANCHOR_DURATION, easing: anchorEasing }
+
+  // Başqa komponentlərlə razılaşdırılmış adlar: orada dəyişsə, burada da dəyiş.
+  // (Header-in mobil menyu siyahısı `data-lenis-prevent` ilə təkəri Lenis-dən qoruyur.)
+  const LOADER_LOCK_CLASS = 'qrl-lock' // PageLoader.astro: loader ekrandadırsa <html>-də olur
+  const HEADER_BAR_SELECTOR = '[data-header-bar]' // Header.astro: zolağın qabığı
+  const MENU_OPEN_ATTRIBUTE = 'data-open' // Header.astro: mobil menyu açıq olanda zolaqda olur
+
+  // ---------- Lenis lazımdırmı? ----------
+  function isSmoothScrollAllowed(): boolean {
+    const wantsReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // pointer: coarse — əsas daxiletmə barmaqdır (telefon, planşet).
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+    return !wantsReducedMotion && !isTouchDevice
+  }
+
+  // ---------- Dayanma və davam etmə ----------
+  // Cavab hər dəfə səhifədən oxunur: sinfi və atributu başqa fayllar dəyişir.
+  function shouldPauseScroll(): boolean {
+    const isLoaderOn = document.documentElement.classList.contains(LOADER_LOCK_CLASS)
+    const isMenuOpen = document.querySelector(`${HEADER_BAR_SELECTOR}[${MENU_OPEN_ATTRIBUTE}]`) !== null
+    return isLoaderOn || isMenuOpen
+  }
+
+  // stop() və start() təkrar çağırılsa zərər vermir.
+  function pauseOrResume(lenis: Lenis): void {
+    if (shouldPauseScroll()) {
+      lenis.stop()
+    } else {
+      lenis.start()
+    }
+  }
+
+  // MutationObserver callback-i mikrotask kimi işləyir: mobil menyudakı linkə klikdə menyu bağlanır və
+  // Lenis anchor-a sürüşməzdən əvvəl artıq davam edir.
+  function keepLenisInSyncWithPage(lenis: Lenis): void {
+    const observer = new MutationObserver(() => pauseOrResume(lenis))
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
+    const headerBar = document.querySelector(HEADER_BAR_SELECTOR)
+    if (headerBar) {
+      observer.observe(headerBar, { attributes: true, attributeFilter: [MENU_OPEN_ATTRIBUTE] })
+    }
+
+    // Loader Lenis-dən əvvəl bitibsə və ya menyu artıq açıqdırsa, ilk vəziyyət də düzgün olsun.
+    pauseOrResume(lenis)
+  }
+
+  // ---------- İşə salma ----------
+  function startSmoothScroll(): void {
+    const lenis = new Lenis({
+      duration: SCROLL_DURATION,
+      easing: easeOutExpo,
+      wheelMultiplier: WHEEL_MULTIPLIER,
+      smoothWheel: true, // təkər və touchpad hamarlanır
+      syncTouch: false, // toxunuşla sürüşmə hamarlanmır: telefonda brauzerin öz sürüşməsi qalır
+      autoRaf: true, // Lenis özü hər kadrda yenilənir
+      // Offset vermirik: Lenis <html>-in scroll-padding-top-unu (global.css) özü nəzərə alır, başlıq header-in altında qalmır.
+      anchors: ANCHOR_SCROLL,
+    })
+
+    // BackToTop.astro bunlardan istifadə edir. window.lenis yox: onu Lenis özü başqa məqsədlə yazır.
+    window.qrlLenis = lenis
+    window.qrlAnchorScroll = ANCHOR_SCROLL
+
+    keepLenisInSyncWithPage(lenis)
+  }
+
+  if (isSmoothScrollAllowed()) {
+    startSmoothScroll()
+  }
+</script>
