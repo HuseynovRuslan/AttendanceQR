@@ -1,0 +1,533 @@
+---
+/*
+ * PrivacyBody — "Məxfilik siyasəti" səhifəsinin məzmunu (AZ / RU / EN üçün ortaq).
+ * İşlənir: pages/mexfilik.astro və ru/, en/ qarşılıqları. Props: lang. Mətnlər ui.ts-dəki `priv.*` açarlarındadır.
+ */
+import BellRing from '@lucide/astro/icons/bell-ring'
+import Ban from '@lucide/astro/icons/ban'
+import Bell from '@lucide/astro/icons/bell'
+import BookOpen from '@lucide/astro/icons/book-open'
+import Building from '@lucide/astro/icons/building'
+import Calendar from '@lucide/astro/icons/calendar'
+import Camera from '@lucide/astro/icons/camera'
+import ChartLine from '@lucide/astro/icons/chart-line'
+import CircleCheck from '@lucide/astro/icons/circle-check'
+import Clock from '@lucide/astro/icons/clock'
+import Eye from '@lucide/astro/icons/eye'
+import ImageIcon from '@lucide/astro/icons/image'
+import KeyRound from '@lucide/astro/icons/key-round'
+import LocateFixed from '@lucide/astro/icons/locate-fixed'
+import Lock from '@lucide/astro/icons/lock'
+import Mail from '@lucide/astro/icons/mail'
+import MapPin from '@lucide/astro/icons/map-pin'
+import Pencil from '@lucide/astro/icons/pencil'
+import ScanFace from '@lucide/astro/icons/scan-face'
+import Server from '@lucide/astro/icons/server'
+import Smartphone from '@lucide/astro/icons/smartphone'
+import Sparkles from '@lucide/astro/icons/sparkles'
+import Trash from '@lucide/astro/icons/trash'
+import User from '@lucide/astro/icons/user'
+import Wallet from '@lucide/astro/icons/wallet'
+import { useTranslations, localizedPath, type Lang } from '../../../i18n/ui'
+import { SITE } from '../../../data/site'
+import PermissionsCard from './PermissionsCard.astro'
+
+const { lang } = Astro.props as { lang: Lang }
+const t = useTranslations(lang)
+
+const mailHref = `mailto:${SITE.email}`
+
+// Font Awesome Free 7.3.1 (fa-brands) by @fontawesome — https://fontawesome.com · License: https://fontawesome.com/license/free
+// Lisenziya şərhi CC BY 4.0-ın şərtidir — silmə. Yalnız SVG yolu götürülüb, Font Awesome-un CSS/JS-i qoşulmayıb.
+const FA_CLOUDFLARE =
+  'M407.9 319.9L177.1 317c-.7 0-1.4-.2-2-.5s-1.2-.8-1.6-1.4c-.4-.6-.7-1.3-.7-2s0-1.4 .2-2.1c.4-1.1 1.1-2.1 2.1-2.8s2.1-1.2 3.3-1.2l232.9-2.9c27.6-1.3 57.5-23.6 68-50.8l13.3-34.5c.4-.9 .5-1.9 .5-2.9 0-.5-.1-1.1-.2-1.6-7.4-32.2-25-61.1-50.3-82.3s-56.7-33.7-89.7-35.5-65.6 7.3-93 25.7-48 45.3-58.8 76.5c-11.3-8.5-24.9-13.3-39-13.7s-28 3.5-39.8 11.4-20.8 19.1-25.9 32.3-5.9 27.6-2.4 41.3c-52.3 1.5-94.2 44.1-94.2 96.5 0 4.7 .3 9.3 1 14 .2 1.1 .7 2.1 1.5 2.8s1.9 1.1 2.9 1.1l426.1 .1c0 0 .1 0 .1 0 1.2 0 2.3-.4 3.3-1.1s1.6-1.7 2-2.9l3.3-11.3c3.9-13.4 2.4-25.8-4.1-34.9-6-8.4-16.1-13.3-28.2-13.9zm105.9-98.8c-2.1 0-4.3 .1-6.4 .2-.8 .1-1.5 .3-2.1 .8s-1 1.1-1.3 1.8l-9.1 31.2c-3.9 13.4-2.4 25.8 4.1 34.9 6 8.4 16.1 13.3 28.2 13.9l49.2 2.9c.7 0 1.4 .2 2 .5s1.1 .8 1.5 1.4c.4 .6 .7 1.3 .8 2s0 1.5-.2 2.1c-.4 1.1-1.1 2.1-2.1 2.8s-2.1 1.2-3.3 1.2l-51.1 2.9c-27.8 1.3-57.7 23.6-68.1 50.8l-3.7 9.6c-.2 .4-.2 .8-.2 1.3s.2 .8 .4 1.2 .6 .7 .9 .9 .8 .3 1.2 .3c0 0 .1 0 .1 0l175.9 0c1 0 2-.3 2.8-.9s1.4-1.5 1.7-2.4c3.1-11.1 4.7-22.5 4.7-34 0-69.3-56.5-125.5-126.1-125.5z'
+const FA_AWS =
+  'M180.4 203c-.7 22.6 10.6 32.7 10.9 39-.1 1.3-.6 2.5-1.3 3.6s-1.7 2-2.8 2.6l-12.8 9c-1.7 1.2-3.6 1.8-5.6 1.9-.4 0-8.2 1.8-20.5-25.6-7.5 9.4-17 16.9-27.9 22s-22.7 7.7-34.7 7.5c-16.3 .9-60.4-9.2-58.1-56.2-1.6-38.3 34.1-62.1 70.9-60 7.1 0 21.6 .4 47 6.3l0-15.6c2.7-26.5-14.7-47-44.8-43.9-2.4 0-19.4-.5-45.8 10.1-7.4 3.4-8.3 2.8-10.8 2.8-7.4 0-4.4-21.5-2.9-24.2 5.2-6.4 35.9-18.4 65.9-18.2 20.1-1.8 40.1 4.4 55.7 17.3 6.3 7.1 11.2 15.4 14.2 24.4s4.2 18.5 3.5 28l0 69.3zM94 235.4c32.4-.5 46.2-20 49.3-30.5 2.5-10.1 2.1-16.4 2.1-27.4-9.7-2.3-23.6-4.9-39.6-4.9-15.2-1.1-42.8 5.6-41.7 32.3-1.2 16.8 11.1 31.4 30 30.5zm170.9 23.1c-7.9 .7-11.5-4.9-12.7-10.4L202.4 83.4c-1-2.8-1.6-5.6-1.9-8.6-.2-1.2 .1-2.4 .8-3.4s1.8-1.6 3-1.8c.2 0-2.1 0 22.2 0 8.8-.9 11.6 6 12.6 10.4L274.9 220.8 308.1 80c.5-3.2 2.9-11.1 12.8-10.2l17.2 0c2.2-.2 11.1-.5 12.7 10.4L384.1 222.7 421 80.1c.5-2.2 2.7-11.4 12.7-10.4l19.7 0c.9-.1 6.2-.8 5.3 8.6-.4 1.8 3.4-10.7-52.8 169.9-1.1 5.5-4.8 11.1-12.7 10.4l-18.7 0c-10.9 1.2-12.5-9.7-12.7-10.7l-33.2-137.1-32.8 137c-.2 1.1-1.7 11.9-12.7 10.7l-18.3 0 0 0zm273.5 5.6c-5.9 0-33.9-.3-57.4-12.3-2.3-1-4.3-2.6-5.7-4.8s-2.1-4.6-2.1-7.1l0-10.7c0-8.5 6.2-6.9 8.8-5.9 10 4.1 16.5 7.1 28.8 9.6 36.7 7.5 52.8-2.3 56.7-4.5 13.2-7.8 14.2-25.7 5.3-34.9-10.5-8.8-15.5-9.1-53.1-21-4.6-1.3-43.7-13.6-43.8-52.4-.6-28.2 25-56.2 69.5-56 12.7 0 46.4 4.1 55.6 15.6 1.4 2.1 2 4.6 1.9 7l0 10.1c0 4.4-1.6 6.7-4.9 6.7-7.7-.9-21.4-11.2-49.2-10.8-6.9-.4-39.9 .9-38.4 25-.4 19 26.6 26.1 29.7 26.9 36.5 11 48.6 12.8 63.1 29.6 17.1 22.2 7.9 48.3 4.3 55.4-19.1 37.5-68.4 34.4-69.3 34.4zm40.2 104.9c-70 51.7-171.7 79.2-258.5 79.2-117.1 .8-230.3-42.3-317.3-120.7-6.5-5.9-.8-14 7.2-9.5 96.5 55.2 205.7 84.2 316.9 84.1 83-.4 165.1-17.3 241.6-49.5 11.8-5 21.8 7.8 10.1 16.4zm29.2-33.3c-9-11.5-59.3-5.4-81.8-2.7-6.8 .8-7.9-5.1-1.8-9.5 40.1-28.2 105.9-20.1 113.4-10.6 7.5 9.5-2.1 75.4-39.6 106.9-5.8 4.9-11.3 2.3-8.7-4.1 8.4-21.3 27.4-68.5 18.4-80z'
+
+// Nömrə nişanı (Problem.astro ilə eyni siniflər).
+const numBadge =
+  'grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-[13px] font-bold text-brand ring-1 ring-brand/10 sm:size-11 sm:text-[14px]'
+const h2Class = 'm-0 text-[clamp(22px,2.4vw,28px)] leading-[1.15] font-semibold tracking-[-0.025em] text-ink'
+const headRow = 'flex items-center gap-3.5'
+const bodyText = 'm-0 max-w-[720px] text-[15.5px] leading-[1.75] text-stone-600'
+// Sabit header başlığı örtməsin deyə: header hündürlüyü + 24px (skript bu dəyəri oxuyur).
+const sectionClass = 'scroll-mt-[calc(var(--header-h)+24px)]'
+const monoLabel = 'font-mono text-[10.5px] tracking-[0.1em] text-ink2 uppercase'
+const card = 'rounded-[18px] border border-hair p-5'
+
+// `id` bölmənin ünvanıdır (#controller …), dilə baxmayaraq eynidir.
+const toc = [
+  { id: 'controller', n: '01', title: t('priv.s1') },
+  { id: 'data', n: '02', title: t('priv.s2') },
+  { id: 'usage', n: '03', title: t('priv.s3') },
+  { id: 'services', n: '04', title: t('priv.s4') },
+  { id: 'retention', n: '05', title: t('priv.s5') },
+  { id: 'rights', n: '06', title: t('priv.s6') },
+  { id: 'children', n: '07', title: t('priv.s7') },
+]
+
+const tldr = [
+  { icon: MapPin, title: t('priv.t1t'), text: t('priv.t1d') },
+  { icon: Ban, title: t('priv.t2t'), text: t('priv.t2d') },
+  { icon: Building, title: t('priv.t3t'), text: t('priv.t3d') },
+  { icon: Trash, title: t('priv.t4t'), text: t('priv.t4d') },
+]
+
+// what — adın altındakı izah, why — "nə üçün" sütunu, isOptional — "istəyə görə" nişanı.
+const dataRows = [
+  { icon: User, title: t('priv.d1t'), what: t('priv.d1w'), why: t('priv.d1y'), isOptional: false },
+  { icon: KeyRound, title: t('priv.d2t'), what: t('priv.d2w'), why: t('priv.d2y'), isOptional: false },
+  { icon: MapPin, title: t('priv.d3t'), what: t('priv.d3w'), why: t('priv.d3y'), isOptional: false },
+  { icon: Camera, title: t('priv.d4t'), what: t('priv.d4w'), why: t('priv.d4y'), isOptional: false },
+  { icon: ImageIcon, title: t('priv.d5t'), what: t('priv.d5w'), why: t('priv.d5y'), isOptional: true },
+  { icon: Smartphone, title: t('priv.d6t'), what: t('priv.d6w'), why: t('priv.d6y'), isOptional: false },
+  { icon: Clock, title: t('priv.d7t'), what: t('priv.d7w'), why: t('priv.d7y'), isOptional: false },
+  { icon: Wallet, title: t('priv.d8t'), what: t('priv.d8w'), why: t('priv.d8y'), isOptional: false },
+]
+
+const usage = [
+  { icon: ChartLine, text: t('priv.u1') },
+  { icon: LocateFixed, text: t('priv.u2') },
+  { icon: ScanFace, text: t('priv.u3') },
+  { icon: Bell, text: t('priv.u4') },
+]
+
+// Kartda ya Lucide ikonu (`icon`), ya brend ikonu (`brand`: SVG yolu + rəng) olur. `isWide` — tam enli kart.
+const vendors = [
+  { brand: { path: FA_CLOUDFLARE, color: '#F38020' }, name: 'Cloudflare R2', text: t('priv.v1') },
+  { brand: { path: FA_AWS, color: '#232F3E' }, name: 'Amazon Web Services (Rekognition)', text: t('priv.v2') },
+  { icon: BellRing, name: 'Web Push', text: t('priv.v3') },
+  { icon: Server, name: t('priv.v5t'), text: t('priv.v5') },
+  { icon: Sparkles, name: 'OpenAI', text: t('priv.v4'), isWide: true },
+]
+
+const rights = [
+  { icon: Eye, text: t('priv.r1') },
+  { icon: Pencil, text: t('priv.r2') },
+  { icon: Trash, text: t('priv.r3') },
+]
+---
+
+<section
+  class="relative overflow-hidden border-b border-hair bg-page pt-[calc(var(--header-h)+48px)] pb-16 sm:pb-20"
+>
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-0 bg-[radial-gradient(#cbd5e1_1.1px,transparent_1.2px)] bg-[size:22px_22px] [mask-image:linear-gradient(100deg,transparent_35%,#000_75%)]"
+  >
+  </div>
+
+  <div
+    class="wrap relative grid max-w-[1080px] items-center gap-12 min-[861px]:grid-cols-[minmax(0,1fr)_320px] min-[861px]:gap-16"
+  >
+    <div>
+      <span class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('priv.eyebrow')}
+      </span>
+
+      <h1
+        class="mt-5 text-[clamp(36px,4.6vw,60px)] leading-[1.04] font-semibold tracking-[-0.045em] text-balance text-ink"
+      >
+        {t('priv.title')}
+      </h1>
+
+      <p class="mt-6 max-w-[560px] text-[17px] leading-[1.7] text-pretty text-stone-600 sm:text-[18px]">
+        {t('priv.lead')}
+      </p>
+
+      <ul role="list" class="mt-8 flex list-none flex-wrap gap-2.5">
+        <li
+          class="inline-flex items-center gap-2 rounded-full border border-hair bg-white px-4 py-2 text-[14px] font-medium text-ink"
+        >
+          <Calendar size={17} class="text-brand" aria-hidden="true" />
+          {t('priv.chipDate')}
+        </li>
+        <li
+          class="inline-flex items-center gap-2 rounded-full border border-hair bg-white px-4 py-2 text-[14px] font-medium text-ink"
+        >
+          <BookOpen size={17} class="text-brand" aria-hidden="true" />
+          {t('priv.chipRead')}
+        </li>
+      </ul>
+    </div>
+
+    <div class="flex justify-center min-[861px]:justify-end">
+      <PermissionsCard lang={lang} />
+    </div>
+  </div>
+</section>
+
+<section class="bg-white pt-16 pb-4 sm:pt-20">
+  <div class="wrap max-w-[1080px]">
+    <h2 class="m-0 text-[clamp(28px,3.2vw,40px)] leading-[1.1] font-semibold tracking-[-0.03em] text-ink">
+      {t('priv.tldrTitle')}
+    </h2>
+
+    <ul role="list" class="mt-8 grid list-none grid-cols-4 gap-4 max-[900px]:grid-cols-2 max-[480px]:grid-cols-1">
+      {
+        tldr.map((item) => (
+          <li class="rounded-[20px] border border-hair bg-white p-[18px] transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+            <span class="grid size-[38px] place-items-center rounded-xl bg-[#EAF1FE] text-brand" aria-hidden="true">
+              <item.icon size={21} stroke-width={1.75} />
+            </span>
+            <h3 class="mt-4 text-[16.5px] leading-snug font-semibold tracking-[-0.01em] text-ink">{item.title}</h3>
+            <p class="mt-1.5 text-[14px] leading-[1.6] text-stone-600">{item.text}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<section class="bg-white pt-14 pb-24 sm:pt-16">
+  <div class="wrap max-w-[1080px]">
+    <!-- items-start olmasa sticky işləmir -->
+    <div class="grid items-start gap-8 min-[901px]:grid-cols-[220px_minmax(0,1fr)] min-[901px]:gap-14">
+      <nav aria-label={t('priv.tocAria')} class="min-[901px]:sticky min-[901px]:top-[calc(var(--header-h)+24px)]">
+        <p class={`${monoLabel} mb-3`}>{t('priv.toc')}</p>
+        <ol
+          class="m-0 flex list-none flex-col p-0 min-[901px]:border-l min-[901px]:border-hair max-[900px]:flex-row max-[900px]:flex-wrap max-[900px]:gap-2"
+        >
+          {
+            toc.map((item) => (
+              <li>
+                <a
+                  href={`#${item.id}`}
+                  data-toc-link
+                  class="flex items-baseline gap-2.5 text-[14px] leading-snug text-stone-500 no-underline transition-colors hover:text-ink aria-[current=true]:font-medium aria-[current=true]:text-brand min-[901px]:-ml-px min-[901px]:border-l-2 min-[901px]:border-transparent min-[901px]:py-2 min-[901px]:pl-4 min-[901px]:aria-[current=true]:border-brand max-[900px]:rounded-full max-[900px]:border max-[900px]:border-hair max-[900px]:bg-white max-[900px]:px-3.5 max-[900px]:py-1.5 max-[900px]:aria-[current=true]:border-brand max-[900px]:aria-[current=true]:bg-[#EAF1FE]"
+                >
+                  <span class="font-mono text-[11px] tracking-[0.04em] max-[900px]:hidden">{item.n}</span>
+                  {item.title}
+                </a>
+              </li>
+            ))
+          }
+        </ol>
+      </nav>
+
+      <div class="flex min-w-0 flex-col gap-11">
+        <p class="m-0 max-w-[720px] text-[18px] leading-[1.7] text-ink">
+          {t('priv.intro.a')}<strong class="font-semibold">QRLog</strong>{t('priv.intro.b')}
+        </p>
+
+        <section id="controller" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">01</span>
+            <h2 class={h2Class}>{t('priv.s1')}</h2>
+          </div>
+          <div class="mt-5 grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
+            <div class={`${card} bg-page`}>
+              <p class={monoLabel}>{t('priv.ctrlLabel')}</p>
+              <p class="mt-2 text-[18px] font-semibold tracking-[-0.01em] text-ink">{t('priv.ctrlName')}</p>
+              <p class="mt-1.5 text-[14.5px] leading-[1.65] text-stone-600">{t('priv.ctrlText')}</p>
+            </div>
+            <div class={`${card} bg-white`}>
+              <p class={monoLabel}>{t('priv.procLabel')}</p>
+              <p class="mt-2 text-[18px] font-semibold tracking-[-0.01em] text-ink">QRLog</p>
+              <p class="mt-1.5 text-[14.5px] leading-[1.65] text-stone-600">{t('priv.procText')}</p>
+            </div>
+          </div>
+          <p class={`${bodyText} mt-5`}>{t('priv.s1p')}</p>
+        </section>
+
+        <section id="data" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">02</span>
+            <h2 class={h2Class}>{t('priv.s2')}</h2>
+          </div>
+
+          <div class="mt-5 overflow-hidden rounded-[18px] border border-hair">
+            <div
+              class="grid grid-cols-[34px_minmax(0,1.15fr)_minmax(0,1fr)] gap-x-4 bg-page px-4 py-2.5 max-[640px]:hidden"
+              aria-hidden="true"
+            >
+              <span></span>
+              <span class={monoLabel}>{t('priv.colData')}</span>
+              <span class={monoLabel}>{t('priv.colWhy')}</span>
+            </div>
+            <ul role="list" class="m-0 list-none p-0">
+              {
+                dataRows.map((row) => (
+                  <li class="grid grid-cols-[34px_minmax(0,1.15fr)_minmax(0,1fr)] gap-x-4 gap-y-1 border-t border-hair px-4 py-3.5 max-[640px]:grid-cols-[34px_minmax(0,1fr)]">
+                    <span class="grid size-[34px] place-items-center rounded-[10px] bg-page text-brand" aria-hidden="true">
+                      <row.icon size={18} stroke-width={1.75} />
+                    </span>
+                    <div class="min-w-0">
+                      <p class="m-0 text-[15px] leading-snug font-semibold text-ink">
+                        {row.title}
+                        {row.isOptional && (
+                          <span class="ml-1.5 inline-block rounded-full bg-[#EAF1FE] px-2 py-0.5 align-middle text-[11px] font-semibold text-brand">
+                            {t('priv.optional')}
+                          </span>
+                        )}
+                      </p>
+                      <p class="m-0 mt-0.5 text-[13px] leading-[1.55] text-ink2">{row.what}</p>
+                    </div>
+                    <p class="m-0 text-[14px] leading-[1.6] text-stone-600 max-[640px]:col-start-2">{row.why}</p>
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
+
+          <div class="mt-4 flex gap-3 rounded-2xl bg-[#E7F6EF] p-4 text-[14.5px] leading-[1.65] text-[#0f5f45]">
+            <CircleCheck size={20} stroke-width={1.75} class="mt-0.5 shrink-0" aria-hidden="true" />
+            <p class="m-0">
+              {t('priv.photoNote.a')}<strong class="font-semibold">{t('priv.photoNote.b')}</strong>{t('priv.photoNote.c')}
+            </p>
+          </div>
+        </section>
+
+        <section id="usage" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">03</span>
+            <h2 class={h2Class}>{t('priv.s3')}</h2>
+          </div>
+          <ul role="list" class="m-0 mt-5 grid list-none grid-cols-2 gap-3 p-0 max-[560px]:grid-cols-1">
+            {
+              usage.map((item) => (
+                <li class="flex items-start gap-3 rounded-2xl border border-hair bg-white p-4">
+                  <span class="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-[#EAF1FE] text-brand" aria-hidden="true">
+                    <item.icon size={18} stroke-width={1.75} />
+                  </span>
+                  <span class="text-[14.5px] leading-[1.6] text-ink">{item.text}</span>
+                </li>
+              ))
+            }
+          </ul>
+          <p class={`${bodyText} mt-5`}>{t('priv.s3p')}</p>
+        </section>
+
+        <section id="services" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">04</span>
+            <h2 class={h2Class}>{t('priv.s4')}</h2>
+          </div>
+          <p class={`${bodyText} mt-5`}>{t('priv.s4p')}</p>
+          <ul role="list" class="m-0 mt-5 grid list-none grid-cols-2 gap-3 p-0 max-[560px]:grid-cols-1">
+            {
+              vendors.map((item) => (
+                <li
+                  class:list={[
+                    'flex items-start gap-3.5 rounded-[18px] border border-hair bg-white p-4',
+                    item.isWide && 'col-span-2 max-[560px]:col-span-1',
+                  ]}
+                >
+                  <span class="grid size-[38px] shrink-0 place-items-center rounded-xl bg-page text-ink" aria-hidden="true">
+                    {item.icon && <item.icon size={20} stroke-width={1.75} />}
+                    {item.brand && (
+                      <svg viewBox="0 0 640 512" class="size-5" fill="currentColor" style={`color:${item.brand.color}`}>
+                        <path d={item.brand.path} />
+                      </svg>
+                    )}
+                  </span>
+                  <div class="min-w-0">
+                    <p class="m-0 text-[15px] leading-snug font-semibold text-ink">{item.name}</p>
+                    <p class="m-0 mt-1 text-[13.5px] leading-[1.6] text-stone-600">{item.text}</p>
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+        </section>
+
+        <section id="retention" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">05</span>
+            <h2 class={h2Class}>{t('priv.s5')}</h2>
+          </div>
+          <div class="mt-5 grid grid-cols-3 gap-4 max-[760px]:grid-cols-1">
+            <div class={`${card} bg-white`}>
+              <span class="grid size-[38px] place-items-center rounded-xl bg-[#EAF1FE] text-brand" aria-hidden="true">
+                <Clock size={20} stroke-width={1.75} />
+              </span>
+              <h3 class="mt-3.5 text-[16px] font-semibold text-ink">{t('priv.k1t')}</h3>
+              <p class="mt-1.5 text-[14px] leading-[1.65] text-stone-600">
+                {t('priv.k1d.a')}<strong class="font-semibold text-ink">{t('priv.k1d.b')}</strong>{t('priv.k1d.c')}
+              </p>
+            </div>
+            <div class={`${card} bg-white`}>
+              <span class="grid size-[38px] place-items-center rounded-xl bg-[#EAF1FE] text-brand" aria-hidden="true">
+                <Trash size={20} stroke-width={1.75} />
+              </span>
+              <h3 class="mt-3.5 text-[16px] font-semibold text-ink">{t('priv.k2t')}</h3>
+              <p class="mt-1.5 text-[14px] leading-[1.65] text-stone-600">{t('priv.k2d')}</p>
+            </div>
+            <div class={`${card} bg-white`}>
+              <span class="grid size-[38px] place-items-center rounded-xl bg-[#EAF1FE] text-brand" aria-hidden="true">
+                <Lock size={20} stroke-width={1.75} />
+              </span>
+              <h3 class="mt-3.5 text-[16px] font-semibold text-ink">{t('priv.k3t')}</h3>
+              <p class="mt-1.5 text-[14px] leading-[1.65] text-stone-600">{t('priv.k3d')}</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="rights" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">06</span>
+            <h2 class={h2Class}>{t('priv.s6')}</h2>
+          </div>
+          <ul role="list" class="m-0 mt-5 flex list-none flex-wrap gap-2.5 p-0">
+            {
+              rights.map((item) => (
+                <li class="inline-flex items-center gap-2 rounded-full border border-hair bg-white px-4 py-2 text-[14px] font-medium text-ink">
+                  <item.icon size={17} stroke-width={1.75} class="text-brand" aria-hidden="true" />
+                  {item.text}
+                </li>
+              ))
+            }
+          </ul>
+          <p class={`${bodyText} mt-5`}>
+            {t('priv.s6p')}<a
+              href={mailHref}
+              class="font-semibold text-brand underline decoration-brand/40 underline-offset-4 transition-colors hover:decoration-brand"
+              >{SITE.email}</a
+            >
+          </p>
+          <div class="mt-5 flex flex-wrap gap-3">
+            <a
+              href={localizedPath(lang, '/hesab-silinmesi/')}
+              class="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-[15px] font-semibold text-white no-underline transition hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            >
+              <Trash size={17} stroke-width={1.75} aria-hidden="true" />
+              {t('priv.delBtn')}
+            </a>
+            <a
+              href={mailHref}
+              class="inline-flex h-11 items-center gap-2 rounded-xl border border-hair bg-white px-5 text-[15px] font-semibold text-ink no-underline transition hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              <Mail size={17} stroke-width={1.75} aria-hidden="true" />
+              {SITE.email}
+            </a>
+          </div>
+        </section>
+
+        <section id="children" class={sectionClass}>
+          <div class={headRow}>
+            <span class={numBadge} aria-hidden="true">07</span>
+            <h2 class={h2Class}>{t('priv.s7')}</h2>
+          </div>
+          <div class="mt-5 grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
+            <div class={`${card} bg-white`}>
+              <p class={monoLabel}>{t('priv.kidsL')}</p>
+              <p class="mt-2 text-[17px] font-semibold tracking-[-0.01em] text-ink">{t('priv.kidsT')}</p>
+              <p class="mt-1.5 text-[14.5px] leading-[1.65] text-stone-600">{t('priv.kidsD')}</p>
+            </div>
+            <div class={`${card} bg-white`}>
+              <p class={monoLabel}>{t('priv.chgL')}</p>
+              <p class="mt-2 text-[17px] font-semibold tracking-[-0.01em] text-ink">{t('priv.chgT')}</p>
+              <p class="mt-1.5 text-[14.5px] leading-[1.65] text-stone-600">{t('priv.chgD')}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Mündəricat: linkə basanda bölməyə sürüşür, səhifə sürüşdükcə cari bölmənin linkini aktiv edir (scroll-spy).
+
+  // Başlıq ekranın yuxarı 35%-ni keçəndə bölmə "cari" sayılır.
+  const SPY_LINE = 0.35
+  // Linkə basandan sonra spy bu qədər ms dayanır, yoxsa yolüstü bölmələr basılan linki əvəz edər.
+  // Lenis ilə sürüşmə daha uzun çəkir (SmoothScroll.astro: 1.6s).
+  const LOCK_MS = 700
+  const LOCK_MS_LENIS = 1700
+  // Tailwind-in aria-[current=true] stili bu atributu oxuyur.
+  const CURRENT = 'aria-current'
+
+  // Linklər və onların bölmələri eyni sıradadır (href="#data" → id="data").
+  const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'))
+  const sections = links.map((link) => document.getElementById(link.getAttribute('href')!.slice(1)) as HTMLElement)
+
+  // Spy bu vaxta (Date.now(), ms) qədər dayanıb; 0 = dayanmayıb.
+  let lockedUntil = 0
+
+  function setActive(index: number): void {
+    links.forEach((link, i) => {
+      if (i === index) {
+        link.setAttribute(CURRENT, 'true')
+      } else {
+        link.removeAttribute(CURRENT)
+      }
+    })
+  }
+
+  function updateActive(): void {
+    if (Date.now() < lockedUntil) {
+      return
+    }
+
+    // Səhifənin sonunda (2px xəta payı) son bölmə aktiv olur: qısa son bölmənin başlığı 35% xəttinə çatmaya bilər.
+    const isAtBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
+    if (isAtBottom) {
+      setActive(sections.length - 1)
+      return
+    }
+
+    const line = window.innerHeight * SPY_LINE
+    let current = 0
+    sections.forEach((section, i) => {
+      if (section.getBoundingClientRect().top <= line) {
+        current = i
+      }
+    })
+    setActive(current)
+  }
+
+  // Üstdəki boşluq bölmənin `scroll-mt` sinfindən (header + 24px) oxunur.
+  function scrollToSection(section: HTMLElement): void {
+    const offset = parseFloat(getComputedStyle(section).scrollMarginTop) || 0
+    const top = section.getBoundingClientRect().top + window.scrollY - offset
+
+    // Lenis varsa sürüşməni o aparmalıdır, window.scrollTo onunla toqquşar.
+    // Lenis yalnız "hərəkəti azalt" söndürülü olanda yaranır (SmoothScroll.astro).
+    const lenis = window.qrlLenis
+    if (lenis) {
+      lenis.scrollTo(top, window.qrlAnchorScroll)
+      return
+    }
+
+    const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    window.scrollTo({ top, behavior: isReduced ? 'auto' : 'smooth' })
+  }
+
+  links.forEach((link, index) => {
+    link.addEventListener('click', (event) => {
+      // Brauzerin tullanması və Lenis-in öz #link izləyicisi dayandırılır, yoxsa iki sürüşmə toqquşar.
+      event.preventDefault()
+      event.stopPropagation()
+
+      setActive(index)
+      lockedUntil = Date.now() + (window.qrlLenis ? LOCK_MS_LENIS : LOCK_MS)
+      // Dayanma bitəndən sonra bir dəfə yoxla: sürüşmə başqa yerdə qalıbsa, aktiv link düzəlsin.
+      setTimeout(updateActive, (window.qrlLenis ? LOCK_MS_LENIS : LOCK_MS) + 50)
+
+      scrollToSection(sections[index])
+      // replaceState: ünvana #bölmə yazılır, amma yeni tarixçə qeydi yaranmır.
+      history.replaceState(null, '', `#${sections[index].id}`)
+    })
+  })
+
+  // Scroll hadisəsi çox tez-tez atəşlənir; hesablama kadra bir dəfə edilir (`isQueued` — növbədə var bayrağı).
+  let isQueued = false
+  function queueUpdate(): void {
+    if (isQueued) {
+      return
+    }
+    isQueued = true
+    requestAnimationFrame(() => {
+      isQueued = false
+      updateActive()
+    })
+  }
+
+  window.addEventListener('scroll', queueUpdate, { passive: true })
+  window.addEventListener('resize', queueUpdate)
+
+  // Açılışda bir dəfə: ünvanda #rights kimi bölmə varsa, link dərhal aktiv olsun.
+  updateActive()
+</script>

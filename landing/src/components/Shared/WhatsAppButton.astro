@@ -1,0 +1,237 @@
+---
+/**
+ * Sağ aşağıda üzən WhatsApp düyməsi (BaseLayout hər səhifəyə qoyur). Props: lang (ui.ts-dəki wa.* açarları).
+ * Görünmə və nəbz CSS-dədir (loader qrl-lock-u götürəndə başlayır); skript yalnız klikdə hadisə göndərir.
+ */
+import { useTranslations, type Lang } from '../../i18n/ui'
+import { whatsappUrl } from '../../data/site'
+
+interface Props {
+  lang: Lang
+}
+
+const { lang } = Astro.props
+const t = useTranslations(lang)
+---
+
+<a
+  class="wa-fab"
+  href={whatsappUrl(t('wa.message'))}
+  target="_blank"
+  rel="noopener noreferrer"
+  aria-label={t('wa.aria')}
+  data-wa
+>
+  {/* İkon: Font Awesome Free (brands), BaseLayout-dakı stil vərəqindən. WhatsApp brend qaydasına görə forma dəyişdirilmir; rəng ağdır. */}
+       <i class="fa-brands fa-whatsapp text-[28px]"></i>
+  {/* aria-hidden: eyni sözlər artıq linkin aria-label-ındadır, ekran oxuyucu iki dəfə oxumasın. */}
+  <span class="wa-tip" aria-hidden="true">{t('wa.tooltip')}</span>
+</a>
+
+<noscript><style>html.qrl-lock .wa-fab{opacity:1;visibility:visible}</style></noscript>
+
+<style is:global>
+  /* is:global: qaydalar kənardakı elementlərə baxır (<html>-dəki qrl-lock, header-dəki data-open);
+     toqquşmasın deyə bütün adlar wa- ilə başlayır. */
+
+  /* :root-dadır, çünki BackToTop.astro da bu dəyərləri oxuyur (düz bu düymənin üstündə dayanır).
+     Telefon ölçüləri aşağıdadır. */
+  :root {
+    --wa-size: 56px; /* düymənin eni və hündürlüyü */
+    --wa-edge: 20px; /* ekranın sağ və alt kənarından məsafə */
+    --wa-appear-delay: 0.6s; /* loader bitəndən sonra düymə bu qədər gözləyir */
+  }
+
+  .wa-fab {
+    /* Qalan vaxtlar; ::after (nəbz halqası) onları miras alır. */
+    --wa-appear-duration: 0.4s; /* düymənin böyüyüb görünməsi */
+    --wa-pulse-cycle: 2.5s; /* bir nəbz dövrü: ~1.6s halqa + ~0.9s sakitlik (bax @keyframes wa-ring) */
+
+    /* position: fixed yalnız valideynlərdə transform olmayanda ekrana bağlanır: ona görə BaseLayout
+       düyməni .qrl-page-dən (loader sonrası transform animasiyası alır) kənara qoyur. */
+    position: fixed;
+    right: var(--wa-edge);
+    /* iPhone-un aşağı sistem zolağı üçün boşluq; viewport-fit=cover olmayanda 0px-dir (zərərsiz ehtiyat). */
+    bottom: calc(var(--wa-edge) + env(safe-area-inset-bottom, 0px));
+    /* Loader-in (#qrl, 1000) altında, header-dən (50) yuxarıda. */
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--wa-size);
+    height: var(--wa-size);
+    border-radius: 50%;
+    /* WhatsApp brend qaydası: rəsmi yaşıl fon, ağ ikon. */
+    background: #25d366;
+    color: #fff;
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);
+    transition: background-color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .wa-fab:hover {
+    background: #1ebe5a;
+  }
+
+  .wa-fab:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 3px;
+  }
+
+  .wa-fab svg {
+    display: block;
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Görünmə: loader-i gözləyir. Düymənin öz taymeri yoxdur: PageLoader qrl-lock-u götürəndə
+     html:not(.qrl-lock) qaydaları işə düşür. bfcache-dən qayıdanda qrl-lock dərhal götürülür.
+     JS söndürülübsə, qrl-lock götürülmür: yuxarıdakı <noscript> qaydası düyməni göstərir. */
+  html.qrl-lock .wa-fab {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  html:not(.qrl-lock) .wa-fab {
+    animation: wa-in var(--wa-appear-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--wa-appear-delay)
+      both;
+  }
+
+  @keyframes wa-in {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Nəbz: halqa böyüyüb itir, sonra fasilə (fasiləsiz halqa gözü yorur). Vaxtlar yuxarıdadır. */
+  .wa-fab::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 50%;
+    background: #25d366;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Nəbz düymə tam görünəndən sonra başlayır: gözləmə + görünmə müddəti. */
+  html:not(.qrl-lock) .wa-fab::after {
+    animation: wa-ring var(--wa-pulse-cycle) ease-out
+      calc(var(--wa-appear-delay) + var(--wa-appear-duration)) infinite;
+  }
+
+  /* 64% = 1.6s / 2.5s. --wa-pulse-cycle dəyişsə, faizi əl ilə yenidən hesabla (keyframe faizinə dəyişən yazmaq olmur). */
+  @keyframes wa-ring {
+    0% {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+    64% {
+      opacity: 0;
+      transform: scale(1.6);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.6);
+    }
+  }
+
+  /* İpucu: yalnız siçanla işləyən kompüterdə */
+  .wa-tip {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 12px);
+    padding: 7px 11px;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow:
+      0 6px 20px -6px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(0, 0, 0, 0.05);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate(4px, -50%);
+    /* Gizlənəndə visibility 0.15s gec dəyişir ki, sönmə görünsün; göstərəndə transition-delay: 0s. */
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease,
+      visibility 0s linear 0.15s;
+  }
+
+  /* Toxunma ekranında ipucu toxunuşdan sonra ilişib qalardı: yalnız siçan olan və 641px+ ekranda. */
+  @media (hover: hover) and (pointer: fine) and (min-width: 641px) {
+    .wa-fab:hover .wa-tip,
+    .wa-fab:focus-visible .wa-tip {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(0, -50%);
+      transition-delay: 0s;
+    }
+  }
+
+  /* Telefon */
+  @media (max-width: 640px) {
+    :root {
+      --wa-size: 52px;
+      --wa-edge: 16px;
+    }
+
+    .wa-tip {
+      display: none;
+    }
+  }
+
+  /* Açıq mobil menyu düymənin altına qədər uzana bilər: düymə gizlənir. :has() lazımdır, çünki header bu komponentdən kənardadır. */
+  html:has([data-header-bar][data-open]) .wa-fab {
+    visibility: hidden;
+  }
+
+  /* «Hərəkəti azalt»: animasiya və keçid yoxdur, düymə sadəcə görünür. */
+  @media (prefers-reduced-motion: reduce) {
+    html:not(.qrl-lock) .wa-fab,
+    html:not(.qrl-lock) .wa-fab::after {
+      animation: none;
+    }
+
+    .wa-fab,
+    .wa-tip {
+      transition: none;
+    }
+  }
+
+  @media print {
+    .wa-fab {
+      display: none !important;
+    }
+  }
+</style>
+
+<script>
+  // Analitika hələ qoşulmayıb: qoşulanda window-da 'qrlog:track' hadisəsini dinləyəcək
+  // (HowItWorks.astro-dakı how_step də eyni yolla göndərilir).
+  const whatsappButton = document.querySelector('[data-wa]')
+
+  function trackWhatsAppClick() {
+    window.dispatchEvent(
+      new CustomEvent('qrlog:track', {
+        detail: { event: 'whatsapp_click', path: location.pathname },
+      })
+    )
+  }
+
+  if (whatsappButton) {
+    whatsappButton.addEventListener('click', trackWhatsAppClick)
+  }
+</script>

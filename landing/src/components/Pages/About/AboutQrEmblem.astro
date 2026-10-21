@@ -1,0 +1,155 @@
+---
+/*
+  "Haqqımızda" hero-sunun sağındakı özünü yığan QR emblemi (bəzək). Kod yalnız build zamanı işləyir.
+  21×21 tor: hər kvadratcıq `on` (dolu/boş) və `delay` (ms; mərkəzdən uzaq olan gec peyda olur) saxlayır.
+*/
+
+const SIZE = 21
+const CENTER = 10
+
+// Sabit seed: QR naxışı hər build-də eyni qalır.
+let seed = 7
+function rnd() {
+  seed = (seed * 16807) % 2147483647
+  return seed / 2147483647
+}
+
+// Tapıcı kvadrat (7×7): xarici çərçivə + ortada 3×3 dolu hissə. r, c — kvadratın daxilində 0..6.
+function finderOn(r: number, c: number) {
+  const frame = r === 0 || r === 6 || c === 0 || c === 6
+  const core = r >= 2 && r <= 4 && c >= 2 && c <= 4
+  return frame || core
+}
+
+type Cell = { on: boolean; delay: number }
+const cells: Cell[] = []
+
+for (let row = 0; row < SIZE; row++) {
+  for (let col = 0; col < SIZE; col++) {
+    // Üç küncdə (sol yuxarı, sağ yuxarı, sol aşağı) tapıcı kvadrat + yanındakı boş sıra.
+    const nearTop = row <= 7
+    const nearBottom = row >= SIZE - 8
+    const nearLeft = col <= 7
+    const nearRight = col >= SIZE - 8
+    const inFinderZone = (nearTop && nearLeft) || (nearTop && nearRight) || (nearBottom && nearLeft)
+
+    // Hər kvadratcıq üçün rnd() həmişə iki dəfə çağırılır, yoxsa ardıcıllıq və naxış dəyişər.
+    const random = rnd()
+    const jitter = rnd() * 180
+
+    let on = random < 0.47
+    if (inFinderZone) {
+      // Zonanın 7×7 hissəsi tapıcı kvadratdır, qalan sıra boşdur.
+      const r = nearBottom ? row - (SIZE - 7) : row
+      const c = nearRight ? col - (SIZE - 7) : col
+      on = r >= 0 && r <= 6 && c >= 0 && c <= 6 && finderOn(r, c)
+    }
+
+    // Mərkəzdən məsafə × 45ms + təsadüfi əlavə: kvadratcıqlar mərkəzdən kənara doğru peyda olur.
+    const distance = Math.hypot(row - CENTER, col - CENTER)
+    cells.push({ on, delay: Math.round(distance * 45 + jitter) })
+  }
+}
+---
+
+<div aria-hidden="true" class="relative aspect-square w-[240px] md:w-[300px]">
+  <div class="absolute inset-0 grid grid-cols-[repeat(21,1fr)] gap-[2px] p-1.5">
+    {
+      cells.map((cell) => (
+        <i
+          class={cell.on ? 'qr-cell rounded-[2px] bg-ink' : ''}
+          style={cell.on ? `animation-delay: ${cell.delay}ms` : undefined}
+        />
+      ))
+    }
+  </div>
+
+  <!-- Vizör küncləri 14px kənardadır; --dx, --dy animasiyanın başlanğıc məsafəsidir -->
+  <span
+    class="qr-corner absolute -top-3.5 -left-3.5 size-11 rounded-tl-xl border-t-[3px] border-l-[3px] border-brand [--dx:-14px] [--dy:-14px]"
+  ></span>
+  <span
+    class="qr-corner absolute -top-3.5 -right-3.5 size-11 rounded-tr-xl border-t-[3px] border-r-[3px] border-brand [--dx:14px] [--dy:-14px]"
+  ></span>
+  <span
+    class="qr-corner absolute -bottom-3.5 -left-3.5 size-11 rounded-bl-xl border-b-[3px] border-l-[3px] border-brand [--dx:-14px] [--dy:14px]"
+  ></span>
+  <span
+    class="qr-corner absolute -right-3.5 -bottom-3.5 size-11 rounded-br-xl border-r-[3px] border-b-[3px] border-brand [--dx:14px] [--dy:14px]"
+  ></span>
+
+  <span
+    class="qr-scan absolute inset-x-0 top-0 h-0.5 rounded-full bg-brand shadow-[0_0_14px_3px_rgba(21,94,239,0.45)]"
+  ></span>
+</div>
+
+<style>
+  /*
+    Əsas stil son haldır ("hazır emblem"), animasiya onu başlanğıc haldan gətirir.
+    @keyframes adları scope olunmur, ona görə `qr-about-` prefiksi.
+  */
+
+  /* cubic-bezier-in 1-dən böyük ədədi "sıçrayış" effekti verir. */
+  .qr-cell {
+    animation: qr-about-pop 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.4) both;
+  }
+
+  @keyframes qr-about-pop {
+    from {
+      transform: scale(0);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Küncün 1.2s gecikməsi və skan xəttinin 2.1s gecikməsi kvadratcıqların yığılmasından sonra başlamaq üçündür. */
+  .qr-corner {
+    animation: qr-about-corner 0.6s cubic-bezier(0.16, 1, 0.3, 1) 1.2s both;
+  }
+
+  @keyframes qr-about-corner {
+    from {
+      transform: translate(var(--dx), var(--dy));
+      opacity: 0;
+    }
+    to {
+      transform: translate(0, 0);
+      opacity: 1;
+    }
+  }
+
+  .qr-scan {
+    animation: qr-about-scan 4.5s ease-in-out 2.1s infinite both;
+  }
+
+  @keyframes qr-about-scan {
+    0% {
+      top: 0;
+      opacity: 0;
+    }
+    8% {
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    100% {
+      top: 100%;
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .qr-cell,
+    .qr-corner {
+      animation: none;
+    }
+
+    .qr-scan {
+      display: none;
+    }
+  }
+</style>

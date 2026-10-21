@@ -18,7 +18,7 @@ npm run preview  # build-i yoxla
 
 `npm run build` **`check`-i çağırmır** (`ops/build-landing.sh` da) — statik saytın deploy-ını tip
 xətasına bağlamaq istənilmədi. Ona görə dəyişiklikdən sonra `npm run check`-i özün işlət; hazırda
-55 faylda 0 xəta, 0 xəbərdarlıq verir (3 hint — istifadə olunmayan import və s., köhnədir).
+82 faylda 1 köhnə xəta verir (`Pages/Contact/ContactBody.astro` — `ContactIcon` adının tipi) və 2 hint (`blogShare.ts`, `PageLoader.astro`).
 
 **`package.json`-dakı `overrides` nədir?** `@astrojs/language-server` 2.15.4-ə bağlanıb. Yeni
 versiya (2.17) ESM-only `@astrojs/astro2tsx`-i `require()` edir, bu da Node **20.19+ / 22+** tələb
@@ -51,7 +51,11 @@ src/
     customers/               #   müştəri loqoları (site.ts → CUSTOMERS)
     product/                 #   poster QR-ı, tətbiq ekranı
     problem/                 #   Problem.astro illüstrasiyaları
-  components/                # hər bölmə ayrıca komponent
+  components/                # hər bölmə öz qovluğunda: Hero/Hero.astro, Pricing/Pricing.astro, …
+    Shared/                  #   bir neçə yerdə işlənən parçalar (PhoneFrame, BackToTop, PageLoader, …)
+    Pages/<Ad>/              #   AZ/RU/EN nazik səhifələrin ortaq gövdəsi (About, Contact, Privacy, …)
+    Blog/                    #   bloq siyahısı, məqalə səhifəsi, süzgəc və paylaşma skriptləri
+    Landing.astro            #   ana səhifənin bölmələrini düzür
   content/blog/              # Markdown məqalələr
   data/site.ts               # domen, əlaqə, qiymət, rəylər — tərcümə olunmayan hər şey
   data/brand.ts              # header loqosunun tək derivative-i (preload və <img> eyni faylı istəyir)
@@ -59,7 +63,7 @@ src/
   layouts/BaseLayout.astro   # SEO <head>, JSON-LD, Header + Footer, qlobal skriptlər
   pages/                     # index, haqqimizda, elaqe, blog/ (+ ru/ və en/ variantları)
   styles/tailwind.css        # Tailwind v4 + tema (aşağıda: «Stil»)
-  styles/global.css          # saytın öz stilləri
+  styles/global.css          # saytın öz (kiçik) stilləri: reset, .wrap, .hero, rəylər, etibar lenti
   styles/global-layered.css  # global.css-i `base` layer-inə salır
 public/                      # YALNIZ sabit adla çağırılan dörd fayl:
   robots.txt                 #   /robots.txt
@@ -103,9 +107,8 @@ utility class-ları birbaşa yazmaq olar.
 - **Preflight (Tailwind-in reset-i) qoşulmayıb** — `global.css`-in öz reset-i var. Ona görə başlıqlar
   qalın, siyahılar markerli qalır; lazım olanda `font-normal`, `list-none` yazın.
 - Saytın rəngləri CSS dəyişənləridir: `text-(--ink)`, `bg-(--paper)`, `border-(--line)`.
-  `font-sans` / `font-mono` — IBM Plex.
-- `animate-spin`, `animate-ping`, `animate-pulse` işləyir, keyframe adları isə `tw-*`-dır:
-  `global.css`-də eyni adlı (`ping`, `pulse`) animasiyalar var.
+  `font-sans` — Onest, `font-mono` — IBM Plex Mono.
+- `animate-spin`, `animate-ping`, `animate-pulse` işləyir, keyframe adları `tw-*`-dır (`styles/tailwind.css`).
 - `global.css`-i `tailwind.css`-ə import etməyin — niyə ayrıca fayldan qoşulduğu
   `src/styles/global-layered.css`-də yazılıb.
 - **`tailwind.css`-i yerindən tərpətsən `source()`-u da düzəlt.**

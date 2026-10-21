@@ -1,0 +1,311 @@
+---
+/*
+ * 404 səhnəsi (404.astro-da işlənir, prop yoxdur): şəkil + eyni viewBox-lu (1448×1086) SVG qatı; poster koordinatları və skew matrix-ləri şəkildən ölçülüb, toxunma.
+ * 6s dövr: 0–28% QR, 28–42% dağılır və "?" çıxır, 40–86% başın üstündə "?" yellənir, 88–100% QR qayıdır. Səhnədə söz yoxdur, 3 dildə eynidir.
+ */
+import { Image } from 'astro:assets'
+import scene from '../../../assets/images/404/scene.png'
+
+// Eni 640px-dən böyük göstərilmir (max-w-[40rem]); 2x = 1280px mənbədən (1448px) kiçikdir, şəkil böyüdülmür.
+// Mobildə max-w 50vh * 1.333-dür (1.333 = 1448 / 1086, şəklin nisbəti): hündürlük ekranın yarısından çox olmur.
+const SCENE_WIDTH = 640
+---
+
+<div
+  class="nf-art relative mx-auto w-full max-w-[40rem] max-lg:max-w-[calc(50vh*1.333)]"
+  aria-hidden="true"
+>
+  <Image
+    class="block h-auto w-full select-none"
+    src={scene}
+    alt=""
+    format="webp"
+    width={SCENE_WIDTH}
+    densities={[1, 2]}
+    loading="eager"
+    decoding="async"
+    fetchpriority="high"
+  />
+
+  <svg
+    class="absolute inset-0 h-full w-full"
+    viewBox="0 0 1448 1086"
+    fill="none"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <defs>
+      <clipPath id="nf-paper"><path d="M749 285 L942 262.5 L942 649.5 L749 641.5 Z"></path></clipPath>
+      <linearGradient id="nf-band" x1="0" y1="0" x2="1" y2="0"
+        ><stop offset="0" stop-color="#0F172A"></stop><stop offset="1" stop-color="#2B7BE0"></stop></linearGradient
+      >
+      <radialGradient id="nf-light" cx=".5" cy="0" r="1"
+        ><stop offset="0" stop-color="#FFF6D6" stop-opacity=".9"></stop><stop
+          offset=".55"
+          stop-color="#FFF6D6"
+          stop-opacity=".25"></stop><stop offset="1" stop-color="#FFF6D6" stop-opacity="0"></stop></radialGradient
+      >
+    </defs>
+
+    <ellipse class="nf-glow" cx="556" cy="200" rx="70" ry="44" fill="url(#nf-light)"></ellipse>
+
+    <g clip-path="url(#nf-paper)">
+      <rect transform="matrix(1 -.116 0 1 0 88.2)" x="740" y="284" width="210" height="8" fill="url(#nf-band)"
+      ></rect>
+      <text
+        transform="matrix(1 -.104 0 1 0 79)"
+        x="845.5"
+        y="326"
+        text-anchor="middle"
+        font-family="Onest, sans-serif"
+        font-size="27"
+        font-weight="800"
+        letter-spacing="-1"
+        fill="#0F172A">QR<tspan fill="#1F6FD8">Log</tspan></text
+      >
+      <rect transform="matrix(1 -.092 0 1 0 69.9)" x="792" y="338" width="107" height="11" rx="5.5" fill="#0F172A"
+      ></rect>
+      <g transform="matrix(1 -.082 0 1 0 62.3)">
+        <rect x="811" y="357" width="69" height="17" rx="8.5" fill="#EEF2F7" stroke="#DDE3EC" stroke-width="1.2"
+        ></rect>
+        <path d="M822 370.5 v-6.5 a4.6 4.6 0 0 1 9.2 0 v6.5" stroke="#1F6FD8" stroke-width="2"></path>
+        <rect x="836" y="363.5" width="35" height="4" rx="2" fill="#4B5563"></rect>
+      </g>
+      <g transform="matrix(1 -.073 0 1 0 55.5)">
+        <path d="M787 386 H904" stroke="#E3E8F0" stroke-width="1.6"></path>
+        <rect x="841.5" y="382" width="8" height="8" fill="#1F6FD8" transform="rotate(45 845.5 386)"></rect>
+      </g>
+      <rect transform="matrix(1 -.066 0 1 0 50.2)" x="793" y="396" width="105" height="10" rx="5" fill="#1F6FD8"
+      ></rect>
+      <g transform="matrix(1 -.059 0 1 0 44.8)" fill="#A9B3C2">
+        <rect x="799" y="413" width="93" height="4.4" rx="2.2"></rect><rect
+          x="807"
+          y="421.5"
+          width="77"
+          height="4.4"
+          rx="2.2"></rect>
+      </g>
+      <g transform="matrix(1 -.032 0 1 0 24.3)">
+        <rect x="799" y="434" width="93" height="89" rx="13" fill="#fff" stroke="#E3E8F0" stroke-width="1.6"></rect>
+        <g class="nf-qr">
+          <g stroke="#0F172A" stroke-width="3.4">
+            <rect x="814.7" y="448.7" width="14.6" height="14.6" rx="3"></rect><rect
+              x="861.7"
+              y="448.7"
+              width="14.6"
+              height="14.6"
+              rx="3"></rect><rect x="814.7" y="495.7" width="14.6" height="14.6" rx="3"></rect>
+          </g>
+          <g fill="#0F172A">
+            <rect x="819.5" y="453.5" width="5" height="5" rx="1"></rect><rect
+              x="866.5"
+              y="453.5"
+              width="5"
+              height="5"
+              rx="1"></rect><rect x="819.5" y="500.5" width="5" height="5" rx="1"></rect>
+            <rect class="nf-dot" style="--dx:-6px;--dy:-9px" x="836" y="449" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:7px;--dy:-6px" x="845" y="458" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:-9px;--dy:3px" x="836" y="468" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:10px;--dy:4px" x="864" y="472" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:-4px;--dy:8px" x="849" y="480" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:-10px;--dy:-2px" x="822" y="478" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:5px;--dy:9px" x="840" y="494" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:9px;--dy:7px" x="866" y="497" width="6" height="6" rx="1.4"></rect>
+            <rect class="nf-dot" style="--dx:3px;--dy:10px" x="852" y="503" width="6" height="6" rx="1.4"></rect>
+          </g>
+        </g>
+        <g class="nf-slot" opacity="0">
+          <rect x="813" y="447" width="65" height="65" rx="8" stroke="#B9C0CC" stroke-width="2" stroke-dasharray="5 6"
+          ></rect>
+          <g class="nf-slot-q">
+            <text
+              x="845.5"
+              y="494"
+              text-anchor="middle"
+              font-family="Onest, sans-serif"
+              font-size="34"
+              font-weight="600"
+              fill="#155EEF">?</text
+            >
+          </g>
+        </g>
+      </g>
+      <rect transform="matrix(1 -.007 0 1 0 5.3)" x="830" y="533" width="31" height="4" rx="2" fill="#A9B3C2"></rect>
+      <g>
+        <circle cx="801" cy="549" r="5" stroke="#1F6FD8" stroke-width="1.8"></circle>
+        <path d="M801 546.5 v2.6 l1.8 1.4" stroke="#1F6FD8" stroke-width="1.4"></path>
+        <rect x="811" y="546.6" width="80" height="4.8" rx="2.4" fill="#0F172A"></rect>
+      </g>
+      <g transform="matrix(1 .031 0 1 0 -23.6)">
+        <path d="M740 606 C780 598 806 609 846 605 C880 601 912 597 950 604 V680 H740 Z" fill="#1F6FD8"></path>
+        <path d="M740 611 C780 604 806 614 846 610.5 C880 607 912 603 950 610 V680 H740 Z" fill="#0F172A"></path>
+        <text
+          x="845.5"
+          y="630"
+          text-anchor="middle"
+          font-family="Onest, sans-serif"
+          font-size="9.5"
+          font-weight="500"
+          fill="#fff">powered by QRLog</text
+        >
+      </g>
+    </g>
+
+    <g class="nf-q" opacity="0">
+      <text
+        x="612"
+        y="335"
+        text-anchor="middle"
+        font-family="Onest, sans-serif"
+        font-size="64"
+        font-weight="500"
+        fill="#155EEF">?</text
+      >
+    </g>
+  </svg>
+</div>
+
+<style>
+  /* @keyframes adları "nf-" ilə başlayır: Astro onları təcrid etmir, ad toqquşmasın. */
+
+  /* QR, boş yer, nöqtələr və başın üstündəki "?" eyni --nf-cycle ilə işləyir, ona görə dövrü yalnız burada dəyiş. */
+  .nf-art {
+    --nf-cycle: 6s; /* bütün hekayə: QR görünür, dağılır, "?" çıxır, QR qayıdır */
+    --nf-pulse-time: 1.5s; /* posterdəki "?" nəbzi */
+    --nf-glow-time: 4s; /* lampa işığının "nəfəsi" */
+  }
+
+  /* transform-origin viewBox koordinatlarından sayılır (aşağıdakı 845px 486px və s.), elementin öz qutusundan yox. */
+  .nf-art * {
+    transform-box: view-box;
+  }
+
+  /* QR yox olur, yerində qırıq çərçivə və "?" qalır, sonra QR qayıdır (faizlər nf-q ilə uyğundur). */
+  .nf-qr {
+    animation: nf-qr var(--nf-cycle) ease-in-out infinite;
+  }
+  .nf-slot {
+    animation: nf-slot var(--nf-cycle) ease-in-out infinite;
+  }
+  @keyframes nf-qr {
+    0%,
+    28% {
+      opacity: 1;
+      filter: blur(0);
+    }
+    38%,
+    88% {
+      opacity: 0;
+      filter: blur(3px);
+    }
+    96%,
+    100% {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+  @keyframes nf-slot {
+    0%,
+    34% {
+      opacity: 0;
+    }
+    42%,
+    86% {
+      opacity: 1;
+    }
+    92%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Hər nöqtənin səpələnmə məsafəsi (--dx, --dy) SVG-də yazılıb. */
+  .nf-dot {
+    animation: nf-dot var(--nf-cycle) ease-in-out infinite;
+  }
+  @keyframes nf-dot {
+    0%,
+    28% {
+      transform: none;
+    }
+    38%,
+    88% {
+      transform: translate(var(--dx), var(--dy));
+    }
+    96%,
+    100% {
+      transform: none;
+    }
+  }
+
+  /* transform-origin: posterdəki "?" işarəsinin mərkəzi. */
+  .nf-slot-q {
+    transform-origin: 845px 486px;
+    animation: nf-pulse var(--nf-pulse-time) ease-in-out infinite;
+  }
+  @keyframes nf-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.12);
+    }
+  }
+
+  /* Başın üstündəki "?" QR yox olandan sonra çıxır. transform-origin işarənin altıdır, yellənmə oradan başlayır. */
+  .nf-q {
+    transform-origin: 612px 330px;
+    animation: nf-q var(--nf-cycle) cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  }
+  @keyframes nf-q {
+    0%,
+    40% {
+      opacity: 0;
+      transform: translateY(14px) scale(0.5);
+    }
+    47% {
+      opacity: 1;
+      transform: rotate(-10deg);
+    }
+    60% {
+      opacity: 1;
+      transform: rotate(8deg);
+    }
+    74% {
+      opacity: 1;
+      transform: rotate(0);
+    }
+    86%,
+    100% {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+  }
+
+  .nf-glow {
+    animation: nf-glow var(--nf-glow-time) ease-in-out infinite alternate;
+  }
+  @keyframes nf-glow {
+    from {
+      opacity: 0.55;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Animasiyasız sakit vəziyyət: posterdə QR-ın yerində "?", başın üstündə "?". */
+  @media (prefers-reduced-motion: reduce) {
+    .nf-art * {
+      animation: none;
+    }
+    .nf-qr {
+      opacity: 0;
+    }
+    .nf-slot,
+    .nf-q {
+      opacity: 1;
+    }
+  }
+</style>

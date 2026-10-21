@@ -1,0 +1,100 @@
+---
+import { Image } from "astro:assets";
+import { useTranslations, type Lang } from "../../i18n/ui";
+import { TRUST_SECTORS, CUSTOMERS } from "../../data/site";
+
+const { lang } = Astro.props as { lang: Lang };
+const t = useTranslations(lang);
+
+// Adlı müştərilər varsa logo zolağı, yoxdursa sektor lenti (ikisi birlikdə yox).
+// Logonun altında ad yazılmır: ad `alt`-dadır.
+
+// Nazik xətt global.css-dəki .hero::after ilə eyni boz rəngdir; logolar arası xətt 60%.
+const ruleY = "bg-[#BFC1BA]/80";
+const ruleX = "border-[#BFC1BA]/60";
+
+// Logo hündürlükləri bərabər yox, nisbidir: ən hündür logo tam --logo-h alır, qalanları site.ts-dəki `logoH` nisbətini saxlayır.
+const tallest = Math.max(...CUSTOMERS.items.map((c) => c.logoH ?? 56));
+
+// Boz yalnız hover: hover olan cihazlarda tətbiq olunur, yoxsa telefonda logolar həmişə boz qalardı.
+// Siniflər tam yazılıb: Tailwind onları fayldan oxuyur, dəyişəndən yığılmış sinif tapılmaz.
+const logoImg = [
+  "max-h-[calc(var(--logo-k)*var(--logo-h))] w-auto max-w-full object-contain",
+  "transition-all duration-300",
+  "[[@media(hover:hover)]:contrast-125",
+  "group-hover:scale-105 group-hover:grayscale-0 group-hover:contrast-100",
+].join(" ");
+
+const icon =
+  '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 20v.01M20 14v.01M14 20v.01"/></svg>';
+const loop = [...TRUST_SECTORS, ...TRUST_SECTORS];
+---
+
+{
+  CUSTOMERS.show ? (
+    <section
+      class="border-b border-[#BFC1BA] bg-[var(--paper)] py-10 [--logo-h:3.25rem] sm:py-12 sm:[--logo-h:3.5rem] md:[--logo-h:4.5rem]"
+      aria-labelledby="cust-h"
+    >
+      <div class="wrap flex flex-col gap-7 lg:flex-row lg:items-center lg:gap-10">
+        {/* Telefonda başlıq logoların üstündədir, ayırıcı xətt üfüqi olur. */}
+        <div
+          class={`border-b ${ruleX} pb-6 lg:w-56 lg:shrink-0 lg:border-b-0 lg:pb-0`}
+        >
+          <p class="text-xs font-semibold tracking-[0.13em] text-stone-500 uppercase">
+            {t("cust.eyebrow")}
+          </p>
+          <h2 
+            id="cust-h"
+            class="mt-2 text-[18px] leading-snug font-bold text-slate-900" 
+            set:html={t("cust.title").replace('Log','<span class="text-[#125bb5]">Log</span>')} 
+            />
+        </div>
+
+        <div
+          aria-hidden="true"
+          class={`hidden h-12 w-px shrink-0 ${ruleY} lg:block`}
+        />
+
+        {/* role əl ilə yazılıb: list-none Safari-də siyahı semantikasını silir. */}
+        <ul
+          role="list"
+          class="grid list-none grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-0 lg:flex-1"
+        >
+          {CUSTOMERS.items.map((c) => (
+            <li
+              class={`group flex h-20 items-center justify-center px-3 sm:h-24 sm:px-5 sm:border-r ${ruleX} sm:last:border-r-0 md:h-28`}>
+              {c.logo ? (
+                <Image
+                  src={c.logo}
+                  alt={c.name}
+                  height={144}
+                  loading="lazy"
+                  decoding="async"
+                  class={logoImg}
+                  style={`--logo-k:${((c.logoH ?? 56) / tallest).toFixed(3)}`}
+                />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  ) : (
+    <div class="trust">
+      <div class="wrap">
+        <p>{t("trust.title")}</p>
+      </div>
+      <div class="marquee">
+        <div class="marquee-track">
+          {loop.map((o) => (
+            <span class="mq-item">
+              <Fragment set:html={icon} />
+              {o}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

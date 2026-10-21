@@ -1,0 +1,384 @@
+---
+
+// İkonlar ayrı fayllardan idxal olunur: paketin kök faylı ~1700 ikonu yükləyib dev serveri yavaşladır.
+import Lock from '@lucide/astro/icons/lock'
+import ShieldCheck from '@lucide/astro/icons/shield-check'
+import DatabaseBackup from '@lucide/astro/icons/database-backup'
+import UserCheck from '@lucide/astro/icons/user-check'
+import Check from '@lucide/astro/icons/check'
+import { useTranslations, type Lang, type UIKey } from '../../i18n/ui'
+import QrDeco from './QrDeco.astro'
+
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+// Hover-də hər ikonun öz kiçik hərəkəti var; adı <style>-da `data-motion` ilə tutulur.
+type IconMotion = 'lock' | 'shield' | 'backup' | 'roles'
+
+interface SecurityCard {
+  icon: typeof Lock
+  motion: IconMotion
+  title: UIKey
+  desc: UIKey
+}
+
+const cards: SecurityCard[] = [
+  { icon: Lock, motion: 'lock', title: 'sec.i1t', desc: 'sec.i1d' },
+  { icon: ShieldCheck, motion: 'shield', title: 'sec.i2t', desc: 'sec.i3d' },
+  { icon: DatabaseBackup, motion: 'backup', title: 'sec.i3t', desc: 'sec.i3d' },
+  { icon: UserCheck, motion: 'roles', title: 'sec.i4t', desc: 'sec.i4d' },
+]
+
+const facts = ['sec.e1', 'sec.e2', 'sec.e3'] satisfies UIKey[]
+
+// Plitə 48px, içindəki ikon 24px; fakt işarəsi 16px, daha qalın xətt.
+const CARD_ICON_SIZE = 24
+const CARD_ICON_STROKE = 1.75
+const FACT_ICON_SIZE = 16
+const FACT_ICON_STROKE = 2.5
+---
+
+<section id="security" aria-labelledby="security-title" class="relative overflow-hidden bg-white py-20 lg:py-28">
+  <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
+  <div class="glow pointer-events-none absolute inset-0" aria-hidden="true"></div>
+
+    <div
+    class="sec-deco pointer-events-none absolute -top-12 -right-16 hidden w-95 md:block lg:-right-10 lg:w-105"
+    aria-hidden="true"
+  >
+    <div class="sec-deco-pattern">
+      <QrDeco class="block" />
+    </div>
+    <span class="sec-scan"></span>
+  </div>
+
+  <div class="wrap relative">
+        <div class="max-w-155">
+      <span
+        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+      >
+        <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+        {t('sec.eyebrow')}
+      </span>
+      <h2
+        id="security-title"
+        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+      >
+        {t('sec.title')}
+      </h2>
+      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-pretty text-ink2">{t('sec.sub')}</p>
+    </div>
+
+        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:mt-14 lg:grid-cols-4">
+      {
+        cards.map((card, index) => (
+          <article
+            class="sec-card flex gap-4 rounded-3xl border border-slate-200/80 p-6 sm:flex-col sm:gap-0"
+            style={`--i:${index}`}
+          >
+            <span
+              class="sec-icon inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand"
+              data-motion={card.motion}
+            >
+              <card.icon size={CARD_ICON_SIZE} stroke-width={CARD_ICON_STROKE} />
+            </span>
+            {/* min-w-0: yoxsa 320px-də uzun rus sözü kartı itələyir. */}
+            <div class="min-w-0">
+              <h3 class="text-[17px] leading-snug font-semibold tracking-[-0.01em] sm:mt-6">{t(card.title)}</h3>
+              <p class="mt-2 text-[14.5px] leading-[1.65] text-ink2">{t(card.desc)}</p>
+            </div>
+          </article>
+        ))
+      }
+    </div>
+
+        <ul
+      class="mt-10 flex list-none flex-col gap-3 border-t border-slate-200/80 pt-8 text-[14.5px] leading-[1.6] text-ink2 md:flex-row md:flex-wrap md:gap-x-10"
+    >
+      {
+        facts.map((fact, index) => (
+          <li class="sec-fact flex items-start gap-2.5" style={`--i:${index}`}>
+            <Check size={FACT_ICON_SIZE} stroke-width={FACT_ICON_STROKE} class="mt-0.75 shrink-0 text-brand" />
+            <span>{t(fact)}</span>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  #security {
+    --sec-deco-color: #dce3ef; /* dekorativ QR-in rəngi (HowItWorks-dakı .deco ilə eyni) */
+    --sec-card-bg: #f8fafc; /* kartın fonu (Tailwind-in slate-50 rəngi) */
+    --sec-card-border-hover: #b7cbf7; /* hover-də kartın kənarı: brand mavisinin açıq çaları */
+    /* Saytın bölmələrində ortaq yumşaq əyri. */
+    --sec-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    /* Qıfılın "bağlanması" üçün: sonda azca həddi aşıb qayıdır (1.6 > 1 — yay effekti). */
+    --sec-bounce: cubic-bezier(0.3, 1.6, 0.5, 1);
+  }
+
+  .edge-rule {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+
+  .glow {
+    background: radial-gradient(
+      760px 360px at 14% -10%,
+      color-mix(in oklab, var(--color-brand) 6%, transparent),
+      transparent 70%
+    );
+  }
+
+  /* Naxış `currentColor` ilə çəkilir (QrDeco.astro) — rəngi buradan alır; radial mask kənarları əridir. */
+  .sec-deco-pattern {
+    color: var(--sec-deco-color);
+    opacity: 0.6;
+    -webkit-mask-image: radial-gradient(72% 72% at 50% 50%, #000, transparent);
+    mask-image: radial-gradient(72% 72% at 50% 50%, #000, transparent);
+  }
+
+  /* Skan xətti ilkin görünmür; yalnız bölmə `is-live` olanda animasiya göstərir.
+     `top` faizi mövqeli `.sec-deco` qabığının hündürlüyünə nisbətdir. */
+  .sec-scan {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 0;
+    height: 2px;
+    border-radius: 2px;
+    opacity: 0;
+    background: linear-gradient(90deg, transparent, var(--color-brand) 30%, var(--color-brand) 70%, transparent);
+    box-shadow: 0 0 14px color-mix(in oklab, var(--color-brand) 45%, transparent);
+  }
+
+  /* `data-anim`-i skript yazır; atribut yoxdursa (JS söndürülüb, hərəkət azaldılıb) qayda işləmir, hər şey görünür. */
+  [data-anim].is-live .sec-scan {
+    animation: sec-scan 4.8s ease-in-out 0.3s 1 both;
+  }
+
+  /* `sec-` prefiksi: @keyframes adı Astro-da scope olunmur, ad toqquşmasın. */
+  @keyframes sec-scan {
+    0% {
+      top: 4%;
+      opacity: 0;
+    }
+    8% {
+      opacity: 0.55;
+    }
+    50% {
+      top: 94%;
+      opacity: 0.55;
+    }
+    92% {
+      opacity: 0.55;
+    }
+    100% {
+      top: 4%;
+      opacity: 0;
+    }
+  }
+
+  .sec-card {
+    background: var(--sec-card-bg);
+    transition:
+      transform 0.45s var(--sec-ease),
+      box-shadow 0.45s ease,
+      border-color 0.3s ease,
+      background-color 0.3s ease;
+  }
+
+  .sec-icon {
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease,
+      transform 0.45s var(--sec-ease);
+  }
+
+  /* Gizli başlanğıc yalnız `[data-anim]` altındadır: atribut yoxdursa kartlar və faktlar görünür. */
+  [data-anim] .sec-card,
+  [data-anim] .sec-fact {
+    opacity: 0;
+  }
+
+  /* `transition` yox, `animation ... backwards`: bitəndən sonra heç nəyi üstünə yazmır, yoxsa hover-dəki
+     qalxma əzilərdi və stagger gecikməsi hover keçidinə də düşərdi. `--i` kartın sıra nömrəsidir. */
+  [data-anim].is-live .sec-card {
+    opacity: 1;
+    animation: sec-rise 0.7s var(--sec-ease) calc(var(--i) * 90ms) backwards;
+  }
+
+  /* Faktlar kartlardan sonra gəlir. */
+  [data-anim].is-live .sec-fact {
+    opacity: 1;
+    animation: sec-rise 0.6s ease calc(0.5s + var(--i) * 90ms) backwards;
+  }
+
+  @keyframes sec-rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /*
+    İkon özü-özünü çəkir: dash 100 vahiddir (ikonun hər hissəsindən uzun), offset 100 xətti gizlədir, 0 isə çəkir.
+    :global() lazımdır: Lucide-in <svg>-si bu komponentin scope atributunu almır; `.sec-icon` bu fayldadır, qayda sızmır.
+  */
+  [data-anim] .sec-icon :global(svg *) {
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+  }
+
+  /* JS-siz səhifədə qıfılın hover keçidi (transform) bu qaydadan gəlir. */
+  .sec-icon :global(svg *) {
+    transition: transform 0.35s var(--sec-bounce);
+  }
+
+  /* `transition` tək xassədir: sonuncu qayda birincini silir, ona görə qıfılın transform keçidi burada da təkrarlanır. */
+  [data-anim].is-live .sec-icon :global(svg *) {
+    stroke-dashoffset: 0;
+    transition:
+      stroke-dashoffset 1.2s ease calc(0.25s + var(--i) * 90ms),
+      transform 0.35s var(--sec-bounce);
+  }
+
+  /* Telefonda toxunuşdan sonra hover "ilişib" qalır, ona görə yalnız `hover: hover` olan cihazlarda. */
+  @media (hover: hover) {
+    .sec-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--sec-card-border-hover);
+      background: white;
+      box-shadow: 0 26px 46px -30px rgb(15 23 42 / 0.3);
+    }
+
+    .sec-card:hover .sec-icon {
+      background: var(--color-brand);
+      color: white;
+      transform: scale(1.05);
+    }
+
+    /* Hər ikonun öz hərəkəti. `nth-of-type(n)` n-ci <path>-i tutur; sıra @lucide/astro 1.47.0-a görədir,
+       paket yenilənsə node_modules/@lucide/astro/src/icons/<ad>.ts-i yoxlayın. */
+
+    /* Qıfıl: qövs hissəsi (tək <path>) 1.5px enir — qıfıl bağlanır. */
+    .sec-card:hover .sec-icon[data-motion='lock'] :global(svg path) {
+      transform: translateY(1.5px);
+    }
+
+    /* Qalxan və istifadəçi: "✓" xətti yenidən çəkilir (qalxanda 2-ci path, istifadəçidə 1-ci). */
+    .sec-card:hover .sec-icon[data-motion='shield'] :global(svg path:nth-of-type(2)),
+    .sec-card:hover .sec-icon[data-motion='roles'] :global(svg path:nth-of-type(1)) {
+      animation: sec-redraw 0.6s ease both;
+    }
+
+    /* Baza: ox hissəsi (4-cü və 5-ci path) bir dövrə fırlanır. */
+    .sec-card:hover .sec-icon[data-motion='backup'] :global(svg path:nth-of-type(4)),
+    .sec-card:hover .sec-icon[data-motion='backup'] :global(svg path:nth-of-type(5)) {
+      animation: sec-spin 0.8s cubic-bezier(0.45, 0, 0.2, 1) both;
+    }
+  }
+
+  /* `transform-box: view-box` + oxun mərkəzi (17.5, 16.5) olmasa ox öz mərkəzi ətrafında yox, SVG-nin
+     yuxarı sol küncü ətrafında fırlanıb yerindən "uçar". */
+  .sec-icon[data-motion='backup'] :global(svg path:nth-of-type(4)),
+  .sec-icon[data-motion='backup'] :global(svg path:nth-of-type(5)) {
+    transform-box: view-box;
+    transform-origin: 17.5px 16.5px;
+  }
+
+  /* `stroke-dasharray` keyframe-in ÖZÜNDƏDİR: yuxarıdakı qayda yalnız `[data-anim]` olanda yazılır,
+     JS-siz səhifədə isə "✓" yenə də yenidən çəkilməlidir. Sonda dasharray 100 + offset 0 = tam xətt. */
+  @keyframes sec-redraw {
+    from {
+      stroke-dasharray: 100;
+      stroke-dashoffset: 100;
+    }
+    to {
+      stroke-dasharray: 100;
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes sec-spin {
+    from {
+      transform: rotate(0);
+    }
+    to {
+      transform: rotate(-360deg);
+    }
+  }
+
+  /* Skript bu halda `data-anim` yazmır; burada skan xətti, ikon hərəkətləri və hover qalxması söndürülür,
+     yalnız rənglər dəyişir. `!important` hover qaydalarının seçici gücünü aşmaq üçündür. */
+  @media (prefers-reduced-motion: reduce) {
+    .sec-scan {
+      display: none;
+    }
+
+    .sec-card,
+    .sec-icon,
+    .sec-icon :global(svg *) {
+      transition: none;
+      animation: none !important;
+    }
+
+    /* `[data-motion]` seçicini bilərəkdən yazırıq: o, qıfılın hover qaydası ilə eyni gücdə olsun
+       ki, bu qayda onu əzə bilsin (seçici gücü eyni olanda sonuncu yazılan qalib gəlir). */
+    .sec-card:hover,
+    .sec-card:hover .sec-icon,
+    .sec-card:hover .sec-icon[data-motion] :global(svg path) {
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  // Bölmənin neçə hissəsi ekranda olanda animasiya başlasın (0.25 = 25%). Mobildə bölmə hündürdür
+  // (dörd kart alt-alta), ona görə 100% yox, dörddə bir hissə kifayətdir.
+  const LIVE_THRESHOLD = 0.25
+  const SECTION_ID = 'security'
+
+  function isMotionReduced(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  // `is-live` sinfi bir dəfə verilir və izləmə dayanır: animasiya yalnız bir dəfə oynanır.
+  function markLiveOnce(section: HTMLElement): void {
+    const observer = new IntersectionObserver(
+      function (entries) {
+        if (!entries[0].isIntersecting) {
+          return
+        }
+        section.classList.add('is-live')
+        observer.disconnect()
+      },
+      { threshold: LIVE_THRESHOLD }
+    )
+    observer.observe(section)
+  }
+
+  // ClientRouter işlənmir, skript səhifə başına bir dəfə işləyir. Əlavə olunsa: initSecurity-ni
+  // `astro:page-load`-da çağırın, `astro:before-swap`-da observer-i `disconnect()` edin.
+  function initSecurity(): void {
+    const section = document.getElementById(SECTION_ID)
+    if (!section || isMotionReduced() || !('IntersectionObserver' in window)) {
+      return
+    }
+
+    // Progressive enhancement: gizli başlanğıc yalnız `[data-anim]` altındadır, atribut isə yalnız JS
+    // işləyəndə yazılır — yoxsa kartlar, ikonlar və faktlar tam görünür.
+    section.dataset.anim = 'on'
+    markLiveOnce(section)
+  }
+
+  initSecurity()
+</script>

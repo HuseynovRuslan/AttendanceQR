@@ -1,7 +1,7 @@
 import { defineCollection, z } from 'astro:content'
 import { glob } from 'astro/loaders'
 
-// Astro 5 Content Layer: the blog is Markdown files under src/content/blog/{az,ru,en}.
+// Bloq məqalələri src/content/blog/{az,ru,en}/ altında Markdown fayllarıdır.
 const blog = defineCollection({
   loader: glob({ pattern: '**/*.md', base: './src/content/blog' }),
   schema: z.object({

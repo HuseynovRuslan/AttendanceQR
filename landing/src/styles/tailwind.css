@@ -1,93 +1,58 @@
 /*
- * Tailwind v4, added to a site that already has a stylesheet of its own (global.css). BaseLayout
- * imports this file first and global-layered.css second — that order is the cascade.
+ * Tailwind v4, global.css-in yanında. BaseLayout əvvəlcə bunu, sonra global-layered.css-i import edir.
  *
- * No Preflight, Tailwind's reset: global.css carries its own reset and was written against browser
- * defaults that Preflight takes away, so switching it on would restyle pages nobody meant to touch.
+ * Preflight (Tailwind-in sıfırlaması) qoşulmayıb: global.css öz sıfırlamasını daşıyır, Preflight isə
+ * brauzer defoltlarını əlindən alıb səhifələri dəyişərdi.
  *
- * The layer order is declared here, before any CSS lands in a layer. global.css goes into `base`,
- * under `utilities`: a utility class on an element beats it whatever the specificity. Left unlayered,
- * its `* { margin:0; padding:0 }` and `a { color:inherit }` would cancel `mt-4`, `p-6` and `text-*`.
+ * Qat sırası burada elan olunur: global.css `base`-dədir, utility sinifləri ondan güclüdür. Qatsız
+ * qalsaydı, `* { margin:0 }` və `a { color:inherit }` mt-4, p-6, text-* sinifləri ləğv edərdi.
  */
 @layer theme, base, components, utilities;
 
 @import 'tailwindcss/theme.css' layer(theme);
-/* Classes are looked for in src/ only. Left to find files on its own, Tailwind skips what .gitignore
-   lists — and the Docker build has no .gitignore, so the server would build different CSS than a
-   local build does.
-
-   source() is resolved against THIS FILE and has to land on src/. Move this stylesheet and the
-   path moves with it — and getting it wrong does not fail the build, it silently empties the
-   utilities layer. */
+/* source('..') bu faylın yerinə görə həll olunur və src/-ə düşməlidir. Yanlış yol build-i yıxmır,
+   utilities qatını səssizcə boşaldır. Siniflər yalnız src/-də axtarılır: Docker build-də .gitignore
+   yoxdur, avtomatik axtarış isə serverdə lokaldan fərqli CSS verərdi. */
 @import 'tailwindcss/utilities.css' layer(utilities) source('..');
 
 @theme {
-  /* The site's own blue — the "Log" of the logo, the stats band, --blue in global.css — so that
-     `bg-brand` and `from-brand` mean QRLog blue and not Tailwind's default, which is lighter and
-     more electric. -600 is the hover shade, -700 the pressed one; white text on all three clears
-     5.4:1, which Tailwind's own blue-500 → blue-600 gradient did not. */
+  /* QRLog mavisi (global.css-dəki --blue ilə eyni). -600 hover, -700 basılı çaladır; üçündə də ağ yazı 5.4:1 kontrast verir. */
   --color-brand: #155EEF;
   --color-brand-600: #0F4FD1;
   --color-brand-700: #0B3CA8;
-  /* Mavinin ən açıq çaları (bg-brand-50): brand rəngli ikon və ya yazı daşıyan pill, çip və plitələrin
-     fonu. Üstündə brand rəngli yazı 4.9:1 kontrast verir. Birinci istifadəçi «Kimlər üçün» bölməsidir. */
+  /* Ən açıq mavi (bg-brand-50): brand rəngli ikon və ya yazı daşıyan pill, çip və plitələrin fonu (4.9:1 kontrast). */
   --color-brand-50: #EEF3FD;
 
-  /* The neutral half of the newer section design (Header, Hero, Trust, Problem, HowItWorks): one
-     near-black for headings, one warm grey for body copy, one hairline for the 1px rules, and the
-     off-white the illustration stages sit on. They are tokens and not hex literals precisely
-     because the same four values appear in class names AND inside inline SVG fills — a section
-     half in tokens and half in hex drifts the first time one of them is nudged.
-
-     Not the same thing as global.css's --ink / --line / --paper: those are the older navy-tinted
-     palette (#0B1726, #E1E7F0, #F6F8FC) the rest of the page still runs on. Do not merge them —
-     the two sets belong to two different generations of the design and are being replaced section
-     by section. */
+  /* Yeni bölmələrin neytral rəngləri: başlıq, mətn, 1px xətt, illüstrasiya fonu. Eyni dəyərlər həm sinifdə,
+     həm inline SVG fill-də işləndiyi üçün token kimi saxlanır. global.css-in köhnə --ink/--line/--paper
+     palitrası ilə QARIŞDIRMA: o, hələ əvəz olunmamış bölmələrə aiddir. */
   --color-ink: #111211;
   --color-ink2: #78716C;
   --color-hair: #E3E1E1;
   --color-page: #F5F6FA;
 
-  /* The site's typeface, and the only place one is named. global.css asks for var(--font-sans) and
-     var(--font-mono); components use `font-sans` / `font-mono` or nothing at all, because <body>
-     carries the sans stack and everything inherits it.
-
-     Onest is served by Google Fonts and is the only free face checked here that carries everything
-     this site sets: the Azerbaijani Ə ə İ ı Ğ ğ Ş ş, the full Russian alphabet, the arrows and check
-     marks in the copy, and — the one that rules most faces out — ₼, the manat sign the prices are in.
-     Inter follows it for anyone who has it installed; IBM Plex Sans, the face this site used before,
-     has no ₼ at all. Anything that replaces Onest has to be measured against the same list. */
+  /* Saytın şrifti yalnız burada adlanır. Onest Azərbaycan hərflərini, rus əlifbasını və qiymətlərdəki
+     manat işarəsini (₼) daşıyan yeganə yoxlanmış pulsuz şriftdir; dəyişdirəndə bunları yoxla. */
   --font-sans: 'Onest', 'Inter', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 
-  /* global.css already has keyframes named ping and pulse. Tailwind writes an animate-* utility's
-     keyframes outside any layer, where they would beat those and change the site's own animations —
-     so Tailwind's three live under names of their own. spin is renamed too: global.css no longer has
-     one, but the three stay alike, and a spin added there later cannot collide. */
+  /* Tailwind keyframes-ləri qatsız yazır; saytın öz keyframes adları ilə toqquşmasın deyə tw-* adı daşıyır. */
   --animate-spin: tw-spin 1s linear infinite;
   --animate-ping: tw-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
   --animate-pulse: tw-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
-  /* The halo behind the phone in the hero. Seven seconds because it is ambient light and not a
-     status light: at Tailwind's own two-second pulse it reads as something blinking for attention,
-     which the live dot beside it already does. global.css stops it under prefers-reduced-motion. */
+  /* Hero-da telefonun arxasındakı işıq halqası: 7 san., çünki fon işığıdır, diqqət çəkən siqnal yox. */
   --animate-halo: qr-halo 7s ease-in-out infinite;
 
-  /* Hero səhnəsinin üstündə üzən dörd kart (Hero.astro). Hər birinin öz müddəti və MƏNFİ gecikməsi var
-     (qısa yazılışda üçüncü dəyər): mənfi gecikmə animasiyanı ortasından başladır, ona görə kartlar ilk
-     kadrdan bir-birindən fərqli fazadadır, hamısı birlikdə qalxmır. İki yol var: biri yuxarı-sağa,
-     o biri aşağı-sola sürüşür, qrup tək blok kimi hərəkət etməsin. 6–7.5 saniyə: çəkisiz üzmə kimi
-     oxunur, diqqət çəkən reklam kimi yox. global.css bunları prefers-reduced-motion-da dayandırır. */
+  /* Hero-dakı dörd üzən kart (Hero.astro). Mənfi gecikmə (üçüncü dəyər) animasiyanı ortasından başladır,
+     kartlar fərqli fazada olur; iki yol (yuxarı-sağa, aşağı-sola) qrupun tək blok kimi hərəkətini pozur. */
   --animate-float-scan: qr-float-up 4.5s ease-in-out infinite;
   --animate-float-offline: qr-float-down 4.5s ease-in-out -2s infinite;
   --animate-float-live: qr-float-up 4.5s ease-in-out -3.5s infinite;
   --animate-float-recorded: qr-float-down 4.5s ease-in-out -1s infinite;
 
-  /* Telefonun "canlı" duruşu (PhoneFrame.astro: Hero və Əlaqə səhifəsi). Telefon yavaş-yavaş qalxıb enir və azca yırğalanır; kölgəsi
-     eyni dövrlə əks fazada kiçilib solğunlaşır. 6 saniyə: nəfəs alan ritm, diqqət çəkən animasiya yox.
-     `translate`/`rotate` ayrıca xassələrdir, telefonun 3D pozası isə `transform`-dadır, ona görə toqquşmur.
-     `cqw` burada TELEFONUN eninin 1%-dir (PhoneFrame-in kökü öz eninə görə ölçülür).
-     global.css bunları prefers-reduced-motion-da dayandırır. */
+  /* Telefonun yavaş üzməsi və kölgəsi (PhoneFrame.astro). `translate`/`rotate` ayrıca xassələrdir, 3D poza isə
+     `transform`-dadır: toqquşmur. `cqw` telefonun eninin 1%-dir. global.css bunları prefers-reduced-motion-da dayandırır. */
   --animate-phone-float: qr-phone-float 6s ease-in-out infinite;
   --animate-phone-shadow: qr-phone-shadow 6s ease-in-out infinite;
 
@@ -119,10 +84,7 @@
       transform: scale(1.04);
     }
   }
-  /* `transform` yox, `translate`: kartlar siçan üstündə artıq `scale` ilə böyüyür (hover:scale-105).
-     Bunlar ayrı xassələrdir, ona görə üzmə ilə böyümə bir-birini əvəz etmir, toplanır. Məsafə cqw ilə
-     verilib (səhnənin eninin 1%-i, səhnənin qalan həndəsəsi kimi): 300px-lik səhnə ~4px, 640px-lik
-     ~9px yırğalanır. */
+  /* `transform` yox, `translate`: kartlar hover-də artıq `scale` ilə böyüyür, ayrı xassələr isə toplanır. */
   @keyframes qr-phone-float {
     0%,
     100% {

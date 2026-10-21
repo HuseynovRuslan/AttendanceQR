@@ -1,23 +1,19 @@
 ---
 /**
- * Saytın bütün səhifələrinin ümumi qabığı: src/pages/ içindəki hər səhifə öz məzmununu bu layout-a
- * bükür, məzmun <slot />-un yerinə düşür.
- * Props: lang (dil), path (dil prefiksi olmadan marşrut), title və description (verilməsə ui.ts-dəki
- * meta mətnləri), home (ana səhifə), heroTone (loader-in fonu), noindex (axtarışdan gizlət).
- * Necə işləyir: <head>-də SEO, sosial kart, şriftlər və schema.org datası; <body>-də loader, Header,
- * Footer, WhatsApp və "yuxarı" düymələri; sondakı skript səhifədəki canlı hissələri (saat, scroll ilə görünmə, sayğac) işə salır.
+ * Bütün səhifələrin ümumi qabığı: <head> (SEO, sosial kart, şriftlər, schema.org), loader, Header, Footer, düymələr.
+ * Props: lang, path, title, description (verilməsə ui.ts-dəki meta mətnləri), home, heroTone, noindex.
  */
 
-// Sıra vacibdir: qatların (cascade layers) sırasını tailwind.css elan edir, global-layered.css isə
-// global.css-i həmin qatlardan birinə (base) yerləşdirir. Əvvəl sıra elan olunmalıdır.
+// Sıra vacibdir: tailwind.css qat sırasını elan edir, global-layered.css global.css-i qatlardan birinə yerləşdirir.
 import '../styles/tailwind.css'
 import '../styles/global-layered.css'
-import PageLoader from '../components/PageLoader.astro'
-import Header from '../components/Header.astro'
-import Footer from '../components/Footer.astro'
-import WhatsAppButton from '../components/WhatsAppButton.astro'
-import BackToTop from '../components/BackToTop.astro'
-import SmoothScroll from '../components/SmoothScroll.astro'
+import PageLoader from '../components/Shared/PageLoader.astro'
+import Header from '../components/Header/Header.astro'
+import Footer from '../components/Footer/Footer.astro'
+import WhatsAppButton from '../components/Shared/WhatsAppButton.astro'
+import BackToTop from '../components/Shared/BackToTop.astro'
+import SmoothScroll from '../components/Shared/SmoothScroll.astro'
+import PauseOffscreen from '../components/Shared/PauseOffscreen.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
 import { getImage } from 'astro:assets'
@@ -31,11 +27,7 @@ interface Props {
   description?: string
   /** Yalnız ana səhifə: SoftwareApplication və FAQPage strukturlaşdırılmış datasını əlavə edir. */
   home?: boolean
-  /**
-   * Səhifənin açıldığı fon rəngi. Loader-in vizörü də eyni fonda dayanır ki, loader çəkiləndə rəng
-   * sıçrayışı olmasın. 'tinted' — ana səhifə (Hero --paper fonundadır); <PageHero> ilə açılan hər
-   * səhifə sadə --white fonundadır.
-   */
+  /** Səhifənin açıldığı fon; loader də eyni fonda olur. 'tinted' — ana səhifə (--paper), 'white' — qalanlar. */
   heroTone?: 'tinted' | 'white'
   noindex?: boolean
 }
@@ -43,33 +35,26 @@ interface Props {
 const { lang, path = '/', title, description, home = false, noindex = false, heroTone = 'tinted' } = Astro.props
 const t = useTranslations(lang)
 
-// Hex yox, CSS dəyişəni: global.css-də --white və ya --paper dəyişsə, loader da onlarla dəyişir.
-// undefined olanda loader öz standart fonunda qalır, o da --paper-dir.
+// CSS dəyişəni (hex yox): --white dəyişsə, loader də dəyişir. undefined = loader-in standart fonu (--paper).
 const loaderBg = heroTone === 'white' ? 'var(--white, #fff)' : undefined
 
-// <html>-dəki qrl-lock: loader-in vizörü (components/PageLoader.astro) səhifəni örtür, ona görə o
-// ekranda olanda səhifə scroll olunmur. Sinif skriptlə yox, birbaşa HTML-də yazılır ki, ilk kadrdan
-// qüvvədə olsun. Loader bitəndə öz skripti sinfi götürür; JavaScript söndürülübsə, loader-in
-// <noscript> bloku onu ləğv edir.
+// <html class="qrl-lock"> loader ekranda olanda scroll-u bağlayır; sinfi loader-in skripti götürür
+// (JS söndürülübsə, loader-in <noscript> bloku).
 
 const site = SITE.url
 const canonical = site + localizedPath(lang, path)
-// src/assets/ yox, public/: axtarış botu paylaşım kartını keş etdiyi müddətdə bu URL-i saxlayır, ona
-// görə ünvana hash əlavə olunmamalı və şəkil webp-yə çevrilməməlidir. Aşağıdakı ikonlar da eyni səbəblə.
+// public/-dadır, src/assets/ yox: paylaşım kartı keşlənir, ona görə URL-də hash və webp çevirməsi olmamalıdır (ikonlar da).
 const ogImage = site + '/og-image.png'
-// <head>-də öncədən yüklənir (preload), Header onu çəkir — hər yerdə eyni fayl, bax src/data/brand.ts.
+// <head>-də preload olunur; Header eyni faylı çəkir (src/data/brand.ts).
 const logoWord = await getImage(LOGO_WORD)
 
 const pageTitle = title ?? t('meta.title')
 const pageDesc = description ?? t('meta.description')
-// Paylaşım şəklinin alt mətni: təsvirin əvvəlində ad — amma yalnız bir dəfə. Təsvirlərin çoxu onsuz da
-// "QRLog — …" (və ya "QRLog is …") ilə başlayır; hər dəfə ad əlavə etsək, "QRLog — QRLog — …" alınardı.
+// Ad yalnız bir dəfə: təsvir artıq "QRLog" ilə başlayırsa, təkrar əlavə olunmur.
 const imageAlt = pageDesc.startsWith(SITE.name) ? pageDesc : `${SITE.name} — ${pageDesc}`
 
-// hreflang: səhifənin MÖVCUD OLDUĞU BÜTÜN dillər (cari dil də daxil — Google hər versiyanın özünə də
-// istinad etməsini istəyir), üstəlik Azərbaycan dilinə x-default.
-// Yalnız Azərbaycan dilində olan marşrut (blog, 404) heç bir alternate almır: tək hreflang heç nə
-// demir, qalan iki dili yazsaq isə Google-u heç vaxt qurulmamış URL-lərə göndərərdik.
+// hreflang: səhifənin mövcud olduğu bütün dillər (cari dil də) + x-default = az.
+// Yalnız az dilində olan marşrut (blog, 404) alternate almır.
 const routeLangs = availableLangs(path)
 const alternates: { hreflang: string; href: string }[] = []
 if (routeLangs.length >= 2) {
@@ -79,12 +64,10 @@ if (routeLangs.length >= 2) {
   alternates.push({ hreflang: 'x-default', href: site + localizedPath('az', path) })
 }
 
-// og:locale:alternate üçün: səhifənin mövcud olduğu dillər, cari dil çıxılmaqla.
+// og:locale:alternate üçün: cari dildən başqa mövcud dillər.
 const otherLangs = routeLangs.filter((routeLang) => routeLang !== lang)
 
-// ---- Strukturlaşdırılmış data (schema.org, JSON-LD) ----
-// Organization bütün saytda var. aggregateRating və offers qəsdən yoxdur: toplanmış rəyimiz yoxdur,
-// schema.org-da uydurma reytinq həm yalandır, həm də Google-un strukturlaşdırılmış data qaydalarına ziddir.
+// schema.org (JSON-LD). aggregateRating və offers qəsdən yoxdur: real rəy yoxdur, uydurma reytinq Google qaydalarına ziddir.
 const orgLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
@@ -100,12 +83,12 @@ const orgLd = {
   },
 }
 
-// FAQPage yalnız ana səhifədə (home) çıxır. Sual-cavablar ui.ts-dəki faq.q1…q6 və faq.a1…a6 açarlarıdır.
+// Sual-cavablar ui.ts-dəki faq.q1…q6 və faq.a1…a6 açarlarıdır.
 const faqKeys = [1, 2, 3, 4, 5, 6] as const
 const faqLd = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
-  // Açar adı mətn kimi yığılır ("faq.q" + nömrə) — TypeScript onu yoxlaya bilmir, ona görə "as any".
+  // Açar mətn kimi yığılır, TypeScript onu yoxlaya bilmir: "as any".
   mainEntity: faqKeys.map((faqNumber) => ({
     '@type': 'Question',
     name: t(`faq.q${faqNumber}` as any),
@@ -113,7 +96,6 @@ const faqLd = {
   })),
 }
 
-// Yalnız ana səhifədə (home) çıxır.
 const appLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -147,7 +129,6 @@ const websiteLd = {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
 
-    <!-- Əsas SEO -->
     <title>{pageTitle}</title>
     <meta name="description" content={pageDesc} />
     <meta name="keywords" content={t('meta.keywords')} />
@@ -160,7 +141,6 @@ const websiteLd = {
 
     {!noindex && alternates.map((alternate) => <link rel="alternate" hreflang={alternate.hreflang} href={alternate.href} />)}
 
-    <!-- Open Graph: link paylaşılanda sosial şəbəkələrdə görünən kart -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={SITE.name} />
     <meta property="og:title" content={pageTitle} />
@@ -173,26 +153,18 @@ const websiteLd = {
     <meta property="og:locale" content={localeMap[lang]} />
     {otherLangs.map((otherLang) => <meta property="og:locale:alternate" content={localeMap[otherLang]} />)}
 
-    <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={pageDesc} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={imageAlt} />
 
-    <!-- İkonlar -->
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo-mark.png" />
     <link rel="preload" href={logoWord.src} as="image" type="image/webp" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta2/css/all.min.css" integrity="sha512-YWzhKL2whUzgiheMoBFwW8CKV4qpHQAEuvilg9FAn5VJUDwKZZxkJNuGM4XkWuk94WCrrwslk8yWNGmY1EduTA==" crossorigin="anonymous" referrerpolicy="no-referrer">
 
-    <!--
-      --font-sans və --font-mono-nun şriftləri (bax styles/tailwind.css). Onest əsas şriftdir: yoxlanan
-      pulsuz şriftlər içində Azərbaycan hərflərini (Ə, İ, Ğ, Ş), rus əlifbasını və ₼ işarəsini birlikdə
-      daşıyan yeganəsidir; 200 və 400–800 qalınlıqlarında yüklənir. 200 yalnız 404 səhifəsindəki nazik
-      "404" üçündür (font-extralight). 300 yüklənmir: font-light yazsan brauzer ona ən yaxın yüngül
-      qalınlığı, yəni 200-ü götürər. IBM Plex Mono kiçik mono yazılar üçündür.
-    -->
+    {/* Şriftlər tailwind.css-dəki --font-sans/--font-mono üçündür. Onest 200 yalnız 404 səhifəsi üçündür; 300 yüklənmir (yüngül qalınlıq 200-ə düşər). */}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -200,7 +172,6 @@ const websiteLd = {
       rel="stylesheet"
     />
 
-    <!-- Strukturlaşdırılmış data (schema.org) -->
     <script is:inline type="application/ld+json" set:html={JSON.stringify(orgLd)} />
     <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteLd)} />
     {home && <script is:inline type="application/ld+json" set:html={JSON.stringify(appLd)} />}
@@ -216,151 +187,11 @@ const websiteLd = {
       </main>
       <Footer lang={lang} />
     </div>
-    <!-- Hər iki düymə qəsdən .qrl-page-dən kənardadır: loader bitəndə .qrl-page-ə transform animasiyası
-    verilir, transform olan valideyn isə position: fixed düyməni ekrana yox, özünə bağlayardı.
-    BackToTop WhatsApp-dan SONRA gəlir: z-index-ləri eynidir, sonra gələn üstdə çəkilir — WhatsApp-ın
-    nəbz halqası "yuxarı" düyməsinin altından keçir, üstündən yox. -->
+    {/* Düymələr .qrl-page-dən kənardadır: transform-lu valideyn position: fixed-i özünə bağlayardı.
+    BackToTop WhatsApp-dan sonra gəlir (eyni z-index): nəbz halqası onun altından keçir. */}
     <WhatsAppButton lang={lang} />
     <BackToTop lang={lang} />
-    <!-- Hamar scroll (Lenis): yalnız siçan/touchpad-də, bütün səhifələrdə; markup yoxdur, yalnız skript. -->
     <SmoothScroll />
-    <script>
-      // Bu skript saytın hər səhifəsində işləyir, amma hər hissə öz elementini axtarır: element
-      // səhifədə yoxdursa, həmin hissə heç nə etmir. Mobil menyu və dil seçimi Header.astro-dadır.
-
-      // ---------- Sabitlər ----------
-      // Canlı saat
-      const CLOCK_TICK_MS = 1000 // saat hər saniyə yenilənir
-
-      // Scroll ilə görünmə (.rv)
-      const REVEAL_THRESHOLD = 0.14 // elementin 14%-i ekrana girəndə "in" sinfini alır
-
-      // Sayğaclar ([data-count])
-      const COUNTER_DURATION_MS = 1600 // rəqəm 1.6 saniyəyə son dəyərinə çatır
-      const COUNTER_THRESHOLD = 0.5 // sayğacın yarısı ekrana girəndə sayma başlayır
-
-      // ---------- Canlı saat (#clock) ----------
-      // Diqqət: hazırda heç bir səhifədə #clock yoxdur, ona görə startClock() heç nə etmir.
-
-      // Vaxtı "SS:DD:SS" formatında qaytarır: 9:05:03 → "09:05:03".
-      function formatTime(date: Date) {
-        const parts = [date.getHours(), date.getMinutes(), date.getSeconds()]
-        const paddedParts = parts.map((part) => String(part).padStart(2, '0'))
-        return paddedParts.join(':')
-      }
-
-      function startClock() {
-        const clock = document.getElementById('clock')
-        if (!clock) return
-        const showCurrentTime = () => {
-          clock.textContent = formatTime(new Date())
-        }
-        showCurrentTime()
-        setInterval(showCurrentTime, CLOCK_TICK_MS)
-      }
-
-      // ---------- Scroll ilə görünmə (.rv) ----------
-      // .rv elementi ekrana girəndə ona "in" sinfi verilir. Necə görünəcəyini JS yox, CSS həll edir:
-      // global.css-dəki .rv və .rv.in qaydaları.
-      // Diqqət: hazırda global.css-in sonundakı .rv qaydası (məzmun JS-siz də görünsün deyə) bu effekti
-      // söndürür — "in" sinfi əlavə olunur, amma görünüş dəyişmir.
-      // IntersectionObserver elementin ekrana girdiyini scroll hadisəsini hər an dinləmədən xəbər verir.
-      // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
-      function startScrollReveal() {
-        const revealObserver = new IntersectionObserver(
-          (entries) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                entry.target.classList.add('in')
-                // Bir dəfə görünən element bir daha izlənmir.
-                revealObserver.unobserve(entry.target)
-              }
-            })
-          },
-          { threshold: REVEAL_THRESHOLD }
-        )
-        document.querySelectorAll('.rv').forEach((element) => revealObserver.observe(element))
-      }
-
-      // ---------- Sayğaclar ([data-count]) ----------
-      // Əvvəl sürətli, sonda yavaşlayan hərəkət (ease-out): progress 0…1 → nəticə 0…1.
-      function easeOut(progress: number) {
-        return 1 - Math.pow(1 - progress, 3)
-      }
-
-      // Rəqəmi 0-dan data-count dəyərinə qədər artırır. data-dec — onluq rəqəmlərin sayı,
-      // data-prefix və data-suffix — rəqəmin önünə və arxasına yazılan mətn ("~", " ₼").
-      // requestAnimationFrame funksiyanı ekranın növbəti yenilənməsində çağırır — hamar animasiya üçün.
-      // https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
-      function countUp(counter: HTMLElement) {
-        const target = parseFloat(counter.dataset.count || '0')
-        const decimals = parseInt(counter.dataset.dec || '0')
-        const suffix = counter.dataset.suffix || ''
-        const prefix = counter.dataset.prefix || ''
-        const startTime = performance.now()
-        function drawFrame(now: number) {
-          const progress = Math.min((now - startTime) / COUNTER_DURATION_MS, 1)
-          const currentValue = target * easeOut(progress)
-          counter.textContent =
-            prefix +
-            currentValue.toLocaleString('en-US', {
-              minimumFractionDigits: decimals,
-              maximumFractionDigits: decimals,
-            }) +
-            suffix
-          if (progress < 1) requestAnimationFrame(drawFrame)
-        }
-        requestAnimationFrame(drawFrame)
-      }
-
-      // Hərəkət istəməyənlər üçün (prefers-reduced-motion): animasiyasız, dərhal son rəqəm.
-      function showFinalCount(counter: HTMLElement) {
-        const target = parseFloat(counter.dataset.count || '0')
-        const decimals = parseInt(counter.dataset.dec || '0')
-        const prefix = counter.dataset.prefix || ''
-        const suffix = counter.dataset.suffix || ''
-        counter.textContent =
-          prefix +
-          target.toLocaleString('en-US', {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-          }) +
-          suffix
-      }
-
-      function startCounters() {
-        const counterObserver = new IntersectionObserver(
-          (entries) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                countUp(entry.target as HTMLElement)
-                counterObserver.unobserve(entry.target)
-              }
-            })
-          },
-          { threshold: COUNTER_THRESHOLD }
-        )
-        // matchMedia JS-dən CSS media sorğusunu yoxlayır — istifadəçinin "hərəkəti azalt" ayarını bilmək üçün.
-        // https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        // <HTMLElement> TypeScript-ə deyir ki, tapılanlar HTML elementləridir — adi Element tipində dataset yoxdur.
-        // https://www.typescriptlang.org/docs/handbook/2/generics.html
-        document.querySelectorAll<HTMLElement>('[data-count]').forEach((counter) => {
-          if (reduceMotion) {
-            showFinalCount(counter)
-          } else {
-            counterObserver.observe(counter)
-          }
-        })
-      }
-
-      // FAQ akkordeonu burada deyil: FAQ.astro öz skriptini özü daşıyır.
-
-      // ---------- İşə salma ----------
-      // Hissələr bir-birindən asılı deyil: hər biri öz elementini tapıb işə düşür.
-      startClock()
-      startScrollReveal()
-      startCounters()
-    </script>
+    <PauseOffscreen />
   </body>
 </html>

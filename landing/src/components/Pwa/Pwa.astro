@@ -1,0 +1,236 @@
+---
+/*
+ * «Telefona quraşdırın» bölməsi (#app): mətn, Google Play / App Store düymələri, iPhone üçün 3 addım və telefonlu foto.
+ * Landing.astro-da «Suallar»-dan sonra, footer-dən əvvəl işlənir (AZ/RU/EN). Props: lang.
+ * Skript yalnız giriş animasiyasını başladır.
+ */
+import { Image } from 'astro:assets'
+// İkonlar Lucide-dəndir, hər biri öz faylından idxal olunur.
+import Globe from '@lucide/astro/icons/globe'
+import SquarePlus from '@lucide/astro/icons/square-plus'
+import Smartphone from '@lucide/astro/icons/smartphone'
+import { useTranslations, type Lang, type UIKey } from '../../i18n/ui'
+import GooglePlayBadge from '../Shared/GooglePlayBadge.astro'
+// Telefonda QRLog-un «Bu gün» ekranı şəklin özündədir — üstünə heç nə çəkilmir. Şəkli dəyişəndə eyni adla əvəz et.
+import appPhoto from '../../assets/images/app/app-photo.webp'
+
+interface Props {
+  lang: Lang
+}
+const { lang } = Astro.props
+const t = useTranslations(lang)
+
+// Google Play nişanının görünən hündürlüyü, px (ətrafdakı şəffaf boşluq sayılmır).
+const BADGE_HEIGHT_PX = 48
+// «Tezliklə App Store» düyməsindəki ikonun ölçüsü, px (30px-lik kvadratın içində).
+const SOON_ICON_SIZE = 17
+// Addım kartlarındakı ikonun ölçüsü, px (38px-lik kvadratın içində).
+const STEP_ICON_SIZE = 19
+// Şəklin fayl eni, px: ekranda ~760px-ə qədər görünür, qalanı retina üçün ehtiyatdır.
+const PHOTO_WIDTH_PX = 1200
+
+// iPhone üçün üç addım; UIKey tipi mətn açarındakı səhvi build-də tutur.
+interface Step {
+  icon: typeof Globe
+  label: UIKey
+}
+const steps: Step[] = [
+  { icon: Globe, label: 'pwa.b1' },
+  { icon: SquarePlus, label: 'pwa.b2' },
+  { icon: Smartphone, label: 'pwa.b3' },
+]
+---
+
+<section id="app" aria-labelledby="app-title" class="relative bg-white py-20 lg:py-28">
+  <div class="wrap">
+    <div class="grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
+      <div class="lg:col-span-5">
+        <div class="app-rise" style="--i:0">
+          <span class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
+            <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
+            {t('pwa.eyebrow')}
+          </span>
+          <h2 id="app-title" class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]">
+            {t('pwa.title')}
+          </h2>
+          <p class="mt-4 max-w-[52ch] text-[15px] leading-[1.75] text-pretty text-ink2">{t('pwa.sub')}</p>
+        </div>
+
+        <div class="app-rise mt-8 flex flex-wrap items-center gap-x-4 gap-y-3" style="--i:1">
+          <GooglePlayBadge
+            lang={lang}
+            height={BADGE_HEIGHT_PX}
+            align="start"
+            class="transition duration-200 hover:drop-shadow-[0_10px_14px_rgba(15,23,42,0.18)] motion-safe:hover:-translate-y-0.5"
+          />
+
+          {/* Apple-ın rəsmi nişanı yalnız tətbiq App Store-da olanda işlədilə bilər: bu link deyil, sadə <span>-dır. */}
+          <span
+            class="inline-flex h-12 cursor-default items-center gap-2.5 rounded-xl border border-dashed border-[#C9D2E0] bg-white pr-4 pl-3 select-none"
+          >
+            <span class="grid size-[30px] place-items-center rounded-[9px] bg-brand-50 text-brand" aria-hidden="true">
+              <Smartphone size={SOON_ICON_SIZE} />
+            </span>
+            <span class="flex flex-col">
+              <span class="text-[10.5px] leading-[1.1] font-bold tracking-[0.08em] text-brand uppercase">
+                {t('pwa.soon')}
+              </span>
+              <span class="text-[15px] leading-[1.2] font-semibold text-ink">App Store</span>
+            </span>
+            <span class="app-dot ml-0.5 size-1.5 rounded-full bg-brand" aria-hidden="true"></span>
+          </span>
+        </div>
+
+        {/* Preflight yoxdur, ona görə <ol>-da list-none və p-0 yazılıb. */}
+        <div class="app-rise mt-10" style="--i:2">
+          <p class="font-mono text-[12px] font-semibold tracking-[0.04em] text-[#8B9AA3]">{t('pwa.steps')}</p>
+          <ol class="mt-3 grid list-none gap-2.5 p-0 sm:grid-cols-2 sm:gap-3">
+            {
+              steps.map((step, index) => (
+                <li class="relative flex items-center gap-3 rounded-2xl border border-[#E6E9F0] bg-white p-4 transition duration-300 hover:border-[#B7CBF7] hover:shadow-[0_16px_30px_-22px_rgba(21,94,239,0.45)] motion-safe:hover:-translate-y-0.5 sm:flex-col sm:items-start sm:gap-3.5">
+                  <span class="grid size-[38px] shrink-0 place-items-center rounded-xl bg-brand-50 text-brand" aria-hidden="true">
+                    <step.icon size={STEP_ICON_SIZE} />
+                  </span>
+                  <span class="pr-4 text-[15px] font-semibold text-ink sm:pr-0">{t(step.label)}</span>
+                  <span class="absolute top-2.5 right-3 font-mono text-[12px] text-[#A8A29E]" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                </li>
+              ))
+            }
+          </ol>
+        </div>
+      </div>
+
+      <div class="lg:col-span-7">
+        <div class="app-glow app-rise relative" style="--i:1">
+          <div
+            class="relative z-10 aspect-[1200/896] overflow-hidden rounded-[28px] bg-[#E9EDF4] shadow-[0_40px_80px_-48px_rgba(15,23,42,0.55)]"
+          >
+            <Image
+              src={appPhoto}
+              alt={t('pwa.photoAlt')}
+              width={PHOTO_WIDTH_PX}
+              quality={90}
+              loading="lazy"
+              decoding="async"
+              class="h-full w-full object-cover transition-transform duration-[1200ms] ease-out motion-safe:hover:scale-[1.025]"
+            />
+            {/* Zəif 1px xətt: açıq divar səhifənin fonuna qarışmasın. */}
+            <span
+              class="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-black/5 ring-inset"
+              aria-hidden="true"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Bölmənin üst/alt xətti yoxdur: yuxarıdakı «Suallar»-ın alt xətti var, footer isə künclərini bu bölmənin altına qaldırır. */
+  #app {
+    /* Saytın bölmələrində işlənən yumşaq əyri (Security, Qiymət, Suallar). */
+    --app-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    /* Giriş animasiyasında elementlər bu fasilə ilə bir-bir çıxır (--i sıra nömrəsidir). */
+    --app-rise-gap: 80ms;
+  }
+
+  /* «Tezliklə» nöqtəsi. Astro @keyframes adlarını scope etmir, ona görə `app-` prefiksi. */
+  .app-dot {
+    animation: app-blink 1.6s ease-in-out infinite;
+  }
+
+  @keyframes app-blink {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  /* Şəklin arxasındakı mavi işıq. inset = yuxarı, sağ, aşağı, sol. Sağda 0-dır: işıq bölmədən
+     çıxsa, planşetdə (768px) səhifə üfüqi sürüşür. */
+  .app-glow::before {
+    content: '';
+    position: absolute;
+    inset: 8% 0 -6% 10%;
+    border-radius: 40px;
+    background: radial-gradient(60% 60% at 60% 50%, rgba(21, 94, 239, 0.22), transparent 70%);
+    filter: blur(24px);
+  }
+
+  /* Giriş animasiyası (bir dəfə). Gizli başlanğıc yalnız [data-anim] altındadır: atribut skriptlə
+     yazılır, JS söndürülübsə hər şey görünür. */
+  [data-anim] .app-rise {
+    opacity: 0;
+  }
+
+  [data-anim].is-live .app-rise {
+    animation: app-rise 0.7s var(--app-ease) calc(var(--i, 0) * var(--app-rise-gap)) both;
+  }
+
+  @keyframes app-rise {
+    from {
+      opacity: 0;
+      translate: 0 14px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+
+  /* Hərəkəti azalt: nöqtə yanıb-sönmür, elementlər dərhal görünür. */
+  @media (prefers-reduced-motion: reduce) {
+    .app-dot {
+      animation: none;
+    }
+
+    [data-anim] .app-rise {
+      opacity: 1;
+      animation: none !important;
+    }
+  }
+</style>
+
+<script>
+  const SECTION_ID = 'app'
+  // Bölmənin neçə hissəsi ekranda olanda animasiya başlasın (0.2 = 20%).
+  const LIVE_THRESHOLD = 0.2
+
+  // Bölmə ekrana ilk dəfə kifayət qədər girəndə `is-live` sinfini verir və izləməni dayandırır: animasiya bir dəfə oynanır.
+  function startWhenVisible(section: HTMLElement): void {
+    const observer = new IntersectionObserver(
+      function (entries) {
+        if (!entries[0].isIntersecting) {
+          return
+        }
+        section.classList.add('is-live')
+        observer.disconnect()
+      },
+      { threshold: LIVE_THRESHOLD }
+    )
+    observer.observe(section)
+  }
+
+  function initApp(): void {
+    const section = document.getElementById(SECTION_ID)
+    if (!section) {
+      return
+    }
+
+    // «Hərəkəti azalt» seçilibsə və ya IntersectionObserver yoxdursa, `data-anim` yazılmır: hər şey dərhal görünür.
+    const isMotionReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (isMotionReduced || !('IntersectionObserver' in window)) {
+      return
+    }
+
+    section.dataset.anim = 'on'
+    startWhenVisible(section)
+  }
+
+  initApp()
+</script>

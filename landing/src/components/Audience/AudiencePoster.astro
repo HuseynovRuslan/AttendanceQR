@@ -1,0 +1,335 @@
+---
+/*
+ * «Kimlər üçün» 3-cü kartın vizualı: divardan asılmış QR poster. Posterdəki QR dekorativdir:
+ * real posterin QR-ını bura qoymayın, o, filialda işə giriş açarıdır.
+ */
+import { Image } from 'astro:assets'
+import Check from '@lucide/astro/icons/check'
+import type { Lang } from '../../i18n/ui'
+import posterImage from '../../assets/images/audience/qr-poster.png'
+
+interface Props {
+  lang?: Lang
+}
+
+// Şəkildəki QR kartının yeri (faizlə): PrintQrPage.tsx-dəki cardX / cardY / cardSize poster
+// canvas-ının ölçüsünə (1654×2339) bölünüb.
+const QR_CARD = { left: '31.70%', top: '55.24%', width: '36.60%', height: '25.88%' }
+const qrCardStyle = `left:${QR_CARD.left}; top:${QR_CARD.top}; width:${QR_CARD.width}; height:${QR_CARD.height}`
+---
+
+<div class="poster-root">
+  <div class="poster-wall"></div>
+  <div class="poster-seams"></div>
+  <div class="poster-floor-line absolute inset-x-0 h-px bg-slate-300/70"></div>
+  <div class="poster-glare"></div>
+
+  <span
+    class="poster-nail absolute top-2 left-1/2 z-10 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-slate-500"
+  ></span>
+
+  <div class="hang" data-aud-hang>
+    <svg class="absolute top-0 left-0 block" width="170" height="40" viewBox="0 0 170 40" fill="none">
+      <path d="M85 0 20 34M85 0 150 34" stroke="#94A3B8" stroke-width="1.3" stroke-linecap="round"></path>
+    </svg>
+
+    <div class="poster">
+      <div class="poster-sheet relative h-full w-full overflow-hidden rounded-sm bg-white">
+        <Image
+          src={posterImage}
+          alt=""
+          width={300}
+          densities={[1, 2]}
+          loading="lazy"
+          decoding="async"
+          class="block h-full w-full"
+        />
+
+        <!-- İp halqaları: ipin uc nöqtələri (20, 34) və (150, 34) bunların mərkəzinə düşür -->
+        <span class="absolute top-2 left-7 h-3.5 w-3.5 rounded-full border-[3px] border-slate-400 bg-white"></span>
+        <span class="absolute top-2 right-7 h-3.5 w-3.5 rounded-full border-[3px] border-slate-400 bg-white"></span>
+
+        <div class="absolute" style={qrCardStyle}>
+          <span class="vf vf-tl"></span>
+          <span class="vf vf-tr"></span>
+          <span class="vf vf-bl"></span>
+          <span class="vf vf-br"></span>
+          <span class="scan-line"></span>
+          <!-- «✓» daha yuxarı çıxsa, kartın üstündəki yazının son sözünü örtər (arada ~10px var) -->
+          <span
+            class="scan-badge absolute -top-1 -right-2 flex h-8 w-8 items-center justify-center rounded-full text-white"
+          >
+            <Check size={16} stroke-width={3} />
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .poster-root {
+    position: absolute;
+    inset: 0;
+    --poster-scale: 0.5667; /* 170px (asılqan qutusunun eni) ÷ 300px (posterin real eni) */
+    --poster-floor-line: 86%; /* döşəmənin başladığı yer (yuxarıdan) */
+    --poster-wall-top: #f7f9fc;
+    --poster-wall-bottom: #eff3f8;
+    --poster-floor-top: #e4e9f1;
+    --poster-floor-bottom: #edf1f6;
+    --poster-seam: rgb(203 213 225 / 0.45);
+    --poster-glare: rgb(255 255 255 / 0.7);
+    --poster-sheet-shadow: 0 30px 50px -26px rgb(15 23 42 / 0.55), 0 0 0 1px rgb(15 23 42 / 0.06);
+    --poster-nail-shadow: 0 0 0 2px #fff, 0 2px 3px rgb(15 23 42 / 0.35);
+    --poster-scan: var(--color-brand);
+    --poster-scan-glow: rgb(21 94 239 / 0.6);
+    --poster-ok: #22c55e;
+    --poster-badge-shadow: 0 0 0 4px #fff, 0 6px 14px -4px rgb(34 197 94 / 0.7);
+  }
+
+  .poster-wall {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      var(--poster-wall-top) 0%,
+      var(--poster-wall-bottom) var(--poster-floor-line),
+      var(--poster-floor-top) var(--poster-floor-line),
+      var(--poster-floor-bottom) 100%
+    );
+  }
+
+  .poster-seams {
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--poster-floor-line);
+    background-image: linear-gradient(90deg, var(--poster-seam) 1px, transparent 1px);
+    background-size: 96px 100%;
+    background-position: -20px 0;
+  }
+
+  .poster-floor-line {
+    top: var(--poster-floor-line);
+  }
+
+  .poster-glare {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 35%, var(--poster-glare) 47%, transparent 60%);
+  }
+
+  .poster-nail {
+    box-shadow: var(--poster-nail-shadow);
+  }
+
+  /* ---------- Asılmış poster ----------
+     Poster real ölçüdə (300×424) yerləşir və `scale` ilə bütöv kiçildilir, ona görə üstdəki
+     elementlər (halqalar, vizör) 300px-lik koordinatlarla yazılıb. `.poster` asılqanın yuxarısından
+     26px aşağıdadır: iplər bu boşluqdan halqalara çatır.
+     `.hang` yellənən qutudur: transform-origin 50% 0 fırlanmanı mismarın yerinə (top: 13px) qoyur. */
+  .hang {
+    position: absolute;
+    left: 50%;
+    top: 13px;
+    width: 170px;
+    height: 268px;
+    margin-left: -85px;
+    transform-origin: 50% 0;
+  }
+
+  .poster {
+    position: absolute;
+    left: 0;
+    top: 26px;
+    width: 300px;
+    height: 424px;
+    transform: scale(var(--poster-scale));
+    transform-origin: top left;
+  }
+
+  .poster-sheet {
+    box-shadow: var(--poster-sheet-shadow);
+  }
+
+  /* ---------- Vizör küncləri, skan xətti, «✓» ---------- */
+  .vf {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 3px solid var(--poster-scan);
+  }
+
+  .vf-tl {
+    top: -6px;
+    left: -6px;
+    border-right: 0;
+    border-bottom: 0;
+    border-top-left-radius: 8px;
+  }
+
+  .vf-tr {
+    top: -6px;
+    right: -6px;
+    border-left: 0;
+    border-bottom: 0;
+    border-top-right-radius: 8px;
+  }
+
+  .vf-bl {
+    bottom: -6px;
+    left: -6px;
+    border-right: 0;
+    border-top: 0;
+    border-bottom-left-radius: 8px;
+  }
+
+  .vf-br {
+    bottom: -6px;
+    right: -6px;
+    border-left: 0;
+    border-top: 0;
+    border-bottom-right-radius: 8px;
+  }
+
+  /* Skan xətti yalnız canlanmada görünür: JS-siz yarı yolda qalmış xətt mənasızdır. */
+  .scan-line {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 6px;
+    height: 3px;
+    border-radius: 3px;
+    opacity: 0;
+    background: linear-gradient(90deg, transparent, var(--poster-scan) 20%, var(--poster-scan) 80%, transparent);
+    box-shadow: 0 0 12px var(--poster-scan-glow);
+  }
+
+  .scan-badge {
+    background: var(--poster-ok);
+    box-shadow: var(--poster-badge-shadow);
+  }
+
+  /* ---------- Canlanma (qayda: AudienceMap.astro) ----------
+     Ardıcıllıq: yellənmə 0.15s–2.95s → vizör 1.9s → skan xətti 2.25s–3.35s → «✓» 3.35s. */
+  :global([data-anim]) .vf-tl {
+    opacity: 0;
+    transform: translate(-8px, -8px);
+  }
+
+  :global([data-anim]) .vf-tr {
+    opacity: 0;
+    transform: translate(8px, -8px);
+  }
+
+  :global([data-anim]) .vf-bl {
+    opacity: 0;
+    transform: translate(-8px, 8px);
+  }
+
+  :global([data-anim]) .vf-br {
+    opacity: 0;
+    transform: translate(8px, 8px);
+  }
+
+  :global([data-anim]) .scan-badge {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  :global([data-anim] .is-live) .vf {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.3s ease 1.9s,
+      transform 0.5s var(--aud-ease) 1.9s;
+  }
+
+  :global([data-anim] .is-live) .scan-line {
+    animation: aud-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) 2.25s 1 forwards;
+  }
+
+  /* «✓» azca sıçrayıb oturur (əyrinin 1.6 nöqtəsi hədəfi keçir). */
+  :global([data-anim] .is-live) .scan-badge {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.3s ease 3.35s,
+      transform 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) 3.35s;
+  }
+
+  /* Bir dəfə sönən yellənmə; `both` gecikmə vaxtında və sonra 0° vəziyyətini saxlayır. */
+  :global([data-anim] .is-live) .hang {
+    animation: aud-swing 2.8s ease-in-out 0.15s 1 both;
+  }
+
+  /* Hover-də Audience.astro-nun skripti `re-swing` əlavə edir: daha yumşaq yellənmə. */
+  :global([data-anim] .is-live) .hang.re-swing {
+    animation: aud-swing-soft 2.2s ease-in-out 0s 1 both;
+  }
+
+  /* Keyframe adı scope olunmur: ad toqquşmasın deyə `aud-` prefiksi. */
+  @keyframes aud-swing {
+    0% {
+      transform: rotate(0);
+    }
+    10% {
+      transform: rotate(6deg);
+    }
+    28% {
+      transform: rotate(-4.2deg);
+    }
+    46% {
+      transform: rotate(2.6deg);
+    }
+    63% {
+      transform: rotate(-1.5deg);
+    }
+    79% {
+      transform: rotate(0.7deg);
+    }
+    92% {
+      transform: rotate(-0.25deg);
+    }
+    100% {
+      transform: rotate(0);
+    }
+  }
+
+  @keyframes aud-swing-soft {
+    0% {
+      transform: rotate(0);
+    }
+    14% {
+      transform: rotate(3.2deg);
+    }
+    36% {
+      transform: rotate(-2.2deg);
+    }
+    58% {
+      transform: rotate(1.2deg);
+    }
+    78% {
+      transform: rotate(-0.5deg);
+    }
+    100% {
+      transform: rotate(0);
+    }
+  }
+
+  @keyframes aud-scan {
+    0% {
+      opacity: 0;
+      top: 6px;
+    }
+    15% {
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      top: calc(100% - 9px);
+    }
+  }
+</style>
