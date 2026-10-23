@@ -136,6 +136,30 @@ select.inp{cursor:pointer}
 .form-row.cols2{grid-template-columns:1fr 1fr}
 .form-label{font-size:12px;font-weight:700;color:var(--c600);margin-bottom:5px;display:block}
 
+/* Sahənin altındakı xəta (FieldError) və xətalı sahənin çərçivəsi. Rəng --clay-dan bir az tünddür:
+   --clay ağ fonda kiçik mətn üçün kifayət qədər oxunaqlı deyil (4.2:1, lazım olan 4.5:1). */
+.field-err{display:flex;align-items:flex-start;gap:6px;margin-top:6px;font-size:12.5px;font-weight:600;line-height:1.45;color:#A8432A}
+.field-err svg{width:14px;height:14px;flex-shrink:0;margin-top:1px}
+.inp[aria-invalid="true"]{border-color:var(--clay)}
+.inp[aria-invalid="true"]:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--clay) 20%,transparent)}
+
+/* Telefon sahəsinin qabağındakı "+994": nömrənin hissəsidir, amma dəyişdirilmir (PhoneInput). */
+.phone-prefix{flex:none;padding:10px 12px;border-radius:var(--r);border:1px solid var(--c200);background:var(--c50);
+  color:var(--c600);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* İki seçimdən biri — "Telefon / E-poçt" (IdentifierInput). Seçilən düymə aria-pressed="true" alır,
+   görünüş də elə ona bağlıdır: ekran oxuyucunun eşitdiyi ilə gözün gördüyü ayrıla bilməz. */
+.seg{display:flex;gap:3px;padding:3px;border-radius:12px;background:var(--c50);border:1px solid var(--c200)}
+.seg-btn{flex:1;min-height:36px;padding:7px 10px;border:none;border-radius:9px;background:transparent;color:var(--c500);
+  font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s,color .15s,box-shadow .15s}
+.seg-btn:hover{color:var(--c900)}
+.seg-btn[aria-pressed="true"]{background:var(--white);color:var(--c900);box-shadow:var(--sh-sm)}
+.seg-btn:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+.seg-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Giriş və "PIN-i unutdum" sahəsi telefonda doldurulur: iPhone 16px-dən kiçik sahəyə toxunanda səhifəni
+   böyüdür (zoom), ona görə burada şrift 16px-dir (admin paneldəki .inp 14px qalır). */
+.identifier-input .inp{font-size:16px}
+
 /* Table */
 /* `table.tbl` is the same table without the wrapper div. Six pages — the whole SuperAdmin console
    among them — used that class believing it was styled, and it was not: every rule below was written
