@@ -3,7 +3,17 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { forgotPin, forgotPinCheck, forgotPinVerify } from '../api/auth'
 import { getDeviceFingerprint } from '../lib/device'
 import { platform } from '../lib/geo'
+import { cleanPhone, formatPhone, phoneError } from '../lib/phone'
+import { isValidEmail } from '../lib/validation'
+import { IdentifierInput, type IdentifierMode } from '../components/IdentifierInput'
+import { AuthLayout } from '../components/auth/AuthLayout'
+import { riseOrder } from '../components/auth/riseOrder'
+import { shakeClass } from '../components/auth/shake'
+import { IconCamera, IconCameraOff, IconCheck, IconSun, IconX } from '../components/icons'
 import { classifyAdminRequest, classifyVerify, NETWORK_MESSAGE } from './forgotPinOutcome'
+import './ForgotPinPage.css'
+
+const IDENTIFIER_ID = 'forgot-pin-identifier'
 
 /**
  * Self-service "PIN-i unutdum". Two factors, no admin: a selfie matched to the reference photo, from a
@@ -38,9 +48,17 @@ export function ForgotPinPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const prefilled = (location.state as { identifier?: string } | null)?.identifier ?? ''
+  const prefilledIsEmail = prefilled.includes('@')
 
   const [phase, setPhase] = useState<Phase>('ask')
-  const [identifier, setIdentifier] = useState(prefilled)
+  // Server (forgot-pin, check, verify) hesabı login kimi telefon VƏ YA e-poçtla tapır, ona görə hər ikisi
+  // mümkündür. Dəyərlər ayrı saxlanılır ki, seçim dəyişəndə yazılan itməsin.
+  const [mode, setMode] = useState<IdentifierMode>(prefilledIsEmail ? 'email' : 'phone')
+  const [phone, setPhone] = useState(prefilledIsEmail ? '' : cleanPhone(prefilled, 'local'))
+  const [email, setEmail] = useState(prefilledIsEmail ? prefilled : '')
+  const [identifierError, setIdentifierError] = useState<string | null>(null)
+  // Serverə gedən dəyər: telefon seçilibsə boşluqsuz rəqəmlər, e-poçt seçilibsə e-poçt.
+  const identifier = mode === 'phone' ? phone : email.trim()
   const [pin, setPin] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -52,6 +70,15 @@ export function ForgotPinPage() {
   const [camReady, setCamReady] = useState(false)
   const [camError, setCamError] = useState(false)
   const [camBusy, setCamBusy] = useState(false)
+  /* Photo shown while checking */
+  const [snapshot, setSnapshot] = useState<string | null>(null)
+
+  /* Error feedback */
+  const [identifierShakes, setIdentifierShakes] = useState(0)
+  const [sceneAlertKey, setSceneAlertKey] = useState(0)
+  useEffect(() => {
+    if (phase === 'failed') setSceneAlertKey((count) => count + 1)
+  }, [phase])
   /** Has the camera already failed once? A second identical failure needs different words. */
   const camFailedOnceRef = useRef(false)
 
@@ -109,8 +136,17 @@ export function ForgotPinPage() {
   }
 
   async function startFlow() {
-    if (!identifier.trim()) {
-      setError('Telefon nömrəsi daxil edin')
+    // Sorğudan əvvəl yoxlama: xəta sahənin altında görünür və sorğu getmir.
+    let problem: string | null = null
+    if (mode === 'phone') {
+      problem = phoneError(phone, 'local')
+    } else if (!isValidEmail(email)) {
+      problem = 'E-poçtu tam yazın, məsələn: ad@sirket.az'
+    }
+    if (problem) {
+      setIdentifierError(problem)
+      setIdentifierShakes((count) => count + 1)
+      document.getElementById(IDENTIFIER_ID)?.focus()
       return
     }
     setError(null)
@@ -121,7 +157,11 @@ export function ForgotPinPage() {
       // people retook the selfie again and again for a wrong digit.
       const { status, data } = await forgotPinCheck(identifier.trim())
       if (status === 200 && data && 'known' in data && data.known === false) {
-        setError('Bu nömrə sistemdə yoxdur. Nömrəni yoxlayın və ya rəhbərinizə deyin.')
+        setError(
+          mode === 'phone'
+            ? 'Bu nömrə sistemdə yoxdur. Nömrəni yoxlayın və ya rəhbərinizə deyin.'
+            : 'Bu e-poçt sistemdə yoxdur. E-poçtu yoxlayın və ya rəhbərinizə deyin.',
+        )
         return
       }
       // Anything else — a server hiccup, a rate limit — is not a reason to block a locked-out person:
@@ -136,6 +176,7 @@ export function ForgotPinPage() {
 
   function retryPhoto() {
     setError(null)
+    setSnapshot(null)
     setPhase('camera')
   }
 
@@ -159,6 +200,7 @@ export function ForgotPinPage() {
     }
     ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
     const photo = canvas.toDataURL('image/jpeg', 0.8)
+    setSnapshot(photo)
     stopCamera()
     setError(null)
     setPhase('checking')
@@ -204,219 +246,341 @@ export function ForgotPinPage() {
     }
   }
 
-  const card = 'w-full max-w-sm rounded-3xl border border-slate-100 bg-white p-6 shadow-sm'
-  const wrap = 'flex min-h-screen flex-col items-center justify-center bg-slate-50 p-4 text-slate-900'
-  const primaryBtn = 'mt-3 w-full rounded-2xl bg-blue-600 py-3 font-bold text-white disabled:opacity-50'
-  const quietBtn = 'mt-2 w-full rounded-2xl bg-slate-100 py-3 font-semibold text-slate-700 disabled:opacity-50'
+
+  /* Shared pieces */
   const backLink = (
-    <button onClick={() => navigate('/login')} className="mt-4 w-full text-sm font-semibold text-slate-500 underline underline-offset-2">
-      Girişə qayıt
-    </button>
+    <div className="auth-center auth-rise" style={riseOrder(7)}>
+      <button type="button" className="auth-link" onClick={() => navigate('/login')}>
+        Girişə qayıt
+      </button>
+    </div>
   )
-  // Every branch that has a button also shows what went wrong with it — a button that reports nothing
-  // reads as a broken app.
-  const errorNote = error ? <p className="mt-2 text-center text-sm text-red-600">{error}</p> : null
-  const adminButton = (className: string) => (
-    <button onClick={() => void sendAdminRequest()} disabled={busy} className={className}>
+  const errorNote = error ? (
+    <div role="alert" className="auth-inline-alert">
+      <IconX aria-hidden="true" />
+      <span>{error}</span>
+    </div>
+  ) : null
+  const adminButton = (
+    <button type="button" onClick={() => void sendAdminRequest()} disabled={busy} className="btn btn-outline btn-bl btn-lg fp-second">
       {busy ? 'Göndərilir…' : 'Administratora sorğu göndər'}
     </button>
   )
 
-  if (phase === 'success' && pin) {
+  /* Phone step */
+  if (phase === 'ask') {
     return (
-      <div className={wrap}>
-        <div className={card}>
-          <div className="text-center text-5xl">✅</div>
-          <h1 className="mt-2 text-center text-xl font-bold">Sizi tanıdıq</h1>
-          <div className="mt-4 rounded-2xl bg-green-50 p-5 text-center">
-            <div className="text-sm font-semibold text-slate-500">Yeni müvəqqəti PIN-iniz</div>
-            <div className="mt-1 text-4xl font-extrabold tracking-[0.3em] text-green-700">{pin}</div>
-          </div>
-          <p className="mt-4 text-center text-sm text-slate-600">
-            Bu PIN-lə daxil olun — sonra sistem sizdən <b>öz PIN-inizi</b> təyin etməyi istəyəcək.
+      <AuthLayout variant="pin" sceneAlertKey={sceneAlertKey}>
+        <div key="ask">
+          <StepIndicator step={1} />
+          <h1 id="forgot-pin-title" className="auth-title auth-rise" style={riseOrder(2)}>
+            PIN-i unutdum
+          </h1>
+          <p className="auth-sub auth-rise" style={riseOrder(3)}>
+            Telefon nömrənizi yazın, sonra üzünüzü təsdiqləyin — yeni PIN dərhal veriləcək.
           </p>
-          <button
-            onClick={() => navigate('/login', { state: { identifier: identifier.trim() } })}
-            className="mt-5 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white"
+          <form
+            noValidate
+            aria-labelledby="forgot-pin-title"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void startFlow()
+            }}
           >
-            Girişə keç
-          </button>
+            <IdentifierInput
+              id={IDENTIFIER_ID}
+              mode={mode}
+              onModeChange={(nextMode) => {
+                setMode(nextMode)
+                setIdentifierError(null)
+              }}
+              phone={phone}
+              onPhoneChange={(digits) => {
+                setPhone(digits)
+                setIdentifierError(null)
+              }}
+              email={email}
+              onEmailChange={(text) => {
+                setEmail(text)
+                setIdentifierError(null)
+              }}
+              error={identifierError}
+              switchClassName="auth-rise"
+              switchStyle={riseOrder(4)}
+              fieldClassName="auth-field auth-rise"
+              fieldStyle={riseOrder(5)}
+              boxClassName={identifierError ? shakeClass(identifierShakes) : undefined}
+            />
+            <div className="auth-submit auth-rise" style={riseOrder(6)}>
+              {errorNote}
+              <button type="submit" disabled={busy} className="btn btn-primary btn-bl btn-lg">
+                {busy && <span className="auth-spinner" aria-hidden="true" />}
+                {busy ? 'Yoxlanılır…' : 'Davam et'}
+              </button>
+            </div>
+          </form>
+          {backLink}
         </div>
-      </div>
+      </AuthLayout>
     )
   }
 
+  /* Admin request sent */
   if (phase === 'requested') {
     return (
-      <div className={wrap}>
-        <div className={card}>
-          <div className="text-center text-5xl">📨</div>
-          <h1 className="mt-2 text-center text-xl font-bold">Sorğu göndərildi</h1>
+      <AuthLayout variant="pin" sceneAlertKey={sceneAlertKey}>
+        <div key="requested">
+          <StepIndicator step={2} />
+          <h1 className="auth-title auth-rise" style={riseOrder(2)}>
+            Sorğu göndərildi
+          </h1>
           {/* The server answers the same 200 whether it filed the request, did not know the number, or
-              hit its per-IP limit — so this screen must not promise that an admin will act on it. It
-              shows the number that was sent (a typo on a phone keypad is the likeliest input error
-              here) and names a route that works either way. */}
-          <p className="mt-3 text-center text-sm text-slate-600">
-            Nömrəniz: <b>{identifier.trim()}</b>
-          </p>
-          <p className="mt-2 text-center text-sm text-slate-600">
-            Nömrə səhvdirsə, geri qayıdıb düzgün yazın və yenidən göndərin.
-          </p>
-          <p className="mt-2 text-center text-sm text-slate-600">
-            Administratorunuz PIN-inizi sıfırlayıb sizə yeni müvəqqəti PIN verəcək. Bu gün cavab
-            gəlməsə, rəhbərinizə və ya administratora birbaşa deyin.
-          </p>
-          <button
-            onClick={() => {
-              setError(null)
-              setPhase('ask')
-            }}
-            className="mt-5 w-full rounded-2xl bg-slate-100 py-3 font-semibold text-slate-700"
-          >
-            Nömrəni dəyiş
-          </button>
-          {backLink}
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'failed') {
-    return (
-      <div className={wrap}>
-        <div className={card}>
-          <div className="text-center text-5xl">🙁</div>
-          <h1 className="mt-2 text-center text-xl font-bold">Sizi tanıya bilmədik</h1>
-          {/* The server deliberately does not say which factor failed, so neither do we. But the common
-              case is the device gate — a new phone is the usual reason to be on this screen at all — and
-              a new phone can NEVER pass, however many selfies are taken. So the admin request leads and
-              the retry is the quiet one; it used to be the other way round. */}
-          <p className="mt-3 text-center text-sm text-slate-600">
-            Ola bilsin ki, bu telefon hesabınıza bağlı deyil — məsələn, yeni telefon işlədirsiniz. Belə
-            halda şəkli neçə dəfə çəksəniz də nəticə dəyişməyəcək. Ən qısa yol — administratora sorğu
-            göndərmək.
-          </p>
-          {adminButton('mt-5 w-full rounded-2xl bg-blue-600 py-3 font-bold text-white disabled:opacity-50')}
-          <button onClick={retryPhoto} className={quietBtn}>
-            Şəkli yenidən çək
-          </button>
-          {errorNote}
-          {backLink}
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'unreachable') {
-    return (
-      <div className={wrap}>
-        <div className={card}>
-          <div className="text-center text-5xl">📶</div>
-          <h1 className="mt-2 text-center text-xl font-bold">Yoxlama başa çatmadı</h1>
-          <p className="mt-3 text-center text-sm text-slate-600">
-            {trouble} Düzəlməsə, administratora sorğu göndərin — PIN-inizi o sıfırlayacaq.
-          </p>
-          <button onClick={retryPhoto} className="mt-5 w-full rounded-2xl bg-blue-600 py-3 font-bold text-white">
-            Yenidən cəhd et
-          </button>
-          {adminButton(quietBtn)}
-          {errorNote}
-          {backLink}
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'checking') {
-    return (
-      <div className={wrap}>
-        <div className={card}>
-          <p className="animate-pulse text-center text-lg font-semibold">Yoxlanılır…</p>
-          {/* The wait is bounded by the request's own deadline (api/auth.ts), so this screen always
-              moves on by itself — say so, and still carry an exit for anyone who would rather leave. */}
-          <p className="mt-2 text-center text-sm text-slate-500">
-            Bu bir neçə saniyə çəkə bilər. Cavab gəlməsə, ekran özü dəyişəcək və yenidən cəhd edə
-            biləcəksiniz.
-          </p>
-          {backLink}
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'camera') {
-    return (
-      <div className={wrap}>
-        <div className={card}>
-          <h1 className="text-center text-xl font-bold">Üzünüzü təsdiqləyin</h1>
-          <p className="mt-1 text-center text-sm text-slate-500">
-            Üzünüzü aydın kameraya tutun — bu, sizin olduğunuzu təsdiqləyir.
-          </p>
-          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900" style={{ aspectRatio: '3 / 4' }}>
-            <video ref={videoRef} playsInline muted autoPlay className="h-full w-full -scale-x-100 object-cover" />
+              hit its per-IP limit — so this screen must not promise that an admin will act on it. */}
+          <div className="auth-rise" style={riseOrder(3)}>
+            <div role="status" className="fb fb-info fp-gap">
+              <span>
+                {mode === 'phone' ? 'Nömrəniz' : 'E-poçtunuz'}:{' '}
+                <b>{mode === 'phone' ? formatPhone(phone, 'local') : email.trim()}</b>
+              </span>
+            </div>
+            <p className="fp-text">
+              {mode === 'phone' ? 'Nömrə' : 'E-poçt'} səhvdirsə, geri qayıdıb düzgün yazın və yenidən göndərin.
+            </p>
+            <p className="fp-text">
+              Administratorunuz PIN-inizi sıfırlayıb sizə yeni müvəqqəti PIN verəcək. Bu gün cavab gəlməsə,
+              rəhbərinizə və ya administratora birbaşa deyin.
+            </p>
           </div>
-          {camError ? (
-            <>
-              {/* "Kamera açılmadı" read as "my phone is broken". It is a permission, it is fixable from
-                  the phone — but only if we name the exact menu, the way CameraHelp does on the scan
-                  screen — and it needs a button that actually re-opens the camera afterwards. */}
-              <p className="mt-3 text-center text-sm font-semibold text-amber-800">
-                Telefon kameraya icazə vermir.
-              </p>
-              <p className="mt-1 text-left text-sm leading-relaxed text-amber-700">{cameraPermissionPath()}</p>
-              <p className="mt-1 text-center text-sm text-amber-700">
-                İcazə verdikdən sonra aşağıdakı düyməni basın. Alınmasa, administratora sorğu göndərin.
-              </p>
-              <button onClick={() => void startCamera()} disabled={camBusy} className={primaryBtn}>
-                {camBusy ? 'Açılır…' : 'Kameranı yenidən aç'}
-              </button>
-              {adminButton(quietBtn)}
-              {errorNote}
-            </>
-          ) : (
+          <div className="auth-submit auth-rise" style={riseOrder(4)}>
+            <button
+              type="button"
+              className="btn btn-outline btn-bl btn-lg"
+              onClick={() => {
+                setError(null)
+                setPhase('ask')
+              }}
+            >
+              {mode === 'phone' ? 'Nömrəni dəyiş' : 'E-poçtu dəyiş'}
+            </button>
+          </div>
+          {backLink}
+        </div>
+      </AuthLayout>
+    )
+  }
+
+  /* Face step */
+  const look = cameraLook(phase, camError)
+
+  return (
+    <AuthLayout variant="pin" sceneAlertKey={sceneAlertKey}>
+      <div key="face">
+        <StepIndicator step={2} />
+        <h1 className="auth-title auth-rise" style={riseOrder(2)}>
+          Üzünüzü təsdiqləyin
+        </h1>
+        <p className="auth-sub auth-rise" style={riseOrder(3)}>
+          Üzünüzü ovalın içində saxlayın. Bu, hesabın sizə aid olduğunu təsdiqləyir.
+        </p>
+
+        <div className="auth-rise" style={riseOrder(4)}>
+          <div className={`fp-camera fp-camera--${look}`}>
+            {phase === 'camera' && (
+              <video
+                ref={videoRef}
+                className="fp-camera__media"
+                playsInline
+                muted
+                autoPlay
+                hidden={camError}
+              />
+            )}
+            {phase !== 'camera' && snapshot && <img className="fp-camera__media" src={snapshot} alt="" />}
+            {look === 'blocked' ? (
+              <div className="fp-camera__blocked" aria-hidden="true">
+                <IconCameraOff />
+              </div>
+            ) : (
+              <FaceGuide look={look} />
+            )}
+          </div>
+        </div>
+
+        <div className="auth-rise" style={riseOrder(5)}>
+          <div role="status">
+            {phase === 'checking' && <p className="fp-text fp-gap">Üzünüz yoxlanılır, bir neçə saniyə gözləyin.</p>}
+            {phase === 'success' && pin && (
+              <div className="fb fb-ok fp-result fp-gap">
+                <IconCheck aria-hidden="true" />
+                <div>
+                  <b className="fp-result__title">Üzünüz təsdiqləndi.</b>
+                  <div className="fp-pin">
+                    <span className="fp-pin__label">Yeni müvəqqəti PIN-iniz</span>
+                    <span className="fp-pin__value">{pin}</span>
+                  </div>
+                  <span>
+                    Bu PIN-lə daxil olun — sonra sistem sizdən <b>öz PIN-inizi</b> təyin etməyi istəyəcək.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {phase === 'camera' && !camError && (
+            <p className="fp-tip">
+              <IconSun aria-hidden="true" />
+              <span>Üzünüz işıqlı olsun, işıq arxadan düşməsin. Eynək və papaqsız çəkin.</span>
+            </p>
+          )}
+          {phase === 'camera' && camError && (
+            <div role="alert" className="fb fp-warn fp-gap">
+              <div>
+                <p>
+                  Kameraya icazə verilməyib. Brauzerin ünvan sətrindəki kamera ikonuna basıb icazə verin, sonra
+                  səhifəni yeniləyin.
+                </p>
+                {platform() !== 'other' && <p className="fp-warn__path">{cameraPermissionPath()}</p>}
+              </div>
+            </div>
+          )}
+          {phase === 'failed' && (
+            <div role="alert" className="auth-inline-alert">
+              <IconX aria-hidden="true" />
+              <div>
+                <p>Üz uyğun gəlmədi. İşıqlı yerdə, üzünüzü ovalın içində saxlayıb yenidən çəkin.</p>
+                {/* The server deliberately does not say which factor failed. A new phone is the usual
+                    reason to be here, and a new phone can never pass — so the admin request stays one tap away. */}
+                <p className="fp-err__hint">
+                  Ola bilsin ki, bu telefon hesabınıza bağlı deyil — məsələn, yeni telefon işlədirsiniz. Belə halda
+                  administratora sorğu göndərin.
+                </p>
+              </div>
+            </div>
+          )}
+          {phase === 'unreachable' && (
+            <div role="alert" className="auth-inline-alert">
+              <IconX aria-hidden="true" />
+              <span>
+                Yoxlama başa çatmadı. {trouble} Düzəlməsə, administratora sorğu göndərin — PIN-inizi o sıfırlayacaq.
+              </span>
+            </div>
+          )}
+          {errorNote}
+        </div>
+
+        <div className="auth-rise" style={riseOrder(6)}>
+          {phase === 'camera' && !camError && (
             <>
               <button
+                type="button"
                 onClick={() => void captureAndVerify()}
                 disabled={!camReady}
-                className="mt-3 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white disabled:opacity-50"
+                className="btn btn-primary btn-bl btn-lg"
               >
-                📷 Şəkil çək və yoxla
+                <IconCamera aria-hidden="true" />
+                Şəkil çək və yoxla
               </button>
-              {/* The working camera keeps ONE button — but the moment taking the photo goes wrong,
-                  the way out appears under the explanation instead of leaving them tapping. */}
-              {errorNote}
-              {error && adminButton(quietBtn)}
+              {error && adminButton}
             </>
           )}
-          {backLink}
+          {phase === 'camera' && camError && (
+            <>
+              <button type="button" onClick={() => void startCamera()} disabled={camBusy} className="btn btn-primary btn-bl btn-lg">
+                {camBusy && <span className="auth-spinner" aria-hidden="true" />}
+                {camBusy ? 'Açılır…' : 'Yenidən yoxla'}
+              </button>
+              {adminButton}
+            </>
+          )}
+          {phase === 'checking' && (
+            <button type="button" disabled className="btn btn-primary btn-bl btn-lg">
+              <span className="auth-spinner" aria-hidden="true" />
+              Yoxlanılır…
+            </button>
+          )}
+          {phase === 'success' && (
+            <button
+              type="button"
+              onClick={() => navigate('/login', { state: { identifier: identifier.trim() } })}
+              className="btn btn-primary btn-bl btn-lg"
+            >
+              Girişə keç
+            </button>
+          )}
+          {phase === 'failed' && (
+            <>
+              <button type="button" onClick={retryPhoto} className="btn btn-primary btn-bl btn-lg">
+                <IconCamera aria-hidden="true" />
+                Yenidən çək
+              </button>
+              {adminButton}
+            </>
+          )}
+          {phase === 'unreachable' && (
+            <>
+              <button type="button" onClick={retryPhoto} className="btn btn-primary btn-bl btn-lg">
+                Yenidən cəhd et
+              </button>
+              {adminButton}
+            </>
+          )}
         </div>
-      </div>
-    )
-  }
 
-  // phase === 'ask'
-  return (
-    <div className={wrap}>
-      <div className={card}>
-        <h1 className="text-center text-xl font-bold">PIN-i unutdum</h1>
-        <p className="mt-2 text-center text-sm text-slate-500">
-          Telefon nömrənizi yazın, sonra üzünüzü təsdiqləyin — yeni PIN dərhal veriləcək.
-        </p>
-        {errorNote}
-        <input
-          className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-center text-lg focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          type="tel"
-          inputMode="tel"
-          placeholder="Telefon nömrəsi"
-          value={identifier}
-          onChange={(e) => setIdentifier(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void startFlow()}
-        />
-        <button onClick={() => void startFlow()} disabled={busy} className="mt-4 w-full rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white">
-          {busy ? 'Yoxlanılır…' : 'Davam et'}
-        </button>
-        {backLink}
+        {phase !== 'success' && backLink}
       </div>
+    </AuthLayout>
+  )
+}
+
+/* Camera states */
+type CameraLook = 'ready' | 'checking' | 'success' | 'nomatch' | 'blocked'
+
+function cameraLook(phase: Phase, camError: boolean): CameraLook {
+  if (phase === 'camera') return camError ? 'blocked' : 'ready'
+  if (phase === 'checking') return 'checking'
+  if (phase === 'success') return 'success'
+  if (phase === 'failed') return 'nomatch'
+  return 'ready'
+}
+
+/* Step indicator */
+function StepIndicator({ step }: { step: 1 | 2 }) {
+  return (
+    <div className="fp-steps auth-rise" style={riseOrder(1)}>
+      <span className="fp-steps__bar is-on" aria-hidden="true" />
+      <span className={step === 2 ? 'fp-steps__bar is-on' : 'fp-steps__bar'} aria-hidden="true" />
+      <span className="fp-steps__text">Addım {step} / 2</span>
     </div>
+  )
+}
+
+/* Face guide */
+function FaceGuide({ look }: { look: CameraLook }) {
+  return (
+    <>
+      <svg className="fp-guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <ellipse className="fp-guide__oval" cx="50" cy="45" rx="20" ry="33" vectorEffect="non-scaling-stroke" />
+        <path
+          className="fp-guide__corners"
+          d="M24 16V7h7M69 7h7v9M76 74v9h-7M31 83h-7v-9"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      {look === 'checking' && (
+        <div className="fp-scan-track" aria-hidden="true">
+          <div className="fp-scan" />
+        </div>
+      )}
+      {look === 'success' && (
+        <div className="fp-badge fp-badge--ok" aria-hidden="true">
+          <IconCheck />
+        </div>
+      )}
+      {look === 'nomatch' && (
+        <div className="fp-badge fp-badge--bad" aria-hidden="true">
+          <IconX />
+        </div>
+      )}
+    </>
   )
 }
