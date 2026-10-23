@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Application.Common;
@@ -83,8 +84,14 @@ public class AttendanceController : ControllerBase
     private readonly IFaceMatchService _faceMatch;
     private readonly DeviceBindingOptions _deviceOptions;
     private readonly TimeZoneInfo _timeZone;
+    // Divar saatı. İstehsalda TimeProvider.System-dir, yəni DateTime.UtcNow ilə eyni dəyər;
+    // testlər onu sabitləyə bilsin deyə inject olunur — bax aşağıda Scan-ın serverNow-u.
+    private readonly TimeProvider _clock;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AttendanceController> _logger;
+    // Tells a branch's managers about somebody stuck at the poster (see StaffAlerts). Optional: no queue,
+    // no alert — never an error, and never anything a scan waits on.
+    private readonly IStaffAlertQueue? _alerts;
 
     public AttendanceController(
         AppDbContext db,
@@ -98,9 +105,13 @@ public class AttendanceController : ControllerBase
         AppOptions appOptions,
         IMemoryCache cache,
         ILogger<AttendanceController> logger,
-        ISummaryRebuildQueue? summaryRebuild = null)
+        ISummaryRebuildQueue? summaryRebuild = null,
+        TimeProvider? clock = null,
+        IStaffAlertQueue? alerts = null)
     {
         _summaryRebuild = summaryRebuild;
+        _clock = clock ?? TimeProvider.System;
+        _alerts = alerts;
         _db = db;
         _qrTokenService = qrTokenService;
         _attendanceQuery = attendanceQuery;
@@ -141,11 +152,11 @@ public class AttendanceController : ControllerBase
         // of a split shift. The phone used to decide «finished» on its own and hide the button; it now
         // shows it when THIS says so, and this asks the same two rules Scan does.
         //
-        // Only when the day Scan would file this scan under is the day shown. Scan dates by the UTC
-        // calendar; between 00:00 and 04:00 in Baku the two disagree, and a guess there is worse than
-        // the old behaviour — which is what false gives.
+        // There used to be a third condition here, that the UTC day still matched the company day,
+        // because Scan filed by the UTC calendar and between 00:00 and 04:00 in Baku the two
+        // disagreed. Scan now files by the company day as well, so the hedge is gone — and with it the
+        // four hours after midnight when this screen hid a button the poster would have accepted.
         if (record.CheckOutAtUtc is not null && record.CheckInAtUtc is not null
-            && DateOnly.FromDateTime(nowUtc) == today
             && await MayScanAgainAsync(employeeId, today, nowLocal))
             record = record with { MayScanAgain = true };
         return Ok(record);
@@ -584,7 +595,10 @@ public class AttendanceController : ControllerBase
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
 
-        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, role, record.EmployeeId, ct))
+        // A selfie is its own right in the model («attendance.photos.view»): a timekeeper or an observer sees
+        // their people's days, not their faces. Read in Enforced only — today the scope alone decides.
+        if (!await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, role, record.EmployeeId, ct,
+                AccessPermissions.AttendancePhotosView))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
 
         var referenceKey = await _db.Employees
@@ -658,6 +672,11 @@ public class AttendanceController : ControllerBase
         {
             await WriteAuditAsync(employeeId, AuditEventType.ScanBlockedOnDevice, reason,
                 HttpContext.Connection.RemoteIpAddress?.ToString());
+
+            // A permission the manager at the site can switch on: they hear about it if the person is
+            // still stuck once the grace period is over.
+            if (StaffAlertKinds.IsAlertable(request.Reason))
+                _alerts?.Enqueue(new StaffAlert(_db.CurrentTenantId, employeeId, request.Reason, _clock.GetUtcNow().UtcDateTime));
         }
 
         return Accepted();
@@ -790,11 +809,11 @@ public class AttendanceController : ControllerBase
         if (deviceRejection is not null)
             return deviceRejection;
 
-        // 6. Resolve today's record (server UTC day) and decide check-in vs check-out.
+        // 6. Resolve today's record (the COMPANY's day) and decide check-in vs check-out.
         // An offline scan carries the phone's clock; trust it only within a sane window, otherwise fall
         // back to server time so a rolled-back clock can't fake an on-time arrival. Online scans (the
         // overwhelming majority) always use server time — Offline is false, so this is a no-op for them.
-        var serverNow = DateTime.UtcNow;
+        var serverNow = _clock.GetUtcNow().UtcDateTime;
         var nowUtc = serverNow;
         if (request.Offline && request.ClientTimestampUtc is DateTime clientTs)
         {
@@ -814,7 +833,23 @@ public class AttendanceController : ControllerBase
             }
             nowUtc = clientUtc;
         }
-        var today = DateOnly.FromDateTime(nowUtc);
+        // Which day this scan belongs to, by the clock on the wall in Baku.
+        //
+        // It used to be the UTC day, and Baku is four hours ahead of it: between midnight and 04:00
+        // the scan was still filing under YESTERDAY. On the night of 01→02.10.2026 six people worked
+        // a presidential event at Heydər Əliyev Mərkəzi, checked out at 23:53, and tried to start the
+        // new day a few minutes later. Their yesterday was closed, so the poster answered «Giriş və
+        // çıxış artıq qeydə alınıb» — forty-one times, until the hour reached 04:00 and the UTC
+        // calendar finally agreed it was tomorrow. Six hours each of real work exists only in the
+        // audit log.
+        //
+        // Everything else in the system had always used the company day: the nightly summary, the
+        // tabel, the reports, the reminders, the field visits, and this controller's own /me/today.
+        // The scan was the single place that did not, so what this changes is an inconsistency, not a
+        // convention. The only scans that move are those between 00:00 and 04:00 Baku — in the whole
+        // history there have been three of them, and this is why.
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        var today = DateOnly.FromDateTime(nowLocal);
 
         // Resolved once here and carried through both branches, so a single scan cannot judge its
         // check-in against one set of hours and its check-out against another.
@@ -831,7 +866,7 @@ public class AttendanceController : ControllerBase
 
         // Both branches below need to know where in the day this scan falls: a night shift's single
         // working day spans two dates, so "morning" and "evening" decide what a scan can possibly mean.
-        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        // nowLocal is resolved with `today` above — they answer the same question.
         var yesterday = today.AddDays(-1);
 
         if (record is null)
@@ -1310,7 +1345,7 @@ public class AttendanceController : ControllerBase
     /// </summary>
     private void RebuildIfPast(DateOnly date)
     {
-        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(_clock.GetUtcNow().UtcDateTime, _timeZone));
         if (date < localToday)
             _summaryRebuild?.Request(_db.CurrentTenantId, date);
     }
@@ -1390,7 +1425,7 @@ public class AttendanceController : ControllerBase
     // being physically at the location is the whole evidence behind an automatic binding.
     private async Task<IActionResult?> ResolveDeviceAsync(Employee employee, string fingerprint, string? ip)
     {
-        var nowUtc = DateTime.UtcNow;
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
 
         var known = employee.DeviceBindings.FirstOrDefault(d =>
             d.IsActive && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
@@ -1406,21 +1441,18 @@ public class AttendanceController : ControllerBase
         var revoked = employee.DeviceBindings.FirstOrDefault(d =>
             d.RevokedAtUtc != null && string.Equals(d.DeviceFingerprint, fingerprint, StringComparison.Ordinal));
         if (revoked is not null)
-            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint, cause: "DeviceRevoked");
 
         // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change.
         if (!_deviceOptions.AutoBind)
             return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
 
         // Private browsing hands out a fresh storage context per session — uncapped, it would mint a
-        // binding on every scan. Hitting this limit means "talk to this employee", not "attack".
-        var since = nowUtc.AddDays(-30);
-        var recentBinds = await _db.AuditLogs.CountAsync(a =>
-            a.EmployeeId == employee.Id
-            && a.EventType == AuditEventType.DeviceAutoBound
-            && a.CreatedAtUtc >= since);
-        if (recentBinds >= _deviceOptions.MaxBindsPer30Days)
-            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
+        // binding on every scan. Hitting this limit means "talk to this employee", not "attack" — and
+        // an admin approving their request starts the count again (DeviceBindingRules.AutoBindWindowStart).
+        var used = await DeviceBindingAllowance.UsedAsync(_db, employee.Id, nowUtc);
+        if (used >= _deviceOptions.MaxBindsPer30Days)
+            return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint, cause: "DeviceBindLimit");
 
         // Somebody ELSE'S device. Adopting it is what turns a phone into a brigade's shared handset,
         // and it is the moment the "one phone, one employee" control is given up for this person — so
@@ -1484,8 +1516,23 @@ public class AttendanceController : ControllerBase
     /// next but tell the admin almost nothing; a shared-phone refusal has an exact, actionable fix
     /// ("give this person shared-device permission") which is lost if it arrives as DeviceMismatch.
     /// </param>
+    /// <param name="cause">
+    /// Why a phone the account does not know was refused, when a person can act on it:
+    /// <c>DeviceBindLimit</c> (the allowance of automatic adoptions is spent) or <c>DeviceRevoked</c>
+    /// (an admin removed this phone). Both used to arrive as a bare DeviceMismatch, so the employee read
+    /// «Bu cihaz hesabınıza bağlı deyil» whatever had happened and the Problems screen could not tell a
+    /// stolen phone from a forgetful one — eleven people at Bakı Abadlıq were locked out by the
+    /// allowance for twelve days before anybody could see that it was the allowance.
+    ///
+    /// The wire error deliberately stays DeviceMismatch / NoDeviceBound, with the cause beside it. An
+    /// installed app can run a bundle from before this for days; that copy matches on <c>error</c>, and
+    /// a code it has never heard of would reach it as a yellow «QR kod qəbul edilmədi» with a retry
+    /// button while its offline queue resent the scan every minute (lib/scanReject.ts tells that
+    /// story). The audit records the cause itself, because the admin is the one who acts on it.
+    /// </param>
     private async Task<IActionResult> RejectDeviceAsync(
-        Employee employee, string? ip, string? overrideReason = null, string? fingerprint = null)
+        Employee employee, string? ip, string? overrideReason = null, string? fingerprint = null,
+        string? cause = null)
     {
         // "No device at all" and "the wrong device" send the employee down different paths in the
         // app — the first is an admin problem, the second offers "this is my new phone".
@@ -1508,10 +1555,12 @@ public class AttendanceController : ControllerBase
             detail = owners.Count == 0 ? "naməlum telefon" : $"{string.Join(", ", owners)} telefonu";
         }
 
+        var code = cause ?? reason;
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
-            detail is null ? reason : $"{reason}|{detail}", ip);
+            detail is null ? code : $"{code}|{detail}", ip);
+        _alerts?.Enqueue(new StaffAlert(employee.TenantId, employee.Id, code, _clock.GetUtcNow().UtcDateTime));
         // The wire error stays the BARE code — the app matches on it, and the detail is for the admin.
-        return StatusCode(StatusCodes.Status403Forbidden, new { error = reason });
+        return StatusCode(StatusCodes.Status403Forbidden, new { error = reason, cause });
     }
 
     private async Task WriteAuditAsync(Guid? employeeId, AuditEventType eventType, string? reason, string? ip)

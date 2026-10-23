@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -17,6 +18,7 @@ namespace AttendanceQR.Api.Controllers;
 /// on a global table without showing every customer's admin the operator team's own roadmap, so the
 /// table was tenant-scoped first and the allowlist dropped second. See <see cref="TaskItem"/>.
 /// </summary>
+[Permission(AccessPermissions.TasksUse)]
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/tasks")]

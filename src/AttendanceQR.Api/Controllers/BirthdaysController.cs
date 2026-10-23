@@ -1,5 +1,6 @@
 using AttendanceQR.Api;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
@@ -18,6 +19,7 @@ namespace AttendanceQR.Api.Controllers;
 /// privileged thing in the product, and it was the admin's alone for no reason other than that the
 /// screen was written for them.
 /// </summary>
+[Permission(AccessPermissions.EmployeesView)]
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/birthdays")]

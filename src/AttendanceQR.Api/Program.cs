@@ -15,6 +15,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services.Access;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +45,13 @@ builder.Services.Configure<MinioOptions>(
     builder.Configuration.GetSection(MinioOptions.SectionName));
 builder.Services.Configure<RekognitionOptions>(
     builder.Configuration.GetSection(RekognitionOptions.SectionName));
+
+// The wall clock, so a test can pin it. TimeProvider.System reads exactly what DateTime.UtcNow does,
+// so nothing about how the app behaves changes — this only makes the clock an argument instead of an
+// ambient read. AttendanceController takes it optionally and falls back to TimeProvider.System, but
+// the registration is here so the container answers rather than the fallback: an app that resolves a
+// clock explicitly cannot be left wondering which one a controller got.
+builder.Services.AddSingleton(TimeProvider.System);
 
 // Security services.
 builder.Services.AddMemoryCache();
@@ -121,6 +129,10 @@ builder.Services.AddHostedService<PhotoUploadWorker>();
 // Announcement push fan-out out-of-band + the sweep that sends SCHEDULED announcements' pushes.
 builder.Services.AddSingleton<IAnnouncementPushQueue, AnnouncementPushQueue>();
 builder.Services.AddHostedService<AnnouncementPushWorker>();
+// Pushes a branch's managers about a person stuck at the poster, or a new-phone request — off the
+// scan path, which never waits on a notification (see StaffAlerts).
+builder.Services.AddSingleton<IStaffAlertQueue, StaffAlertQueue>();
+builder.Services.AddHostedService<StaffAlertWorker>();
 
 // App options (time zone for shift/UTC math). Registered as a plain singleton so the
 // Application/Infrastructure layers don't need an Options package reference.
@@ -231,6 +243,17 @@ if (hasExpiryExemptHash
         || !qrToken.ExpiryExemptTokenSha256.All(Uri.IsHexDigit)))
     throw new InvalidOperationException(
         "QrToken:ExpiryExemptTokenSha256 must be a 64-character hexadecimal SHA-256 fingerprint.");
+// Read once: the list only changes with a restart, which is also what the off switch below relies on.
+var operatorIds = appOptions.SuperAdminIdList();
+
+// The permission model (docs/strukturlar-ve-selahiyyetler.md). Until a company is switched to Enforced it
+// decides nothing: in Shadow mode the observer and AuthzShadowMiddleware compare it with today's roles and
+// record every disagreement in AuthzShadowEvents. In Enforced it decides (Phase 5): the observer's Decide*
+// and Scope answers, and the gate below on every endpoint that names its permission.
+builder.Services.AddSingleton(new OperatorAllowlist(operatorIds.ToHashSet()));
+builder.Services.AddSingleton<IAuthzShadowSink, DbShadowSink>();
+builder.Services.AddScoped<IAuthzObserver, AuthzObserver>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, PermissionGateHandler>();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -318,6 +341,15 @@ builder.Services
                 if (!account.IsActive)
                 {
                     context.Fail("AccountDeactivated");
+                    return;
+                }
+
+                // A support or view session ends when its operator stops being one — the only off switch
+                // it has, now that it lasts as long as a login. A 401, so the client signs the whole
+                // browser out, the operator's own stashed token included. See ImpersonationAllowlist.
+                if (!ImpersonationAllowlist.StillAllowed(context.Principal!, operatorIds))
+                {
+                    context.Fail("ImpersonatorNotAllowed");
                     return;
                 }
 
@@ -569,6 +601,19 @@ using (var scope = app.Services.CreateScope())
                 seedSlug, seedPhone);
         }
     }
+
+    // The permission model mirrors today's Admin and Manager access as system assignments, re-derived on every
+    // start so drift heals itself (AccessSeeder). Non-fatal: authorization still runs on today's roles.
+    try
+    {
+        var changed = await AccessSeeder.ReconcileAllAsync(db, startupLogger);
+        if (changed > 0)
+            startupLogger.LogInformation("Access reconcile: {Changed} role/assignment row(s) brought in line.", changed);
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogWarning(ex, "Access reconcile skipped (non-fatal).");
+    }
 }
 
 // Ensure the photo-audit bucket exists (once, at startup). Non-fatal and skipped entirely when
@@ -673,6 +718,12 @@ app.UseImpersonationBoundary();
 // A «baxış rejimi» session reads a company and writes nothing. Placed beside the impersonation
 // boundary and before authorization for the same reason: one gate, ahead of every controller.
 app.UseViewOnlyBoundary();
+
+// Shadow mode's gate comparison — decides nothing, see AuthzShadowMiddleware.
+app.UseMiddleware<AuthzShadowMiddleware>();
+// Enforced mode's role: what the permission model makes of the caller for this endpoint, before authorization
+// and every action read it — see AuthzEnforcedMiddleware. Touches nothing in Legacy or Shadow.
+app.UseMiddleware<AuthzEnforcedMiddleware>();
 
 app.UseAuthorization();
 

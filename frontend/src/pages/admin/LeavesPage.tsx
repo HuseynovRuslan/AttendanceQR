@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { LeaveForm } from '../../components/LeaveForm'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { addLeave, deleteLeave, getLeaves, type LeaveRecord, type LeaveType } from '../../api/leaves'
-import { getEmployees, type AdminEmployee } from '../../api/admin'
-import { useAuth } from '../../auth/AuthContext'
+import { getEmployeeSelection, type EmployeeSelectionRow } from '../../api/admin'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import {
   createManagerLeave, deleteManagerLeave, getLeaveSubjects, getManagerLeaves,
 } from '../../api/manager'
 import { IconTrash, IconX } from '../../components/icons'
 import { fmtDate } from '../../lib/format'
+import { listFailureText } from '../../lib/listFailure'
 
 const TYPE_LABELS: Record<LeaveType, string> = {
   Vacation: 'Məzuniyyət',
@@ -20,14 +21,20 @@ const TYPE_LABELS: Record<LeaveType, string> = {
 }
 
 export function LeavesPage() {
-  const { role } = useAuth()
+  // The register's shape by «leaves.view»; in Enforced the narrowed one for anybody but the Company
+  // administrator (see useScopedRole). Writing it is «leaves.manage» — an observer reads it only.
+  const role = useScopedRole('leaves.view')
   const isManager = role === 'Manager'
+  const mayManage = useHolds('leaves.manage', true)
   const [rows, setRows] = useState<LeaveRecord[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<EmployeeSelectionRow[]>([])
   const [filterType, setFilterType] = useState<LeaveType | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  /** The register's own request failed: its empty row must not read «Qeyd yoxdur» — this register
+   *  decides whether a day counts as unexcused absence. */
+  const [listFailed, setListFailed] = useState<number | null>(null)
 
   async function refresh() {
     // A manager reads the same register through their own endpoints, which return only their
@@ -39,14 +46,15 @@ export function LeavesPage() {
       // returns plain staff only. Using it here is why «menecer digər menecerə icazə yaza bilmir»
       // was reported: the endpoint allowed it, the picker never listed them.
       ? await Promise.all([getManagerLeaves(), getLeaveSubjects()])
-      : await Promise.all([getLeaves(), getEmployees()])
+      : await Promise.all([getLeaves(), getEmployeeSelection()])
     // The manager rows are the same shape minus what a manager must not see — no salary on the
     // person, no cross-branch record — which is the point, so the cast goes through `unknown` rather
     // than pretending the two types overlap. Every field this screen reads is on both.
     if (leavesRes.status === 200 && Array.isArray(leavesRes.data))
       setRows(leavesRes.data as unknown as LeaveRecord[])
+    setListFailed(leavesRes.status === 200 ? null : leavesRes.status)
     if (empsRes.status === 200 && Array.isArray(empsRes.data))
-      setEmployees(empsRes.data as unknown as AdminEmployee[])
+      setEmployees(empsRes.data as unknown as EmployeeSelectionRow[])
   }
 
   useEffect(() => {
@@ -85,7 +93,7 @@ export function LeavesPage() {
 
       {/* One form for both surfaces — see LeaveForm for why the employee field is a list and why the
           defaults are what they are. The admin posts to the admin endpoint; the server re-checks. */}
-      <LeaveForm
+      {mayManage && <LeaveForm
         // A leave subject carries no branch — a manager's list is one or two branches they already
         // know — so the second line shows the job instead, and says «həmkar» for a name that is not
         // ordinary staff, which is the one thing about that row worth flagging.
@@ -117,7 +125,7 @@ export function LeavesPage() {
           if (data && 'skipped' in data && data.skipped) return { created: [], skipped: data.skipped }
           return null
         }}
-      />
+      />}
 
       <div className="chip-row" style={{ marginBottom: 12 }}>
         <span className={`chip${!filterType ? ' active' : ''}`} onClick={() => setFilterType('')}>Hamısı</span>
@@ -147,16 +155,18 @@ export function LeavesPage() {
                 <td data-label="Tarix" className="mono">{fmtDate(l.fromDate)}–{fmtDate(l.toDate)}</td>
                 <td data-label="Qeyd">{l.note ?? '—'}</td>
                 <td data-label="">
-                  <button className="btn btn-danger btn-sm" disabled={deletingId === l.id} onClick={() => onDelete(l)}>
-                    <IconTrash /> Sil
-                  </button>
+                  {mayManage && (
+                    <button className="btn btn-danger btn-sm" disabled={deletingId === l.id} onClick={() => onDelete(l)}>
+                      <IconTrash /> Sil
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
             {visible.length === 0 && (
               <tr>
                 <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Qeyd yoxdur
+                  {listFailed != null ? listFailureText(listFailed) : 'Qeyd yoxdur'}
                 </td>
               </tr>
             )}

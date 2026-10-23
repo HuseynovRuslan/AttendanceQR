@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { EmployeeLink } from '../../components/EmployeeLink'
+import { AWAITING_APPROVAL, CORRECTION_ERROR, correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { adminUpdateRecord, closeOpenDays, getOpenRecords, type OpenRecord } from '../../api/attendance'
 import { IconCheck, IconClock, IconX } from '../../components/icons'
 import { fmtDate, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
+import { useHolds } from '../../auth/AccessContext'
 
 // datetime-local <-> ISO, matching EmployeesPage. The input reads/writes the admin's local time; the
 // wire is always UTC ISO.
@@ -26,9 +28,14 @@ const CLOSE_ERROR: Record<string, string> = {
   CheckOutInFuture: 'Çıxış vaxtı gələcəkdə ola bilməz',
   CheckOutBeforeCheckIn: 'Çıxış girişdən əvvəl ola bilməz',
   RecordNotFound: 'Bu gün artıq bağlanıb — səhifəni yeniləyin',
+  // Since 2026-10-15: every correction says why, and nobody closes their own day.
+  ...CORRECTION_ERROR,
 }
 
 export function OpenRecordsPage() {
+  // The list is «attendance.view»; closing a day is a correction — «attendance.correct».
+  const mayCorrect = useHolds('attendance.correct', true)
+  const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   const [rows, setRows] = useState<OpenRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -73,24 +80,31 @@ export function OpenRecordsPage() {
   async function closePicked() {
     const ids = [...picked]
     if (ids.length === 0) return
-    if (!window.confirm(
-      `${ids.length} gün bağlanacaq. Hər gün həmin işçinin öz növbəsinin bitmə saatı ilə yazılacaq. Davam edilsin?`,
-    )) return
+    // One reason for the batch, written into each day's audit line.
+    const reason = await askReason({
+      title: `${ids.length} gün bağlansın?`,
+      detail: 'Hər gün həmin işçinin öz növbəsinin bitmə saatı ilə yazılacaq. Öz gününüz varsa, toxunulmur.',
+      confirmLabel: 'Bağla',
+    })
+    if (!reason) return
 
     setBulkBusy(true)
     setError(null)
     setDone(null)
-    const { status, data } = await closeOpenDays(ids)
+    const { status, data } = await closeOpenDays(ids, reason)
     setBulkBusy(false)
 
     if (status !== 200 || !data || 'error' in data) {
-      setError('Bağlanmadı')
+      const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
+      setError(CLOSE_ERROR[code] ?? 'Bağlanmadı')
       return
     }
     setDone(
-      data.skipped > 0
-        ? `${data.closed} gün bağlandı · ${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)`
-        : `${data.closed} gün bağlandı`,
+      [
+        `${data.closed} gün bağlandı`,
+        data.awaiting ? `${data.awaiting} gün (öz gününüz) təsdiqə göndərildi` : null,
+        data.skipped > 0 ? `${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)` : null,
+      ].filter(Boolean).join(' · '),
     )
     setPicked(new Set())
     await load()
@@ -107,16 +121,21 @@ export function OpenRecordsPage() {
       setError('Çıxış girişdən əvvəl ola bilməz')
       return
     }
-    if (!window.confirm(`${r.employeeName} · ${fmtDate(r.attendanceDate)} — çıxış vaxtı ${fmtTime(iso)} kimi təyin edilsin?`))
-      return
+    const reason = await askReason({
+      title: `${r.employeeName} · ${fmtDate(r.attendanceDate)}`,
+      detail: `Çıxış vaxtı ${fmtTime(iso)} kimi yazılacaq.`,
+      confirmLabel: 'Bağla',
+    })
+    if (!reason) return
     setBusyId(r.recordId)
     setError(null)
-    const { status, data } = await adminUpdateRecord(r.recordId, undefined, iso)
+    const { status, data } = await adminUpdateRecord(r.recordId, undefined, iso, reason)
     if (status === 200) {
       setRows((prev) => (prev ?? []).filter((x) => x.recordId !== r.recordId))
+    } else if (status === 202) {
+      setDone(AWAITING_APPROVAL)
     } else {
-      const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
-      setError(CLOSE_ERROR[code] ?? 'Bağlanmadı')
+      setError(correctionError(data, 'Bağlanmadı', CLOSE_ERROR))
     }
     setBusyId(null)
   }
@@ -132,6 +151,7 @@ export function OpenRecordsPage() {
 
   return (
     <div>
+      {reasonDialog}
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--c900)' }}>Çıxışı unudulan günlər</h1>
         <div className="muted" style={{ fontSize: 13 }}>
@@ -172,7 +192,7 @@ export function OpenRecordsPage() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {mayCorrect && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 className="btn btn-sm"
                 onClick={() => setPicked(new Set(picked.size === closableCount ? [] : closable.map((r) => r.recordId)))}
@@ -187,7 +207,7 @@ export function OpenRecordsPage() {
               >
                 <IconCheck /> {bulkBusy ? 'Bağlanır…' : `Seçilmişləri bağla (${picked.size})`}
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -282,7 +302,7 @@ export function OpenRecordsPage() {
                   />
                 </td>
                 <td data-label="">
-                  {canClose(r) ? (
+                  {canClose(r) && mayCorrect ? (
                     <button className="btn btn-primary btn-sm" disabled={busyId === r.recordId} onClick={() => close(r)}>
                       <IconCheck /> Bağla
                     </button>

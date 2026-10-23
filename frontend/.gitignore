@@ -13,3 +13,10 @@ dist-ssr
 .idea
 .DS_Store
 public/version.json
+
+# Playwright (npm run e2e) output
+/test-results/
+/playwright-report/
+/blob-report/
+# Role sessions and the run's world (tokens) — written by global setup, deleted by teardown
+/e2e/.auth/

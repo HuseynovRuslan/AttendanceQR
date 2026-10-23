@@ -1,12 +1,14 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
@@ -49,12 +51,13 @@ public class AdminAttendanceController : ControllerBase
     // These are the "forgot / couldn't scan to check out" days: the nightly summary marks them
     // Incomplete with 0 minutes worked, so a full day silently reads as zero until an admin closes it.
     // Today is excluded on purpose — an open record for today is just someone still at work.
+    [Permission(AccessPermissions.AttendanceView)]
     [HttpGet("open")]
     public async Task<IActionResult> Open()
     {
-        // AttendanceDate is stamped from the UTC day at check-in (see AttendanceController.Scan), so
-        // the "not today" cutoff uses the same UTC day — no timezone conversion to get out of step.
-        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        // The company day — the same one the scan stamps onto AttendanceDate. It was the UTC day on
+        // both sides until 02.10.2026; see AttendanceController.Scan for the night that changed it.
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
         // A manager sees their own branches; an admin sees the company. Without this the list was
         // tenant-wide for whoever could reach it, and the 500-row cap would have quietly hidden a
@@ -66,7 +69,7 @@ public class AdminAttendanceController : ControllerBase
 
         var rows = await (
             from r in _db.AttendanceRecords
-            where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < todayUtc
+            where r.CheckInAtUtc != null && r.CheckOutAtUtc == null && r.AttendanceDate < today
                   && (managed == null || managed.Contains(r.LocationId))
             join e in _db.Employees on r.EmployeeId equals e.Id
             join l in _db.Locations on r.LocationId equals l.Id
@@ -95,18 +98,23 @@ public class AdminAttendanceController : ControllerBase
         return Ok(rows.Select(x => new
         {
             x.recordId, x.employeeId, x.employeeName, x.locationName, x.attendanceDate, x.checkInAtUtc,
-            closable = managed is null
-                       // Plain staff, and since 2026-09-18 a fellow manager — both of the caller's own branches.
-                       || ((x.Role == EmployeeRole.Employee || x.Role == EmployeeRole.Manager)
-                           && x.employeeId != me && managed.Contains(x.EmployeeLocationId)),
+            // Never one's own day — an admin's included since 2026-10-15 (CanCorrectAttendanceAsync).
+            closable = x.employeeId != me
+                       && (managed is null
+                           // Plain staff, and since 2026-09-18 a fellow manager — both of the caller's own branches.
+                           || ((x.Role == EmployeeRole.Employee || x.Role == EmployeeRole.Manager)
+                               && managed.Contains(x.EmployeeLocationId))),
         }));
     }
 
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPut("{recordId:guid}")]
     public async Task<IActionResult> Update(Guid recordId, [FromBody] AdminAttendanceUpdateRequest request)
     {
         if (request.CheckInAtUtc is null && request.CheckOutAtUtc is null)
             return BadRequest(new { error = "NothingToUpdate" });
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
@@ -114,10 +122,14 @@ public class AdminAttendanceController : ControllerBase
 
         // A manager may only correct their OWN staff's record. Same boundary as every other manager
         // write: their branches, and Role==Employee — the 2026-08-08 rule that stopped a manager
-        // reaching a same-branch admin's account. An admin passes straight through.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
-                _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+        // reaching a same-branch admin's account. An admin passes straight through — except to their own
+        // day, which nobody corrects for themselves (the owner, 2026-10-15) unless nobody else could
+        // (CorrectorAsync — the single-admin rule of 2026-10-16).
+        var (refusal, self) = await CorrectorAsync(record.EmployeeId, "OutOfScope");
+        if (refusal is not null)
+            return refusal;
+        var before = Times(record);
+        var (beforeIn, beforeOut) = (record.CheckInAtUtc, record.CheckOutAtUtc);
 
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId);
         if (location is null)
@@ -129,27 +141,24 @@ public class AdminAttendanceController : ControllerBase
         if (!TryValidateTimes(newCheckIn, newCheckOut, out var error))
             return BadRequest(new { error });
 
-        if (request.CheckInAtUtc is not null)
-        {
-            record.CheckInAtUtc = request.CheckInAtUtc;
-            // Recomputed the same way the scan would have, so an admin correcting a time cannot
-            // produce a status the employee's own shift would never have given.
-            var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId);
-            var shift = employee is null
-                ? EffectiveShift.Resolve(null, null, null, 1, null, null, location)
-                : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
-            record.Status = AttendanceController.DetermineStatus(
-                shift.HoursOn(record.AttendanceDate).Start, shift.LateThresholdMinutes,
-                request.CheckInAtUtc.Value, _timeZone);
-        }
-        if (request.CheckOutAtUtc is not null)
-            record.CheckOutAtUtc = request.CheckOutAtUtc;
-
         var requesterId = User.EmployeeId();
-        record.ManualByEmployeeId = requesterId; // this record was touched by hand — attribute it
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (self == SelfCorrectionAnswer.AwaitApproval)
+        {
+            SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.Update,
+                beforeIn, beforeOut, newCheckIn, newCheckOut, reason, awaitsApproval: true, ip);
+            await _db.SaveChangesAsync();
+            return Accepted(new { status = "AwaitingApproval" });
+        }
+
+        await ApplyTimesAsync(record, location, request.CheckInAtUtc, request.CheckOutAtUtc, requesterId);
+        if (self == SelfCorrectionAnswer.Apply)
+            SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.Update,
+                beforeIn, beforeOut, record.CheckInAtUtc, record.CheckOutAtUtc, reason, awaitsApproval: false, ip);
         await _db.SaveChangesAsync();
 
-        await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+        if (self is null)
+            await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"{before} → {Times(record)}", reason);
 
         await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
 
@@ -174,6 +183,7 @@ public class AdminAttendanceController : ControllerBase
     /// TODAY is never closed, whatever is sent: a shift still running is not a forgotten check-out —
     /// the same rule the board and «Saatlarım» apply.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("close-open")]
     public async Task<IActionResult> CloseOpenDays([FromBody] CloseOpenDaysRequest request)
     {
@@ -183,6 +193,8 @@ public class AdminAttendanceController : ControllerBase
             return BadRequest(new { error = "NothingSelected" });
         if (ids.Count > MaxBulkClose)
             return BadRequest(new { error = "TooMany" });
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var requesterId = User.EmployeeId();
         var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
@@ -191,15 +203,27 @@ public class AdminAttendanceController : ControllerBase
             .Where(r => ids.Contains(r.Id) && r.CheckInAtUtc != null && r.CheckOutAtUtc == null)
             .ToListAsync(ct);
 
-        var closed = 0;
+        var closed = new List<AttendanceRecord>();
+        var ownClosed = new HashSet<Guid>();
         var skipped = 0;
+        var awaiting = 0;
         var days = new HashSet<DateOnly>();
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        SelfCorrectionVerdict? ownVerdict = null;
 
         foreach (var record in records)
         {
             if (record.AttendanceDate >= todayLocal) { skipped++; continue; }
 
-            if (!await LocationScopeRules.CanManageEmployeeAsync(_db, requesterId, User.Role(), record.EmployeeId, ct))
+            // One's own day: only where nobody else could close it (SelfCorrection) — otherwise skipped, as before.
+            SelfCorrectionAnswer? self = null;
+            if (record.EmployeeId == requesterId)
+            {
+                ownVerdict ??= await SelfCorrection.AskAsync(_db, requesterId, User.Role(), User.IsImpersonating(), ct);
+                if (ownVerdict.Refused) { skipped++; continue; }
+                self = ownVerdict.Answer;
+            }
+            else if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, requesterId, User.Role(), record.EmployeeId, ct))
             { skipped++; continue; }
 
             var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId, ct);
@@ -210,27 +234,41 @@ public class AdminAttendanceController : ControllerBase
             var closeAt = ShiftEndUtc(shift, record.AttendanceDate, record.CheckInAtUtc!.Value);
             if (closeAt <= record.CheckInAtUtc) { skipped++; continue; }
 
+            if (self == SelfCorrectionAnswer.AwaitApproval)
+            {
+                SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.CloseOpen,
+                    record.CheckInAtUtc, null, record.CheckInAtUtc, closeAt, reason, awaitsApproval: true, ip);
+                awaiting++;
+                continue;
+            }
+
             record.CheckOutAtUtc = closeAt;
             record.ManualByEmployeeId = requesterId; // written by hand, and attributed like any other
-            closed++;
+            if (self == SelfCorrectionAnswer.Apply)
+            {
+                SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.CloseOpen,
+                    record.CheckInAtUtc, null, record.CheckInAtUtc, closeAt, reason, awaitsApproval: false, ip);
+                ownClosed.Add(record.Id);
+            }
+            closed.Add(record);
             days.Add(record.AttendanceDate);
         }
 
-        if (closed == 0)
-            return Ok(new { closed, skipped });
+        if (closed.Count == 0 && awaiting == 0)
+            return Ok(new { closed = 0, skipped, awaiting });
 
         await _db.SaveChangesAsync(ct);
 
         // One audit row per record, exactly as a single edit writes — a batch must not be cheaper to
-        // audit than the twenty clicks it replaces.
-        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-        foreach (var r in records.Where(r => r.CheckOutAtUtc != null && r.ManualByEmployeeId == requesterId))
-            await WriteAuditAsync(r.EmployeeId, requesterId, r.Id, ip);
+        // audit than the twenty clicks it replaces. The batch's one reason goes on every row. One's own day
+        // already has its own line (SelfCorrection.Record).
+        foreach (var r in closed.Where(r => !ownClosed.Contains(r.Id)))
+            await WriteAuditAsync(r.EmployeeId, requesterId, r.Id, ip, $"closed at shift end, {Times(r)}", reason);
 
         foreach (var day in days)
             await _dailySummaryService.GenerateForDateAsync(day, ct);
 
-        return Ok(new { closed, skipped });
+        return Ok(new { closed = closed.Count, skipped, awaiting });
     }
 
     /// <summary>How many days one press may close. High enough for a month's backlog at a big company,
@@ -272,6 +310,7 @@ public class AdminAttendanceController : ControllerBase
     // only. A manager cannot write a day onto an admin or onto another manager, which is the 2026-08-08
     // boundary — and writing attendance for the account that can reset PINs is not a smaller version
     // of resetting one.
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AdminAttendanceCreateRequest request)
     {
@@ -280,14 +319,16 @@ public class AdminAttendanceController : ControllerBase
 
         if (!TryValidateTimes(request.CheckInAtUtc, request.CheckOutAtUtc, out var error))
             return BadRequest(new { error });
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == request.EmployeeId);
         if (employee is null)
             return BadRequest(new { error = "EmployeeNotFound" });
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
-                _db, User.EmployeeId(), User.Role(), request.EmployeeId, HttpContext.RequestAborted))
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+        var (refusal, self) = await CorrectorAsync(request.EmployeeId, "Forbidden");
+        if (refusal is not null)
+            return refusal;
 
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == employee.LocationId);
         if (location is null)
@@ -297,23 +338,24 @@ public class AdminAttendanceController : ControllerBase
             return Conflict(new { error = "RecordAlreadyExists" });
 
         var requesterId = User.EmployeeId();
-        var record = new AttendanceRecord
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (self == SelfCorrectionAnswer.AwaitApproval)
         {
-            EmployeeId = request.EmployeeId,
-            LocationId = employee.LocationId,
-            AttendanceDate = request.Date,
-            CheckInAtUtc = request.CheckInAtUtc,
-            CheckOutAtUtc = request.CheckOutAtUtc,
-            ManualByEmployeeId = requesterId, // created by hand, not a scan
-            Status = AttendanceController.DetermineStatus(
-                EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, request.Date), location)
-                    .HoursOn(request.Date).Start,
-                location.LateThresholdMinutes, request.CheckInAtUtc, _timeZone)
-        };
+            SelfCorrection.Record(_db, request.EmployeeId, null, request.Date, SelfCorrection.Create,
+                null, null, request.CheckInAtUtc, request.CheckOutAtUtc, reason, awaitsApproval: true, ip);
+            await _db.SaveChangesAsync();
+            return Accepted(new { status = "AwaitingApproval" });
+        }
+
+        var record = await NewRecordAsync(employee, location, request.Date, request.CheckInAtUtc, request.CheckOutAtUtc, requesterId);
         _db.AttendanceRecords.Add(record);
+        if (self == SelfCorrectionAnswer.Apply)
+            SelfCorrection.Record(_db, record.EmployeeId, record.Id, request.Date, SelfCorrection.Create,
+                null, null, record.CheckInAtUtc, record.CheckOutAtUtc, reason, awaitsApproval: false, ip);
         await _db.SaveChangesAsync();
 
-        await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+        if (self is null)
+            await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"created {request.Date:yyyy-MM-dd} {Times(record)}", reason);
 
         await _dailySummaryService.GenerateForDateAsync(request.Date, HttpContext.RequestAborted);
 
@@ -323,28 +365,48 @@ public class AdminAttendanceController : ControllerBase
     // Undo an accidental check-out — clears CheckOutAtUtc so the employee is "checked in, not out"
     // again and can check out properly later. The Update endpoint can't do this (a null CheckOutAtUtc
     // there means "leave as-is"), so an accidental double-scan check-out needs this explicit action.
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost("{recordId:guid}/clear-checkout")]
-    public async Task<IActionResult> ClearCheckOut(Guid recordId)
+    public async Task<IActionResult> ClearCheckOut(
+        Guid recordId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
+
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
 
         // A manager may only correct their OWN staff's record. Same boundary as every other manager
         // write: their branches, and Role==Employee — the 2026-08-08 rule that stopped a manager
-        // reaching a same-branch admin's account. An admin passes straight through.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
-                _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
+        // reaching a same-branch admin's account. An admin passes straight through — except to their own day,
+        // unless nobody else could (CorrectorAsync).
+        var (refusal, self) = await CorrectorAsync(record.EmployeeId, "OutOfScope");
+        if (refusal is not null)
+            return refusal;
 
         if (record.CheckOutAtUtc is not null)
         {
+            var before = Times(record);
+            var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+            if (self == SelfCorrectionAnswer.AwaitApproval)
+            {
+                SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.ClearCheckout,
+                    record.CheckInAtUtc, record.CheckOutAtUtc, record.CheckInAtUtc, null, reason, awaitsApproval: true, ip);
+                await _db.SaveChangesAsync();
+                return Accepted(new { status = "AwaitingApproval" });
+            }
+            var beforeOut = record.CheckOutAtUtc;
             record.CheckOutAtUtc = null;
             var requesterId = User.EmployeeId();
             record.ManualByEmployeeId = requesterId; // undoing a check-out is a manual touch
+            if (self == SelfCorrectionAnswer.Apply)
+                SelfCorrection.Record(_db, record.EmployeeId, record.Id, record.AttendanceDate, SelfCorrection.ClearCheckout,
+                    record.CheckInAtUtc, beforeOut, record.CheckInAtUtc, null, reason, awaitsApproval: false, ip);
             await _db.SaveChangesAsync();
 
-            await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, HttpContext.Connection.RemoteIpAddress?.ToString());
+            if (self is null)
+                await WriteAuditAsync(record.EmployeeId, requesterId, record.Id, ip, $"check-out cleared, {before} → {Times(record)}", reason);
             await _dailySummaryService.GenerateForDateAsync(record.AttendanceDate, HttpContext.RequestAborted);
         }
 
@@ -365,6 +427,7 @@ public class AdminAttendanceController : ControllerBase
     /// (EmployeeId, Type, RelatedDate) unique index means a second press cannot accuse the same
     /// person twice for the same day — the guard is the database's, not the button's.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/send-photo-warning")]
     public async Task<IActionResult> SendPhotoWarning(
         Guid recordId,
@@ -484,6 +547,7 @@ public class AdminAttendanceController : ControllerBase
     /// The warning to the employee is sent LAST and its failure is not fatal: the record of what
     /// happened must not depend on whether a phone had a live push subscription.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/void-fraud")]
     public async Task<IActionResult> VoidFraud(
         Guid recordId,
@@ -491,6 +555,10 @@ public class AdminAttendanceController : ControllerBase
         [FromServices] IPushNotifier pushNotifier)
     {
         var ct = HttpContext.RequestAborted;
+        // Required since 2026-10-15 like every correction; the old fallback wording («Giriş şəkli saxtadır»)
+        // is now the screen's first preset, chosen by a person rather than filled in for them.
+        if (CorrectionReason.Clean(request.Reason) is not { } voidReason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
         if (record is null)
@@ -498,6 +566,9 @@ public class AdminAttendanceController : ControllerBase
 
         // Same boundary as every other write here: a manager reaches only their own branches' plain
         // employees. This one docks a day's pay and sends an accusation, so the check runs first.
+        // Voiding or restoring a day changes what it pays — never on one's own (the owner, 2026-10-15).
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
         if (!await LocationScopeRules.CanManageEmployeeAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
@@ -512,9 +583,7 @@ public class AdminAttendanceController : ControllerBase
 
         record.VoidedAtUtc = DateTime.UtcNow;
         record.VoidedByEmployeeId = requesterId;
-        record.VoidReason = string.IsNullOrWhiteSpace(request.Reason)
-            ? "Giriş şəkli saxtadır (üz yoxlaması uyğunsuzluğu)"
-            : request.Reason.Trim();
+        record.VoidReason = voidReason;
 
         // Spelled out, because the row itself will read as an ordinary voided record a month from now
         // and this line is what says who decided, when, on what evidence, and with what score.
@@ -526,7 +595,8 @@ public class AdminAttendanceController : ControllerBase
                    + $"{record.CheckInAtUtc:HH:mm} UTC, face {record.FaceMatchStatus}"
                    + (record.FaceMatchScore is int sc ? $" {sc}%" : "")
                    + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}")
-                   + $" — {record.VoidReason}",
+                   // «Səbəb:» like every other correction's line, so one search finds them all.
+                   + $". Səbəb: {record.VoidReason}",
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
@@ -596,14 +666,21 @@ public class AdminAttendanceController : ControllerBase
 
     /// <summary>Undo of the above. It exists because the judgement being undone is a judgement about
     /// a photograph of a face, and people get those wrong.</summary>
+    [Permission(AccessPermissions.AttendanceFraud)]
     [HttpPost("{recordId:guid}/unvoid")]
-    public async Task<IActionResult> Unvoid(Guid recordId)
+    public async Task<IActionResult> Unvoid(
+        Guid recordId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
         var ct = HttpContext.RequestAborted;
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId, ct);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
+        // Voiding or restoring a day changes what it pays — never on one's own (the owner, 2026-10-15).
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
         if (!await LocationScopeRules.CanManageEmployeeAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
@@ -614,7 +691,8 @@ public class AdminAttendanceController : ControllerBase
         {
             EmployeeId = record.EmployeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = $"Void reversed by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd}",
+            Reason = Cap($"Void reversed by {User.EmployeeId()}: {record.AttendanceDate:yyyy-MM-dd} "
+                         + $"(ləğvin səbəbi: {record.VoidReason}). Səbəb: {reason}"),
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
@@ -648,9 +726,15 @@ public class AdminAttendanceController : ControllerBase
     /// Storage is cleaned after the row is committed and a failure there is logged, not returned: the
     /// record is gone either way, and the audit line carries the key so a leftover can still be found.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpDelete("{recordId:guid}")]
-    public async Task<IActionResult> Delete(Guid recordId)
+    public async Task<IActionResult> Delete(
+        Guid recordId, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
+        // In the body, not the query string: a reason is free text about a person, and URLs end up in logs.
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
+
         var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == recordId);
         if (record is null)
             return NotFound(new { error = "RecordNotFound" });
@@ -658,8 +742,10 @@ public class AdminAttendanceController : ControllerBase
         // Same boundary as the edit and the clear-checkout beside it: a manager reaches only their own
         // branches' plain employees. Deletion is not a wider power than editing a day to zero, and the
         // manager is who notices a phantom on their own board — but it is irreversible, so the scope
-        // check runs before anything is touched.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(
+        // check runs before anything is touched. Never one's own day.
+        if (OwnDay(record.EmployeeId) is { } own)
+            return own;
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(
                 _db, User.EmployeeId(), User.Role(), record.EmployeeId, HttpContext.RequestAborted))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
@@ -674,9 +760,9 @@ public class AdminAttendanceController : ControllerBase
         {
             EmployeeId = employeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = $"Deleted by {requesterId}: {date:yyyy-MM-dd} "
-                   + $"{record.CheckInAtUtc:HH:mm}–{(record.CheckOutAtUtc is null ? "—" : record.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC"
-                   + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}"),
+            Reason = Cap($"Deleted by {requesterId}: {date:yyyy-MM-dd} {Times(record)}"
+                         + (record.CheckInPhotoKey is null ? "" : $", photo {record.CheckInPhotoKey}")
+                         + $". Səbəb: {reason}"),
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
 
@@ -724,6 +810,7 @@ public class AdminAttendanceController : ControllerBase
     ///
     /// Admin-only and capped at 92 days: it walks the whole tenant per day.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceMaintenance)]
     [HttpPost("recompute")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Recompute([FromQuery] DateOnly from, [FromQuery] DateOnly to)
@@ -755,6 +842,7 @@ public class AdminAttendanceController : ControllerBase
     // Re-queue a background face-match for every record that has a check-in photo — e.g. after the
     // references were corrected, to (re)score the history. Returns how many were queued.
     // Admin-only by its own attribute: a paid Rekognition call per record, tenant-wide.
+    [Permission(AccessPermissions.AttendanceMaintenance)]
     [HttpPost("recheck-faces")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RecheckFaces()
@@ -778,17 +866,276 @@ public class AdminAttendanceController : ControllerBase
         return true;
     }
 
-    private async Task WriteAuditAsync(Guid employeeId, Guid requesterId, Guid recordId, string? ip)
+    /// <summary>
+    /// One audit line per corrected record: who, which record, what changed and — required since 2026-10-15 —
+    /// why, in the corrector's own words.
+    /// </summary>
+    // ─────────────────────────── one's own day (docs/strukturlar-ve-selahiyyetler.md §18) ───────────────────────────
+
+    /// <summary>
+    /// Who may correct this day, and how. Somebody else's: today's rule (CanCorrectAttendanceAsync), refused with
+    /// <paramref name="outOfScope"/>. One's own: only where nobody else in the company could (SelfCorrection) — at
+    /// once, or waiting for approval — and otherwise refused with the names of who can, so the screen says whom to
+    /// ask. Self is null for somebody else's day.
+    /// </summary>
+    private async Task<(IActionResult? Refusal, SelfCorrectionAnswer? Self)> CorrectorAsync(Guid employeeId, string outOfScope)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (employeeId == User.EmployeeId())
+        {
+            var verdict = await SelfCorrection.AskAsync(_db, employeeId, User.Role(), User.IsImpersonating(), ct);
+            return verdict.Refused
+                ? (StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance", correctors = verdict.Correctors }), null)
+                : (null, verdict.Answer);
+        }
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
+            return (StatusCode(StatusCodes.Status403Forbidden, new { error = outOfScope }), null);
+        return (null, null);
+    }
+
+    /// <summary>Sets a day's times — what an edit does now and what an approved self-correction does later — with the
+    /// status recomputed the way the scan would have, so a corrected time cannot produce a status the person's own
+    /// shift would never have given. Null leaves a time as it is. Not saved here.</summary>
+    private async Task ApplyTimesAsync(AttendanceRecord record, Location location, DateTime? checkIn, DateTime? checkOut, Guid manualBy)
+    {
+        if (checkIn is not null)
+        {
+            record.CheckInAtUtc = checkIn;
+            var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == record.EmployeeId);
+            var shift = employee is null
+                ? EffectiveShift.Resolve(null, null, null, 1, null, null, location)
+                : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
+            record.Status = AttendanceController.DetermineStatus(
+                shift.HoursOn(record.AttendanceDate).Start, shift.LateThresholdMinutes, checkIn.Value, _timeZone);
+        }
+        if (checkOut is not null)
+            record.CheckOutAtUtc = checkOut;
+        record.ManualByEmployeeId = manualBy; // this record was touched by hand — attribute it
+    }
+
+    /// <summary>A day written by hand for somebody who never scanned. Not added or saved here.</summary>
+    private async Task<AttendanceRecord> NewRecordAsync(
+        Employee employee, Location location, DateOnly date, DateTime checkIn, DateTime? checkOut, Guid manualBy) => new()
+    {
+        EmployeeId = employee.Id,
+        LocationId = employee.LocationId,
+        AttendanceDate = date,
+        CheckInAtUtc = checkIn,
+        CheckOutAtUtc = checkOut,
+        ManualByEmployeeId = manualBy, // created by hand, not a scan
+        Status = AttendanceController.DetermineStatus(
+            EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, date), location).HoursOn(date).Start,
+            location.LateThresholdMinutes, checkIn, _timeZone),
+    };
+
+    /// <summary>
+    /// The company's self-corrections — one's own, and those of the people whose days the caller may see —
+    /// newest first, with whether each waits, how it was decided, and whether the caller may decide it. And the
+    /// company's setting: does a self-correction wait for a second approval, and is there anybody to give it.
+    /// </summary>
+    [Permission(AccessPermissions.AttendanceView)]
+    [HttpGet("self-corrections")]
+    public async Task<IActionResult> SelfCorrections([FromQuery] int days = 90)
+    {
+        var ct = HttpContext.RequestAborted;
+        var me = User.EmployeeId();
+        var since = DateTime.UtcNow.AddDays(-Math.Clamp(days, 1, 366));
+        var all = await _db.AttendanceSelfCorrections.AsNoTracking()
+            .Where(c => c.AtUtc >= since).OrderByDescending(c => c.AtUtc).Take(1000).ToListAsync(ct);
+        var decisions = all.Where(c => c.DecisionForId != null).ToDictionary(c => c.DecisionForId!.Value);
+
+        var subjects = all.Select(c => c.EmployeeId).Distinct().ToList();
+        var seen = new HashSet<Guid>();
+        foreach (var subject in subjects)
+            if (subject == me || await LocationScopeRules.CanAccessEmployeeAsync(_db, me, User.Role(), subject, ct, AccessPermissions.AttendanceView))
+                seen.Add(subject);
+        var mayDecide = new Dictionary<Guid, bool>();
+        foreach (var subject in seen.Where(s => s != me))
+            mayDecide[subject] = !User.IsImpersonating() && (await SelfCorrection.ApproversAsync(_db, subject, ct)).Contains(me);
+
+        var people = all.Select(c => c.EmployeeId).Concat(all.Select(c => c.ActorEmployeeId)).Distinct().ToList();
+        var names = await _db.Employees.AsNoTracking().Where(e => people.Contains(e.Id)).ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+        var tenant = await _db.Tenants.AsNoTracking().Where(t => t.Id == _db.CurrentTenantId)
+            .Select(t => new { t.SelfCorrectionNeedsApproval }).FirstOrDefaultAsync(ct);
+
+        return Ok(new
+        {
+            needsApproval = tenant?.SelfCorrectionNeedsApproval ?? false,
+            // Whether this caller could switch the second approval on: somebody would have to give it.
+            approverAvailable = (await SelfCorrection.ApproversAsync(_db, me, ct)).Count > 0,
+            items = all.Where(c => c.DecisionForId == null && seen.Contains(c.EmployeeId)).Select(c =>
+            {
+                decisions.TryGetValue(c.Id, out var decision);
+                return new
+                {
+                    id = c.Id,
+                    employeeId = c.EmployeeId,
+                    employeeName = names.GetValueOrDefault(c.EmployeeId, "?"),
+                    date = c.AttendanceDate,
+                    kind = c.Kind,
+                    checkInBeforeUtc = c.CheckInBeforeUtc,
+                    checkOutBeforeUtc = c.CheckOutBeforeUtc,
+                    checkInAfterUtc = c.CheckInAfterUtc,
+                    checkOutAfterUtc = c.CheckOutAfterUtc,
+                    reason = c.Reason,
+                    atUtc = c.AtUtc,
+                    awaitsApproval = c.AwaitsApproval && decision is null,
+                    decision = decision is null ? null : new
+                    {
+                        approved = decision.Kind == SelfCorrection.Approved,
+                        byName = names.GetValueOrDefault(decision.ActorEmployeeId, "?"),
+                        reason = decision.Reason,
+                        atUtc = decision.AtUtc,
+                    },
+                    mayDecide = c.AwaitsApproval && decision is null && mayDecide.GetValueOrDefault(c.EmployeeId),
+                };
+            }),
+        });
+    }
+
+    /// <summary>
+    /// The answer to a self-correction that waited (the company asked for a second approval). Approved: applied
+    /// now, exactly as the person asked — if the day is still what they saw; a day changed meanwhile is refused,
+    /// never overwritten. Rejected: nothing changes. Either way a decision row of its own and an audit line. Only
+    /// somebody the company counts as an approver (SelfCorrection.ApproversAsync), never the person themselves.
+    /// </summary>
+    // Today an admin's (the approvers are the other admins); in Enforced whoever holds the approval right, the
+    // action narrowing itself to the people they may approve for (Scoped).
+    [Permission(AccessPermissions.AttendanceSelfCorrectionApprove, Scoped = true)]
+    [Authorize(Roles = "Admin")]
+    [HttpPost("self-corrections/{id:guid}/decide")]
+    public async Task<IActionResult> DecideSelfCorrection(Guid id, [FromBody] SelfCorrectionDecisionRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        if (CorrectionReason.Clean(request.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
+        var row = await _db.AttendanceSelfCorrections.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id && c.AwaitsApproval, ct);
+        if (row is null)
+            return NotFound(new { error = "RequestNotFound" });
+        var me = User.EmployeeId();
+        if (row.EmployeeId == me || User.IsImpersonating())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!(await SelfCorrection.ApproversAsync(_db, row.EmployeeId, ct)).Contains(me))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "NotAnApprover" });
+        if (await _db.AttendanceSelfCorrections.AnyAsync(c => c.DecisionForId == id, ct))
+            return Conflict(new { error = "AlreadyReviewed" });
+
+        Guid? recordId = row.RecordId;
+        if (request.Approve)
+        {
+            if (row.Kind == SelfCorrection.Create)
+            {
+                if (await _db.AttendanceRecords.AnyAsync(r => r.EmployeeId == row.EmployeeId && r.AttendanceDate == row.AttendanceDate, ct))
+                    return Conflict(new { error = "RecordAlreadyExists" });
+                var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == row.EmployeeId, ct);
+                var home = employee is null ? null : await _db.Locations.FirstOrDefaultAsync(l => l.Id == employee.LocationId, ct);
+                if (employee is null || home is null || row.CheckInAfterUtc is not DateTime checkIn)
+                    return BadRequest(new { error = "EmployeeNotFound" });
+                var created = await NewRecordAsync(employee, home, row.AttendanceDate, checkIn, row.CheckOutAfterUtc, row.EmployeeId);
+                _db.AttendanceRecords.Add(created);
+                recordId = created.Id;
+            }
+            else
+            {
+                var record = await _db.AttendanceRecords.FirstOrDefaultAsync(r => r.Id == row.RecordId, ct);
+                if (record is null)
+                    return NotFound(new { error = "RecordNotFound" });
+                // The day as the person saw it when they asked, or nothing: never an overwrite of a later change.
+                if (record.CheckInAtUtc != row.CheckInBeforeUtc || record.CheckOutAtUtc != row.CheckOutBeforeUtc)
+                    return Conflict(new { error = "RecordChanged" });
+                if (row.Kind == SelfCorrection.ClearCheckout)
+                {
+                    record.CheckOutAtUtc = null;
+                    record.ManualByEmployeeId = row.EmployeeId;
+                }
+                else
+                {
+                    var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == record.LocationId, ct);
+                    if (location is null)
+                        return BadRequest(new { error = "LocationNotFound" });
+                    await ApplyTimesAsync(record, location,
+                        row.CheckInAfterUtc != row.CheckInBeforeUtc ? row.CheckInAfterUtc : null, row.CheckOutAfterUtc, row.EmployeeId);
+                }
+            }
+        }
+
+        _db.AttendanceSelfCorrections.Add(new AttendanceSelfCorrection
+        {
+            TenantId = _db.CurrentTenantId, EmployeeId = row.EmployeeId, ActorEmployeeId = me, RecordId = recordId,
+            AttendanceDate = row.AttendanceDate, Kind = request.Approve ? SelfCorrection.Approved : SelfCorrection.Rejected,
+            CheckInBeforeUtc = row.CheckInBeforeUtc, CheckOutBeforeUtc = row.CheckOutBeforeUtc,
+            CheckInAfterUtc = row.CheckInAfterUtc, CheckOutAfterUtc = row.CheckOutAfterUtc,
+            Reason = reason, DecisionForId = row.Id,
+        });
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = row.EmployeeId,
+            EventType = AuditEventType.SelfCorrectionDecided,
+            Reason = Cap($"{(request.Approve ? "Təsdiqləndi" : "Rədd edildi")} — by {me}: {row.Kind} {row.AttendanceDate:yyyy-MM-dd} "
+                         + $"{SelfCorrection.Times(row.CheckInBeforeUtc, row.CheckOutBeforeUtc)} → {SelfCorrection.Times(row.CheckInAfterUtc, row.CheckOutAfterUtc)}. Səbəb: {reason}"),
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await _db.SaveChangesAsync(ct);
+        if (request.Approve)
+            await _dailySummaryService.GenerateForDateAsync(row.AttendanceDate, ct);
+        return Ok(new { status = request.Approve ? "Approved" : "Rejected" });
+    }
+
+    /// <summary>
+    /// Switches «a self-correction waits for a second approval» on or off for the company. On only where somebody
+    /// could give that approval — a setting nobody can satisfy would only freeze the admin's own days. Audited.
+    /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect, AtCompany = true)]
+    [Authorize(Roles = "Admin")]
+    [HttpPut("self-corrections/setting")]
+    public async Task<IActionResult> SetSelfCorrectionSetting([FromBody] SelfCorrectionSettingRequest request)
+    {
+        var ct = HttpContext.RequestAborted;
+        var me = User.EmployeeId();
+        if (request.NeedsApproval && (await SelfCorrection.ApproversAsync(_db, me, ct)).Count == 0)
+            return Conflict(new { error = "NoApprover" });
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == _db.CurrentTenantId, ct);
+        if (tenant is null)
+            return NotFound(new { error = "TenantNotFound" });
+        if (tenant.SelfCorrectionNeedsApproval != request.NeedsApproval)
+        {
+            tenant.SelfCorrectionNeedsApproval = request.NeedsApproval;
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EmployeeId = me,
+                EventType = AuditEventType.SelfCorrectionSettingChanged,
+                Reason = $"By {me}: öz düzəlişi üçün ikinci təsdiq {(request.NeedsApproval ? "açıldı" : "bağlandı")}",
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+        return Ok(new { needsApproval = tenant.SelfCorrectionNeedsApproval });
+    }
+
+    private async Task WriteAuditAsync(Guid employeeId, Guid requesterId, Guid recordId, string? ip, string what, string reason)
     {
         _db.AuditLogs.Add(new AuditLog
         {
             EmployeeId = employeeId,
             EventType = AuditEventType.RecordEditedByAdmin,
-            Reason = $"By {requesterId}, record {recordId}",
+            Reason = Cap($"By {requesterId}, record {recordId}: {what}. Səbəb: {reason}"),
             IpAddress = ip
         });
         await _db.SaveChangesAsync();
     }
+
+    /// <summary>The 403 for a correction to one's own day, or null when the day is somebody else's. Nobody —
+    /// an admin included — corrects the day they are paid for (the owner, 2026-10-15).</summary>
+    private IActionResult? OwnDay(Guid employeeId) =>
+        employeeId == User.EmployeeId()
+            ? StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" })
+            : null;
+
+    private static string Times(AttendanceRecord r) =>
+        $"{r.CheckInAtUtc:HH:mm}–{(r.CheckOutAtUtc is null ? "—" : r.CheckOutAtUtc.Value.ToString("HH:mm"))} UTC";
+
+    /// <summary>The audit column holds 1000 characters; a long reason is cut, never refused at save time.</summary>
+    private static string Cap(string text) => text.Length <= 1000 ? text : text[..1000];
 
     private static object Project(AttendanceRecord r) => new
     {

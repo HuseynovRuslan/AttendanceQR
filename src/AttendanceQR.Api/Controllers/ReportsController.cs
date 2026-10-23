@@ -1,8 +1,10 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Multitenancy;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Multitenancy;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,12 +21,15 @@ public class ReportsController : ControllerBase
     private readonly IReportQueryService _reports;
     private readonly IExcelReportExporter _exporter;
     private readonly IMemoryCache _cache;
+    private readonly ITenantContext _tenant;
 
-    public ReportsController(IReportQueryService reports, IExcelReportExporter exporter, IMemoryCache cache)
+    public ReportsController(
+        IReportQueryService reports, IExcelReportExporter exporter, IMemoryCache cache, ITenantContext tenant)
     {
         _reports = reports;
         _exporter = exporter;
         _cache = cache;
+        _tenant = tenant;
     }
 
     [HttpGet("summary")]
@@ -87,7 +92,8 @@ public class ReportsController : ControllerBase
         [FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] Guid? locationId)
     {
         var requesterId = User.EmployeeId();
-        var role = User.Role();
+        // Enforced: the file is «attendance.export»'s to take (see ExportRoleAsync); today's role elsewhere.
+        var role = await _reports.ExportRoleAsync(requesterId, User.Role(), HttpContext.RequestAborted);
 
         // Same scope path as the JSON summary — export can't sidestep it.
         var (access, report) = await _reports.GetSummaryAsync(
@@ -155,6 +161,14 @@ public class ReportsController : ControllerBase
         return Ok(rows);
     }
 
+    // GET /api/reports/day-templates — the company forms this company can have «Xülasə» printed in
+    // (DaySummaryTemplates). Empty for almost every company; the export dialog offers a form only
+    // when this lists one. The lines are area names, the same ones the board already shows.
+    [HttpGet("day-templates")]
+    public IActionResult DayTemplates()
+        => Ok(DaySummaryTemplates.For(_tenant.TenantId)
+            .Select(t => new { key = t.Key, name = t.Name, areas = t.Areas }));
+
     // POST /api/reports/export-day — the workbook the leadership receives every morning.
     //
     // It used to be one flat A-to-Z list of the whole company, which the reader then had to sort by
@@ -185,8 +199,25 @@ public class ReportsController : ControllerBase
                 row.Paper ?? string.Empty))
             .ToList();
 
+        // A company form for «Xülasə», when the reader chose one. Only this company's (a key from
+        // anywhere else is unknown here), only in the branch view — the form's lines are branches, and
+        // the «sənəd üzrə» areas are paperwork names that need not be — and only when every area in the
+        // file has a line: the form refuses an area rather than print a summary without it.
+        DaySummaryTemplate? template = null;
+        if (!string.IsNullOrWhiteSpace(request.Template))
+        {
+            template = DaySummaryTemplates.Find(_tenant.TenantId, request.Template);
+            if (template is null)
+                return BadRequest(new { error = "UnknownTemplate" });
+            if (request.View != "actual")
+                return BadRequest(new { error = "TemplateNeedsActualView" });
+            var unlisted = template.Unlisted(rows.Select(r => r.Location));
+            if (unlisted.Count > 0)
+                return BadRequest(new { error = "AreaNotInTemplate", areas = unlisted });
+        }
+
         var title = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;
-        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels);
+        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels, template);
 
         var safeDate = string.IsNullOrWhiteSpace(request.Date) ? "gun" : request.Date;
         return File(
@@ -203,6 +234,7 @@ public class ReportsController : ControllerBase
     // omitted the managers read short. This comment used to claim the scope filtered by role. It did
     // not, and for as long as it said so a manager's payroll table listed their peers' and their
     // admin's salary.
+    [Permission(AccessPermissions.PayrollView)]
     [HttpGet("payroll")]
     [Authorize(Roles = "Admin,Manager")]
     [RequireFeature(TenantFeatures.Payroll)]
@@ -219,6 +251,7 @@ public class ReportsController : ControllerBase
     }
 
     // GET /api/reports/payroll/export — the same payroll table as a formatted .xlsx for the accountant.
+    [Permission(AccessPermissions.PayrollExport)]
     [HttpGet("payroll/export")]
     [Authorize(Roles = "Admin")]
     [RequireFeature(TenantFeatures.Payroll)]
@@ -256,8 +289,10 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> TabelExport(
         [FromQuery] int year, [FromQuery] int month, [FromQuery] Guid? locationId)
     {
+        // Enforced: the file is «attendance.export»'s to take (see ExportRoleAsync); today's role elsewhere.
+        var role = await _reports.ExportRoleAsync(User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
         var (access, report) = await _reports.GetTabelAsync(
-            year, month, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+            year, month, locationId, User.EmployeeId(), role, HttpContext.RequestAborted);
 
         if (access == ReportAccess.Forbidden)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
@@ -270,6 +305,7 @@ public class ReportsController : ControllerBase
     // GET /api/reports/problems?from=yyyy-MM-dd&to=yyyy-MM-dd — every rejected scan across the range:
     // who could not check in/out, and why. A range, not a day, so a problem from earlier in the week
     // does not silently age out of view. `date` is still accepted as a single-day shorthand.
+    [Permission(AccessPermissions.AttendanceView, LegacyRoles = "Admin,Manager")]
     [HttpGet("problems")]
     public async Task<IActionResult> Problems([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] DateOnly? date)
     {
@@ -291,6 +327,7 @@ public class ReportsController : ControllerBase
     // GET /api/reports/geofence-fit?days=40 — sites whose GPS circle refuses people standing at them.
     // Every refusal was already in the audit log and on no screen; the fix is a setting, and the two
     // shapes need opposite ones — see GeofenceFit.
+    [Permission(AccessPermissions.AttendanceView, LegacyRoles = "Admin,Manager")]
     [HttpGet("geofence-fit")]
     public async Task<IActionResult> GeofenceFitReport([FromQuery] int days = 40)
     {
@@ -306,6 +343,7 @@ public class ReportsController : ControllerBase
     // GET /api/reports/shift-mismatch?days=21 — people whose real arrival times disagree with the
     // shift they are on. Read-only and accusatory of nothing: a mismatch is a question about the
     // SCHEDULE, not about the employee. See ShiftFit for why it exists.
+    [Permission(AccessPermissions.AttendanceView, LegacyRoles = "Admin,Manager")]
     [HttpGet("shift-mismatch")]
     public async Task<IActionResult> ShiftMismatch([FromQuery] int days = 21)
     {
@@ -321,6 +359,7 @@ public class ReportsController : ControllerBase
     // GET /api/reports/stuck-devices — people whose phones refuse to scan (GPS/camera family) with no
     // success since. Feeds the register at the top of the Problems screen; the fix is a phone-settings
     // walk, so each row carries the phone number and platform for the supervisor.
+    [Permission(AccessPermissions.AttendanceView, LegacyRoles = "Admin,Manager")]
     [HttpGet("stuck-devices")]
     public async Task<IActionResult> StuckDevices()
     {

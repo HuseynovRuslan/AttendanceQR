@@ -30,6 +30,8 @@ import {
   type SuperUser,
   type ImpersonateResult,
   type SuperFeature,
+  getSuperTenantSelfCorrections,
+  type SuperSelfCorrection,
 } from '../../api/admin'
 import { startImpersonation } from '../../api/client'
 import { COMPANY_TZ, fmtDate } from '../../lib/format'
@@ -372,6 +374,8 @@ export function TenantsTab() {
   const [copied, setCopied] = useState(false)
   const [features, setFeatures] = useState<SuperFeature[]>([])
   const [planEdit, setPlanEdit] = useState<SuperTenant | null>(null)
+  // A company's self-corrections, read from the console — what nobody inside a one-admin company can look over.
+  const [selfFor, setSelfFor] = useState<{ tenant: SuperTenant; total: number; rows: SuperSelfCorrection[] } | null>(null)
   const [planForm, setPlanForm] = useState({ plan: '', maxEmployees: '', maxLocations: '', priceOverride: '', trialEnds: '', disabled: [] as string[] })
   const [savingPlan, setSavingPlan] = useState(false)
   // Naming the customer's admin — the handover, which now happens after the company is built rather
@@ -404,6 +408,15 @@ export function TenantsTab() {
       if (status === 200 && Array.isArray(data)) setFeatures(data)
     })()
   }, [])
+
+  async function openSelf(t: SuperTenant) {
+    setError(null)
+    const r = await getSuperTenantSelfCorrections(t.id)
+    if (r.status === 200 && r.data && 'selfCorrections' in r.data)
+      setSelfFor({ tenant: t, total: r.data.selfCorrections.last90Days, rows: r.data.selfCorrections.latest })
+    else
+      setError('Öz düzəlişləri yüklənmədi')
+  }
 
   function openPlan(t: SuperTenant) {
     setError(null)
@@ -1013,6 +1026,43 @@ export function TenantsTab() {
         </form>
       )}
 
+      {selfFor && (
+        <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--clay)' }}>
+          <div className="card-title">«{selfFor.tenant.displayName}» — öz düzəlişləri (son 90 gün: {selfFor.total})</div>
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0 10px' }}>
+            İşçinin öz gününə etdiyi düzəlişlər — yalnız şirkətdə başqa düzəliş edən olmayanda mümkündür. Yalnız oxumaq üçün.
+          </p>
+          {selfFor.rows.length === 0 ? (
+            <div className="muted" style={{ fontSize: 13 }}>Yoxdur.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="tbl">
+                <thead>
+                  <tr><th>Gün</th><th>İşçi</th><th>Nə</th><th>Əvvəl → sonra (UTC)</th><th>Səbəb</th><th>Vəziyyət</th></tr>
+                </thead>
+                <tbody>
+                  {selfFor.rows.map((r, i) => (
+                    <tr key={i}>
+                      <td className="mono">{fmtDate(r.date)}</td>
+                      <td>{r.employeeName}</td>
+                      <td>{r.kind}</td>
+                      <td className="mono">
+                        {(r.checkInBeforeUtc ?? '—').slice(11, 16)}–{(r.checkOutBeforeUtc ?? '—').slice(11, 16)} → {(r.checkInAfterUtc ?? '—').slice(11, 16)}–{(r.checkOutAfterUtc ?? '—').slice(11, 16)}
+                      </td>
+                      <td style={{ maxWidth: 260 }}>{r.reason}</td>
+                      <td>{r.awaitsApproval ? 'Təsdiq gözləyir' : 'Tətbiq olunub'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div style={{ marginTop: 12 }}>
+            <button className="btn" onClick={() => setSelfFor(null)}>Bağla</button>
+          </div>
+        </div>
+      )}
+
       {planEdit && (
         <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'var(--leaf)' }}>
           <div className="card-title">«{planEdit.displayName}» — plan və funksiyalar</div>
@@ -1170,6 +1220,8 @@ export function TenantsTab() {
                           hidden: !canManage,
                         },
                         { label: 'Plan və limitlər', onClick: () => openPlan(t), hidden: !canManage },
+                        // Read-only, for every operator: what a company's only admin did to their own days.
+                        { label: 'Öz düzəlişləri', onClick: () => void openSelf(t) },
                         {
                           label: t.isActive ? 'Söndür' : 'Aç',
                           onClick: () => void toggle(t),

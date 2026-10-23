@@ -28,6 +28,9 @@ public sealed record AttendanceRecordDto(
     /// and came to ask. The label is what tells him which kind of day it was.
     /// </summary>
     bool IsFieldDay = false,
+    /// <summary>The person corrected this day themselves — allowed only where nobody else could
+    /// (AttendanceSelfCorrection); «öz düzəlişi» on the row.</summary>
+    bool SelfCorrected = false,
     /// <summary>
     /// The day is finished as it stands, but a scan now would open another stretch of it — the server's
     /// own answer, filled in only by <c>/me/today</c>.

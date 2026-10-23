@@ -27,6 +27,8 @@ export interface AttendanceRecord {
   closedByFieldVisit?: boolean
   /** No poster scan on this date — the times come from a field visit. recordId is empty for these. */
   isFieldDay?: boolean
+  /** The person corrected this day themselves — only possible where nobody else could; «öz düzəlişi». */
+  selfCorrected?: boolean
   /** Only on /me/today: the day is closed as it stands, but a scan NOW would open another stretch of
    *  it — back at the centre after a field visit, or a split shift's second window. The server's
    *  answer; the phone must not decide «finished» on its own (it used to, and hid the button). */
@@ -337,36 +339,39 @@ export function recomputeDays(from: string, to: string) {
   )
 }
 
-export function closeOpenDays(recordIds: string[]) {
-  return apiRequest<{ closed: number; skipped: number } | { error: string }>(
+/** The reason is required since 2026-10-15 — one for the batch, written into each day's audit line. */
+export function closeOpenDays(recordIds: string[], reason: string) {
+  return apiRequest<{ closed: number; skipped: number; awaiting?: number } | { error: string }>(
     '/api/admin/attendance/close-open',
-    { method: 'POST', body: { recordIds } },
+    { method: 'POST', body: { recordIds, reason } },
   )
 }
 
 /** PUT /api/admin/attendance/{recordId} — correct an existing record's check-in/out (either or
- * both; omitted fields are left as-is). Recomputes that date's summary immediately. */
-export function adminUpdateRecord(recordId: string, checkInAtUtc?: string, checkOutAtUtc?: string) {
+ * both; omitted fields are left as-is). Recomputes that date's summary immediately. Every correction
+ * carries a reason since 2026-10-15 (the owner's rule) — the server refuses one without it. */
+export function adminUpdateRecord(recordId: string, checkInAtUtc: string | undefined, checkOutAtUtc: string | undefined, reason: string) {
   return apiRequest<AdminAttendanceRecord | { error: string }>(`/api/admin/attendance/${recordId}`, {
     method: 'PUT',
-    body: { checkInAtUtc: checkInAtUtc ?? null, checkOutAtUtc: checkOutAtUtc ?? null },
+    body: { checkInAtUtc: checkInAtUtc ?? null, checkOutAtUtc: checkOutAtUtc ?? null, reason },
   })
 }
 
 /** POST /api/admin/attendance — create a record for a day the employee never scanned at all.
  * checkInAtUtc required; 409 if a record for that (employee, date) already exists. */
-export function adminCreateRecord(employeeId: string, date: string, checkInAtUtc: string, checkOutAtUtc?: string) {
+export function adminCreateRecord(employeeId: string, date: string, checkInAtUtc: string, checkOutAtUtc: string | undefined, reason: string) {
   return apiRequest<AdminAttendanceRecord | { error: string }>('/api/admin/attendance', {
     method: 'POST',
-    body: { employeeId, date, checkInAtUtc, checkOutAtUtc: checkOutAtUtc ?? null },
+    body: { employeeId, date, checkInAtUtc, checkOutAtUtc: checkOutAtUtc ?? null, reason },
   })
 }
 
 /** POST /api/admin/attendance/{recordId}/clear-checkout — undo an accidental check-out (record
  * goes back to "checked in, not out" so the employee can check out properly later). */
-export function adminClearCheckout(recordId: string) {
+export function adminClearCheckout(recordId: string, reason: string) {
   return apiRequest<AdminAttendanceRecord | { error: string }>(`/api/admin/attendance/${recordId}/clear-checkout`, {
     method: 'POST',
+    body: { reason },
   })
 }
 
@@ -379,9 +384,11 @@ export function adminClearCheckout(recordId: string) {
  * all on that date keep the block — so the row itself has to go. Irreversible; the selfie goes with
  * it and an audit line records what was removed.
  */
-export function adminDeleteRecord(recordId: string) {
+export function adminDeleteRecord(recordId: string, reason: string) {
+  // In the body, not the URL: the reason is free text about a person, and URLs end up in logs.
   return apiRequest<{ deleted: string } | { error: string }>(`/api/admin/attendance/${recordId}`, {
     method: 'DELETE',
+    body: { reason },
   })
 }
 
@@ -394,20 +401,24 @@ export function adminDeleteRecord(recordId: string) {
  */
 export function voidFraudRecord(
   recordId: string,
-  opts: { reason?: string; revokeDevice?: boolean; notifyEmployee?: boolean } = {},
+  reason: string,
+  opts: { revokeDevice?: boolean; notifyEmployee?: boolean } = {},
 ) {
   return apiRequest<{ voided: string; devicesRevoked: number; notified: number }>(
     `/api/admin/attendance/${recordId}/void-fraud`,
     { method: 'POST', body: {
-      reason: opts.reason ?? null,
+      reason,
       revokeDevice: opts.revokeDevice ?? false,
       notifyEmployee: opts.notifyEmployee ?? true,
     } },
   )
 }
 
-export function unvoidRecord(recordId: string) {
-  return apiRequest<{ unvoided: string }>(`/api/admin/attendance/${recordId}/unvoid`, { method: 'POST' })
+export function unvoidRecord(recordId: string, reason: string) {
+  return apiRequest<{ unvoided: string }>(`/api/admin/attendance/${recordId}/unvoid`, {
+    method: 'POST',
+    body: { reason },
+  })
 }
 
 /**

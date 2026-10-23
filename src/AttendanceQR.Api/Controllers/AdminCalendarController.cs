@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,7 @@ namespace AttendanceQR.Api.Controllers;
 /// location's regular weekly WorkDaysMask). Adding/removing one immediately recomputes that date's
 /// DailySummary rows so reports agree right away, not just after the next nightly run.
 /// </summary>
+[Permission(AccessPermissions.HolidaysManage)]
 [ApiController]
 [Authorize(Roles = "Admin")]
 [Route("api/admin/non-working-days")]

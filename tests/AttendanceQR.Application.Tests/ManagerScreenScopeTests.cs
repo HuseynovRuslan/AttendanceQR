@@ -197,7 +197,7 @@ public class ManagerScreenScopeTests
     // --- the PIN-reset queue ---------------------------------------------------------------------
 
     private static AdminPinResetController PinResets(Fixture f, Guid who, EmployeeRole role) =>
-        new(f.Db, new Hasher(), new Lockout()) { ControllerContext = f.As(who, role) };
+        new(f.Db, new Hasher(), new Lockout(), new AppOptions()) { ControllerContext = f.As(who, role) };
 
     [Fact]
     public async Task The_queue_shows_a_manager_only_their_own_staff()

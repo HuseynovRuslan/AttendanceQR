@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   getAdminLocations, getDashboard, getPendingDeviceChanges, getProblems, getToday,
@@ -8,9 +8,13 @@ import { getOpenRecords } from '../../api/attendance'
 import { usePolling } from '../../lib/usePolling'
 import { DashboardMap, type DashSite, type DashPerson } from './DashboardMap'
 import { DateRangePicker } from '../../components/DateRangePicker'
+import { CountUp, LiveClock } from '../../components/LiveNumbers'
 import { EmployeeLink } from '../../components/EmployeeLink'
-import { IconX } from '../../components/icons'
-import { COMPANY_TZ, fmtTime } from '../../lib/format'
+import { IconAlert, IconBuilding, IconCheck, IconClock, IconMapPin, IconPhone, IconUserX, IconX } from '../../components/icons'
+import { faceIsFlagged } from '../../components/FaceFlagBadge'
+import { bucketOf, countToday, type TodayBucket } from './todayCounts'
+import { fmtTime } from '../../lib/format'
+import { matchesSearch } from '../../lib/searchFold'
 
 /**
  * The admin's live "today" board, dressed as the group panel a director reacted to — but in white,
@@ -32,53 +36,28 @@ const BUCKET_LABEL: Record<Bucket, string> = {
   trip: 'Ezamiyyət',
 }
 
-/** Which today-row belongs to which tappable bucket. Vacation / Sick / Unpaid share the OnLeave
- *  status, so they are told apart by the row's leaveType — which is exactly why Sick used to show as
- *  "Məzuniyyət" until the board started carrying the leave type. Mirrors the counts below exactly. */
-function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
-  switch (bucket) {
-    case 'total': return true
-    case 'done': return r.status === 'OnTime' || r.status === 'Late'
-    case 'absent': return r.status === 'Absent'
-    case 'in': return r.status === 'Incomplete'
-    case 'pending': return r.status === 'Pending'
-    case 'onboarding': return r.status === 'Onboarding'
-    case 'permission': return r.status === 'Permission'
-    case 'rest': return r.status === 'DayOff' && r.leaveType === 'Rest'
-    case 'dayOff': return r.status === 'DayOff' && r.leaveType !== 'Rest'
-    case 'sick': return r.status === 'OnLeave' && r.leaveType === 'Sick'
-    case 'unpaid': return r.status === 'OnLeave' && r.leaveType === 'Unpaid'
-    case 'trip': return r.status === 'OnLeave' && r.leaveType === 'BusinessTrip'
-    case 'vacation': return r.status === 'OnLeave' && r.leaveType !== 'Sick' && r.leaveType !== 'Unpaid' && r.leaveType !== 'BusinessTrip'
-    default: return false
-  }
+/**
+ * This panel's pill names, mapped onto the board's buckets. Only a translation of names — the RULE
+ * itself lives in todayCounts.ts and is asked for, never restated here.
+ *
+ * It used to be restated, twice: once in this function and once in the counting loop below. The two
+ * copies drifted on the case that matters most. A «Sahədə» row was counted as «Tamamlayıb» whatever
+ * the visit was doing, while this function matched it to no bucket at all — so on 02.10, with 54
+ * people still standing on sites, the panel announced them as finished, said 54 fewer were at work
+ * than the board did, and opening the «Tamamlayıb 55» pill listed one person. todayCounts.ts closes
+ * a field day only when the worker has left the SITE; that is the rule, and it has the tests.
+ *
+ * Typed as a total Record so the compiler refuses a pill with no bucket, or a bucket name that does
+ * not exist. A bucket with no PILL is the remaining gap, and dashboardBuckets.test.ts covers it.
+ */
+export const PILL_BUCKET: Record<Exclude<Bucket, 'total'>, TodayBucket> = {
+  in: 'incomplete', done: 'present', absent: 'absent', pending: 'pending', onboarding: 'onboarding',
+  sick: 'sick', vacation: 'onLeave', unpaid: 'unpaid', permission: 'permission',
+  rest: 'rest', dayOff: 'dayOff', trip: 'trip',
 }
 
-/** Eases a number from its previous value to the target (easeOutCubic); counts up from 0 on mount,
- *  ticks smoothly on each poll, and jumps straight to the value under reduced-motion. */
-function useCountUp(target: number, duration = 750): number {
-  const [val, setVal] = useState(target)
-  const fromRef = useRef(0)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      fromRef.current = target
-      setVal(target)
-      return
-    }
-    const from = fromRef.current
-    const start = performance.now()
-    let raf = 0
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / duration)
-      const eased = 1 - Math.pow(1 - p, 3)
-      setVal(from + (target - from) * eased)
-      if (p < 1) raf = requestAnimationFrame(tick)
-      else fromRef.current = target
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [target, duration])
-  return val
+function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
+  return bucket === 'total' || bucketOf(r) === PILL_BUCKET[bucket]
 }
 
 const isoDay = (d: Date) => {
@@ -126,6 +105,13 @@ function Sparkline({ points }: { points: number[] }) {
  */
 function RateRing({ pct }: { pct: number }) {
   const safe = Math.max(0, Math.min(100, Math.round(pct)))
+  // Drawn empty first and given its value a frame later, so the CSS transition on .lux-ring-arc fills
+  // the arc — one render of this ring rather than one render of the whole panel per frame.
+  const [drawn, setDrawn] = useState(0)
+  useEffect(() => {
+    const r = requestAnimationFrame(() => setDrawn(safe))
+    return () => cancelAnimationFrame(r)
+  }, [safe])
   const R = 26
   const C = 2 * Math.PI * R
   // Below half the day is going badly and the ring should say so without anyone reading the label.
@@ -138,12 +124,12 @@ function RateRing({ pct }: { pct: number }) {
         <circle
           cx="32" cy="32" r={R} fill="none" stroke={stroke} strokeWidth="6" strokeLinecap="round"
           strokeDasharray={C}
-          strokeDashoffset={C * (1 - safe / 100)}
+          strokeDashoffset={C * (1 - drawn / 100)}
           transform="rotate(-90 32 32)"
           className="lux-ring-arc"
         />
       </svg>
-      <b className="lux-ring-n">{safe}%</b>
+      <b className="lux-ring-n"><CountUp value={safe} suffix="%" /></b>
     </span>
   )
 }
@@ -155,7 +141,7 @@ export function DashboardPage() {
   const [allRows, setAllRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [openBucket, setOpenBucket] = useState<Bucket | null>(null)
-  const [actions, setActions] = useState({ open: 0, devices: 0, problems: 0 })
+  const [actions, setActions] = useState({ open: 0, devices: 0, problems: 0, outsideRadius: 0 })
   const [locations, setLocations] = useState<AdminLocation[]>([])
   // '' = the whole company. With one branch this was a question nobody had; with six, "how many are
   // at work" has six different answers and the panel was only ever giving the sum.
@@ -166,18 +152,11 @@ export function DashboardPage() {
   // The activity list is the whole day and scrolls; on a busy morning that is 300 rows, and «where is
   // Rəşad» is answered by typing four letters rather than by scrolling.
   const [feedQuery, setFeedQuery] = useState('')
-  const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
     getAdminLocations().then(({ status, data }) => {
       if (status === 200 && Array.isArray(data)) setLocations(data)
     })
-  }, [])
-
-  // Live clock, like the group board — the seconds ticking is half of what makes it read as live.
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
   }, [])
 
   usePolling(async () => {
@@ -196,6 +175,11 @@ export function DashboardPage() {
       open: Array.isArray(open.data) ? open.data.length : 0,
       devices: Array.isArray(devices.data) ? devices.data.length : 0,
       problems: problems.data && 'rejectedCount' in problems.data ? problems.data.rejectedCount : 0,
+      // The breakdown, not just the total: «two people stood outside the fence» is a different job
+      // from «two people were refused», and the attention list is read as a to-do.
+      outsideRadius: problems.data && 'summary' in problems.data
+        ? (problems.data.summary.find((s) => s.reason === 'OutsideRadius')?.count ?? 0)
+        : 0,
     })
   }, 30_000)
 
@@ -226,30 +210,11 @@ export function DashboardPage() {
     return ev.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 500)
   }, [rows])
 
-  const counts = { present: 0, absent: 0, incomplete: 0, pending: 0, onboarding: 0, dayOff: 0, rest: 0, sick: 0, vacation: 0, unpaid: 0, permission: 0, trip: 0 }
-  for (const r of rows) {
-    // 'Field' burada olmasa «Natamam»a yıxılırdı: bütün günü sahədə işləyən adam lövhədə qüsur kimi
-    // görünürdü. Bugünkü lövhə (todayCounts.ts) onu artıq işdə sayır — iki ekran razılaşmalıdır.
-    if (r.status === 'OnTime' || r.status === 'Late' || r.status === 'Field') counts.present++
-    else if (r.status === 'Absent') counts.absent++
-    else if (r.status === 'Pending') counts.pending++
-    // Tanınmasa «İşdə» qalığına yıxılardı — və 294 qurulmamış hesab «İndi iş başında» sayılardı.
-    else if (r.status === 'Onboarding') counts.onboarding++
-    // Two facts under one status. «İstirahət 220» on a Sunday, when nobody was granted anything, is
-    // noise the reader learns to skip — and the handful of days a manager actually decided were
-    // buried inside it. Only the leave type separates them, and it now travels for rest days too.
-    else if (r.status === 'DayOff') { if (r.leaveType === 'Rest') counts.rest++; else counts.dayOff++ }
-    else if (r.status === 'Permission') counts.permission++
-    else if (r.status === 'OnLeave') {
-      if (r.leaveType === 'Sick') counts.sick++
-      else if (r.leaveType === 'Unpaid') counts.unpaid++
-      else if (r.leaveType === 'BusinessTrip') counts.trip++
-      else counts.vacation++
-    }
-    else counts.incomplete++
-  }
+  // Counted by the SAME function the board counts with, for the same reason PILL_BUCKET is a map
+  // rather than a rule: this was a second implementation, and it drifted. See todayCounts.ts.
+  const counts = useMemo(() => countToday(rows), [rows])
   const total = rows.length
-  const onLeaveTotal = counts.sick + counts.vacation + counts.unpaid + counts.trip
+  const onLeaveTotal = counts.sick + counts.onLeave + counts.unpaid + counts.trip
   // Aktivləşdirməmişlər bu gün gözlənilənlərə DAXİL DEYİL — telefonları hələ paylanmayıb, iştirak
   // faizinin məxrəcində olmaları faizi mənasız edərdi.
   const notExpected = counts.dayOff + onLeaveTotal + counts.permission + counts.onboarding
@@ -257,13 +222,91 @@ export function DashboardPage() {
   const attended = counts.present + counts.incomplete
   const overallRate = expected ? Math.round((attended / expected) * 100) : 0
 
+  /**
+   * What needs a person today — the same queues the action strip listed, said in sentences.
+   *
+   * Only the non-empty ones appear. A permanent row reading «0 radius pozuntusu» is a line the reader
+   * learns to skip, and then skips on the morning it says 14.
+   *
+   * There is no «N nəfər gecikir» row, which the design asked for. This product has no lateness
+   * figure and is not growing one: every employee has their own hours, so a single «gecikmə» count
+   * compares people against a clock they were never on. The first row answers the same morning
+   * question with a number this company does keep — who has not come at all.
+   */
+  const faceFlagged = rows.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+  const silentSites = useMemo(() => {
+    if (filterLoc) return []
+    const seen = new Map<string, { name: string; any: boolean }>()
+    for (const r of rows) {
+      const hit = seen.get(r.locationId)
+      const scanned = !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc)
+      if (hit) hit.any = hit.any || scanned
+      else seen.set(r.locationId, { name: r.locationName, any: scanned })
+    }
+    return [...seen.values()].filter((s) => !s.any).map((s) => s.name)
+  }, [rows, filterLoc])
+
+  const attention = ([
+    {
+      key: 'absent', n: counts.absent, tint: 'clay', Icon: IconUserX, to: '/admin/today?status=absent',
+      title: `${counts.absent} nəfər bu gün gəlməyib`,
+      detail: 'Lövhədə səbəb yazmaq və ya qayıbı geri almaq olar',
+    },
+    {
+      key: 'face', n: faceFlagged, tint: 'clay', Icon: IconAlert, to: '/admin/today',
+      title: `${faceFlagged} üz uyğunsuzluğu var`,
+      detail: 'Giriş şəkli referansla uyuşmayan skanlar — yoxlanmalıdır',
+    },
+    {
+      key: 'radius', n: actions.outsideRadius, tint: 'amber', Icon: IconMapPin, to: '/admin/problems',
+      title: `${actions.outsideRadius} radius pozuntusu`,
+      detail: 'İş yerindən kənarda qeydə alınan skanlar rədd edilib',
+    },
+    {
+      key: 'open', n: actions.open, tint: 'amber', Icon: IconClock, to: '/admin/open-records',
+      title: `${actions.open} gün çıxışsız qalıb`,
+      detail: 'Bağlanmayan gün sıfır saat sayılır — bağlamaq lazımdır',
+    },
+    {
+      key: 'devices', n: actions.devices, tint: 'blue', Icon: IconPhone, to: '/admin/device-changes',
+      title: `${actions.devices} cihaz təsdiqi gözləyir`,
+      detail: 'Telefonunu dəyişən işçi təsdiq olunana qədər skan edə bilmir',
+    },
+    {
+      key: 'silent', n: silentSites.length, tint: 'slate', Icon: IconBuilding, to: '/admin/today',
+      title: `${silentSites.length} filial bu gün skan görməyib`,
+      detail: silentSites.slice(0, 3).join(', ') + (silentSites.length > 3 ? ' və b.' : ''),
+    },
+  ]).filter((a) => a.n > 0)
+
+  /**
+   * The branch that turned out best and worst today.
+   *
+   * Only branches with somebody EXPECTED are compared: a site whose whole crew is on its day off
+   * would otherwise come out at 0% and be named the worst in the company every Sunday.
+   */
+  const perf = useMemo(() => {
+    const by = new Map<string, { id: string; name: string; expected: number; onDuty: number; absent: number }>()
+    for (const r of allRows) {
+      const notDue = r.status === 'DayOff' || r.status === 'OnLeave' || r.status === 'Permission'
+        || r.status === 'Onboarding' || r.status === 'Pending'
+      const hit = by.get(r.locationId) ?? { id: r.locationId, name: r.locationName, expected: 0, onDuty: 0, absent: 0 }
+      if (!notDue) {
+        hit.expected++
+        if (r.status === 'Absent') hit.absent++; else hit.onDuty++
+      }
+      by.set(r.locationId, hit)
+    }
+    const scored = [...by.values()]
+      .filter((b) => b.expected >= 3)
+      .map((b) => ({ ...b, pct: Math.round((b.onDuty / b.expected) * 100) }))
+      .sort((a, b) => b.pct - a.pct || b.expected - a.expected)
+    if (scored.length < 2) return null
+    return { best: scored[0], worst: scored[scored.length - 1] }
+  }, [allRows])
+
   // On duty RIGHT NOW = checked in and not yet out. The hero number.
   const onDutyNow = counts.incomplete
-  const cOnDuty = Math.round(useCountUp(onDutyNow))
-  const cDone = Math.round(useCountUp(counts.present))
-  const cAbsent = Math.round(useCountUp(counts.absent))
-  const cTotal = Math.round(useCountUp(total))
-  const cRate = Math.round(useCountUp(overallRate))
 
   // Sites for the map: each location joined with how many of its people are on duty now.
   const sites = useMemo<DashSite[]>(() => {
@@ -348,15 +391,10 @@ export function DashboardPage() {
 
   // Name or branch, folded — the same match the rest of the product uses for Azerbaijani text.
   const shownActivity = useMemo(() => {
-    const q = feedQuery.trim().toLocaleLowerCase('az-AZ')
-    if (!q) return activity
-    return activity.filter(
-      (e) => e.name.toLocaleLowerCase('az-AZ').includes(q) || e.loc.toLocaleLowerCase('az-AZ').includes(q),
-    )
+    return activity.filter((e) => matchesSearch(feedQuery, e.name, e.loc))
   }, [activity, feedQuery])
 
   // The board hangs on a wall in Baku; it shows Baku's time whatever the machine driving it thinks.
-  const clock = now.toLocaleTimeString('az-AZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: COMPANY_TZ })
 
   return (
     <div className="lux">
@@ -387,7 +425,8 @@ export function DashboardPage() {
             </select>
           )}
           <span className="lux-live"><i />CANLI</span>
-          <span className="lux-clock">{clock}</span>
+          {/* Its own component: the seconds tick re-renders a timestamp, not the panel (components/LiveNumbers). */}
+          <LiveClock className="lux-clock" />
         </div>
       </header>
 
@@ -397,14 +436,14 @@ export function DashboardPage() {
       <section className="lux-hero lux-rise lux-d2">
         <div className="lux-hero-main">
           <div className="lux-hero-label">İndi iş başında</div>
-          <div className="lux-hero-num">{cOnDuty}<span className="lux-hero-unit">nəfər</span></div>
-          <div className="lux-hero-note">{cTotal} işçidən {cOnDuty}-i hazırda işdədir</div>
+          <div className="lux-hero-num"><CountUp value={onDutyNow} /><span className="lux-hero-unit">nəfər</span></div>
+          <div className="lux-hero-note"><CountUp value={total} /> işçidən <CountUp value={onDutyNow} />-i hazırda işdədir</div>
         </div>
         {/* One number leads; the day's rate is the SHAPE beside it. As bare text in the corner it was
             a second figure competing with the first — as a ring it is read before it is read, and the
             arc says «about half» before anyone parses «54%». */}
         <div className="lux-hero-rate">
-          <RateRing pct={cRate} />
+          <RateRing pct={overallRate} />
           <span className="lux-hero-rate-l">bugünkü iştirak</span>
         </div>
       </section>
@@ -412,13 +451,13 @@ export function DashboardPage() {
       {/* Buckets as tappable pills. Order per request: Ümumi işçi first (leftmost), Tamamlayıb last
           (rightmost); the day's live states sit between. Leave/permission/rest appear only when > 0. */}
       <section className="lux-pills lux-rise lux-d3">
-        <Pill tone="slate" n={cTotal} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
-        <Pill tone="blue" n={cOnDuty} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
-        <Pill tone="clay" n={cAbsent} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
+        <Pill tone="slate" n={<CountUp value={total} />} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
+        <Pill tone="blue" n={<CountUp value={onDutyNow} />} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
+        <Pill tone="clay" n={<CountUp value={counts.absent} />} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
         {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Növbəsi başlamayıb" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
         {counts.onboarding > 0 && <Pill tone="slate" n={counts.onboarding} label="Aktivləşdirməyib" active={openBucket === 'onboarding'} onClick={() => openPill('onboarding')} />}
         {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
-        {counts.vacation > 0 && <Pill tone="purple" n={counts.vacation} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}
+        {counts.onLeave > 0 && <Pill tone="purple" n={counts.onLeave} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}
         {counts.unpaid > 0 && <Pill tone="purple" n={counts.unpaid} label="Ödənişsiz" active={openBucket === 'unpaid'} onClick={() => openPill('unpaid')} />}
         {counts.permission > 0 && <Pill tone="purple" n={counts.permission} label="İcazə" active={openBucket === 'permission'} onClick={() => openPill('permission')} />}
         {counts.trip > 0 && <Pill tone="teal" n={counts.trip} label="Ezamiyyət" active={openBucket === 'trip'} onClick={() => openPill('trip')} />}
@@ -426,7 +465,7 @@ export function DashboardPage() {
             the record to be able to see. The roster's own day off follows it, and says so. */}
         {counts.rest > 0 && <Pill tone="purple" n={counts.rest} label="İstirahət (təyin edilmiş)" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
         {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="Həftəlik istirahət" active={openBucket === 'dayOff'} onClick={() => openPill('dayOff')} />}
-        <Pill tone="leaf" n={cDone} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
+        <Pill tone="leaf" n={<CountUp value={counts.present} />} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
       </section>
 
       {/* Tapping a pill opens the matching employee list right here. */}
@@ -564,41 +603,101 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* Action center — the things that need a person.
+      {/* Attention + branch performance, side by side.
 
-          Only the first tile follows the branch filter: it is counted from `rows`. The other three
-          come from endpoints that do not carry a branch at all — the problems report returns a number
-          rather than rows, and the device queue has no location on it — so rather than filter one and
+          Only the first and the last two rows follow the branch filter: they are counted from `rows`.
+          The middle ones come from endpoints that do not carry a branch at all — the problems report
+          returns totals, and the device queue has no location on it — so rather than filter one and
           silently leave two company-wide next to a branch name, the panel says which it is. A wrong
           count under a filter is worse than an honest unfiltered one. */}
-      <section className="card lux-panel lux-rise lux-d5">
-        <div className="lux-panel-h">
-          <span>Diqqət mərkəzi</span>
-          {filterLoc && (
-            <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>
-              son üçü bütün filiallar üzrə
+      <section className="lux-bottom lux-rise lux-d5">
+        <div className="card dash-attn">
+          <div className="dash-attn-h">
+            <div>
+              <div className="dash-attn-t">Diqqət tələb edir</div>
+              <div className="dash-attn-s">
+                Gəlməyənlər, üz uyğunsuzluğu, radius pozuntusu və skan görməyən filiallar
+                {filterLoc && ' · bəziləri bütün filiallar üzrə'}
+              </div>
+            </div>
+            <span className={`dash-pri ${attention.length === 0 ? 'ok' : 'hot'}`}>
+              {attention.length === 0 ? 'Təmiz' : `${attention.length} məsələ`}
             </span>
-          )}
-        </div>
-        <div className="lux-actions">
-          {[
-            // Goes to the today board rather than opening the pill list at the very top of the page —
-            // pressing something at the bottom and having the screen jump upward reads as a glitch.
-            { color: 'var(--clay)', n: counts.absent, label: 'Bu gün gəlməyib', onClick: () => navigate('/admin/today?status=absent') },
-            { color: 'var(--amber)', n: actions.open, label: 'Çıxışı unudulub', onClick: () => navigate('/admin/open-records') },
-            { color: 'var(--blue)', n: actions.devices, label: 'Cihaz təsdiqi gözləyir', onClick: () => navigate('/admin/device-changes') },
-            { color: 'var(--clay)', n: actions.problems, label: 'Problemli skan (bu gün)', onClick: () => navigate('/admin/problems') },
-          ].map((it) => {
-            const calm = it.n === 0
-            return (
-              <button key={it.label} className={`lux-act${calm ? ' calm' : ''}`} onClick={calm ? undefined : it.onClick}>
-                <span className="lux-act-dot" style={{ background: calm ? 'var(--leaf)' : it.color }} />
-                <span className="lux-act-l">{it.label}</span>
-                <span className="lux-act-n">{it.n}</span>
-                {!calm && <span className="lux-act-ar">›</span>}
+          </div>
+          <div className="dash-attn-l">
+            {attention.map((a) => (
+              <button key={a.key} className="dash-attn-i" onClick={() => navigate(a.to)}>
+                <span className={`dash-attn-ic att-t-${a.tint}`}><a.Icon /></span>
+                <span className="dash-attn-tx">
+                  <span className="dash-attn-n">{a.title}</span>
+                  <span className="dash-attn-d">{a.detail}</span>
+                </span>
+                <span className={`dash-attn-b att-t-${a.tint}`}>Bax</span>
               </button>
+            ))}
+            {attention.length === 0 && (
+              <div className="dash-attn-ok">
+                <IconCheck />
+                <span>Bu gün diqqət tələb edən heç nə yoxdur.</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Best and worst branch by TURNOUT — not by lateness. This product has no lateness figure
+            and will not grow one: every employee has their own hours, so a single «gecikmə» number
+            across branches compares people against clocks they were never on. The second column is
+            Qayıb, which is the same question answered with a number this company actually keeps. */}
+        <div className="card dash-perf">
+          <div className="dash-attn-h">
+            <div>
+              <div className="dash-attn-t">Filial performansı</div>
+              <div className="dash-attn-s">İştirak faizi və qayıb sayı ilə ən yaxşı və ən zəif filiallar</div>
+            </div>
+            <span className="dash-pri calm">Ən yaxşı / ən zəif</span>
+          </div>
+          {perf
+            ? (
+              <div className="dash-perf-c">
+                {([
+                  { ...perf.best, kind: 'best' as const, label: 'Ən yaxşı', note: 'ən yaxşı nəticə' },
+                  { ...perf.worst, kind: 'worst' as const, label: 'Ən zəif', note: 'ən zəif nəticə' },
+                ]).map((b) => (
+                  <button
+                    key={b.kind}
+                    className="dash-perf-i"
+                    onClick={() => setFilterLoc(b.id)}
+                    title={`${b.name} filialına keç`}
+                  >
+                    <span className="dash-perf-h">
+                      <span className="dash-perf-k">
+                        <i className={b.kind === 'best' ? 'ok' : 'bad'} />{b.label}
+                      </span>
+                      <span className={`dash-pri ${b.kind === 'best' ? 'ok' : 'hot'}`}>{b.pct}%</span>
+                    </span>
+                    <span className="dash-perf-nm">{b.name}</span>
+                    <span className="dash-perf-m">
+                      <span>
+                        <span className="dash-perf-ml">İştirak faizi</span>
+                        <span className="dash-perf-mv">{b.pct}%</span>
+                      </span>
+                      <span>
+                        <span className="dash-perf-ml">Qayıb</span>
+                        <span className="dash-perf-mv">{b.absent}</span>
+                      </span>
+                    </span>
+                    <span className={`dash-perf-f ${b.kind === 'best' ? 'ok' : 'bad'}`}>
+                      {b.onDuty} işdə · {b.note}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )
-          })}
+            : (
+              <div className="dash-attn-ok">
+                <span>Müqayisə üçün ən azı iki filialda işçi olmalıdır.</span>
+              </div>
+            )}
         </div>
       </section>
     </div>
@@ -606,7 +705,7 @@ export function DashboardPage() {
 }
 
 function Pill({ tone, n, label, active, onClick }:
-  { tone: string; n: number; label: string; active?: boolean; onClick?: () => void }) {
+  { tone: string; n: ReactNode; label: string; active?: boolean; onClick?: () => void }) {
   return (
     <button className={`lux-pill ${tone}${active ? ' active' : ''}${onClick ? '' : ' static'}`} onClick={onClick} disabled={!onClick}>
       <span className="lux-pill-n">{n}</span>

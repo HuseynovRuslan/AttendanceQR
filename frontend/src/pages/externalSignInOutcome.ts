@@ -29,10 +29,11 @@ export const EXTERNAL_APPS: Record<string, ExternalApp> = {
     key: 'meydan',
     name: 'PRIZMA',
     description: 'Yaradıcı layihələr və açıq müsabiqələr platforması',
-    // Renamed to PRIZMA and moved to prizma.qrlog.az; meydan.qrlog.az still answers there with a redirect, so a
-    // build made before the move is sent somewhere that still works.
-    returnHosts: ['prizma.qrlog.az', 'meydan.qrlog.az'],
-    homeUrl: 'https://prizma.qrlog.az',
+    // The platform's own domain, and the two hosts it has answered at before it. Each older one still redirects
+    // to the current address, so a build made before a move is sent somewhere that works; they stay listed until
+    // nothing aims at them any more.
+    returnHosts: ['pryzma.az', 'prizma.qrlog.az', 'meydan.qrlog.az'],
+    homeUrl: 'https://pryzma.az',
     serviceName: 'PRIZMA',
     serviceLine: 'Müsabiqələrdə iştirak etmək üçün QRLog hesabınızla daxil olun.',
   },

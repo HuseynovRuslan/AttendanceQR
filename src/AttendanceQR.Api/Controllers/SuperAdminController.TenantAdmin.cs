@@ -2,6 +2,7 @@ using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Services.Access;
 using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -119,6 +120,7 @@ public partial class SuperAdminController
         await AuditAsync(
             result.Created ? "TenantAdminCreated" : "TenantAdminClaimed",
             tenant.Id, tenant.Slug, $"{fullName} ({phone})", ct);
+        await AccessSeeder.ReconcileAfterWriteAsync(_db, tenant.Id, _logger, ct);
 
         return Ok(new
         {

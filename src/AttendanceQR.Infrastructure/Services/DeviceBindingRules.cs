@@ -45,6 +45,29 @@ public static class DeviceBindingRules
         return null;
     }
 
+    /// <summary>How far back automatic adoptions count against an employee's allowance.</summary>
+    public const int AutoBindWindowDays = 30;
+
+    /// <summary>
+    /// From when an employee's automatic adoptions count against <see
+    /// cref="DeviceBindingOptions.MaxBindsPer30Days"/>: the last thirty days, or since an admin last
+    /// approved a device change for them, whichever is more recent.
+    ///
+    /// The allowance exists so private browsing cannot mint a binding on every scan. But the people who
+    /// actually reach it are not doing that — their phone's browser keeps losing its storage, so every
+    /// few days, sometimes every few hours, they arrive as a new device. Before this, approving their
+    /// request bound only the one context it was filed from and left the allowance spent, so the next
+    /// lost context refused them again: Qurbanov Nicat was approved twice in September and never
+    /// scanned once more; Bayramov Musa's morning request was approved at 13:37 on 03.10.2026, and at
+    /// 13:41 his phone was already somebody new. An admin looking at the person and saying yes is
+    /// exactly the decision the allowance was waiting for, so it starts the count again.
+    /// </summary>
+    public static DateTime AutoBindWindowStart(DateTime nowUtc, DateTime? lastApprovalUtc)
+    {
+        var rolling = nowUtc.AddDays(-AutoBindWindowDays);
+        return lastApprovalUtc is DateTime approved && approved > rolling ? approved : rolling;
+    }
+
     /// <summary>
     /// Makes <paramref name="fingerprint"/> an active binding, evicting the least-recently-used
     /// bindings so at most <paramref name="maxActive"/> remain. A fingerprint that was bound before

@@ -5,13 +5,19 @@ import {
   rejectMissedCheckout,
   type MissedCheckoutPending,
 } from '../../api/admin'
+import { correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { IconCheck, IconX } from '../../components/icons'
 import { fmtDayMonth, fmtTime } from '../../lib/format'
+import { useHolds } from '../../auth/AccessContext'
 
 export function MissedCheckoutPage() {
+  // Deciding a missed check-out writes the day — «attendance.correct».
+  const mayCorrect = useHolds('attendance.correct', true)
   const [rows, setRows] = useState<MissedCheckoutPending[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const reason = useCorrectionReason()
 
   useEffect(() => {
     void load()
@@ -24,11 +30,35 @@ export function MissedCheckoutPage() {
     setLoading(false)
   }
 
-  async function act(id: string, kind: 'approve' | 'reject') {
-    setBusyId(id)
-    const r = kind === 'approve' ? await approveMissedCheckout(id) : await rejectMissedCheckout(id)
+  async function act(row: MissedCheckoutPending, kind: 'approve' | 'reject') {
+    // Deciding writes (or refuses) a check-out, which is what the day pays — so it says why, like any
+    // other correction. The employee's own reason is beside it in the audit line.
+    const why = await reason.ask(
+      kind === 'approve'
+        ? {
+            title: `${row.employeeName} — çıxışı ${fmtTime(row.requestedCheckOutAtUtc)} kimi təsdiqlə`,
+            detail: `${fmtDayMonth(row.attendanceDate)} · işçinin səbəbi: ${row.reason}`,
+            confirmLabel: 'Təsdiqlə',
+            presets: ['İşçinin dediyi saat təsdiqləndi', 'Rəhbərin təsdiqi ilə', 'Telefon və ya internet problemi — skan edə bilmədi'],
+          }
+        : {
+            title: `${row.employeeName} — tələbi rədd et`,
+            detail: `${fmtDayMonth(row.attendanceDate)} · gün açıq qalır, admin özü bağlayacaq.`,
+            confirmLabel: 'Rədd et',
+            danger: true,
+            presets: ['Göstərilən saat düz deyil', 'Gün artıq bağlanıb', 'Təkrar tələb'],
+          },
+    )
+    if (why === null) return
+    setBusyId(row.id)
+    setError(null)
+    const r = kind === 'approve' ? await approveMissedCheckout(row.id, why) : await rejectMissedCheckout(row.id, why)
     setBusyId(null)
-    if (r.status === 200) setRows((rs) => rs.filter((x) => x.id !== id))
+    if (r.status === 200) {
+      setRows((rs) => rs.filter((x) => x.id !== row.id))
+      return
+    }
+    setError(correctionError(r.data, r.status === 403 ? 'Bu işçinin tələbinə qərar verə bilməzsiniz.' : 'Alınmadı — yenidən cəhd edin.'))
   }
 
   return (
@@ -37,6 +67,9 @@ export function MissedCheckoutPage() {
         İşçilər çıxışı unudanda getdikləri saatı bildirir — burada təsdiqləyin. «Bu ay» sütunu tez-tez
         unudanları göstərir.
       </div>
+
+      {error && <div className="fb fb-err" style={{ marginBottom: 14 }}><IconX /><span>{error}</span></div>}
+      {reason.dialog}
 
       {loading ? (
         <div className="muted">Yüklənir…</div>
@@ -83,10 +116,11 @@ export function MissedCheckoutPage() {
                     </span>
                   </td>
                   <td data-label="">
+                    {mayCorrect && <>
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.id}
-                      onClick={() => act(r.id, 'approve')}
+                      onClick={() => act(r, 'approve')}
                       style={{ background: '#16a34a', color: '#fff', marginRight: 6 }}
                     >
                       <IconCheck /> Təsdiqlə
@@ -94,11 +128,12 @@ export function MissedCheckoutPage() {
                     <button
                       className="btn btn-sm"
                       disabled={busyId === r.id}
-                      onClick={() => act(r.id, 'reject')}
+                      onClick={() => act(r, 'reject')}
                       style={{ color: '#b91c1c' }}
                     >
                       <IconX /> Rədd
                     </button>
+                    </>}
                   </td>
                 </tr>
               ))}

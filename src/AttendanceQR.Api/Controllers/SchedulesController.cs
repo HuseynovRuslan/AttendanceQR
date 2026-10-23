@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -33,6 +34,7 @@ public class SchedulesController : ControllerBase
 
     public SchedulesController(AppDbContext db) => _db = db;
 
+    [Permission(AccessPermissions.SchedulesView)]
     [HttpGet]
     public async Task<IActionResult> List()
     {
@@ -75,6 +77,7 @@ public class SchedulesController : ControllerBase
         return null;
     }
 
+    [Permission(AccessPermissions.SchedulesManage, AtCompany = true)]
     [HttpPost]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] ScheduleRequest request)
@@ -104,6 +107,7 @@ public class SchedulesController : ControllerBase
         return Ok(Project(schedule));
     }
 
+    [Permission(AccessPermissions.SchedulesManage, AtCompany = true)]
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] ScheduleRequest request)
@@ -147,6 +151,7 @@ public class SchedulesController : ControllerBase
     // shift in use would leave those employees pointing at nothing — they would silently fall back to
     // their branch's hours, which is a change to how their pay is calculated that nobody asked for.
     // The count comes back with the error so the UI can say who is affected.
+    [Permission(AccessPermissions.SchedulesManage, AtCompany = true)]
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)

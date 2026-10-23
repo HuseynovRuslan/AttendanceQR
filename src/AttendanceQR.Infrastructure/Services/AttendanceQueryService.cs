@@ -55,8 +55,10 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
     public async Task<(AttendanceAccess Access, IReadOnlyList<AttendanceRecordDto> Records)> GetForEmployeeAsync(
         Guid targetEmployeeId, Guid requesterId, EmployeeRole requesterRole, CancellationToken ct = default)
     {
-        // One central rule (LocationScopeRules) — the same manager scope the reports/export use.
-        var allowed = await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, requesterRole, targetEmployeeId, ct);
+        // One central rule (LocationScopeRules) — the same manager scope the reports/export use. Somebody's days
+        // are «attendance.view», whatever else the caller may see of them (read in Enforced only).
+        var allowed = await LocationScopeRules.CanAccessEmployeeAsync(_db, requesterId, requesterRole, targetEmployeeId, ct,
+            Domain.Access.AccessPermissions.AttendanceView);
 
         if (!allowed)
             return (AttendanceAccess.Forbidden, Array.Empty<AttendanceRecordDto>());
@@ -128,11 +130,17 @@ public sealed class AttendanceQueryService : IAttendanceQueryService
                 f.Out is null ? "CheckedIn" : "Completed",
                 null, "NotChecked", null, false, IsFieldDay: true));
 
+        var first = rows.Count == 0 ? DateOnly.MaxValue : rows.Min(r => r.AttendanceDate);
+        var last = rows.Count == 0 ? DateOnly.MinValue : rows.Max(r => r.AttendanceDate);
+        var selfDays = rows.Count == 0 ? []
+            : (await SelfCorrection.DaysAsync(_db, first, last, [employeeId], ct)).Select(x => x.Date).ToHashSet();
+
         return rows.Select(r => new AttendanceRecordDto(
                 r.Id, r.AttendanceDate, r.LocationId, r.CheckInAtUtc, r.CheckOutAtUtc, r.Status,
                 r.FaceMatchScore, r.FaceMatchStatus,
                 r.ManualByEmployeeId is Guid mid ? manualNames.GetValueOrDefault(mid) : null,
-                r.ClosedByFieldVisitId != null))
+                r.ClosedByFieldVisitId != null,
+                SelfCorrected: selfDays.Contains(r.AttendanceDate)))
             .Concat(fieldRows)
             .OrderByDescending(r => r.AttendanceDate)
             .Take(take)

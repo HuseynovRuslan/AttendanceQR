@@ -140,7 +140,7 @@ public class ImpersonationCredentialGuardTests
         }
 
         public AdminPinResetController PinResets(bool impersonating) =>
-            new(Db, new StubHasher(), new StubLockout())
+            new(Db, new StubHasher(), new StubLockout(), new AppOptions())
             {
                 ControllerContext = new ControllerContext
                 {
@@ -179,7 +179,7 @@ public class ImpersonationCredentialGuardTests
     private sealed class StubJwt : IJwtService
     {
         public string GenerateToken(Employee employee) => "token-for:" + employee.Id;
-        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, int expiryMinutes, bool readOnly = false) => "imp";
+        public string GenerateImpersonationToken(Employee employee, Guid impersonatedBy, bool readOnly = false) => "imp";
     }
 
     private sealed class StubPhotoStorage : IPhotoStorageService
@@ -297,7 +297,7 @@ public class ImpersonationCredentialGuardTests
         };
 
         var impersonation = new JwtSecurityTokenHandler().ReadJwtToken(
-            jwt.GenerateImpersonationToken(admin, Guid.NewGuid(), 60));
+            jwt.GenerateImpersonationToken(admin, Guid.NewGuid()));
         Assert.DoesNotContain(impersonation.Claims, c => c.Type == "mcp");
         Assert.Contains(impersonation.Claims, c => c.Type == "imp");
 
@@ -398,6 +398,19 @@ public class ImpersonationCredentialGuardTests
         Assert.IsType<OkObjectResult>(
             await h.Admin(impersonating: false).Update(h.BorrowedAdminId, Update(h, "+994559999999")));
         Assert.Equal(PhoneNumbers.Normalize("+994559999999"), h.Row(h.BorrowedAdminId).PhoneNumber);
+    }
+
+    [Fact]
+    public async Task An_edit_that_blanks_the_only_number_is_refused()
+    {
+        // Since 2026-10-15: a phone-only account whose number is blanked has nothing to sign in with, and
+        // the edit used to write it anyway. Refused like the invite refuses it, and nothing is written.
+        using var h = new Harness();
+
+        var bad = Assert.IsType<BadRequestObjectResult>(await h.Admin(impersonating: false).Update(h.BorrowedAdminId, Update(h, "")));
+
+        Assert.Equal("NeedEmailOrPhone", bad.Value!.GetType().GetProperty("error")!.GetValue(bad.Value));
+        Assert.Equal(PhoneNumbers.Normalize("+994501111111"), h.Row(h.BorrowedAdminId).PhoneNumber);
     }
 
     private static EmployeeUpdateRequest Update(Harness h, string phone) => new(

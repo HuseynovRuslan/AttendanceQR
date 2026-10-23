@@ -101,7 +101,7 @@ export function ForgotPinPage() {
       // device with no front camera. Re-opening cannot ever work, so say so — otherwise the tap
       // repaints a pixel-identical screen and the button reads as broken.
       setCamError(true)
-      setError('Bu telefonda kamera açılmır. Administratora sorğu göndərin.')
+      setError('Bu telefonda kamera açılmır. Rəhbərinizə sorğu göndərin.')
       return
     }
     setCamBusy(true)
@@ -120,7 +120,7 @@ export function ForgotPinPage() {
       setCamReady(false)
       // Repeating "allow it and press the button again" to somebody who has just done exactly that is
       // the same dead end in politer words. From the second failure on, point at the route that works.
-      if (camFailedOnceRef.current) setError('Hələ də alınmır. Administratora sorğu göndərin.')
+      if (camFailedOnceRef.current) setError('Hələ də alınmır. Rəhbərinizə sorğu göndərin.')
       camFailedOnceRef.current = true
     } finally {
       setCamBusy(false)
@@ -228,7 +228,8 @@ export function ForgotPinPage() {
     }
   }
 
-  // Fallback when face+device can't verify: file a request for the admin to reset by hand.
+  // Fallback when face+device can't verify: file a request for the branch manager (an admin where the
+  // branch has none) to reset by hand. They are pushed about it — see StaffAlertKinds.PinResetRequested.
   async function sendAdminRequest() {
     setBusy(true)
     setError(null)
@@ -263,7 +264,7 @@ export function ForgotPinPage() {
   ) : null
   const adminButton = (
     <button type="button" onClick={() => void sendAdminRequest()} disabled={busy} className="btn btn-outline btn-bl btn-lg fp-second">
-      {busy ? 'Göndərilir…' : 'Administratora sorğu göndər'}
+      {busy ? 'Göndərilir…' : 'Rəhbərə sorğu göndər'}
     </button>
   )
 
@@ -347,8 +348,8 @@ export function ForgotPinPage() {
               {mode === 'phone' ? 'Nömrə' : 'E-poçt'} səhvdirsə, geri qayıdıb düzgün yazın və yenidən göndərin.
             </p>
             <p className="fp-text">
-              Administratorunuz PIN-inizi sıfırlayıb sizə yeni müvəqqəti PIN verəcək. Bu gün cavab gəlməsə,
-              rəhbərinizə və ya administratora birbaşa deyin.
+              {mode === 'phone' ? 'Nömrə' : 'E-poçt'} düzgündürsə, rəhbərinizə bildiriş gedir: o, PIN-inizi
+              sıfırlayıb sizə yeni müvəqqəti PIN deyəcək. Cavab gəlməsə, ona birbaşa yaxınlaşın.
             </p>
           </div>
           <div className="auth-submit auth-rise" style={riseOrder(4)}>
@@ -452,7 +453,7 @@ export function ForgotPinPage() {
                     reason to be here, and a new phone can never pass — so the admin request stays one tap away. */}
                 <p className="fp-err__hint">
                   Ola bilsin ki, bu telefon hesabınıza bağlı deyil — məsələn, yeni telefon işlədirsiniz. Belə halda
-                  administratora sorğu göndərin.
+                  rəhbərinizə sorğu göndərin.
                 </p>
               </div>
             </div>
@@ -461,7 +462,7 @@ export function ForgotPinPage() {
             <div role="alert" className="auth-inline-alert">
               <IconX aria-hidden="true" />
               <span>
-                Yoxlama başa çatmadı. {trouble} Düzəlməsə, administratora sorğu göndərin — PIN-inizi o sıfırlayacaq.
+                Yoxlama başa çatmadı. {trouble} Düzəlməsə, rəhbərinizə sorğu göndərin — PIN-inizi o sıfırlayacaq.
               </span>
             </div>
           )}

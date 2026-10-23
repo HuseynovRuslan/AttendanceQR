@@ -1,4 +1,6 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -24,6 +26,7 @@ public class AdminEquipmentController : ControllerBase
 
     /// <summary>The register, in the order of the source list. `q` searches every text column at once —
     /// a name, a place, or "RTX 4090" all reach the same box.</summary>
+    [Permission(AccessPermissions.EquipmentView)]
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? q)
     {
@@ -32,15 +35,17 @@ public class AdminEquipmentController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var pattern = $"%{q.Trim()}%";
+            // SearchText, not ILIKE: ILIKE folds case by the database locale, which pairs «I» with 'i' where
+            // Azerbaijani pairs it with 'ı' — the staff search's rule, one rule for every search box.
+            var key = SearchText.Fold(q.Trim());
             query = query.Where(r =>
-                EF.Functions.ILike(r.FullName, pattern)
-                || (r.Position != null && EF.Functions.ILike(r.Position, pattern))
-                || (r.Area != null && EF.Functions.ILike(r.Area, pattern))
-                || (r.Equipment != null && EF.Functions.ILike(r.Equipment, pattern))
-                || (r.SystemUnit != null && EF.Functions.ILike(r.SystemUnit, pattern))
-                || (r.Monitor != null && EF.Functions.ILike(r.Monitor, pattern))
-                || (r.OtherEquipment != null && EF.Functions.ILike(r.OtherEquipment, pattern)));
+                SearchText.Fold(r.FullName).Contains(key)
+                || (r.Position != null && SearchText.Fold(r.Position).Contains(key))
+                || (r.Area != null && SearchText.Fold(r.Area).Contains(key))
+                || (r.Equipment != null && SearchText.Fold(r.Equipment).Contains(key))
+                || (r.SystemUnit != null && SearchText.Fold(r.SystemUnit).Contains(key))
+                || (r.Monitor != null && SearchText.Fold(r.Monitor).Contains(key))
+                || (r.OtherEquipment != null && SearchText.Fold(r.OtherEquipment).Contains(key)));
         }
 
         var records = await query.OrderBy(r => r.RowNo).ToListAsync(ct);
@@ -48,6 +53,7 @@ public class AdminEquipmentController : ControllerBase
     }
 
     /// <summary>Everything one employee holds — what the staff profile shows.</summary>
+    [Permission(AccessPermissions.EquipmentView)]
     [HttpGet("by-employee/{employeeId:guid}")]
     public async Task<IActionResult> ByEmployee(Guid employeeId)
     {
@@ -61,6 +67,7 @@ public class AdminEquipmentController : ControllerBase
 
     /// <summary>Headline counts. "Unmatched" is the one that earns its place: it is how many lines name
     /// somebody the staff list does not have, which is the register's usual way of being out of date.</summary>
+    [Permission(AccessPermissions.EquipmentView)]
     [HttpGet("summary")]
     public async Task<IActionResult> Summary()
     {
@@ -80,6 +87,7 @@ public class AdminEquipmentController : ControllerBase
         });
     }
 
+    [Permission(AccessPermissions.EquipmentManage)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] EquipmentRecordRequest request)
     {
@@ -113,6 +121,7 @@ public class AdminEquipmentController : ControllerBase
         return Ok(ToDto(record));
     }
 
+    [Permission(AccessPermissions.EquipmentManage)]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] EquipmentRecordRequest request)
     {
@@ -144,6 +153,7 @@ public class AdminEquipmentController : ControllerBase
         return Ok(ToDto(record));
     }
 
+    [Permission(AccessPermissions.EquipmentManage)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
@@ -171,6 +181,7 @@ public class AdminEquipmentController : ControllerBase
     /// office's sheet, say) must not be able to wipe the rest of the register, and an admin who really
     /// wants a line gone can delete it.
     /// </summary>
+    [Permission(AccessPermissions.EquipmentManage)]
     [HttpPost("import")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> Import(IFormFile? file)

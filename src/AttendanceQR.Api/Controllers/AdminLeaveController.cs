@@ -1,5 +1,6 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -32,6 +33,7 @@ public class AdminLeaveController : ControllerBase
         _dailySummaryService = dailySummaryService;
     }
 
+    [Permission(AccessPermissions.LeavesView, AtCompany = true)]
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] Guid? employeeId)
     {
@@ -61,6 +63,7 @@ public class AdminLeaveController : ControllerBase
         }));
     }
 
+    [Permission(AccessPermissions.LeavesManage, AtCompany = true)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] LeaveRecordRequest request)
     {
@@ -148,6 +151,7 @@ public class AdminLeaveController : ControllerBase
         });
     }
 
+    [Permission(AccessPermissions.LeavesManage, AtCompany = true)]
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {

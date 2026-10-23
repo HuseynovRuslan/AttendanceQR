@@ -101,9 +101,12 @@ public class ManagerAccountScopeTests
             LateThresholdMinutes = 15, QrVersion = 1, IsActive = true,
         };
 
+        // Everybody signs in with something — since 2026-10-15 an edit that would leave neither a number
+        // nor an e-mail is refused, and no such account exists in production. The edits below send no
+        // e-mail, and an update keeps the one on file.
         private static Employee Person(Guid id, string name, EmployeeRole role, Guid locationId, Guid tenantId) => new()
         {
-            Id = id, TenantId = tenantId, FullName = name, Role = role, LocationId = locationId,
+            Id = id, TenantId = tenantId, FullName = name, Role = role, LocationId = locationId, Email = $"{id:N}@test.local",
             IsActive = true, ActivatedAtUtc = DateTime.UtcNow, PasswordHash = "original-hash",
         };
 
@@ -419,5 +422,49 @@ public class ManagerAccountScopeTests
             if (id != h.SameBranchEmployeeId && id != h.SameBranchManagerId)
                 Assert.Equal(false, Field(r, "manageable"));
         }
+    }
+
+    [Fact]
+    public async Task The_roster_row_carries_every_field_the_edit_form_sends_back()
+    {
+        // The manager's edit form is filled from this row and sends back what it was given; a field the
+        // row leaves out comes back as null and the save writes it. That is how the QR-less and GPS
+        // overrides were wiped on every roster save until 2026-10-15 (canShareDevice before them).
+        using var h = new Harness();
+        var e = h.Db.Employees.Single(x => x.Id == h.SameBranchEmployeeId);
+        e.QrlessCheckInOverride = true;
+        e.RequireGeofenceOverride = false;
+        h.Db.SaveChanges();
+
+        var rows = ((System.Collections.IEnumerable)Assert.IsType<OkObjectResult>(await h.Controller.Employees()).Value!)
+            .Cast<object>().ToList();
+        var row = rows.Single(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)! == h.SameBranchEmployeeId);
+        object? Field(string n) => row.GetType().GetProperty(n)?.GetValue(row);
+
+        Assert.Equal(true, Field("qrlessCheckInOverride"));
+        Assert.Equal(false, Field("requireGeofenceOverride"));
+
+        var sent = typeof(ManagerEmployeeRequest).GetConstructors().Single().GetParameters()
+            .Select(p => char.ToLowerInvariant(p.Name![0]) + p.Name[1..]);
+        var missing = sent.Where(n => row.GetType().GetProperty(n) is null).ToList();
+        Assert.True(missing.Count == 0, "The roster row lacks: " + string.Join(", ", missing));
+    }
+
+    [Fact]
+    public async Task An_edit_that_leaves_nothing_to_sign_in_with_is_refused()
+    {
+        // A phone-only employee whose number is blanked: nothing left to log in with.
+        using var h = new Harness();
+        var e = h.Db.Employees.Single(x => x.Id == h.SameBranchEmployeeId);
+        e.Email = null;
+        e.PhoneNumber = "501234567";
+        h.Db.SaveChanges();
+
+        var bad = Assert.IsType<BadRequestObjectResult>(await h.Controller.UpdateEmployee(h.SameBranchEmployeeId, Edit("Nömrəsiz", h.BranchA)));
+        Assert.Equal("NeedEmailOrPhone", bad.Value!.GetType().GetProperty("error")!.GetValue(bad.Value));
+        Assert.Equal("501234567", h.Row(h.SameBranchEmployeeId).PhoneNumber);   // nothing written
+
+        var keep = Edit("Nömrəli", h.BranchA) with { PhoneNumber = "501234567" };
+        Assert.IsType<OkObjectResult>(await h.Controller.UpdateEmployee(h.SameBranchEmployeeId, keep));
     }
 }

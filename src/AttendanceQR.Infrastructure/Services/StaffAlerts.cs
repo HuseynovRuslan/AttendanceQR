@@ -1,0 +1,272 @@
+using System.Threading.Channels;
+using AttendanceQR.Domain.Access;
+using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
+using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services.Access;
+using Microsoft.EntityFrameworkCore;
+
+namespace AttendanceQR.Infrastructure.Services;
+
+/// <summary>
+/// Somebody cannot clock in for a reason the manager at their site can fix, or has asked for a new
+/// phone to be approved. Raised by the scan path, delivered by StaffAlertWorker.
+///
+/// Managers had no way to hear about either. On 03.10.2026 sixteen people at Bakı Abadlıq were refused
+/// by their own phones and stayed absent — most for a location permission someone standing next to
+/// them could have switched on in a minute — and a device-change request waited more than twenty hours
+/// for a manager who was allowed to approve it and never knew it was there.
+/// </summary>
+public sealed record StaffAlert(Guid TenantId, Guid EmployeeId, string Kind, DateTime RaisedAtUtc);
+
+/// <summary>
+/// Hands staff alerts from the request to a background worker. The scan never waits on a push: a
+/// check-in is not held up by anything optional, and a notification is optional.
+/// </summary>
+public interface IStaffAlertQueue
+{
+    void Enqueue(StaffAlert alert);
+    ChannelReader<StaffAlert> Reader { get; }
+}
+
+public sealed class StaffAlertQueue : IStaffAlertQueue
+{
+    // Bounded and lossy on purpose: an alert is a courtesy, and a phone stuck in a retry loop must not
+    // be able to grow this without limit. Each person is alerted about each problem once a day anyway.
+    private readonly Channel<StaffAlert> _channel = Channel.CreateBounded<StaffAlert>(
+        new BoundedChannelOptions(2000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+
+    public void Enqueue(StaffAlert alert) => _channel.Writer.TryWrite(alert);
+    public ChannelReader<StaffAlert> Reader => _channel.Reader;
+}
+
+/// <summary>Which refusals are worth a manager's attention, what the push says, and when it goes. The
+/// one place this is decided.</summary>
+public static class StaffAlertKinds
+{
+    public const string DeviceChangeRequested = "DeviceChangeRequested";
+
+    /// <summary>
+    /// Somebody who cannot sign in asked for a new PIN («PIN-i unutdum»). On 05.10.2026, 70 of Bakı
+    /// Abadlıq's 72 requests of the past two months had never been answered: they sat on a screen the
+    /// branch managers could open but were never told about, and the people behind them got back in after
+    /// three days on average — or not at all.
+    /// </summary>
+    public const string PinResetRequested = "PinResetRequested";
+
+    /// <summary>
+    /// How long a refused person gets to sort it out alone before their manager hears about it. Most
+    /// do: 207 people met a location-permission refusal in the week to 03.10.2026, nearly all for a
+    /// minute or two. Alerting on every one would teach managers to swipe these away; waiting, and
+    /// staying quiet when the person has scanned since, leaves only the ones who are really stuck.
+    /// </summary>
+    public static readonly TimeSpan GraceForBlocked = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Nobody is woken for this. On the first morning these went out, one landed at 04:07. An alert that
+    /// falls due between QuietFrom and QuietUntil, company time, waits for the morning — and is still
+    /// dropped then if the person has scanned since, so a night-shift worker who got in at 05:00 is never
+    /// reported at all.
+    /// </summary>
+    public static readonly TimeOnly QuietFrom = new(22, 0);
+    public static readonly TimeOnly QuietUntil = new(6, 30);
+
+    // Only what the manager can fix on the spot. Not a weak GPS signal or a busy camera — those clear
+    // on their own — and not «outside the radius», which is mostly somebody scanning from the bus.
+    private static readonly Dictionary<string, (string Problem, string Fix, string Url)> Blocked = new()
+    {
+        ["GpsPermissionDenied"] = ("telefonunda məkan (GPS) icazəsi bağlıdır", "İcazəni açmağa kömək edin.", "/admin/problems"),
+        ["GpsUnavailable"] = ("telefonunda məkan xidməti (GPS) söndürülüb", "Yandırmağa kömək edin.", "/admin/problems"),
+        ["CameraDenied"] = ("telefonunda kamera icazəsi bağlıdır", "İcazəni açmağa kömək edin.", "/admin/problems"),
+        ["CameraNotFound"] = ("telefonunun kamerası açılmır", "Bu gün gəlişini əl ilə qeyd edin.", "/admin/problems"),
+        ["DeviceBindLimit"] = ("telefonu tətbiqi yadda saxlamır", "Yeni telefon tələbini təsdiqləyin və tətbiqi ana ekrandakı ikondan açmağı göstərin.", "/admin/device-changes"),
+        ["DeviceRevoked"] = ("hesabından çıxarılmış telefonla skan edir", "Telefon onunkudursa, yeni telefon tələbini təsdiqləyin.", "/admin/device-changes"),
+        ["DeviceMismatch"] = ("telefonu hesabına bağlı deyil", "Yeni telefon tələbi göndərsin, siz təsdiqləyin.", "/admin/device-changes"),
+        ["NoDeviceBound"] = ("hesabına heç bir telefon bağlı deyil", "Yeni telefon tələbi göndərsin, siz təsdiqləyin.", "/admin/device-changes"),
+        ["SharedDeviceNotAllowed"] = ("başqasının telefonu ilə skan edir", "Ona ortaq telefon icazəsi verin.", "/admin/device-changes"),
+        ["DeviceAccountLimit"] = ("skan etdiyi telefonda həddən çox hesab var", "Hesablardan birini başqa telefona keçirin.", "/admin/device-changes"),
+    };
+
+    public static bool IsAlertable(string kind) =>
+        kind == DeviceChangeRequested || kind == PinResetRequested || Blocked.ContainsKey(kind);
+
+    /// <summary>A refusal waits out the grace period and is dropped if the person scanned meanwhile; a
+    /// request goes at once.</summary>
+    public static bool WaitsForRecovery(string kind) => Blocked.ContainsKey(kind);
+
+    public static DateTime DueAtUtc(StaffAlert alert, TimeZoneInfo timeZone) => AfterQuietHours(
+        WaitsForRecovery(alert.Kind) ? alert.RaisedAtUtc + GraceForBlocked : alert.RaisedAtUtc, timeZone);
+
+    /// <summary>The moment itself when it is outside quiet hours; otherwise QuietUntil on the morning that
+    /// ends them.</summary>
+    public static DateTime AfterQuietHours(DateTime utc, TimeZoneInfo timeZone)
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, timeZone);
+        var time = TimeOnly.FromDateTime(local);
+        if (time >= QuietUntil && time < QuietFrom)
+            return utc;
+        var morning = local.Date + QuietUntil.ToTimeSpan();
+        if (time >= QuietFrom)
+            morning = morning.AddDays(1);
+        return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(morning, DateTimeKind.Unspecified), timeZone);
+    }
+
+    /// <summary>The push — title, body, where tapping it leads — or null for a kind nobody hears about.
+    /// <paramref name="waited"/> is how long ago the refusal was: ten minutes in the day, a night's worth
+    /// for one held until the morning, which must not claim ten.</summary>
+    public static (string Title, string Body, string Url)? Describe(string kind, string employeeName, TimeSpan waited)
+    {
+        if (kind == DeviceChangeRequested)
+            return ($"{employeeName} yeni telefon tələbi göndərib", "Təsdiqləsəniz, dərhal skan edə biləcək.", "/admin/device-changes");
+        if (kind == PinResetRequested)
+            return ($"{employeeName} PIN-ini unudub", "Proqrama girə bilmir. Toxunun, yeni müvəqqəti PIN yaradın və ona deyin.", "/admin/pin-resets");
+        if (!Blocked.TryGetValue(kind, out var b))
+            return null;
+        var since = waited < TimeSpan.FromHours(1)
+            ? $"{Math.Max(GraceForBlocked.TotalMinutes, Math.Floor(waited.TotalMinutes)):0} dəqiqədir"
+            : $"{Math.Floor(waited.TotalHours):0} saatdır";
+        return ($"{employeeName} skan edə bilmir", $"{since} alınmır: {b.Problem}. {b.Fix}", b.Url);
+    }
+}
+
+public enum StaffAlertOutcome { Sent, Recovered, AlreadyHandled, AlreadyAlerted, NotAlertable, NoRecipients, UnknownEmployee }
+
+/// <summary>
+/// Delivers one due alert: to the managers of the person's own branch — the people standing there —
+/// or, where a branch has none, to the company's admins. Once per person, problem and day, recorded as
+/// <see cref="AuditEventType.StaffAlertSent"/> so the next refusal knows it has been said.
+///
+/// In a company switched to Enforced the permission model names them instead (<see cref="ModelRecipientsAsync"/>):
+/// whoever holds «notifications.staff_alerts» over the person's branch — a timekeeper or an operator as much as
+/// a manager — and, where nobody below company level does, the company-wide holders.
+/// </summary>
+public static class StaffAlertDispatcher
+{
+    public static async Task<StaffAlertOutcome> HandleAsync(
+        AppDbContext db, IPushNotifier notifier, StaffAlert alert, DateTime nowUtc, TimeZoneInfo timeZone,
+        CancellationToken ct = default)
+    {
+        if (!StaffAlertKinds.IsAlertable(alert.Kind))
+            return StaffAlertOutcome.NotAlertable;
+
+        var employee = await db.Employees.AsNoTracking()
+            .Where(e => e.Id == alert.EmployeeId)
+            .Select(e => new { e.FullName, e.LocationId, e.Role })
+            .FirstOrDefaultAsync(ct);
+        if (employee is null)
+            return StaffAlertOutcome.UnknownEmployee;
+
+        if (StaffAlertKinds.WaitsForRecovery(alert.Kind))
+        {
+            var recovered = await db.AuditLogs.AnyAsync(a =>
+                a.EmployeeId == alert.EmployeeId
+                && (a.EventType == AuditEventType.CheckInSuccess || a.EventType == AuditEventType.CheckOutSuccess)
+                && a.CreatedAtUtc >= alert.RaisedAtUtc, ct);
+            if (recovered)
+                return StaffAlertOutcome.Recovered;
+        }
+        else
+        {
+            // A request held overnight may have been answered by morning — by an admin who was awake, or,
+            // for a PIN, by the person getting back in on their own. Sending the manager to it then means
+            // an empty screen.
+            var stillPending = alert.Kind == StaffAlertKinds.PinResetRequested
+                ? await db.PinResetRequests.AnyAsync(r =>
+                    r.EmployeeId == alert.EmployeeId && r.Status == PinResetStatus.Pending, ct)
+                : await db.DeviceChangeRequests.AnyAsync(r =>
+                    r.EmployeeId == alert.EmployeeId && r.Status == DeviceChangeStatus.Pending, ct);
+            if (!stillPending)
+                return StaffAlertOutcome.AlreadyHandled;
+        }
+
+        // Once a day per person and problem, counted on the company's calendar.
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
+        var dayStartUtc = TimeZoneInfo.ConvertTimeToUtc(localNow.Date, timeZone);
+        var said = alert.Kind + "|";
+        var already = await db.AuditLogs.AnyAsync(a =>
+            a.EmployeeId == alert.EmployeeId
+            && a.EventType == AuditEventType.StaffAlertSent
+            && a.CreatedAtUtc >= dayStartUtc
+            && a.Reason != null && a.Reason.StartsWith(said), ct);
+        if (already)
+            return StaffAlertOutcome.AlreadyAlerted;
+
+        var mode = await db.Tenants.AsNoTracking()
+            .Where(t => t.Id == alert.TenantId).Select(t => t.AuthzMode).FirstOrDefaultAsync(ct);
+        List<Guid> managers;
+        List<Guid> recipients;
+        if (mode == AuthzMode.Enforced)
+        {
+            (managers, recipients) = await ModelRecipientsAsync(db, alert, employee.LocationId, ct);
+        }
+        else
+        {
+            // A manager's PIN queue holds only their plain staff (AdminPinResetController), so a PIN request from
+            // anyone else — a manager who forgot theirs — goes to the admins, who can see it.
+            var managersCanAct = alert.Kind != StaffAlertKinds.PinResetRequested || employee.Role == EmployeeRole.Employee;
+            managers = !managersCanAct ? [] : await (
+                from ml in db.ManagedLocations
+                join m in db.Employees on ml.EmployeeId equals m.Id
+                where ml.LocationId == employee.LocationId && m.IsActive && m.Role == EmployeeRole.Manager
+                      && m.Id != alert.EmployeeId
+                select m.Id).Distinct().ToListAsync(ct);
+            recipients = managers.Count > 0
+                ? managers
+                : await db.Employees
+                    .Where(e => e.IsActive && e.Role == EmployeeRole.Admin && e.Id != alert.EmployeeId)
+                    .Select(e => e.Id).ToListAsync(ct);
+        }
+        if (recipients.Count == 0)
+            return StaffAlertOutcome.NoRecipients;
+
+        var text = StaffAlertKinds.Describe(alert.Kind, employee.FullName, nowUtc - alert.RaisedAtUtc)!.Value;
+        var reached = await notifier.NotifyEmployeesAsync(recipients, text.Title, text.Body, text.Url, ct);
+
+        // Written even when nobody had a live subscription: the next refusal must not try again, and
+        // «0/2 menecer» is itself worth seeing — those two need notifications switched on.
+        db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = alert.EmployeeId,
+            EventType = AuditEventType.StaffAlertSent,
+            Reason = $"{alert.Kind}|{reached}/{recipients.Count} {(managers.Count > 0 ? "menecer" : "admin")}",
+        });
+        await db.SaveChangesAsync(ct);
+        return StaffAlertOutcome.Sent;
+    }
+
+    /// <summary>
+    /// The recipients a company switched to Enforced gets: every active person (not the subject) who holds
+    /// «notifications.staff_alerts» over the subject's branch and can act on what the alert is about — a new phone
+    /// wants «devices.approve» there, a forgotten PIN the model's account rule (only from above, never an
+    /// operator), or the push sends somebody to a screen that refuses them. Those below company level are the
+    /// people at the site (the first list); where there are none, the company-wide holders hear it.
+    /// </summary>
+    public static async Task<(List<Guid> Local, List<Guid> Recipients)> ModelRecipientsAsync(
+        AppDbContext db, StaffAlert alert, Guid home, CancellationToken ct = default)
+    {
+        var graph = db.AuthzObserver is { } observer ? await observer.GraphAsync(db, ct) : await AccessGraph.LoadAsync(db, ct);
+        var operators = db.AuthzObserver?.OperatorIds ?? new HashSet<Guid>();
+        var subject = graph.For(alert.EmployeeId);
+        var people = await db.Employees.AsNoTracking()
+            .Where(e => e.IsActive && e.Id != alert.EmployeeId)
+            .Select(e => new { e.Id, e.LocationId })
+            .ToListAsync(ct);
+
+        bool CanAct(EffectiveAccess holder, Guid holderHome) => alert.Kind switch
+        {
+            StaffAlertKinds.PinResetRequested => ShadowRules.Decide(ShadowRules.CredentialTarget, holder, alert.EmployeeId,
+                home, subject, operators.Contains(alert.EmployeeId), holderHome),
+            StaffAlertKinds.DeviceChangeRequested => holder.Covers(AccessPermissions.DevicesApprove, home),
+            _ => true,
+        };
+
+        var holders = people
+            .Select(p => (p.Id, Access: graph.For(p.Id), Home: p.LocationId))
+            .Where(h => h.Access.Covers(AccessPermissions.NotificationsStaffAlerts, home) && CanAct(h.Access, h.Home))
+            .ToList();
+        var local = holders
+            .Where(h => !h.Access.HasAtCompany(AccessPermissions.NotificationsStaffAlerts))
+            .Select(h => h.Id).ToList();
+        return (local, local.Count > 0 ? local : holders.Select(h => h.Id).ToList());
+    }
+}

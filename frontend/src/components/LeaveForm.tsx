@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { IconCheck, IconX } from './icons'
+import { matchesSearch } from '../lib/searchFold'
 
 /**
  * Filing a leave, permission or rest day — the one form both the admin and the manager use.
@@ -74,11 +75,7 @@ export function LeaveForm({
   const [result, setResult] = useState<LeaveSubmitResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const q = search.trim().toLowerCase()
-  const visible = useMemo(
-    () => (q ? people.filter((p) => p.fullName.toLowerCase().includes(q)) : people),
-    [people, q],
-  )
+  const visible = useMemo(() => people.filter((p) => matchesSearch(search, p.fullName)), [people, search])
   const allVisiblePicked = visible.length > 0 && visible.every((p) => picked.includes(p.id))
 
   function setStart(value: string) {

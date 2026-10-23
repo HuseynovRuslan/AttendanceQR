@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { canOpen, PANEL_PAGES } from './panelAccess'
+import { canOpen, PANEL_PAGES, pagesAfterSwitch, wouldOpen, type PanelAccess } from './panelAccess'
 
 /**
  * The menu and the router must agree about who may open what.
@@ -85,5 +85,135 @@ describe('who may open what', () => {
     expect(canOpen('some-new-page', 'Admin')).toBe(false)
     expect(canOpen('today', null)).toBe(false)
     expect(canOpen('today', 'Employee')).toBe(false)
+  })
+})
+
+// ── Phase 4: the permission column must not take anything away when it starts deciding ──────────────
+
+/** The whole catalogue — AccessPermissions.cs. A company administrator holds every key, company-wide. */
+const ALL_KEYS = [
+  'dashboard.view', 'attendance.view', 'attendance.photos.view', 'attendance.export', 'attendance.correct',
+  'attendance.fraud', 'attendance.maintenance', 'employees.view', 'employees.contacts.view', 'employees.create',
+  'employees.import', 'employees.update', 'employees.deactivate', 'employees.delete', 'employees.reset_pin',
+  'employees.change_phone', 'employees.reinvite', 'employees.salary', 'employees.reference_photo',
+  'employees.reset_attendance', 'devices.view', 'devices.approve', 'devices.revoke', 'devices.share_grant',
+  'field_checkin.grant', 'checkin_rules.override', 'field_visits.view', 'field_visits.manage', 'field_visits.discard',
+  'leaves.view', 'leaves.manage', 'schedules.view', 'schedules.manage', 'schedules.assign', 'payroll.view',
+  'payroll.export', 'locations.view', 'locations.create', 'locations.activate', 'locations.update',
+  'locations.geofence_manage', 'locations.qr_print', 'locations.qr_invalidate', 'structures.view', 'structures.manage',
+  'assignments.view', 'assignments.manage', 'assignments.cross_area', 'roles.manage', 'notifications.staff_alerts',
+  'tasks.use', 'holidays.manage', 'positions.manage', 'announcements.manage', 'votes.manage', 'equipment.view',
+  'equipment.manage', 'billing.view', 'diag.view',
+]
+
+/** Today's manager as the seeder writes them (AccessRoleTemplates.cs): «Filial meneceri (köhnə qayda)» over
+ *  their branches, and «PIN köməkçisi» company-wide. Copied by hand — if the template changes, change it here. */
+const LEGACY_MANAGER = [
+  'dashboard.view', 'attendance.view', 'attendance.photos.view', 'attendance.export', 'attendance.correct',
+  'attendance.fraud', 'employees.view', 'employees.contacts.view', 'employees.create', 'employees.update',
+  'employees.deactivate', 'devices.view', 'devices.approve', 'devices.revoke', 'devices.share_grant',
+  'field_checkin.grant', 'checkin_rules.override', 'field_visits.view', 'field_visits.manage', 'leaves.view',
+  'leaves.manage', 'schedules.view', 'schedules.manage', 'schedules.assign', 'payroll.view', 'locations.view',
+  'locations.update', 'locations.geofence_manage', 'locations.qr_print', 'notifications.staff_alerts', 'tasks.use',
+]
+const PIN_HELPER = ['employees.reset_pin', 'employees.change_phone']
+const TIMEKEEPER = [
+  'dashboard.view', 'attendance.view', 'attendance.export', 'employees.view', 'employees.contacts.view',
+  'employees.create', 'employees.update', 'employees.reset_pin', 'devices.view', 'devices.approve', 'schedules.view',
+  'schedules.manage', 'schedules.assign', 'leaves.view', 'leaves.manage', 'field_visits.view', 'notifications.staff_alerts',
+]
+
+const holding = (keys: string[], extra: Partial<PanelAccess> = {}): PanelAccess =>
+  ({ panel: true, permissions: keys.map((key) => ({ key })), ...extra })
+/** Today's admin in the model: the Company administrator role, company-wide — every key, and the admin's shape. */
+const companyAdmin = (extra: Partial<PanelAccess> = {}) => holding(ALL_KEYS, { companyAdmin: true, ...extra })
+const OBSERVER = [
+  'dashboard.view', 'attendance.view', 'attendance.export', 'employees.view', 'leaves.view', 'schedules.view',
+  'locations.view', 'field_visits.view',
+]
+
+describe('the switch takes nothing away from today’s admins and managers', () => {
+  // The owner's third check for Phase 4. When the permission column starts deciding (Phase 5), every page
+  // an admin or a manager opens today must still open, and nothing must open that does not today.
+  it('opens for an admin exactly what the role opens', () => {
+    const differ = PANEL_PAGES.filter((p) => wouldOpen(p.path, companyAdmin()) !== canOpen(p.path, 'Admin'))
+    expect(differ.map((p) => p.path)).toEqual([])
+  })
+
+  it('opens for a manager exactly what the role opens', () => {
+    const manager = holding([...LEGACY_MANAGER, ...PIN_HELPER])
+    const differ = PANEL_PAGES.filter((p) => wouldOpen(p.path, manager) !== canOpen(p.path, 'Manager'))
+    expect(differ.map((p) => p.path)).toEqual([])
+  })
+
+  it('gives a manager the one staff list the admin has', () => {
+    expect(canOpen('employees', 'Manager')).toBe(true)
+    expect(canOpen('my-employees', 'Manager')).toBe(true) // a redirect to it, for old bookmarks
+  })
+})
+
+describe('somebody whose panel comes only from a new role', () => {
+  it('opens their area, and nothing else until the switch', () => {
+    const keeper = holding(TIMEKEEPER)
+    expect(canOpen('my-area', 'Employee', keeper)).toBe(true)
+    expect(canOpen('today', 'Employee', keeper)).toBe(false)
+    expect(canOpen('employees', 'Employee', keeper)).toBe(false)
+  })
+
+  it('shows what will open after the switch — and never what their role does not carry', () => {
+    const later = pagesAfterSwitch('Employee', holding(TIMEKEEPER))
+    for (const path of ['today', 'employees', 'leaves', 'schedules', 'pin-resets', 'device-changes'])
+      expect(later.has(path)).toBe(true)
+    for (const path of ['payroll', 'billing', 'positions', 'access', 'tasks', 'locations'])
+      expect(later.has(path)).toBe(false)
+  })
+
+  it('opens the access page now for whoever may see assignments — the one door opened early', () => {
+    expect(canOpen('access', 'Employee', holding(['assignments.view']))).toBe(true)
+    expect(canOpen('access', 'Manager', holding([...LEGACY_MANAGER, ...PIN_HELPER]))).toBe(false)
+  })
+
+  it('opens nothing for somebody the panel is not for', () => {
+    expect(canOpen('my-area', 'Employee', { panel: false, permissions: [] })).toBe(false)
+    expect(canOpen('my-area', 'Employee', null)).toBe(false)
+  })
+})
+
+
+describe('a company switched to Enforced (Phase 5)', () => {
+  const enforced = (keys: string[], extra: Partial<PanelAccess> = {}) => holding(keys, { mode: 'Enforced', ...extra })
+
+  it('opens for today’s admin and manager exactly what their roles open today — whatever the token says', () => {
+    for (const p of PANEL_PAGES) {
+      expect(canOpen(p.path, 'Admin', companyAdmin({ mode: 'Enforced' })), p.path).toBe(canOpen(p.path, 'Admin'))
+      expect(canOpen(p.path, 'Manager', enforced([...LEGACY_MANAGER, ...PIN_HELPER])), p.path).toBe(canOpen(p.path, 'Manager'))
+    }
+  })
+
+  it('opens a timekeeper’s daily pages and nothing their role does not carry', () => {
+    const keeper = enforced(TIMEKEEPER)
+    for (const path of ['today', 'employees', 'employees/:id', 'leaves', 'schedules', 'pin-resets', 'device-changes', 'my-area'])
+      expect(canOpen(path, 'Employee', keeper), path).toBe(true)
+    for (const path of ['payroll', 'billing', 'positions', 'access', 'tasks', 'locations', 'bulk-invite', 'equipment'])
+      expect(canOpen(path, 'Employee', keeper), path).toBe(false)
+  })
+
+  it('keeps every admin-only page the Company administrator’s — a company-wide observer is still an observer', () => {
+    const observer = enforced(OBSERVER)
+    const adminOnly = PANEL_PAGES.filter((p) => !p.roles.includes('Manager') && p.path !== 'access')
+    for (const p of adminOnly) expect(canOpen(p.path, 'Employee', observer), p.path).toBe(false)
+    // …and a custom role carrying an admin-only key does not open that page either, nor promise it.
+    expect(canOpen('positions', 'Employee', enforced(['positions.manage']))).toBe(false)
+    expect(wouldOpen('positions', holding(['positions.manage']))).toBe(false)
+  })
+
+  it('takes the panel from a token admin whose company role was taken away', () => {
+    expect(canOpen('dashboard', 'Admin', enforced([]))).toBe(false)
+    expect(canOpen('employees', 'Admin', enforced(['employees.view']))).toBe(true)
+    expect(canOpen('billing', 'Admin', enforced(['employees.view']))).toBe(false)
+  })
+
+  it('has no «after the switch» any more', () => {
+    expect(pagesAfterSwitch('Employee', enforced(TIMEKEEPER)).size).toBe(0)
   })
 })

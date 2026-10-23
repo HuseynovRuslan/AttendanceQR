@@ -105,6 +105,26 @@ public partial class SuperAdminController
             .Select(e => new { id = e.Id, name = e.FullName, phone = e.PhoneNumber })
             .ToListAsync(ct);
 
+        // Corrections somebody made to their OWN day (the single-admin rule): the platform sees them too — a
+        // company's only admin fixing their own pay is exactly what nobody inside that company can look over.
+        var since = DateTime.UtcNow.AddDays(-90);
+        var selfRows = await _db.AttendanceSelfCorrections.IgnoreQueryFilters()
+            .Where(c => c.TenantId == id && c.AtUtc >= since && c.DecisionForId == null)
+            .OrderByDescending(c => c.AtUtc)
+            .Take(20)
+            .Select(c => new
+            {
+                c.EmployeeId, c.AttendanceDate, c.Kind, c.CheckInBeforeUtc, c.CheckOutBeforeUtc,
+                c.CheckInAfterUtc, c.CheckOutAfterUtc, c.Reason, c.AtUtc, c.AwaitsApproval,
+            })
+            .ToListAsync(ct);
+        var selfCount = await _db.AttendanceSelfCorrections.IgnoreQueryFilters()
+            .CountAsync(c => c.TenantId == id && c.AtUtc >= since && c.DecisionForId == null, ct);
+        var selfPeople = selfRows.Select(r => r.EmployeeId).Distinct().ToList();
+        var selfNames = await _db.Employees.IgnoreQueryFilters()
+            .Where(e => e.TenantId == id && selfPeople.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FullName, ct);
+
         var recentActions = await _db.SuperAdminAuditLogs
             .Where(a => a.TargetTenantId == id)
             .OrderByDescending(a => a.CreatedAtUtc)
@@ -129,6 +149,23 @@ public partial class SuperAdminController
             lastScanDate = lastScan?.ToString("yyyy-MM-dd"),
             admins,
             recentActions,
+            selfCorrections = new
+            {
+                last90Days = selfCount,
+                latest = selfRows.Select(r => new
+                {
+                    employeeName = selfNames.GetValueOrDefault(r.EmployeeId, "?"),
+                    date = r.AttendanceDate,
+                    kind = r.Kind,
+                    checkInBeforeUtc = r.CheckInBeforeUtc,
+                    checkOutBeforeUtc = r.CheckOutBeforeUtc,
+                    checkInAfterUtc = r.CheckInAfterUtc,
+                    checkOutAfterUtc = r.CheckOutAfterUtc,
+                    reason = r.Reason,
+                    atUtc = r.AtUtc,
+                    awaitsApproval = r.AwaitsApproval,
+                }),
+            },
         });
     }
 }

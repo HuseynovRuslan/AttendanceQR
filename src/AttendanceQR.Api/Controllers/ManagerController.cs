@@ -1,11 +1,14 @@
 using System.Security.Cryptography;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
+using AttendanceQR.Infrastructure.Services.Access;
 using AttendanceQR.Application.Reporting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -61,6 +64,13 @@ public class ManagerController : ControllerBase
     private async Task<bool> ManagesLocationAsync(Guid locationId) =>
         (await ManagedLocationIdsAsync()).Contains(locationId);
 
+    /// <summary>May the caller switch a person at <paramref name="locationId"/> off or back on — «employees.deactivate»
+    /// over that branch. Answered by the same scope every list narrows by, so the tenant filter and the branch
+    /// boundary hold exactly as they do there.</summary>
+    private async Task<bool> MayDeactivateAsync(Guid locationId, CancellationToken ct) =>
+        (await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesDeactivate, ct))
+        .Covers(locationId);
+
     /// <summary>
     /// THE authorization decision for a manager acting ON another account — every mutating
     /// per-employee endpoint below (profile edit, PIN reset, leaves) goes through here and nowhere
@@ -84,6 +94,13 @@ public class ManagerController : ControllerBase
     /// </summary>
     private async Task<(Employee? Employee, IActionResult? Error)> ManageableEmployeeAsync(
         Guid id, IActionResult? outOfScope = null)
+    {
+        var result = await LegacyManageableEmployeeAsync(id, outOfScope);
+        return await DecideAsync(ShadowRules.ManageableEmployee, id, result);
+    }
+
+    private async Task<(Employee? Employee, IActionResult? Error)> LegacyManageableEmployeeAsync(
+        Guid id, IActionResult? outOfScope)
     {
         var managed = await ManagedLocationIdsAsync();
         var target = await _db.Employees.FirstOrDefaultAsync(
@@ -120,6 +137,12 @@ public class ManagerController : ControllerBase
     ///   • every use is written to the audit log against the account it changed, naming who did it.
     /// </summary>
     private async Task<(Employee? Employee, IActionResult? Error)> CredentialTargetAsync(Guid id)
+    {
+        var result = await LegacyCredentialTargetAsync(id);
+        return await DecideAsync(ShadowRules.CredentialTarget, id, result);
+    }
+
+    private async Task<(Employee? Employee, IActionResult? Error)> LegacyCredentialTargetAsync(Guid id)
     {
         var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
         if (target is null)
@@ -169,6 +192,10 @@ public class ManagerController : ControllerBase
     private static string? Tail(string? phone) =>
         string.IsNullOrEmpty(phone) ? null : phone.Length <= 4 ? phone : phone[^4..];
 
+    /// <summary>The model's per-row answers in a company switched to Enforced; null anywhere else (see EnforcedRows).</summary>
+    private Task<EnforcedRows?> EnforcedRowsAsync() =>
+        EnforcedRows.LoadAsync(_db, M15(), HttpContext.RequestAborted);
+
     /// <summary>
     /// Who a LEAVE may be filed for: anyone at this manager's own branches, including a fellow manager
     /// or an admin who works there, plus the manager THEMSELVES.
@@ -188,6 +215,34 @@ public class ManagerController : ControllerBase
     /// Platform operators stay out. Their row exists to support the tenant, not to be rostered in it.
     /// </summary>
     private async Task<(Employee? Employee, IActionResult? Error)> LeaveSubjectAsync(
+        Guid id, IActionResult outOfScope)
+    {
+        var result = await LegacyLeaveSubjectAsync(id, outOfScope);
+        return await DecideAsync(ShadowRules.LeaveSubject, id, result);
+    }
+
+    /// <summary>
+    /// Today's manager-desk answer, given to the company's mode. In Legacy and Shadow it is returned as it is
+    /// (Shadow records a disagreement). In a company switched to Enforced the permission model's answer is the
+    /// one that counts (Phase 5): a «no» where today said yes is refused, a «yes» where today said no loads the
+    /// person — a timekeeper who is plain staff by today's role reaches their own branches' people.
+    /// </summary>
+    private async Task<(Employee? Employee, IActionResult? Error)> DecideAsync(
+        string rule, Guid targetId, (Employee? Employee, IActionResult? Error) today)
+    {
+        var legacy = today.Employee is not null;
+        var decided = _db.AuthzObserver is { } observer
+            ? await observer.DecideScopeAsync(_db, rule, M15(), User.Role(), targetId, legacy, HttpContext.RequestAborted)
+            : legacy;
+        if (decided == legacy)
+            return today;
+        if (!decided)
+            return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" }));
+        var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == targetId, HttpContext.RequestAborted);
+        return target is null ? (null, NotFound(new { error = "EmployeeNotFound" })) : (target, null);
+    }
+
+    private async Task<(Employee? Employee, IActionResult? Error)> LegacyLeaveSubjectAsync(
         Guid id, IActionResult outOfScope)
     {
         if (id == M15())
@@ -214,7 +269,33 @@ public class ManagerController : ControllerBase
 
     // --- reference data (for the manager's own forms) ---------------------------
 
+    // GET /api/manager/employee-branches — the branches the staff screen offers: every branch the caller sees
+    // people at, each saying whether a person may be ADDED there and MOVED there by this caller. The same scope
+    // CreateEmployee and UpdateEmployee then check (ManagesLocationAsync under «employees.create» /
+    // «employees.update»), so the form never offers a branch the save refuses.
+    //
+    // Why not /locations: that one is the branch list itself and asks «locations.view». A Tabelçi does not
+    // hold it — by design, their role is people, not sites — and the staff form read its branches from there,
+    // so «İşçi əlavə et» sat disabled for every Tabelçi (E2E, 2026-10-17). Handing them «locations.view» to fix
+    // it would open the branches screen as well. This answers with ids and names of their own area only.
+    [Permission(AccessPermissions.EmployeesView, Twin = true)]
+    [HttpGet("employee-branches")]
+    public async Task<IActionResult> EmployeeBranches()
+    {
+        var ct = HttpContext.RequestAborted;
+        var seen = await ManagedLocationIdsAsync();
+        var create = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesCreate, ct);
+        var move = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AccessPermissions.EmployeesUpdate, ct);
+        var rows = await _db.Locations
+            .Where(l => seen.Contains(l.Id))
+            .OrderBy(l => l.Name)
+            .Select(l => new { l.Id, l.Name })
+            .ToListAsync(ct);
+        return Ok(rows.Select(l => new { id = l.Id, name = l.Name, canCreate = create.Covers(l.Id), canMove = move.Covers(l.Id) }));
+    }
+
     // GET /api/manager/locations — the branches this manager may file against, for dropdowns.
+    [Permission(AccessPermissions.LocationsView, Twin = true)]
     [HttpGet("locations")]
     public async Task<IActionResult> Locations()
     {
@@ -228,6 +309,7 @@ public class ManagerController : ControllerBase
     }
 
     // GET /api/manager/positions — the job-title catalogue, read-only (managers pick, admins curate).
+    [Permission(AccessPermissions.EmployeesView, Twin = true)]
     [HttpGet("positions")]
     public async Task<IActionResult> Positions()
     {
@@ -240,6 +322,7 @@ public class ManagerController : ControllerBase
 
     // GET /api/manager/schedules — the named shifts, read-only. A manager assigns people to a shift
     // but does not define them; the hours a company runs on are an admin decision.
+    [Permission(AccessPermissions.SchedulesView, Twin = true)]
     [HttpGet("schedules")]
     public async Task<IActionResult> Schedules()
     {
@@ -296,6 +379,7 @@ public class ManagerController : ControllerBase
     // only an admin could correct it.
     //
     // Shifts are company-wide, not branch-scoped, so a new one simply joins the list.
+    [Permission(AccessPermissions.SchedulesManage, Twin = true)]
     [HttpPost("schedules")]
     public async Task<IActionResult> CreateSchedule([FromBody] ScheduleRequest request)
     {
@@ -324,6 +408,7 @@ public class ManagerController : ControllerBase
     // PUT /api/manager/schedules/{id} — allowed only while every employee on the shift is one of this
     // manager's own. A shift is shared company-wide, and editing its hours re-judges past days for
     // everyone on it — so changing one that another branch depends on would move somebody else's pay.
+    [Permission(AccessPermissions.SchedulesManage, Twin = true)]
     [HttpPut("schedules/{id:guid}")]
     public async Task<IActionResult> UpdateSchedule(Guid id, [FromBody] ScheduleRequest request)
     {
@@ -354,6 +439,7 @@ public class ManagerController : ControllerBase
     // DELETE /api/manager/schedules/{id} — only while nobody at all is on it. Same rule the admin
     // path uses: without a foreign key, deleting a shift in use drops those employees back to their
     // branch's hours, which changes how their pay is worked out.
+    [Permission(AccessPermissions.SchedulesManage, Twin = true)]
     [HttpDelete("schedules/{id:guid}")]
     public async Task<IActionResult> DeleteSchedule(Guid id)
     {
@@ -402,6 +488,7 @@ public class ManagerController : ControllerBase
     // rows: this list feeds the manager's edit/reset-PIN surface, and admins/managers who merely clock
     // in at the branch are not the manager's to manage (ManageableEmployeeAsync refuses them anyway),
     // so listing them would only leak their contact details behind buttons that 403.
+    [Permission(AccessPermissions.EmployeesView, Twin = true)]
     [HttpGet("employees")]
     public async Task<IActionResult> Employees([FromQuery] bool includeSelf = false)
     {
@@ -473,14 +560,24 @@ public class ManagerController : ControllerBase
             })
             .ToListAsync(HttpContext.RequestAborted);
 
+        var enforced = await EnforcedRowsAsync();
         return Ok(rows.Select(r => new
         {
-            r.id, r.isSelf, r.manageable, r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.paperEmployer, r.paperSite, r.phoneNumber, r.email, r.locationId,
+            r.id, r.isSelf,
+            manageable = enforced?.Allows(ShadowRules.ManageableEmployee, r.id, r.locationId) ?? r.manageable,
+            r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.paperEmployer, r.paperSite,
+            phoneNumber = enforced is null || enforced.SeesContacts(r.id, r.locationId) ? r.phoneNumber : null,
+            email = enforced is null || enforced.SeesContacts(r.id, r.locationId) ? r.email : null,
+            r.locationId,
             locationName = locationNames.GetValueOrDefault(r.locationId, ""),
             r.birthDate, r.birthYear, r.workStart, r.workEnd, r.photoExempt, r.canFieldCheckIn,
             // Was projected above and then dropped here, so the manager's screen counted zero however
             // many people had it and the "take it back" button computed an empty set and did nothing.
             r.canShareDevice,
+            // Dropped here the same way until 2026-10-15 — and these two the edit form sends back as it
+            // got them, so every save from the roster sent null and quietly put the person back on
+            // their branch's QR-less and GPS rules. A test now holds every field the form round-trips.
+            r.qrlessCheckInOverride, r.requireGeofenceOverride,
             r.isActive, r.activated,
             r.scheduleId, r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor,
         }));
@@ -499,6 +596,7 @@ public class ManagerController : ControllerBase
     /// the reason a two-manager site stopped reading a headcount short. What they may CHANGE is still
     /// decided by <see cref="ManageableEmployeeAsync"/> on each write.
     /// </summary>
+    [Permission(AccessPermissions.EmployeesView, Twin = true)]
     [HttpGet("employees/{id:guid}")]
     public async Task<IActionResult> Employee(Guid id)
     {
@@ -531,6 +629,12 @@ public class ManagerController : ControllerBase
         var mayResetCredentials = (e.Role == EmployeeRole.Employee
                                    || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
                                   && e.Id != M15() && !_operatorIds.Contains(e.Id);
+        if (await EnforcedRowsAsync() is { } enforced)
+        {
+            mayAct = enforced.Allows(ShadowRules.ManageableEmployee, e.Id, e.LocationId);
+            ownContacts = enforced.SeesContacts(e.Id, e.LocationId);
+            mayResetCredentials = enforced.Allows(ShadowRules.CredentialTarget, e.Id, e.LocationId);
+        }
 
         return Ok(new
         {
@@ -566,6 +670,8 @@ public class ManagerController : ControllerBase
             // Deliberately absent: MonthlySalary and Role. Not hidden in the UI — never sent.
             // Whether this manager may ACT on this person is a separate question, answered per write.
             manageable = mayAct,
+            // Switching them off or back on — a right of its own (see UpdateEmployee), and never a colleague's.
+            deactivatable = mayAct && !IsColleague(e, managed) && await MayDeactivateAsync(e.LocationId, ct),
             credentialsManageable = mayResetCredentials,
             // A fellow manager: editable, but not switched off from here — the card hides that button.
             isColleague = IsColleague(e, managed),
@@ -575,6 +681,7 @@ public class ManagerController : ControllerBase
     // POST /api/manager/employees — add an employee to one of the manager's branches, activated with a
     // temporary PIN they hand over. Role is fixed to Employee and salary is ignored, whatever the body
     // carried.
+    [Permission(AccessPermissions.EmployeesCreate, Twin = true)]
     [HttpPost("employees")]
     public async Task<IActionResult> CreateEmployee([FromBody] ManagerEmployeeRequest request)
     {
@@ -636,6 +743,7 @@ public class ManagerController : ControllerBase
 
     // PUT /api/manager/employees/{id} — edit one of the manager's own staff. Salary, role and any move
     // to a branch they don't oversee are all refused here, not just absent from the form.
+    [Permission(AccessPermissions.EmployeesUpdate, Twin = true)]
     [HttpPut("employees/{id:guid}")]
     public async Task<IActionResult> UpdateEmployee(Guid id, [FromBody] ManagerEmployeeRequest request)
     {
@@ -654,9 +762,21 @@ public class ManagerController : ControllerBase
         // colleague's edit is for their details and their days, not for removing them.
         if (colleague && request.IsActive != employee.IsActive)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotDeactivateManager" });
+        // Switching somebody off — or back on — is a right of its own, «employees.deactivate», over the branch
+        // they work at now; «employees.update» there is not enough. The Tabelçi template carries the one and not
+        // the other, and until 2026-10-17 that made no difference: this flag rode in on the profile edit and
+        // nothing asked. Today's managers hold both over their branches (Legacy and Shadow: their
+        // ManagedLocations), so for them nothing changes.
+        if (request.IsActive != employee.IsActive && !await MayDeactivateAsync(employee.LocationId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeactivateNotAllowed" });
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
+        // Neither a number nor an e-mail leaves nothing to sign in with — the rule the invite already holds
+        // (NeedEmailOrPhone), held on the edit too: blanking the only number of a phone-only employee left
+        // an account nobody could reach, with nothing on screen to say why. None exists today (2026-10-15).
+        if (phone is null && string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { error = "NeedEmailOrPhone" });
         // Guard the uniqueness probe on a non-empty email exactly like the phone one below: with a null
         // email (a phone-only employee), `e.Email == email` translates to `Email IS NULL`, which matches
         // EVERY other phone-only employee and falsely reports "EmailAlreadyExists" — blocking any edit
@@ -711,6 +831,7 @@ public class ManagerController : ControllerBase
 
     // POST /api/manager/employees/{id}/reset-pin — hand a fresh temporary PIN to a plain employee or a
     // fellow manager anywhere in the company. Who qualifies is CredentialTargetAsync's decision alone.
+    [Permission(AccessPermissions.EmployeesResetPin, Twin = true)]
     [HttpPost("employees/{id:guid}/reset-pin")]
     public async Task<IActionResult> ResetPin(Guid id)
     {
@@ -732,6 +853,7 @@ public class ManagerController : ControllerBase
     // PUT /api/manager/employees/{id}/phone — change ONLY the login number, for the same people as
     // reset-pin. Deliberately not the full edit: moving somebody, changing their shift or switching them
     // off stays with the manager of their own branch.
+    [Permission(AccessPermissions.EmployeesChangePhone, Twin = true)]
     [HttpPut("employees/{id:guid}/phone")]
     public async Task<IActionResult> ChangePhone(Guid id, [FromBody] ManagerPhoneChangeRequest request)
     {
@@ -765,6 +887,7 @@ public class ManagerController : ControllerBase
     // door in for exactly the people it was widened for. It returns what finding the right person takes —
     // name, job, area and the LAST FOUR digits, enough to confirm «the Rəşad whose number ends 7391» —
     // and not a directory of every login number in the company.
+    [Permission(AccessPermissions.EmployeesResetPin, Twin = true)]
     [HttpGet("credential-targets")]
     public async Task<IActionResult> CredentialTargets([FromQuery] string? q)
     {
@@ -774,27 +897,46 @@ public class ManagerController : ControllerBase
             return Ok(Array.Empty<object>());
 
         var self = M15();
-        var lowered = term.ToLower();
+        var lowered = SearchText.Fold(term);
         var digits = new string(term.Where(char.IsDigit).ToArray());
         var byPhone = digits.Length >= 3;
         var managed = await ManagedLocationIdsAsync();
 
-        var rows = await _db.Employees
-            .Where(e => e.IsActive && e.Id != self
-                        // Plain staff anywhere; a fellow manager only at the caller's own branches.
-                        && (e.Role == EmployeeRole.Employee
-                            || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
-                        && !_operatorIds.Contains(e.Id)
-                        && (e.FullName.ToLower().Contains(lowered)
-                            || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))))
+        var matching = _db.Employees
+            .Where(e => e.IsActive && e.Id != self && !_operatorIds.Contains(e.Id)
+                        && (SearchText.Fold(e.FullName).Contains(lowered)
+                            || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))));
+
+        var enforced = await EnforcedRowsAsync();
+        IQueryable<Employee> candidates;
+        if (enforced is null)
+        {
+            // Plain staff anywhere; a fellow manager only at the caller's own branches.
+            candidates = matching.Where(e => e.Role == EmployeeRole.Employee
+                                             || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)));
+        }
+        else
+        {
+            // Enforced: wherever the caller holds «employees.reset_pin» (today's managers: the whole company, as
+            // above), then the model's own rule person by person below — it is the one that decides the reset.
+            var reach = await LocationScopeRules.ScopeAsync(_db, self, User.Role(), AccessPermissions.EmployeesResetPin, ct);
+            var branches = reach.Branches.ToList();
+            candidates = reach.Company ? matching : matching.Where(e => branches.Contains(e.LocationId));
+        }
+
+        var found = await candidates
             .OrderBy(e => e.FullName)
-            .Take(20)
+            // A few more in Enforced: the rule below may set some of them aside.
+            .Take(enforced is null ? 20 : 60)
             .Select(e => new
             {
                 e.Id, e.FullName, e.Position, e.Role, e.PhoneNumber, e.LocationId,
                 Activated = e.ActivatedAtUtc != null,
             })
             .ToListAsync(ct);
+        var rows = enforced is null
+            ? found
+            : found.Where(e => enforced.Allows(ShadowRules.CredentialTarget, e.Id, e.LocationId)).Take(20).ToList();
 
         var locationIds = rows.Select(r => r.LocationId).Distinct().ToList();
         var locationNames = await _db.Locations.Where(l => locationIds.Contains(l.Id))
@@ -828,6 +970,7 @@ public class ManagerController : ControllerBase
     /// bulk action over a filtered list will sometimes include a name the manager may not act on, and
     /// refusing all of it would teach them to stop using the button.
     /// </summary>
+    [Permission(AccessPermissions.FieldCheckInGrant, Twin = true)]
     [HttpPost("employees/bulk-permission")]
     public async Task<IActionResult> BulkGrant([FromBody] BulkPermissionRequest request)
     {
@@ -858,6 +1001,7 @@ public class ManagerController : ControllerBase
     // GET /api/manager/leaves — leave records for everyone at this manager's branches, plus their own.
     // Exactly the set LeaveSubjectAsync accepts: a row that can be filed but not seen, or seen but not
     // deleted, reads as a broken screen.
+    [Permission(AccessPermissions.LeavesView, Twin = true)]
     [HttpGet("leaves")]
     public async Task<IActionResult> Leaves([FromQuery] DateOnly? from, [FromQuery] DateOnly? to)
     {
@@ -895,6 +1039,7 @@ public class ManagerController : ControllerBase
     /// editing a peer or an admin, so widening it would hand over their contact details to enable a
     /// feature that needs nothing but a name. This returns the name and nothing else that matters.
     /// </summary>
+    [Permission(AccessPermissions.LeavesView, Twin = true)]
     [HttpGet("leave-subjects")]
     public async Task<IActionResult> LeaveSubjectList()
     {
@@ -918,6 +1063,7 @@ public class ManagerController : ControllerBase
     }
 
     // POST /api/manager/leaves — file a leave for anyone at the manager's branches, or for themselves.
+    [Permission(AccessPermissions.LeavesManage, Twin = true)]
     [HttpPost("leaves")]
     public async Task<IActionResult> CreateLeave([FromBody] LeaveRecordRequest request)
     {
@@ -1004,6 +1150,7 @@ public class ManagerController : ControllerBase
     }
 
     // DELETE /api/manager/leaves/{id} — remove a leave of the manager's own staff, or their own.
+    [Permission(AccessPermissions.LeavesManage, Twin = true)]
     [HttpDelete("leaves/{id:guid}")]
     public async Task<IActionResult> DeleteLeave(Guid id)
     {

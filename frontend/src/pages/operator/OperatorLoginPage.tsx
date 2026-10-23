@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { endedSessionNotice, forgetEndedSessionNotice } from '../../api/client'
 import { BrandLogo } from '../../components/BrandLogo'
 import { PinInput } from '../../components/PinInput'
 import { useNavigate } from 'react-router-dom'
@@ -15,6 +16,9 @@ export function OperatorLoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Why this screen is here, when a support session has just run out — said once.
+  const [notice] = useState(endedSessionNotice)
+  useEffect(() => { forgetEndedSessionNotice() }, [])
   const [loading, setLoading] = useState(false)
   const { saveToken } = useAuth()
   const navigate = useNavigate()
@@ -68,6 +72,12 @@ export function OperatorLoginPage() {
           <div style={{ fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: 16, marginBottom: 18, color: 'var(--c900)' }}>
             SuperAdmin girişi
           </div>
+
+          {notice && !error && (
+            <div className="fb fb-info" style={{ marginBottom: 14 }}>
+              <span>{notice}</span>
+            </div>
+          )}
 
           {error && (
             <div className="fb fb-err" style={{ marginBottom: 14 }}>

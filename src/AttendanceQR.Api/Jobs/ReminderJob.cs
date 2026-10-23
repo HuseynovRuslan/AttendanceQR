@@ -108,9 +108,10 @@ public sealed class ReminderJob : BackgroundService
 
                 var nowUtc = DateTime.UtcNow;
                 var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+                // One day for everything here: the shift, the holidays and the record. It used to
+                // resolve the shift by the company day and look the record up by the UTC day, which
+                // agree for twenty hours out of twenty-four — see AttendanceController.Scan.
                 var todayLocal = DateOnly.FromDateTime(nowLocal);
-                // AttendanceRecords are keyed by the server UTC day (see the scan handler).
-                var todayUtc = DateOnly.FromDateTime(nowUtc);
 
                 var employees = await db.Employees.Where(e => e.IsActive).ToListAsync(ct);
                 if (employees.Count == 0) continue;
@@ -122,7 +123,7 @@ public sealed class ReminderJob : BackgroundService
                     .Where(o => o.Date == todayLocal)
                     .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
                 var records = await db.AttendanceRecords
-                    .Where(r => r.AttendanceDate >= todayUtc.AddDays(-1))
+                    .Where(r => r.AttendanceDate >= todayLocal.AddDays(-1))
                     .ToListAsync(ct);
                 var byEmployee = records
                     .GroupBy(r => r.EmployeeId)
@@ -151,7 +152,7 @@ public sealed class ReminderJob : BackgroundService
                     // different clock the ordinary pair would fire at the wrong hour.
                     var (shiftStart, shiftEnd) = shift.HoursOn(todayLocal);
                     var mine = byEmployee.GetValueOrDefault(employee.Id) ?? new List<AttendanceRecord>();
-                    var todayRecord = mine.FirstOrDefault(r => r.AttendanceDate == todayUtc);
+                    var todayRecord = mine.FirstOrDefault(r => r.AttendanceDate == todayLocal);
 
                     var offToday =
                         holidays.Any(h => h.LocationId == null || h.LocationId == employee.LocationId) ||

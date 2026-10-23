@@ -77,4 +77,16 @@ public class Tenant
     // may not read another's rows; a list rather than free text because a single company spelled
     // three ways would make the group's mismatch report unreadable.
     public string? GroupCompanies { get; set; }
+
+    /// <summary>Which authorization decides for this company while the permission model is introduced —
+    /// Legacy until the owner moves it on. See <see cref="Enums.AuthzMode"/>.</summary>
+    public Enums.AuthzMode AuthzMode { get; set; } = Enums.AuthzMode.Legacy;
+
+    /// <summary>
+    /// A correction somebody makes to their own day (allowed only where nobody else could make it — see
+    /// <see cref="AttendanceSelfCorrection"/>) waits for a second person's approval instead of applying at once.
+    /// Off by default: the owner wanted no company made to keep a second admin. Turned on only where such a
+    /// person exists, and every change of it is audited.
+    /// </summary>
+    public bool SelfCorrectionNeedsApproval { get; set; }
 }

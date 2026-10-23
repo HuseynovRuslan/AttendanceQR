@@ -1,6 +1,7 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -24,6 +25,7 @@ namespace AttendanceQR.Api.Controllers;
 /// for it. Every rule downstream then applies unchanged: the overnight noon-pivot that closes a night
 /// with a morning scan, the working-day mask, the late threshold, per-day hours.
 /// </summary>
+[Permission(AccessPermissions.SchedulesAssign)]
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/shift-overrides")]

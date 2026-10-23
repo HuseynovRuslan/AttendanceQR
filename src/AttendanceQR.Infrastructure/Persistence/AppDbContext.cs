@@ -1,6 +1,8 @@
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 
 namespace AttendanceQR.Infrastructure.Persistence;
 
@@ -10,11 +12,18 @@ public class AppDbContext : DbContext
 
     // ITenantContext is optional so the design-time factory (migrations) can build the model without
     // the DI container. At runtime it's always injected.
-    public AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null)
+    public AppDbContext(
+        DbContextOptions<AppDbContext> options, ITenantContext? tenant = null,
+        Services.Access.IAuthzObserver? authzObserver = null)
         : base(options)
     {
         _tenant = tenant;
+        AuthzObserver = authzObserver;
     }
+
+    /// <summary>Hears today's scope decisions for the permission model's shadow comparison (Services.Access).
+    /// Null outside a request — start-up jobs, design time, most tests.</summary>
+    public Services.Access.IAuthzObserver? AuthzObserver { get; }
 
     /// <summary>The tenant every query is filtered to and every insert is stamped with. Referenced by
     /// the query filters below — EF re-reads it per query, so it tracks the current request's tenant.
@@ -31,6 +40,10 @@ public class AppDbContext : DbContext
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<Structure> Structures => Set<Structure>();
+    public DbSet<AccessRole> AccessRoles => Set<AccessRole>();
+    public DbSet<RoleAssignment> RoleAssignments => Set<RoleAssignment>();
+    public DbSet<AuthzShadowEvent> AuthzShadowEvents => Set<AuthzShadowEvent>();
     public DbSet<DeviceBinding> DeviceBindings => Set<DeviceBinding>();
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
     public DbSet<PinResetRequest> PinResetRequests => Set<PinResetRequest>();
@@ -45,6 +58,7 @@ public class AppDbContext : DbContext
     public DbSet<ShiftOverride> ShiftOverrides => Set<ShiftOverride>();
 
     public DbSet<AbsenceMark> AbsenceMarks => Set<AbsenceMark>();
+    public DbSet<AttendanceSelfCorrection> AttendanceSelfCorrections => Set<AttendanceSelfCorrection>();
     public DbSet<ProcessedScan> ProcessedScans => Set<ProcessedScan>();
     public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<AnnouncementRecipient> AnnouncementRecipients => Set<AnnouncementRecipient>();
@@ -82,6 +96,21 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // SearchText.Fold, said in SQL: lower(translate(x, From, To)). One rule for every search box, run by the
+        // database (see SearchText for why .NET's and Postgres' own lowering cannot be mixed). The in-memory
+        // test provider ignores the mapping and runs the C# body — the same rule.
+        modelBuilder.HasDbFunction(typeof(SearchText).GetMethod(nameof(SearchText.Fold), [typeof(string)])!)
+            .HasTranslation(args =>
+            {
+                var text = args[0];
+                var translate = new SqlFunctionExpression("translate",
+                    [text, new SqlConstantExpression(SearchText.From, typeof(string), text.TypeMapping),
+                        new SqlConstantExpression(SearchText.To, typeof(string), text.TypeMapping)],
+                    nullable: true, argumentsPropagateNullability: [true, false, false], typeof(string), text.TypeMapping);
+                return new SqlFunctionExpression("lower", [translate],
+                    nullable: true, argumentsPropagateNullability: [true], typeof(string), text.TypeMapping);
+            });
+
         // Each entity has its own IEntityTypeConfiguration<T> in Persistence/Configurations.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
@@ -96,7 +125,8 @@ public class AppDbContext : DbContext
             typeof(PushSubscription), typeof(EmployeeNotification),
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
             typeof(FieldVisit), typeof(FieldVisitChecklistItem), typeof(PendingPhotoUpload),
-            typeof(EquipmentRecord),
+            typeof(EquipmentRecord), typeof(Structure), typeof(AccessRole), typeof(RoleAssignment),
+            typeof(AuthzShadowEvent),
         };
         foreach (var t in tenantScoped)
         {
@@ -112,6 +142,10 @@ public class AppDbContext : DbContext
         // entity (typed) so EF reliably treats CurrentTenantId as a runtime value, not a baked constant.
         modelBuilder.Entity<Employee>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Location>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<Structure>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AccessRole>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<RoleAssignment>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AuthzShadowEvent>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceBinding>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
@@ -152,6 +186,18 @@ public class AppDbContext : DbContext
             .IsUnique();
         // Read per date, exactly like the overrides above it.
         modelBuilder.Entity<AbsenceMark>().HasIndex(a => new { a.TenantId, a.Date });
+
+        // The self-correction ledger: append-only. Read «which of these days were one's own work» per person and
+        // date range (the board, the profile, the tabel, the payroll), and newest-first for the list.
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasIndex(c => new { c.TenantId, c.EmployeeId, c.AttendanceDate });
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasIndex(c => new { c.TenantId, c.AtUtc });
+        // One answer per waiting correction: two approvers pressing at once get one approval and one 23505, never
+        // two applications of the same change.
+        modelBuilder.Entity<AttendanceSelfCorrection>().HasIndex(c => c.DecisionForId).IsUnique()
+            .HasFilter("\"DecisionForId\" IS NOT NULL");
+        modelBuilder.Entity<AttendanceSelfCorrection>().Property(c => c.Kind).HasMaxLength(40);
+        modelBuilder.Entity<AttendanceSelfCorrection>().Property(c => c.Reason).HasMaxLength(500);
         modelBuilder.Entity<ProcessedScan>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Announcement>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AnnouncementRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

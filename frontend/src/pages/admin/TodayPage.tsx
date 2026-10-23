@@ -1,19 +1,28 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
-import { areaOf, exportRow, uniqueAreas, type AreaView } from './exportRows'
+import { areaOf, exportRow, uniqueAreas, unlistedAreas, type AreaView } from './exportRows'
+import { formatWorked, workedMinutes } from './todayShift'
+import { TodayRow } from './TodayRow'
 import { useSearchParams } from 'react-router-dom'
-import { EmployeeLink } from '../../components/EmployeeLink'
-import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow } from '../../api/admin'
+import {
+  exportDayXlsx, getDayTemplates, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow, type DayTemplate,
+} from '../../api/admin'
 import { getImpersonation } from '../../api/client'
 import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
-import { useAuth } from '../../auth/AuthContext'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { getPhotoUrl, type PhotoUrlResponse } from '../../api/attendance'
-import { StatusBadge, STATUS_MAP, dayLabel, dayVisual } from '../../components/StatusBadge'
+import { STATUS_MAP, dayLabel } from '../../components/StatusBadge'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
-import { FaceFlagBadge, faceIsFlagged } from '../../components/FaceFlagBadge'
-import { IconCamera, IconPencil, IconX } from '../../components/icons'
+import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
+import { faceIsFlagged } from '../../components/FaceFlagBadge'
+import {
+  IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconClock,
+  IconColumns, IconDownload, IconSearch, IconTable, IconUserX, IconX,
+} from '../../components/icons'
 import { fmtLongDate, fmtTime, toCompanyInputValue } from '../../lib/format'
+import { takeRows, useRowWindow } from '../../lib/rowWindow'
+import { matchesSearch } from '../../lib/searchFold'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -31,6 +40,23 @@ const LEAVE_OPTIONS: { type: LeaveType; label: string; dot: string }[] = [
   { type: 'Rest', label: 'İstirahət', dot: 'var(--c400)' },
   { type: 'BusinessTrip', label: 'Ezamiyyət', dot: 'var(--teal)' },
 ]
+
+/** Which optional columns are on. Remembered per browser: an admin who works branch by branch turns
+ *  Ərazi off once, and an HR reader who lives in the job titles turns Vəzifə on once. */
+type Cols = { location: boolean; position: boolean; schedule: boolean; worked: boolean }
+const COLS_KEY = 'qrlog.today.cols'
+const COLS_DEFAULT: Cols = { location: true, position: false, schedule: true, worked: true }
+
+function readCols(): Cols {
+  // Storage can be absent or throw outright (private window, blocked site data) — a board that fails
+  // to render because of a remembered column preference would be a poor trade.
+  try {
+    const raw = localStorage.getItem(COLS_KEY)
+    return raw ? { ...COLS_DEFAULT, ...JSON.parse(raw) as Partial<Cols> } : COLS_DEFAULT
+  } catch {
+    return COLS_DEFAULT
+  }
+}
 
 /** A heading that sorts. The arrow only appears on the column actually in use. */
 function Th({ col, label, sortBy, desc, onSort }: {
@@ -51,26 +77,37 @@ function Th({ col, label, sortBy, desc, onSort }: {
 }
 
 export function TodayPage() {
-  const { role } = useAuth()
+  // The board's shape — the admin's or the narrowed one — and, in a company switched to Enforced, the
+  // permission model's: a timekeeper gets the narrowed board over their branches (see useScopedRole).
+  const role = useScopedRole('attendance.view')
+  // Filing a reason is a leave: the leave endpoints of whoever holds «leaves.manage».
+  const leaveRole = useScopedRole('leaves.manage')
   // A manager may look at the selfies of the people they manage again (owner's call, 2026-09-04):
   // they are who stands at the site and notices, and routing every suspect photograph through one
   // admin did not make the data safer, it made the check not happen. The server scopes it to their
   // own branches; ACTING on what they see — voiding a day, sending a warning — stays Admin-only, so
-  // canAct below is deliberately narrower than this.
-  const mayViewPhotos = role === 'Admin' || role === 'Manager'
+  // canAct below is deliberately narrower than this. In Enforced a selfie is its own right: a timekeeper
+  // or an observer follows the day without the faces.
+  const mayViewPhotos = useHolds('attendance.photos.view', role === 'Admin' || role === 'Manager')
   const mayAct = role === 'Admin'
+  // The pencil on an absent row files a leave — not an observer's to press.
+  const mayGiveReason = useHolds('leaves.manage', true)
   const [assigningId, setAssigningId] = useState<string | null>(null)
   // Which absent row's reason menu is open, and where to float it. A pencil next to the Qayıb badge
   // opens a dropdown; it is position:fixed so the table's overflow never clips it.
   const [reasonFor, setReasonFor] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
 
-  function openReasonMenu(e: MouseEvent, employeeId: string) {
+  // useCallback with no dependencies, and that is load-bearing rather than tidiness: the row is
+  // memoised, so a handler that changed identity on every render would re-render all 488 rows and
+  // undo the whole point. Every handler below is written to need nothing from the render it is in.
+  const openReasonMenu = useCallback((e: MouseEvent, employeeId: string) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     // Clamp so a menu near the right/bottom edge stays on screen.
     setMenuPos({ top: Math.min(r.bottom + 4, window.innerHeight - 250), left: Math.min(r.left, window.innerWidth - 210) })
     setReasonFor(employeeId)
-  }
+  }, [])
+
   // The company's day, not the device's — and recomputed every render rather than frozen at mount.
   //
   // It was `localDateISO(new Date())` inside a useMemo with no deps, which is two bugs in one line: a
@@ -86,17 +123,33 @@ export function TodayPage() {
   const [rows, setRows] = useState<DayAttendanceRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loadedOnce, setLoadedOnce] = useState(false)
-  const [filterLoc, setFilterLoc] = useState<string | null>(null)
-  const [flaggedOnly, setFlaggedOnly] = useState(false)
+  // Which branches the board is narrowed to — several at once.
+  //
+  // It used to be one id or none, drawn as a row of chips. That was right for three branches and
+  // unusable at twenty-two: the chips wrapped to four lines and pushed the table off the first
+  // screen, and because only one could be on, «the two parks» was a question the board could not be
+  // asked at all.
+  const [filterLocs, setFilterLocs] = useState<string[]>([])
+  const [locOpen, setLocOpen] = useState(false)
+  const [locQuery, setLocQuery] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
+  const correction = useCorrectionReason()
   const [modal, setModal] = useState<{ title: string; photo: PhotoUrlResponse; recordId: string | null } | null>(null)
   // A caller can deep-link a pre-applied status filter, e.g. the dashboard's "Bu gün gəlməyib" →
   // /admin/today?status=absent. Read once at mount.
   const [searchParams] = useSearchParams()
   const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get('status'))
   const [search, setSearch] = useState('')
-  const [noPhotoOnly, setNoPhotoOnly] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  /**
+   * The audit lens: everybody, the faces that did not match, or the scans with no selfie.
+   *
+   * One of three rather than two independent toggles. They were never used together — «show me the
+   * flagged ones that also have no photo» is not a question anybody asks, and as separate switches
+   * the board could land in that empty intersection and look broken.
+   */
+  const [lens, setLens] = useState<'all' | 'flagged' | 'nophoto'>('all')
   /**
    * Sorting and the two value filters the table itself offers.
    *
@@ -109,6 +162,15 @@ export function TodayPage() {
   const [sortDesc, setSortDesc] = useState(false)
   const [filterPosition, setFilterPosition] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [groupByBranch, setGroupByBranch] = useState(true)
+  const [cols, setCols] = useState<Cols>(readCols)
+  const [colsOpen, setColsOpen] = useState(false)
+  // The statuses that are not every day's business, folded away until asked for.
+  const [moreOpen, setMoreOpen] = useState(false)
+  // When the board last answered, and the clock the live «İş vaxtı» column counts against. Both are
+  // set by the same poll, so a row never shows minutes the header has not admitted to loading.
+  const [loadedAt, setLoadedAt] = useState<string | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   // Which sites go into the workbook. Chosen explicitly before every export: the file is sent to the
   // leadership, and one that quietly carried whatever filter happened to be on screen is a report
   // nobody can tell apart from the whole company.
@@ -118,8 +180,29 @@ export function TodayPage() {
   // somebody else wants the branches. Both are the same people on the same day — only the shape of
   // the report differs — so it is one switch, not two exports to keep in step.
   const [exportView, setExportView] = useState<AreaView>('actual')
+  // A company's own form for «Xülasə» (Bakı Abadlıq's «Davamiyyət siyahısı»), offered only where the
+  // company has one. Null is the standard summary — and the start of every export, not a remembered
+  // choice: a form used because somebody else picked it on this device last week is exactly the
+  // surprise the dialog exists to prevent.
+  const [dayTemplates, setDayTemplates] = useState<DayTemplate[]>([])
+  const [exportTemplate, setExportTemplate] = useState<string | null>(null)
+  const chosenTemplate = dayTemplates.find((t) => t.key === exportTemplate) ?? null
+  // Whether an area can go into the file in the chosen form: always, unless the form has no line for it.
+  const fitsTemplate = (name: string, form: DayTemplate | null = chosenTemplate) =>
+    !form || unlistedAreas([name], form.areas).length === 0
 
-  async function viewPhoto(row: DayAttendanceRow) {
+  const pickPosition = useCallback((p: string) => setFilterPosition((v) => (v === p ? null : p)), [])
+  const pickLocation = useCallback((id: string) => setFilterLocs([id]), [])
+
+  function toggleCol(key: keyof Cols) {
+    setCols((c) => {
+      const next = { ...c, [key]: !c[key] }
+      try { localStorage.setItem(COLS_KEY, JSON.stringify(next)) } catch { /* not worth a broken board */ }
+      return next
+    })
+  }
+
+  const viewPhoto = useCallback(async (row: DayAttendanceRow) => {
     if (!row.recordId) return
     setBusyId(row.recordId)
     setPhotoError(null)
@@ -131,7 +214,9 @@ export function TodayPage() {
       return
     }
     setModal({ title: row.employeeName, photo: data, recordId: row.recordId ?? null })
-  }
+  }, [])
+
+  const onPhoto = useCallback((row: DayAttendanceRow) => { void viewPhoto(row) }, [viewPhoto])
 
   // Assign a reason to an absent employee straight from this board: a single-day leave for the date
   // being viewed. Managers file through their own scoped endpoint, admins through the admin one — the
@@ -140,8 +225,8 @@ export function TodayPage() {
   async function assignLeave(employeeId: string, type: LeaveType, existingLeaveId?: string | null) {
     setAssigningId(employeeId)
     // Changing an already-assigned reason: drop the old single-day leave first, then add the new one.
-    if (existingLeaveId) await (role === 'Manager' ? deleteManagerLeave(existingLeaveId) : deleteLeave(existingLeaveId))
-    const res = role === 'Manager'
+    if (existingLeaveId) await (leaveRole === 'Manager' ? deleteManagerLeave(existingLeaveId) : deleteLeave(existingLeaveId))
+    const res = leaveRole === 'Manager'
       ? await createManagerLeave({ employeeIds: [employeeId], fromDate: date, toDate: date, type, note: null })
       : await addLeave({ employeeIds: [employeeId], fromDate: date, toDate: date, type })
     setAssigningId(null)
@@ -160,19 +245,28 @@ export function TodayPage() {
     return r ? dayLabel(r.status, r.leaveType).toLocaleLowerCase('az') : 'məzuniyyət/icazə'
   }
 
+  // Both directions say why (the owner's rule of 2026-10-15): a Qayıb docks a day's pay, and taking one
+  // off gives it back. The reason is the mark's note and goes into the audit line.
   async function markDayAbsent(employeeId: string) {
-    setAssigningId(employeeId)
-    const res = await markAbsent(employeeId, date)
-    setAssigningId(null)
     setReasonFor(null)
+    const name = rows.find((x) => x.employeeId === employeeId)?.employeeName ?? 'İşçi'
+    const why = await correction.ask({
+      title: `${name} — ${fmtLongDate(date)} Qayıb yaz`,
+      detail: 'Qayıb bir günlük maaşı kəsir. Səbəb jurnala yazılır.',
+      confirmLabel: 'Qayıb yaz',
+      danger: true,
+      presets: ['Xəbərsiz işə gəlmədi', 'Zənglərə cavab vermədi', 'Rəhbərin təsdiqi ilə'],
+    })
+    if (why === null) return
+    setAssigningId(employeeId)
+    const res = await markAbsent(employeeId, date, why)
+    setAssigningId(null)
     if (res.status === 200) { await load(); return }
     const code = res.data && typeof res.data === 'object' && 'error' in res.data
       ? (res.data as { error: string }).error : ''
     setPhotoError(
-      code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
-        // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
-        // admin blocked by a rest day (two thirds of every record filed) or by an ezamiyyət went
-        // looking for a holiday that did not exist.
+      CORRECTION_ERROR[code] ? CORRECTION_ERROR[code]
+        : code === 'HasRecord' ? 'Bu gün skan var — qayıb yazmaq olmaz'
         // Names what is actually there. It said «məzuniyyət/icazə» whatever the record was, so an
         // admin blocked by a rest day — two thirds of every record ever filed — or by an ezamiyyət
         // went looking for a holiday that does not exist.
@@ -182,18 +276,27 @@ export function TodayPage() {
   }
 
   async function undoDayAbsent(employeeId: string) {
-    setAssigningId(employeeId)
-    const res = await unmarkAbsent(employeeId, date)
-    setAssigningId(null)
     setReasonFor(null)
-    if (res.status === 200) await load()
-    else setPhotoError('Qayıb geri alınmadı')
+    const name = rows.find((x) => x.employeeId === employeeId)?.employeeName ?? 'İşçi'
+    const why = await correction.ask({
+      title: `${name} — ${fmtLongDate(date)} Qayıbı geri al`,
+      confirmLabel: 'Geri al',
+      presets: ['Səhvən yazılmışdı', 'Arayış və ya sənəd gətirdi', 'Rəhbərin təsdiqi ilə'],
+    })
+    if (why === null) return
+    setAssigningId(employeeId)
+    const res = await unmarkAbsent(employeeId, date, why)
+    setAssigningId(null)
+    if (res.status === 200) { await load(); return }
+    const code = res.data && typeof res.data === 'object' && 'error' in res.data
+      ? (res.data as { error: string }).error : ''
+    setPhotoError(CORRECTION_ERROR[code] ?? 'Qayıb geri alınmadı')
   }
 
   // Undo a mistaken reason — delete the single-day leave so the row goes back to Qayıb.
   async function removeLeave(employeeId: string, leaveId: string) {
     setAssigningId(employeeId)
-    const res = role === 'Manager' ? await deleteManagerLeave(leaveId) : await deleteLeave(leaveId)
+    const res = leaveRole === 'Manager' ? await deleteManagerLeave(leaveId) : await deleteLeave(leaveId)
     setAssigningId(null)
     setReasonFor(null)
     if (res.status === 200) await load()
@@ -204,6 +307,8 @@ export function TodayPage() {
     if (status === 200 && Array.isArray(data)) {
       setRows(data)
       setError(null)
+      setLoadedAt(new Date().toISOString())
+      setNowMs(Date.now())
     } else if (status === 403) {
       setError('İcazəniz yoxdur')
     } else {
@@ -221,6 +326,19 @@ export function TodayPage() {
     return () => clearInterval(id)
   }, [load, isToday])
 
+  // ⌘K / Ctrl-K puts the cursor in the name box. The board is opened to look one person up more
+  // often than for anything else, and the box is three blocks up the page from where the eye is.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   function shiftDate(delta: number) {
     const d = new Date(`${date}T00:00:00`)
     d.setDate(d.getDate() + delta)
@@ -229,12 +347,20 @@ export function TodayPage() {
   }
 
   const locations = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const r of rows) seen.set(r.locationId, r.locationName)
-    return Array.from(seen, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+    const seen = new Map<string, { name: string; count: number }>()
+    for (const r of rows) {
+      const hit = seen.get(r.locationId)
+      if (hit) hit.count++
+      else seen.set(r.locationId, { name: r.locationName, count: 1 })
+    }
+    return Array.from(seen, ([id, v]) => ({ id, name: v.name, count: v.count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'az'))
   }, [rows])
 
-  const locFiltered = filterLoc ? rows.filter((r) => r.locationId === filterLoc) : rows
+  const locFiltered = useMemo(
+    () => (filterLocs.length ? rows.filter((r) => filterLocs.includes(r.locationId)) : rows),
+    [rows, filterLocs],
+  )
 
   // Counts reflect the LOCATION scope only (not the status/search/photo filters), so the cards keep
   // showing the day's real breakdown and stay usable as toggles.
@@ -244,42 +370,52 @@ export function TodayPage() {
   // (`OnLeave`) and is separable only by `leaveType`, so a screen that counts by status merges a
   // work trip into the holidays — which is what this board did, and what the reports did before
   // 3d6ac7e. Twice is enough for it to belong somewhere a test can see it.
-  const counts = countToday(locFiltered)
-  const flaggedCount = locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length
+  const counts = useMemo(() => countToday(locFiltered), [locFiltered])
+  const { flaggedCount, noPhotoCount } = useMemo(() => ({
+    flaggedCount: locFiltered.filter((r) => faceIsFlagged(r.faceMatchStatus)).length,
+    noPhotoCount: locFiltered.filter((r) => r.checkInAtUtc && !r.hasPhoto).length,
+  }), [locFiltered])
   const incompleteLabel = isToday ? 'İşdə' : 'Çıxış yoxdur'
-  const incompleteOverride = isToday ? undefined : { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
 
-  const q = search.trim().toLowerCase()
-  const visible = sortRows(locFiltered.filter((r) => {
-    if (flaggedOnly && !faceIsFlagged(r.faceMatchStatus)) return false
+  const q = search.trim()
+  const visible = useMemo(() => sortRows(locFiltered.filter((r) => {
+    if (lens === 'flagged' && !faceIsFlagged(r.faceMatchStatus)) return false
+    // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
+    if (lens === 'nophoto' && !(r.checkInAtUtc && !r.hasPhoto)) return false
     // Sick / Ezamiyyət / Məzuniyyət all come from OnLeave, split by leaveType — so their filters
     // need the row, not just the status.
     if (statusFilter === 'sick' || statusFilter === 'trip' || statusFilter === 'onLeave' || statusFilter === 'unpaid') {
       if (!matchesLeaveCard(r, statusFilter)) return false
     } else if (statusFilter && bucketOf(r) !== statusFilter) return false
-    // "No photo" = checked in but the selfie is missing (an absentee having no photo is not notable).
     if (filterPosition && (r.position ?? '') !== filterPosition) return false
-    if (noPhotoOnly && !(r.checkInAtUtc && !r.hasPhoto)) return false
-    if (q && !r.employeeName.toLowerCase().includes(q)) return false
+    if (!matchesSearch(q, r.employeeName)) return false
     return true
-  }), sortBy, sortDesc)
+  }), sortBy, sortDesc), [locFiltered, lens, statusFilter, filterPosition, q, sortBy, sortDesc])
 
   /**
    * The list, cut into branches.
    *
    * 221 rows in one run is not a board, it is a scroll — and the branch column was the same word
    * repeated forty times down the page while the reader looked for a name. Grouped, the word is said
-   * once as a heading and the column disappears; ungrouped (a single branch already picked) nothing
-   * changes, because there is nothing to say.
+   * once as a heading and the column disappears; with one branch on screen there is nothing to say,
+   * so the grouping switches itself off rather than printing a single heading over everything.
    */
-  const grouped = !filterLoc
-  const byBranch = grouped
+  const branchesOnScreen = useMemo(() => new Set(visible.map((r) => r.locationName)).size, [visible])
+  const grouped = groupByBranch && branchesOnScreen > 1
+  const byBranch = useMemo(() => (grouped
     ? [...visible.reduce((m, r) => {
         const list = m.get(r.locationName)
         if (list) list.push(r); else m.set(r.locationName, [r])
         return m
       }, new Map<string, typeof visible>())].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'az'))
-    : [['', visible] as [string, typeof visible]]
+    : [['', visible] as [string, typeof visible]]), [visible, grouped])
+
+  // Drawn a window at a time rather than all 994 rows at once — see lib/rowWindow.ts. The window
+  // starts over when WHICH rows are on the list changes; a sort or the branch grouping only reorders
+  // them, and the thirty-second refresh changes neither.
+  const windowKey = [date, filterLocs.join(','), lens, statusFilter ?? '', q, filterPosition ?? ''].join('|')
+  const { limit, hasMore, sentinel } = useRowWindow(windowKey, visible.length)
+  const shown = useMemo(() => takeRows(byBranch, limit), [byBranch, limit])
 
   // Same column twice reverses it; a new column starts ascending, which is what every table does.
   const sort = (c: typeof sortBy) => {
@@ -288,10 +424,25 @@ export function TodayPage() {
   }
 
   const toggleStatus = (k: string) => setStatusFilter((f) => (f === k ? null : k))
-  const cardStyle = (k: string) =>
-    statusFilter === k
-      ? { cursor: 'pointer', boxShadow: '0 0 0 2px #1E70C8' }
-      : { cursor: 'pointer' }
+  const toggleLoc = (id: string) =>
+    setFilterLocs((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]))
+
+  const showLocCol = !grouped && cols.location
+  const colCount = 5 + (showLocCol ? 1 : 0) + (cols.position ? 1 : 0) + (cols.schedule ? 1 : 0) + (cols.worked ? 1 : 0)
+
+  // How many ways the board is narrowed right now — so «Filtrləri sıfırla» is offered only when it
+  // would do something, and the reader can see at a glance that a list is short for a reason.
+  const activeFilters =
+    (filterLocs.length ? 1 : 0) + (lens !== 'all' ? 1 : 0) + (statusFilter ? 1 : 0)
+    + (filterPosition ? 1 : 0) + (q ? 1 : 0)
+
+  function resetFilters() {
+    setFilterLocs([])
+    setLens('all')
+    setStatusFilter(null)
+    setFilterPosition(null)
+    setSearch('')
+  }
 
   // The exported Status must say EXACTLY what the badge beside it says.
   //
@@ -301,8 +452,6 @@ export function TodayPage() {
   // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
   // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
   // leave. The type is already on the row and was simply never read here.
-  // One call, and the file now says the same word the screen does — for rest days too, which the
-  // hand-rolled version above could not, because it only ever consulted the type for OnLeave.
   const statusLabel = (r: DayAttendanceRow) => dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
@@ -320,22 +469,48 @@ export function TodayPage() {
   }, [rows, exportView])
 
   function openExport() {
-    // Pre-tick what the reader is already looking at: the area they filtered to, or all of them.
-    const current = locations.find((l) => l.id === filterLoc)?.name
+    // Pre-tick what the reader is already looking at: the areas they filtered to, or all of them.
+    const picked = locations.filter((l) => filterLocs.includes(l.id)).map((l) => l.name)
     setExportView('actual')
-    setExportSites(current ? [current] : uniqueAreas(rows, 'actual'))
+    setExportTemplate(null)
+    setExportSites(picked.length ? picked : uniqueAreas(rows, 'actual'))
     setExportOpen(true)
   }
 
   // Switching the view re-ticks everything: a selection made in one structure means nothing in the
   // other — «Aeroport yolu» unticked as a branch does not name an area on the paper side — and
   // carrying it across would silently drop people from a file whose scope note still claims them.
+  // A company form goes with it: its lines are branches, and the paper side groups by names that
+  // need not be any.
   function switchExportView(view: AreaView) {
     setExportView(view)
+    setExportTemplate(null)
     setExportSites(uniqueAreas(rows, view))
   }
 
+  // Choosing a form ticks every area that has a line in it and nothing else; going back to the
+  // standard summary ticks everything again, as opening the dialog does.
+  function chooseExportTemplate(key: string | null) {
+    const form = dayTemplates.find((t) => t.key === key) ?? null
+    setExportTemplate(form?.key ?? null)
+    setExportSites(exportAreas.map((a) => a.name).filter((name) => fitsTemplate(name, form)))
+  }
+
+  useEffect(() => {
+    let alive = true
+    void getDayTemplates().then(({ status, data }) => {
+      if (alive && status === 200 && Array.isArray(data)) setDayTemplates(data)
+    })
+    return () => { alive = false }
+  }, [])
+
   async function runExport() {
+    // The dialog cannot tick an area the form has no line for; this is the same rule, once more,
+    // before anything is sent — the server would refuse the file anyway.
+    if (chosenTemplate && unlistedAreas(exportSites, chosenTemplate.areas).length > 0) {
+      setPhotoError('Seçilmiş ərazilərdən biri şablonda yoxdur')
+      return
+    }
     const chosen = new Set(exportSites)
     const inScope = (r: DayAttendanceRow) => chosen.has(areaOf(r, exportView))
     // Deliberately built from `rows`, not from `visible`. The screen's search, status and photo
@@ -387,6 +562,8 @@ export function TodayPage() {
         pending: STATUS_MAP.Pending.label,
         onboarding: STATUS_MAP.Onboarding.label,
       },
+      view: exportView,
+      template: chosenTemplate?.key,
     })
     setExporting(false)
     if (ok) setExportOpen(false)
@@ -394,179 +571,309 @@ export function TodayPage() {
   }
 
   const dateLabel = fmtLongDate(date)
+  const total = locFiltered.length
+
+  /**
+   * The four numbers the morning is actually about.
+   *
+   * Twelve equal tiles meant «Ezamiyyət 2» was drawn as loudly as «Qayıb 46», and the two or three
+   * that decide whether somebody has to make a phone call stopped standing out. These four carry the
+   * day; everything else moved to the quiet strip under them, where it is still a number and still a
+   * filter, just not a headline.
+   */
+  const KPIS = [
+    { key: 'incomplete', label: incompleteLabel, n: counts.incomplete, tint: isToday ? 'blue' : 'clay', Icon: IconClock },
+    { key: 'present', label: STATUS_MAP.OnTime.label, n: counts.present, tint: 'leaf', Icon: IconCheck },
+    { key: 'absent', label: STATUS_MAP.Absent.label, n: counts.absent, tint: 'clay', Icon: IconUserX },
+    { key: 'dayOff', label: 'Həftəlik istirahət', n: counts.dayOff, tint: 'purple', Icon: IconCalendar },
+  ]
+
+  const MINOR = [
+    { key: 'pending', label: STATUS_MAP.Pending.label, n: counts.pending, dot: 'var(--c400)' },
+    { key: 'onboarding', label: STATUS_MAP.Onboarding.label, n: counts.onboarding, dot: 'var(--c400)' },
+    { key: 'onLeave', label: STATUS_MAP.OnLeave.label, n: counts.onLeave, dot: 'var(--purple)' },
+    { key: 'permission', label: STATUS_MAP.Permission.label, n: counts.permission, dot: 'var(--amber)' },
+    { key: 'sick', label: 'Xəstəlik', n: counts.sick, dot: 'var(--blue)' },
+    { key: 'trip', label: 'Ezamiyyət', n: counts.trip, dot: 'var(--teal)' },
+    { key: 'unpaid', label: 'Ödənişsiz', n: counts.unpaid, dot: 'var(--clay)' },
+    { key: 'rest', label: 'İstirahət (təyin edilmiş)', n: counts.rest, dot: 'var(--c400)' },
+  ]
+  // Inline: the ones that happened today, up to four. A status with nobody in it is still reachable —
+  // it is behind «Digər statuslar», so a filter never disappears, it only stops taking up a row.
+  const minorShown = moreOpen ? MINOR : MINOR.filter((m) => m.n > 0 || m.key === statusFilter).slice(0, 4)
+
+  /** The row whose reason menu is open, if any — the menu itself is rendered once, at page level. */
+  const reasonRow = reasonFor ? rows.find((r) => r.employeeId === reasonFor) : undefined
+
+  const locLabel = (id: string) => locations.find((l) => l.id === id)?.name ?? ''
+  const locMatches = locations.filter(
+    (l) => matchesSearch(locQuery, l.name),
+  )
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-        <button className="btn btn-sm" onClick={() => shiftDate(-1)}>‹ Əvvəlki gün</button>
-        <input
-          type="date"
-          value={date}
-          max={todayISO}
-          onChange={(e) => { if (e.target.value && e.target.value <= todayISO) setDate(e.target.value) }}
-          className="inp"
-          style={{ width: 'auto', padding: '6px 10px' }}
-        />
-        <button className="btn btn-sm" disabled={isToday} onClick={() => shiftDate(1)}>Növbəti gün ›</button>
-        {!isToday && <button className="btn btn-sm" onClick={() => setDate(todayISO)}>Bugün</button>}
-      </div>
-      <div className="muted" style={{ fontSize: 13, marginBottom: 12, textTransform: 'capitalize' }}>
-        {isToday ? 'Bugün' : 'Tarix'}: {dateLabel}{isToday ? ' · canlı' : ''}
-      </div>
-
-      {locations.length > 1 && (
-        <div className="chip-row">
-          <span className={`chip${!filterLoc ? ' active' : ''}`} onClick={() => setFilterLoc(null)}>
-            Hamısı
-          </span>
-          {locations.map((l) => (
-            <span
-              key={l.id}
-              className={`chip${filterLoc === l.id ? ' active' : ''}`}
-              onClick={() => setFilterLoc(l.id)}
-            >
-              {l.name}
-            </span>
-          ))}
+      <div className="att-head">
+        <div>
+          <h1 className="att-title">Davamiyyət</h1>
+          {/* No `capitalize` here, which the old line had: fmtLongDate already returns proper
+              Azerbaijani, where the month and the weekday are lower case. The rule was turning every
+              morning into «1 Oktyabr 2026, Cümə Axşamı». */}
+          <div className="att-sub">
+            {isToday ? 'Bu gün' : 'Tarix'}: {dateLabel}{isToday ? ' · canlı' : ''}
+          </div>
         </div>
-      )}
+        <div className="att-head-act">
+          {loadedAt && <span className="att-stamp">Son yenilənmə: {fmtTime(loadedAt)}</span>}
+          <button className="btn btn-sm" disabled={exporting} onClick={openExport}>
+            <IconDownload />
+            {exporting ? 'Çıxarılır…' : 'Excel-ə çıxar'}
+          </button>
+        </div>
+      </div>
 
-      <div className="chip-row">
-        <span className={`chip${!flaggedOnly ? ' active' : ''}`} onClick={() => setFlaggedOnly(false)}>
-          Bütün işçilər
-        </span>
-        <span
-          className={`chip${flaggedOnly ? ' active' : ''}`}
-          onClick={() => setFlaggedOnly(true)}
-          title="Giriş şəklindəki üz referans şəkillə uyğun gəlməyən — yoxlanmalı girişlər"
-        >
-          ⚠ Üzü uyğun gəlməyənlər{flaggedCount > 0 ? ` (${flaggedCount})` : ''}
-        </span>
-        {mayViewPhotos && (
-          <span className={`chip${noPhotoOnly ? ' active' : ''}`} onClick={() => setNoPhotoOnly((v) => !v)}>
-            📷 Şəkilsizlər
-          </span>
+      <div className="att-filters">
+        <div className="att-f-row">
+          <div className="att-f">
+            <span className="att-f-lbl">Tarix</span>
+            <div className="att-date">
+              <button className="att-step" onClick={() => shiftDate(-1)} title="Əvvəlki gün" aria-label="Əvvəlki gün">
+                <IconChevronLeft />
+              </button>
+              <input
+                type="date"
+                value={date}
+                max={todayISO}
+                onChange={(e) => { if (e.target.value && e.target.value <= todayISO) setDate(e.target.value) }}
+                className="att-date-inp"
+                aria-label="Tarix"
+              />
+              <button
+                className="att-step"
+                disabled={isToday}
+                onClick={() => shiftDate(1)}
+                title="Növbəti gün"
+                aria-label="Növbəti gün"
+              >
+                <IconChevronRight />
+              </button>
+              {!isToday && <button className="btn btn-sm" onClick={() => setDate(todayISO)}>Bu gün</button>}
+            </div>
+          </div>
+
+          {locations.length > 1 && (
+            <div className="att-f" style={{ flex: '1 1 320px', maxWidth: 440 }}>
+              <span className="att-f-lbl">Ərazi</span>
+              <div className="att-multi">
+                {/* A div, not a button: it holds the tokens' own «götür» buttons, and a button inside
+                    a button is invalid markup that browsers resolve by dropping one of them. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={locOpen}
+                  aria-label="Ərazi seç"
+                  className={`att-multi-box${locOpen ? ' open' : ''}`}
+                  onClick={() => { setLocOpen((v) => !v); setLocQuery('') }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return
+                    e.preventDefault()
+                    setLocOpen((v) => !v)
+                    setLocQuery('')
+                  }}
+                >
+                  <IconSearch />
+                  {filterLocs.length === 0 && <span className="att-multi-ph">Bütün ərazilər</span>}
+                  {filterLocs.slice(0, 2).map((id) => (
+                    <span key={id} className="att-tok">
+                      <span>{locLabel(id)}</span>
+                      <button
+                        type="button"
+                        aria-label={`${locLabel(id)} — seçimi götür`}
+                        onClick={(e) => { e.stopPropagation(); toggleLoc(id) }}
+                      >
+                        <IconX />
+                      </button>
+                    </span>
+                  ))}
+                  {filterLocs.length > 2 && <span className="att-tok more">+{filterLocs.length - 2}</span>}
+                  <span className="att-multi-sp" />
+                  <IconChevronDown />
+                </div>
+                {locOpen && (
+                  <>
+                    <div className="att-backdrop" onClick={() => setLocOpen(false)} />
+                    <div className="att-pop">
+                      <div className="att-pop-h">
+                        <span className="att-search">
+                          <IconSearch />
+                          <input
+                            autoFocus
+                            value={locQuery}
+                            onChange={(e) => setLocQuery(e.target.value)}
+                            placeholder="Ərazi axtar…"
+                            aria-label="Ərazi axtar"
+                          />
+                        </span>
+                      </div>
+                      {locMatches.map((l) => (
+                        <label key={l.id} className="att-opt">
+                          <input
+                            type="checkbox"
+                            checked={filterLocs.includes(l.id)}
+                            onChange={() => toggleLoc(l.id)}
+                          />
+                          <span className="att-opt-t">{l.name}</span>
+                          <span className="att-opt-n">{l.count}</span>
+                        </label>
+                      ))}
+                      {locMatches.length === 0 && (
+                        <div className="muted" style={{ padding: '10px 9px', fontSize: 12 }}>Tapılmadı</div>
+                      )}
+                      <div className="att-pop-f">
+                        <button type="button" onClick={() => setFilterLocs(locations.map((l) => l.id))}>Hamısı</button>
+                        <button type="button" onClick={() => setFilterLocs([])}>Təmizlə</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="att-f" style={{ flex: '1 1 260px' }}>
+            <span className="att-f-lbl">İşçi</span>
+            <span className="att-search">
+              <IconSearch />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Ad üzrə axtar…"
+                aria-label="Ad üzrə axtar"
+              />
+              {search
+                ? (
+                  <button className="att-clear" onClick={() => setSearch('')} title="Təmizlə" aria-label="Axtarışı təmizlə">
+                    <IconX />
+                  </button>
+                )
+                : <span className="att-kbd">⌘K</span>}
+            </span>
+          </div>
+        </div>
+
+        <div className="att-f-foot">
+          <div className="att-seg">
+            <button className={lens === 'all' ? 'on' : ''} onClick={() => setLens('all')}>
+              Bütün işçilər
+              <span className="att-seg-n">{total}</span>
+            </button>
+            <button
+              className={lens === 'flagged' ? 'on' : ''}
+              onClick={() => setLens('flagged')}
+              title="Giriş şəklindəki üz referans şəkillə uyğun gəlməyən — yoxlanmalı girişlər"
+            >
+              Üzü uyğun gəlməyənlər
+              <span className="att-seg-n">{flaggedCount}</span>
+            </button>
+            {mayViewPhotos && (
+              <button className={lens === 'nophoto' ? 'on' : ''} onClick={() => setLens('nophoto')}>
+                Şəkilsizlər
+                <span className="att-seg-n">{noPhotoCount}</span>
+              </button>
+            )}
+          </div>
+          <div className="att-f-state">
+            {activeFilters > 0 && (
+              <>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <i />
+                  {filterLocs.length > 0 && `${filterLocs.length} ərazi seçilib`}
+                  {filterLocs.length > 0 && activeFilters > 1 && ' · '}
+                  {activeFilters > (filterLocs.length > 0 ? 1 : 0)
+                    && `${activeFilters - (filterLocs.length > 0 ? 1 : 0)} süzgəc aktiv`}
+                </span>
+                <button className="att-reset" onClick={resetFilters}>Filtrləri sıfırla</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="att-stats-h">
+        <div>
+          <span className="att-stats-t">{isToday ? 'Bu günün icmalı' : 'Günün icmalı'}</span>
+          <span className="att-stats-n">{total} işçi</span>
+        </div>
+        {isToday && (
+          <span className="att-live"><i />Canlı məlumat</span>
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Ad üzrə axtar…"
-          className="inp"
-          style={{ width: 'auto', maxWidth: 220, padding: '6px 10px' }}
-        />
-        {search && (
-          <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>
+      <div className="att-kpis">
+        {KPIS.map(({ key, label, n, tint, Icon }) => (
+          <button
+            key={key}
+            className={`att-kpi${statusFilter === key ? ' on' : ''}`}
+            onClick={() => toggleStatus(key)}
+            title={`${label} — sətirləri süzmək üçün basın`}
+          >
+            <div className="att-kpi-h">
+              <span className={`att-kpi-ic att-t-${tint}`}><Icon /></span>
+              <span className="att-kpi-pct">{total > 0 ? `${Math.round((n / total) * 100)}% ümumi` : '—'}</span>
+            </div>
+            <div className="att-kpi-v">
+              <span className="att-kpi-n">{n}</span>
+              <span className="att-kpi-l">{label}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="att-minor">
+        {minorShown.map((m, i) => (
+          <Fragment key={m.key}>
+            {i > 0 && <span className="att-minor-sep" />}
+            <button
+              className={`att-minor-i${statusFilter === m.key ? ' on' : ''}`}
+              onClick={() => toggleStatus(m.key)}
+              title={`${m.label} — sətirləri süzmək üçün basın`}
+            >
+              <span className="att-minor-d" style={{ background: m.dot }} />
+              <span className="att-minor-t">
+                <span className="att-minor-l">{m.label}</span>
+                <span className="att-minor-n">{m.n}</span>
+              </span>
+            </button>
+          </Fragment>
+        ))}
+        {minorShown.length === 0 && (
+          <span className="muted" style={{ padding: '10px 10px', fontSize: 12 }}>
+            Bu gün başqa status yoxdur
+          </span>
         )}
-        <button className="btn btn-sm" disabled={exporting} onClick={openExport} style={{ marginLeft: 'auto' }}>
-          {exporting ? 'Çıxarılır…' : '⬇ Excel-ə çıxar'}
+        <button className={`att-more${moreOpen ? ' open' : ''}`} onClick={() => setMoreOpen((v) => !v)}>
+          {moreOpen ? 'Yığ' : 'Digər statuslar'}
+          <IconChevronDown />
         </button>
       </div>
 
-      <div className="stat-grid day-tiles">
-        <div
-          className={`stat-card ${isToday ? 'blue' : 'clay'}`}
-          style={cardStyle('incomplete')}
-          onClick={() => toggleStatus('incomplete')}
-        >
-          <div className="stat-lbl">{incompleteLabel}</div>
-          <div className="stat-val">{counts.incomplete}</div>
-        </div>
-        <div className="stat-card clay" style={cardStyle('absent')} onClick={() => toggleStatus('absent')}>
-          <div className="stat-lbl">{STATUS_MAP.Absent.label}</div>
-          <div className="stat-val">{counts.absent}</div>
-        </div>
-        {/* Shown only when someone is actually pending — an empty card on a day with no night shift
-            would be clutter. Neutral, next to Qayıb, so a not-yet-due worker never reads as a no-show. */}
-        {isToday && counts.pending > 0 && (
-          <div className="stat-card slate" style={cardStyle('pending')} onClick={() => toggleStatus('pending')}>
-            <div className="stat-lbl">{STATUS_MAP.Pending.label}</div>
-            <div className="stat-val">{counts.pending}</div>
-          </div>
-        )}
-        {/* Yalnız biri belə olanda görünür, Xəstəlik kimi. Qayıbdan QƏSDƏN ayrıdır: import olunmuş,
-            telefonu hələ qurulmamış adam gəlməyən adam deyil — və 290-ı bir səhər Qayıb sayılanda
-            əsl 67 qayıb səs-küydə itmişdi. */}
-        {counts.onboarding > 0 && (
-          <div className="stat-card slate" style={cardStyle('onboarding')} onClick={() => toggleStatus('onboarding')}>
-            <div className="stat-lbl">{STATUS_MAP.Onboarding.label}</div>
-            <div className="stat-val">{counts.onboarding}</div>
-          </div>
-        )}
-        <div className="stat-card leaf" style={cardStyle('present')} onClick={() => toggleStatus('present')}>
-          <div className="stat-lbl">{STATUS_MAP.OnTime.label}</div>
-          <div className="stat-val">{counts.present}</div>
-        </div>
-        {/* The roster's own day off. Kept grey-purple and quiet: on a Sunday this is most of the
-            company and nobody decided any of it. */}
-        <div className="stat-card purple" style={cardStyle('dayOff')} onClick={() => toggleStatus('dayOff')}>
-          <div className="stat-lbl">Həftəlik istirahət</div>
-          <div className="stat-val">{counts.dayOff}</div>
-        </div>
-        {/* A rest day somebody GRANTED — shown only when there is one, because that is the number a
-            manager filed the record to be able to see. It used to be added into the card above and
-            was therefore invisible among two hundred ordinary Sundays. */}
-        {counts.rest > 0 && (
-          <div className="stat-card purple" style={cardStyle('rest')} onClick={() => toggleStatus('rest')}>
-            <div className="stat-lbl">İstirahət (təyin edilmiş)</div>
-            <div className="stat-val">{counts.rest}</div>
-          </div>
-        )}
-        <div className="stat-card purple" style={cardStyle('onLeave')} onClick={() => toggleStatus('onLeave')}>
-          <div className="stat-lbl">{STATUS_MAP.OnLeave.label}</div>
-          <div className="stat-val">{counts.onLeave}</div>
-        </div>
-        {/* Unpaid leave is not paid, and the dashboard already counted it on its own — folding it in
-            here made the two screens disagree about «Məzuniyyət» on the same morning. */}
-        {counts.unpaid > 0 && (
-          <div className="stat-card purple" style={cardStyle('unpaid')} onClick={() => toggleStatus('unpaid')}>
-            <div className="stat-lbl">Ödənişsiz</div>
-            <div className="stat-val">{counts.unpaid}</div>
-          </div>
-        )}
-        {counts.sick > 0 && (
-          <div className="stat-card blue" style={cardStyle('sick')} onClick={() => toggleStatus('sick')}>
-            <div className="stat-lbl">Xəstəlik</div>
-            <div className="stat-val">{counts.sick}</div>
-          </div>
-        )}
-        {/* Shown only when somebody is on one, like Xəstəlik — a permanent 0 is a tile you read and
-            discard every morning. The wording says the thing that matters about it: they are working. */}
-        {counts.trip > 0 && (
-          <div className="stat-card teal" style={cardStyle('trip')} onClick={() => toggleStatus('trip')}>
-            <div className="stat-lbl">Ezamiyyət</div>
-            <div className="stat-val">{counts.trip}</div>
-          </div>
-        )}
-        <div className="stat-card amber" style={cardStyle('permission')} onClick={() => toggleStatus('permission')}>
-          <div className="stat-lbl">{STATUS_MAP.Permission.label}</div>
-          <div className="stat-val">{counts.permission}</div>
-        </div>
-      </div>
-      {statusFilter && (
-        <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-          Süzgəc aktiv — kartı təkrar basıb ləğv edin.
-        </div>
-      )}
-
       {error && (
-        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+        <div className="fb fb-err" style={{ marginTop: 14 }}>
           <IconX />
           <span>{error}</span>
         </div>
       )}
       {photoError && (
-        <div className="fb fb-err" style={{ marginBottom: 12 }}>
+        <div className="fb fb-err" style={{ marginTop: 14 }}>
           <IconX />
           <span>{photoError}</span>
         </div>
       )}
+      {correction.dialog}
 
       {filterPosition && (
-        <div className="fb fb-info" style={{ marginBottom: 10 }}>
+        <div className="fb fb-info" style={{ marginTop: 14 }}>
           <span>
             Yalnız <b>{filterPosition}</b> vəzifəsindəkilər — {visible.length} nəfər.
           </span>
@@ -576,227 +883,196 @@ export function TodayPage() {
         </div>
       )}
 
-      <div className="tbl-wrap tbl-cards tbl-dense">
-        <table>
-          <thead>
-            <tr>
-              {/* Clicking a heading sorts by it; clicking it again reverses. The two columns that are
-                  really categories — branch and job — also filter when their VALUE is clicked, below. */}
-              <Th col="name" label="İşçi" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              {!grouped && <Th col="location" label="Filial" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
-              <Th col="position" label="Vəzifə" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="status" label="Status" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="in" label="Giriş" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <Th col="out" label="Çıxış" sortBy={sortBy} desc={sortDesc} onSort={sort} />
-              <th>Foto</th>
-              <th>Üz</th>
-            </tr>
-          </thead>
-          <tbody>
-            {byBranch.map(([branch, rows]) => (
-              <Fragment key={branch || 'all'}>
-                {grouped && (
-                  <tr className="tbl-group">
-                    <td colSpan={7}>
-                      <button
-                        className="tbl-filter"
-                        onClick={() => { const id = rows[0]?.locationId; if (id) setFilterLoc(id) }}
-                      >
-                        {branch}
-                      </button>
-                      <span className="tbl-group-n">{rows.length}</span>
-                    </td>
-                  </tr>
-                )}
-                {rows.map((r) => (
-                  <tr key={r.employeeId}>
-                <td data-label="İşçi" style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></td>
-                {!grouped && (
-                  <td data-label="Filial">
-                    <button className="tbl-filter" onClick={() => setFilterLoc((v) => (v === r.locationId ? '' : r.locationId))}>
-                      {r.locationName}
-                    </button>
-                  </td>
-                )}
-                <td data-label="Vəzifə">
-                  {r.position
-                    ? (
-                      <button
-                        className="tbl-filter"
-                        onClick={() => setFilterPosition((v) => (v === r.position ? null : r.position ?? null))}
-                      >
-                        {r.position}
-                      </button>
-                    )
-                    : null}
-                </td>
-                <td data-label="Status">
-                  {/* Pencil next to the badge on a Qayıb row (to pin a reason) or an assigned single-day
-                      leave (to change it, or revert to Qayıb). Menu is fixed so the table can't clip it. */}
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                    <StatusBadge
-                      status={r.status}
-                      override={r.status === 'Incomplete' ? incompleteOverride : dayVisual(r.status, r.leaveType)}
-                    />
-                    {/* Which rows can be given a reason.
-                        «Aktivləşdirməyib»: the person whose day nobody can decide but a human — no
-                        scan history, so the system will never call them absent by itself.
-                        «İstirahət»: a rest day is the branch's calendar, not a statement about the
-                        person, and somebody on that day may in fact be on holiday or off sick. The
-                        Fəvvarələr manager had nineteen people reading «İstirahət» on a Sunday, some
-                        of them on leave and some ill, and no way to say so from this screen — the
-                        pencil simply never appeared on those rows. */}
-                    {(r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
-                      || ((r.status === 'OnLeave' || r.status === 'Permission') && r.leaveId)) && (
-                      assigningId === r.employeeId ? (
-                        <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>…</span>
-                      ) : (
-                        <button className="reason-pencil" title="Səbəb təyin et / dəyiş" onClick={(e) => openReasonMenu(e, r.employeeId)}>
-                          <IconPencil />
-                        </button>
-                      )
-                    )}
-                    {reasonFor === r.employeeId && menuPos && (
-                      <>
-                        <div className="reason-backdrop" onClick={() => setReasonFor(null)} />
-                        <div className="reason-pop" style={{ top: menuPos.top, left: menuPos.left }}>
-                          <div className="reason-pop-h">Səbəb seçin</div>
-                          {LEAVE_OPTIONS.map((o) => (
-                            <button key={o.type} className="reason-pop-item" onClick={() => void assignLeave(r.employeeId, o.type, r.leaveId)}>
-                              <span className="reason-dot" style={{ background: o.dot }} />
-                              {o.label}
-                            </button>
-                          ))}
-                          {/* «Səbəbi sil», not «Qayıba qaytar»: the day underneath may be a rest day,
-                              and removing a holiday from a Sunday returns it to İstirahət. */}
-                          {r.leaveId && (
-                            <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void removeLeave(r.employeeId, r.leaveId!)}>
-                              <span className="reason-dot" style={{ background: 'var(--clay)' }} />
-                              Səbəbi sil
-                            </button>
-                          )}
-                          {/* The other half of the pair: a day the system will not judge by itself. */}
-                          {!r.leaveId && !r.absenceMarkedBy && r.status !== 'Absent' && (
-                            <button className="reason-pop-item" style={{ color: 'var(--clay)' }} onClick={() => void markDayAbsent(r.employeeId)}>
-                              <span className="reason-dot" style={{ background: 'var(--clay)' }} />
-                              Qayıb yaz
-                            </button>
-                          )}
-                          {r.absenceMarkedBy && (
-                            <button className="reason-pop-item" onClick={() => void undoDayAbsent(r.employeeId)}>
-                              <span className="reason-dot" style={{ background: 'var(--c400)' }} />
-                              Qayıbı geri al
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </span>
-                  {/* Who pinned this reason. It was a second line under the badge, which made every
-                      leave row twice the height of the ones around it — on a board of two hundred
-                      names, uneven rows are what stops the eye tracking down a column. It is a title
-                      on the badge now: still there for anyone who asks, no longer a layout event. */}
-                  {r.leaveAssignedBy && (
-                    <span className="tbl-by" title={`Təyin edən: ${r.leaveAssignedBy}`}>ⓘ</span>
-                  )}
-                  {/* A Qayıb somebody wrote by hand says whose decision it was — it costs a day's pay. */}
-                  {r.absenceMarkedBy && (
-                    <span className="tbl-by" title={`Qayıbı yazan: ${r.absenceMarkedBy}`}>✋</span>
-                  )}
-                  {/* This giriş-çıxış was entered/changed by hand, not scanned — attribute it. */}
-                  {r.manualBy && (
-                    <div style={{ fontSize: 11, marginTop: 4, color: 'var(--amber)' }}>
-                      Əl ilə daxil edilib · {r.manualBy}
-                    </div>
-                  )}
-                  {/* Not a manual entry and not a poster scan: the worker closed their own field visit
-                      and went home, which closed this day at the moment they left the site. */}
-                  {r.closedByFieldVisit && (
-                    <div style={{ fontSize: 11, marginTop: 4, color: 'var(--c600)' }}>
-                      📍 Ərazi çıxışı ilə bağlandı
-                    </div>
-                  )}
-                </td>
-                <td className="mono" data-label="Giriş">
-                  {(r.checkInAtUtc ?? r.fieldCheckInAtUtc) ? fmtTime(r.checkInAtUtc ?? r.fieldCheckInAtUtc) : ''}
-                  {r.status === 'Field' && (
-                    <span className="tag" title="Sahə ziyarəti — GPS ilə" style={{ marginLeft: 6, background: 'var(--leaf-bg)', color: 'var(--leaf-d)' }}>📍 sahə</span>
-                  )}
-                  {r.wasOffline && (
-                    <span
-                      className="tag"
-                      title="Oflayn qeydə alınıb — vaxt telefonun saatı ilədir"
-                      style={{ marginLeft: 6, background: 'var(--amber-bg)', color: 'var(--amber)' }}
-                    >
-                      📴 oflayn
-                    </span>
-                  )}
-                  {r.lateArrivalReason && (
-                    <div style={{ fontSize: 11, color: 'var(--amber)', fontWeight: 600, marginTop: 2 }}>
-                      Gec: {r.lateArrivalReason}
-                    </div>
-                  )}
-                </td>
-                <td className="mono" data-label="Çıxış">
-                  {/* On a day worked in two stretches this is the NIGHT's departure, not the
-                      morning block's — otherwise the row would read «07:00 → 11:00» and look as
-                      though the nine hours after ten at night were never recorded. */}
-                  {(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-                    ? fmtTime(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-                    : ''}
-                  {/* The count alone did not read: «07:18 → 11:19 · 2 blok» looked like one unbroken
-                      stretch with a puzzling label, and the whole point of a split day is that the
-                      person went home in between. So the stretches are named under the times. */}
-                  {(r.blocks ?? 1) > 1 && r.blockSpans && (
-                    <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 3, lineHeight: 1.5 }}>
-                      {r.blockSpans.map((b, i) => (
-                        <div key={i}>
-                          {i + 1}. {b.inAtUtc ? fmtTime(b.inAtUtc) : '—'} → {b.outAtUtc ? fmtTime(b.outAtUtc) : 'işdə'}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {r.earlyDepartureReason && (
-                    <div className="tbl-note">
-                      Tez: {r.earlyDepartureReason}
-                    </div>
-                  )}
-                </td>
-                <td data-label="Foto">
-                  {/* Şəkli olan HƏR sətirdə (sahibin qərarı, 2026-08-31). Əvvəl yalnız üz-uyğunsuzluğu
-                      flaqlı və ortaq telefonlu sətirlərdə göstərilirdi; səbəb R2-dən yüklənmə gecikməsi
-                      idi, o isə burada tətbiq olunmur — şəkil YALNIZ düyməyə basanda çəkilir, düymənin
-                      özü heç nə yükləmir. Yəni məhdudiyyət xərci azaltmırdı, sadəcə adminin baxa
-                      biləcəyi sətirləri azaldırdı. Menecerdə hələ də görünmür: `mayViewPhotos`. */}
-                  {mayViewPhotos && r.hasPhoto && r.recordId ? (
-                    <button
-                      className="tbl-icon"
-                      disabled={busyId === r.recordId}
-                      onClick={() => void viewPhoto(r)}
-                      title="Giriş şəklini gör"
-                      aria-label="Giriş şəklini gör"
-                    >
-                      {busyId === r.recordId ? '…' : <IconCamera />}
-                    </button>
-                  ) : null}
-                </td>
-                <td data-label="Üz">
-                  <FaceFlagBadge status={r.faceMatchStatus} score={r.faceMatchScore} compact />
-                </td>
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-            {loadedOnce && visible.length === 0 && !error && (
-              <tr>
-                <td colSpan={8} className="muted" style={{ textAlign: 'center', padding: 28 }}>
-                  Məlumat yoxdur
-                </td>
-              </tr>
+      <div className="att-table">
+        <div className="att-tbar">
+          <div>
+            <span className="att-tbar-t">Davamiyyət qeydləri</span>
+            <span className="att-tbar-n">{visible.length} nəticə</span>
+          </div>
+          <div className="att-tbar-a">
+            <button
+              className={`att-tool${grouped ? ' on' : ''}`}
+              onClick={() => setGroupByBranch((v) => !v)}
+              disabled={branchesOnScreen < 2}
+              title={branchesOnScreen < 2 ? 'Ekranda bir ərazi var' : 'Əraziyə görə qruplaşdır'}
+            >
+              <IconTable />
+              Əraziyə görə
+            </button>
+            <button className={`att-tool${colsOpen ? ' on' : ''}`} onClick={() => setColsOpen((v) => !v)}>
+              <IconColumns />
+              Sütunlar
+            </button>
+            {colsOpen && (
+              <>
+                <div className="att-backdrop" onClick={() => setColsOpen(false)} />
+                <div className="att-pop" style={{ left: 'auto', right: 0, minWidth: 220 }}>
+                  {([
+                    ['location', 'Ərazi'],
+                    ['position', 'Vəzifə'],
+                    ['schedule', 'İş qrafiki'],
+                    ['worked', 'İş vaxtı'],
+                  ] as [keyof Cols, string][]).map(([key, label]) => (
+                    <label key={key} className="att-opt">
+                      <input type="checkbox" checked={cols[key]} onChange={() => toggleCol(key)} />
+                      <span className="att-opt-t">{label}</span>
+                      {key === 'location' && grouped && <span className="att-opt-n">qruplanıb</span>}
+                    </label>
+                  ))}
+                </div>
+              </>
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
+
+        <div className="tbl-wrap tbl-cards tbl-dense">
+          <table>
+            <thead>
+              <tr>
+                {/* Clicking a heading sorts by it; clicking it again reverses. The two columns that are
+                    really categories — branch and job — also filter when their VALUE is clicked, below. */}
+                <Th col="name" label="İşçi" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                {showLocCol && <Th col="location" label="Ərazi" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
+                {cols.position && <Th col="position" label="Vəzifə" sortBy={sortBy} desc={sortDesc} onSort={sort} />}
+                {cols.schedule && <th>İş qrafiki</th>}
+                <Th col="status" label="Status" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                <Th col="in" label="Giriş" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                <Th col="out" label="Çıxış" sortBy={sortBy} desc={sortDesc} onSort={sort} />
+                {cols.worked && <th>İş vaxtı</th>}
+                <th style={{ textAlign: 'right' }}>Əməliyyat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(({ name: branch, rows, total: branchTotal }) => (
+                <Fragment key={branch || 'all'}>
+                  {grouped && (
+                    <tr className="tbl-group">
+                      <td colSpan={colCount}>
+                        <button
+                          className="tbl-filter"
+                          onClick={() => { const id = rows[0]?.locationId; if (id) setFilterLocs([id]) }}
+                        >
+                          {branch}
+                        </button>
+                        <span className="tbl-group-n">{branchTotal}</span>
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((r) => {
+                    // Computed HERE, not in the row: the row is memoised, and a clock it read for
+                    // itself would make every row new on every tick. A string that has not changed
+                    // lets React skip the row entirely.
+                    const worked = cols.worked ? workedMinutes(r, nowMs, isToday) : null
+                    const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc)
+                      && !(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
+                    return (
+                      <TodayRow
+                        key={r.employeeId}
+                        r={r}
+                        showLocCol={showLocCol}
+                        showPosition={cols.position}
+                        showSchedule={cols.schedule}
+                        showWorked={cols.worked}
+                        isToday={isToday}
+                        workedText={formatWorked(worked)}
+                        running={running}
+                        mayViewPhotos={mayViewPhotos}
+                        mayGiveReason={mayGiveReason}
+                        assigning={assigningId === r.employeeId}
+                        photoBusy={busyId !== null && busyId === r.recordId}
+                        onPosition={pickPosition}
+                        onLocation={pickLocation}
+                        onReason={openReasonMenu}
+                        onPhoto={onPhoto}
+                      />
+                    )
+                  })}
+                </Fragment>
+              ))}
+              {hasMore && (
+                // Comes into range a screen before the reader reaches it, so the next rows are usually
+                // there already; the words are for someone who drags straight to the bottom.
+                <tr ref={sentinel}>
+                  <td colSpan={colCount} className="muted" style={{ textAlign: 'center', padding: 18 }}>
+                    Qalan {visible.length - limit} nəfər yüklənir…
+                  </td>
+                </tr>
+              )}
+              {loadedOnce && visible.length === 0 && !error && (
+                <tr>
+                  <td colSpan={colCount} className="muted" style={{ textAlign: 'center', padding: 28 }}>
+                    {activeFilters > 0 ? 'Seçilmiş süzgəclərə uyğun işçi yoxdur' : 'Məlumat yoxdur'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="att-foot">
+          <span>
+            <b>{visible.length}</b> / {total} nəticə
+            {grouped && <> · <b>{byBranch.length}</b> ərazi</>}
+          </span>
+          {visible.length > 25 && (
+            <button className="att-reset" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+              Yuxarı qayıt
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* The reason menu, once — not once per row.
+          It is `position: fixed` and only ever one is open, so rendering it inside the row was a
+          conditional branch 488 rows had to carry and React had to walk on every pass. Here it costs
+          one lookup. */}
+      {reasonRow && menuPos && (
+        <>
+          <div className="reason-backdrop" onClick={() => setReasonFor(null)} />
+          <div className="reason-pop" style={{ top: menuPos.top, left: menuPos.left }}>
+            <div className="reason-pop-h">Səbəb seçin</div>
+            {LEAVE_OPTIONS.map((o) => (
+              <button
+                key={o.type}
+                className="reason-pop-item"
+                onClick={() => void assignLeave(reasonRow.employeeId, o.type, reasonRow.leaveId)}
+              >
+                <span className="reason-dot" style={{ background: o.dot }} />
+                {o.label}
+              </button>
+            ))}
+            {/* «Səbəbi sil», not «Qayıba qaytar»: the day underneath may be a rest day, and removing
+                a holiday from a Sunday returns it to İstirahət. */}
+            {reasonRow.leaveId && (
+              <button
+                className="reason-pop-item"
+                style={{ color: 'var(--clay)' }}
+                onClick={() => void removeLeave(reasonRow.employeeId, reasonRow.leaveId!)}
+              >
+                <span className="reason-dot" style={{ background: 'var(--clay)' }} />
+                Səbəbi sil
+              </button>
+            )}
+            {/* The other half of the pair: a day the system will not judge by itself. */}
+            {!reasonRow.leaveId && !reasonRow.absenceMarkedBy && reasonRow.status !== 'Absent' && (
+              <button
+                className="reason-pop-item"
+                style={{ color: 'var(--clay)' }}
+                onClick={() => void markDayAbsent(reasonRow.employeeId)}
+              >
+                <span className="reason-dot" style={{ background: 'var(--clay)' }} />
+                Qayıb yaz
+              </button>
+            )}
+            {reasonRow.absenceMarkedBy && (
+              <button className="reason-pop-item" onClick={() => void undoDayAbsent(reasonRow.employeeId)}>
+                <span className="reason-dot" style={{ background: 'var(--c400)' }} />
+                Qayıbı geri al
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {exportOpen && (
         <ExportDialog
@@ -805,10 +1081,16 @@ export function TodayPage() {
           view={exportView}
           onView={switchExportView}
           hasPaper={rows.some((r) => r.paperSite)}
+          templates={dayTemplates}
+          template={chosenTemplate}
+          onTemplate={chooseExportTemplate}
+          fits={(name) => fitsTemplate(name)}
           selected={exportSites}
-          onToggle={(name) =>
-            setExportSites((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))}
-          onAll={() => setExportSites(exportAreas.map((a) => a.name))}
+          onToggle={(name) => {
+            if (!fitsTemplate(name)) return
+            setExportSites((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))
+          }}
+          onAll={() => setExportSites(exportAreas.map((a) => a.name).filter((name) => fitsTemplate(name)))}
           onNone={() => setExportSites([])}
           busy={exporting}
           onRun={() => void runExport()}
@@ -847,8 +1129,9 @@ export function TodayPage() {
  * scope is a surprise — hence the sites are ticked by hand every time, the file is headed with the
  * choice, and the dialog says out loud that the screen's own filters do not travel with it.
  */
-function ExportDialog({
-  date, areas, view, onView, hasPaper, selected, onToggle, onAll, onNone, busy, onRun, onClose,
+export function ExportDialog({
+  date, areas, view, onView, hasPaper, templates, template, onTemplate, fits,
+  selected, onToggle, onAll, onNone, busy, onRun, onClose,
 }: {
   date: string
   /** The areas of the CHOSEN view, with how many people each holds. */
@@ -857,6 +1140,13 @@ function ExportDialog({
   onView: (v: AreaView) => void
   /** Whether anybody on this board actually has a «sənəd üzrə ərazi» written. */
   hasPaper: boolean
+  /** The company's own forms for «Xülasə» — empty for almost every company, and then nothing shows. */
+  templates: DayTemplate[]
+  /** The form chosen, or null for the standard summary. */
+  template: DayTemplate | null
+  onTemplate: (key: string | null) => void
+  /** Whether an area can be ticked in the chosen form (it has a line there). */
+  fits: (name: string) => boolean
   selected: string[]
   onToggle: (name: string) => void
   onAll: () => void
@@ -923,6 +1213,44 @@ function ExportDialog({
           </div>
         </div>
 
+        {/* The company's own form, where it has one. Second, because it only exists for the branch
+            view, and before the list, because choosing it decides which areas can be ticked. */}
+        {view === 'actual' && templates.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="form-label" style={{ marginBottom: 6 }}>«Xülasə» vərəqi hansı formada olsun?</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={`btn btn-sm${template === null ? '' : ' btn-outline'}`}
+                onClick={() => onTemplate(null)}
+              >
+                Standart
+              </button>
+              {templates.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`btn btn-sm${template?.key === t.key ? '' : ' btn-outline'}`}
+                  onClick={() => onTemplate(t.key)}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+              {template === null ? (
+                <>Hər seçilmiş ərazi üçün bir sətir — indiki qayda.</>
+              ) : (
+                <>
+                  Şablonun <b>{template.areas.length} sətri</b> şablondakı sıra və başlıqlarla çıxır.
+                  Seçilməyən və hələ filial kimi açılmayan sətirlər <b>boş</b> qalır. Şablonda olmayan
+                  ərazilər bu formada seçilə bilməz.
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <button className="btn btn-sm" onClick={onAll}>Hamısı</button>
           <button className="btn btn-sm" onClick={onNone}>Heç biri</button>
@@ -932,19 +1260,28 @@ function ExportDialog({
         </div>
 
         <div style={{ border: '1px solid var(--c100)', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
-          {areas.map((a, i) => (
-            <label
-              key={a.name}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer',
-                borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
-              }}
-            >
-              <input type="checkbox" checked={selected.includes(a.name)} onChange={() => onToggle(a.name)} />
-              <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{a.name}</span>
-              <span className="muted" style={{ fontSize: 12 }}>{a.count} nəfər</span>
-            </label>
-          ))}
+          {areas.map((a, i) => {
+            const fit = fits(a.name)
+            return (
+              <label
+                key={a.name}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                  cursor: fit ? 'pointer' : 'not-allowed', opacity: fit ? 1 : 0.55,
+                  borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(a.name)}
+                  disabled={!fit}
+                  onChange={() => onToggle(a.name)}
+                />
+                <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{a.name}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{fit ? `${a.count} nəfər` : 'şablonda yoxdur'}</span>
+              </label>
+            )
+          })}
           {areas.length === 0 && (
             <div className="muted" style={{ padding: 14, fontSize: 13 }}>Bu gün üçün ərazi yoxdur.</div>
           )}

@@ -1,12 +1,25 @@
 namespace AttendanceQR.Api.Contracts;
 
-/// <summary>Admin correction of an existing record. Either field may be omitted to leave it as-is.</summary>
-public record AdminAttendanceUpdateRequest(DateTime? CheckInAtUtc, DateTime? CheckOutAtUtc);
+/// <summary>Admin correction of an existing record. Either time may be omitted to leave it as-is.</summary>
+/// <param name="Reason">Why — required (CorrectionReason); kept in the audit line.</param>
+public record AdminAttendanceUpdateRequest(DateTime? CheckInAtUtc, DateTime? CheckOutAtUtc, string? Reason = null);
 
 /// <summary>Admin-created record for a day the employee never scanned at all (e.g. a forgotten
 /// device, a manual override). CheckInAtUtc is required — a "record" with no check-in isn't
 /// meaningful; CheckOutAtUtc is optional (creates an Incomplete record, editable later).</summary>
-public record AdminAttendanceCreateRequest(Guid EmployeeId, DateOnly Date, DateTime CheckInAtUtc, DateTime? CheckOutAtUtc);
+/// <param name="Reason">Why — required (CorrectionReason); kept in the audit line.</param>
+public record AdminAttendanceCreateRequest(
+    Guid EmployeeId, DateOnly Date, DateTime CheckInAtUtc, DateTime? CheckOutAtUtc, string? Reason = null);
+
+/// <summary>The body of the corrections that carry nothing else: undoing a check-out, deleting a day.</summary>
+/// <param name="Reason">Why — required (CorrectionReason); kept in the audit line.</param>
+public record AttendanceCorrectionRequest(string? Reason = null);
+
+/// <summary>The answer to a self-correction that waits for approval — and why, as for every correction.</summary>
+public record SelfCorrectionDecisionRequest(bool Approve, string? Reason = null);
+
+/// <summary>Whether a self-correction waits for a second approval in this company.</summary>
+public record SelfCorrectionSettingRequest(bool NeedsApproval);
 
 /// <summary>
 /// «Saxta giriş» — void one scan whose selfie is not the person it claims to be.

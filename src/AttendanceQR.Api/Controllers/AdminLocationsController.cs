@@ -1,5 +1,6 @@
 using System.Globalization;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
@@ -60,6 +61,7 @@ public class AdminLocationsController : ControllerBase
     private IActionResult? RefuseQrlessWithoutFaceService(bool? wanted) =>
         wanted == true && !_faceMatch.Enabled ? BadRequest(new { error = "FaceMatchDisabled" }) : null;
 
+    [Permission(AccessPermissions.LocationsView)]
     [HttpGet]
     public async Task<IActionResult> List()
     {
@@ -76,6 +78,7 @@ public class AdminLocationsController : ControllerBase
         return Ok(locations.Select(Project));
     }
 
+    [Permission(AccessPermissions.LocationsCreate)]
     [HttpPost]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Create([FromBody] LocationRequest request)
@@ -103,6 +106,7 @@ public class AdminLocationsController : ControllerBase
         return Ok(Project(location));
     }
 
+    [Permission(AccessPermissions.LocationsUpdate)]
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] LocationRequest request)
     {
@@ -185,6 +189,7 @@ public class AdminLocationsController : ControllerBase
             : StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
     }
 
+    [Permission(AccessPermissions.LocationsActivate)]
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
@@ -249,6 +254,7 @@ public class AdminLocationsController : ControllerBase
 
     // Enable/disable without deleting — a disabled location stops issuing kiosk QR and rejects
     // scans, but keeps its employees and history. Use this instead of delete for in-use locations.
+    [Permission(AccessPermissions.LocationsActivate)]
     [HttpPut("{id:guid}/active")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SetActive(Guid id, [FromBody] SetActiveRequest request)
@@ -269,6 +275,7 @@ public class AdminLocationsController : ControllerBase
     // the posters hanging at Dədə Qorqud Parkı belonged to two OTHER branches, so nobody at that site
     // could clock in — and the person standing in front of the wall could not fix it. Invalidating the
     // QR stays with the admin below, because that one voids every printed poster at once.
+    [Permission(AccessPermissions.LocationsQrPrint)]
     [HttpPost("{id:guid}/static-qr")]
     public async Task<IActionResult> GenerateStaticQr(
         Guid id,
@@ -319,6 +326,7 @@ public class AdminLocationsController : ControllerBase
     // Instantly revokes every outstanding QR for this location — the kiosk's rotating code AND any
     // printed static poster — by bumping the version every issued token must match. Use when a
     // poster is lost/leaked, or just to force a fresh print cycle.
+    [Permission(AccessPermissions.LocationsQrInvalidate)]
     [HttpPost("{id:guid}/invalidate-qr")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> InvalidateQr(Guid id)
@@ -347,7 +355,8 @@ public class AdminLocationsController : ControllerBase
         isActive = l.IsActive,
         workDaysMask = l.WorkDaysMask,
         qrlessCheckIn = l.QrlessCheckIn,
-        requireGeofence = l.RequireGeofence
+        requireGeofence = l.RequireGeofence,
+        structureId = l.StructureId
     };
 
     private static bool TryValidate(LocationRequest r, out TimeOnly start, out TimeOnly end, out string? error)

@@ -10,7 +10,7 @@ import {
   type EquipmentRecord,
   type ImportResult,
 } from '../../api/equipment'
-import { getEmployees, type AdminEmployee } from '../../api/admin'
+import { getAllEmployees, type AdminEmployeeRow } from '../../api/admin'
 // Not toLocaleDateString('az'): that renders 2026-08-29 where the rest of the app writes 29.08.2026,
 // and it reads the VIEWER'S timezone. A date-only rendering of an instant taken in the device's zone
 // shows the wrong day either side of midnight — the bug this project has already been bitten by.
@@ -33,6 +33,7 @@ import {
   IconUser,
   IconX,
 } from '../../components/icons'
+import { matchesSearch } from '../../lib/searchFold'
 
 /**
  * The IT equipment register — who holds what.
@@ -224,7 +225,7 @@ function Summary({ text, alone }: { text: string | null; alone: boolean }) {
 
 export function EquipmentPage() {
   const [rows, setRows] = useState<EquipmentRecord[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<AdminEmployeeRow[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -267,8 +268,8 @@ export function EquipmentPage() {
   useEffect(() => { void load() }, [])
 
   useEffect(() => {
-    void getEmployees().then((r) => {
-      if (r.status === 200 && Array.isArray(r.data)) setEmployees(r.data)
+    void getAllEmployees().then((r) => {
+      if (r.status === 200 && r.data) setEmployees(r.data)
     })
   }, [])
 
@@ -311,11 +312,8 @@ export function EquipmentPage() {
   const visible = useMemo(() => {
     // Same columns the server's `q` searched, so moving the search here changed where it runs and
     // nothing about what it finds.
-    const needle = search.trim().toLocaleLowerCase('az')
     const matches = (r: EquipmentRecord) =>
-      !needle
-      || [r.fullName, r.position, r.area, r.equipment, r.systemUnit, r.monitor, r.otherEquipment]
-        .some((v) => v?.toLocaleLowerCase('az').includes(needle))
+      matchesSearch(search, r.fullName, r.position, r.area, r.equipment, r.systemUnit, r.monitor, r.otherEquipment)
 
     return rows.filter((r) => {
       if (!matches(r)) return false

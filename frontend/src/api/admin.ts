@@ -9,6 +9,8 @@ import {
 // --- reports / today -------------------------------------------------------
 
 export interface DayAttendanceRow {
+  /** The person corrected this day themselves — only where nobody else could; «öz düzəlişi» on the row. */
+  selfCorrected?: boolean
   employeeId: string
   employeeName: string
   locationId: string
@@ -70,6 +72,16 @@ export interface DayAttendanceRow {
   fieldCheckInLongitude?: number | null
   /** Who wrote this Qayıb by hand («Qayıb yaz»). Null when the scans decided the day by themselves. */
   absenceMarkedBy?: string | null
+  /** The hours this person is measured against ON THIS DATE ("HH:mm"), from the same EffectiveShift
+   *  the status was decided from — a crew whose Saturday starts later shows the later clock. */
+  shiftStart?: string | null
+  shiftEnd?: string | null
+  /** The named shift behind those hours («Gecə A»); null when they come from the employee's own
+   *  override or from the location. The board prefers the name — it is what an admin recognises. */
+  shiftName?: string | null
+  /** The second stretch of a split day (07:00–11:00 + 22:00–07:00). Null on every ordinary shift. */
+  secondShiftStart?: string | null
+  secondShiftEnd?: string | null
 }
 
 export interface EmployeeReportRow {
@@ -281,20 +293,35 @@ export interface ExportDayRowInput {
 // cannot show they were ever handed a working way to scan, and payroll deducts a day per Qayıb. So a
 // Qayıb on such a day comes from a person who watched it, and can be taken off again.
 
-/** POST /api/admin/absence-marks — state that this employee did not come on this day. */
-export function markAbsent(employeeId: string, date: string, note?: string | null) {
+/** POST /api/admin/absence-marks — state that this employee did not come on this day. The note is the
+ * correction's reason (required since 2026-10-15) — a Qayıb docks a day's pay. */
+export function markAbsent(employeeId: string, date: string, reason: string) {
   return apiRequest<{ ok: true } | { error: string }>(
     '/api/admin/absence-marks',
-    { method: 'POST', body: { employeeId, date, note: note ?? null } },
+    { method: 'POST', body: { employeeId, date, note: reason } },
   )
 }
 
 /** DELETE /api/admin/absence-marks — take the mark off and rebuild the day without it. */
-export function unmarkAbsent(employeeId: string, date: string) {
+export function unmarkAbsent(employeeId: string, date: string, reason: string) {
+  // The reason rides in the body, not the URL: free text about a person does not belong in a log line.
   return apiRequest<{ ok: true } | { error: string }>(
     `/api/admin/absence-marks?employeeId=${employeeId}&date=${date}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', body: { reason } },
   )
+}
+
+/** A company's own form for the «Xülasə» sheet: its lines (area names) in its order. */
+export interface DayTemplate {
+  key: string
+  name: string
+  areas: string[]
+}
+
+/** GET /api/reports/day-templates — the forms this company can have «Xülasə» printed in. Empty for
+ *  almost every company. */
+export function getDayTemplates() {
+  return apiRequest<DayTemplate[]>('/api/reports/day-templates')
 }
 
 /** POST /api/reports/export-day — send the visible board rows, download a tidy .xlsx. Returns false on
@@ -308,6 +335,10 @@ export async function exportDayXlsx(payload: {
   /** What the board calls each bucket — its words, so the sheet's headings cannot drift from the
    *  screen the file was exported from. Includes «İşdə» / «Çıxış yoxdur», which only the board knows. */
   bucketLabels?: Record<string, string>
+  /** The structure the rows are grouped in. A company form needs the branch view. */
+  view?: 'actual' | 'paper'
+  /** A company form for «Xülasə» (DayTemplate.key); absent for the standard summary. */
+  template?: string
 }): Promise<boolean> {
   const token = getToken()
   try {
@@ -472,6 +503,8 @@ export interface PayrollRow {
   perDay: number
   deduction: number
   payable: number
+  /** Days in the period the person corrected themselves — the accountant sees them before paying. */
+  selfCorrectedDays?: number
 }
 
 export interface PayrollReport {
@@ -649,11 +682,18 @@ export interface InvitePayload {
   paperSite?: string | null
 }
 
-export interface AdminEmployee {
+/**
+ * ONE ROW of the roster list — what `/api/admin/employees` returns per person.
+ *
+ * Deliberately a different type from AdminEmployee: the list no longer carries the fields only the
+ * edit form reads (email, the name parts, salary, the per-person overrides). That is not an oversight
+ * to be patched by widening this type — `EmployeeUpdateRequest` null-defaults every field it is not
+ * handed, so a form fed from a list row would BLANK whatever the list leaves out. The form reads
+ * getEmployee(id).
+ */
+export interface AdminEmployeeRow {
   id: string
   fullName: string
-  firstName: string | null
-  lastName: string | null
   fatherName: string | null
   position: string | null
   /** «Sənəd üzrə» — the employer and site the paperwork names, when it differs from where they work. */
@@ -664,26 +704,16 @@ export interface AdminEmployee {
   birthDate?: string | null
   workStart?: string | null
   workEnd?: string | null
-  monthlySalary?: number | null
-  /** True when an admin has waived the check-in selfie for this employee. */
-  photoExempt?: boolean
   /** True when an admin has granted this employee field/mobile check-in ("Sahə ziyarəti"). */
   canFieldCheckIn?: boolean
   /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
   canShareDevice?: boolean
-  /** Per-person check-in mode. null = follow the branch; true/false = a pinned exception. */
-  qrlessCheckInOverride?: boolean | null
-  requireGeofenceOverride?: boolean | null
   /** The named shift they are on, if any, plus its name for display. */
   scheduleId?: string | null
   scheduleName?: string | null
   /** Rotation, used only when scheduleId is null. */
   workCycleDays?: number | null
   workCycleOnDays?: number | null
-  workCycleAnchor?: string | null
-  /** When the employee accepted the data-processing notice; null = not yet. */
-  consentAcceptedAtUtc?: string | null
-  email: string | null
   phoneNumber: string | null
   role: Role
   locationId: string
@@ -702,6 +732,30 @@ export interface AdminEmployee {
   hasDevice: boolean
   deviceLabel: string | null
   boundAtUtc: string | null
+  /** How many devices are bound, not just whether any is. */
+  deviceCount?: number
+}
+
+/**
+ * ONE employee, in full — what `/api/admin/employees/{id}` returns.
+ *
+ * The edit form and the profile screen read this and nothing else. Every field below is one the form
+ * round-trips, so a screen that updates an employee must be fed from here.
+ */
+export interface AdminEmployee extends AdminEmployeeRow {
+  firstName: string | null
+  lastName: string | null
+  email: string | null
+  monthlySalary?: number | null
+  /** True when an admin has waived the check-in selfie for this employee. */
+  photoExempt?: boolean
+  /** Per-person check-in mode. null = follow the branch; true/false = a pinned exception. */
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
+  /** Rotation anchor date "yyyy-MM-dd"; only meaningful with workCycleDays. */
+  workCycleAnchor?: string | null
+  /** When the employee accepted the data-processing notice; null = not yet. */
+  consentAcceptedAtUtc?: string | null
   createdAtUtc: string
 }
 
@@ -711,8 +765,114 @@ export type EmployeeUpdatePayload = Omit<InvitePayload, never> & {
   managedLocationIds?: string[]
 }
 
-export function getEmployees() {
-  return apiRequest<AdminEmployee[]>('/api/admin/employees')
+/** What the list screen narrows by. Every one of these is applied in SQL, not in the browser. */
+export interface EmployeeQuery {
+  page?: number
+  pageSize?: number
+  search?: string
+  /** '' | 'activated' | 'pending' | 'notstarted' | 'nopush' | 'nodevice' — see StatusSel. */
+  status?: string
+  locationId?: string | null
+  role?: string
+  /** «İşdən çıxanlar» — the deactivated list, which is its own page rather than a filter. */
+  showLeft?: boolean
+}
+
+export interface EmployeePage {
+  items: AdminEmployeeRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+function employeeQs(q: EmployeeQuery): string {
+  const p = new URLSearchParams()
+  if (q.page) p.set('page', String(q.page))
+  if (q.pageSize) p.set('pageSize', String(q.pageSize))
+  if (q.search?.trim()) p.set('search', q.search.trim())
+  if (q.status) p.set('status', q.status)
+  if (q.locationId) p.set('locationId', q.locationId)
+  if (q.role) p.set('role', q.role)
+  if (q.showLeft) p.set('showLeft', 'true')
+  return p.toString()
+}
+
+/**
+ * One page of the roster.
+ *
+ * It used to be the whole company — every employee with every device binding they had ever had —
+ * and the browser did the searching, filtering and paging afterwards. At 914 people that was 227
+ * million rows read from a 1,081-row table on production. The rows this returns are LIST rows: the
+ * edit form must not be fed from them (see getEmployee).
+ */
+export function getEmployees(query: EmployeeQuery = {}) {
+  const qs = employeeQs({ page: 1, pageSize: 25, ...query })
+  return apiRequest<EmployeePage>(`/api/admin/employees${qs ? `?${qs}` : ''}`)
+}
+
+/**
+ * The WHOLE roster as list rows, for the few screens that genuinely need every name at once: the
+ * leave picker, the equipment picker and the «kim hansı növbədə» counts. They are pickers, not lists —
+ * paging a dropdown helps nobody — but they get the same cheap projection the list page does, instead
+ * of the old per-employee device bindings.
+ */
+export async function getAllEmployees() {
+  const r = await getEmployees({ page: 1, pageSize: 2000 })
+  const items = r.data && 'items' in r.data ? r.data.items : null
+  return { status: r.status, data: items }
+}
+
+/** ONE employee, in full — what the edit form and the profile screen read. */
+export function getEmployee(id: string) {
+  return apiRequest<AdminEmployee | { error: string }>(`/api/admin/employees/${id}`)
+}
+
+/** The numbers above the list, counted server-side over the whole filtered set. */
+export interface EmployeeStats {
+  total: number
+  activated: number
+  notStarted: number
+  noPush: number
+  noDevice: number
+  leftCount: number
+}
+
+/**
+ * Counts for the metric cards and the «Diqqət tələb edir» tiles.
+ *
+ * Only the branch is sent, because only the branch ever narrowed these numbers: the cards have always
+ * counted ACTIVE staff at the branch on screen, and the search box, the role picker and «İşdən
+ * çıxanlar» have always left them alone. The status tiles ARE the status filter, so sending `status`
+ * would make every tile read its own number back.
+ */
+export function getEmployeeStats(locationId?: string | null) {
+  const qs = locationId ? `?locationId=${encodeURIComponent(locationId)}` : ''
+  return apiRequest<EmployeeStats>(`/api/admin/employees/stats${qs}`)
+}
+
+/** The flags a bulk action decides from, for one employee. */
+export interface EmployeeSelectionRow {
+  id: string
+  fullName: string
+  /** The branch, so a picker can tell two people of the same name apart. */
+  locationName: string | null
+  isActive: boolean
+  activated: boolean
+  mustChangePin: boolean
+  canShareDevice: boolean
+  canFieldCheckIn: boolean
+}
+
+/**
+ * EVERY employee the current filters match — ids and bulk flags only.
+ *
+ * This is what keeps «Hamısını seç» meaning «everyone this filter matches» now that the list is
+ * paged. Without it the phrase would quietly shrink to «these twenty-five», and a permission granted
+ * to a branch of forty would reach the first page of it.
+ */
+export function getEmployeeSelection(query: EmployeeQuery = {}) {
+  const qs = employeeQs({ ...query, page: undefined, pageSize: undefined })
+  return apiRequest<EmployeeSelectionRow[]>(`/api/admin/employees/selection${qs ? `?${qs}` : ''}`)
 }
 
 export function invite(payload: InvitePayload) {
@@ -858,16 +1018,18 @@ export function getMissedCheckoutPending() {
 }
 
 /** POST .../approve — write the requested check-out onto the record and recompute that day. */
-export function approveMissedCheckout(id: string) {
+export function approveMissedCheckout(id: string, reason: string) {
   return apiRequest<{ status: string } | { error: string }>(`/api/admin/missed-checkout/${id}/approve`, {
     method: 'POST',
+    body: { reason },
   })
 }
 
 /** POST .../reject — decline the request (the day stays open for the admin to handle). */
-export function rejectMissedCheckout(id: string) {
+export function rejectMissedCheckout(id: string, reason: string) {
   return apiRequest<{ status: string } | { error: string }>(`/api/admin/missed-checkout/${id}/reject`, {
     method: 'POST',
+    body: { reason },
   })
 }
 
@@ -961,6 +1123,11 @@ export interface PendingDeviceChange {
   currentDeviceFingerprint: string | null
   newDeviceFingerprint: string
   requestedAtUtc: string
+  /** New devices this person arrived with in the last 30 days, adopted at a poster or approved. */
+  recentNewDevices: number
+  /** The poster has stopped adopting new phones for them: this request is the allowance running out,
+   *  and approving it reopens the allowance. */
+  autoBindLimitReached: boolean
 }
 
 export function getPendingDeviceChanges() {
@@ -1239,7 +1406,6 @@ export interface ImpersonateResult {
   adminName: string
   /** Which seat was borrowed — the banner says "manager" rather than implying admin. */
   role: 'Admin' | 'Manager'
-  expiresInMinutes: number
 }
 
 /** Someone inside a company whose session the console may borrow. Admins and managers only —
@@ -1468,6 +1634,28 @@ export interface TenantDeletable {
   rows: Record<string, number>
 }
 
+/** A correction somebody in the company made to their OWN day (the single-admin rule) — the platform's view. */
+export interface SuperSelfCorrection {
+  employeeName: string
+  date: string
+  kind: string
+  checkInBeforeUtc: string | null
+  checkOutBeforeUtc: string | null
+  checkInAfterUtc: string | null
+  checkOutAfterUtc: string | null
+  reason: string
+  atUtc: string
+  awaitsApproval: boolean
+}
+
+/** GET /api/super/tenants/{id} — read here for its self-corrections: a company's only admin fixing their own
+ *  pay is exactly what nobody inside that company can look over. */
+export function getSuperTenantSelfCorrections(id: string) {
+  return apiRequest<{ selfCorrections: { last90Days: number; latest: SuperSelfCorrection[] } } | { error: string }>(
+    `/api/super/tenants/${id}`,
+  )
+}
+
 /** DELETE /api/super/tenants/{id} — permanent. `confirm` must be the company's own display name. */
 export function deleteTenant(id: string, confirm: string) {
   return apiRequest<DeleteTenantResult | { error: string }>(
@@ -1607,6 +1795,8 @@ export interface TabelLegendItem {
 }
 
 export interface TabelRow {
+  /** Days of the month (1-based) the person corrected themselves — marked on the grid. */
+  selfCorrectedDays?: number[] | null
   employeeId: string
   employeeName: string
   position: string | null

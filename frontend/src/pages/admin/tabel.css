@@ -53,6 +53,8 @@ thead .tb-name-col { background: var(--c50); z-index: 3; }
    not read as one; it is a day off, so it stays in the grey family and is simply darker than H. */
 .tb-rest    { background: #E4E7EA; color: #4B5563; }
 .tb-future  { background: repeating-linear-gradient(45deg, #fff, #fff 3px, #fafafa 3px, #fafafa 6px); }
+/* A day the person corrected themselves (the single-admin rule): visible on screen and on paper. */
+.tb-self    { box-shadow: inset 0 0 0 2px var(--clay, #B91C1C); font-weight: 800; }
 
 .tb-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 4px 2px; font-size: 12px; color: var(--c600); }
 .tb-legend-item { display: inline-flex; align-items: center; gap: 6px; }

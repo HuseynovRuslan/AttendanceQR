@@ -1,9 +1,12 @@
 using System.Security.Cryptography;
+using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
 using AttendanceQR.Infrastructure.Services;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +24,7 @@ namespace AttendanceQR.Api.Controllers;
 /// Role==Employee inside their ManagedLocations: the branch-only reach that let a manager reset a
 /// same-branch ADMIN's PIN was the P0 of 2026-08-08 and does not come back here.
 /// </summary>
+[Permission(AccessPermissions.EmployeesResetPin)]
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
 [Route("api/admin/pin-resets")]
@@ -29,12 +33,15 @@ public class AdminPinResetController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILoginLockoutStore _lockout;
+    private readonly Guid[] _operatorIds;
 
-    public AdminPinResetController(AppDbContext db, IPasswordHasher passwordHasher, ILoginLockoutStore lockout)
+    public AdminPinResetController(
+        AppDbContext db, IPasswordHasher passwordHasher, ILoginLockoutStore lockout, AppOptions appOptions)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _lockout = lockout;
+        _operatorIds = appOptions.SuperAdminIdList();
     }
 
     // GET /api/admin/pin-resets — the pending queue, oldest first, with enough to identify the person.
@@ -52,6 +59,9 @@ public class AdminPinResetController : ControllerBase
             people = people.Where(e => managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee);
         }
 
+        // A platform operator's request is nobody's here to answer (see Resolve), so it is not offered.
+        people = people.Where(e => !_operatorIds.Contains(e.Id));
+
         var rows = await _db.PinResetRequests
             .Where(r => r.Status == PinResetStatus.Pending)
             .OrderBy(r => r.RequestedAtUtc)
@@ -62,9 +72,23 @@ public class AdminPinResetController : ControllerBase
                 employeeName = e.FullName,
                 phoneNumber = e.PhoneNumber,
                 email = e.Email,
-                requestedAtUtc = r.RequestedAtUtc
+                requestedAtUtc = r.RequestedAtUtc,
+                locationId = e.LocationId,
             })
             .ToListAsync(ct);
+
+        // A company switched to Enforced: only the requests this caller may answer by the model's account rule
+        // (Resolve asks the same), and a phone or e-mail only where they may see it. Today's rows elsewhere.
+        if (await EnforcedRows.LoadAsync(_db, User.EmployeeId(), ct) is { } enforced)
+            return Ok(rows
+                .Where(r => enforced.Allows(ShadowRules.CredentialTarget, r.employeeId, r.locationId))
+                .Select(r => new
+                {
+                    r.requestId, r.employeeId, r.employeeName,
+                    phoneNumber = enforced.SeesContacts(r.employeeId, r.locationId) ? r.phoneNumber : null,
+                    email = enforced.SeesContacts(r.employeeId, r.locationId) ? r.email : null,
+                    r.requestedAtUtc, r.locationId,
+                }));
         return Ok(rows);
     }
 
@@ -83,10 +107,19 @@ public class AdminPinResetController : ControllerBase
         if (employeeId is null)
             return NotFound(new { error = "RequestNotFound" });
 
+        // Never an operator. Their employee rows sit inside a company (today: bax) like anybody's, and anyone
+        // may file «PIN-i unutdum» for their number — so resolving it would hand that company's admin, or a
+        // manager whose branch holds the row, the operator's temporary PIN and with it the console over every
+        // company (SEC-02, 2026-10-02 audit). Every other way of minting a PIN already refused an operator;
+        // this one did not. Before the claim below, so the refusal does not consume the request.
+        if (_operatorIds.Contains(employeeId.Value))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
+
         // The same boundary the list applies, re-checked on the action — a request id guessed or held
         // from before a branch reassignment must not resolve into a PIN. Checked before the atomic
         // claim below so a refusal does not consume somebody else's queue entry.
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct))
+        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct)
+            || !await LocationScopeRules.EnforcedCredentialTargetAsync(_db, User.EmployeeId(), User.Role(), employeeId.Value, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         // An impersonation session must not mint a credential for a privileged account: this endpoint

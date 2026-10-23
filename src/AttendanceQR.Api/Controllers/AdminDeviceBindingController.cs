@@ -1,3 +1,4 @@
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Api.Multitenancy;
@@ -41,6 +42,7 @@ public class AdminDeviceBindingController : ControllerBase
 
     // GET /api/admin/device-bindings — every active binding, newest first, so a freshly adopted
     // device is at the top where an admin will actually see it.
+    [Permission(AccessPermissions.DevicesView)]
     [HttpGet]
     public async Task<IActionResult> List()
     {
@@ -76,6 +78,7 @@ public class AdminDeviceBindingController : ControllerBase
     /// one employee — for everybody on it. Giving it up can be the right call for a worker with no
     /// phone; not being able to SEE that it happened is never the right call.
     /// </summary>
+    [Permission(AccessPermissions.DevicesView)]
     [HttpGet("shared")]
     public async Task<IActionResult> Shared()
     {
@@ -140,6 +143,7 @@ public class AdminDeviceBindingController : ControllerBase
     /// this product does not do: the people on a shared phone are the people who cannot re-enter a PIN.
     /// Revoking the bindings stops that handset scanning while every account stays exactly as it was.
     /// </summary>
+    [Permission(AccessPermissions.DevicesRevoke)]
     [HttpPost("device/revoke-all")]
     public async Task<IActionResult> RevokeDevice([FromQuery] string fingerprint)
     {
@@ -169,6 +173,10 @@ public class AdminDeviceBindingController : ControllerBase
         var now = DateTime.UtcNow;
         foreach (var b in actionable)
         {
+            // Both fields, as the single Revoke below sets them. The scan recognises a phone by IsActive
+            // alone, so a row stamped revoked but left active went on clocking in — the phone an admin
+            // had just taken off everybody stayed on all of them, while this screen said it was gone.
+            b.IsActive = false;
             b.RevokedAtUtc = now;
             _db.AuditLogs.Add(new AuditLog
             {
@@ -187,6 +195,7 @@ public class AdminDeviceBindingController : ControllerBase
 
     // POST /api/admin/device-bindings/{id}/revoke — kill one context. It is NOT deleted: the row
     // survives with RevokedAtUtc set, which is what stops the next scan from silently re-adopting it.
+    [Permission(AccessPermissions.DevicesRevoke)]
     [HttpPost("{id:guid}/revoke")]
     public async Task<IActionResult> Revoke(Guid id)
     {

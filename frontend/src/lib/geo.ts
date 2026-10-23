@@ -12,6 +12,19 @@ export type GeoResult =
 /** Beyond this the fix says little against a ~150 m geofence. We warn and log it; we never block. */
 export const POOR_ACCURACY_METERS = 100
 
+/**
+ * Past this, the phone is not struggling — it has been told not to say. Android's «approximate
+ * location» permission answers with exactly ±2000 m and iOS's «Precise Location: off» is of the same
+ * order, from any spot on earth, for ever. Standing in the open changes nothing, which is why the
+ * ordinary «açıq havaya çıxın» advice reads as mockery to somebody on their eighth attempt.
+ */
+export const APPROXIMATE_ACCURACY_METERS = 1000
+
+/** Does this margin look like the OS blurring the fix on purpose, rather than a weak signal? */
+export function looksApproximate(accuracy: number | null | undefined): boolean {
+  return accuracy != null && accuracy >= APPROXIMATE_ACCURACY_METERS
+}
+
 export const FAILURE_REASON: Record<GeoFailKind, string> = {
   denied: 'GpsPermissionDenied',
   unavailable: 'GpsUnavailable',

@@ -11,6 +11,7 @@ import {
 } from '../api/attendance'
 import type { ReportTotals } from '../api/admin'
 import { getVoteStatus } from '../api/vote'
+import { getMyAccess } from '../api/me'
 import { useAuth } from '../auth/AuthContext'
 import { useFeatureEnabled } from '../branding/BrandingContext'
 import { getDeviceFingerprint } from '../lib/device'
@@ -73,6 +74,18 @@ function thisMonth(): { from: string; to: string } {
  */
 export function MenuPage() {
   const { logout, role, profiles, employeeId } = useAuth()
+  // Somebody who is plain staff by today's role but holds a role in the new model — a timekeeper, an
+  // observer — has a panel too (Phase 4). Asked here, on the menu, once per visit — never on the scan
+  // screen, which must not wait on anything it does not need.
+  const [panelToo, setPanelToo] = useState(false)
+  useEffect(() => {
+    if (role !== 'Employee') return
+    let live = true
+    void getMyAccess()
+      .then((r) => { if (live && r.status === 200 && r.data && 'panel' in r.data) setPanelToo(r.data.panel) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [role, employeeId])
   const assistantOn = useFeatureEnabled('assistant')
   const [profile, setProfile] = useState<MyProfile | null>(null)
   const [totals, setTotals] = useState<ReportTotals | null>(null)
@@ -245,6 +258,9 @@ export function MenuPage() {
             "İşçi rejimi" link. Plain employees never see this row. */}
         {(role === 'Admin' || role === 'Manager') && (
           <MenuRow to="/admin" Icon={IconChart} label="Admin panel" />
+        )}
+        {role === 'Employee' && panelToo && (
+          <MenuRow to="/admin" Icon={IconChart} label="İdarəetmə paneli" />
         )}
         {/* Only for workers an admin has marked as field workers — a plain office employee never sees it. */}
         {profile?.canFieldCheckIn && <MenuRow to="/field" Icon={IconMapPin} label="Səyyar / Sahə ziyarəti" />}

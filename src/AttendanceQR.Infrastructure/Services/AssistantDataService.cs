@@ -18,6 +18,8 @@ public sealed class AssistantDataService
     {
         ["DeviceMismatch"] = "skan qeydiyyatda olmayan telefondan/brauzerdən edilib",
         ["NoDeviceBound"] = "hesaba hələ heç bir cihaz bağlanmayıb",
+        ["DeviceBindLimit"] = "telefon son vaxtlar bir neçə dəfə yeni cihaz kimi göründü — tətbiq telefonda yadda qalmır (gizli rejim, başqa brauzer və ya təmizləyici proqram); yeni telefon tələbi göndərilməli və tətbiq ana ekrandakı ikondan açılmalıdır",
+        ["DeviceRevoked"] = "admin bu telefonu hesabdan ayırıb; telefon işçinin özününküdürsə, yeni telefon tələbi göndərilməlidir",
         ["OutsideRadius"] = "skan iş yerinin ərazisindən kənarda edilib",
         ["TokenExpired"] = "QR kod köhnəlib — plakat yenilənib",
         ["LocationInactive"] = "lokasiya deaktiv edilib",
@@ -44,12 +46,12 @@ public sealed class AssistantDataService
     private DateTime NowLocal => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone);
     private string Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, _timeZone).ToString("dd.MM.yyyy HH:mm");
 
-    /// <summary>Today's attendance as the boards see it: the record keyed by the server UTC day.</summary>
+    /// <summary>Today's attendance as the boards see it: the record keyed by the COMPANY day.</summary>
     public async Task<object> TodayStatusAsync(Guid employeeId, CancellationToken ct)
     {
-        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DateOnly.FromDateTime(NowLocal);
         var record = await _db.AttendanceRecords
-            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == todayUtc)
+            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == today)
             .Select(r => new { r.CheckInAtUtc, r.CheckOutAtUtc, Status = r.Status.ToString() })
             .FirstOrDefaultAsync(ct);
 
@@ -124,11 +126,11 @@ public sealed class AssistantDataService
     /// ZERO hours until an admin closes it — the single costliest thing an employee can not know.</summary>
     public async Task<object> OpenDaysAsync(Guid employeeId, CancellationToken ct)
     {
-        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
-        var from = todayUtc.AddDays(-30);
+        var today = DateOnly.FromDateTime(NowLocal);
+        var from = today.AddDays(-30);
         var days = await _db.AttendanceRecords
             .Where(r => r.EmployeeId == employeeId
-                        && r.AttendanceDate >= from && r.AttendanceDate < todayUtc
+                        && r.AttendanceDate >= from && r.AttendanceDate < today
                         && r.CheckInAtUtc != null && r.CheckOutAtUtc == null)
             .OrderByDescending(r => r.AttendanceDate)
             .Select(r => r.AttendanceDate)
@@ -149,10 +151,10 @@ public sealed class AssistantDataService
     {
         var nowLocal = NowLocal;
         var first = new DateOnly(nowLocal.Year, nowLocal.Month, 1);
-        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DateOnly.FromDateTime(nowLocal);
 
         var rows = await _db.DailySummaries
-            .Where(s => s.EmployeeId == employeeId && s.SummaryDate >= first && s.SummaryDate < todayUtc)
+            .Where(s => s.EmployeeId == employeeId && s.SummaryDate >= first && s.SummaryDate < today)
             .Select(s => new { s.WorkedMinutes, s.Status, s.LateMinutes })
             .ToListAsync(ct);
 

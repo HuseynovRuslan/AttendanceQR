@@ -5,6 +5,7 @@ import { basemap } from '../../lib/basemap'
 import 'leaflet/dist/leaflet.css'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import { EmployeeLink } from '../../components/EmployeeLink'
+import { useAccess, useHolds, useScopedRole } from '../../auth/AccessContext'
 import { getAdminLocations, type AdminLocation } from '../../api/admin'
 import {
   getFieldVisitBoard,
@@ -22,6 +23,7 @@ import {
 } from '../../api/fieldVisits'
 import { getPosition, isJunkTargetLabel } from '../../lib/geo'
 import { fmtTime } from '../../lib/format'
+import { matchesSearch } from '../../lib/searchFold'
 
 // Resolved once: the key does not change while the page is open.
 const BASE = basemap()
@@ -290,6 +292,12 @@ function VisitMap({ v, sites = [] }: { v: BoardFieldVisit; sites?: AdminLocation
 type StatusFilter = 'all' | 'Assigned' | 'CheckedIn' | 'Completed' | 'Cancelled'
 
 export function FieldVisitsAdminPage() {
+  // Following the board is «field_visits.view»; assigning, judging, cancelling and closing a visit are
+  // «field_visits.manage». Throwing a visit away is the Company administrator's in Enforced, as its endpoint.
+  const mayManage = useHolds('field_visits.manage', true)
+  const discardRole = useScopedRole('field_visits.discard')
+  const enforced = useAccess().access?.mode === 'Enforced'
+  const mayDiscard = discardRole === 'Admin' || (!enforced && discardRole !== null)
   // ?v=<visitId> — arrived here from a row on the dashboard's live feed, which knows the visit but
   // not the day it belongs to. Opening the card is the whole point of that click, so it must survive
   // the page's own load rather than being lost to it.
@@ -422,7 +430,6 @@ export function FieldVisitsAdminPage() {
   )
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
     return rows.filter((v) => {
       // «Hamısı» means everything that HAPPENED, and a cancelled visit did not. They used to sit in
       // the default view for ever — a discarded phantom, a test row somebody made — with nothing an
@@ -437,7 +444,7 @@ export function FieldVisitsAdminPage() {
       if (onlySelf && !v.selfReported) return false
       if (onlyPhoto && !v.hasWorkPhoto) return false
       if (filterLoc && v.locationId !== filterLoc) return false
-      if (q && !(v.employeeName.toLowerCase().includes(q) || (v.phone ?? '').toLowerCase().includes(q))) return false
+      if (!matchesSearch(search, v.employeeName, v.phone)) return false
       return true
     })
   }, [rows, statusFilter, search, onlyFlagged, onlySelf, onlyPhoto, filterLoc])
@@ -626,9 +633,11 @@ export function FieldVisitsAdminPage() {
           <input className="inp" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 160 }} />
           <button className="btn btn-sm" onClick={() => shiftDay(1)}>→</button>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? 'Bağla' : '+ Yeni tapşırıq'}
-        </button>
+        {mayManage && (
+          <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
+            {showForm ? 'Bağla' : '+ Yeni tapşırıq'}
+          </button>
+        )}
       </div>
 
       {error && <div className="fb fb-err" style={{ marginBottom: 14 }}>{error}</div>}
@@ -916,7 +925,7 @@ export function FieldVisitsAdminPage() {
                         <button className="btn btn-sm" onClick={() => void openDetail(v)}>Təfərrüat</button>
                         {/* The verdict on the WORK, beside the actions on the visit. Only once there
                             is work to judge — an unstarted task is cancelled, not failed. */}
-                        {(v.status === 'Completed' || v.status === 'CheckedIn') && (
+                        {mayManage && (v.status === 'Completed' || v.status === 'CheckedIn') && (
                           v.reviewOk == null ? (
                             <>
                               <button className="btn btn-sm" title="İş həll olundu" onClick={() => void review(v, true)}>✓ Həll olundu</button>
@@ -937,13 +946,13 @@ export function FieldVisitsAdminPage() {
                             </button>
                           )
                         )}
-                        {v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
+                        {mayManage && v.status === 'Assigned' && <button className="btn btn-sm" onClick={() => void cancel(v)}>Ləğv et</button>}
                         {/* Any visit that is not already cancelled — the server has always allowed
                             this and only the button was narrower, which left an OPEN one (a test
                             row, a mis-tap) with no way out at all: «Sil» wanted Completed and
                             «Çıxışı bağla» only appears once the day has passed. */}
-                        {v.status !== 'Cancelled' && <button className="btn btn-sm" onClick={() => void discard(v)}>Sil</button>}
-                        {stuck && <button className="btn btn-sm btn-danger" onClick={() => void forceCheckout(v)}>Çıxışı bağla</button>}
+                        {mayDiscard && v.status !== 'Cancelled' && <button className="btn btn-sm" onClick={() => void discard(v)}>Sil</button>}
+                        {mayManage && stuck && <button className="btn btn-sm btn-danger" onClick={() => void forceCheckout(v)}>Çıxışı bağla</button>}
                       </div>
                     </td>
                   </tr>
@@ -962,10 +971,10 @@ export function FieldVisitsAdminPage() {
           workPhoto={detailWorkPhoto}
           onOpenPhoto={setLightbox}
           onClose={() => setDetail(null)}
-          onCancel={() => void cancel(detail)}
-          onDiscard={() => void discard(detail)}
-          onForceCheckout={() => void forceCheckout(detail)}
-          onReview={(ok) => void review(detail, ok)}
+          onCancel={mayManage ? () => void cancel(detail) : undefined}
+          onDiscard={mayDiscard ? () => void discard(detail) : undefined}
+          onForceCheckout={mayManage ? () => void forceCheckout(detail) : undefined}
+          onReview={mayManage ? (ok) => void review(detail, ok) : undefined}
           stuck={isStuck(detail, date)}
         />
       )}
@@ -1084,10 +1093,11 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
   workPhoto: { url: string | null } | null
   onOpenPhoto: (url: string) => void
   onClose: () => void
-  onCancel: () => void
+  /** Each action present only for whoever may take it — an observer opens the card and changes nothing. */
+  onCancel?: () => void
   /** Present only for a completed visit — throwing away a record of work is Admin-only. */
   onDiscard?: () => void
-  onForceCheckout: () => void
+  onForceCheckout?: () => void
   stuck: boolean
 }) {
   const st = STATUS[v.status] ?? { label: v.status, bg: 'rgba(0,0,0,0.05)', fg: 'var(--c400)' }
@@ -1266,9 +1276,9 @@ function DetailOverlay({ v, sites, checklist, workPhoto, onOpenPhoto, onClose, o
               <button className="btn btn-sm" onClick={() => onReview(false)}>✕ Həll olunmadı</button>
             </>
           )}
-          {v.status === 'Assigned' && <button className="btn btn-sm" onClick={onCancel}>Ləğv et</button>}
+          {v.status === 'Assigned' && onCancel && <button className="btn btn-sm" onClick={onCancel}>Ləğv et</button>}
           {v.status === 'Completed' && onDiscard && <button className="btn btn-sm" onClick={onDiscard}>Sil</button>}
-          {stuck && <button className="btn btn-sm btn-danger" onClick={onForceCheckout}>Çıxışı bağla</button>}
+          {stuck && onForceCheckout && <button className="btn btn-sm btn-danger" onClick={onForceCheckout}>Çıxışı bağla</button>}
           <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Bağla</button>
         </div>
       </div>

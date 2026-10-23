@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAppUpdate } from './lib/useAppUpdate'
+import { mayReloadOnce } from './lib/staleBundle'
 import { startOfflineSync } from './lib/offlineSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminRoute, PanelPage } from './components/AdminRoute'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
+import { EndedSessionNotice } from './components/EndedSessionNotice'
 import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
 import { useAuth } from './auth/AuthContext'
@@ -57,9 +59,10 @@ const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m 
 const ServiceSignInPage = lazy(() => import('./pages/ServiceSignInPage').then(m => ({ default: m.ServiceSignInPage })))
 // "QRLog ilə daxil ol" for another application of ours (PRIZMA): reached only from that app's link.
 const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
-const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
+const MyAreaPage = lazy(() => import('./pages/admin/MyAreaPage').then(m => ({ default: m.MyAreaPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
+const AccessPage = lazy(() => import('./pages/admin/AccessPage').then(m => ({ default: m.AccessPage })))
 const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
 const SchedulesPage = lazy(() => import('./pages/admin/SchedulesPage').then(m => ({ default: m.SchedulesPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
@@ -76,6 +79,7 @@ const ProblemsPage = lazy(() => import('./pages/admin/ProblemsPage').then(m => (
 const ShiftMismatchPage = lazy(() => import('./pages/admin/ShiftMismatchPage').then(m => ({ default: m.ShiftMismatchPage })))
 const GeofenceFitPage = lazy(() => import('./pages/admin/GeofenceFitPage').then(m => ({ default: m.GeofenceFitPage })))
 const OpenRecordsPage = lazy(() => import('./pages/admin/OpenRecordsPage').then(m => ({ default: m.OpenRecordsPage })))
+const SelfCorrectionsPage = lazy(() => import('./pages/admin/SelfCorrectionsPage').then(m => ({ default: m.SelfCorrectionsPage })))
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
 const FieldVisitsPage = lazy(() => import('./pages/FieldVisitsPage').then(m => ({ default: m.FieldVisitsPage })))
@@ -97,10 +101,9 @@ function AutoUpdater() {
     if (pathname === '/scan' || pathname === '/activate') return
 
     // Belt and braces: if a reload somehow served the same stale bundle again (a cached index.html
-    // would do it), we would spin forever. One attempt per published build, per tab.
-    const key = 'attendanceqr.reloadedFor'
-    if (sessionStorage.getItem(key) === newBuildId) return
-    sessionStorage.setItem(key, newBuildId)
+    // would do it), we would spin forever. One attempt per published build, per tab — the same key
+    // and rule the scan page uses (lib/staleBundle).
+    if (!mayReloadOnce('attendanceqr.reloadedFor', newBuildId)) return
     window.location.reload()
   }, [newBuildId, pathname])
 
@@ -151,6 +154,7 @@ export default function App() {
   return (
     <>
       <ImpersonationBanner />
+      <EndedSessionNotice />
       <AutoUpdater />
       <OfflineSyncer />
       <ScannerPrefetch />
@@ -394,8 +398,13 @@ function AppRoutes() {
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
         <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
-        {/* Manager write surface — the endpoints are Manager-only + location-scoped server-side. */}
-        <Route path="my-employees" element={<PanelPage path="my-employees"><ManagerEmployeesPage /></PanelPage>} />
+        {/* Corrections somebody made to their own day (the single-admin rule) — read by whoever sees the days. */}
+        <Route path="self-corrections" element={<PanelPage path="self-corrections"><SelfCorrectionsPage /></PanelPage>} />
+        {/* The manager's own roster screen is retired: since Phase 4 there is one staff list, which reads
+            the manager's own endpoints for a manager. Kept as a redirect for bookmarks and open tabs. */}
+        <Route path="my-employees" element={<Navigate to="/admin/employees" replace />} />
+        {/* «Mənim sahəm» — what I hold, where, and what opens for me after the switch. */}
+        <Route path="my-area" element={<PanelPage path="my-area"><MyAreaPage /></PanelPage>} />
         {/* The narrow register is retired: the shared one now reads through the manager's own
             endpoints, so there is one leave screen again. The route stays as a redirect because a
             manager may have bookmarked it or have it open in a tab. */}
@@ -408,6 +417,8 @@ function AppRoutes() {
               </PanelPage>
           }
         />
+        {/* Roles and who holds them where — Phase 3. Admin only while the access API is. */}
+        <Route path="access" element={<PanelPage path="access"><AccessPage /></PanelPage>} />
         {/* Equipment register — Admin only: it spans every office and site, and is not a branch
             screen. Arrived from `staging` wrapped in <AdminOnly>, which main replaced with the
             access table; see lib/panelAccess. */}

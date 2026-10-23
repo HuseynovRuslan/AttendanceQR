@@ -21,6 +21,9 @@ export interface ManagerEmployee {
   credentialsManageable?: boolean
   /** Not ordinary staff — another manager, or the admin who clocks in at this branch. */
   isColleague?: boolean
+  /** May this caller switch the person off or back on — «employees.deactivate» over their branch, which
+   *  `manageable` («employees.update») does not imply. Only the single card sends it. */
+  deactivatable?: boolean
   fullName: string
   firstName: string | null
   lastName: string | null
@@ -47,6 +50,10 @@ export interface ManagerEmployee {
   workCycleAnchor: string | null
   photoExempt: boolean
   canFieldCheckIn: boolean
+  /** Per-person check-in mode (null = follow the branch). Read back so the edit form can send them
+   *  unchanged — the shared staff page reads them from the person's own card. */
+  qrlessCheckInOverride?: boolean | null
+  requireGeofenceOverride?: boolean | null
   /** Read-only for a manager. Whether an account may ride on somebody else's phone is granted here in
    *  bulk over their own staff, but the per-employee edit form does not carry it — see the manager
    *  projection in ManagerController for why. */
@@ -93,6 +100,20 @@ export interface ManagerEmployeeInput {
 
 export function getManagerLocations() {
   return apiRequest<ManagerLocation[]>('/api/manager/locations')
+}
+
+/** A branch on the staff screen: one the caller sees people at, and whether they may add or move people there. */
+export interface EmployeeBranch {
+  id: string
+  name: string
+  canCreate: boolean
+  canMove: boolean
+}
+
+/** GET /api/manager/employee-branches — the staff screen's branches, by «employees.view». Not /locations: that
+ *  asks «locations.view», which a Tabelçi does not hold, and left their «İşçi əlavə et» with nothing to offer. */
+export function getManagerEmployeeBranches() {
+  return apiRequest<EmployeeBranch[]>('/api/manager/employee-branches')
 }
 
 export function getManagerPositions() {

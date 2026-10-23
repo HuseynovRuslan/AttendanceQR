@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  getEmployees,
+  getEmployee,
   getSummary,
   getEmployeeDays,
   getDeviceBindings,
@@ -25,6 +25,10 @@ import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompa
 import { manualRecordTimes } from '../../lib/manualRecord'
 import { IconCamera, IconCheck, IconLaptop, IconPhone, IconX } from '../../components/icons'
 import { useAuth } from '../../auth/AuthContext'
+import { useAccess, useHolds, useScopedRole } from '../../auth/AccessContext'
+import { listFailureText } from '../../lib/listFailure'
+import { AWAITING_APPROVAL, CORRECTION_ERROR, correctionError, useCorrectionReason } from '../../components/CorrectionReason'
+import { PersonAccessCard } from '../../components/PersonAccessCard'
 import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
 import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
 
@@ -48,19 +52,28 @@ const CREATE_ERROR: Record<string, string> = {
   OutOfScope: 'Bu qeydi dəyişə bilməzsiniz — menecer yalnız öz ərazisindəki adi işçilərin qeydini düzəldir',
   NothingToUpdate: 'Heç nə dəyişmədi',
   RecordNotFound: 'Qeyd tapılmadı — səhifəni yeniləyin',
+  // Since 2026-10-15: every correction says why, and nobody corrects their own day.
+  ...CORRECTION_ERROR,
 }
 
-const errorCodeOf = (data: unknown) =>
-  data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
 
 /** One employee's full profile: identity + this-month summary + recent attendance + photos + devices,
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
  * from existing admin endpoints — no new backend. Reached at /admin/employees/:id. */
 export function EmployeeProfilePage() {
+  const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
-  const { role, employeeId: myId } = useAuth()
+  const { employeeId: myId } = useAuth()
+  const { access } = useAccess()
+  // The card's shape by «employees.view» (useScopedRole). What it offers on top asks for its own right in
+  // Enforced: correcting a day «attendance.correct», a selfie «attendance.photos.view», a roster day
+  // «schedules.assign» — a timekeeper edits a profile but does not rewrite a paid day.
+  const role = useScopedRole('employees.view')
   const isManager = role === 'Manager'
+  const mayCorrect = useHolds('attendance.correct', true)
+  const mayViewPhotos = useHolds('attendance.photos.view', true)
+  const mayRoster = useHolds('schedules.assign', true)
   /**
    * Whether this caller may ACT on the person whose card is open.
    *
@@ -76,6 +89,9 @@ export function EmployeeProfilePage() {
   /** The PIN reset reaches further than the edit for a manager — a fellow manager, or staff at another
    *  area (see CredentialTargetAsync) — so it has its own answer instead of riding on `manageable`. */
   const [canResetPin, setCanResetPin] = useState(true)
+  // Switching someone off is a right of its own («employees.deactivate»): a Tabelçi edits the card but
+  // does not hold it, and the server refuses the toggle for them.
+  const [canDeactivate, setCanDeactivate] = useState(true)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -86,6 +102,8 @@ export function EmployeeProfilePage() {
   const [monthDays, setMonthDays] = useState<EmployeeDay[]>([])
   const [openMetric, setOpenMetric] = useState<string | null>(null)
   const [devices, setDevices] = useState<DeviceBinding[]>([])
+  /** Which of the card's lists did not come (their status) — so «yoxdur» is said only when it is true. */
+  const [failed, setFailed] = useState<{ attendance?: number; devices?: number; summary?: number }>({})
   const [equipment, setEquipment] = useState<EquipmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -100,6 +118,8 @@ export function EmployeeProfilePage() {
   const [photoModal, setPhotoModal] = useState<{ title: string; photo: PhotoUrlResponse } | null>(null)
   const [photoBusyId, setPhotoBusyId] = useState<string | null>(null)
   const [editRecId, setEditRecId] = useState<string | null>(null)
+  /** A correction to one's own day sent for a second approval — said, not shown as an error. */
+  const [recNote, setRecNote] = useState<string | null>(null)
   const [editIn, setEditIn] = useState('')
   const [editOut, setEditOut] = useState('')
   const [showCreate, setShowCreate] = useState(false)
@@ -126,7 +146,7 @@ export function EmployeeProfilePage() {
     // is unscoped and carries monthlySalary, so it must never be the thing a manager's screen fetches
     // and filters client-side.
     const [empRes, attRes, devRes, sumRes, daysRes, equipRes] = await Promise.all([
-      isManager ? getManagerEmployee(id) : getEmployees(),
+      isManager ? getManagerEmployee(id) : getEmployee(id),
       getEmployeeAttendance(id),
       getDeviceBindings(),
       getSummary(monthStart, today),
@@ -142,17 +162,27 @@ export function EmployeeProfilePage() {
       ? null
       : Array.isArray(empRes.data)
         ? empRes.data.find((e) => e.id === id) ?? null
-        // The manager row is the same shape minus salary and role — which is the point, so the cast
-        // goes through unknown rather than pretending the two types overlap. The fields this screen
-        // reads (identity, hours, shift, flags) are present on both; salary it never displays, and
-        // role only decorates a badge.
+        // BOTH sides now answer with one employee, so this is the branch that runs. The admin screen
+        // used to ask for the entire roster and pick a row out of it in the browser — nine hundred
+        // people loaded to show one, on every profile opened.
+        //
+        // The manager row is the same shape minus salary and role, so the cast goes through unknown
+        // rather than pretending the two types overlap. The fields this screen reads (identity,
+        // hours, shift, flags) are present on both; salary it never displays, and role only
+        // decorates a badge.
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
-    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean; isColleague?: boolean } | null
+    const flags = found as unknown as {
+      manageable?: boolean
+      credentialsManageable?: boolean
+      isColleague?: boolean
+      deactivatable?: boolean
+    } | null
     setManageable(!isManager || flags?.manageable === true)
     setColleague(isManager && flags?.isColleague === true)
     setCanResetPin(!isManager || flags?.manageable === true || flags?.credentialsManageable === true)
+    setCanDeactivate(!isManager || flags?.deactivatable === true)
     if (!found) {
       setNotFound(true)
       setLoading(false)
@@ -160,6 +190,11 @@ export function EmployeeProfilePage() {
     }
     const recs = attRes.status === 200 && Array.isArray(attRes.data) ? attRes.data : []
     setRecords(recs)
+    setFailed({
+      attendance: attRes.status === 200 ? undefined : attRes.status,
+      devices: devRes.status === 200 ? undefined : devRes.status,
+      summary: sumRes.status === 200 ? undefined : sumRes.status,
+    })
     if (devRes.status === 200 && Array.isArray(devRes.data)) setDevices(devRes.data.filter((d) => d.employeeId === id))
     if (equipRes?.status === 200 && Array.isArray(equipRes.data)) setEquipment(equipRes.data)
     if (sumRes.status === 200 && sumRes.data && 'rows' in sumRes.data)
@@ -297,20 +332,25 @@ export function EmployeeProfilePage() {
 
   async function saveEditRecord() {
     if (!editRecId) return
+    const reason = await askReason({ title: 'Qeyd dəyişdirilsin?', detail: 'Giriş və çıxış vaxtı yeni dəyərlərlə yazılacaq.', confirmLabel: 'Yadda saxla' })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut))
+    const { status, data } = await adminUpdateRecord(editRecId, fromInput(editIn), fromInput(editOut), reason)
     setRecBusy(false)
     if (status === 200) { setEditRecId(null); void load() }
-    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd dəyişmədi')
+    else if (status === 202) { setEditRecId(null); setRecNote(AWAITING_APPROVAL) }
+    else setRecErr(correctionError(data, 'Qeyd dəyişmədi', CREATE_ERROR))
   }
 
   async function clearCheckout(recordId: string) {
-    if (!window.confirm('Çıxış qeydi silinsin? İşçi yenidən çıxış edə biləcək.')) return
+    const reason = await askReason({ title: 'Çıxış qeydi silinsin?', detail: 'İşçi yenidən çıxış edə biləcək.', confirmLabel: 'Çıxışı sil' })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminClearCheckout(recordId)
+    const { status, data } = await adminClearCheckout(recordId, reason)
     setRecBusy(false)
     if (status === 200) void load()
-    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Çıxış silinmədi')
+    else if (status === 202) setRecNote(AWAITING_APPROVAL)
+    else setRecErr(correctionError(data, 'Çıxış silinmədi', CREATE_ERROR))
   }
 
   /**
@@ -323,18 +363,18 @@ export function EmployeeProfilePage() {
    */
   async function deleteRecord(r: AttendanceRecord) {
     const when = `${fmtDate(r.attendanceDate)} ${fmtTime(r.checkInAtUtc)}${r.checkOutAtUtc ? `–${fmtTime(r.checkOutAtUtc)}` : ''}`
-    if (!window.confirm(
-      `${when} qeydi tamamilə silinsin?
-
-` +
-      'Geri qaytarmaq mümkün deyil. Giriş şəkli də silinir. ' +
-      'Yalnız heç bir işi əks etdirməyən səhv qeydlər üçün istifadə edin — ' +
-      'saatı düzəltmək lazımdırsa «Redaktə» edin.')) return
+    const reason = await askReason({
+      title: `${when} qeydi tamamilə silinsin?`,
+      detail: 'Geri qaytarmaq mümkün deyil. Giriş şəkli də silinir. Yalnız heç bir işi əks etdirməyən səhv qeydlər üçün istifadə edin — saatı düzəltmək lazımdırsa «Redaktə» edin.',
+      confirmLabel: 'Qeydi sil',
+      danger: true,
+    })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminDeleteRecord(r.recordId)
+    const { status, data } = await adminDeleteRecord(r.recordId, reason)
     setRecBusy(false)
     if (status === 200) void load()
-    else setRecErr(CREATE_ERROR[errorCodeOf(data)] ?? 'Qeyd silinmədi')
+    else setRecErr(correctionError(data, 'Qeyd silinmədi', CREATE_ERROR))
   }
 
   async function viewRecordPhoto(r: AttendanceRecord) {
@@ -356,15 +396,17 @@ export function EmployeeProfilePage() {
     // See manualRecordTimes — a night built from one date is what made this form refuse nights.
     const times = manualRecordTimes(crDate, crIn, crOut || undefined)
     if (!emp || !times) { setRecErr('Tarix və giriş vaxtı seçin'); return }
+    const reason = await askReason({ title: 'Qeyd əlavə edilsin?', detail: 'İşçinin skan etmədiyi gün üçün əl ilə qeyd yazılır.', confirmLabel: 'Əlavə et' })
+    if (!reason) return
     setRecBusy(true); setRecErr(null)
-    const { status, data } = await adminCreateRecord(emp.id, times.date, times.checkInIso, times.checkOutIso)
+    const { status, data } = await adminCreateRecord(emp.id, times.date, times.checkInIso, times.checkOutIso, reason)
     setRecBusy(false)
-    if (status === 200) {
+    if (status === 200 || status === 202) {
       setShowCreate(false); setCrDate(''); setCrIn(''); setCrOut('')
-      void load()
+      if (status === 202) setRecNote(AWAITING_APPROVAL)
+      else void load()
     } else {
-      const code = data && typeof data === 'object' && 'error' in data ? (data as { error: string }).error : ''
-      setRecErr(CREATE_ERROR[code] ?? (status === 403 ? CREATE_ERROR.Forbidden : 'Qeyd yaradılmadı'))
+      setRecErr(correctionError(data, status === 403 ? CREATE_ERROR.Forbidden : 'Qeyd yaradılmadı', CREATE_ERROR))
     }
   }
 
@@ -385,6 +427,7 @@ export function EmployeeProfilePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {reasonDialog}
       <Link to="/admin/employees" className="btn btn-sm" style={{ alignSelf: 'flex-start' }}>← İşçilər</Link>
 
       {/* Header */}
@@ -433,7 +476,9 @@ export function EmployeeProfilePage() {
             {manageable && (
               <button
                 className="btn btn-primary btn-sm"
-                onClick={() => navigate(`/admin/${isManager ? 'my-employees' : 'employees'}?edit=${emp.id}`)}
+                // One staff list for both since Phase 4, and it opens a manager's edit from their own
+                // card. The old manager address redirected without the ?edit= and opened nothing.
+                onClick={() => navigate(`/admin/employees?edit=${emp.id}`)}
               >
                 Redaktə et
               </button>
@@ -448,7 +493,7 @@ export function EmployeeProfilePage() {
             {!emp.activated && !isManager && (
               <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
             )}
-            {manageable && !colleague && (
+            {manageable && !colleague && canDeactivate && (
               <button className={`btn btn-sm ${emp.isActive ? 'btn-outline-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
                 {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
               </button>
@@ -513,15 +558,23 @@ export function EmployeeProfilePage() {
             {openMetric && <MetricBreakdown metric={openMetric} days={monthDays} onClose={() => setOpenMetric(null)} />}
           </>
         ) : (
-          <p className="muted" style={{ fontSize: 13 }}>Bu ay üçün məlumat yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.summary != null ? listFailureText(failed.summary) : 'Bu ay üçün məlumat yoxdur.'}
+          </p>
         )}
       </div>
 
       {/* The days this person worked somebody else's shift. Sits with how their days are DECIDED,
           directly under the month figures it changes — not down among the address fields. */}
-      {id && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
+      {id && mayRoster && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
 
       {/* Personal */}
+      {/* Roles and where — for whoever the access API admits: the admin, and anybody whose role carries
+          «assignments.view» (the server narrows it to their own area). */}
+      {(role === 'Admin' || access?.permissions.some((p) => p.key === 'assignments.view')) && emp && (
+        <PersonAccessCard employeeId={emp.id} fullName={emp.fullName} />
+      )}
+
       <div className="card card-pad">
         <div className="card-title">Şəxsi məlumat</div>
         <div className="form-row cols2" style={{ marginBottom: 0 }}>
@@ -550,7 +603,7 @@ export function EmployeeProfilePage() {
               is the manager who saw them. This button stayed hidden anyway, so the manager had to ask
               an admin for every one — which is how «gecə növbədən çıxdığı günü necə qeyd edim»
               reached the owner. */}
-          {manageable && (
+          {manageable && mayCorrect && (
             <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setShowCreate((v) => !v); setRecErr(null) }}>
               + Qeyd əlavə et
             </button>
@@ -558,6 +611,7 @@ export function EmployeeProfilePage() {
         </div>
 
         {recErr && <div className="fb fb-err" style={{ marginBottom: 10 }}><IconX /><span>{recErr}</span></div>}
+        {recNote && <div className="fb fb-ok" style={{ marginBottom: 10 }}><span>{recNote}</span></div>}
 
         {showCreate && (
           <div className="card card-pad" style={{ marginBottom: 12, background: 'var(--c50)' }}>
@@ -595,7 +649,9 @@ export function EmployeeProfilePage() {
         )}
 
         {recent.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Qeyd yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.attendance != null ? listFailureText(failed.attendance) : 'Qeyd yoxdur.'}
+          </p>
         ) : (
           <div className="tbl-wrap tbl-cards">
             <table>
@@ -641,6 +697,13 @@ export function EmployeeProfilePage() {
                         {r.manualByName && (
                           <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>Əl ilə daxil edilib · {r.manualByName}</div>
                         )}
+                        {/* The person fixed this day themselves — only possible where nobody else could;
+                            the old times and the reason are kept on «Öz düzəlişləri». */}
+                        {r.selfCorrected && (
+                          <div style={{ fontSize: 11, marginTop: 2, color: 'var(--clay)', fontWeight: 700 }}>
+                            Öz düzəlişi — işçi bu günü özü düzəldib
+                          </div>
+                        )}
                         {r.closedByFieldVisit && (
                           <div style={{ fontSize: 11, marginTop: 2, color: 'var(--c600)' }}>📍 Ərazi çıxışı ilə bağlandı</div>
                         )}
@@ -654,7 +717,7 @@ export function EmployeeProfilePage() {
                           {/* Menecer də baxa bilir (2026-09-04) — amma yalnız idarə etdiyi adamların:
                               server `LocationScopeRules` ilə əhatəni yoxlayır. Səyyar gündə düymə
                               yoxdur, çünki şəkil qeydə bağlıdır və belə gündə qeyd yoxdur. */}
-                          {r.checkInAtUtc && !r.isFieldDay && (
+                          {r.checkInAtUtc && !r.isFieldDay && mayViewPhotos && (
                             <button className="btn btn-sm" disabled={photoBusyId === r.recordId} onClick={() => void viewRecordPhoto(r)}>
                               <IconCamera /> {photoBusyId === r.recordId ? '…' : 'Şəklə bax'}
                             </button>
@@ -666,7 +729,7 @@ export function EmployeeProfilePage() {
                           {/* …and only where this viewer may correct the day — the same `manageable` the
                               «+ Qeyd əlavə et» button above already waits on. A manager's own day and a
                               fellow manager's were offered all three and refused with a bare error. */}
-                          {!r.isFieldDay && manageable && (
+                          {!r.isFieldDay && manageable && mayCorrect && (
                             <>
                               <button className="btn btn-sm" onClick={() => startEditRecord(r)}>Redaktə</button>
                               {r.checkOutAtUtc && <button className="btn btn-sm" onClick={() => void clearCheckout(r.recordId)}>Çıxışı sil</button>}
@@ -728,7 +791,9 @@ export function EmployeeProfilePage() {
       <div className="card card-pad">
         <div className="card-title">Cihazlar</div>
         {devices.length === 0 ? (
-          <p className="muted" style={{ fontSize: 13 }}>Bağlı cihaz yoxdur.</p>
+          <p className="muted" style={{ fontSize: 13 }}>
+            {failed.devices != null ? listFailureText(failed.devices) : 'Bağlı cihaz yoxdur.'}
+          </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {devices.map((d) => (

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../auth/AuthContext'
 import { fmtLongDateOfInstant } from '../../lib/format'
+import { listFailureText } from '../../lib/listFailure'
 import {
   createTask, deleteTask, getTasks, toggleTask, toggleTaskImportant,
   renameTask, setTaskDue, reorderTasks, type TaskRow, assignTask, getAssignable, type Assignable } from '../../api/tasks'
+import { matchesSearch } from '../../lib/searchFold'
 
 type Filter = 'mine' | 'today' | 'important' | 'planned' | 'all'
 
@@ -55,9 +57,12 @@ export function TasksPage() {
   const dateRef = useRef<HTMLInputElement>(null)
   const detDateRef = useRef<HTMLInputElement>(null)
 
+  // A board that did not load says so, rather than «Boşdur» over a team's whole to-do list.
+  const [failed, setFailed] = useState<number | null>(null)
   async function load() {
     const { status, data } = await getTasks()
     if (status === 200 && Array.isArray(data)) setTasks(data)
+    setFailed(status === 200 ? null : status)
     setLoading(false)
   }
   useEffect(() => { void load() }, [])
@@ -164,15 +169,14 @@ export function TasksPage() {
   }
   const selDue = selTask ? dueInfo(selTask.dueDate) : null
   // Sorted so the two rows that matter are visible without scrolling: the current assignee, then me.
-  // Azerbaijani casing (İ/i, I/ı) needs the locale-aware lowercase or "İlqar" never matches "ilqar".
-  const az = (s: string) => s.toLocaleLowerCase('az')
   const shownPeople = selTask
     ? [...people]
         .sort((a, b) => {
           const rank = (p: Assignable) => (p.id === selTask.assignedToEmployeeId ? 0 : p.id === employeeId ? 1 : 2)
           return rank(a) - rank(b)
         })
-        .filter((p) => !personQ.trim() || az(p.name).includes(az(personQ.trim())))
+        // Azerbaijani casing (İ/i, I/ı) by the product's one search rule.
+        .filter((p) => matchesSearch(personQ, p.name))
     : []
 
   return (
@@ -207,6 +211,8 @@ export function TasksPage() {
 
         {loading ? (
           <div className="tdx-empty">Yüklənir…</div>
+        ) : failed != null ? (
+          <div className="tdx-empty">{listFailureText(failed)}</div>
         ) : open.length === 0 && done.length === 0 ? (
           <div className="tdx-empty"><div style={{ fontSize: 30 }}>{listMeta.icon}</div><div style={{ fontWeight: 600, marginTop: 6 }}>Boşdur</div><div className="tdx-mut" style={{ fontSize: 13 }}>Bu siyahıda tapşırıq yoxdur.</div></div>
         ) : (

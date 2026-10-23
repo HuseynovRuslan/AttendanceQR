@@ -1,11 +1,13 @@
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
@@ -39,6 +41,7 @@ public class AbsenceMarksController : ControllerBase
     }
 
     /// <summary>One employee's marked days, recent first — so a profile can show them and undo one.</summary>
+    [Permission(AccessPermissions.AttendanceView)]
     [HttpGet("employee/{employeeId:guid}")]
     public async Task<IActionResult> ForEmployee(Guid employeeId)
     {
@@ -63,12 +66,18 @@ public class AbsenceMarksController : ControllerBase
     /// and a leave is a decision that they need not have; overruling either from here would let one
     /// screen quietly contradict another, and the one being contradicted is the one holding proof.
     /// </summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpPost]
     public async Task<IActionResult> Mark([FromBody] AbsenceMarkRequest request)
     {
         var ct = HttpContext.RequestAborted;
+        // The note IS the reason since 2026-10-15 — a Qayıb docks a day's pay, and says why.
+        if (CorrectionReason.Clean(request.Note) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
+        if (request.EmployeeId == User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(4)); // company day, near enough for a guard
@@ -85,8 +94,7 @@ public class AbsenceMarksController : ControllerBase
                      && l.FromDate <= request.Date && l.ToDate >= request.Date, ct))
             return BadRequest(new { error = "HasLeave" });
 
-        var note = request.Note?.Trim();
-        note = string.IsNullOrEmpty(note) ? null : note[..Math.Min(note.Length, 200)];
+        var note = reason[..Math.Min(reason.Length, 200)]; // the column holds 200; the audit line keeps all of it
 
         var existing = await _db.AbsenceMarks
             .FirstOrDefaultAsync(a => a.EmployeeId == request.EmployeeId && a.Date == request.Date, ct);
@@ -108,6 +116,8 @@ public class AbsenceMarksController : ControllerBase
             existing.CreatedAtUtc = DateTime.UtcNow;
         }
 
+        _db.AuditLogs.Add(CorrectionReason.Audit(request.EmployeeId, User.EmployeeId(),
+            HttpContext.Connection.RemoteIpAddress?.ToString(), $"Qayıb qoyuldu {request.Date:yyyy-MM-dd}", reason));
         await _db.SaveChangesAsync(ct);
 
         // Rebuild the day so the tabel and the reports agree at once. A no-op for today by design —
@@ -118,12 +128,20 @@ public class AbsenceMarksController : ControllerBase
     }
 
     /// <summary>Takes the mark off again and rebuilds the day without it.</summary>
+    [Permission(AccessPermissions.AttendanceCorrect)]
     [HttpDelete]
-    public async Task<IActionResult> Unmark([FromQuery] Guid employeeId, [FromQuery] DateOnly date)
+    public async Task<IActionResult> Unmark(
+        [FromQuery] Guid employeeId, [FromQuery] DateOnly date,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] AttendanceCorrectionRequest? request)
     {
         var ct = HttpContext.RequestAborted;
+        // In the body, not the query string: free text about a person does not belong in a URL.
+        if (CorrectionReason.Clean(request?.Reason) is not { } reason)
+            return BadRequest(new { error = CorrectionReason.Required });
 
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
+        if (employeeId == User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "OwnAttendance" });
+        if (!await LocationScopeRules.CanCorrectAttendanceAsync(_db, User.EmployeeId(), User.Role(), employeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var row = await _db.AbsenceMarks
@@ -132,6 +150,9 @@ public class AbsenceMarksController : ControllerBase
             return NotFound(new { error = "NotFound" });
 
         _db.AbsenceMarks.Remove(row);
+        _db.AuditLogs.Add(CorrectionReason.Audit(employeeId, User.EmployeeId(),
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            $"Qayıb götürüldü {date:yyyy-MM-dd} (qoyulanda: {row.Note ?? "—"})", reason));
         await _db.SaveChangesAsync(ct);
         await _summaries.GenerateForDateAsync(date, ct);
 

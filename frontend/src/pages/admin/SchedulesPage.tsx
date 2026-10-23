@@ -4,10 +4,10 @@ import {
   createSchedule,
   getAdminLocations,
   deleteSchedule,
-  getEmployees,
+  getAllEmployees,
   getSchedules,
   updateSchedule,
-  type AdminEmployee,
+  type AdminEmployeeRow,
   type Schedule,
   type ScheduleInput,
 } from '../../api/admin'
@@ -18,9 +18,10 @@ import {
   getManagerSchedules,
   updateManagerSchedule,
 } from '../../api/manager'
-import { useAuth } from '../../auth/AuthContext'
+import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
+import { listFailureText } from '../../lib/listFailure'
 
 /**
  * Named shifts ("Növbələr") — hours, working days and an optional rotation, defined once and assigned
@@ -83,7 +84,10 @@ const EMPTY: FormState = {
 }
 
 export function SchedulesPage() {
-  const { role } = useAuth()
+  // The shifts' shape by «schedules.view» — in Enforced the narrowed one for anybody but the Company
+  // administrator; the writes are «schedules.manage» (see mayManage below).
+  const role = useScopedRole('schedules.view')
+  const mayManage = useHolds('schedules.manage', true)
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
   const isManager = role === 'Manager'
   // Same screen, different surface: a manager's writes are scope-checked server-side.
@@ -97,14 +101,14 @@ export function SchedulesPage() {
       }
     : {
         list: getSchedules,
-        staff: getEmployees,
+        staff: getAllEmployees,
         create: createSchedule,
         update: updateSchedule,
         remove: deleteSchedule,
       }
 
   const [rows, setRows] = useState<Schedule[]>([])
-  const [employees, setEmployees] = useState<AdminEmployee[]>([])
+  const [employees, setEmployees] = useState<AdminEmployeeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -116,11 +120,14 @@ export function SchedulesPage() {
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
+  // The shift list's own request failed — «Növbə yoxdur» over it would invite making shifts that exist.
+  const [listFailed, setListFailed] = useState<number | null>(null)
   async function refresh() {
     setLoading(true)
     const [s, e] = await Promise.all([api.list(), api.staff()])
     if (s.status === 200 && Array.isArray(s.data)) setRows(s.data as Schedule[])
-    if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data as AdminEmployee[])
+    setListFailed(s.status === 200 ? null : s.status)
+    if (e.status === 200 && Array.isArray(e.data)) setEmployees(e.data as AdminEmployeeRow[])
     setLoading(false)
   }
 
@@ -264,7 +271,7 @@ export function SchedulesPage() {
           növbədəki <b>bütün</b> işçilərə — keçmiş günlərin hesabatına da — təsir edir.
           {isManager && ' Başqa filialın işçisi olan növbəni dəyişə bilməzsiniz.'}
         </p>
-        <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>
+        {mayManage && <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>}
       </div>
 
       {/* Ərazi üzrə ayır: filter the per-shift counts and the expander to one branch. */}
@@ -456,7 +463,10 @@ export function SchedulesPage() {
       )}
 
       {loading && <div className="card card-pad muted">Yüklənir…</div>}
-      {!loading && rows.length === 0 && (
+      {!loading && listFailed != null && (
+        <div className="card card-pad muted" style={{ textAlign: 'center' }}>{listFailureText(listFailed)}</div>
+      )}
+      {!loading && listFailed == null && rows.length === 0 && (
         <div className="card card-pad muted" style={{ textAlign: 'center' }}>
           Növbə yoxdur. «Yeni növbə» ilə başlayın.
         </div>
@@ -512,8 +522,10 @@ export function SchedulesPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
-                          <button className="btn btn-sm" onClick={() => startEdit(s)}>Redaktə</button>
-                          <button className="btn btn-sm btn-danger" onClick={() => void remove(s)}><IconTrash /></button>
+                          {mayManage && <>
+                            <button className="btn btn-sm" onClick={() => startEdit(s)}>Redaktə</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => void remove(s)}><IconTrash /></button>
+                          </>}
                         </div>
                       </td>
                     </tr>

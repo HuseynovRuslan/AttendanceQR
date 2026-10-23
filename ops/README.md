@@ -152,6 +152,10 @@ of the release ceremony the app does:
 
     cd /opt/attendanceqr && git pull && bash ops/build-landing.sh
 
+That pull also moves the checkout past the app version that is running. Automated releases
+([CLOUD-DEPLOY.md](CLOUD-DEPLOY.md)) accept that only while the pull brought nothing but `landing/`
+changes; if it brought app changes too, deploy them by hand (`sudo ops/deploy-prod.sh`) first.
+
 If the Caddyfile changed in the same pull, `caddy reload` will NOT pick it up — the file is
 bind-mounted, and git replaces its inode on pull, so anything run inside the container (validate
 included) still reads the OLD file. Validate the new file from the host with a throwaway container,
@@ -228,3 +232,9 @@ production during a quiet hour, with the change already proven everywhere else.
 Never deploy to production between **07:30–09:30** or **17:00–19:00**. Those are the scan peaks: a
 mistake there means people cannot record that they came to work, and the record is what they are
 paid on.
+
+Production releases go through the manual GitHub Actions workflow — from Claude Code Cloud, a local Claude
+Code session, `gh` or the GitHub website alike: preflight first, a person approves, the server checks
+again and deploys exactly one commit of `main`. Setup, modes and what is refused where:
+[CLOUD-DEPLOY.md](CLOUD-DEPLOY.md). `ops/deploy-prod.sh` stays the one script that does the work, by hand
+or from that workflow.

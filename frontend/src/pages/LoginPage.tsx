@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { endedSessionNotice, forgetEndedSessionNotice } from '../api/client'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { login, appLogin } from '../api/auth'
 import { isAppMode, isNativeApp } from '../lib/host'
@@ -40,6 +41,9 @@ export function LoginPage() {
   const [identifierError, setIdentifierError] = useState<string | null>(null)
   const [pinError, setPinError] = useState<string | null>(null)
   const [qrNoticeVisible, setQrNoticeVisible] = useState(false)
+  // Why this screen is here, when a view session from the group board has just run out — said once.
+  const [notice] = useState(endedSessionNotice)
+  useEffect(() => { forgetEndedSessionNotice() }, [])
   const [loading, setLoading] = useState(false)
 
   /* Error feedback */
@@ -192,6 +196,13 @@ export function LoginPage() {
       <p className="auth-sub auth-rise" style={riseOrder(2)}>
         Nömrənizi və 4 rəqəmli PIN-inizi yazın
       </p>
+
+      {/* Baxış sessiyası bitib bu ekrana qaytarılıbsa, səbəbi bir dəfə deyirik. Xəta çıxanda gizlənir. */}
+      {notice && !formAlert && !pinError && (
+        <div className="fb fb-info auth-rise" style={{ ...riseOrder(2.5), marginBottom: 14 }}>
+          <span>{notice}</span>
+        </div>
+      )}
 
       {/* noValidate: brauzerin öz "Bu sahəni doldurun" balonları söndürülür — xətaları biz sahənin
           altında, Azərbaycan dilində göstəririk. */}

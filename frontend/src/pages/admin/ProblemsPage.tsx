@@ -36,6 +36,12 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   // apply, which is why they are not folded into the generic DeviceMismatch.
   SharedDeviceNotAllowed: { label: 'Ortaq cihaz icazəsi yoxdur', cls: 'bg-amber-100 text-amber-700', blocking: true },
   DeviceAccountLimit: { label: 'Cihazdakı hesab həddi dolub', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  // The two reasons an unknown phone is refused that say what to do. Both read «Cihaz uyğun deyil»
+  // until 03.10.2026, which hid that eleven people had only spent their allowance of new phones: the
+  // fix for that is approving the request and a word about how they open the app, not a stolen-phone
+  // hunt. A revoked phone, by contrast, is one an admin removed on purpose.
+  DeviceBindLimit: { label: 'Yeni telefon həddi dolub', cls: 'bg-red-100 text-red-700', blocking: true },
+  DeviceRevoked: { label: 'Ləğv edilmiş telefon', cls: 'bg-red-100 text-red-700', blocking: true },
   // Measured, warned about, but never blocked — so it isn't a "could not scan" reason.
   GpsInaccurate: { label: 'GPS dəqiq deyil', cls: 'bg-amber-100 text-amber-700' },
   // Reported by the phone for a non-GPS failure — the scan never became a record.

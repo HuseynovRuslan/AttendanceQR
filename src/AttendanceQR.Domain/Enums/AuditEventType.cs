@@ -59,5 +59,43 @@ public enum AuditEventType
     // the account that CHANGED, naming the manager in the reason: since 2026-09-14 a manager may do this
     // to a fellow manager anywhere in the company, and a PIN they reset is a PIN they know — so the row
     // is what turns a quiet sign-in as somebody else into a question with a name and a time on it.
-    CredentialChangedByManager = 18
+    CredentialChangedByManager = 18,
+
+    // A branch's managers (or, without one, the company's admins) were pushed about this employee:
+    // refused for a reason they can fix on the spot, or asking for a new phone. Written against the
+    // employee, the reason «Kind|reached/recipients who». It is also what keeps the alert to once per
+    // person, problem and day — see StaffAlertDispatcher.
+    StaffAlertSent = 19,
+
+    // A structure was created, renamed, archived or restored. Written against the employee who did it;
+    // the reason names the structure and what changed.
+    StructureChanged = 20,
+
+    // A branch was put into a structure, moved to another, or taken out of one. Written against the
+    // employee who did it, the reason «Branch: Old → New». Who sees a branch follows its structure once
+    // structure-wide access exists, so every move is on the record.
+    LocationStructureChanged = 21,
+
+    // A role was given to somebody over an area, or taken away (Phase 3, AdminAccessController). Written
+    // against the person who RECEIVED or LOST it; the reason «By {who}: {role} @ {area}». Who could do what
+    // on a given day is answerable from these lines and the assignment rows, which are revoked, never deleted.
+    AccessGranted = 22,
+    AccessRevoked = 23,
+
+    // A role itself was created, edited, archived or restored — its permission set is everybody's who holds
+    // it, so every change is on the record. Written against the employee who did it.
+    AccessRoleChanged = 24,
+
+    // Somebody corrected their OWN day — allowed only where the company had nobody else who could (see
+    // AttendanceSelfCorrection). Its own event, never folded into RecordEditedByAdmin: «who fixed their own pay»
+    // is one search. The reason «{kind}: {before} → {after}. Səbəb: {why}»; the same times are kept for good in
+    // AttendanceSelfCorrections.
+    AttendanceSelfCorrected = 25,
+
+    // A self-correction that waited for approval was approved (and applied) or rejected. Written against the
+    // person whose day it is; the reason names the approver and their reason.
+    SelfCorrectionDecided = 26,
+
+    // The company switched «a self-correction waits for a second approval» on or off. Written against who did it.
+    SelfCorrectionSettingChanged = 27
 }

@@ -18,13 +18,20 @@ public enum ReviewDeviceChangeOutcome
 public sealed record RequestDeviceChangeResult(RequestDeviceChangeOutcome Outcome, Guid? RequestId);
 
 /// <summary>A pending request enriched for admin review — requester name and current vs new device.</summary>
+/// <param name="RecentNewDevices">New devices the employee arrived with in the last thirty days,
+/// adopted or approved — see <see cref="DeviceBindingAllowance.RecentNewDevicesAsync"/>.</param>
+/// <param name="AutoBindLimitReached">The poster has stopped adopting new devices for this employee —
+/// the same test the scan refuses on. This request is then not a new phone but the allowance running
+/// out, and approving it is what starts the allowance again.</param>
 public sealed record PendingDeviceChangeDto(
     Guid RequestId,
     Guid EmployeeId,
     string EmployeeName,
     string? CurrentDeviceFingerprint,
     string NewDeviceFingerprint,
-    DateTime RequestedAtUtc);
+    DateTime RequestedAtUtc,
+    int RecentNewDevices,
+    bool AutoBindLimitReached);
 
 /// <summary>
 /// Business logic for the device-change flow. Kept out of the controllers, which only translate
