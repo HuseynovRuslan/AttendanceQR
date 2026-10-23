@@ -332,7 +332,8 @@ ideaflow.qrlog.az {
 }
 
 # ==================== MenyuQR (moved from Coolify box 89.167.122.64, 2026-09-21) ====================
-# Six apps behind this Caddy on the shared attendanceqr_default network. Domains unchanged
+# Six apps behind this Caddy on the shared attendanceqr_default network, plus The Golden Quail's
+# quail-api + quail-web (added 2026-10-20, served under menyuqr.com/quail). Domains unchanged
 # (menyuqr.com @ Hostinger, *.bahram.site @ Namecheap); only the DNS A records move to this server.
 # Excluded on purpose: p109 (.NET) + k4nx — abandoned uuid.bahram.site deploys.
 #
@@ -349,6 +350,20 @@ menyuqr.com, www.menyuqr.com {
 	}
 	handle_path /driver-game-center* {
 		reverse_proxy gamecenter-web:3000
+	}
+	# The Golden Quail (added 2026-10-20): its API lives under the menu's own prefix, so it needs
+	# no DNS record of its own. One `handle` keeps the order explicit — inside `route` the
+	# directives run as written, so /quail/api, /quail/uploads and /quail/ws reach the API before
+	# the catch-all SPA. strip_prefix leaves /api/... intact for the API, and gives the SPA's nginx
+	# its own root, as handle_path does for the two apps above.
+	handle /quail* {
+		route {
+			uri strip_prefix /quail
+			reverse_proxy /api/* quail-api:3000
+			reverse_proxy /uploads/* quail-api:3000
+			reverse_proxy /ws quail-api:3000
+			reverse_proxy quail-web:3000
+		}
 	}
 	handle {
 		reverse_proxy menyuqr-web:3000
@@ -373,4 +388,15 @@ coffee-menu.bahram.site {
 
 multiposting.bahram.site {
 	reverse_proxy multiposting:4000
+}
+
+# Restored 2026-10-20 from the RUNNING config: this block was appended to the server's copy of this file on
+# 2026-10-07 (BaxOrders repo, deploy/caddy-block) but never reached the repository, so the 2026-10-15 checkout
+# dropped it from disk while Caddy kept serving it from the old inode. Here it survives the next recreate.
+# BaxOrders (Bakı Abadlıq Xidməti material orders) — separate project, own stack in /opt/baxorders
+# (deploy/compose.yml in its repository). Only its web container joins attendanceqr_default, under the alias
+# below; its API and PostgreSQL are on the stack's private network and publish no port.
+order.qrlog.az {
+	encode zstd gzip
+	reverse_proxy baxorders-web:8080
 }
