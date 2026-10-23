@@ -345,11 +345,14 @@ public class ImpersonationCredentialGuardTests
     }
 
     [Fact]
-    public async Task An_admin_signed_in_as_themselves_can_still_reset_their_own_pin()
+    public async Task An_admin_signed_in_as_themselves_cannot_reset_their_own_pin()
     {
+        // It used to be allowed. The owner closed it on 2026-09-18: the reset ends the admin's own
+        // session and the temporary PIN vanishes with the page — an admin locked themselves out.
         using var h = new Harness();
 
-        Assert.IsType<OkObjectResult>(await h.Admin(impersonating: false).ResetPin(h.BorrowedAdminId));
+        var obj = Assert.IsAssignableFrom<ObjectResult>(await h.Admin(impersonating: false).ResetPin(h.BorrowedAdminId));
+        Assert.Contains("CannotResetOwnPin", obj.Value!.ToString());
     }
 
     [Fact]

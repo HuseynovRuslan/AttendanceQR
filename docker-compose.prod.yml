@@ -58,6 +58,12 @@ services:
       # "true" lets every company on this system use the shortcut, which matches the quiz itself:
       # anyone can play by typing their details in. Leave it unset to fall back to the list above.
       Kitabxana__AnyTenant: ${Kitabxana__AnyTenant:-}
+      # "QRLog ilə daxil ol" on MEYDAN (meydan.qrlog.az) — the Kitabxana vouching generalised per app
+      # (ExternalSignInController). The secret must equal MEYDAN's QrlogSso__VouchSecret; the confirm URL is
+      # where this server posts the signed identity. All empty = the app does not exist here (404 / 503).
+      ExternalSignIn__Apps__meydan__VouchSecret: ${ExternalSignIn__Apps__meydan__VouchSecret:-}
+      ExternalSignIn__Apps__meydan__ConfirmUrl: ${ExternalSignIn__Apps__meydan__ConfirmUrl:-}
+      ExternalSignIn__Apps__meydan__AnyTenant: ${ExternalSignIn__Apps__meydan__AnyTenant:-}
       # Behind Caddy the client IP arrives in X-Forwarded-For; without this the audit log would record
       # the proxy's address instead of the phone's.
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"

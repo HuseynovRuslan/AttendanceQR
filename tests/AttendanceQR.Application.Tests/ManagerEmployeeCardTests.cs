@@ -291,17 +291,15 @@ public class ManagerEmployeeCardTests
     }
 
     [Fact]
-    public async Task A_peer_manager_is_visible_but_not_manageable()
+    public async Task A_peer_manager_is_manageable()
     {
-        // The seam this whole file exists to hold open: the card loads, and the edit and reset-PIN
-        // buttons must not. If this flips to true the screen offers actions the server will 403 —
-        // and, worse, invites someone to look for a way to make them stick.
+        // 2026-09-18, the owner's call: a fellow MANAGER is reachable company-wide (IsColleague).
         using var h = new Harness();
 
         var card = await h.CardAsync(h.PeerManagerId);
 
         Assert.NotNull(card);
-        Assert.Equal(false, Value(card!, "manageable"));
+        Assert.Equal(true, Value(card!, "manageable"));
     }
 
     [Fact]
@@ -339,7 +337,7 @@ public class ManagerEmployeeCardTests
         // draft of the endpoint shipped the leak and no test noticed.
         using var h = new Harness();
 
-        foreach (var id in new[] { h.PeerManagerId, h.SameBranchAdminId })
+        foreach (var id in new[] { h.SameBranchAdminId })
         {
             var card = await h.CardAsync(id);
             Assert.Null(Value(card!, "phoneNumber"));
@@ -396,8 +394,10 @@ public class ManagerEmployeeCardTests
     }
 
     [Fact]
-    public async Task A_colleagues_phone_and_email_stay_off_the_roster()
+    public async Task An_admins_phone_and_email_stay_off_the_roster()
     {
+        // A fellow manager's contacts DO come through since 2026-09-18 — they can be edited now, and an
+        // edit form without the number is no edit form. An admin's never do.
         // The hole the review caught on the single card in the morning, and widening the list is
         // exactly how it would have been reopened: a phone number and an e-mail are half of a
         // colleague's login, and this screen is a list somebody scrolls.
@@ -405,9 +405,8 @@ public class ManagerEmployeeCardTests
 
         var rows = Roster(await h.Controller.Employees(false));
 
-        Assert.Null(Value(Row(rows, h.PeerManagerId)!, "phoneNumber"));
-        Assert.Null(Value(Row(rows, h.PeerManagerId)!, "email"));
         Assert.Null(Value(Row(rows, h.SameBranchAdminId)!, "phoneNumber"));
+        Assert.Null(Value(Row(rows, h.SameBranchAdminId)!, "email"));
         // Their own staff are unaffected — this is the row a manager works with every day.
         Assert.NotNull(Value(Row(rows, h.StaffId)!, "phoneNumber"));
     }
@@ -423,7 +422,7 @@ public class ManagerEmployeeCardTests
         var rows = Roster(await h.Controller.Employees(false));
 
         Assert.Equal(true, Value(Row(rows, h.StaffId)!, "manageable"));
-        Assert.Equal(false, Value(Row(rows, h.PeerManagerId)!, "manageable"));
+        Assert.Equal(true, Value(Row(rows, h.PeerManagerId)!, "manageable"));   // a colleague
         Assert.Equal(false, Value(Row(rows, h.SameBranchAdminId)!, "manageable"));
         Assert.Equal(true, Value(Row(rows, h.PeerManagerId)!, "isColleague"));
         Assert.Equal(false, Value(Row(rows, h.StaffId)!, "isColleague"));

@@ -94,7 +94,7 @@ export function CredentialDesk() {
     <div className="card card-pad" style={{ marginBottom: 16 }}>
       <div className="card-title">PIN sıfırla · nömrəni dəyiş</div>
       <p className="muted" style={{ fontSize: 13, marginTop: 0, lineHeight: 1.6 }}>
-        Bütün şirkət üzrə — başqa ərazinin işçisi və ya həmkar menecer. Admin hesablarına aid deyil.
+        İşçilər — bütün şirkət üzrə; menecerlər — yalnız öz filiallarınızdakılar. Admin hesablarına aid deyil.
         Hər əməliyyat jurnala sizin adınızla yazılır.
       </p>
       <input

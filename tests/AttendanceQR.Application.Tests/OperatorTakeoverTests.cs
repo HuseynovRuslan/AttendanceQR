@@ -144,6 +144,22 @@ public class OperatorTakeoverTests
     // --- the tenant admin door (and, through it, an impersonating support session) ---------------
 
     [Fact]
+    public async Task An_admin_cannot_reset_their_own_pin()
+    {
+        // Staging, 2026-09-18: the reset ends the caller's own session and its temporary PIN vanishes
+        // with the page — the admin was locked out of their own company. «PIN dəyiş» is the way.
+        using var h = new Harness();
+
+        var result = await h.Admin(h.TenantAdminId).ResetPin(h.TenantAdminId);
+
+        var obj = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        Assert.Contains("CannotResetOwnPin", obj.Value!.ToString());
+        Assert.Equal("original-hash", h.Row(h.TenantAdminId).PasswordHash);
+        Assert.Equal(0, h.Row(h.TenantAdminId).TokenVersion);
+    }
+
+    [Fact]
     public async Task A_tenant_admin_cannot_reset_a_platform_operators_pin()
     {
         using var h = new Harness();

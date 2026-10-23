@@ -117,4 +117,14 @@ public class SplitShiftRulesTests
     {
         Assert.Equal(inside, SplitShiftRules.InWindow(At(at), At(start), At(end)));
     }
+
+    [Theory]
+    [InlineData(true, 1, true)]    // back from the field: one closed stretch, reopen
+    [InlineData(false, 1, false)]  // closed by the employee at the poster: finished
+    [InlineData(true, 2, false)]   // already two stretches: a third is a retry loop
+    [InlineData(true, 0, false)]   // nothing to reopen
+    public void Only_a_day_a_field_visit_closed_reopens(bool closedByField, int blocks, bool expected)
+    {
+        Assert.Equal(expected, SplitShiftRules.MayReopenAfterFieldVisit(closedByField, blocks));
+    }
 }

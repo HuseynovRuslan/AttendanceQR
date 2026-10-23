@@ -112,6 +112,13 @@ public static class LocationScopeRules
     /// manager valid targets), and self is NOT automatically included (managing means acting on another
     /// account; a manager's own visits go through the worker flow). Admin manages anyone in the tenant;
     /// tenant isolation itself comes from the global query filter on Employees. Fail-closed.
+    ///
+    /// One widening since, asked for by the owner (2026-09-18): a fellow MANAGER at one of the caller's
+    /// OWN branches — the colleague standing next to them, whose missed check-out, day off or «qayıb»
+    /// used to wait for the one admin. The branch rule still carries it: a manager at a branch the
+    /// caller does not run stays out of reach and out of sight (a first cut of this reached every
+    /// manager in the company, and the owner said no the same hour). What 2026-08-08 closed stays
+    /// closed: never an ADMIN, never the caller themself, and a role added later falls through to «no».
     /// </summary>
     public static async Task<bool> CanManageEmployeeAsync(
         AppDbContext db, Guid requesterId, EmployeeRole role, Guid targetEmployeeId, CancellationToken ct)
@@ -125,7 +132,11 @@ public static class LocationScopeRules
             .Where(e => e.Id == targetEmployeeId)
             .Select(e => new { e.LocationId, e.Role })
             .FirstOrDefaultAsync(ct);
-        if (target is null || target.Role != EmployeeRole.Employee)
+        if (target is null)
+            return false;
+        // Plain staff, or a fellow manager — never an admin, never oneself. Either way, only at a
+        // branch the caller manages (below).
+        if (target.Role == EmployeeRole.Manager ? targetEmployeeId == requesterId : target.Role != EmployeeRole.Employee)
             return false;
 
         var managed = await ManagedLocationIdsAsync(db, requesterId, ct);

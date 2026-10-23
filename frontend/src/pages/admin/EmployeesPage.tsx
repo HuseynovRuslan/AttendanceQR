@@ -187,6 +187,9 @@ export function EmployeesPage() {
   const [bulkShift, setBulkShift] = useState('')
   const navigate = useNavigate()
   const [filterLoc, setFilterLoc] = useState<string | null>(null)
+  // Leavers stay (their days are in the tabel and pay) but off the everyday list — «deaktiv etdim, adlar
+  // yenə qalır». One button shows them, to bring somebody back or delete a never-used account.
+  const [showLeft, setShowLeft] = useState(false)
   // "Bildirişsiz" — show only the people a reminder/announcement can NOT reach, so a manager can go
   // help them switch it on. A workforce that won't self-serve is what keeps reach stuck, and a name
   // list per branch is what actually converts.
@@ -712,7 +715,9 @@ ${back}`,
   }
 
   const q = search.trim().toLowerCase()
+  const leftCount = rows.filter((r) => !r.isActive).length
   const visible = rows.filter((r) => {
+    if (showLeft ? r.isActive : !r.isActive) return false
     if (filterLoc && r.locationId !== filterLoc) return false
     if (onlyNoPush && r.pushEnabled) return false
     // "Not started" = has never signed in and chosen their own PIN. Two different states mean the
@@ -771,6 +776,11 @@ ${back}`,
             style={{ width: 'auto', minWidth: 210, padding: '8px 12px' }}
           />
           {search && <button className="btn btn-sm" onClick={() => setSearch('')}>Təmizlə</button>}
+          {(leftCount > 0 || showLeft) && (
+            <button className={`btn btn-sm ${showLeft ? 'btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
+              {showLeft ? '← Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
+            </button>
+          )}
           <button className="btn" disabled={refBusy} onClick={onResetAllReferences} title="Bütün işçilərin referans (foto audit) şəklini sıfırla — hərə növbəti girişdə yenilənir">
             <IconRefresh /> Referansları sıfırla
           </button>
@@ -1853,7 +1863,8 @@ ${back}`,
                         {
                           label: 'PIN sıfırla',
                           icon: <IconPhone />,
-                          hidden: !e.activated,
+                          // Never one's own — the server refuses it (it would lock the admin out).
+                          hidden: !e.activated || e.id === myId,
                           onClick: () => onResetPin(e),
                           title: 'İşçi PIN-ini unudubsa — müvəqqəti PIN ver',
                         },

@@ -77,7 +77,10 @@ public class ManagerController : ControllerBase
     ///
     /// Outside the manager's reach (other branch, other tenant, nonexistent) → <paramref name="outOfScope"/>
     /// (default 404), so a manager cannot even probe for who exists elsewhere. Inside their branch but
-    /// wrong role (admin/manager/self) → 403, with no state touched and nothing sensitive returned.
+    /// wrong role (admin/self) → 403, with no state touched and nothing sensitive returned.
+    ///
+    /// Since 2026-09-18 (the owner's call) a fellow MANAGER at one of these branches qualifies too — see
+    /// <see cref="IsColleague"/>. Never an admin, never the caller, never another branch's manager.
     /// </summary>
     private async Task<(Employee? Employee, IActionResult? Error)> ManageableEmployeeAsync(
         Guid id, IActionResult? outOfScope = null)
@@ -87,6 +90,8 @@ public class ManagerController : ControllerBase
             e => e.Id == id && managed.Contains(e.LocationId), HttpContext.RequestAborted);
         if (target is null)
             return (null, outOfScope ?? NotFound(new { error = "EmployeeNotFound" }));
+        if (IsColleague(target, managed))
+            return (target, null);
         if (target.Role != EmployeeRole.Employee || target.Id == M15())
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagerCannotManageRole" }));
         // A platform operator can sit inside a tenant as an ordinary Employee row. Role and branch
@@ -98,8 +103,9 @@ public class ManagerController : ControllerBase
     }
 
     /// <summary>
-    /// Who a manager may hand a new PIN or a new login number: ANY plain employee or fellow MANAGER in
-    /// the company — not only the people at their own branches.
+    /// Who a manager may hand a new PIN or a new login number: ANY plain employee in the company — not
+    /// only the people at their own branches — and a fellow MANAGER at one of their own branches (the
+    /// owner narrowed the managers on 2026-09-18: «qıraq filialların menecerlərini görməməlidir»).
     ///
     /// Wider than <see cref="ManageableEmployeeAsync"/> on purpose, and for these two actions only. The
     /// owner asked for it outright (2026-09-14): a manager whose colleague has lost a phone or forgotten a
@@ -118,12 +124,32 @@ public class ManagerController : ControllerBase
         var target = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id, HttpContext.RequestAborted);
         if (target is null)
             return (null, NotFound(new { error = "EmployeeNotFound" }));
+        // A fellow manager only at one of the caller's OWN branches (the owner, 2026-09-18: «qıraq
+        // filialların menecerlərini görməməlidir»). Another branch's manager reads as not found — the
+        // same answer as somebody who does not exist, so the desk cannot be used to probe for them.
+        // Plain staff stay company-wide: that is what 2026-09-14 was for.
+        if (target.Role == EmployeeRole.Manager && target.Id != M15()
+            && !(await ManagedLocationIdsAsync()).Contains(target.LocationId))
+            return (null, NotFound(new { error = "EmployeeNotFound" }));
         if (target.Role is not (EmployeeRole.Employee or EmployeeRole.Manager) || target.Id == M15())
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "ManagerCannotManageRole" }));
         if (_operatorIds.Contains(target.Id))
             return (null, StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" }));
         return (target, null);
     }
+
+    /// <summary>
+    /// A fellow manager this caller may act on: Role == Manager, clocking in at one of the caller's OWN
+    /// branches, not the caller, not a platform operator. The owner's call (2026-09-18): the colleague
+    /// standing next to them, whose missed check-out, day off or «qayıb» used to wait for the one admin.
+    ///
+    /// Branch-bound on purpose. A first cut reached every manager in the company and the owner said no
+    /// within the hour: another branch's managers are neither to be edited nor seen. An ADMIN is never
+    /// a colleague — that is the 2026-08-08 takeover, still shut.
+    /// </summary>
+    private bool IsColleague(Employee e, List<Guid> managed) =>
+        e.Role == EmployeeRole.Manager && e.Id != M15() && !_operatorIds.Contains(e.Id)
+        && managed.Contains(e.LocationId);
 
     /// <summary>Records who changed whose credentials — the other half of <see cref="CredentialTargetAsync"/>.</summary>
     private async Task AuditCredentialChangeAsync(Employee target, string what)
@@ -384,6 +410,7 @@ public class ManagerController : ControllerBase
         // it can only ever add the caller's OWN row — never a peer's.
         var self = M15();
         var managed = await ManagedLocationIdsAsync();
+        var operatorIds = _operatorIds;
         var locationNames = await _db.Locations
             .Where(l => managed.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id, l => l.Name, HttpContext.RequestAborted);
@@ -407,7 +434,9 @@ public class ManagerController : ControllerBase
                 isSelf = e.Id == self,
                 // Whether this row may be acted on — the screen greys out what it cannot change, and
                 // the single-card endpoint answers the same question the same way.
-                manageable = e.Role == EmployeeRole.Employee && e.Id != self,
+                // Plain staff and — since 2026-09-18 — a fellow manager, both at these branches only.
+                manageable = (e.Role == EmployeeRole.Employee || (e.Role == EmployeeRole.Manager && !operatorIds.Contains(e.Id)))
+                             && e.Id != self && managed.Contains(e.LocationId),
                 isColleague = e.Role != EmployeeRole.Employee && e.Id != self,
                 fullName = e.FullName,
                 firstName = e.FirstName,
@@ -419,8 +448,8 @@ public class ManagerController : ControllerBase
                 // A colleague's phone and e-mail are half their login credentials, and the review
                 // caught exactly this on the single card in the morning. Widening the roster must not
                 // reopen it, so contact details ride only on rows this manager may act on.
-                phoneNumber = (e.Role == EmployeeRole.Employee || e.Id == self) ? e.PhoneNumber : null,
-                email = (e.Role == EmployeeRole.Employee || e.Id == self) ? e.Email : null,
+                phoneNumber = (e.Role != EmployeeRole.Admin && !operatorIds.Contains(e.Id)) || e.Id == self ? e.PhoneNumber : null,
+                email = (e.Role != EmployeeRole.Admin && !operatorIds.Contains(e.Id)) || e.Id == self ? e.Email : null,
                 locationId = e.LocationId,
                 birthDate = e.BirthDate,
                 birthYear = e.BirthYear,
@@ -494,11 +523,13 @@ public class ManagerController : ControllerBase
         // roster filters Role==Employee because "listing them would only leak their contact details
         // behind buttons that 403", and LeaveSubjectList exists as a name-only endpoint on the same
         // argument. A first draft of this card reversed both without noticing.
-        var mayAct = e.Role == EmployeeRole.Employee && e.Id != M15() && managed.Contains(e.LocationId);
+        var mayAct = IsColleague(e, managed)
+                     || (e.Role == EmployeeRole.Employee && e.Id != M15() && managed.Contains(e.LocationId));
         var ownContacts = mayAct || e.Id == M15();
         // The PIN / number actions reach further than the full edit — see CredentialTargetAsync — so a
-        // fellow manager's card offers «PIN sıfırla» while «Redaktə et» stays off.
-        var mayResetCredentials = (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)
+        // plain employee at another branch still gets «PIN sıfırla» without «Redaktə et».
+        var mayResetCredentials = (e.Role == EmployeeRole.Employee
+                                   || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
                                   && e.Id != M15() && !_operatorIds.Contains(e.Id);
 
         return Ok(new
@@ -536,6 +567,8 @@ public class ManagerController : ControllerBase
             // Whether this manager may ACT on this person is a separate question, answered per write.
             manageable = mayAct,
             credentialsManageable = mayResetCredentials,
+            // A fellow manager: editable, but not switched off from here — the card hides that button.
+            isColleague = IsColleague(e, managed),
         });
     }
 
@@ -612,9 +645,15 @@ public class ManagerController : ControllerBase
             return denied!;
         if (string.IsNullOrWhiteSpace(request.FullName))
             return BadRequest(new { error = "NameRequired" });
-        // Moving is allowed, but only between branches this same manager oversees.
-        if (!await ManagesLocationAsync(request.LocationId))
+        var colleague = employee.Role == EmployeeRole.Manager;
+        // Moving is allowed, but only between branches this same manager oversees. A colleague may stay
+        // where they are — their branch is usually not this manager's — but not be moved by them.
+        if (!(colleague && request.LocationId == employee.LocationId) && !await ManagesLocationAsync(request.LocationId))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "LocationNotManaged" });
+        // Switching a manager OFF locks them out of the company. That stays the admin's decision: a
+        // colleague's edit is for their details and their days, not for removing them.
+        if (colleague && request.IsActive != employee.IsActive)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotDeactivateManager" });
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
@@ -658,8 +697,13 @@ public class ManagerController : ControllerBase
         if (await ApplyScheduleAsync(employee, request.ScheduleId) is { } scheduleError)
             return BadRequest(new { error = scheduleError });
         // Deliberately NOT touched: Role, MonthlySalary. A manager cannot change either, so the fields
-        // are simply never read from the request.
+        // are simply never read from the request. Nor the branches a colleague manages — that is not in
+        // the request at all.
         await RegisterPositionAsync(employee.Position, ct);
+        // A peer's account is not the caller's own staff: every change to one is written down against
+        // it, naming who made it, same as a PIN reset.
+        if (colleague)
+            await AuditCredentialChangeAsync(employee, "Profil redaktə olundu");
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { id = employee.Id });
@@ -733,10 +777,13 @@ public class ManagerController : ControllerBase
         var lowered = term.ToLower();
         var digits = new string(term.Where(char.IsDigit).ToArray());
         var byPhone = digits.Length >= 3;
+        var managed = await ManagedLocationIdsAsync();
 
         var rows = await _db.Employees
             .Where(e => e.IsActive && e.Id != self
-                        && (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)
+                        // Plain staff anywhere; a fellow manager only at the caller's own branches.
+                        && (e.Role == EmployeeRole.Employee
+                            || (e.Role == EmployeeRole.Manager && managed.Contains(e.LocationId)))
                         && !_operatorIds.Contains(e.Id)
                         && (e.FullName.ToLower().Contains(lowered)
                             || (byPhone && e.PhoneNumber != null && e.PhoneNumber.Contains(digits))))

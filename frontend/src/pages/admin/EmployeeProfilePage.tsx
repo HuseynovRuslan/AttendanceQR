@@ -59,7 +59,7 @@ const errorCodeOf = (data: unknown) =>
 export function EmployeeProfilePage() {
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
-  const { role } = useAuth()
+  const { role, employeeId: myId } = useAuth()
   const isManager = role === 'Manager'
   /**
    * Whether this caller may ACT on the person whose card is open.
@@ -70,6 +70,9 @@ export function EmployeeProfilePage() {
    * deactivate on an admin, and the refusal arrived as a 403 the person reads as a broken button.
    */
   const [manageable, setManageable] = useState(true)
+  // A fellow manager's card, opened by a manager: editable since 2026-09-18, but switching them off
+  // stays with the admin (the server refuses it), so the button is not offered.
+  const [colleague, setColleague] = useState(false)
   /** The PIN reset reaches further than the edit for a manager — a fellow manager, or staff at another
    *  area (see CredentialTargetAsync) — so it has its own answer instead of riding on `manageable`. */
   const [canResetPin, setCanResetPin] = useState(true)
@@ -146,8 +149,9 @@ export function EmployeeProfilePage() {
         : (empRes.data as unknown as AdminEmployee)
     setEmp(found)
     // The manager endpoint says so outright; an admin may act on anyone.
-    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean } | null
+    const flags = found as unknown as { manageable?: boolean; credentialsManageable?: boolean; isColleague?: boolean } | null
     setManageable(!isManager || flags?.manageable === true)
+    setColleague(isManager && flags?.isColleague === true)
     setCanResetPin(!isManager || flags?.manageable === true || flags?.credentialsManageable === true)
     if (!found) {
       setNotFound(true)
@@ -434,7 +438,9 @@ export function EmployeeProfilePage() {
                 Redaktə et
               </button>
             )}
-            {canResetPin && (
+            {/* Never on one's own card: the reset ends this very session and the temporary PIN vanishes
+                with it — an admin locked themselves out that way. Their own PIN is «PIN dəyiş». */}
+            {canResetPin && emp.id !== myId && (
               <button className="btn btn-sm" disabled={busy || !emp.activated} onClick={() => void onResetPin()}>PIN sıfırla</button>
             )}
             {/* Re-invite mints an activation link and has no manager endpoint; offering it would
@@ -442,7 +448,7 @@ export function EmployeeProfilePage() {
             {!emp.activated && !isManager && (
               <button className="btn btn-sm" disabled={busy} onClick={() => void onReinvite()}>Dəvət linki</button>
             )}
-            {manageable && (
+            {manageable && !colleague && (
               <button className={`btn btn-sm ${emp.isActive ? 'btn-outline-danger' : ''}`} disabled={busy} onClick={() => void onToggleActive()}>
                 {emp.isActive ? 'Deaktiv et' : 'Aktiv et'}
               </button>

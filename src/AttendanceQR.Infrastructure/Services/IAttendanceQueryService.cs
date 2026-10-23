@@ -27,7 +27,18 @@ public sealed record AttendanceRecordDto(
     /// entirely — while the payroll counted every minute of it. He assumed he had not been recorded
     /// and came to ask. The label is what tells him which kind of day it was.
     /// </summary>
-    bool IsFieldDay = false);
+    bool IsFieldDay = false,
+    /// <summary>
+    /// The day is finished as it stands, but a scan now would open another stretch of it — the server's
+    /// own answer, filled in only by <c>/me/today</c>.
+    ///
+    /// Without it the phone decided on its own that a closed day is a finished day, and hid the button.
+    /// A driver sent out at 08:00 whose poster check-in the field visit closed came back to the centre at
+    /// 12:00 and found no «Giriş et» at all: the server was ready to reopen his day
+    /// (ReopenedAfterFieldVisit), but in a month not one person reached it, because the screen had
+    /// already told them they were done. The phone must not second-guess the rule — it asks.
+    /// </summary>
+    bool MayScanAgain = false);
 
 /// <summary>Outcome of a resource-level access check for another employee's records.</summary>
 public enum AttendanceAccess

@@ -8,6 +8,7 @@ using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +45,7 @@ public class ManagerAccountScopeTests
         public Guid SameBranchAdminId { get; } = Guid.NewGuid();
         public Guid SameBranchManagerId { get; } = Guid.NewGuid();
         public Guid OtherBranchEmployeeId { get; } = Guid.NewGuid();
+        public Guid OtherBranchManagerId { get; } = Guid.NewGuid();
         public Guid OtherTenantEmployeeId { get; } = Guid.NewGuid();
 
         public Harness()
@@ -69,6 +71,7 @@ public class ManagerAccountScopeTests
             Db.Employees.Add(Person(SameBranchAdminId, "Filial Admini", EmployeeRole.Admin, BranchA, TenantA));
             Db.Employees.Add(Person(SameBranchManagerId, "İkinci Menecer", EmployeeRole.Manager, BranchA, TenantA));
             Db.Employees.Add(Person(OtherBranchEmployeeId, "Başqa Filial", EmployeeRole.Employee, BranchB, TenantA));
+            Db.Employees.Add(Person(OtherBranchManagerId, "Başqa Filialın Meneceri", EmployeeRole.Manager, BranchB, TenantA));
             // Deliberately placed at BranchA's OWN location id: only the tenant filter hides them,
             // which is exactly the boundary this row tests.
             Db.Employees.Add(Person(OtherTenantEmployeeId, "Başqa Tenant", EmployeeRole.Employee, BranchA, TenantB));
@@ -152,12 +155,51 @@ public class ManagerAccountScopeTests
     }
 
     [Fact]
-    public async Task Update_same_branch_manager_is_forbidden()
+    public async Task Update_a_fellow_manager_is_allowed_and_written_down()
     {
+        // 2026-09-18, the owner's call: a fellow MANAGER is reachable company-wide (IsColleague).
         using var h = new Harness();
-        var result = await h.Controller.UpdateEmployee(h.SameBranchManagerId, Edit("Ele Keçirilmiş", h.BranchA));
-        AssertForbidden(result);
-        Assert.Equal("İkinci Menecer", h.Row(h.SameBranchManagerId).FullName);
+        var result = await h.Controller.UpdateEmployee(h.SameBranchManagerId, Edit("Düzəldilmiş Menecer", h.BranchA));
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("Düzəldilmiş Menecer", h.Row(h.SameBranchManagerId).FullName);
+        Assert.Contains(h.Db.AuditLogs, a => a.EmployeeId == h.SameBranchManagerId
+            && a.EventType == AuditEventType.CredentialChangedByManager);
+    }
+
+    [Fact]
+    public async Task Another_branchs_manager_is_neither_seen_nor_touched()
+    {
+        // The owner, 2026-09-18, the hour after a first cut reached every manager in the company:
+        // «öz filialında olan menecerləri dedim, qıraq filialların menecerlərini görməməlidir».
+        using var h = new Harness();
+
+        var roster = ((System.Collections.IEnumerable)Assert.IsType<OkObjectResult>(await h.Controller.Employees()).Value!)
+            .Cast<object>().Select(r => (Guid)r.GetType().GetProperty("id")!.GetValue(r)!).ToList();
+        Assert.DoesNotContain(h.OtherBranchManagerId, roster);
+        Assert.Contains(h.SameBranchManagerId, roster);
+
+        Assert.IsType<NotFoundObjectResult>(await h.Controller.Employee(h.OtherBranchManagerId));
+        Assert.IsType<NotFoundObjectResult>(
+            await h.Controller.UpdateEmployee(h.OtherBranchManagerId, Edit("Ele Keçirilmiş", h.BranchB)));
+        Assert.Equal("Başqa Filialın Meneceri", h.Row(h.OtherBranchManagerId).FullName);
+
+        // The central rule every other surface asks (qayıb, closing a day, field visits, selfies).
+        var ct = CancellationToken.None;
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.OtherBranchManagerId, ct));
+        Assert.False(await LocationScopeRules.CanAccessEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.OtherBranchManagerId, ct));
+        Assert.True(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.SameBranchManagerId, ct));
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.ManagerId, ct));
+        Assert.False(await LocationScopeRules.CanManageEmployeeAsync(h.Db, h.ManagerId, EmployeeRole.Manager, h.SameBranchAdminId, ct));
+    }
+
+    [Fact]
+    public async Task A_fellow_manager_cannot_be_switched_off_by_a_colleague()
+    {
+        // Deactivating locks them out of the company — still the admin's decision.
+        using var h = new Harness();
+        var edit = Edit("İkinci Menecer", h.BranchA) with { IsActive = false };
+        AssertForbidden(await h.Controller.UpdateEmployee(h.SameBranchManagerId, edit));
+        Assert.True(h.Row(h.SameBranchManagerId).IsActive);
     }
 
     [Fact]
@@ -367,10 +409,15 @@ public class ManagerAccountScopeTests
 
         Assert.NotNull(Row(h.SameBranchEmployeeId));
         Assert.Equal(true, Field(Row(h.SameBranchEmployeeId)!, "manageable"));
+        // A fellow manager is actionable since 2026-09-18.
+        Assert.Equal(true, Field(Row(h.SameBranchManagerId)!, "manageable"));
 
         // Anything else at the branch is visible and read-only; anything off it is still absent.
         foreach (var r in rows)
-            if ((Guid)r.GetType().GetProperty("id")!.GetValue(r)! != h.SameBranchEmployeeId)
+        {
+            var id = (Guid)r.GetType().GetProperty("id")!.GetValue(r)!;
+            if (id != h.SameBranchEmployeeId && id != h.SameBranchManagerId)
                 Assert.Equal(false, Field(r, "manageable"));
+        }
     }
 }

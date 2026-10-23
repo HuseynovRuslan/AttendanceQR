@@ -19,6 +19,7 @@ import { fmtDayMonth } from '../lib/format'
 import { Avatar } from '../components/Avatar'
 import { AvatarPickerSheet } from '../components/AvatarPickerSheet'
 import { InstallAppCard } from '../components/InstallAppCard'
+import { OfflineScanHistory } from '../components/OfflineScanHistory'
 import { AccountSwitcherSheet } from '../components/AccountSwitcherSheet'
 import { PinChangeSheet } from '../components/PinChangeSheet'
 import { PushToggle } from '../components/PushToggle'
@@ -32,6 +33,7 @@ import {
   IconLogout,
   IconMapPin,
   IconPhone,
+  IconQr,
   IconSend,
   IconShield,
 } from '../components/icons'
@@ -235,6 +237,9 @@ export function MenuPage() {
 
       <InstallAppCard />
 
+      {/* Only for somebody who has scanned with no connection — kept on the phone, never deleted. */}
+      <OfflineScanHistory />
+
       <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
         {/* Staff who also run the panel (admin/manager) get a way back — mirror of the sidebar's
             "İşçi rejimi" link. Plain employees never see this row. */}
@@ -251,6 +256,16 @@ export function MenuPage() {
         {/* The app photographs their face and reads their position; where that goes has to be
             reachable from inside the app, not only from the website they never visit. */}
         <MenuRow to="/privacy" Icon={IconShield} label="Məlumatlarınız / məxfilik" />
+      </div>
+
+      {/* Things this app does that are not attendance. Kitabxana 2.0 is one of ours, so it belongs in
+          the menu rather than behind a QR somebody has to be handed. */}
+      <div>
+        <h2 className="px-1 pb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Xidmətlər</h2>
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+          <MenuRow to="/kitabxana/scan" Icon={IconQr} label="Kitabxana 2.0 — yarışa giriş" />
+          <MenuRow to="/services/meydan" Icon={IconQr} label="PRIZMA — müsabiqələrə giriş" />
+        </div>
       </div>
 
       {/* Notifications carry the announcements and the checkout reminder, so turning them off should

@@ -49,6 +49,14 @@ const BillingPage = lazy(() => import('./pages/admin/BillingPage').then(m => ({ 
 const AnnouncementsPage = lazy(() => import('./pages/admin/AnnouncementsPage').then(m => ({ default: m.AnnouncementsPage })))
 const BirthdaysPage = lazy(() => import('./pages/admin/BirthdaysPage').then(m => ({ default: m.BirthdaysPage })))
 const VotePage = lazy(() => import('./pages/VotePage').then(m => ({ default: m.VotePage })))
+// Reached only from a Kitabxana 2.0 link on the same phone; no employee's cold start should pay for it.
+const KitabxanaSignInPage = lazy(() => import('./pages/KitabxanaSignInPage').then(m => ({ default: m.KitabxanaSignInPage })))
+// Opened from Menu → Xidmətlər: the camera, and only the quiz's QR. No attendance checks.
+const KitabxanaScanPage = lazy(() => import('./pages/KitabxanaScanPage').then(m => ({ default: m.KitabxanaScanPage })))
+// Xidmətlər → PRIZMA: scanning the sign-in QR an app of ours shows on a computer. Only reached from the menu.
+const ServiceSignInPage = lazy(() => import('./pages/ServiceSignInPage').then(m => ({ default: m.ServiceSignInPage })))
+// "QRLog ilə daxil ol" for another application of ours (PRIZMA): reached only from that app's link.
+const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
 const ManagerEmployeesPage = lazy(() => import('./pages/manager/ManagerEmployeesPage').then(m => ({ default: m.ManagerEmployeesPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
@@ -207,6 +215,48 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <HelpChatPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Kitabxana 2.0 sign-in from this very phone, where there is no QR to scan (the quiz links here
+          with the code). Behind the same guard as the scanner: it vouches for whoever is signed in. */}
+      <Route
+        path="/kitabxana"
+        element={
+          <ProtectedRoute>
+            <KitabxanaSignInPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Approving a sign-in to another of our applications (PRIZMA) from this phone — the Kitabxana approval
+          generalised. Same guard: it vouches for whoever is signed in here, after one deliberate tap. */}
+      <Route
+        path="/signin/:app"
+        element={
+          <ProtectedRoute>
+            <ExternalSignInPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/kitabxana/scan"
+        element={
+          <ProtectedRoute>
+            <KitabxanaScanPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Xidmətlər → an app that signs people in with QRLog (PRIZMA): scan the QR its computer page shows, then
+          approve on the same screen as /signin/:app. Same guard: it vouches for whoever is signed in here. */}
+      <Route
+        path="/services/:app"
+        element={
+          <ProtectedRoute>
+            <ServiceSignInPage />
           </ProtectedRoute>
         }
       />

@@ -72,3 +72,16 @@ export function clearRejectsFor(employeeId: string | null): void {
 
 /** Fired when the list changes, so a banner already on screen can update itself. */
 export const REJECTS_CHANGED = 'qrlog:offline-rejects-changed'
+
+/** The server codes an employee can actually act on; anything else stays generic on purpose. */
+export const REJECT_CODE_TEXT: Record<string, string> = {
+  OutsideRadius: 'skan iş yerindən kənarda olub',
+  TokenExpired: 'QR kod yenilənib',
+  EmployeeNotFoundOrInactive: 'hesab aktiv deyil',
+  DeviceMismatch: 'cihaz tanınmadı',
+  NoDeviceBound: 'cihaz bağlanmayıb',
+  SharedDeviceNotAllowed: 'bu telefonu işlətmək icazəniz yoxdur',
+  DeviceAccountLimit: 'bu telefonda çox hesab var',
+  LocationInactive: 'filial deaktivdir',
+  OfflineTooOld: 'çox gec göndərilib',
+}

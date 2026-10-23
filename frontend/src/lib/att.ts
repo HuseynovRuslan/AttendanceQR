@@ -1,5 +1,6 @@
 import type { AttendanceRecord } from '../api/attendance'
 import { COMPANY_TZ } from './format'
+import { DOUBLE_TAP_MS, EARLY_CHECKOUT_CONFIRM_MS } from './earlyCheckOut'
 
 // Attendance-domain helpers. The time/date formatters that used to live here moved to lib/format.ts,
 // where someone looking for a time formatter can actually find them.
@@ -47,22 +48,66 @@ export function initials(fullName: string | null | undefined): string {
 }
 
 export type TodayState =
-  /** `pending` — the step was taken on this phone and is still waiting to reach the server. */
-  | { kind: 'none' }
+  /** `pending` — the step was taken on this phone and is still waiting to reach the server.
+   *  `again` — not a fresh day: part of it is already worked and the next scan opens another stretch.
+   *  'field' after a field visit, 'second' for a split shift's second window.
+   *  `unknown` — no signal and nothing remembered: whether they are checked in is not known, and the
+   *  card must say that rather than «Hələ giriş etməmisiniz» (see lib/todayCache). */
+  | { kind: 'none'; again?: 'field' | 'second'; unknown?: 'offline' | 'server' }
   | { kind: 'in'; checkIn: string; pending?: boolean }
   | { kind: 'done'; checkIn: string; checkOut: string; pending?: boolean }
 
-export function todayState(records: AttendanceRecord[]): TodayState {
-  const rec = records.find((r) => r.attendanceDate === todayStr())
-  if (!rec?.checkInAtUtc) return { kind: 'none' }
-  if (!rec.checkOutAtUtc) return { kind: 'in', checkIn: rec.checkInAtUtc }
-  return { kind: 'done', checkIn: rec.checkInAtUtc, checkOut: rec.checkOutAtUtc }
+/**
+ * Where today stands, for the home card.
+ *
+ * Reported from the field, and it cost people their afternoon: a driver sent out at 08:00 on a
+ * «səyyar» visit came back to the centre at noon and found no «Giriş et» at all. Two ways led there.
+ * A day with only a field visit comes back as a synthesized row (`isFieldDay`) carrying the visit's
+ * times, and this read it as a finished poster day. And a poster check-in the field visit closed
+ * really is closed — but the server reopens exactly that day at the next scan, while this had already
+ * said «tamamlandı» and hidden the button. In a month, not one reopen happened.
+ *
+ * So: field-day rows never finish the day; a day holding two stretches is read by its open one, else
+ * its latest; and whether a closed day takes another scan is the SERVER's answer (`latest`, from
+ * /me/today — `mayScanAgain`). Without that answer (`latest === undefined`, the request failed) the
+ * one case we can see for ourselves still counts: a single stretch closed by a field visit.
+ */
+export function todayState(records: AttendanceRecord[], latest?: AttendanceRecord | null): TodayState {
+  const day = todayStr()
+  const fieldDay = records.some((r) => r.attendanceDate === day && r.isFieldDay)
+  const blocks = records.filter((r) => r.attendanceDate === day && !r.isFieldDay && r.checkInAtUtc)
+  const rows = latest?.attendanceDate === day && latest.checkInAtUtc ? [latest, ...blocks] : blocks
+
+  const open = rows.find((r) => !r.checkOutAtUtc)
+  if (open) return { kind: 'in', checkIn: open.checkInAtUtc! }
+
+  const last = [...rows].sort((a, b) => (a.checkInAtUtc! < b.checkInAtUtc! ? 1 : -1))[0]
+  if (!last) return fieldDay ? { kind: 'none', again: 'field' } : { kind: 'none' }
+
+  const mayScanAgain = latest === undefined
+    ? last.closedByFieldVisit === true && blocks.length < 2
+    : latest?.mayScanAgain === true
+  if (mayScanAgain) return { kind: 'none', again: last.closedByFieldVisit ? 'field' : 'second' }
+
+  return { kind: 'done', checkIn: last.checkInAtUtc!, checkOut: last.checkOutAtUtc! }
 }
 
 /** Just enough of a queued scan to place it in the day. */
 export interface PendingScan {
   /** The phone's clock when the scan was taken — the time the server will record it at. */
   clientTimestampUtc: string
+  /** The employee answered «bəli, çıxıram» before it was queued (see lib/earlyCheckOut). */
+  confirmEarlyCheckOut?: boolean
+}
+
+/**
+ * Will the server take this queued tap as the way OUT of a stretch that began at `checkIn`? Its own two
+ * rules, so the phone can say what the server will do: nothing inside the double-tap window, and within
+ * two hours of arriving only with a «bəli» (EarlyCheckOutRules).
+ */
+function leaves(checkIn: string, tap: PendingScan): boolean {
+  const gap = Date.parse(tap.clientTimestampUtc) - Date.parse(checkIn)
+  return gap >= DOUBLE_TAP_MS && (gap >= EARLY_CHECKOUT_CONFIRM_MS || tap.confirmEarlyCheckOut === true)
 }
 
 /**
@@ -94,22 +139,29 @@ export function withPendingScans(
   today: string = todayStr(),
 ): TodayState {
   const taps = pending
-    .map((p) => p.clientTimestampUtc)
-    .filter((t) => t.slice(0, 10) === today)
-    .sort()
+    .filter((p) => p.clientTimestampUtc.slice(0, 10) === today)
+    .sort((a, b) => (a.clientTimestampUtc < b.clientTimestampUtc ? -1 : 1))
   if (taps.length === 0) return state
 
-  if (state.kind === 'none') return { kind: 'in', checkIn: taps[0]!, pending: true }
-
-  if (state.kind === 'in') {
-    // A check-out taken offline: the server already has the check-in, so a tap AFTER it can only be
-    // the way out. A tap before it is the check-in itself, still queued behind a reply that arrived
-    // some other way — nothing to add.
-    const out = taps.find((t) => t > state.checkIn)
-    return out ? { kind: 'done', checkIn: state.checkIn, checkOut: out, pending: true } : state
+  // The first queued tap of a day with nothing on it is the check-in.
+  let day: TodayState = state
+  let rest = taps
+  if (day.kind === 'none') {
+    day = { kind: 'in', checkIn: taps[0]!.clientTimestampUtc, pending: true }
+    rest = taps.slice(1)
   }
 
-  return state
+  if (day.kind === 'in') {
+    // A check-out taken offline — the one the server will actually take, by its own rules. It used to
+    // stop at one step: a check-in AND a check-out both queued still read «İşdəsiniz · Çıxış et», and
+    // the person who had just checked out was invited to do it again. A tap before the check-in is the
+    // check-in itself, still queued behind a reply that arrived some other way — nothing to add.
+    const inAt = day.checkIn
+    const out = rest.find((t) => t.clientTimestampUtc > inAt && leaves(inAt, t))
+    return out ? { kind: 'done', checkIn: inAt, checkOut: out.clientTimestampUtc, pending: true } : day
+  }
+
+  return day
 }
 
 

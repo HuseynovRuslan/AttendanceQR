@@ -54,6 +54,20 @@ public static class SplitShiftRules
             : at >= start || at < end;   // crosses midnight
 
     /// <summary>
+    /// May a scan reopen a day that a FIELD VISIT closed?
+    ///
+    /// Somebody sent out in the morning has their poster check-in closed at the moment they leave the
+    /// site, so a day spent away does not score zero hours. Coming back to the centre afterwards is a
+    /// second stretch of the same day. Deliberately not a time window: the only day it reopens is one
+    /// this product closed on the employee's behalf, and still only up to two stretches.
+    /// </summary>
+    /// <param name="lastClosedByFieldVisit">The day's latest stretch was closed by a field visit, not
+    /// by the employee at the poster.</param>
+    /// <param name="blocksToday">How many stretches the day already holds.</param>
+    public static bool MayReopenAfterFieldVisit(bool lastClosedByFieldVisit, int blocksToday)
+        => lastClosedByFieldVisit && blocksToday >= 1 && blocksToday < MaxBlocksPerDay;
+
+    /// <summary>
     /// May a scan now open the day's second stretch?
     /// </summary>
     /// <param name="nowLocal">Company-local time of day of this scan.</param>

@@ -58,16 +58,23 @@ public class AttendanceController : ControllerBase
     // everyone else). A generous per-employee hourly budget bounds both: a real person scans twice a
     // day and might retake a photo once or twice, so 20 is far above normal use and far below abuse.
     /// <summary>
-    /// How far back an OFFLINE scan's own timestamp is still trusted. The client mirrors this in
-    /// <c>MAX_QUEUED_AGE_MS</c> as a pre-filter, but this is the authority: past it the scan is
-    /// refused, never silently re-dated.
+    /// How far back an OFFLINE scan's own timestamp is still trusted. Past it the scan is refused,
+    /// never silently re-dated.
+    ///
+    /// Thirty days. It was eighteen hours, and the phone threw away whatever was older — ninety scans by
+    /// forty-two people in one month, each one a day somebody worked and was not paid for: a phone off
+    /// for the weekend, an app not opened until Monday. The owner's rule (2026-09-18): an offline scan
+    /// is never lost. The record is written on the day it was TAKEN (the phone's clock), marked
+    /// WasOffline with the day it arrived, so a late one is visible to the admin as late; and the day's
+    /// stored summary is rebuilt (ISummaryRebuildQueue), so the tabel and the payroll see it.
     /// </summary>
-    public const int OfflineTrustWindowHours = 18;
+    public const int OfflineTrustWindowHours = 30 * 24;
 
     private const int MaxFaceChecksPerHour = 20;
     private static readonly TimeSpan FaceCheckWindow = TimeSpan.FromHours(1);
 
     private readonly AppDbContext _db;
+    private readonly ISummaryRebuildQueue? _summaryRebuild;
     private readonly IQrTokenService _qrTokenService;
     private readonly IAttendanceQueryService _attendanceQuery;
     private readonly IPhotoStorageService _photoStorage;
@@ -90,8 +97,10 @@ public class AttendanceController : ControllerBase
         DeviceBindingOptions deviceOptions,
         AppOptions appOptions,
         IMemoryCache cache,
-        ILogger<AttendanceController> logger)
+        ILogger<AttendanceController> logger,
+        ISummaryRebuildQueue? summaryRebuild = null)
     {
+        _summaryRebuild = summaryRebuild;
         _db = db;
         _qrTokenService = qrTokenService;
         _attendanceQuery = attendanceQuery;
@@ -122,9 +131,52 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> MyToday()
     {
         var employeeId = User.EmployeeId();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
+        var today = DateOnly.FromDateTime(nowLocal);
         var record = await _attendanceQuery.GetTodayAsync(employeeId, today, HttpContext.RequestAborted);
-        return Ok(record); // null when there's no scan yet today
+        if (record is null) return Ok(record); // null when there's no scan yet today
+
+        // A finished day may still take another scan — back from a field visit, or the second stretch
+        // of a split shift. The phone used to decide «finished» on its own and hide the button; it now
+        // shows it when THIS says so, and this asks the same two rules Scan does.
+        //
+        // Only when the day Scan would file this scan under is the day shown. Scan dates by the UTC
+        // calendar; between 00:00 and 04:00 in Baku the two disagree, and a guess there is worse than
+        // the old behaviour — which is what false gives.
+        if (record.CheckOutAtUtc is not null && record.CheckInAtUtc is not null
+            && DateOnly.FromDateTime(nowUtc) == today
+            && await MayScanAgainAsync(employeeId, today, nowLocal))
+            record = record with { MayScanAgain = true };
+        return Ok(record);
+    }
+
+    /// <summary>
+    /// Would a scan right now open another stretch of a day whose stretches are all closed? The same
+    /// two questions the closed-day branch of Scan asks, in the same order — field-visit reopen first,
+    /// then the split shift's second window. The check-out cool-off is left out on purpose: it is five
+    /// minutes, and a button that appears five minutes early costs one «bir az gözləyin».
+    /// </summary>
+    private async Task<bool> MayScanAgainAsync(Guid employeeId, DateOnly today, DateTime nowLocal)
+    {
+        var ct = HttpContext.RequestAborted;
+        var blocks = await _db.AttendanceRecords
+            .Where(r => r.EmployeeId == employeeId && r.AttendanceDate == today)
+            .OrderBy(r => r.CheckInAtUtc)
+            .Select(r => new { r.CheckOutAtUtc, r.ClosedByFieldVisitId })
+            .ToListAsync(ct);
+        if (blocks.Count == 0 || blocks.Any(b => b.CheckOutAtUtc is null)) return false;
+
+        if (SplitShiftRules.MayReopenAfterFieldVisit(blocks[^1].ClosedByFieldVisitId is not null, blocks.Count))
+            return true;
+
+        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null) return false;
+        var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == employee.LocationId, ct);
+        if (location is null) return false;
+        var shift = await ResolveShiftAsync(employee, location, today);
+        return SplitShiftRules.MayOpenSecondBlock(TimeOnly.FromDateTime(nowLocal), shift.HasSecondWindow,
+            shift.SecondStart, shift.SecondEnd, blocks.Count, anyOpen: false);
     }
 
     // GET /api/attendance/me/profile — the caller's own profile (name/location) for the mobile
@@ -921,6 +973,22 @@ public class AttendanceController : ControllerBase
                 await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                 return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
             }
+
+            // Soon after arriving, a scan is a check-out only when the employee said so — the phone asks
+            // and sends the answer. Without it this is a «did it work?» retry, most often one queued with
+            // no signal and replayed later, and it used to close the day at 07:44 and refuse the real
+            // exit that evening. Nothing is written; the check-in stands. See EarlyCheckOutRules.
+            if (EarlyCheckOutRules.NeedsConfirmation(record.CheckInAtUtc, nowUtc, request.ConfirmEarlyCheckOut))
+            {
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected,
+                    request.Offline ? "OfflineEarlyCheckOutIgnored" : "EarlyCheckOutUnconfirmed", ip);
+                return Conflict(new
+                {
+                    error = "ConfirmEarlyCheckOut",
+                    checkInAtUtc = record.CheckInAtUtc,
+                    minutes = EarlyCheckOutRules.ConfirmWithinMinutes,
+                });
+            }
             return await CheckOutAsync(record, employee, location, shift, nowUtc, ip,
                 request.ClientScanId, request.Offline, serverNow);
         }
@@ -945,9 +1013,8 @@ public class AttendanceController : ControllerBase
         // one THIS PRODUCT closed on the employee's behalf, stamped with the visit's id. A day the
         // employee themselves closed at the poster is left alone — the evidence that they left and
         // came back is the visit, not a second tap — and a day with no field visit cannot reach it.
-        var reopenAfterFieldVisit =
-            record is { CheckOutAtUtc: not null, ClosedByFieldVisitId: not null }
-            && blocks.Count < SplitShiftRules.MaxBlocksPerDay;
+        var reopenAfterFieldVisit = record is { CheckOutAtUtc: not null }
+            && SplitShiftRules.MayReopenAfterFieldVisit(record.ClosedByFieldVisitId is not null, blocks.Count);
 
         if (reopenAfterFieldVisit
             || SplitShiftRules.MayOpenSecondBlock(
@@ -1009,6 +1076,7 @@ public class AttendanceController : ControllerBase
 
         // Mark this scan processed so a replay of the same offline queue item doesn't check in twice.
         await RecordProcessedScanAsync(clientScanId, employee.Id);
+        RebuildIfPast(today);
 
         // Photo audit — strictly best-effort and AFTER the check-in has been committed, so a storage
         // failure can never block or roll back attendance. The photo is persisted to the DURABLE
@@ -1221,6 +1289,7 @@ public class AttendanceController : ControllerBase
         }
         await _db.SaveChangesAsync();
         await RecordProcessedScanAsync(clientScanId, employee.Id);
+        RebuildIfPast(record.AttendanceDate);
 
         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutSuccess, null, ip);
         return Ok(new
@@ -1232,6 +1301,18 @@ public class AttendanceController : ControllerBase
             earlyDeparture = IsEarlyDeparture(
                 shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone)
         });
+    }
+
+    /// <summary>
+    /// A scan landed on a day that is already summarised — an offline one sent late, or a night's
+    /// check-out in the morning. Ask for that day's stored summary to be rebuilt, or the tabel and the
+    /// payroll keep reading it as it was at 00:30. See <see cref="ISummaryRebuildQueue"/>.
+    /// </summary>
+    private void RebuildIfPast(DateOnly date)
+    {
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        if (date < localToday)
+            _summaryRebuild?.Request(_db.CurrentTenantId, date);
     }
 
     // Records the idempotency marker for a scan that carried a client id. Best-effort and isolated from

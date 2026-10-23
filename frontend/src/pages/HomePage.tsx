@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMyAttendance, getMyProfile, getMySummary, type AttendanceRecord, type MyProfile } from '../api/attendance'
+import { getMyAttendance, getMyProfile, getMySummary, getMyToday, todayAnswered, whyUnreachable, type AttendanceRecord, type MyProfile } from '../api/attendance'
 import { rememberQrless } from '../lib/qrless'
 import { getMyFieldVisits, type MyFieldVisit } from '../api/fieldVisits'
 import { useAuth } from '../auth/AuthContext'
@@ -17,6 +17,7 @@ import { AssistantFab } from '../components/AssistantFab'
 import { firstName, initials, nightShiftState, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
 import { QUEUE_CHANGED, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { fmtDuration, fmtTime } from '../lib/format'
+import { knownToday, rememberToday } from '../lib/todayCache'
 import { IconQr } from '../components/icons'
 import { PhotoWarningGate } from '../components/PhotoWarningGate'
 
@@ -34,6 +35,24 @@ export function HomePage() {
   const [month, setMonth] = useState<{ workDays: number; hours: number } | null>(null)
   const [fieldVisits, setFieldVisits] = useState<MyFieldVisit[]>([])
   const [loading, setLoading] = useState(true)
+  // /me/today — the server's own word on today, including whether a closed day takes another scan.
+  // undefined = not heard (request failed or offline); todayState then falls back to what it can see.
+  const [latest, setLatest] = useState<AttendanceRecord | null | undefined>(undefined)
+  // No connection on the last load. The day then comes from what the server said last (`asOf`, when
+  // it said it) — or, with nothing remembered, is shown as unknown. Never as «not checked in»: that is
+  // what made people who had checked in at 07:38 scan again, and the second scan closed their day.
+  const [offline, setOffline] = useState<false | 'offline' | 'server'>(false)
+  const [asOf, setAsOf] = useState<number | null>(null)
+  // The hero waits for the day to load instead of showing «Giriş et» and swapping it out a moment
+  // later — people switching tabs saw the button come and go and could barely tap it. But never for
+  // long: past this the card appears with whatever is known, because a scan is never blocked.
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    if (!loading) return
+    setSlow(false)
+    const t = window.setTimeout(() => setSlow(true), 2500)
+    return () => window.clearTimeout(t)
+  }, [loading])
   // Show at most ONE nudge (install OR notifications), so the home isn't a stack of asks. Seeded
   // synchronously to avoid a first-render flash; InstallHint keeps it in sync if dismissed mid-session.
   const [installShown, setInstallShown] = useState(() => installNudgeActive())
@@ -44,16 +63,36 @@ export function HomePage() {
 
   async function load() {
     setLoading(true)
+    try {
+      await loadAll()
+      setOffline(false)
+      setAsOf(null)
+    } catch {
+      // A request THREW — no connection (HTTP errors come back as statuses, not throws).
+      const known = knownToday(employeeId)
+      setOffline(whyUnreachable())
+      setLatest(known ? known.record : undefined)
+      setAsOf(known ? known.atMs : null)
+    } finally {
+      // Always: a thrown request used to leave the whole screen on its skeleton for good.
+      setLoading(false)
+    }
+  }
+
+  async function loadAll() {
     const from = firstOfMonthStr()
     const to = todayStr()
     // Field visits ride along in the same load so the auto-scan gate below knows about them before it
     // fires — but a field-endpoint failure must never break the whole home, hence the .catch fallback.
-    const [p, a, s, f] = await Promise.all([
+    const [p, a, s, f, t] = await Promise.all([
       getMyProfile(),
       getMyAttendance(),
       getMySummary(from, to),
       getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] })),
+      getMyToday().catch(() => ({ status: 0, data: undefined })),
     ])
+    setLatest(todayAnswered(t.status) ? (t.data ?? null) : undefined)
+    if (todayAnswered(t.status)) rememberToday(employeeId, t.data ?? null)
     setFieldVisits(f.status === 200 && Array.isArray(f.data) ? f.data : [])
     if (p.status === 200 && p.data && 'fullName' in p.data) {
       setProfile(p.data)
@@ -69,13 +108,23 @@ export function HomePage() {
       const mine = s.data.rows.find((r) => r.employeeId === employeeId)
       if (mine) setMonth({ workDays: mine.workDays, hours: Math.round(mine.totalWorkedHours) })
     }
-    setLoading(false)
   }
 
-  // Re-fetch just the field visits after a check-in/out on the home card — no page-wide loading flip.
+  // Re-fetch after a check-in/out on the field card — no page-wide loading flip. The day comes too:
+  // a field check-out closes the poster check-in, and the card below has to say what that means now
+  // (another scan at the centre), not what it meant before the tap.
   async function reloadFieldVisits() {
-    const r = await getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] }))
+    const [r, a, t] = await Promise.all([
+      getMyFieldVisits().catch(() => ({ status: 0, data: [] as MyFieldVisit[] })),
+      getMyAttendance().catch(() => ({ status: 0, data: [] as AttendanceRecord[] })),
+      getMyToday().catch(() => ({ status: 0, data: undefined })),
+    ])
     if (r.status === 200 && Array.isArray(r.data)) setFieldVisits(r.data)
+    if (a.status === 200 && Array.isArray(a.data)) {
+      setRecords([...a.data].sort((x, y) => (x.attendanceDate < y.attendanceDate ? 1 : -1)))
+    }
+    setLatest(todayAnswered(t.status) ? (t.data ?? null) : undefined)
+    if (todayAnswered(t.status)) rememberToday(employeeId, t.data ?? null)
   }
 
   /**
@@ -100,7 +149,12 @@ export function HomePage() {
     }
   }, [employeeId])
 
-  const today = withPendingScans(todayState(records), queued)
+  // Offline with nothing remembered: unknown, and the queue is not read into it either — a queued tap
+  // could be a check-in or a check-out, and this is exactly the moment not to guess.
+  const today: TodayState = offline && latest === undefined
+    ? { kind: 'none', unknown: offline }
+    : withPendingScans(todayState(records, latest), queued)
+  const again = today.kind === 'none' ? (today.again ?? (today.unknown ? 'unknown' : undefined)) : undefined
   // A night worker's shift lives on YESTERDAY's row until noon. Without this the screen tells someone
   // who has been at work since eight in the evening that they have not checked in — see nightShiftState.
   const night = nightShiftState(records, profile?.shiftStart, profile?.shiftEnd)
@@ -123,14 +177,15 @@ export function HomePage() {
   }, [employeeId])
 
   useEffect(() => {
-    if (loading || today.kind !== 'none' || hasActionableField) return
+    // Nor for a day already partly worked — back from the field, they came to read the card.
+    if (loading || today.kind !== 'none' || again || hasActionableField) return
     // A dropped offline scan produces exactly this state — no check-in today — and jumping straight
     // to the scanner would bury the banner that explains why. Let them read it first.
     if (hasRejects) return
     if (sessionStorage.getItem('attendanceqr.autoScan')) return
     sessionStorage.setItem('attendanceqr.autoScan', '1')
     navigate('/scan')
-  }, [loading, today.kind, hasActionableField, hasRejects, navigate])
+  }, [loading, today.kind, again, hasActionableField, hasRejects, navigate])
 
   // Today is the employee's birthday? Compare day + month (any year) in the device's local date.
   const isBirthday = (() => {
@@ -229,7 +284,11 @@ export function HomePage() {
       {/* Only for a worker who actually has field work today — renders nothing for everyone else. */}
       <FieldVisitCards visits={fieldVisits} onChanged={reloadFieldVisits} canFieldCheckIn={profile?.canFieldCheckIn} />
 
-      <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} onScan={() => navigate('/scan')} />
+      {loading && !slow ? (
+        <div className="h-44 animate-pulse rounded-3xl bg-slate-100" />
+      ) : (
+        <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} asOf={asOf} why={offline || undefined} onScan={() => navigate('/scan')} />
+      )}
 
       <div>
         <div className="mb-2 flex items-center justify-between px-1">
@@ -241,7 +300,7 @@ export function HomePage() {
         {loading ? (
           <SkeletonList />
         ) : recent.length === 0 ? (
-          <EmptyCard text="Hələ qeyd yoxdur" />
+          <EmptyCard text={offline === 'offline' ? '📴 İnternet yoxdur — tarixçə yüklənmədi' : offline ? 'Server cavab vermir — tarixçə yüklənmədi' : 'Hələ qeyd yoxdur'} />
         ) : (
           <div className="flex flex-col gap-2">
             {recent.map((r) => (
@@ -275,12 +334,16 @@ function isOverdue(checkInIso: string, shiftEnd?: string | null): boolean {
  *  bottom bar. Context-aware: green "Giriş et" before check-in, blue "Çıxış et" while at work (red and
  *  insistent once the shift is over — a forgotten check-out reads as zero hours), a calm summary once
  *  the day is done. The whole card is the tap target. */
-function ScanHero({ today, night, shiftEnd, qrless, onScan }: {
+function ScanHero({ today, night, shiftEnd, qrless, asOf, why, onScan }: {
   today: TodayState
   night: { kind: 'night'; checkIn: string } | null
   shiftEnd?: string | null
   /** No poster at this branch — the same tap, but the words must not say "scan". */
   qrless?: boolean
+  /** The day came from the phone's memory, not the server — when the server last said it. */
+  asOf?: number | null
+  /** Why the server could not be asked — no signal on the phone, or the server itself. */
+  why?: 'offline' | 'server'
   onScan: () => void
 }) {
   const heroBtn = 'relative w-full overflow-hidden rounded-3xl p-6 text-left text-white shadow-lg transition active:scale-[.99]'
@@ -314,13 +377,46 @@ function ScanHero({ today, night, shiftEnd, qrless, onScan }: {
     )
   }
 
+  // Said on every card that was built from memory: how old it is, and why.
+  const staleLine = asOf != null && (
+    <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-bold">
+      📴 {why === 'offline' ? 'İnternet yoxdur' : 'Server cavab vermir'} · {fmtTime(new Date(asOf).toISOString())} məlumatı
+    </div>
+  )
+
+  // No signal and nothing remembered. The one card that must not pretend to know the day.
+  if (today.kind === 'none' && today.unknown) {
+    return (
+      <button onClick={onScan} className={`${heroBtn} bg-gradient-to-br from-slate-600 to-slate-800 shadow-slate-600/25`}>
+        <IconQr className="pointer-events-none absolute -right-3 -top-3 h-24 w-24 opacity-15" />
+        <div className="text-xs font-bold uppercase tracking-wider opacity-85">
+          Bu gün · 📴 {today.unknown === 'offline' ? 'internet yoxdur' : 'server cavab vermir'}
+        </div>
+        <div className="mt-1 text-3xl font-extrabold">Skan et</div>
+        <div className="mt-1 text-sm opacity-90">
+          Bugünkü qeydiniz yüklənmədi. Skan etsəniz, telefonda saxlanılacaq və sonra göndəriləcək.
+        </div>
+        <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
+          {cta('Skan üçün toxunun', 'Toxunun')}
+        </span>
+      </button>
+    )
+  }
+
   if (today.kind === 'none') {
     return (
       <button onClick={onScan} className={`${heroBtn} bg-gradient-to-br from-green-500 to-emerald-600 shadow-green-600/25`}>
         <IconQr className="pointer-events-none absolute -right-3 -top-3 h-24 w-24 opacity-15" />
         <div className="text-xs font-bold uppercase tracking-wider opacity-85">Bu gün</div>
         <div className="mt-1 text-3xl font-extrabold">Giriş et</div>
-        <div className="mt-1 text-sm opacity-90">Hələ giriş etməmisiniz</div>
+        <div className="mt-1 text-sm opacity-90">
+          {today.again === 'field'
+            ? 'Səyyar işdən qayıtmısınızsa, burada giriş edin'
+            : today.again === 'second'
+              ? 'Növbənin ikinci hissəsi üçün giriş edin'
+              : 'Hələ giriş etməmisiniz'}
+        </div>
+        {staleLine}
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
           {cta('Skan üçün toxunun', 'Üz və GPS ilə giriş')}
         </span>
@@ -349,6 +445,7 @@ function ScanHero({ today, night, shiftEnd, qrless, onScan }: {
             📴 Göndərilməyi gözləyir
           </div>
         )}
+        {staleLine}
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
           {cta('Çıxış üçün skan et', 'Çıxış üçün toxunun')}
         </span>
@@ -366,6 +463,11 @@ function ScanHero({ today, night, shiftEnd, qrless, onScan }: {
       {today.pending && (
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
           📴 Göndərilməyi gözləyir
+        </div>
+      )}
+      {asOf != null && (
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
+          📴 {why === 'offline' ? 'İnternet yoxdur' : 'Server cavab vermir'} · {fmtTime(new Date(asOf).toISOString())} məlumatı
         </div>
       )}
     </div>

@@ -40,6 +40,7 @@ const ERRORS: Record<string, string> = {
   EmailAlreadyExists: 'Bu e-poçt artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon artıq mövcuddur',
   LocationNotManaged: 'Bu filial sizə aid deyil',
+  CannotDeactivateManager: 'Meneceri yalnız admin deaktiv edə bilər',
   WorkCycleDaysInvalid: 'Növbə dövrü 2–28 gün aralığında olmalıdır',
   WorkCycleOnDaysInvalid: 'İş günlərinin sayı dövrədən az olmalıdır',
   WorkCycleAnchorRequired: 'Növbə üçün işlədiyi bir gün seçilməlidir',
@@ -74,6 +75,9 @@ export function ManagerEmployeesPage() {
   // person's name in turn. Eleven people, eleven searches, for a two-click action. The admin roster
   // has had this filter since it existed.
   const [filterLoc, setFilterLoc] = useState('')
+  // People who have left stay in the database — their days are still in last month's tabel and pay —
+  // but not in the list a manager works from every day. «Deaktiv etdim, amma adlar qalır.»
+  const [showLeft, setShowLeft] = useState(false)
 
   /** Grant or withdraw a capability across this manager's whole list. The server narrows it to their
    *  branches' plain staff, so a name they may not act on is skipped rather than failing the call —
@@ -165,6 +169,33 @@ export function ManagerEmployeesPage() {
     }
   }
 
+  /** «İşdən çıxart»: the full form goes back with isActive off — the update blanks what it omits. */
+  async function removeFromList() {
+    if (!window.confirm(`${form.fullName} işdən çıxarılsın?
+
+Girişi bağlanacaq və siyahıdan çıxacaq. Keçmiş günləri tabeldə qalır.`)) return
+    await saveActive(false)
+  }
+
+  async function restore() {
+    await saveActive(true)
+  }
+
+  async function saveActive(isActive: boolean) {
+    setBusy(true)
+    setErr(null)
+    const payload = { ...form, isActive, fullName: `${(form.firstName ?? '').trim()} ${(form.lastName ?? '').trim()}`.trim() }
+    const res = await updateManagerEmployee(editing!, payload)
+    setBusy(false)
+    if (res.status === 200 && res.data && 'id' in res.data) {
+      setEditing(null)
+      void load()
+    } else {
+      const code = res.data && 'error' in res.data ? res.data.error : ''
+      setErr(ERRORS[code] ?? 'Yadda saxlanılmadı')
+    }
+  }
+
   async function resetPin(id: string, name: string) {
     if (!window.confirm(`${name} üçün yeni müvəqqəti PIN yaradılsın?
 
@@ -174,15 +205,20 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
   }
 
   const q = search.trim().toLowerCase()
+  const leftCount = rows.filter((r) => !r.isActive).length
   const visible = rows.filter((r) => {
+    if (showLeft ? r.isActive : !r.isActive) return false
     if (filterLoc && r.locationId !== filterLoc) return false
     if (!q) return true
     return `${r.fullName} ${r.phoneNumber ?? ''} ${r.position ?? ''} ${r.locationName ?? ''}`
       .toLowerCase()
       .includes(q)
   })
-  // Colleagues are visible and read-only; every bulk action stops at the rows a manager may change.
-  const grantable = visible.filter((r) => r.manageable !== false)
+  // Every bulk action stops at the rows a manager may change — and at their own branches' staff: a
+  // colleague is editable one at a time, but the server's bulk grant never reaches them.
+  const grantable = visible.filter((r) => r.manageable !== false && !r.isColleague)
+  // The colleague being edited, if it is one — they may not be switched off from here.
+  const editingColleague = rows.find((r) => r.id === editing)?.isColleague === true
 
   return (
     <div>
@@ -194,8 +230,8 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
         </div>
       )}
 
-      {/* Company-wide PIN reset and login-number change — staff at other areas and fellow managers,
-          whom this roster (their own branches only) cannot reach. The server decides who qualifies. */}
+      {/* Company-wide PIN reset and login-number change for staff at other areas, and for fellow managers
+          at the caller's own branches. The server decides who qualifies. */}
       {!editing && <CredentialDesk />}
 
       {/* The two opt-in capabilities across this manager's own staff. The manager is who knows which
@@ -271,8 +307,13 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
           {(search || filterLoc) && (
             <button className="btn btn-sm" onClick={() => { setSearch(''); setFilterLoc('') }}>Təmizlə</button>
           )}
+          {(leftCount > 0 || showLeft) && (
+            <button className={`btn btn-sm ${showLeft ? 'btn-primary' : ''}`} onClick={() => setShowLeft((v) => !v)}>
+              {showLeft ? '← Aktiv işçilər' : `İşdən çıxanlar (${leftCount})`}
+            </button>
+          )}
           <span className="muted" style={{ fontSize: 13 }}>
-            {q || filterLoc ? `${visible.length} / ${rows.length}` : `${rows.length} işçi`}
+            {`${visible.length} ${showLeft ? 'işdən çıxan' : 'işçi'}`}
           </span>
         </div>
       )}
@@ -414,10 +455,12 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
             <div />
           </div>
 
-          <label style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <input type="checkbox" checked={!form.isActive} onChange={(e) => set('isActive', !e.target.checked)} />
-            <span style={{ fontSize: 13 }}>Deaktiv (girişi bağlı)</span>
-          </label>
+          {!editingColleague && (
+            <label style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <input type="checkbox" checked={!form.isActive} onChange={(e) => set('isActive', !e.target.checked)} />
+              <span style={{ fontSize: 13 }}>Deaktiv (girişi bağlı)</span>
+            </label>
+          )}
 
           {err && <div className="fb fb-err" style={{ marginTop: 10 }}><IconX /><span>{err}</span></div>}
 
@@ -427,6 +470,25 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
             </button>
             <button className="btn" onClick={() => setEditing(null)}>Ləğv et</button>
           </div>
+
+          {/* One step for somebody who has left: access closed, name off the list. Not a delete —
+              their days stay in the tabel and the payroll of the months they worked, and «Aktiv et»
+              under «İşdən çıxanlar» brings them back. A fellow manager is the admin's to remove. */}
+          {editing !== 'new' && !editingColleague && form.isActive && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c100)' }}>
+              <button className="btn btn-sm btn-outline-danger" disabled={busy} onClick={() => void removeFromList()}>
+                İşdən çıxart
+              </button>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Girişi bağlanır və siyahıdan çıxır. Keçmiş günləri tabeldə və maaşda qalır.
+              </div>
+            </div>
+          )}
+          {editing !== 'new' && !editingColleague && !form.isActive && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c100)' }}>
+              <button className="btn btn-sm" disabled={busy} onClick={() => void restore()}>Geri qaytar (aktiv et)</button>
+            </div>
+          )}
 
           {/* Reset-PIN lives inside the edit screen, not on every list row — it is destructive (the
               employee's current PIN stops working), so it must be a deliberate step, not a tap next
@@ -471,9 +533,14 @@ Köhnə PIN dərhal işləməyəcək — yenisini işçiyə verməlisiniz.`)) re
                   <div className="mgr-actions">
                     {/* A colleague's row is visible and read-only. The server refuses the write
                         either way — this is so the button is not there to be pressed. */}
+                    {/* A fellow manager at the same branch is editable since 2026-09-18; an admin who
+                        clocks in here is not, and the server refuses the write either way. */}
                     {e.manageable === false
                       ? <span className="tag">həmkar</span>
-                      : <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>}
+                      : <>
+                          {e.isColleague && <span className="tag">menecer</span>}
+                          <button className="btn btn-sm" onClick={() => startEdit(e)}>Redaktə</button>
+                        </>}
                   </div>
                 </div>
               </div>

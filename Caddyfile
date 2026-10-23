@@ -265,6 +265,31 @@ book.qrlog.az {
 	reverse_proxy literature-millionaire-web:80
 }
 
+# PRIZMA (the creative-competition platform, prizma.qrlog.az) — separate project, own stack in /opt/meydan
+# (deploy/compose.yml in its repository; the container and directory names keep the platform's old name, MEYDAN,
+# because the rename was a product decision and not a rebuild). Only its nginx joins attendanceqr_default, as
+# meydan-web; its API and database stay on that project's private network. HSTS is set here at the edge; every
+# other header (the CSP included) comes from the app itself, whose policy is versioned with its code — so no
+# security_headers import.
+prizma.qrlog.az {
+	encode zstd gzip
+	header {
+		# Applied AFTER the upstream answered (defer), so this replaces the HSTS the API sends on /api rather than
+		# adding a second copy, and strips nginx's Server header the same way security_headers does for our hosts.
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+		defer
+	}
+	reverse_proxy meydan-web:80
+}
+
+# The platform's former host. Everything that still knows the old name — printed QR codes, links people saved,
+# messages already sent — is sent to the same path on prizma.qrlog.az. 308 keeps the method and the body, so a
+# form post survives it. There is only ever one copy of the application running.
+meydan.qrlog.az {
+	redir https://prizma.qrlog.az{uri} permanent
+}
+
 # Every tenant from here on, without a block of its own. Adding a company used to mean editing this
 # file and restarting Caddy over SSH — which is why the super-admin panel could not finish the job.
 #
@@ -285,4 +310,41 @@ https:// {
 		on_demand
 	}
 	import patient_proxy frontend:80
+}
+
+# ==================== MenyuQR (moved from Coolify box 89.167.122.64, 2026-09-21) ====================
+# Six apps behind this Caddy on the shared attendanceqr_default network. Domains unchanged
+# (menyuqr.com @ Hostinger, *.bahram.site @ Namecheap); only the DNS A records move to this server.
+# Excluded on purpose: p109 (.NET) + k4nx — abandoned uuid.bahram.site deploys.
+# FOLLOW-UP: mirror these blocks into the AttendanceQR repo Caddyfile so a future redeploy keeps them.
+menyuqr.com, www.menyuqr.com {
+	handle /gardenmarket* {
+		reverse_proxy gardenmarket-web:3000
+	}
+	handle /driver-game-center* {
+		reverse_proxy gamecenter-web:3000
+	}
+	handle {
+		reverse_proxy menyuqr-web:3000
+	}
+}
+
+gardenmarket-react.bahram.site {
+	reverse_proxy gardenmarket-web:3000
+}
+
+gardenmarket-api.bahram.site {
+	reverse_proxy gardenmarket-api:3000
+}
+
+game-center.bahram.site {
+	reverse_proxy gamecenter-web:3000
+}
+
+coffee-menu.bahram.site {
+	reverse_proxy coffee-api:3000
+}
+
+multiposting.bahram.site {
+	reverse_proxy multiposting:4000
 }

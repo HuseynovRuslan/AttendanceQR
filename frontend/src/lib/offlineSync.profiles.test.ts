@@ -43,7 +43,8 @@ vi.mock('./offlineQueue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./offlineQueue')>()),
   allScans: async () => queue,
   scansFor: async (employeeId: string | null) => queue.filter((q) => q.employeeId === employeeId),
-  removeScan: (id: string) => removeScan(id),
+  // A scan leaves the queue into the archive (settleScan) — recorded here as leaving the queue.
+  settleScan: (i: { clientScanId: string }) => removeScan(i.clientScanId),
 }))
 
 vi.mock('./scanFailures', () => ({ reportFailure: vi.fn(), flushFailures: async () => {} }))

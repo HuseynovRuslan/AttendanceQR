@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { clearRejectsFor, readRejectsFor, REJECTS_CHANGED, type OfflineReject } from '../lib/offlineRejects'
+import { clearRejectsFor, readRejectsFor, REJECT_CODE_TEXT, REJECTS_CHANGED, type OfflineReject } from '../lib/offlineRejects'
 import { fmtDateTime } from '../lib/format'
 import { useAuth } from '../auth/AuthContext'
 
@@ -20,18 +20,6 @@ const WHY: Record<OfflineReject['kind'], string> = {
   OfflineExpired: 'Çox gec göndərildi',
 }
 
-/** The server codes an employee can actually act on; anything else stays generic on purpose. */
-const CODE_TEXT: Record<string, string> = {
-  OutsideRadius: 'skan iş yerindən kənarda olub',
-  TokenExpired: 'QR kod yenilənib',
-  EmployeeNotFoundOrInactive: 'hesab aktiv deyil',
-  DeviceMismatch: 'cihaz tanınmadı',
-  NoDeviceBound: 'cihaz bağlanmayıb',
-  SharedDeviceNotAllowed: 'bu telefonu işlətmək icazəniz yoxdur',
-  DeviceAccountLimit: 'bu telefonda çox hesab var',
-  LocationInactive: 'filial deaktivdir',
-  OfflineTooOld: 'çox gec göndərilib',
-}
 
 export function OfflineRejectBanner() {
   // Only this employee's — a site phone is shared, and someone else's unread warning must neither be
@@ -61,7 +49,7 @@ export function OfflineRejectBanner() {
         {items.map((r) => (
           <li key={`${r.atMs}-${r.scanAtIso}`} className="text-sm text-red-800">
             <span className="font-semibold">{fmtDateTime(r.scanAtIso)}</span> — {WHY[r.kind]}
-            {r.code && CODE_TEXT[r.code] ? ` (${CODE_TEXT[r.code]})` : ''}
+            {r.code && REJECT_CODE_TEXT[r.code] ? ` (${REJECT_CODE_TEXT[r.code]})` : ''}
           </li>
         ))}
       </ul>

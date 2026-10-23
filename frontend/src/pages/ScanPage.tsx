@@ -19,7 +19,9 @@ import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../
 import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless } from '../lib/qrless'
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
-import { todayStr } from '../lib/att'
+import { todayStr, withPendingScans } from '../lib/att'
+import { knownToday, rememberToday } from '../lib/todayCache'
+import { DOUBLE_TAP_MS, isEarlyCheckOut } from '../lib/earlyCheckOut'
 import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
@@ -29,7 +31,7 @@ import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, CAMERA_FAIL_REASON, type CameraFailKind } from '../components/CameraHelp'
 import { PhotoIntro } from '../components/PhotoIntro'
 import { checkForFace } from '../lib/faceCheck'
-import { getMyProfile, type MyProfile } from '../api/attendance'
+import { getMyProfile, todayAnswered, whyUnreachable, type MyProfile } from '../api/attendance'
 import { fmtTime } from '../lib/format'
 
 type Card = {
@@ -55,7 +57,7 @@ type Card = {
   /** Offer to switch the checkout reminder on right here (check-in only). */
   offerPush?: boolean
 }
-type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'processing' | 'done'
+type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'confirmOut' | 'processing' | 'done'
 
 // The employee reads what is about to happen before the front camera opens. Auto-advances so a
 // hesitant person cannot block the queue by never tapping "Hazıram".
@@ -81,9 +83,14 @@ const PHOTO_H = 540
 type GeoState = { kind: 'checking' } | { kind: 'ready'; accuracy: number } | { kind: 'failed'; fail: GeoFailKind }
 type TodayInfo =
   | { kind: 'loading' }
-  | { kind: 'none' }
-  | { kind: 'in-progress'; checkInAtUtc: string }
-  | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string }
+  /** `again` — part of today is already worked and closed; the server says the next scan opens
+   *  another stretch (back from a field visit, or a split shift's second window). */
+  /** `unknown` — no signal and nothing remembered: the phone does not know whether they are checked
+   *  in, and must not say «hələ giriş etməmisiniz» (see lib/todayCache). */
+  | { kind: 'none'; again?: boolean; unknown?: 'offline' | 'server' }
+  /** `pending` — this step is a scan still waiting on the phone, not yet on the server. */
+  | { kind: 'in-progress'; checkInAtUtc: string; pending?: boolean }
+  | { kind: 'completed'; checkInAtUtc: string; checkOutAtUtc: string; pending?: boolean }
 
 const READER_ID = 'reader'
 
@@ -133,6 +140,16 @@ export function ScanPage() {
   const [torchOn, setTorchOn] = useState(false)
   const [result, setResult] = useState<Card | null>(null)
   const [today, setToday] = useState<TodayInfo>({ kind: 'loading' })
+  // Read by the scan itself: the camera callback is created once per camera session, and the day it
+  // decides by must be the current one, not the one it was born with.
+  const todayRef = useRef<TodayInfo>(today)
+  todayRef.current = today
+  // Set when `today` came from the phone's memory because the server could not be reached — the
+  // moment the server last said it. Null when it is live.
+  const [todayAsOf, setTodayAsOf] = useState<number | null>(null)
+  // «Siz artıq işdəsiniz — çıxırsınız?» — the check-in time it is asking about, while it is asked.
+  const [earlyOutCheckIn, setEarlyOutCheckIn] = useState<string | null>(null)
+  const earlyOutChoiceRef = useRef<((leaving: boolean) => void) | null>(null)
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // Seconds left on the GPS wait, shown on the checklist. Only appears once the fix is taking long
   // enough to be worth explaining — a countdown that starts at 45 makes a two-second check look slow.
@@ -458,21 +475,37 @@ export function ScanPage() {
    * needed; guessing "finished" costs a day's pay.
    */
   function withQueued(info: TodayInfo, queued: QueuedScan[]): TodayInfo {
-    if (info.kind !== 'none') return info
-    const today = todayStr()
-    const first = queued
-      .map((q) => q.clientTimestampUtc)
-      .filter((t) => t.slice(0, 10) === today)
-      .sort()[0]
-    return first ? { kind: 'in-progress', checkInAtUtc: first } : info
+    // Unknown stays unknown: a queued tap could be either, and this is the moment not to guess.
+    if (info.kind === 'loading' || info.kind === 'completed' || (info.kind === 'none' && info.unknown)) return info
+    // The home card's reading of the queue, so the two screens can never tell one person two things.
+    const day = withPendingScans(
+      info.kind === 'none' ? { kind: 'none' } : { kind: 'in', checkIn: info.checkInAtUtc },
+      queued, todayStr())
+    if (day.kind === 'done')
+      return { kind: 'completed', checkInAtUtc: day.checkIn, checkOutAtUtc: day.checkOut, pending: true }
+    if (day.kind === 'in' && day.pending)
+      return { kind: 'in-progress', checkInAtUtc: day.checkIn, pending: true }
+    return info
   }
 
   async function loadTodayStatus() {
     // Scoped to the signed-in account, exactly as the drain is: on a shared brigade phone the queue
     // holds other people's taps, and reading them as this employee's would be the same
     // misattribution the queue's own employeeId stamp exists to prevent.
-    const queued = await scansFor(decodeJwt(getToken() ?? '')?.sub ?? null).catch(() => [] as QueuedScan[])
-    const settle = (info: TodayInfo) => setToday(withQueued(info, queued))
+    const me = decodeJwt(getToken() ?? '')?.sub ?? null
+    const queued = await scansFor(me).catch(() => [] as QueuedScan[])
+    const settle = (info: TodayInfo, asOf: number | null = null) => {
+      setTodayAsOf(asOf)
+      setToday(withQueued(info, queued))
+    }
+    // No answer from the server. What it said last, labelled as such — or an honest «unknown». Never
+    // «none»: that told people checked in since 07:38 they had not checked in, and the scan they then
+    // made became their check-out.
+    const fallback = () => {
+      const known = knownToday(me)
+      if (known) settle(recordToTodayInfo(known.record ?? undefined), known.atMs)
+      else settle({ kind: 'none', unknown: whyUnreachable() })
+    }
     try {
       // Bounded: a request that never settles used to leave `today` on 'loading' forever, and the
       // whole scan flow waits on that — the screen simply never moved. Falling back to 'none' lets the
@@ -483,17 +516,19 @@ export function ScanPage() {
         delay(8000).then(() => null),
       ])
       if (!res) {
-        settle({ kind: 'none' })
+        fallback()
         return
       }
       const { status, data } = res
-      if (status !== 200) {
-        settle({ kind: 'none' })
+      // 204 is an answer too — «no scan yet today» (see todayAnswered).
+      if (!todayAnswered(status)) {
+        fallback()
         return
       }
+      rememberToday(me, data ?? null)
       settle(recordToTodayInfo(data ?? undefined))
     } catch {
-      settle({ kind: 'none' })
+      fallback()
     }
   }
 
@@ -695,6 +730,19 @@ export function ScanPage() {
     })
   }
 
+  /** Asks «Siz artıq işdəsiniz — işdən çıxırsınız?» and resolves with the answer. Never rejects. */
+  function askEarlyCheckOut(checkInIso: string | null): Promise<boolean> {
+    return new Promise((resolve) => {
+      setEarlyOutCheckIn(checkInIso ?? '')
+      setPhase('confirmOut')
+      earlyOutChoiceRef.current = (leaving) => {
+        earlyOutChoiceRef.current = null
+        setEarlyOutCheckIn(null)
+        resolve(leaving)
+      }
+    })
+  }
+
   async function onDecoded(text: string) {
     if (busyRef.current) return
     // Kitabxana 2.0 sign-in, not a check-in. The kiosk at book.qrlog.az shows this QR so an employee
@@ -838,12 +886,48 @@ export function ScanPage() {
     // a second check-in. clientTimestampUtc is only used by the server if the scan syncs offline.
     const clientScanId = crypto.randomUUID()
     const clientTimestampUtc = new Date().toISOString()
+    // Set once the employee has answered «bəli, çıxıram». Travels with the scan, online or queued —
+    // soon after arriving the server takes a check-out only with it (EarlyCheckOutRules).
+    let confirmEarlyCheckOut = false
+    // What the phone believes today is at this moment — read through the ref, never a stale closure.
+    const known = todayRef.current
+
+    /** The day stays as it is: they are at work, and said so. */
+    function stayed(checkInIso: string | null) {
+      setResult({
+        tone: 'green',
+        title: 'Girişiniz qüvvədədir',
+        detail: checkInIso ? `Giriş saatınız: ${fmtTime(checkInIso, '')}` : undefined,
+        note: 'Çıxış qeydə alınmadı. İş bitəndə yenidən skan edin.',
+        final: true,
+      })
+    }
 
     // Saves the tap on the device — same id, same selfie, same timestamp — so the replay is the SAME
     // scan, not a new one. Shared by every path where the server could not judge the scan: network
     // down, request timed out, or the server itself answering 502/503/504 (a deploy window used to
     // reject these taps outright — the one way a real clock-in could still be lost).
     async function saveLocally(reason: 'network' | 'server') {
+      // Soon after a check-in the phone knows about, this tap is a CHECK-OUT. Online the server asks;
+      // offline nobody would have — and «did it work?» retries queued here were replayed later as
+      // check-outs at 07:44 that closed the day. Ask now, before anything is saved.
+      // Inside the double-tap window the server takes no check-out at all — so this card must not
+      // announce one. The same words the server's own answer gets online.
+      if (known.kind === 'in-progress'
+          && Date.parse(clientTimestampUtc) - Date.parse(known.checkInAtUtc) < DOUBLE_TAP_MS) {
+        setResult(errorResult(409, { error: 'TooSoonToCheckOut', minutes: 5 }, coords.accuracy))
+        return
+      }
+      if (known.kind === 'in-progress' && !confirmEarlyCheckOut
+          && isEarlyCheckOut(known.checkInAtUtc, clientTimestampUtc)) {
+        const leaving = await askEarlyCheckOut(known.checkInAtUtc)
+        setPhase('processing')
+        if (!leaving) {
+          stayed(known.checkInAtUtc)
+          return
+        }
+        confirmEarlyCheckOut = true
+      }
       try {
         await enqueueScan({
           clientScanId,
@@ -860,28 +944,27 @@ export function ScanPage() {
           // and is replayable by anyone, so a momentary decode failure must not mint a fresh unowned
           // item and reopen the misattribution this stamp closes.
           employeeId: decodeJwt(getToken() ?? '')?.sub ?? 'unknown',
+          ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
         })
         // Saved on the device IS a success for the employee — same confident buzz as a live scan.
         successFeedback()
         setResult({
           tone: 'green',
-          // Lead with what HAPPENED, not with what broke.
-          //
-          // It used to open «Serverlə əlaqə müvəqqəti kəsilib» — an accurate sentence about our
-          // infrastructure, printed in the largest text on a screen belonging to somebody who only
-          // wants to know whether they are marked present. They read a fault report and came to the
-          // office asking whether there was a problem. There isn't: the tap is saved and will be
-          // sent, which is the whole point of the queue, so that is the headline now.
-          //
-          // The cause stays on the card, at the bottom, in the quiet line — it is true, it matters
-          // when someone reports a bad day, and the distinction is real: a backend down behind a
-          // live proxy answers 502 without CORS headers, which the browser raises as the same
-          // exception as no signal at all.
-          title: 'Qeyd olundu ✓',
-          detail: 'Skan telefonunuzda saxlanıldı.',
+          // Say WHICH it is. «Qeyd olundu ✓» on its own read as «you are checked in» to people who
+          // were in fact checking out — or checking in a second time — and they found out a week
+          // later on the tabel. When the phone does not know the day, it says so instead of guessing.
+          title: known.kind === 'in-progress'
+            ? 'Çıxış telefonda saxlanıldı'
+            : known.kind === 'none' && !known.unknown
+              ? 'Giriş telefonda saxlanıldı'
+              : 'Skan telefonda saxlanıldı',
+          detail: `Saat ${fmtTime(clientTimestampUtc, '')} · hələ serverə çatmayıb`,
+          // It used to promise «özü göndəriləcək — tətbiqi bağlaya bilərsiniz». There is no
+          // background sync: a closed app sends nothing until it is opened again. The truth is one
+          // extra tap, so say it — and that the scan is kept on the phone, which is now true.
           note: reason === 'server'
-            ? 'İnternet qayıdanda özü göndəriləcək — heç nə itmir. Tətbiqi bağlaya bilərsiniz. (Server müvəqqəti əlçatmazdır.)'
-            : 'İnternet qayıdanda özü göndəriləcək — heç nə itmir. Tətbiqi bağlaya bilərsiniz. (Əlaqə kəsilib.)',
+            ? 'Server müvəqqəti əlçatmazdır. Tətbiq açıq qalsa, özü yenidən göndərəcək; bağlasanız, sonra bir dəfə açın.'
+            : `${whyUnreachable() === 'offline' ? 'İnternet yoxdur.' : 'Serverə qoşulmaq alınmadı.'} Əlaqə olanda tətbiqi bir dəfə açın — skan o zaman göndəriləcək. Skan telefonda qalır, silinmir.`,
           final: true,
           photo: photoBase64 ?? undefined,
         })
@@ -895,87 +978,106 @@ export function ScanPage() {
     }
 
     try {
-      const { status, data } = await apiRequest<ScanResponse>('/api/attendance/scan', {
-        method: 'POST',
-        // A wedged connection must become a queued scan, not an endless spinner: past this deadline
-        // the fetch throws and the catch below saves the tap. The server records in ~40ms — anything
-        // near 20s is infrastructure, and the idempotency id makes the later replay safe even if the
-        // server DID write before the deadline hit.
-        timeoutMs: 20_000,
-        body: {
-          qrToken,
-          deviceFingerprint: getDeviceFingerprint(),
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          // Omit entirely when there's no photo so the field stays optional on the wire.
-          ...(photoBase64 ? { photoBase64 } : {}),
-          clientScanId,
-        },
-      })
-
-      // The server did not JUDGE the scan — it was simply not there to answer (deploy window,
-      // crashed backend behind the proxy). Same treatment as no network at all.
-      if (isServerUnavailable(status)) {
-        await saveLocally('server')
-        return
-      }
-
-      if (status === 200 && data?.action === 'CheckIn') {
-        successFeedback()
-        const face = faceLine(data.faceMatch ?? (qrless ? 'Pending' : undefined))
-        setResult({
-          tone: 'green',
-          title: 'Giriş qeydə alındı',
-          detail: `Saat ${fmtTime(data.checkInAtUtc, '')}${face.tick ? ` · ${face.tick}` : ''}`,
-          note: qrless
-            ? 'İş bitəndə çıxış üçün yenidən «Çıxış et»ə toxunun.'
-            : 'İş bitəndə çıxış üçün yenidən skan edin.',
-          // A face that did not verify outranks lateness: it is the rarer and the graver notice, and
-          // it is the one the manager will be looking at. Otherwise just tell them they were late (vs
-          // their own hours, else the location's) — no reason asked.
-          warn: face.warn ?? (data.late ? 'Gecikdiniz' : undefined),
-          final: true,
-          photo: photoBase64 ?? undefined,
-          openDays: data.openDays,
-          // Check-in is the moment to ask: they're at work, looking at the screen, and the reminder
-          // they're being offered fires later the same day.
-          offerPush: true,
+      // At most twice round: once as tapped, and once more if the server asks «are you leaving?» and
+      // the answer is yes. Same id, same photo, same position — it is the same scan.
+      for (;;) {
+        const { status, data } = await apiRequest<ScanResponse>('/api/attendance/scan', {
+          method: 'POST',
+          // A wedged connection must become a queued scan, not an endless spinner: past this deadline
+          // the fetch throws and the catch below saves the tap. The server records in ~40ms — anything
+          // near 20s is infrastructure, and the idempotency id makes the later replay safe even if the
+          // server DID write before the deadline hit.
+          timeoutMs: 20_000,
+          body: {
+            qrToken,
+            deviceFingerprint: getDeviceFingerprint(),
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            // Omit entirely when there's no photo so the field stays optional on the wire.
+            ...(photoBase64 ? { photoBase64 } : {}),
+            clientScanId,
+            ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
+          },
         })
+
+        // The server did not JUDGE the scan — it was simply not there to answer (deploy window,
+        // crashed backend behind the proxy). Same treatment as no network at all.
+        if (isServerUnavailable(status)) {
+          await saveLocally('server')
+          return
+        }
+
+        // Checked in not long ago: this scan would close the day, so the server wants a yes first.
+        if (status === 409 && data?.error === 'ConfirmEarlyCheckOut' && !confirmEarlyCheckOut) {
+          const checkIn = data.checkInAtUtc ?? (known.kind === 'in-progress' ? known.checkInAtUtc : null)
+          const leaving = await askEarlyCheckOut(checkIn)
+          setPhase('processing')
+          if (!leaving) {
+            stayed(checkIn)
+            return
+          }
+          confirmEarlyCheckOut = true
+          continue
+        }
+
+        if (status === 200 && data?.action === 'CheckIn') {
+          successFeedback()
+          const face = faceLine(data.faceMatch ?? (qrless ? 'Pending' : undefined))
+          setResult({
+            tone: 'green',
+            title: 'Giriş qeydə alındı',
+            detail: `Saat ${fmtTime(data.checkInAtUtc, '')}${face.tick ? ` · ${face.tick}` : ''}`,
+            note: qrless
+              ? 'İş bitəndə çıxış üçün yenidən «Çıxış et»ə toxunun.'
+              : 'İş bitəndə çıxış üçün yenidən skan edin.',
+            // A face that did not verify outranks lateness: it is the rarer and the graver notice, and
+            // it is the one the manager will be looking at. Otherwise just tell them they were late (vs
+            // their own hours, else the location's) — no reason asked.
+            warn: face.warn ?? (data.late ? 'Gecikdiniz' : undefined),
+            final: true,
+            photo: photoBase64 ?? undefined,
+            openDays: data.openDays,
+            // Check-in is the moment to ask: they're at work, looking at the screen, and the reminder
+            // they're being offered fires later the same day.
+            offerPush: true,
+          })
+          return
+        }
+        if (status === 200 && data?.action === 'CheckOut') {
+          successFeedback()
+          const worked = data.recordId ? await workedDurationText(data.recordId) : undefined
+          setResult({
+            tone: 'green',
+            title: 'Çıxış qeydə alındı',
+            detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc, '')}`,
+            note: 'Sabaha qədər!',
+            warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
+            final: true,
+            // Offered here too — more chances to get it switched on; it self-hides once it is.
+            offerPush: true,
+          })
+          return
+        }
+        const card = errorResult(status, data, coords.accuracy)
+        // A hard rejection (wrong device, inactive account) buzzes so it's felt; soft/yellow states
+        // (QR expired, "too soon") stay silent — they aren't failures worth a jolt.
+        if (card.tone === 'red') errorFeedback()
+        setResult(
+          qrless && data?.error === 'TokenMalformed'
+            // The server no longer treats this branch as poster-less (the flag was switched off, or this
+            // phone's profile is stale). Named plainly, with the one person who can put it right — the
+            // raw code «TokenMalformed» would only tell them the app is broken.
+            ? {
+                tone: 'red',
+                title: 'Bu filialda üz ilə giriş bağlanıb',
+                detail: 'Filialın QR-siz giriş ayarı dəyişib.',
+                note: 'Rəhbərinizə deyin — ya poster asılmalı, ya da ayar geri açılmalıdır.',
+                final: true,
+              }
+            : qrless ? { ...card, retryLabel: 'Yenidən cəhd et' } : card,
+        )
         return
       }
-      if (status === 200 && data?.action === 'CheckOut') {
-        successFeedback()
-        const worked = data.recordId ? await workedDurationText(data.recordId) : undefined
-        setResult({
-          tone: 'green',
-          title: 'Çıxış qeydə alındı',
-          detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc, '')}`,
-          note: 'Sabaha qədər!',
-          warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
-          final: true,
-          // Offered here too — more chances to get it switched on; it self-hides once it is.
-          offerPush: true,
-        })
-        return
-      }
-      const card = errorResult(status, data, coords.accuracy)
-      // A hard rejection (wrong device, inactive account) buzzes so it's felt; soft/yellow states
-      // (QR expired, "too soon") stay silent — they aren't failures worth a jolt.
-      if (card.tone === 'red') errorFeedback()
-      setResult(
-        qrless && data?.error === 'TokenMalformed'
-          // The server no longer treats this branch as poster-less (the flag was switched off, or this
-          // phone's profile is stale). Named plainly, with the one person who can put it right — the
-          // raw code «TokenMalformed» would only tell them the app is broken.
-          ? {
-              tone: 'red',
-              title: 'Bu filialda üz ilə giriş bağlanıb',
-              detail: 'Filialın QR-siz giriş ayarı dəyişib.',
-              note: 'Rəhbərinizə deyin — ya poster asılmalı, ya da ayar geri açılmalıdır.',
-              final: true,
-            }
-          : qrless ? { ...card, retryLabel: 'Yenidən cəhd et' } : card,
-      )
     } catch {
       // No connection, or the 20s deadline fired — instead of failing, save the scan on the device
       // and sync it when the server is reachable again. GPS + selfie were already captured, so
@@ -1030,7 +1132,7 @@ export function ScanPage() {
           />
         )}
 
-        <TodayBanner today={today} />
+        <TodayBanner today={today} asOf={todayAsOf} />
 
         {today.kind === 'completed' && (
           <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-blue-500/30 bg-gradient-to-b from-blue-950/80 to-slate-900/90 p-6 text-center text-white shadow-2xl backdrop-blur-2xl">
@@ -1038,6 +1140,9 @@ export function ScanPage() {
               ✓
             </div>
             <h2 className="text-xl font-extrabold text-white">Bu gün tamamlandı</h2>
+            {today.pending && (
+              <p className="mt-1 text-xs font-bold text-amber-300">📴 Çıxış telefonda saxlanılıb — hələ serverə göndərilməyib</p>
+            )}
             <p className="mt-2 text-sm text-slate-300 font-medium">
               {fmtTime(today.checkInAtUtc, '')} – {fmtTime(today.checkOutAtUtc, '')}
               {' · '}
@@ -1132,7 +1237,7 @@ export function ScanPage() {
               onClick={() => void proceed('', qrlessReady.me)}
               className="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 py-3.5 text-base font-bold text-white shadow-lg shadow-emerald-500/25 transition active:scale-[0.98] cursor-pointer"
             >
-              {today.kind === 'none' ? 'Giriş et' : 'Çıxış et'}
+              {today.kind === 'none' ? (today.unknown ? 'Qeyd et' : 'Giriş et') : 'Çıxış et'}
             </button>
           </div>
         )}
@@ -1282,6 +1387,32 @@ export function ScanPage() {
           </div>
         )}
 
+        {phase === 'confirmOut' && earlyOutCheckIn !== null && (
+          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+            <p className="text-xl font-bold text-amber-400">Siz artıq işdəsiniz</p>
+            <p className="text-center text-base text-slate-300">
+              {earlyOutCheckIn
+                ? <>Giriş saatınız: <b className="text-white">{fmtTime(earlyOutCheckIn, '')}</b>. </>
+                : null}
+              Bu skan <b className="text-amber-300">ÇIXIŞ</b> sayılacaq və iş gününüz bağlanacaq.
+            </p>
+            {/* The safe answer is the big one. A «did it work?» retry is by far the commonest reason
+                to be here, and a wrong «yes» ends somebody's paid day at eight in the morning. */}
+            <button
+              onClick={() => earlyOutChoiceRef.current?.(false)}
+              className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
+            >
+              Xeyr, işdəyəm
+            </button>
+            <button
+              onClick={() => earlyOutChoiceRef.current?.(true)}
+              className="text-sm text-slate-400 underline underline-offset-4"
+            >
+              Bəli, işdən çıxıram
+            </button>
+          </div>
+        )}
+
         {phase === 'processing' && (
           <p className="text-lg animate-pulse">Yoxlanılır…</p>
         )}
@@ -1353,21 +1484,36 @@ function CaptureRing({ progress }: { progress: number }) {
 
 // --- today status banner ----------------------------------------------------
 
-function TodayBanner({ today }: { today: TodayInfo }) {
+function TodayBanner({ today, asOf }: { today: TodayInfo; asOf: number | null }) {
   if (today.kind === 'loading' || today.kind === 'completed') return null
+  // From the phone's memory, not the server: say so, and say how old it is.
+  const stale = asOf !== null ? ` · 📴 ${fmtTime(new Date(asOf).toISOString(), '')} məlumatı` : ''
+  if (today.kind === 'none' && today.unknown) {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-slate-300 shadow-sm backdrop-blur-md">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+        <span>
+          {today.unknown === 'offline'
+            ? '📴 İnternet yoxdur — bugünkü girişiniz yoxlanıla bilmədi'
+            : 'Server cavab vermir — bugünkü girişiniz yoxlanıla bilmədi'}
+        </span>
+      </div>
+    )
+  }
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-slate-300 shadow-sm backdrop-blur-md">
       {today.kind === 'none' && (
         <>
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-          <span>Bu gün hələ giriş etməmisiniz</span>
+          <span>{today.again ? 'Günün növbəti hissəsi üçün giriş edin' : 'Bu gün hələ giriş etməmisiniz'}{stale}</span>
         </>
       )}
       {today.kind === 'in-progress' && (
         <>
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span>
-            Giriş: <strong className="text-white font-semibold">{fmtTime(today.checkInAtUtc, '')}</strong> — hələ çıxış etməmisiniz
+            Giriş: <strong className="text-white font-semibold">{fmtTime(today.checkInAtUtc, '')}</strong>
+            {today.pending ? ' (📴 telefonda, göndərilməyi gözləyir)' : ''} — hələ çıxış etməmisiniz{stale}
           </span>
         </>
       )}
@@ -1378,6 +1524,10 @@ function TodayBanner({ today }: { today: TodayInfo }) {
 function recordToTodayInfo(record: AttendanceRecord | undefined): TodayInfo {
   if (!record?.checkInAtUtc) return { kind: 'none' }
   if (!record.checkOutAtUtc) return { kind: 'in-progress', checkInAtUtc: record.checkInAtUtc }
+  // Closed, but the server would open another stretch now — back at the centre after a field visit,
+  // or a split shift's second window. Reading this as «completed» kept the camera shut on exactly the
+  // scan the server was waiting for.
+  if (record.mayScanAgain) return { kind: 'none', again: true }
   return { kind: 'completed', checkInAtUtc: record.checkInAtUtc, checkOutAtUtc: record.checkOutAtUtc }
 }
 

@@ -96,7 +96,9 @@ public class AdminAttendanceController : ControllerBase
         {
             x.recordId, x.employeeId, x.employeeName, x.locationName, x.attendanceDate, x.checkInAtUtc,
             closable = managed is null
-                       || (x.Role == EmployeeRole.Employee && x.employeeId != me && managed.Contains(x.EmployeeLocationId)),
+                       // Plain staff, and since 2026-09-18 a fellow manager — both of the caller's own branches.
+                       || ((x.Role == EmployeeRole.Employee || x.Role == EmployeeRole.Manager)
+                           && x.employeeId != me && managed.Contains(x.EmployeeLocationId)),
         }));
     }
 

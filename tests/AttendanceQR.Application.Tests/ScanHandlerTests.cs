@@ -49,6 +49,8 @@ public class ScanHandlerTests
         public Guid LocationId { get; } = Guid.NewGuid();
         public Location Location { get; }
         public string? ExpiredExemptPosterToken { get; }
+        /// <summary>The days a late scan asked to have their stored summary rebuilt.</summary>
+        public SummaryRebuildQueue Rebuilds { get; } = new();
         private readonly IQrTokenService _qr;
 
         public Harness(
@@ -117,7 +119,8 @@ public class ScanHandlerTests
                 new DeviceBindingOptions { AutoBind = true },
                 new AppOptions { TimeZone = "Asia/Baku" },
                 new MemoryCache(new MemoryCacheOptions()),
-                NullLogger<AttendanceController>.Instance)
+                NullLogger<AttendanceController>.Instance,
+                Rebuilds)
             {
                 ControllerContext = new ControllerContext { HttpContext = HttpContextFor(EmployeeId) },
             };
@@ -445,17 +448,45 @@ public class ScanHandlerTests
     // --- offline clock trust window -----------------------------------------
 
     [Fact]
+    public async Task An_offline_scan_from_last_week_is_recorded_on_its_own_day_and_the_day_rebuilt()
+    {
+        // The owner, 2026-09-18: an offline scan is never lost. It used to be refused past eighteen
+        // hours — a phone off for the weekend lost Friday. Now it lands on the day it was TAKEN, never
+        // today, and that day's stored summary is rebuilt so the tabel and payroll see it.
+        using var h = new Harness();
+        var lastWeek = DateTime.UtcNow.AddDays(-7);
+
+        var result = await h.Controller.Scan(h.Scan(offline: true, clientScanId: Guid.NewGuid(), clientTs: lastWeek));
+
+        Assert.Null(Error(result));
+        var day = await h.Db.AttendanceRecords.SingleAsync();
+        Assert.Equal(DateOnly.FromDateTime(lastWeek), day.AttendanceDate);
+        Assert.True(day.WasOffline);
+        Assert.Contains(h.Rebuilds.TakeSettled(TimeSpan.Zero, DateTime.UtcNow.AddSeconds(1)),
+            r => r.Date == day.AttendanceDate);
+    }
+
+    [Fact]
+    public async Task A_scan_today_asks_for_no_rebuild()
+    {
+        // Today is computed live everywhere; only a PAST day has a stored summary to go stale.
+        using var h = new Harness();
+
+        Assert.Null(Error(await h.Controller.Scan(h.Scan())));
+        Assert.Empty(h.Rebuilds.TakeSettled(TimeSpan.Zero, DateTime.UtcNow.AddSeconds(1)));
+    }
+
+    [Fact]
     public async Task An_offline_timestamp_far_in_the_past_is_refused_not_silently_moved_to_today()
     {
         using var h = new Harness();
-        // A phone whose clock is rolled back a week is beyond the trust window (−18h). Falling back
-        // to server time is what this USED to do, and it was the wrong call: it silently wrote last
-        // Tuesday's scan onto today, so a real day stayed missing while a day nobody worked showed a
-        // check-in. Refusing is honest — the queue drops it and tells the employee, and the admin
-        // gets it on the Problems screen, which is the only path that ends in the right day being
-        // fixed by hand.
-        var lastWeek = DateTime.UtcNow.AddDays(-7);
-        var result = await h.Controller.Scan(h.Scan(offline: true, clientTs: lastWeek));
+        // A phone whose clock is rolled back two months is beyond the trust window (30 days). Falling
+        // back to server time is what this USED to do, and it was the wrong call: it silently wrote the
+        // old scan onto today, so a real day stayed missing while a day nobody worked showed a
+        // check-in. Refusing is honest — the phone keeps the scan in its archive (never deleted) and
+        // tells the employee, and the admin gets it on the Problems screen.
+        var longAgo = DateTime.UtcNow.AddDays(-(AttendanceController.OfflineTrustWindowHours / 24 + 10));
+        var result = await h.Controller.Scan(h.Scan(offline: true, clientTs: longAgo));
 
         Assert.Equal("OfflineTooOld", Error(result));
         Assert.False(await h.Db.AttendanceRecords.AnyAsync(),
