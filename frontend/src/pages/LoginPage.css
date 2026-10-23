@@ -1,0 +1,57 @@
+/* Saved accounts */
+.login-profiles {
+  margin: 20px 0 16px;
+  padding: 6px;
+  border: 1px solid var(--auth-border);
+  border-radius: 14px;
+}
+.login-profiles-title {
+  padding: 6px 8px 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--auth-muted);
+}
+.login-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  color: var(--c900);
+  cursor: pointer;
+}
+.login-profile:hover { background: color-mix(in srgb, var(--brand-blue) 6%, #fff); }
+.login-profile span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Divider */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--auth-muted);
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--auth-border);
+}
+
+/* QR notice */
+.login-notice { margin-top: 12px; }
