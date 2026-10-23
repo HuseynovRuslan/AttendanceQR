@@ -1,0 +1,331 @@
+/* Qeydiyyat səhifəsinin görünüşü (AuthShell, RegisterPage).
+   İlham — 21st.dev-dən iki komponent:
+   • "modern-login-signup": tünd fon üzərində nöqtələr (mərkəzdən açılır və arabir parıldayır), ortada
+     vinyet, onun üstündə tünd kart, "və ya" xətti, kartın altında "Hesabınız yoxdur?" sətri;
+   • "qr-code-scan-login": nömrələnmiş addımlar, geri sayım nişanı, kartın alt zolağı.
+   Orijinal nöqtələr three.js (WebGL) ilə CDN-dən çəkilirdi. Burada eyni effekt yalnız CSS ilə edilib:
+   giriş səhifəsi zəif telefonda, zəif internetlə və oflayn (PWA) da açılmalıdır — əlavə 600 KB-lıq
+   kitabxana və xarici skript buna mane olardı. */
+
+/* ── Səhifə və fon ───────────────────────────────────────────────────────────────────────── */
+.auth-page {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh; /* telefonda brauzerin ünvan sətri çıxanda/gizlənəndə hündürlük düzgün qalsın */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(28px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+  background: #0b0c0d;
+  color-scheme: dark; /* brauzerin öz elementləri (avtodoldurma, scroll) də tünd olsun */
+}
+
+/* Nöqtəli şəbəkə: hər 20px-də bir zəif nöqtə. */
+.auth-dots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.4px, transparent 1.6px);
+  background-size: 20px 20px;
+  animation: auth-dots-in 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Parıldayan nöqtələr: eyni şəbəkənin seyrək hissəsi, növbə ilə yanıb-sönür. Ölçülər və sürüşmələr
+   20-yə bölünür ki, parlaq nöqtə həmişə zəif nöqtənin düz üstünə düşsün. */
+.auth-dots::before,
+.auth-dots::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.7) 1.6px, transparent 1.8px);
+  animation: auth-dots-twinkle 6s ease-in-out infinite;
+}
+.auth-dots::before {
+  background-size: 100px 140px;
+  background-position: 40px 0;
+  animation-delay: 1.2s;
+}
+.auth-dots::after {
+  background-size: 180px 100px;
+  background-position: 80px 40px;
+  animation-duration: 8s;
+  animation-delay: 3.4s;
+}
+
+/* Vinyet: mərkəz qaranlıqdır, nöqtələr kənarlara doğru görünür — kart fonla qarışmır. */
+.auth-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 60% 55% at 50% 50%, #0b0c0d 30%, rgba(11, 12, 13, 0.85) 55%, rgba(11, 12, 13, 0) 100%);
+}
+
+.auth-inner {
+  position: relative; /* fon qatlarının üstündə qalsın */
+  width: 100%;
+  max-width: 400px;
+  animation: auth-shell-rise 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s both;
+}
+
+@keyframes auth-dots-in {
+  from { clip-path: circle(0% at 50% 50%); }
+  to { clip-path: circle(75% at 50% 50%); }
+}
+@keyframes auth-dots-twinkle {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+@keyframes auth-shell-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Telefonda "hərəkəti azalt" seçilibsə: heç nə hərəkət etmir, nöqtələr sakit görünür. */
+@media (prefers-reduced-motion: reduce) {
+  .auth-dots,
+  .auth-inner { animation: none; }
+  .auth-dots::before,
+  .auth-dots::after { animation: none; opacity: 0.35; }
+}
+
+/* ── Loqo və şirkət adı (kartın üstündə) ──────────────────────────────────────────────────── */
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 22px;
+}
+.auth-brand-logo { margin-bottom: 10px; }
+.auth-brand-name {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.auth-brand-sub { margin-top: 2px; font-size: 13px; color: #9a9b9b; }
+
+/* ── Kart ─────────────────────────────────────────────────────────────────────────────────── */
+.auth-card {
+  /* Kartın içində boz palitranı tünd rejimə çeviririk. .inp, .btn, .form-label, .fb, .seg kimi mövcud
+     klasslar bu dəyişənlərlə rənglənir — ona görə onlara toxunmadan tünd kartda düzgün görünürlər.
+     (PinInput-un öz rəngləri də var(--c500) kimi yazılıb, o da avtomatik açılır.) */
+  --white: #0e0f10; /* sahələrin fonu */
+  --c50: #1a1b1d; /* hover və "Telefon / E-poçt" zolağı */
+  --c100: #222326;
+  --c200: #2d2f32; /* çərçivələr */
+  --c400: #8e8f90;
+  --c500: #a6a7a8;
+  --c600: #c2c3c4; /* sahə başlıqları */
+  --c700: #dcddde; /* adi mətn */
+  --c900: #f5f5f6; /* başlıqlar və yazılan mətn */
+  --clay: #f08b70;
+  --clay-bg: rgba(200, 90, 61, 0.16);
+  --blue: #93bbff;
+  --blue-bg: rgba(59, 130, 246, 0.15);
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+
+  position: relative;
+  padding: 28px 24px;
+  border: 1px solid #24262a;
+  border-radius: 22px;
+  background: #141517;
+  color: var(--c700);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+}
+.auth-card + .auth-card { margin-top: 12px; }
+.auth-card-compact { padding: 16px; }
+
+.auth-title {
+  font-family: 'Manrope', sans-serif;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-align: center;
+  color: var(--c900);
+}
+.auth-sub {
+  margin: 6px 0 22px;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--c500);
+}
+.auth-sub b { color: var(--c900); white-space: nowrap; }
+
+/* Sahələr. Şrift 16px-dir: iPhone 16px-dən kiçik sahəyə toxunanda səhifəni böyüdür (zoom). */
+.auth-field { margin-bottom: 16px; }
+.auth-card .inp { padding: 12px 14px; font-size: 16px; }
+.auth-card .phone-prefix { padding: 12px 14px; font-size: 16px; }
+.auth-card .inp::placeholder { color: var(--c400); opacity: 1; }
+/* Brauzer saxlanmış nömrəni doldurduqda sahəni sarı/mavi rəngləyir — tünd fonda saxlayırıq. */
+.auth-card .inp:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 40px var(--white) inset;
+  -webkit-text-fill-color: var(--c900);
+  caret-color: var(--c900);
+}
+.auth-card .field-err { color: var(--clay); }
+.auth-card .fb { font-size: 13.5px; }
+.auth-card .btn-lg { min-height: 48px; }
+.auth-card .btn:focus-visible { outline: 2px solid var(--leaf); outline-offset: 2px; }
+
+.auth-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 340px) {
+  .auth-row { grid-template-columns: 1fr; }
+}
+
+/* Başlıq solda, kiçik keçid sağda: "PIN (4 rəqəm) ............ PIN-i unutdum?" */
+.auth-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Mətn kimi görünən düymə/keçid. Yuxarı-aşağı padding barmaqla basılan sahəni böyüdür, mənfi margin
+   isə bunu düzülüşə təsir etməyə qoymur. */
+.auth-link {
+  margin: -8px 0;
+  padding: 8px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c600);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.auth-link:hover { color: var(--c900); }
+.auth-link:focus-visible { outline: 2px solid var(--leaf); outline-offset: 2px; border-radius: 4px; }
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c400);
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--c200);
+}
+
+.auth-alert { margin-bottom: 16px; }
+.auth-notice { margin-top: 12px; }
+
+/* Kartın alt zolağı ("Hesabınız yoxdur?"): kartın kənarlarına qədər uzanır. */
+.auth-card-foot {
+  margin: 24px -24px -28px;
+  padding: 15px 24px;
+  border-top: 1px solid #24262a;
+  border-radius: 0 0 22px 22px;
+  background: rgba(255, 255, 255, 0.02);
+  text-align: center;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--c500);
+}
+.auth-card-foot a {
+  font-weight: 700;
+  color: var(--c900);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── "Bu telefondakı hesablar" ────────────────────────────────────────────────────────────── */
+.auth-section-title {
+  margin-bottom: 8px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c900);
+}
+.auth-profiles { display: flex; flex-direction: column; gap: 2px; }
+.auth-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  color: var(--c900);
+  cursor: pointer;
+}
+.auth-profile:hover { background: var(--c50); }
+.auth-profile:focus-visible { outline: 2px solid var(--leaf); outline-offset: 2px; }
+.auth-profile span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Qeydiyyat: addımlar və kodu yenidən göndərmək ────────────────────────────────────────── */
+.auth-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--c400);
+}
+.auth-steps li { display: flex; align-items: center; gap: 8px; }
+.auth-steps li + li::before { content: ''; width: 24px; height: 1px; background: var(--c200); }
+.auth-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--c200);
+  border-radius: 50%;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.auth-step-num svg { width: 13px; height: 13px; }
+.auth-steps .is-active,
+.auth-steps .is-done { color: var(--c900); }
+.auth-steps .is-active .auth-step-num,
+.auth-steps .is-done .auth-step-num {
+  border-color: var(--leaf);
+  background: var(--leaf);
+  color: var(--on-leaf, #fff);
+}
+
+.auth-resend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 13.5px;
+  color: var(--c500);
+}
+/* Geri sayım nişanı: "0:42" */
+.auth-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--c200);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--c600);
+}
