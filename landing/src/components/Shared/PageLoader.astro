@@ -112,7 +112,6 @@ const t = useTranslations(lang)
   }
 
   /* Vizörün dörd küncü */
-  /* Baza transform burada, keyframe-də yox: reduce rejimində keyframe-lər söndürülür. */
   .qrl-b {
     position: absolute;
     left: 50%;
@@ -499,27 +498,6 @@ const t = useTranslations(lang)
       transform: none;
     }
   }
-
-  /* global.css onsuz da dondurur; burada yalnız statik hal. */
-  @media (prefers-reduced-motion: reduce) {
-    .qrl-m {
-      opacity: 1;
-      filter: none;
-    }
-
-    .qrl-cap {
-      opacity: 1;
-    }
-  }
-
-  /* `theme` `base`-dən əvvəldir: important-da layer sırası tərsinədir. */
-  @layer theme {
-    @media (prefers-reduced-motion: reduce) {
-      #qrl {
-        animation: qrl-failsafe 0s linear 4.5s forwards !important;
-      }
-    }
-  }
 </style>
 
 <noscript
@@ -553,7 +531,6 @@ const t = useTranslations(lang)
     var root = document.documentElement
     var el = document.getElementById('qrl')
     if (!el) return
-    var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
     var done = false
     var timers = []
 
@@ -588,7 +565,7 @@ const t = useTranslations(lang)
       el.style.setProperty('animation', 'none', 'important') /* failsafe söndü */
       stamp()
       el.classList.add('is-success')
-      later(leave, reduce ? 150 : SUCCESS)
+      later(leave, SUCCESS)
     }
 
     function leave() {
@@ -601,16 +578,6 @@ const t = useTranslations(lang)
       later(function () {
         root.classList.remove('qrl-reveal')
       }, REVEAL)
-
-      if (reduce) {
-        /* reduce: transition ölüdür, WAAPI deyil. */
-        if (el.animate) {
-          el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).finished.then(gone, gone)
-        } else {
-          gone()
-        }
-        return
-      }
 
       el.classList.add('is-leaving')
       later(gone, LEAVE)
@@ -642,7 +609,7 @@ const t = useTranslations(lang)
     document.addEventListener('astro:after-swap', kill)
 
     function schedule() {
-      later(finish, Math.max(0, (reduce ? 300 : MIN) - performance.now()))
+      later(finish, Math.max(0, MIN - performance.now()))
     }
 
     Promise.race([
