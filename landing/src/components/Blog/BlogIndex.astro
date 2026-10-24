@@ -42,7 +42,7 @@ const searchText = (post: BlogPost) =>
 
 const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
 const cardHover =
-  'transition duration-300 hover:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0'
+  'transition duration-300 hover:-translate-y-1'
 // leading-4 və padding yazını çipin düz ortasında saxlayır.
 const categoryChip =
   'inline-flex items-center rounded-full bg-brand-50 px-[11px] py-[5px] text-[12.5px] leading-4 font-bold text-brand-700'
@@ -76,7 +76,7 @@ const buttonReset = 'cursor-pointer border-0 bg-transparent p-0 [font:inherit]'
         </div>
 
         <div class="wrap relative grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] lg:gap-16 xl:grid-cols-[minmax(0,1fr)_minmax(0,480px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">
-          <div>
+          <div data-reveal="heading">
             <h1 class="text-[clamp(38px,5.4vw,72px)] leading-[1.02] font-semibold tracking-[-0.045em] text-balance text-ink">
               {t('blog.hero.title.a')}<span class="text-brand">{t('blog.hero.title.hl')}</span>{t('blog.hero.title.b')}
             </h1>
@@ -85,7 +85,7 @@ const buttonReset = 'cursor-pointer border-0 bg-transparent p-0 [font:inherit]'
             </p>
           </div>
 
-          {/* <img>, inline SVG yox: skan animasiyası və prefers-reduced-motion şəkilin içindədir. Sütun ölçülüdür (auto yox), yoxsa w-full şəkli sıxır. */}
+          {/* <img>, inline SVG yox: skan animasiyası şəkilin içindədir. Sütun ölçülüdür (auto yox), yoxsa w-full şəkli sıxır. */}
           <img
             src="/blog/hero-qr.svg"
             width="560"
@@ -168,7 +168,7 @@ const buttonReset = 'cursor-pointer border-0 bg-transparent p-0 [font:inherit]'
                     <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-3">
                       <span class="inline-flex items-center gap-2 rounded-full bg-white px-[22px] py-3 font-bold text-brand-700 group-hover:bg-brand-50">
                         {t('blog.read')}
-                        <ArrowRight class="size-[18px] transition-transform group-hover:translate-x-1 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" aria-hidden="true" />
+                        <ArrowRight class="size-[18px] transition-transform group-hover:translate-x-1" aria-hidden="true" />
                       </span>
                       <span class="flex items-center gap-2 text-sm text-white/90">
                         <time datetime={featuredPost.data.pubDate.toISOString()}>{formatDate(featuredPost.data.pubDate)}</time>
@@ -186,7 +186,7 @@ const buttonReset = 'cursor-pointer border-0 bg-transparent p-0 [font:inherit]'
                           alt=""
                           width="1200"
                           height="600"
-                          class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+                          class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
                         />
                       </div>
                     )
@@ -222,7 +222,7 @@ const buttonReset = 'cursor-pointer border-0 bg-transparent p-0 [font:inherit]'
                             height="600"
                             loading="lazy"
                             decoding="async"
-                            class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+                            class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
                           />
                         )}
                       </div>
@@ -239,7 +239,7 @@ const buttonReset = 'cursor-pointer border-0 bg-transparent p-0 [font:inherit]'
                           </time>
                           <span class="inline-flex items-center gap-1.5 text-sm font-bold text-brand">
                             {t('blog.read')}
-                            <ArrowRight class="size-[18px] transition-transform group-hover:translate-x-1 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0" aria-hidden="true" />
+                            <ArrowRight class="size-[18px] transition-transform group-hover:translate-x-1" aria-hidden="true" />
                           </span>
                         </div>
                       </div>
