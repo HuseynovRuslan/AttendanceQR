@@ -100,10 +100,10 @@ const barNarrow =
 // Zolaq içindəki sətrin kənar boşluğu: düz halda loqo hero başlığı ilə eyni xətdə durmalıdır
 // (global.css .wrap: yan boşluq `lg`-dən yuxarı 32px, aşağı 22px). Qapsulda və açıq menyuda hər yerdə 16/12px.
 const rowEdge =
-  "pl-1.5 pr-1.5 lg:pl-4 lg:pr-3 group-data-scrolled/header:pl-4 group-data-scrolled/header:pr-3 group-data-open/header:pl-4 group-data-open/header:pr-3 transition-[padding] duration-400 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none";
+  "pl-1.5 pr-1.5 lg:pl-4 lg:pr-3 group-data-scrolled/header:pl-4 group-data-scrolled/header:pr-3 group-data-open/header:pl-4 group-data-open/header:pr-3 transition-[padding] duration-400 ease-[cubic-bezier(0.22,0.61,0.36,1)]";
 // Müddət və əyri saytın başqa bölmələri ilə eynidir.
 const barMotion =
-  "transition-[width,max-width,background-color,border-color,box-shadow,backdrop-filter] duration-400 ease-[cubic-bezier(0.22,0.61,0.36,1)] motion-reduce:transition-none";
+  "transition-[width,max-width,background-color,border-color,box-shadow,backdrop-filter] duration-400 ease-[cubic-bezier(0.22,0.61,0.36,1)]";
 ---
 
 <header
@@ -115,7 +115,7 @@ const barMotion =
     class={`group/header pointer-events-auto relative mx-auto w-full max-w-[calc(var(--maxw)-32px)] rounded-2xl border ${barFlat} ${barGlass} ${barNarrow} ${barMotion}`}
   >
     <div class={`flex h-16 items-center gap-3 lg:gap-8 ${rowEdge}`}>
-      <a class={`shrink-0 rounded-md ${focusRing}`} href={home} aria-label={SITE.name}>
+      <a class={`shrink-0 rounded-md ${focusRing}`} href={home} aria-label={SITE.name} data-header-item>
         <img
           class="h-6.5 w-auto sm:h-7"
           src={logoWord.src}
@@ -129,7 +129,7 @@ const barMotion =
         <ul class="flex list-none items-center gap-1">
           {
             links.map((link) => (
-              <li>
+              <li data-header-item>
                 <a
                   class={`inline-flex h-10 items-center rounded-full px-3 text-[14.5px] font-medium text-stone-600 transition-colors duration-200 ${linkHover} aria-[current=page]:text-brand ${focusRing}`}
                   href={link.href}
@@ -146,7 +146,7 @@ const barMotion =
       <div class="ml-auto flex items-center gap-1 sm:gap-2">
         {
           otherLangs.length > 0 && (
-            <div class="group/lang relative" data-lang>
+            <div class="group/lang relative" data-lang data-header-item>
               <button
                 type="button"
                 class={`flex h-10 cursor-pointer items-center gap-2 rounded-full border-0 bg-transparent px-3 text-sm font-semibold text-stone-700 transition-colors duration-200 ${linkHover} group-data-open/lang:bg-brand-50 group-data-open/lang:text-brand ${focusRing}`}
@@ -201,7 +201,7 @@ const barMotion =
           )
         }
 
-        <a class={`${buttonLogin} hidden px-5 sm:inline-flex`} href={appUrl}>
+        <a class={`${buttonLogin} hidden px-5 sm:inline-flex`} href={appUrl} data-header-item>
           {/* Lucide "log-in" */}
           <svg
             width="18"
@@ -220,12 +220,13 @@ const barMotion =
           {t("cta.login")}
         </a>
         <div
-          class="hidden min-[540px]:grid grid-cols-[1fr] transition-[grid-template-columns,opacity] duration-450 ease-out motion-reduce:transition-none group-data-cta-hidden/header:pointer-events-none group-data-cta-hidden/header:grid-cols-[0fr] group-data-cta-hidden/header:opacity-0"
+          class="hidden min-[540px]:grid grid-cols-[1fr] transition-[grid-template-columns,opacity] duration-450 ease-out group-data-cta-hidden/header:pointer-events-none group-data-cta-hidden/header:grid-cols-[0fr] group-data-cta-hidden/header:opacity-0"
         >
           <a
             class={`${buttonPrimary} inline-flex min-w-0 overflow-hidden whitespace-nowrap`}
             href={contactHref}
             data-header-cta
+            data-header-item
           >
             {/* Padding düymədə yox, burada (bax: buttonPrimary üstündəki qeyd). */}
             <span class="inline-flex h-full shrink-0 items-center gap-2 px-5">
@@ -242,6 +243,7 @@ const barMotion =
           aria-controls="mobile-menu"
           aria-label={t("nav.menu")}
           data-menu-trigger
+          data-header-item
         >
           <span
             class="absolute h-0.5 w-5 -translate-y-1.5 rounded-full bg-current transition duration-300 group-aria-expanded/burger:translate-y-0 group-aria-expanded/burger:rotate-45"
@@ -320,6 +322,9 @@ const barMotion =
 </header>
 
 <script>
+  import { gsap, ScrollTrigger } from "../../scripts/motion/gsap";
+  import { CLEARED_PROPS, hasMotion, pageRevealed } from "../../scripts/motion/shared";
+
   // Header davranışı: dil menyusu, mobil menyu, onların bağlanması və sürüşəndə şüşə qapsul.
   // Hər hissə öz setup...() funksiyasındadır.
 
@@ -330,9 +335,23 @@ const barMotion =
   // Header hündürlüyü global.css-dəki --header-h-dən oxunur (90px, 640px-dən geniş ekranda 98px); oxunmasa bu ehtiyat dəyər.
   const FALLBACK_HEADER_HEIGHT_PX = 90;
 
+  // ---------- Page-load intro ----------
+  const INTRO_SHIFT_PERCENT = -130;
+  const INTRO_DURATION = 0.9;
+  const ITEMS_START = 0.25;
+  const ITEMS_SHIFT = -12;
+  const ITEMS_DURATION = 0.6;
+  const ITEMS_STAGGER = 0.04;
+
+  // ---------- Smart header ----------
+  const HIDE_AFTER_PX = 120;
+  const HIDE_SHIFT_PERCENT = -120;
+  const HIDE_DURATION = 0.4;
+
+  const header = document.querySelector<HTMLElement>("[data-header]");
   const bar = document.querySelector<HTMLElement>("[data-header-bar]");
 
-  if (bar) {
+  if (header && bar) {
     const menuButton = bar.querySelector<HTMLButtonElement>("[data-menu-trigger]");
     const mobileMenu = bar.querySelector<HTMLElement>("[data-menu]");
     const langDropdown = bar.querySelector<HTMLElement>("[data-lang]");
@@ -479,9 +498,33 @@ const barMotion =
       window.addEventListener("pageshow", resetAfterBackButton);
     };
 
-    // ---------- Sürüşmə (scroll) ----------
-    // Zolaq heç vaxt gizlənmir. Skript yalnız `data-scrolled` atributunu vəziyyət dəyişəndə qoyub-götürür,
-    // animasiyanı CSS çəkir (barGlass, barNarrow).
+    // ---------- Page-load intro ----------
+    const setupIntro = () => {
+      if (!hasMotion()) return;
+      const items = header.querySelectorAll("[data-header-item]");
+      const intro = gsap.timeline({ paused: true });
+      intro.fromTo(
+        header,
+        { yPercent: INTRO_SHIFT_PERCENT },
+        { yPercent: 0, duration: INTRO_DURATION, ease: "power3.out" }
+      );
+      intro.fromTo(
+        items,
+        { opacity: 0, y: ITEMS_SHIFT, transition: "none" },
+        {
+          opacity: 1,
+          y: 0,
+          duration: ITEMS_DURATION,
+          ease: "power3.out",
+          stagger: ITEMS_STAGGER,
+          clearProps: CLEARED_PROPS,
+        },
+        ITEMS_START
+      );
+      pageRevealed.then(() => intro.play());
+    };
+
+    // ---------- Scroll: glass capsule ----------
     const updateScrolledLook = (scrollTop: number) => {
       const nowScrolled = scrollTop > SCROLLED_AFTER_PX;
       if (nowScrolled !== isScrolled) {
@@ -490,13 +533,38 @@ const barMotion =
       }
     };
 
-    const setupScrolledLook = () => {
-      // Safari-də "rezin" sıçrayışında scrollY mənfi ola bilər, ona görə Math.max.
-      window.addEventListener("scroll", () => updateScrolledLook(Math.max(window.scrollY, 0)), {
-        passive: true,
-      });
+    // ---------- Scroll: smart header (hide down, show up) ----------
+    let isHeaderHidden = false;
 
-      // Səhifə ortadan yenidən yüklənəndə zolaq əvvəldən qapsul olur.
+    const setHeaderHidden = (hidden: boolean) => {
+      if (hidden === isHeaderHidden) return;
+      isHeaderHidden = hidden;
+      gsap.to(header, {
+        yPercent: hidden ? HIDE_SHIFT_PERCENT : 0,
+        duration: HIDE_DURATION,
+        ease: "power2.out",
+        overwrite: "auto",
+      });
+    };
+
+    const canHideHeader = () => {
+      const hasKeyboardFocus = bar.querySelector(":focus-visible") !== null;
+      return !isMobileMenuOpen() && !isLangDropdownOpen() && !hasKeyboardFocus;
+    };
+
+    const updateOnScroll = (self: ScrollTrigger) => {
+      const scrollTop = Math.max(self.scroll(), 0);
+      updateScrolledLook(scrollTop);
+      if (scrollTop <= HIDE_AFTER_PX || self.direction < 0) {
+        setHeaderHidden(false);
+      } else if (canHideHeader()) {
+        setHeaderHidden(true);
+      }
+    };
+
+    const setupScrollBehaviour = () => {
+      ScrollTrigger.create({ start: 0, end: "max", onUpdate: updateOnScroll });
+      bar.addEventListener("focusin", () => setHeaderHidden(false));
       updateScrolledLook(Math.max(window.scrollY, 0));
     };
 
@@ -515,34 +583,30 @@ const barMotion =
       }
     };
 
-    // rootMargin ekranın yuxarı kənarını header hündürlüyü qədər aşağı çəkir: hero düyməsinin header altında
-    // qalan hissəsi görünən sayılmasın. Dəyər bir dəfə oxunur; sonradan 640px sərhədini keçsə, 8px fərq əhəmiyyətsizdir.
+    // ---------- Scroll: hero CTA visible below the header ----------
     const setupHeaderCta = () => {
       const heroCta = document.querySelector("[data-hero-cta]");
       const headerCta = bar.querySelector<HTMLElement>("[data-header-cta]");
-      // Hero düyməsi (başqa səhifə) və ya IntersectionObserver yoxdursa, header düyməsi həmişə görünür.
-      if (!heroCta || !headerCta || !("IntersectionObserver" in window)) return;
+      if (!heroCta || !headerCta) return;
 
       const headerHeight =
         parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) ||
         FALLBACK_HEADER_HEIGHT_PX;
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          // Bir neçə xəbər birlikdə gəlsə, ən sonuncusu həqiqi vəziyyətdir.
-          const latestEntry = entries[entries.length - 1];
-          setHeaderCtaHidden(headerCta, latestEntry.isIntersecting);
-        },
-        { rootMargin: `-${headerHeight}px 0px 0px 0px` }
-      );
-      observer.observe(heroCta);
+      ScrollTrigger.create({
+        trigger: heroCta,
+        start: "top bottom",
+        end: `bottom top+=${headerHeight}`,
+        onToggle: (self) => setHeaderCtaHidden(headerCta, self.isActive),
+      });
     };
 
     // const funksiyaları təyin olunmadan çağırmaq olmur, ona görə çağırışlar sondadır.
     setupLanguageMenu();
     setupMobileMenu();
     setupClosing();
-    setupScrolledLook();
+    setupIntro();
+    setupScrollBehaviour();
     setupHeaderCta();
   }
 </script>
