@@ -83,7 +83,7 @@ const cardShadow =
   'shadow-[0_0_0_1px_rgb(17_18_17/0.05),0_1px_2px_rgb(17_18_17/0.04),0_28px_56px_-36px_rgb(17_18_17/0.28)]'
 // Şəklin hover-də yüngülcə qalxması — saytın gəliş əyrisi ilə eyni.
 const imageHover =
-  'transition-[translate,scale] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:scale-[1.03]'
+  'transition-[translate,scale] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-y-1 group-hover:scale-[1.03]'
 ---
 
 <section
@@ -95,23 +95,21 @@ const imageHover =
   <div class="pb-glow pointer-events-none absolute inset-0" aria-hidden="true"></div>
 
   <div class="wrap relative">
-    {/* Başlıq bloku solda, alt-alta: eyebrow → başlıq → izah. Üç sətir bir-birinin ardınca gəlir: --i sətrin sırasıdır. */}
-    <div data-reveal class="max-w-155">
+    {/* Başlıq bloku solda, alt-alta: eyebrow → başlıq → izah. */}
+    <div data-reveal="heading" class="max-w-155">
       <span
-        class="pb-line inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
-        style="--i: 0"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('prob.eyebrow')}
       </span>
       <h2
         id="problem-title"
-        class="pb-line mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-balance text-ink sm:text-[38px]"
-        style="--i: 1"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-balance text-ink sm:text-[38px]"
       >
         {t('prob.title.a')}<span class="text-brand">{t('prob.title.hl')}</span>{t('prob.title.b')}
       </h2>
-      <p class="pb-line mt-5 max-w-[52ch] text-[16px] leading-[1.7] text-balance text-ink2 sm:text-[17px]" style="--i: 2">
+      <p class="mt-5 max-w-[52ch] text-[16px] leading-[1.7] text-balance text-ink2 sm:text-[17px]">
         {t('prob.sub')}
       </p>
     </div>
@@ -121,7 +119,7 @@ const imageHover =
       {
         pains.map((pain) => (
           <li
-            data-reveal
+            data-pb-reveal
             class={`pb-card group relative flex flex-col rounded-[28px] bg-white p-2 md:grid md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:flex ${cardShadow}`}
             style={`--pb-delay: ${pain.delayMs}ms`}
           >
@@ -171,7 +169,7 @@ const imageHover =
       }
     </ul>
 
-    <div data-reveal class="pb-next mt-14 sm:mt-16">
+    <div data-pb-reveal class="pb-next mt-14 sm:mt-16">
       <div class="pb-line flex items-center gap-5" style="--i: 0">
         <span aria-hidden="true" class="hidden h-px flex-1 bg-linear-to-r from-transparent to-hair sm:block"></span>
         <a
@@ -195,13 +193,7 @@ const imageHover =
 </section>
 
 <style>
-  /*
-    Hərəkət yalnız skript bölməyə data-anim="on" yazanda işə düşür. JS yoxdursa və ya «hərəkəti azalt»
-    seçilibsə atribut yazılmır və hər şey dərhal, son vəziyyətində görünür.
-    Skript ekrana girən hər [data-reveal] elementinə is-in sinfi verir; aşağıda «gizli başlanğıc» və
-    «is-in olanda son vəziyyət» yazılıb, keçidi brauzer özü edir (CSS transition).
-    Yalnız opacity, translate / scale / rotate və filter dəyişir — səhifənin düzülüşü yerində qalır.
-  */
+  /* ---------- Entrance: hidden only under html.has-motion, ScrollTrigger adds .is-in ---------- */
   [data-prob] {
     /* Sürətli başlayıb yumşaq dayanan əyri (expo-out): element «gəlib yerinə oturur», sonda yırğalanmır. */
     --pb-ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -226,17 +218,17 @@ const imageHover =
   }
 
   /* ---------- Başlanğıc (gizli) vəziyyət ---------- */
-  [data-anim='on'] .pb-card {
+  :global(html.has-motion) .pb-card {
     opacity: 0;
     translate: 0 24px;
   }
-  [data-anim='on'] .pb-line {
+  :global(html.has-motion) .pb-line {
     opacity: 0;
     translate: 0 14px;
     filter: blur(4px);
   }
   /* Şəkil bulanıqdan aydına keçir — «fokusa düşmə» hissi yalnız opacity-dən daha canlıdır. */
-  [data-anim='on'] .pb-art {
+  :global(html.has-motion) .pb-art {
     opacity: 0;
     scale: 0.94;
     filter: blur(10px);
@@ -244,22 +236,22 @@ const imageHover =
 
   /* ---------- Şəklin gəlişi: hər şəkil öz əşyası kimi gəlir ---------- */
   /* drop: kağız vərəq yuxarıdan, bir az əyri düşür və masada düzəlir. */
-  [data-anim='on'] .pb-art--drop {
+  :global(html.has-motion) .pb-art--drop {
     translate: 0 -16px;
     rotate: -4deg;
   }
   /* rise: ağır terminal aşağıdan qalxıb yerinə oturur. */
-  [data-anim='on'] .pb-art--rise {
+  :global(html.has-motion) .pb-art--rise {
     translate: 0 24px;
   }
   /* open: Excel pəncərəsi kiçikdən açılır (scale digərlərindən aşağıdan başlayır). */
-  [data-anim='on'] .pb-art--open {
+  :global(html.has-motion) .pb-art--open {
     scale: 0.86;
   }
 
   /* ---------- Son vəziyyət (element ekrana girəndən sonra) ---------- */
   /* --pb-delay kartın öz gecikməsidir (frontmatter-dəki delayMs, li-nin style-ında). */
-  [data-anim='on'] .pb-card.is-in {
+  :global(html.has-motion) .pb-card.is-in {
     opacity: 1;
     translate: none;
     transition:
@@ -267,7 +259,7 @@ const imageHover =
       translate 900ms var(--pb-ease) var(--pb-delay);
   }
   /* Şəkil kartdan 150ms sonra başlayır və ən uzun hərəkətdir: kartın əsas «hadisəsi» odur. */
-  [data-anim='on'] .is-in .pb-art {
+  :global(html.has-motion) .is-in .pb-art {
     opacity: 1;
     translate: none;
     rotate: none;
@@ -278,8 +270,8 @@ const imageHover =
     transition-timing-function: var(--pb-ease);
     transition-delay: calc(var(--pb-delay) + 150ms);
   }
-  /* Başlıq və aşağıdakı keçid: sətirlər dərhal, 80ms aralıqla gəlir. --i sətrin sırasıdır (style="--i: N"). */
-  [data-anim='on'] .is-in .pb-line {
+  /* ---------- Text lines (--i = line order) ---------- */
+  :global(html.has-motion) .is-in .pb-line {
     opacity: 1;
     translate: none;
     filter: none;
@@ -289,49 +281,33 @@ const imageHover =
     transition-delay: calc(var(--i) * 80ms);
   }
   /* Kartın içindəki mətn şəkil artıq görünməyə başlayandan sonra (300ms) çıxır. */
-  [data-anim='on'] .pb-card.is-in .pb-line {
+  :global(html.has-motion) .pb-card.is-in .pb-line {
     transition-delay: calc(var(--pb-delay) + 300ms + var(--i) * 80ms);
   }
   /* «Problem aydındır. Bəs həlli?» keçidi: böyük ekranda kartlarla eyni anda ekrana girir — kartlardan sonra gəlsin. */
-  [data-anim='on'] .pb-next.is-in .pb-line {
+  :global(html.has-motion) .pb-next.is-in .pb-line {
     transition-delay: 500ms;
   }
 </style>
 
 <script>
-  // Element özünün neçə faizi ekrana girəndə «gəlsin» (0.2 = 20%).
-  const REVEAL_THRESHOLD = 0.2
-  // Ekranın ən aşağı 8%-i sayılmır: element kənarda ilişəndə yox, bir az içəri girəndə başlasın.
-  const REVEAL_ROOT_MARGIN = '0px 0px -8% 0px'
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
 
+  // ---------- Cards and the "next" link: .is-in once on screen ----------
   function initProblemReveal(): void {
     const section = document.querySelector<HTMLElement>('[data-prob]')
     if (!section) {
       return
     }
 
-    // «Hərəkəti azalt» seçilibsə və ya IntersectionObserver yoxdursa `data-anim` yazılmır: hər şey dərhal görünür.
-    const isMotionReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (isMotionReduced || !('IntersectionObserver' in window)) {
-      return
-    }
-
-    section.dataset.anim = 'on'
-    const observer = new IntersectionObserver(
-      function (entries) {
-        entries.forEach(function (entry) {
-          if (!entry.isIntersecting) {
-            return
-          }
-          entry.target.classList.add('is-in')
-          // Hər element bir dəfə gəlir: yuxarı qayıdanda yenidən gizlənib təkrarlanmır.
-          observer.unobserve(entry.target)
-        })
-      },
-      { threshold: REVEAL_THRESHOLD, rootMargin: REVEAL_ROOT_MARGIN }
-    )
-    section.querySelectorAll('[data-reveal]').forEach(function (element) {
-      observer.observe(element)
+    section.querySelectorAll('[data-pb-reveal]').forEach(function (element) {
+      ScrollTrigger.create({
+        trigger: element,
+        start: REVEAL_START,
+        once: true,
+        onEnter: () => pageRevealed.then(() => element.classList.add('is-in')),
+      })
     })
   }
 
