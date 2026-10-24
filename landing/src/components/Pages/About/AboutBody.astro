@@ -21,7 +21,7 @@ const t = useTranslations(lang)
   </div>
 
   <div class="wrap relative grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
-    <div class="rv">
+    <div data-reveal="heading">
       <span
         class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
@@ -41,7 +41,7 @@ const t = useTranslations(lang)
     </div>
 
     <!-- Emblemin vizör küncləri 14px kənara çıxır; yan boşluq (mx-3.5) onların kəsilməməsi üçündür -->
-    <div class="rv d2 mx-3.5 lg:mr-3.5 lg:ml-0">
+    <div class="mx-3.5 lg:mr-3.5 lg:ml-0">
       <AboutQrEmblem />
     </div>
   </div>
@@ -51,7 +51,7 @@ const t = useTranslations(lang)
   <div
     class="wrap grid items-center gap-12 lg:grid-cols-2 lg:gap-16"
   >
-    <div class="rv max-w-[540px]">
+    <div class="max-w-[540px]" data-reveal="heading">
       <span
         class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
@@ -70,7 +70,7 @@ const t = useTranslations(lang)
       <p class="mt-4 text-[16px] leading-[1.75] text-stone-600 sm:text-[17px]">{t('about.story.p3')}</p>
     </div>
 
-    <div class="rv d2">
+    <div>
       <AboutStoryVisual lang={lang} />
     </div>
   </div>
