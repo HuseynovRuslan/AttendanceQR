@@ -211,32 +211,32 @@ const qrCardStyle = `left:${QR_CARD.left}; top:${QR_CARD.top}; width:${QR_CARD.w
 
   /* ---------- Canlanma (qayda: AudienceMap.astro) ----------
      Ardıcıllıq: yellənmə 0.15s–2.95s → vizör 1.9s → skan xətti 2.25s–3.35s → «✓» 3.35s. */
-  :global([data-anim]) .vf-tl {
+  :global(html.has-motion) .vf-tl {
     opacity: 0;
     transform: translate(-8px, -8px);
   }
 
-  :global([data-anim]) .vf-tr {
+  :global(html.has-motion) .vf-tr {
     opacity: 0;
     transform: translate(8px, -8px);
   }
 
-  :global([data-anim]) .vf-bl {
+  :global(html.has-motion) .vf-bl {
     opacity: 0;
     transform: translate(-8px, 8px);
   }
 
-  :global([data-anim]) .vf-br {
+  :global(html.has-motion) .vf-br {
     opacity: 0;
     transform: translate(8px, 8px);
   }
 
-  :global([data-anim]) .scan-badge {
+  :global(html.has-motion) .scan-badge {
     opacity: 0;
     transform: scale(0.4);
   }
 
-  :global([data-anim] .is-live) .vf {
+  :global(html.has-motion .is-live) .vf {
     opacity: 1;
     transform: none;
     transition:
@@ -244,12 +244,12 @@ const qrCardStyle = `left:${QR_CARD.left}; top:${QR_CARD.top}; width:${QR_CARD.w
       transform 0.5s var(--aud-ease) 1.9s;
   }
 
-  :global([data-anim] .is-live) .scan-line {
+  :global(html.has-motion .is-live) .scan-line {
     animation: aud-scan 1.1s cubic-bezier(0.45, 0, 0.55, 1) 2.25s 1 forwards;
   }
 
   /* «✓» azca sıçrayıb oturur (əyrinin 1.6 nöqtəsi hədəfi keçir). */
-  :global([data-anim] .is-live) .scan-badge {
+  :global(html.has-motion .is-live) .scan-badge {
     opacity: 1;
     transform: none;
     transition:
@@ -258,12 +258,12 @@ const qrCardStyle = `left:${QR_CARD.left}; top:${QR_CARD.top}; width:${QR_CARD.w
   }
 
   /* Bir dəfə sönən yellənmə; `both` gecikmə vaxtında və sonra 0° vəziyyətini saxlayır. */
-  :global([data-anim] .is-live) .hang {
+  :global(html.has-motion .is-live) .hang {
     animation: aud-swing 2.8s ease-in-out 0.15s 1 both;
   }
 
   /* Hover-də Audience.astro-nun skripti `re-swing` əlavə edir: daha yumşaq yellənmə. */
-  :global([data-anim] .is-live) .hang.re-swing {
+  :global(html.has-motion .is-live) .hang.re-swing {
     animation: aud-swing-soft 2.2s ease-in-out 0s 1 both;
   }
 
