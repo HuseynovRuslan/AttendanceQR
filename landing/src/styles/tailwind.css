@@ -52,7 +52,7 @@
   --animate-float-recorded: qr-float-down 4.5s ease-in-out -1s infinite;
 
   /* Telefonun yavaş üzməsi və kölgəsi (PhoneFrame.astro). `translate`/`rotate` ayrıca xassələrdir, 3D poza isə
-     `transform`-dadır: toqquşmur. `cqw` telefonun eninin 1%-dir. global.css bunları prefers-reduced-motion-da dayandırır. */
+     `transform`-dadır: toqquşmur. `cqw` telefonun eninin 1%-dir. */
   --animate-phone-float: qr-phone-float 6s ease-in-out infinite;
   --animate-phone-shadow: qr-phone-shadow 6s ease-in-out infinite;
 
