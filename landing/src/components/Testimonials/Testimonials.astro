@@ -11,14 +11,14 @@ const t = useTranslations(lang)
 {TESTIMONIALS.length > 0 && (
   <section id="testimonials">
     <div class="wrap">
-      <div class="sec-head rv">
+      <div class="sec-head" data-reveal="heading">
         <span class="eyebrow">{t('test.eyebrow')}</span>
         <h2>{t('test.title')}</h2>
         <p>{t('test.sub')}</p>
       </div>
-      <div class="test-grid">
-        {TESTIMONIALS.map((it, i) => (
-          <figure class={`quote rv d${(i % 3) + 1}`}>
+      <div class="test-grid" data-reveal="cards" data-skew>
+        {TESTIMONIALS.map((it) => (
+          <figure class="quote">
             <p>“{it.quote}”</p>
             <figcaption class="by">
               <div class="av" style={`background:${it.color}`}>{it.initial}</div>
