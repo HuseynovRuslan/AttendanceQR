@@ -53,13 +53,14 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
     <div class="max-w-160 lg:col-start-1 lg:row-start-1">
       <h1
         class="text-[clamp(42px,6.2vw,76px)] leading-[0.98] font-semibold tracking-[-0.045em] text-balance"
-        data-hero-in
+        data-hero-title
       >
         {
           t("hero.title.a")
         }
         <span
           class="relative inline-flex whitespace-nowrap px-[0.16em] py-[0.04em]"
+          data-hero-scan
         >
           <span class="hero-scan-word">{t("hero.title.hl")}</span>
           <span aria-hidden="true" class="hero-scan-frame absolute inset-0">
@@ -91,19 +92,20 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
 
       <div
         class="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center"
-        data-hero-in
       >
         {/* data-hero-cta: Header.astro-dakı skript bu düyməni izləyir, atributu silmə. */}
         <a
           class={`${btnBase} bg-brand bg-linear-to-b from-brand to-brand-600 text-white shadow-lg shadow-brand/25 hover:from-brand-600 hover:to-brand-700 hover:shadow-xl hover:shadow-brand/30 active:scale-[0.99]`}
           href={localizedPath(lang, "/elaqe/")}
           data-hero-cta
+          data-hero-in
         >
           {t("cta.btn1")}
         </a>
         <a
           class={`${btnBase} border border-stone-300/70 bg-white text-stone-800 hover:border-brand hover:text-brand`}
           href={localizedPath(lang, "/haqqimizda/")}
+          data-hero-in
         >
           {t("nav.about")}
         </a>
@@ -136,6 +138,7 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
       {/* `@md` = səhnənin eni 448px; üzən qeyd kartı da bu qutuya görə yerləşir. */}
       <figure
         class="relative aspect-5/7 w-full @md:aspect-square"
+        data-skew
       >
         <div
           aria-hidden="true"
@@ -423,12 +426,6 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
   </div>
 </section>
 
-<script>
-  import { initHeroMotion } from "./heroMotion";
-
-  initHeroMotion();
-</script>
-
 <style>
   /* Skan animasiyası: xətt və söz eyni anda, eyni 3 s dövrlə başlayır, ona görə söz xətt ortadan keçəndə yanır. */
   .hero-scan-line {
@@ -475,16 +472,10 @@ const btnBase = `inline-flex w-full items-center justify-center gap-2 whitespace
       color: var(--color-brand);
     }
   }
-
-  /* Xətt gizlədilir: ortada dayansaydı, sözün üstündən çəkilmiş cızıq kimi oxunardı. */
-  @media (prefers-reduced-motion: reduce) {
-    .hero-scan-line {
-      animation: none;
-      opacity: 0;
-    }
-
-    .hero-scan-word {
-      animation: none;
-    }
-  }
 </style>
+
+<script>
+  import { initHeroMotion } from "./heroMotion";
+
+  initHeroMotion();
+</script>
