@@ -4,7 +4,9 @@
  * BaseLayout hər səhifəyə qoyur. Props: lang. Yeri WhatsAppButton.astro-dakı --wa-size və --wa-edge ilə hesablanır.
  * Mavi fonlu yeni bölməyə data-surface="brand" yaz: düymə onun üstündə olanda künclər ağ olur.
  */
+import { faArrowUp } from '@fortawesome/free-solid-svg-icons/faArrowUp'
 import { useTranslations, type Lang } from '../../i18n/ui'
+import FaIcon from './FaIcon.astro'
 
 interface Props {
   lang: Lang
@@ -19,7 +21,7 @@ const t = useTranslations(lang)
   <span class="back-to-top__corner back-to-top__corner--top-right" aria-hidden="true"></span>
   <span class="back-to-top__corner back-to-top__corner--bottom-left" aria-hidden="true"></span>
   <span class="back-to-top__corner back-to-top__corner--bottom-right" aria-hidden="true"></span>
-  <i class="fa-solid fa-arrow-up back-to-top__arrow" style="color: rgb(243, 240, 240);"></i>
+  <FaIcon icon={faArrowUp} class="back-to-top__arrow" style="color: rgb(243, 240, 240)" />
 </button>
 <style is:global>
   /* is:global: qaydalar komponentdən kənara baxır (<html>-dəki qrl-lock, qrl-reveal və header-dəki data-open). */
@@ -220,15 +222,6 @@ const t = useTranslations(lang)
     visibility: hidden;
   }
 
-  /* "Hərəkəti azalt" seçilibsə: heç bir keçid yoxdur — düymə və künclər dərhal görünür. */
-  @media (prefers-reduced-motion: reduce) {
-    .back-to-top,
-    .back-to-top__arrow,
-    .back-to-top__corner {
-      transition: none;
-    }
-  }
-
   @media print {
     .back-to-top {
       display: none !important;
@@ -245,7 +238,6 @@ const t = useTranslations(lang)
   const firstHeaderLink = document.querySelector<HTMLAnchorElement>('[data-header] a')
   // Mavi fonlu bölmələr; səhifə açıldıqdan sonra dəyişmir.
   const brandSurfaces = document.querySelectorAll<HTMLElement>('[data-surface="brand"]')
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 
   // Düymə mavi fonlu bölmənin üstündədirmi? Künclərin rəngi --color-brand-dır: mavi fonda görünmür,
   // klaviatura istifadəçisi fokusu itirir.
@@ -279,18 +271,13 @@ const t = useTranslations(lang)
   }
 
   // Lenis işləyirsə yuxarı qalxmanı o aparır (brauzerin smooth sürüşməsi onunla toqquşardı).
-  // window.qrlLenis-i SmoothScroll.astro yazır; telefonda və "hərəkəti azalt" halında Lenis yoxdur.
+  // window.qrlLenis-i SmoothScroll.astro yazır; telefonda Lenis yoxdur.
   function scrollToTop() {
     if (window.qrlLenis) {
       // Müddət və əyri menyu linkləri ilə eynidir (SmoothScroll.astro → ANCHOR_DURATION).
       window.qrlLenis.scrollTo(0, window.qrlAnchorScroll)
     } else {
-      // 'auto' yox, 'instant': global.css html-ə scroll-behavior: smooth verir, 'auto' ona tabe olardı.
-      let behavior: ScrollBehavior = 'smooth'
-      if (reduceMotion.matches) {
-        behavior = 'instant'
-      }
-      window.scrollTo({ top: 0, behavior: behavior })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     }
     moveFocusToHeader()
   }
