@@ -4,6 +4,7 @@
 
 <script>
   import Lenis from 'lenis'
+  import { gsap, ScrollTrigger } from '../../scripts/motion/gsap'
 
   // ---------- Ayarlar ----------
   // Bir təkər hərəkətinin sürüşmə müddəti (saniyə); 1.4-dən yuxarı ləng hiss olunur.
@@ -39,18 +40,20 @@
 
   // ---------- Lenis lazımdırmı? ----------
   function isSmoothScrollAllowed(): boolean {
-    const wantsReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     // pointer: coarse — əsas daxiletmə barmaqdır (telefon, planşet).
     const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
-    return !wantsReducedMotion && !isTouchDevice
+    return !isTouchDevice
   }
+
+  // ---------- Page left (pagehide) until it is shown again (bfcache) ----------
+  let isPageHidden = false
 
   // ---------- Dayanma və davam etmə ----------
   // Cavab hər dəfə səhifədən oxunur: sinfi və atributu başqa fayllar dəyişir.
   function shouldPauseScroll(): boolean {
     const isLoaderOn = document.documentElement.classList.contains(LOADER_LOCK_CLASS)
     const isMenuOpen = document.querySelector(`${HEADER_BAR_SELECTOR}[${MENU_OPEN_ATTRIBUTE}]`) !== null
-    return isLoaderOn || isMenuOpen
+    return isPageHidden || isLoaderOn || isMenuOpen
   }
 
   // stop() və start() təkrar çağırılsa zərər vermir.
@@ -77,6 +80,37 @@
     pauseOrResume(lenis)
   }
 
+  // ---------- Lenis + ScrollTrigger sync (one ticker callback) ----------
+  function syncWithScrollTrigger(lenis: Lenis): void {
+    const driveLenis = (time: number) => lenis.raf(time * 1000)
+    lenis.on('scroll', ScrollTrigger.update)
+    gsap.ticker.remove(driveLenis)
+    gsap.ticker.add(driveLenis)
+    gsap.ticker.lagSmoothing(0)
+  }
+
+  // ---------- Back/forward cache: stop on leave, resync on return ----------
+  function stopOnPageHide(lenis: Lenis): void {
+    isPageHidden = true
+    lenis.stop()
+  }
+
+  function resyncOnPageRestore(lenis: Lenis, event: PageTransitionEvent): void {
+    if (!event.persisted) {
+      return
+    }
+    isPageHidden = false
+    lenis.time = 0
+    lenis.resize()
+    pauseOrResume(lenis)
+    lenis.scrollTo(window.scrollY, { immediate: true, force: true })
+  }
+
+  function handleBackForwardCache(lenis: Lenis): void {
+    window.addEventListener('pagehide', () => stopOnPageHide(lenis))
+    window.addEventListener('pageshow', (event) => resyncOnPageRestore(lenis, event))
+  }
+
   // ---------- İşə salma ----------
   function startSmoothScroll(): void {
     const lenis = new Lenis({
@@ -85,7 +119,7 @@
       wheelMultiplier: WHEEL_MULTIPLIER,
       smoothWheel: true, // təkər və touchpad hamarlanır
       syncTouch: false, // toxunuşla sürüşmə hamarlanmır: telefonda brauzerin öz sürüşməsi qalır
-      autoRaf: true, // Lenis özü hər kadrda yenilənir
+      autoRaf: false,
       // Offset vermirik: Lenis <html>-in scroll-padding-top-unu (global.css) özü nəzərə alır, başlıq header-in altında qalmır.
       anchors: ANCHOR_SCROLL,
     })
@@ -94,10 +128,13 @@
     window.qrlLenis = lenis
     window.qrlAnchorScroll = ANCHOR_SCROLL
 
+    syncWithScrollTrigger(lenis)
     keepLenisInSyncWithPage(lenis)
+    handleBackForwardCache(lenis)
   }
 
-  if (isSmoothScrollAllowed()) {
+  // ---------- Start once per page ----------
+  if (isSmoothScrollAllowed() && !window.qrlLenis) {
     startSmoothScroll()
   }
 </script>
