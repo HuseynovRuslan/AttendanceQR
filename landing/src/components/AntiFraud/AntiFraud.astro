@@ -95,189 +95,202 @@ const textClass = 'mt-2 text-[13.5px] leading-[1.6] text-ink2'
   <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
 
   <div class="wrap relative">
-    <div class="max-w-155">
+    <div class="max-w-155" data-reveal="heading">
       <span
-        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('af.eyebrow')}
       </span>
       <h2
         id="antifraud-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('af.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('af.sub')}</p>
+      <p class="mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('af.sub')}</p>
     </div>
 
-    <div
-      id="afAnatomy"
-      class="anatomy rv d3 mt-16 hidden lg:grid lg:grid-cols-[minmax(0,1fr)_360px_minmax(0,1fr)] lg:grid-rows-[repeat(6,auto)] xl:grid-cols-[minmax(0,1fr)_420px_minmax(0,1fr)]"
-    >
-      <!-- subgrid: izah uzananda kartın sətri də uzanır, xətt JS ölçüsü olmadan sətrin ortasında qalır -->
+    {/* ---------- Scroll story (desktop): this block is pinned by the script ---------- */}
+    <div id="afStory" class="mt-16 hidden lg:block">
       <div
-        class="col-start-2 row-span-6 row-start-1 grid grid-rows-subgrid rounded-2xl border border-hair bg-white shadow-[0_1px_2px_rgba(16,24,40,.04),0_24px_48px_-28px_rgba(16,24,40,.28)]"
+        id="afAnatomy"
+        class="anatomy hidden lg:grid lg:grid-cols-[minmax(0,1fr)_360px_minmax(0,1fr)] lg:grid-rows-[repeat(6,auto)] xl:grid-cols-[minmax(0,1fr)_420px_minmax(0,1fr)]"
       >
+        <!-- subgrid: izah uzananda kartın sətri də uzanır, xətt JS ölçüsü olmadan sətrin ortasında qalır -->
         <div
-          class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 border-b border-hair px-5 py-4 xl:grid-cols-[auto_minmax(0,1fr)_auto]"
+          class="col-start-2 row-span-6 row-start-1 grid grid-rows-subgrid rounded-2xl border border-hair bg-white shadow-[0_1px_2px_rgba(16,24,40,.04),0_24px_48px_-28px_rgba(16,24,40,.28)]"
         >
-          <span class={avatarClass} aria-hidden="true">{record.initials}</span>
-          <div class="min-w-0">
-            <p class="text-[15px] leading-tight font-medium text-ink">{record.name}</p>
-            <p class={metaClass}>{fmt(t('af.rec.meta'), { t: record.time })}</p>
-          </div>
-          <!-- HTML-də son hal yazılıb (data-done="true"); skript animasiyadan əvvəl "false" edir -->
-          <span data-status data-done="true" class="col-start-2 xl:col-start-3">
-            <span class={`status-pending ${pillClass} border-hair bg-[#F7F8FA] text-ink2`}>
-              <svg
-                class="animate-spin"
-                width="11"
-                height="11"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.6"
-                stroke-linecap="round"
-                aria-hidden="true"
-              >
-                <path d={SPINNER_PATH}></path>
-              </svg>
-              {t('af.rec.pending')}
-            </span>
-            <span class={`status-done ${pillClass} border-[#D7E0F7] bg-[#EEF3FD] text-brand`}>
-              <svg
-                width="11"
-                height="11"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d={CHECK_PATH}></path>
-              </svg>
-              {t('af.rec.done')}
-            </span>
-          </span>
-        </div>
-
-        {
-          checks.map((check, index) => {
-            const isLastRow = index === checks.length - 1
-            return (
-              <div
-                data-check-row
-                data-checked="true"
-                class:list={['flex items-center gap-3 px-5 py-4', !isLastRow && 'border-b border-hair']}
-              >
-                <span
-                  class="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-hair bg-[#FAFBFC] text-slate-500"
+          <div
+            class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 border-b border-hair px-5 py-4 xl:grid-cols-[auto_minmax(0,1fr)_auto]"
+          >
+            <span class={avatarClass} aria-hidden="true">{record.initials}</span>
+            <div class="min-w-0">
+              <p class="text-[15px] leading-tight font-medium text-ink">{record.name}</p>
+              <p class={metaClass}>{fmt(t('af.rec.meta'), { t: record.time })}</p>
+            </div>
+            <!-- HTML-də son hal yazılıb (data-done="true"); skript animasiyadan əvvəl "false" edir -->
+            <span data-status data-done="true" class="col-start-2 xl:col-start-3">
+              <span class={`status-pending ${pillClass} border-hair bg-[#F7F8FA] text-ink2`}>
+                <svg
+                  class="animate-spin"
+                  width="11"
+                  height="11"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
                   aria-hidden="true"
                 >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    set:html={icons[check.icon]}
-                  />
-                </span>
-                <div class="min-w-0">
-                  <p class="text-[13.5px] leading-tight font-medium text-ink">{t(check.rowTitle)}</p>
-                  <p class="value mt-1 font-mono text-[11px] text-ink">
-                    {fmt(t(check.rowValue), { p: record.faceMatchPercent })}
-                  </p>
-                </div>
-                {/* Fırlanan ikon və ✓ eyni xanada üst-üstə durur */}
-                <span class="ml-auto grid size-6 shrink-0 place-items-center" aria-hidden="true">
-                  <svg
-                    class="spinner col-start-1 row-start-1 animate-spin text-slate-300"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 12 12"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
+                  <path d={SPINNER_PATH}></path>
+                </svg>
+                {t('af.rec.pending')}
+              </span>
+              <span class={`status-done ${pillClass} border-[#D7E0F7] bg-[#EEF3FD] text-brand`}>
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d={CHECK_PATH}></path>
+                </svg>
+                {t('af.rec.done')}
+              </span>
+            </span>
+          </div>
+
+          {
+            checks.map((check, index) => {
+              const isLastRow = index === checks.length - 1
+              return (
+                <div
+                  data-check-row
+                  data-checked="true"
+                  class:list={['flex items-center gap-3 px-5 py-4', !isLastRow && 'border-b border-hair']}
+                >
+                  <span
+                    class="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-hair bg-[#FAFBFC] text-slate-500"
+                    aria-hidden="true"
                   >
-                    <path d={SPINNER_PATH} />
-                  </svg>
-                  <span class="tick col-start-1 row-start-1 flex size-6 items-center justify-center rounded-full bg-brand text-white">
                     <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      set:html={icons[check.icon]}
+                    />
+                  </span>
+                  <div class="min-w-0">
+                    <p class="text-[13.5px] leading-tight font-medium text-ink">{t(check.rowTitle)}</p>
+                    <p class="value mt-1 font-mono text-[11px] text-ink">
+                      {fmt(t(check.rowValue), { p: record.faceMatchPercent })}
+                    </p>
+                  </div>
+                  {/* Fırlanan ikon və ✓ eyni xanada üst-üstə durur */}
+                  <span class="ml-auto grid size-6 shrink-0 place-items-center" aria-hidden="true">
+                    <svg
+                      class="spinner col-start-1 row-start-1 animate-spin text-slate-300"
                       width="12"
                       height="12"
                       viewBox="0 0 12 12"
                       fill="none"
                       stroke="currentColor"
-                      stroke-width="2.2"
+                      stroke-width="1.6"
                       stroke-linecap="round"
-                      stroke-linejoin="round"
                     >
-                      <path d={CHECK_PATH} />
+                      <path d={SPINNER_PATH} />
                     </svg>
+                    <span class="tick col-start-1 row-start-1 flex size-6 items-center justify-center rounded-full bg-brand text-white">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d={CHECK_PATH} />
+                      </svg>
+                    </span>
                   </span>
+                </div>
+              )
+            })
+          }
+
+          <p
+            class="flex items-center justify-between gap-3 border-t border-hair px-5 py-3 font-mono text-[10.5px] tracking-[0.12em] text-slate-500 uppercase"
+          >
+            <span>{t('af.rec.footer')}</span>
+            <span>{t('af.sample')}</span>
+          </p>
+        </div>
+
+        {
+          checks.map((check, index) => {
+            const side = sideClasses[check.side]
+            const gridRow = FIRST_CHECK_ROW + index
+            return (
+              <div
+                data-callout
+                data-checked="true"
+                style={`grid-row: ${gridRow}`}
+                class:list={['flex items-center', side.column]}
+              >
+                {/* grid-row inline yazılıb: Tailwind yığılan sinfi ('row-start-' + rəqəm) tanımır */}
+                <div class:list={['max-w-[240px] min-w-0 xl:max-w-[300px]', side.text]}>
+                  <p class:list={['flex items-center gap-2.5', side.heading]}>
+                    <span class={`num ${numberClass}`}>{check.number}</span>
+                    <span class="text-[15px] font-medium tracking-[-0.01em] text-ink">{t(check.title)}</span>
+                  </p>
+                  <p class="mt-2">
+                    <span class={preventsClass}>
+                      {t('af.prevents')}: <span class="font-medium text-ink">{t(check.prevents)}</span>
+                    </span>
+                  </p>
+                  <p class={textClass}>{t(check.text)}</p>
+                </div>
+                <span class:list={['relative h-px min-w-6 flex-1 bg-hair', side.line]} aria-hidden="true">
+                  <span class:list={['leader absolute inset-0 bg-brand', side.lineGrowsFrom]} />
+                  <span
+                    class:list={[
+                      'leader-dot absolute top-[-3px] size-[7px] rounded-full border-2 border-brand bg-white',
+                      side.dot,
+                    ]}
+                  />
                 </span>
               </div>
             )
           })
         }
-
-        <p
-          class="flex items-center justify-between gap-3 border-t border-hair px-5 py-3 font-mono text-[10.5px] tracking-[0.12em] text-slate-500 uppercase"
-        >
-          <span>{t('af.rec.footer')}</span>
-          <span>{t('af.sample')}</span>
-        </p>
       </div>
 
-      {
-        checks.map((check, index) => {
-          const side = sideClasses[check.side]
-          const gridRow = FIRST_CHECK_ROW + index
-          return (
-            <div
-              data-callout
-              data-checked="true"
-              style={`grid-row: ${gridRow}`}
-              class:list={['flex items-center', side.column]}
-            >
-              {/* grid-row inline yazılıb: Tailwind yığılan sinfi ('row-start-' + rəqəm) tanımır */}
-              <div class:list={['max-w-[240px] min-w-0 xl:max-w-[300px]', side.text]}>
-                <p class:list={['flex items-center gap-2.5', side.heading]}>
-                  <span class={`num ${numberClass}`}>{check.number}</span>
-                  <span class="text-[15px] font-medium tracking-[-0.01em] text-ink">{t(check.title)}</span>
-                </p>
-                <p class="mt-2">
-                  <span class={preventsClass}>
-                    {t('af.prevents')}: <span class="font-medium text-ink">{t(check.prevents)}</span>
-                  </span>
-                </p>
-                <p class={textClass}>{t(check.text)}</p>
-              </div>
-              <span class:list={['relative h-px min-w-6 flex-1 bg-hair', side.line]} aria-hidden="true">
-                <span class:list={['leader absolute inset-0 bg-brand', side.lineGrowsFrom]} />
-                <span
-                  class:list={[
-                    'leader-dot absolute top-[-3px] size-[7px] rounded-full border-2 border-brand bg-white',
-                    side.dot,
-                  ]}
-                />
-              </span>
-            </div>
-          )
-        })
-      }
+      {/* ---------- Story progress: one dot per check ---------- */}
+      <div class="mx-auto mt-8 w-40" data-story-progress hidden aria-hidden="true">
+        <div class="relative flex items-center justify-between">
+          <span class="absolute inset-x-[5px] top-1/2 h-0.5 -translate-y-1/2 overflow-hidden rounded-full bg-hair">
+            <span class="block h-full origin-left rounded-full bg-brand" data-story-fill></span>
+          </span>
+          {checks.map(() => <span class="story-dot relative size-2.5 rounded-full border-2 border-hair bg-white" data-story-dot />)}
+        </div>
+      </div>
     </div>
 
     <!-- Mobil: yan izahlar yoxdur, yoxlamalar sadə siyahıdır. Desktop variantı lg-dən aşağı display:none-dur, mətn iki dəfə oxunmur. -->
-    <div class="check-list rv d3 mt-12 overflow-hidden rounded-2xl border border-hair bg-white lg:hidden">
+    <div class="check-list mt-12 overflow-hidden rounded-2xl border border-hair bg-white lg:hidden" data-reveal="fade">
       <div
         class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 border-b border-hair px-5 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
       >
@@ -307,7 +320,7 @@ const textClass = 'mt-2 text-[13.5px] leading-[1.6] text-ink2'
       </div>
 
       <!-- role="list" əl ilə: list-none Safari-də siyahı semantikasını silir -->
-      <ol role="list" class="list-none divide-y divide-hair">
+      <ol role="list" class="list-none divide-y divide-hair" data-reveal="cards">
         {
           checks.map((check) => (
             <li class="flex gap-3.5 px-5 py-4">
@@ -340,8 +353,7 @@ const textClass = 'mt-2 text-[13.5px] leading-[1.6] text-ink2'
 <style>
   /*
     Hallar data-* atributlarındadır: data-checked (yoxlama sətri və izahı), data-done (status).
-    HTML son halda gəlir ("true"), skript yalnız animasiyadan əvvəl "false" yazır: JS olmasa və ya
-    "hərəkəti azalt" seçilibsə, oxucu hazır kartı görür.
+    HTML son halda gəlir ("true"), skript yalnız animasiyadan əvvəl "false" yazır: JS olmasa, oxucu hazır kartı görür.
   */
 
   .antifraud {
@@ -377,9 +389,6 @@ const textClass = 'mt-2 text-[13.5px] leading-[1.6] text-ink2'
       max-width: 720px;
     }
   }
-
-  /* Keçid müddətləri (✓ 0.32s, xətt 0.45s, nömrə 0.3s) skriptdəki CHECK_STEP_MS-ə (420ms) yaxındır:
-     növbəti yoxlama başlayanda əvvəlki demək olar bitmiş olur. */
 
   /* ---------- Kartın sətri: gözləyəndə fırlanan ikon, təsdiqlənəndə mavi ✓ ---------- */
   .tick {
@@ -443,63 +452,189 @@ const textClass = 'mt-2 text-[13.5px] leading-[1.6] text-ink2'
   [data-done='false'] .status-done {
     display: none;
   }
+
+  /* ---------- Scroll story (desktop): layers still to come are dim, the current row is lit ---------- */
+  [data-story] [data-callout] > div {
+    transition: opacity 0.4s var(--af-ease);
+  }
+
+  [data-story] [data-callout][data-checked='false'] > div {
+    opacity: 0.35;
+  }
+
+  [data-story] [data-check-row] {
+    transition: background-color 0.3s;
+  }
+
+  [data-story] [data-check-row][data-current] {
+    background-color: var(--color-brand-50);
+  }
+
+  [data-story] [data-done='true'] .status-done {
+    animation: af-accept 0.5s var(--af-ease);
+  }
+
+  @keyframes af-accept {
+    from {
+      opacity: 0;
+      scale: 0.85;
+    }
+  }
+
+  /* ---------- Story progress dots ---------- */
+  .story-dot {
+    transition:
+      background-color 0.3s,
+      border-color 0.3s;
+  }
+
+  .story-dot[data-reached] {
+    border-color: var(--color-brand);
+    background-color: var(--color-brand);
+  }
 </style>
 
 <script>
-  /* Yoxlama ardıcıllığı (yalnız desktop #afAnatomy): kartı «yoxlanılır» halına qaytarır, bölmə
-     görünəndə bir dəfə təsdiqləyir. Hərəkət CSS-dədir, "hərəkəti azalt" olanda skript işləmir. */
+  import { gsap } from '../../scripts/motion/gsap'
+  import { revertOnPageSwap } from '../../scripts/motion/shared'
 
-  const CHECK_START_MS = 700 // bölmə görünəndən birinci ✓-yə qədər
-  const CHECK_STEP_MS = 420 // iki ✓ arasındakı vaxt
-  // Kartın yuxarı kənarı ekranın yuxarı 65%-inə girəndə başlayır. Ölçü ekrandan götürülür, kartın
-  // hündürlüyündən yox: alçaq ekranda da animasiya başlayır, kart «yoxlanılır»-da ilişib qalmır.
-  const START_ROOT_MARGIN = '0px 0px -35% 0px'
+  // ---------- Pinned scroll story (desktop only) ----------
+  const STORY_MEDIA = '(min-width: 1024px)'
+  const PIN_DISTANCE = '+=200%'
+  const SCRUB_SMOOTHING = 0.5
 
-  const anatomy = document.getElementById('afAnatomy')
-  const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+  // ---------- Story timeline: progress 0…1 (QR → device → location → face, then recorded) ----------
+  const STORY_LENGTH = 1
+  const CHECK_AT_PROGRESS = [0.1, 0.3, 0.5, 0.7]
+  const DONE_AT_PROGRESS = 0.85
 
-  if (anatomy && !prefersReducedMotion) {
-    const rows = Array.from(anatomy.querySelectorAll<HTMLElement>('[data-check-row]'))
-    const callouts = Array.from(anatomy.querySelectorAll<HTMLElement>('[data-callout]'))
-    const status = anatomy.querySelector<HTMLElement>('[data-status]')
-
-    const setChecked = (index: number, isChecked: boolean) => {
-      rows[index].dataset.checked = String(isChecked)
-      callouts[index].dataset.checked = String(isChecked)
-    }
-
-    const setStatusDone = (isDone: boolean) => {
-      if (status) status.dataset.done = String(isDone)
-    }
-
-    const showPending = () => {
-      for (let index = 0; index < rows.length; index++) {
-        setChecked(index, false)
-      }
-      setStatusDone(false)
-    }
-
-    const playChecks = () => {
-      for (let index = 0; index < rows.length; index++) {
-        setTimeout(() => setChecked(index, true), CHECK_START_MS + index * CHECK_STEP_MS)
-      }
-      setTimeout(() => setStatusDone(true), CHECK_START_MS + rows.length * CHECK_STEP_MS)
-    }
-
-    showPending()
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            observer.disconnect() // bir dəfə oynayır
-            playChecks()
-            return
-          }
-        }
-      },
-      { rootMargin: START_ROOT_MARGIN }
-    )
-    observer.observe(anatomy)
+  interface StoryParts {
+    story: HTMLElement
+    anatomy: HTMLElement
+    rows: HTMLElement[]
+    callouts: HTMLElement[]
+    status: HTMLElement | null
+    progress: HTMLElement | null
+    fill: HTMLElement | null
+    dots: HTMLElement[]
   }
+
+  function findStoryParts(): StoryParts | null {
+    const story = document.getElementById('afStory')
+    const anatomy = document.getElementById('afAnatomy')
+    if (!story || !anatomy) {
+      return null
+    }
+    return {
+      story,
+      anatomy,
+      rows: Array.from(anatomy.querySelectorAll<HTMLElement>('[data-check-row]')),
+      callouts: Array.from(anatomy.querySelectorAll<HTMLElement>('[data-callout]')),
+      status: anatomy.querySelector<HTMLElement>('[data-status]'),
+      progress: story.querySelector<HTMLElement>('[data-story-progress]'),
+      fill: story.querySelector<HTMLElement>('[data-story-fill]'),
+      dots: Array.from(story.querySelectorAll<HTMLElement>('[data-story-dot]')),
+    }
+  }
+
+  // ---------- Story state ----------
+  function countPassedChecks(progress: number): number {
+    let passed = 0
+    for (const checkAt of CHECK_AT_PROGRESS) {
+      if (progress >= checkAt) {
+        passed += 1
+      }
+    }
+    return passed
+  }
+
+  function showState(parts: StoryParts, passed: number, isDone: boolean): void {
+    parts.rows.forEach((row, index) => {
+      const isChecked = index < passed
+      row.dataset.checked = String(isChecked)
+      parts.callouts[index].dataset.checked = String(isChecked)
+      row.toggleAttribute('data-current', !isDone && index === passed - 1)
+    })
+    parts.dots.forEach((dot, index) => dot.toggleAttribute('data-reached', index < passed))
+    if (parts.status) {
+      parts.status.dataset.done = String(isDone)
+    }
+  }
+
+  function createStateUpdater(parts: StoryParts): (progress: number) => void {
+    let lastState = ''
+    return (progress) => {
+      const passed = countPassedChecks(progress)
+      const isDone = progress >= DONE_AT_PROGRESS
+      const state = `${passed}/${isDone}`
+      if (state === lastState) {
+        return
+      }
+      lastState = state
+      showState(parts, passed, isDone)
+    }
+  }
+
+  // ---------- Pin and scrubbed timeline ----------
+  function pinStart(story: HTMLElement): string {
+    if (story.offsetHeight > window.innerHeight) {
+      return 'top top'
+    }
+    return 'center center'
+  }
+
+  function addProgressLine(timeline: gsap.core.Timeline, fill: HTMLElement | null): void {
+    if (!fill) {
+      return
+    }
+    const lineStart = CHECK_AT_PROGRESS[0]
+    const lineEnd = CHECK_AT_PROGRESS[CHECK_AT_PROGRESS.length - 1]
+    timeline.fromTo(fill, { scaleX: 0 }, { scaleX: 1, ease: 'none', duration: lineEnd - lineStart }, lineStart)
+  }
+
+  function startStory(parts: StoryParts): () => void {
+    const updateState = createStateUpdater(parts)
+    parts.anatomy.setAttribute('data-story', '')
+    if (parts.progress) {
+      parts.progress.hidden = false
+    }
+    updateState(0)
+
+    const timeline = gsap.timeline({
+      scrollTrigger: {
+        trigger: parts.story,
+        pin: true,
+        start: () => pinStart(parts.story),
+        end: PIN_DISTANCE,
+        scrub: SCRUB_SMOOTHING,
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+        refreshPriority: 1,
+      },
+      onUpdate: () => updateState(timeline.progress()),
+    })
+    addProgressLine(timeline, parts.fill)
+    timeline.set({}, {}, STORY_LENGTH)
+
+    return () => {
+      parts.anatomy.removeAttribute('data-story')
+      if (parts.progress) {
+        parts.progress.hidden = true
+      }
+      showState(parts, parts.rows.length, true)
+    }
+  }
+
+  function initAntiFraudStory(): void {
+    const parts = findStoryParts()
+    const hasSubgrid = CSS.supports('grid-template-rows', 'subgrid')
+    if (!parts || !hasSubgrid) {
+      return
+    }
+    const media = gsap.matchMedia()
+    media.add(STORY_MEDIA, () => startStory(parts))
+    revertOnPageSwap(media)
+  }
+
+  initAntiFraudStory()
 </script>

@@ -163,19 +163,19 @@ const rows = [
   }
 
   /* ---------- Canlanma (qayda: AudienceMap.astro) ---------- */
-  :global([data-anim]) .branch {
+  :global(html.has-motion) .branch {
     opacity: 0;
     transform: translateY(18px);
   }
 
   /* Ayaq alt kənarından yuxarı böyüyür. */
-  :global([data-anim]) .stem {
+  :global(html.has-motion) .stem {
     transform-origin: bottom;
     transform: scaleY(0);
   }
 
   /* Sətirlər bir-bir qalxır (gecikmə markup-dakı --t: 0.55s / 0.7s / 0.85s). */
-  :global([data-anim] .is-live) .branch {
+  :global(html.has-motion .is-live) .branch {
     opacity: 1;
     transform: none;
     transition:
@@ -183,7 +183,7 @@ const rows = [
       transform 0.7s var(--aud-ease) var(--t);
   }
 
-  :global([data-anim] .is-live) .stem {
+  :global(html.has-motion .is-live) .stem {
     transform: none;
     transition: transform 0.7s var(--aud-ease) var(--t);
   }

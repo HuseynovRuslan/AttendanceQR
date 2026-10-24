@@ -14,6 +14,7 @@ import WhatsAppButton from '../components/Shared/WhatsAppButton.astro'
 import BackToTop from '../components/Shared/BackToTop.astro'
 import SmoothScroll from '../components/Shared/SmoothScroll.astro'
 import PauseOffscreen from '../components/Shared/PauseOffscreen.astro'
+import Motion from '../components/Shared/Motion.astro'
 import { useTranslations, htmlLang, localeMap, localizedPath, availableLangs, type Lang } from '../i18n/ui'
 import { SITE } from '../data/site'
 import { getImage } from 'astro:assets'
@@ -127,6 +128,28 @@ const websiteLd = {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    {/* ---------- Motion switch: hidden start states only with JS; dropped if GSAP is not loaded when the loader leaves ---------- */}
+    <script is:inline>
+      ;(function () {
+        var root = document.documentElement
+        root.classList.add('has-motion')
+
+        function showWithoutMotionIfGsapMissing() {
+          if (!root.classList.contains('motion-loaded')) root.classList.remove('has-motion')
+        }
+
+        var loaderObserver = new MutationObserver(function () {
+          if (root.classList.contains('qrl-lock')) return
+          loaderObserver.disconnect()
+          showWithoutMotionIfGsapMissing()
+        })
+        loaderObserver.observe(root, { attributes: true, attributeFilter: ['class'] })
+
+        setTimeout(showWithoutMotionIfGsapMissing, 4500)
+      })()
+    </script>
+
     <meta name="generator" content={Astro.generator} />
 
     <title>{pageTitle}</title>
@@ -162,7 +185,6 @@ const websiteLd = {
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo-mark.png" />
     <link rel="preload" href={logoWord.src} as="image" type="image/webp" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta2/css/all.min.css" integrity="sha512-YWzhKL2whUzgiheMoBFwW8CKV4qpHQAEuvilg9FAn5VJUDwKZZxkJNuGM4XkWuk94WCrrwslk8yWNGmY1EduTA==" crossorigin="anonymous" referrerpolicy="no-referrer">
 
     {/* Şriftlər tailwind.css-dəki --font-sans/--font-mono üçündür. Onest 200 yalnız 404 səhifəsi üçündür; 300 yüklənmir (yüngül qalınlıq 200-ə düşər). */}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -193,5 +215,6 @@ const websiteLd = {
     <BackToTop lang={lang} />
     <SmoothScroll />
     <PauseOffscreen />
+    <Motion />
   </body>
 </html>

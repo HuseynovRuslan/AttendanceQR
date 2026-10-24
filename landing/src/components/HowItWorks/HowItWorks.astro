@@ -56,29 +56,30 @@ const metricClass =
   }
 
   <div class="wrap relative">
-    <div class="max-w-155">
+    <div class="max-w-155" data-reveal="heading">
       <span
-        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('how.eyebrow')}
       </span>
       <h2
         id="how-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('how.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('how.sub')}</p>
+      <p class="mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('how.sub')}</p>
     </div>
 
     {/* Desktop: solda tablist, sağda səhnə. data-state (running / paused / manual) skriptdən yazılır, CSS ona baxır. */}
     <div
       id="howDesk"
       data-state="running"
+      data-reveal="cards"
       class="mt-14 hidden lg:grid lg:grid-cols-[minmax(0,400px)_1fr] lg:gap-14"
     >
-      <div class="rv d3 relative">
+      <div class="relative">
         {/* Relsin başı və hündürlüyünü JS çip mərkəzlərindən ölçür. left-10 = p-5 + çipin yarısı: çipin ölçüsü dəyişsə, left-10 və pl-13 / ml-13 də dəyişməlidir. */}
         <div data-rail class="pointer-events-none absolute left-10 z-1 w-px bg-hair" aria-hidden="true">
           <div
@@ -127,7 +128,7 @@ const metricClass =
         </div>
       </div>
 
-      <div class="rv d4">
+      <div>
         <div class="relative h-105 overflow-hidden rounded-2xl border border-hair bg-page">
           <div class="stage-grid pointer-events-none absolute inset-0"></div>
 
@@ -142,7 +143,7 @@ const metricClass =
                 aria-hidden={index === 0 ? undefined : 'true'}
                 class="scene stage absolute inset-0 flex items-center justify-center"
               >
-                <div class="w-full max-w-135 px-4">
+                <div class="w-full max-w-135 px-4" data-parallax data-skew>
                   <HowStepVisual step={(index + 1) as 1 | 2 | 3} idSuffix="d" />
                 </div>
                 {index === CHECKS_STEP_INDEX && (
@@ -177,12 +178,12 @@ const metricClass =
     </div>
 
     {/* Mobil: tab yoxdur, eyni üç addım adi kart siyahısıdır. */}
-    <ol role="list" class="mt-10 flex flex-col gap-5 lg:hidden">
+    <ol role="list" class="mt-10 flex flex-col gap-5 lg:hidden" data-reveal="cards">
       {
         steps.map((step, index) => (
           <li
             data-active="false"
-            class={`scene rv d${index + 1} overflow-hidden rounded-2xl border border-hair bg-white`}
+            class="scene overflow-hidden rounded-2xl border border-hair bg-white"
           >
             <div class="relative flex h-55 items-center justify-center bg-page">
               <div class="w-full max-w-72.5 px-2">
@@ -454,27 +455,14 @@ const metricClass =
       transform: scale(2.6);
     }
   }
-
-  /* global.css animasiyaları onsuz da söndürür; yalnız mənasız qalan progress xətti gizlədilir. */
-  @media (prefers-reduced-motion: reduce) {
-    .hw-bar {
-      display: none;
-    }
-
-    .stage[data-active='true'] {
-      opacity: 1;
-    }
-  }
 </style>
 
 <script>
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_END, REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
+
   // İki hissə: desktop tab maşını və mobil kartların animasiyası. Addımın müddəti <style>-dakı hw-fill-dədir.
   // ClientRouter işlənmir, ona görə skript səhifə başına bir dəfə işləyir; əlavə olunsa, init()-ə yığılmalıdır.
-
-  // Blokun neçə hissəsi görünəndə "ekrandadır" sayılır (0.3 = 30%).
-  const DESKTOP_VISIBLE_THRESHOLD = 0.3
-  // Mobil kartın neçə hissəsi görünəndə animasiya başlayır (0.45 = 45%).
-  const CARD_VISIBLE_THRESHOLD = 0.45
 
   // Addım nəyə görə dəyişdi — analitika hadisəsinə yazılır.
   type StepSource = 'click' | 'keyboard' | 'auto'
@@ -488,12 +476,10 @@ const metricClass =
     const panels = Array.from(desktop.querySelectorAll<HTMLElement>('[role="tabpanel"]'))
     const rail = desktop.querySelector('[data-rail]') as HTMLElement
     const railFill = desktop.querySelector('[data-rail-fill]') as HTMLElement
-    // "Hərəkəti azalt" seçilibsə, addımlar özü dəyişmir.
-    const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
 
     let currentIndex = 0
-    // true: istifadəçi addımı özü seçib (bir daha başlamır) və ya "hərəkəti azalt" açıqdır.
-    let isManual = prefersReducedMotion
+    // true: istifadəçi addımı özü seçib (bir daha başlamır).
+    let isManual = false
     // Siçan və ya fokus bölmənin içindədir — keçid müvəqqəti dayanır.
     let isUserInside = false
     let isOnScreen = false
@@ -640,14 +626,15 @@ const metricClass =
 
     // Ekranda olmayan bölmə saymır: oxucunun görmədiyi kadr keçilmir.
     const watchVisibility = () => {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          isOnScreen = entries[0].isIntersecting
+      ScrollTrigger.create({
+        trigger: desktop,
+        start: REVEAL_START,
+        end: REVEAL_END,
+        onToggle: (self) => {
+          isOnScreen = self.isActive
           updateState()
         },
-        { threshold: DESKTOP_VISIBLE_THRESHOLD }
-      )
-      observer.observe(desktop)
+      })
     }
 
     bindTabEvents()
@@ -665,18 +652,12 @@ const metricClass =
 
   // Mobil: kart ekrana girəndə data-active="true" yazılır və CSS animasiyaları bir dəfə işləyir.
   const cards = document.querySelectorAll<HTMLElement>('#how ol .scene')
-  if (cards.length) {
-    const cardObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return
-          const card = entry.target as HTMLElement
-          card.dataset.active = 'true'
-          cardObserver.unobserve(card)
-        })
-      },
-      { threshold: CARD_VISIBLE_THRESHOLD }
-    )
-    cards.forEach((card) => cardObserver.observe(card))
-  }
+  cards.forEach((card) => {
+    ScrollTrigger.create({
+      trigger: card,
+      start: REVEAL_START,
+      once: true,
+      onEnter: () => pageRevealed.then(() => (card.dataset.active = 'true')),
+    })
+  })
 </script>

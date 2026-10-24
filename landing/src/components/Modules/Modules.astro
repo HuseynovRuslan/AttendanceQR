@@ -56,20 +56,20 @@ const splideSettings = {
 
   <div class="wrap relative">
 
-    <div class="max-w-155">
+    <div class="max-w-155" data-reveal="heading">
       <span
-        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('mod.eyebrow')}
       </span>
       <h2
         id="modules-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('mod.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('mod.sub')}</p>
+      <p class="mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('mod.sub')}</p>
     </div>
   </div>
 
@@ -79,8 +79,9 @@ const splideSettings = {
     class="splide mod-slider mt-8 lg:mt-12"
     aria-label={t('mod.eyebrow')}
     data-splide={JSON.stringify(splideSettings)}
+    data-reveal="fade"
   >
-    <div class="splide__track">
+    <div class="splide__track" data-skew>
       <ul class="splide__list">
         {
           cards.map((card) => (
@@ -297,18 +298,6 @@ const splideSettings = {
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .mod-card,
-    .mod-desc,
-    .mod-tile {
-      transition: none;
-    }
-
-    .mod-card:hover .mod-tile.is-wiggle :global(svg) {
-      animation: none;
-    }
-  }
-
   /* Eyni qayda HowItWorks və AdminPanel-də də var; scoped olduğu üçün burada təkrarlanır. */
   .edge-rule {
     -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
@@ -320,11 +309,11 @@ const splideSettings = {
   import Splide from '@splidejs/splide'
   import type { Options } from '@splidejs/splide'
   import { AutoScroll } from '@splidejs/splide-extension-auto-scroll'
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_END, REVEAL_START } from '../../scripts/motion/shared'
 
   const SCROLL_SPEED = 0.85 // piksel/kadr
   const CARD_GAP = '20px' // CSS-dəki --mod-card-gap ilə eyni olmalıdır
-  // Slayderin neçə hissəsi ekranda olanda axsın: 0.1 = 10%.
-  const VISIBLE_PART_TO_PLAY = 0.1
   const SLIDER_ID = 'mod-slider'
 
   // Splide-ın standart nüsxə sayı (kartların sayı) geniş ekranı doldurmur: 4 kart 1920px-də boşluq buraxır.
@@ -339,8 +328,8 @@ const splideSettings = {
     return Math.max(slides.length, clonesToFillScreen)
   }
 
-  function buildOptions(sliderElement: HTMLElement, reduceMotion: boolean): Options {
-    const options: Options = {
+  function buildOptions(sliderElement: HTMLElement): Options {
+    return {
       type: 'loop', // sonsuz dövr: sonuncu kartdan sonra yenidən birinci gəlir
       clones: countClonesPerSide(sliderElement),
       drag: 'free', // barmaq və ya siçanla sərbəst sürüşdürmə, kart yerinə "oturmur"
@@ -349,13 +338,8 @@ const splideSettings = {
       arrows: false, // ox və pagination qəsdən yoxdur: slayder özü axır, istəyən sürüşdürür
       pagination: false,
       snap: false,
+      autoScroll: { speed: SCROLL_SPEED, pauseOnHover: true, pauseOnFocus: true },
     }
-
-    // Hərəkət azaldılıbsa, avtomatik sürüşmə yoxdur, kartlar yalnız əl ilə sürüşdürülür.
-    if (!reduceMotion) {
-      options.autoScroll = { speed: SCROLL_SPEED, pauseOnHover: true, pauseOnFocus: true }
-    }
-    return options
   }
 
   // Splide aria-hidden-i yalnız görünən slaydlara görə yazır: nüsxələr oxunur, əsl kartlar gizlənə bilir.
@@ -394,37 +378,35 @@ const splideSettings = {
       return
     }
 
-    const observer = new IntersectionObserver(
-      function (entries) {
-        const latestEntry = entries[entries.length - 1]
-        if (latestEntry.isIntersecting) {
+    autoScroll.pause()
+    ScrollTrigger.create({
+      trigger: sliderElement,
+      start: REVEAL_START,
+      end: REVEAL_END,
+      onToggle: (self) => {
+        if (self.isActive) {
           autoScroll.play()
         } else {
           autoScroll.pause()
         }
       },
-      { threshold: VISIBLE_PART_TO_PLAY }
-    )
-    observer.observe(sliderElement)
+    })
   }
 
   // ClientRouter işlənmir, skript səhifə başına bir dəfə işləyir. Əlavə olunsa: `astro:page-load`-da
-  // çağırın, `astro:before-swap`-da slider.destroy() və observer.disconnect() edin.
+  // çağırın, `astro:before-swap`-da slider.destroy() edin.
   function initModulesSlider(): void {
     const sliderElement = document.getElementById(SLIDER_ID)
     if (!sliderElement) {
       return
     }
 
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const slider = new Splide(sliderElement, buildOptions(sliderElement, reduceMotion))
+    const slider = new Splide(sliderElement, buildOptions(sliderElement))
     // AutoScroll Splide-ın ayrıca əlavəsidir: mount()-a verilməsə, avtomatik sürüşmə olmur.
-    slider.mount(reduceMotion ? {} : { AutoScroll })
+    slider.mount({ AutoScroll })
 
     keepEachCardReadOnce(sliderElement)
-    if (!reduceMotion) {
-      playOnlyWhileVisible(slider, sliderElement)
-    }
+    playOnlyWhileVisible(slider, sliderElement)
   }
 
   initModulesSlider()

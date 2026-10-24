@@ -54,7 +54,7 @@ const h2 = 'text-[clamp(28px,3.2vw,40px)] leading-[1.1] font-semibold tracking-[
   <div
     class="wrap relative grid max-w-[1080px] items-center gap-12 min-[861px]:grid-cols-[minmax(0,1fr)_300px] min-[861px]:gap-16"
   >
-    <div>
+    <div data-reveal="heading">
       <span class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('del.eyebrow')}
@@ -126,7 +126,7 @@ const h2 = 'text-[clamp(28px,3.2vw,40px)] leading-[1.1] font-semibold tracking-[
         <div class="mt-5 flex flex-wrap gap-3">
           <a
             href={mailHref}
-            class="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-[15px] font-semibold text-white no-underline transition hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            class="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-[15px] font-semibold text-white no-underline transition hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             <ContactIcon name="email" size={17} />
             {t('del.emailBtn')}
@@ -185,7 +185,7 @@ const h2 = 'text-[clamp(28px,3.2vw,40px)] leading-[1.1] font-semibold tracking-[
                 <span class="relative grid size-11 place-items-center rounded-full bg-brand text-white shadow-[0_0_0_6px_#fff]">
                   <step.icon
                     size={20}
-                    class="transition-transform duration-200 group-hover/dot:scale-115 motion-reduce:transition-none"
+                    class="transition-transform duration-200 group-hover/dot:scale-115"
                   />
                 </span>
               </span>
@@ -425,18 +425,6 @@ const h2 = 'text-[clamp(28px,3.2vw,40px)] leading-[1.1] font-semibold tracking-[
     100% {
       opacity: 0;
       transform: scale(2);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .del-fill,
-    .del-dot {
-      animation: none;
-    }
-
-    .del-light,
-    .del-ripple {
-      display: none;
     }
   }
 </style>

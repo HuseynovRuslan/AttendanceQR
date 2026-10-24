@@ -40,6 +40,7 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS];
         {/* Telefonda başlıq logoların üstündədir, ayırıcı xətt üfüqi olur. */}
         <div
           class={`border-b ${ruleX} pb-6 lg:w-56 lg:shrink-0 lg:border-b-0 lg:pb-0`}
+          data-reveal="heading"
         >
           <p class="text-xs font-semibold tracking-[0.13em] text-stone-500 uppercase">
             {t("cust.eyebrow")}
@@ -60,6 +61,7 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS];
         <ul
           role="list"
           class="grid list-none grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-0 lg:flex-1"
+          data-reveal="cards"
         >
           {CUSTOMERS.items.map((c) => (
             <li
@@ -81,7 +83,7 @@ const loop = [...TRUST_SECTORS, ...TRUST_SECTORS];
       </div>
     </section>
   ) : (
-    <div class="trust">
+    <div class="trust" data-reveal="fade">
       <div class="wrap">
         <p>{t("trust.title")}</p>
       </div>

@@ -230,30 +230,30 @@ const sidePins = [
   }
 
   /* ---------- Canlanma ----------
-     Əsas CSS = son vəziyyət; gizli başlanğıc yalnız skript `data-anim` yazanda qüvvəyə minir.
-     `data-anim` və `is-live` komponentin kənarındadır, ona görə selektorlar `:global()`-dır. */
-  :global([data-anim]) .geo-zone {
+     Əsas CSS = son vəziyyət; gizli başlanğıc yalnız <html>-də `has-motion` olanda qüvvəyə minir.
+     `has-motion` və `is-live` komponentin kənarındadır, ona görə selektorlar `:global()`-dır. */
+  :global(html.has-motion) .geo-zone {
     opacity: 0;
     transform: scale(0.6);
   }
 
-  :global([data-anim]) .bld {
+  :global(html.has-motion) .bld {
     opacity: 0;
     transform: translateY(14px);
   }
 
-  :global([data-anim]) .pin-drop {
+  :global(html.has-motion) .pin-drop {
     opacity: 0;
     transform: translateY(-16px);
   }
 
-  :global([data-anim]) .rise {
+  :global(html.has-motion) .rise {
     opacity: 0;
     transform: translateY(10px);
   }
 
   /* Ardıcıllıq: zona (0.15s) → bina (0.45s) → sancaq düşür (0.95s) → sancaqlar və etiketlər (1.1s–1.45s). */
-  :global([data-anim] .is-live) .geo-zone {
+  :global(html.has-motion .is-live) .geo-zone {
     opacity: 1;
     transform: none;
     transition:
@@ -261,7 +261,7 @@ const sidePins = [
       transform 1s var(--aud-ease) 0.15s;
   }
 
-  :global([data-anim] .is-live) .bld {
+  :global(html.has-motion .is-live) .bld {
     opacity: 1;
     transform: none;
     transition:
@@ -270,7 +270,7 @@ const sidePins = [
   }
 
   /* Sancaq düşəndə azca sıçrayır (əyrinin 1.5 nöqtəsi hədəfi keçir). */
-  :global([data-anim] .is-live) .pin-drop {
+  :global(html.has-motion .is-live) .pin-drop {
     opacity: 1;
     transform: none;
     transition:
@@ -279,7 +279,7 @@ const sidePins = [
   }
 
   /* `--t` — hər elementin gecikməsi, markup-da yazılıb. */
-  :global([data-anim] .is-live) .rise {
+  :global(html.has-motion .is-live) .rise {
     opacity: 1;
     transform: none;
     transition:

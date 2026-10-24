@@ -1,10 +1,12 @@
 ---
 /*
-  ContactIcon — əlaqə ikonları: phone, email (Lucide), instagram (Font Awesome SVG), whatsapp (BaseLayout-dakı Font Awesome şrifti).
+  ContactIcon — əlaqə ikonları: phone, email (Lucide), instagram (Font Awesome SVG), whatsapp (Font Awesome, FaIcon ilə SVG).
   İşlənir: Footer.astro və ContactBody.astro. Props: name, size (px, default 20), class (ikonlar currentColor ilə çəkilir).
 */
 import Mail from '@lucide/astro/icons/mail'
 import Phone from '@lucide/astro/icons/phone'
+import { faWhatsapp } from '@fortawesome/free-brands-svg-icons/faWhatsapp'
+import FaIcon from './FaIcon.astro'
 
 interface Props {
   name: 'phone' | 'email' | 'instagram' | 'whatsapp'
@@ -26,6 +28,6 @@ const { name, size = 20, class: className } = Astro.props
 }
 {
   name === 'whatsapp' && (
-    <i class:list={['fa-brands fa-whatsapp', className]} style={`font-size:${size}px`} aria-hidden="true" />
+    <FaIcon icon={faWhatsapp} class={className} style={`font-size:${size}px`} />
   )
 }

@@ -3,7 +3,12 @@
  * «İşçi qapıda ilişib qalmır» — «Saxtaya qarşı qoruma» bölməsinin alt bloku (AntiFraud.astro çağırır).
  * Props: lang. Solda qaydalar, sağda admin panelin «Bugünkü davamiyyət» ekranından nümunə parça.
  */
+import { faCamera } from '@fortawesome/free-solid-svg-icons/faCamera'
+import { faCheck } from '@fortawesome/free-solid-svg-icons/faCheck'
+import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons/faTriangleExclamation'
+import type { IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import { useTranslations, type Lang, type UIKey } from '../../i18n/ui'
+import FaIcon from '../Shared/FaIcon.astro'
 
 interface Props {
   lang: Lang
@@ -41,16 +46,16 @@ const rows: {
 ]
 
 // Status nişanları: yaşıl rəng AdminPanelToday-dəkidir, qırmızı «Uyğunsuz» məhsulun
-// frontend/src/components/FaceFlagBadge.tsx siniflərinin eynisidir. icon — Font Awesome sinfi.
+// frontend/src/components/FaceFlagBadge.tsx siniflərinin eynisidir. icon — Font Awesome ikonu (FaIcon çəkir).
 const chipClass = 'inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-[10.5px] whitespace-nowrap'
 const chips = {
-  finished: { icon: 'fa-check', label: 'panel.ui.m3.finished', tone: 'bg-[#E9F7EF] font-medium text-[#15803D]' },
+  finished: { icon: faCheck, label: 'panel.ui.m3.finished', tone: 'bg-[#E9F7EF] font-medium text-[#15803D]' },
   mismatch: {
-    icon: 'fa-triangle-exclamation',
+    icon: faTriangleExclamation,
     label: 'panel.ui.mismatch',
     tone: 'bg-red-100 font-semibold text-red-700',
   },
-} satisfies Record<string, { icon: string; label: UIKey; tone: string }>
+} satisfies Record<string, { icon: IconDefinition; label: UIKey; tone: string }>
 
 // Mobildə sətir iki xətdir (ad, altında nişan): vaxt adla eyni xətdə dursun deyə align-baseline.
 const cellClass = 'px-3 py-2.5 align-baseline md:align-middle'
@@ -61,7 +66,8 @@ const wideOnly = 'hidden md:table-cell'
 
 <!-- Fon #F7F8FA, bg-page yox: ink2 mətni bg-page üstündə 4.44:1 verir (AA üçün 4.5:1); iki sütun yalnız xl-dən -->
 <div
-  class="rv mt-16 grid gap-8 rounded-2xl border border-hair bg-[#F7F8FA] p-5 sm:p-8 lg:mt-20 lg:p-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,600px)] xl:items-center xl:gap-14"
+  class="mt-16 grid gap-8 rounded-2xl border border-hair bg-[#F7F8FA] p-5 sm:p-8 lg:mt-20 lg:p-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,600px)] xl:items-center xl:gap-14"
+  data-reveal="fade"
 >
   <div>
     <h3 class="text-[22px] leading-tight font-semibold tracking-[-0.02em] text-ink">{t('af.door.t')}</h3>
@@ -144,14 +150,14 @@ const wideOnly = 'hidden md:table-cell'
                   {/* Mobil nüsxə: md+ ekranda display:none, nişan ekran oxuyucusunda iki dəfə oxunmur */}
                   <p class="mt-1.5 md:hidden">
                     <span data-pulse={isMismatch ? 'off' : undefined} class:list={[chipClass, chip.tone]}>
-                      <i class={`fa-solid ${chip.icon}`} aria-hidden="true"></i>
+                      <FaIcon icon={chip.icon} />
                       {chipText}
                     </span>
                   </p>
                 </td>
                 <td class={`${wideOnly} ${cellClass}`}>
                   <span data-pulse={isMismatch ? 'off' : undefined} class:list={[chipClass, chip.tone]}>
-                    <i class={`fa-solid ${chip.icon}`} aria-hidden="true"></i>
+                    <FaIcon icon={chip.icon} />
                     {chipText}
                   </span>
                 </td>
@@ -178,8 +184,8 @@ const wideOnly = 'hidden md:table-cell'
                     aria-hidden="true"
                     class="inline-flex items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[10.5px] font-medium whitespace-nowrap text-slate-700"
                   >
-                    {/* fa-regular yox: Free paketdə kamera yalnız solid-dir, regular Pro-dur və boş çıxır */}
-                    <i class="fa-solid fa-camera"></i>
+                    {/* solid: Free paketdə kameranın regular variantı yoxdur (Pro-dur) */}
+                    <FaIcon icon={faCamera} />
                     {t('panel.ui.af.photo')}
                   </span>
                 </td>
@@ -210,25 +216,18 @@ const wideOnly = 'hidden md:table-cell'
 </style>
 
 <script>
-  /* Nişan ekrana girəndə data-pulse="on" yazılır, nəbzi CSS oynadır; bir dəfə. Nişanın iki nüsxəsi
-     var, gizli (display:none) nüsxə ekrana "girmir", ona görə yalnız görünən nəbz verir. */
-  const PULSE_VISIBLE_THRESHOLD = 0.6 // nişanın 60%-i görünəndə
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
 
+  // ---------- «Uyğunsuz» flag: one pulse when it scrolls into view ----------
   const flags = document.querySelectorAll<HTMLElement>('#afPanel [data-pulse]')
-  const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  if (flags.length > 0 && !prefersReducedMotion) {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue
-          const flag = entry.target as HTMLElement
-          flag.dataset.pulse = 'on'
-          observer.unobserve(flag)
-        }
-      },
-      { threshold: PULSE_VISIBLE_THRESHOLD }
-    )
-    flags.forEach((flag) => observer.observe(flag))
-  }
+  flags.forEach((flag) => {
+    ScrollTrigger.create({
+      trigger: flag,
+      start: REVEAL_START,
+      once: true,
+      onEnter: () => pageRevealed.then(() => (flag.dataset.pulse = 'on')),
+    })
+  })
 </script>

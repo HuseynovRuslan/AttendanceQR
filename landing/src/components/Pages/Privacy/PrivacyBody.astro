@@ -120,7 +120,7 @@ const rights = [
   <div
     class="wrap relative grid max-w-[1080px] items-center gap-12 min-[861px]:grid-cols-[minmax(0,1fr)_320px] min-[861px]:gap-16"
   >
-    <div>
+    <div data-reveal="heading">
       <span class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('priv.eyebrow')}
@@ -167,7 +167,7 @@ const rights = [
     <ul role="list" class="mt-8 grid list-none grid-cols-4 gap-4 max-[900px]:grid-cols-2 max-[480px]:grid-cols-1">
       {
         tldr.map((item) => (
-          <li class="rounded-[20px] border border-hair bg-white p-[18px] transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+          <li class="rounded-[20px] border border-hair bg-white p-[18px] transition-transform duration-200 hover:-translate-y-0.5">
             <span class="grid size-[38px] place-items-center rounded-xl bg-[#EAF1FE] text-brand" aria-hidden="true">
               <item.icon size={21} stroke-width={1.75} />
             </span>
@@ -389,7 +389,7 @@ const rights = [
           <div class="mt-5 flex flex-wrap gap-3">
             <a
               href={localizedPath(lang, '/hesab-silinmesi/')}
-              class="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-[15px] font-semibold text-white no-underline transition hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              class="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-[15px] font-semibold text-white no-underline transition hover:-translate-y-0.5 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               <Trash size={17} stroke-width={1.75} aria-hidden="true" />
               {t('priv.delBtn')}
@@ -484,15 +484,14 @@ const rights = [
     const top = section.getBoundingClientRect().top + window.scrollY - offset
 
     // Lenis varsa sürüşməni o aparmalıdır, window.scrollTo onunla toqquşar.
-    // Lenis yalnız "hərəkəti azalt" söndürülü olanda yaranır (SmoothScroll.astro).
+    // Lenis telefonda yaranmır (SmoothScroll.astro).
     const lenis = window.qrlLenis
     if (lenis) {
       lenis.scrollTo(top, window.qrlAnchorScroll)
       return
     }
 
-    const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    window.scrollTo({ top, behavior: isReduced ? 'auto' : 'smooth' })
+    window.scrollTo({ top, behavior: 'smooth' })
   }
 
   links.forEach((link, index) => {

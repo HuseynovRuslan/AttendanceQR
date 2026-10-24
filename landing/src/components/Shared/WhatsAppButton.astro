@@ -5,6 +5,8 @@
  */
 import { useTranslations, type Lang } from '../../i18n/ui'
 import { whatsappUrl } from '../../data/site'
+import { faWhatsapp } from '@fortawesome/free-brands-svg-icons/faWhatsapp'
+import FaIcon from './FaIcon.astro'
 
 interface Props {
   lang: Lang
@@ -22,8 +24,8 @@ const t = useTranslations(lang)
   aria-label={t('wa.aria')}
   data-wa
 >
-  {/* İkon: Font Awesome Free (brands), BaseLayout-dakı stil vərəqindən. WhatsApp brend qaydasına görə forma dəyişdirilmir; rəng ağdır. */}
-       <i class="fa-brands fa-whatsapp text-[28px]"></i>
+  {/* İkon: Font Awesome Free (brands), FaIcon ilə SVG. WhatsApp brend qaydasına görə forma dəyişdirilmir; rəng ağdır. */}
+  <FaIcon icon={faWhatsapp} class="text-[28px]" />
   {/* aria-hidden: eyni sözlər artıq linkin aria-label-ındadır, ekran oxuyucu iki dəfə oxumasın. */}
   <span class="wa-tip" aria-hidden="true">{t('wa.tooltip')}</span>
 </a>
@@ -39,7 +41,7 @@ const t = useTranslations(lang)
   :root {
     --wa-size: 56px; /* düymənin eni və hündürlüyü */
     --wa-edge: 20px; /* ekranın sağ və alt kənarından məsafə */
-    --wa-appear-delay: 0.6s; /* loader bitəndən sonra düymə bu qədər gözləyir */
+    --wa-appear-delay: 1.6s; /* loader bitəndən sonra düymə bu qədər gözləyir */
   }
 
   .wa-fab {
@@ -196,19 +198,6 @@ const t = useTranslations(lang)
   /* Açıq mobil menyu düymənin altına qədər uzana bilər: düymə gizlənir. :has() lazımdır, çünki header bu komponentdən kənardadır. */
   html:has([data-header-bar][data-open]) .wa-fab {
     visibility: hidden;
-  }
-
-  /* «Hərəkəti azalt»: animasiya və keçid yoxdur, düymə sadəcə görünür. */
-  @media (prefers-reduced-motion: reduce) {
-    html:not(.qrl-lock) .wa-fab,
-    html:not(.qrl-lock) .wa-fab::after {
-      animation: none;
-    }
-
-    .wa-fab,
-    .wa-tip {
-      transition: none;
-    }
   }
 
   @media print {

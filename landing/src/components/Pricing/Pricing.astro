@@ -102,25 +102,25 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
   <div class="edge-rule pointer-events-none absolute inset-x-0 top-0 h-px bg-hair" aria-hidden="true"></div>
 
   <div class="wrap">
-    <div class="max-w-155">
-      <span class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
+    <div class="max-w-155" data-reveal="heading">
+      <span class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase">
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('price.eyebrow')}
       </span>
       <h2
         id="pricing-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('price.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[52ch] text-[15px] leading-[1.75] text-pretty text-ink2">{subtitle}</p>
+      <p class="mt-4 max-w-[52ch] text-[15px] leading-[1.75] text-pretty text-ink2">{subtitle}</p>
     </div>
 
     <div class="mt-12 lg:mt-16">
       {/* showPlans === false: kartların yerində «Qiymət fərdi hesablanır» kartı. */}
       {
         !PRICING.showPlans && (
-          <div class="plan-quote">
+          <div class="plan-quote" data-reveal="fade">
             <h3 class="plan-quote-title">{t('price.quoteTitle')}</h3>
             <p class="plan-quote-text">{t('price.quoteText')}</p>
             <a href={contact} class="plan-cta plan-cta-solid">
@@ -137,7 +137,7 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
           `--i` kartın sıra nömrəsidir (CSS giriş gecikməsini ondan hesablayır). */}
       {
         PRICING.showPlans && (
-          <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4" data-plan-grid data-skew>
             {plans.map((plan, index) => (
               <article class={plan.featured ? 'plan-card is-featured' : 'plan-card'} style={`--i:${index}`}>
                 <div class="plan-body">
@@ -217,7 +217,7 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
 
       {
         PRICING.showPlans && (
-          <p class="mt-10 flex items-start gap-2.5 text-[13.5px] leading-[1.6] text-ink2 lg:justify-center">
+          <p class="mt-10 flex items-start gap-2.5 text-[13.5px] leading-[1.6] text-ink2 lg:justify-center" data-reveal="fade">
             <Info size={INFO_ICON_SIZE} stroke-width={INFO_ICON_STROKE} class="mt-0.5 shrink-0 text-ink2/70" />
             <span>{t('price.note')}</span>
           </p>
@@ -234,7 +234,6 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
     --plan-border-hover: #b7cbf7; /* adi kartın hover kənarı (Security-dəki ilə eyni) */
     --plan-featured-border-from: #a9c2f7; /* seçilmiş kartın kənarı, yuxarı sol: ilan üstündə aydın görünsün */
     --plan-featured-border-to: #d8e3fc; /* seçilmiş kartın kənarı, aşağı sağ */
-    --plan-featured-border-still: linear-gradient(160deg, #155eef, #7aa2f7 55%, #c7d7fb); /* «hərəkəti azalt»: ilanın əvəzinə sabit kənar */
     --plan-featured-fill: #f5f8ff; /* seçilmiş kartın içinin yuxarısı */
     --plan-divider: #eef0f4; /* qiymətin altındakı ayırıcı xətt */
     --plan-cta-border: #d6dbe4; /* çərçivəli düymənin kənarı */
@@ -549,15 +548,15 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
 
   /* ---------- Giriş animasiyası (bir dəfə) ---------- */
 
-  /* Gizli başlanğıc yalnız `[data-anim]` altındadır: atribut yoxdursa (JS söndürülüb, «hərəkəti azalt») kartlar tam görünür. */
-  [data-anim] .plan-card {
+  /* Gizli başlanğıc yalnız `html.has-motion` altındadır: JS söndürülübsə kartlar tam görünür. */
+  :global(html.has-motion) .plan-card {
     opacity: 0;
     translate: 0 16px;
   }
 
   /* Ayrıca `translate`: `transform` hover və Biznes kartının qalxması üçündür, ikisi bir-birini əzməsin.
      `--i` kartın sıra nömrəsidir; 90ms skriptdəki CARD_STEP ilə eyni olmalıdır. */
-  [data-anim].is-live .plan-card {
+  :global(html.has-motion) .is-live .plan-card {
     opacity: 1;
     translate: 0 0;
     transition:
@@ -603,58 +602,19 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
       transform: translateX(3px);
     }
   }
-
-  /* ---------- Hərəkəti azalt ----------
-     Skript bu halda data-anim yazmır. Burada: ilan gizlənir, kənar sabit olur, hover-də kart qalxmır
-     (Biznes kartının 10px-i yerləşmədir, qalır). */
-  @media (prefers-reduced-motion: reduce) {
-    .snake {
-      display: none;
-    }
-
-    .plan-card.is-featured {
-      background: var(--plan-featured-border-still);
-    }
-
-    [data-anim] .plan-card {
-      opacity: 1;
-      translate: none;
-    }
-
-    .plan-card,
-    .plan-cta,
-    .plan-cta-arrow {
-      transition: none !important;
-    }
-
-    /* Hover-də kart öz yerində qalır (Biznes üçün bu, 10px-lik duruşdur), düymə qalxmır, ox sürüşmür. */
-    .plan-card:hover {
-      transform: translateY(var(--plan-lift));
-    }
-
-    .plan-cta-solid:hover,
-    .plan-cta:hover .plan-cta-arrow {
-      transform: none;
-    }
-  }
 </style>
 
 <script>
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
+
   // ---------- Sabitlər ----------
   const SECTION_ID = 'pricing'
-  // Bölmənin neçə hissəsi ekranda olanda animasiya başlasın (0.2 = 20%).
-  const LIVE_THRESHOLD = 0.2
   // Rəqəm sayğacı: nə qədər davam etsin, kartın görünməsindən nə qədər sonra başlasın (ms).
   const COUNT_DURATION = 1100
   const COUNT_START = 150
   // Kartlar arası gecikmə (ms). CSS-dəki `calc(var(--i) * 90ms)` ilə EYNİ olmalıdır: rəqəm öz kartı ilə başlasın.
   const CARD_STEP = 90
-
-  // Sistemdə «hərəkəti azalt» seçilibsə, heç nə gizlədilmir və canlanmır: hər şey dərhal son vəziyyətdə
-  // görünür. https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
-  function isMotionReduced(): boolean {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  }
 
   // ---------- Rəqəm sayğacı ----------
   // Əvvəl sürətli, sonda yavaşlayan hərəkət (easeOutCubic): progress 0…1 → nəticə 0…1.
@@ -724,41 +684,21 @@ const subtitle = PRICING.showPlans ? t('price.sub') : t('price.subQuote')
     })
   }
 
-  // Bölmə ekrana ilk dəfə kifayət qədər girəndə animasiyanı başladır və izləməyi DAYANDIRIR: animasiya BİR dəfə
-  // oynanır. IntersectionObserver scroll hadisəsini dinləmədən elementin ekrana girdiyini bildirir:
-  // https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
-  function startWhenVisible(section: HTMLElement): void {
-    const observer = new IntersectionObserver(
-      function (entries) {
-        if (!entries[0].isIntersecting) {
-          return
-        }
-        startEntrance(section)
-        observer.disconnect()
-      },
-      { threshold: LIVE_THRESHOLD }
-    )
-    observer.observe(section)
-  }
-
-  // Layihədə Astro View Transitions (ClientRouter) işlənmir — BaseLayout onu idxal etmir — ona görə bu
-  // skript səhifə başına bir dəfə işləyir. ClientRouter əlavə olunsa: initPricing-i `astro:page-load`-da
-  // çağırın, `astro:before-swap`-da isə observer-i `disconnect()` edin.
+  // ---------- Start once the cards are on screen ----------
   function initPricing(): void {
     const section = document.getElementById(SECTION_ID)
-    if (!section || isMotionReduced() || !('IntersectionObserver' in window)) {
-      return
-    }
     // PRICING.showPlans === false olanda kart yoxdur — canlandırılacaq heç nə yoxdur.
-    if (!section.querySelector('.plan-card')) {
+    const grid = section?.querySelector<HTMLElement>('[data-plan-grid]')
+    if (!section || !grid) {
       return
     }
 
-    // `data-anim` PROGRESSIVE ENHANCEMENT-dir: gizli başlanğıc vəziyyət CSS-də yalnız `[data-anim]`
-    // altındadır, atribut isə yalnız JS işləyəndə yazılır. JS söndürülübsə, skript yüklənməyibsə və ya
-    // hərəkət azaldılıbsa atribut yoxdur — kartlar və düz rəqəmlər adi halda tam görünür.
-    section.dataset.anim = 'on'
-    startWhenVisible(section)
+    ScrollTrigger.create({
+      trigger: grid,
+      start: REVEAL_START,
+      once: true,
+      onEnter: () => pageRevealed.then(() => startEntrance(section)),
+    })
   }
 
   initPricing()

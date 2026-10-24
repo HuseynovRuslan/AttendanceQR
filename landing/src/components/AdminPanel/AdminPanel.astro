@@ -75,29 +75,30 @@ const chipClass =
   <div class="edge-rule pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hair" aria-hidden="true"></div>
 
   <div class="wrap relative">
-    <div class="max-w-155">
+    <div class="max-w-155" data-reveal="heading">
       <span
-        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('panel.eyebrow')}
       </span>
       <h2
         id="panel-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('panel.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('panel.sub')}</p>
+      <p class="mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-ink2">{t('panel.sub')}</p>
     </div>
 
     <div
       id="panelSlider"
       data-state="static"
+      data-reveal="fade"
       role="region"
       aria-roledescription={t('panel.carousel')}
       aria-label={t('panel.title')}
-      class="rv d3 mt-10 text-ink lg:mt-14"
+      class="mt-10 text-ink lg:mt-14"
     >
       <div class="flex items-end gap-6">
         <div role="tablist" aria-label={t('panel.tablist')} class="grid flex-1 grid-cols-3 gap-4 sm:gap-8">
@@ -243,7 +244,7 @@ const chipClass =
     animation-play-state: paused;
   }
 
-  /* Mobil və reduced motion: avto-keçid yoxdur, aktiv xətt dolu qalır. */
+  /* Mobil: avto-keçid yoxdur, aktiv xətt dolu qalır. */
   [data-state='static'] [aria-selected='true'] .pbar > i {
     animation: none;
     width: 100%;
@@ -260,7 +261,7 @@ const chipClass =
     display: none;
   }
 
-  /* "CANLI" nişanının nöqtəsi (reduced motion-da global.css söndürür). */
+  /* "CANLI" nişanının nöqtəsi. */
   .stage :global(.ap-live) {
     animation: ap-blink 1.8s ease-in-out infinite;
   }
@@ -281,11 +282,14 @@ const chipClass =
 </style>
 
 <script>
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_END, REVEAL_START } from '../../scripts/motion/shared'
+
   /*
     «Rəhbərin bir günü» slayderi. Vəziyyət root-un data-state atributundadır:
       running — desktop, bölmə ekrandadır, heç kim oxumur: aktiv xətt 4 s-də dolur, sonra növbəti an
       paused  — siçan üstündədir, klaviatura fokusu içəridədir, barmaq sürüşdürür və ya bölmə ekranda deyil
-      static  — lg-dən kiçik ekran və ya reduced motion: avto-keçid yoxdur, aktiv xətt dolu
+      static  — lg-dən kiçik ekran: avto-keçid yoxdur, aktiv xətt dolu
     init() həm dərhal, həm astro:page-load-da çağırılır (ClientRouter üçün); data-ready təkrar bağlanmağa qoymur.
   */
   const EASE = 'cubic-bezier(.22,.61,.36,1)'
@@ -310,7 +314,6 @@ const chipClass =
     const tabs = [...root.querySelectorAll<HTMLElement>('[role=tab]')]
     const slides = kids(stage)
     const n = slides.length
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
     const desk = matchMedia('(min-width: 64rem)') // Tailwind-in lg nöqtəsi
     const ac = new AbortController()
     const on = <E extends Event>(el: EventTarget, type: string, fn: (e: E) => void) =>
@@ -326,8 +329,7 @@ const chipClass =
     let drag = false
 
     const sync = () => {
-      root.dataset.state =
-        reduce || !desk.matches ? 'static' : visible && !over && !focused && !drag ? 'running' : 'paused'
+      root.dataset.state = !desk.matches ? 'static' : visible && !over && !focused && !drag ? 'running' : 'paused'
     }
 
     // Canlı an: slayd hər açılanda əvvəlcə ilkin hala qayıdır, sonra hadisə təkrarlanır.
@@ -364,12 +366,11 @@ const chipClass =
         if (el.dataset.swap) el.hidden = el.dataset.swap === (after ? 'out' : 'in')
       })
 
-    // Hadisənin son halı; live=false (reduced motion) olanda eyni hal animasiyasız qurulur.
-    const happen = (s: HTMLElement, live: boolean) => {
+    // Hadisənin son halı.
+    const happen = (s: HTMLElement) => {
       each(s, '[data-a]', (el) => (el.textContent = el.dataset.a!))
       swap(s, true)
-      ring(s, 1, live)
-      if (!live) return
+      ring(s, 1, true)
       each(s, '[data-enter]', (el) =>
         el.animate({ opacity: [0, 1], transform: ['translateY(-6px)', 'none'] }, { duration: 550, easing: EASE })
       )
@@ -385,10 +386,9 @@ const chipClass =
       clearTimeout(timer)
       base.forEach((text, el) => s.contains(el) && (el.textContent = text))
       swap(s, false)
-      if (reduce) return happen(s, false)
       each(s, '[data-up]', (el) => count(el, +base.get(el)!, g))
       ring(s, 0, true)
-      timer = setTimeout(() => happen(s, true), +s.dataset.at!)
+      timer = setTimeout(() => happen(s), +s.dataset.at!)
     }
 
     const show = (s: HTMLElement, open: boolean) => {
@@ -428,15 +428,12 @@ const chipClass =
       const i = (to + n) % n
       if (i === cur) return
       const d = dir ?? (i > cur ? 1 : -1)
-      if (!reduce) {
-        move(slides[cur], -d, true)
-        move(slides[i], d, false)
-      }
+      move(slides[cur], -d, true)
+      move(slides[i], d, false)
       show(slides[i], true)
       cur = i
       clearTimeout(hideTimer)
-      if (reduce) hideOthers()
-      else hideTimer = setTimeout(hideOthers, 300)
+      hideTimer = setTimeout(hideOthers, 300)
       // aria-selected dəyişəndə yeni tabın xəttinin CSS animasiyası sıfırdan başlayır (ayrıca taymer yoxdur).
       tabs.forEach((tab, k) => {
         tab.setAttribute('aria-selected', `${k === i}`)
@@ -505,8 +502,7 @@ const chipClass =
         getSelection()?.empty()
         sync()
       }
-      // Reduced motion: jest işləyir, məzmun barmağın arxasınca getmir.
-      if (drag && !reduce) kids(slides[cur]).forEach((el, k) => (el.style.transform = `translateX(${dx * FOLLOW[k]}px)`))
+      if (drag) kids(slides[cur]).forEach((el, k) => (el.style.transform = `translateX(${dx * FOLLOW[k]}px)`))
     })
     const release = () => {
       const was = drag
@@ -515,33 +511,33 @@ const chipClass =
       delete stage.dataset.drag
       sync()
       if (Math.abs(dx) > 60) return go(cur - Math.sign(dx), -Math.sign(dx))
-      if (!reduce)
-        kids(slides[cur]).forEach((el) => {
-          const from = el.style.transform
-          el.style.transform = ''
-          el.animate({ transform: [from, 'none'] }, { duration: 280, easing: EASE })
-        })
+      kids(slides[cur]).forEach((el) => {
+        const from = el.style.transform
+        el.style.transform = ''
+        el.animate({ transform: [from, 'none'] }, { duration: 280, easing: EASE })
+      })
     }
     on(stage, 'pointerup', release)
     on(stage, 'pointercancel', release)
 
-    // isIntersecting 1px görünəndə də true olur, ona görə 0.35 həddini intersectionRatio yoxlayır.
-    const io = new IntersectionObserver(
-      ([e]) => {
-        visible = e.intersectionRatio >= 0.35
+    // ---------- On screen: first live moment, progress line runs ----------
+    const onScreen = ScrollTrigger.create({
+      trigger: root,
+      start: REVEAL_START,
+      end: REVEAL_END,
+      onToggle: (self) => {
+        visible = self.isActive
         // Canlı an bölmə ilk dəfə ekrana girəndə başlayır (gen 0 — hələ heç bir an olmayıb).
         if (visible && !gen) moment(cur)
         sync()
       },
-      { threshold: 0.35 }
-    )
-    io.observe(root)
+    })
     on(desk, 'change', sync)
     sync()
 
     dispose = () => {
       ac.abort()
-      io.disconnect()
+      onScreen.kill()
       clearTimeout(timer)
       clearTimeout(hideTimer)
       gen++
