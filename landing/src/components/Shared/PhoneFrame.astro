@@ -26,16 +26,16 @@ const keyRight = `${sideKey} -right-[1.35cqw] rounded-r-[1cqw] shadow-[inset_-0.
   aria-label={ariaLabel}
 >
   {/* perspective = 5.2 × telefonun eni; --t telefonun qalınlığıdır. */}
-  <div class="relative animate-phone-float perspective-[520cqw] [--t:12.4cqw] motion-reduce:animate-none">
+  <div class="relative animate-phone-float perspective-[520cqw] [--t:12.4cqw]">
     <span
       aria-hidden="true"
-      class="pointer-events-none absolute inset-x-[10%] top-[97%] h-[9.5cqw] animate-phone-shadow rounded-[50%] bg-slate-900/40 blur-[3.3cqw] motion-reduce:animate-none"
+      class="pointer-events-none absolute inset-x-[10%] top-[97%] h-[9.5cqw] animate-phone-shadow rounded-[50%] bg-slate-900/40 blur-[3.3cqw]"
     ></span>
 
     {/* Gövdə ön üzlə eyni ölçüdədir və onun arxasında durur (DOM-da əvvəl gəlir). */}
     <div
       aria-hidden="true"
-      class="absolute inset-0 transform-3d [transform:rotateX(var(--rx,0deg))_rotateY(var(--ry,0deg))_rotate(var(--rz,0deg))] transition-transform duration-800 ease-out motion-reduce:transition-none"
+      class="absolute inset-0 transform-3d [transform:rotateX(var(--rx,0deg))_rotateY(var(--ry,0deg))_rotate(var(--rz,0deg))] transition-transform duration-800 ease-out"
     >
       {/* 16 qat: z = -qalınlığın yarısından +yarısına qədər. */}
       {
@@ -72,7 +72,7 @@ const keyRight = `${sideKey} -right-[1.35cqw] rounded-r-[1cqw] shadow-[inset_-0.
 
     {/* Ön üz: gövdənin önündə (translateZ = qalınlığın yarısı), eyni dəyişənləri oxuyur. */}
     <div
-      class="relative rounded-[14cqw] bg-[linear-gradient(135deg,#fbfbfc_0%,#c9cbd0_30%,#f1f2f4_55%,#b4b6bc_100%)] p-[0.7cqw] [transform:rotateX(var(--rx,0deg))_rotateY(var(--ry,0deg))_rotate(var(--rz,0deg))_translateZ(calc(var(--t)/2))] transition-transform duration-800 ease-out motion-reduce:transition-none"
+      class="relative rounded-[14cqw] bg-[linear-gradient(135deg,#fbfbfc_0%,#c9cbd0_30%,#f1f2f4_55%,#b4b6bc_100%)] p-[0.7cqw] [transform:rotateX(var(--rx,0deg))_rotateY(var(--ry,0deg))_rotate(var(--rz,0deg))_translateZ(calc(var(--t)/2))] transition-transform duration-800 ease-out"
     >
       <div class="rounded-[13.2cqw] bg-[#050506] p-[2cqw]">
         <div class="relative overflow-hidden rounded-[11.2cqw]">
