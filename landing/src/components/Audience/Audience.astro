@@ -76,35 +76,36 @@ const cards: AudienceCard[] = [
   <div
     class="aud-circle pointer-events-none absolute -top-28 -right-28 size-70 rounded-full sm:-top-40 sm:-right-32 sm:size-105"
     aria-hidden="true"
+    data-parallax
   >
   </div>
 
   <div class="wrap relative">
-    <div class="max-w-155">
+    <div class="max-w-155" data-reveal="heading">
       <span
-        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('aud.eyebrow')}
       </span>
       <h2
         id="audience-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('aud.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-pretty text-ink2">{t('aud.sub')}</p>
+      <p class="mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-pretty text-ink2">{t('aud.sub')}</p>
     </div>
 
     <!-- lg-dən hər kart 5 sətirlik subgrid-dir (pill, başlıq, cümlə, vizual, siyahı): mətn uzun olsa da
          vizuallar və siyahılar üç kartda eyni xətdə durur -->
-    <div class="mt-12 grid gap-5 lg:mt-14 lg:grid-cols-3">
+    <div class="mt-12 grid gap-5 lg:mt-14 lg:grid-cols-3" data-reveal="cards" data-skew>
       {
-        cards.map((card, index) => {
+        cards.map((card) => {
           const Visual = visualComponents[card.visual]
           return (
             <article
-              class={`aud-card rv d${index + 1} flex flex-col rounded-3xl border border-slate-200/80 bg-white p-5 leading-normal sm:p-6 lg:row-span-5 lg:grid lg:grid-cols-1 lg:grid-rows-subgrid lg:gap-y-0`}
+              class="aud-card flex flex-col rounded-3xl border border-slate-200/80 bg-white p-5 leading-normal sm:p-6 lg:row-span-5 lg:grid lg:grid-cols-1 lg:grid-rows-subgrid lg:gap-y-0"
               data-aud-card
             >
               {/* max-w-full: 320px telefonda uzun ingiliscə pill kartdan çıxmır, ikinci sətrə bölünür */}
@@ -173,13 +174,6 @@ const cards: AudienceCard[] = [
     }
   }
 
-  /* Hərəkət azaldılıbsa kart qalxmır (global.css qalxmanı söndürmür). */
-  @media (prefers-reduced-motion: reduce) {
-    .aud-card:hover {
-      transform: none;
-    }
-  }
-
   /* ---------- Vizual qutusu (üç vizualın ortaq qabığı) ----------
      Sabit hündürlük kartları eyni xəttə gətirir və CLS-i aradan qaldırır.
      container-type: vizualların @container qaydaları bu qutunun eninə baxır (bax AudienceMap.astro).
@@ -201,33 +195,22 @@ const cards: AudienceCard[] = [
 </style>
 
 <script>
-  // Kartın 35%-i ekranda olanda vizual canlanır (mobildə kart uzundur, 100% gözləmək olmaz).
-  const LIVE_THRESHOLD = 0.35
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
+
   const SECTION_ID = 'audience'
   const CARD_SELECTOR = '[data-aud-card]'
   const HANG_SELECTOR = '[data-aud-hang]' // AudiencePoster.astro-dakı asılqan
 
-  function isMotionReduced(): boolean {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  }
-
-  // Kart ilk dəfə kifayət qədər girəndə `is-live` alır və izlənmir: canlanma bir dəfə oynanır.
+  // Kart ilk dəfə ekrana girəndə `is-live` alır: canlanma bir dəfə oynanır.
   function markCardsLiveOnce(cards: NodeListOf<HTMLElement>): void {
-    const observer = new IntersectionObserver(
-      function (entries) {
-        entries.forEach(function (entry) {
-          if (!entry.isIntersecting) {
-            return
-          }
-          const card = entry.target as HTMLElement
-          card.classList.add('is-live')
-          observer.unobserve(card)
-        })
-      },
-      { threshold: LIVE_THRESHOLD }
-    )
     cards.forEach(function (card) {
-      observer.observe(card)
+      ScrollTrigger.create({
+        trigger: card,
+        start: REVEAL_START,
+        once: true,
+        onEnter: () => pageRevealed.then(() => card.classList.add('is-live')),
+      })
     })
   }
 
@@ -264,12 +247,9 @@ const cards: AudienceCard[] = [
   // ClientRouter işlənmir, skript səhifə başına bir dəfə işləyir. Əlavə olunsa: `astro:page-load`-da çağırın.
   function initAudience(): void {
     const section = document.getElementById(SECTION_ID)
-    if (!section || isMotionReduced()) {
+    if (!section) {
       return
     }
-
-    // Gizli başlanğıc vəziyyətlər CSS-də yalnız `[data-anim]` altındadır: JS olmasa vizuallar tam görünür.
-    section.dataset.anim = 'on'
 
     const cards = section.querySelectorAll<HTMLElement>(CARD_SELECTOR)
     markCardsLiveOnce(cards)
