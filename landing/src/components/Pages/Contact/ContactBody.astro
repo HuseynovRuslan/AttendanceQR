@@ -54,7 +54,7 @@ const rows = [
     ? [
         {
           key: 'phone',
-          icon: 'phone',
+          icon: 'phone' as const,
           label: t('contact.phone'),
           value: SITE.phone,
           href: phoneHref,
@@ -98,7 +98,7 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
   </div>
 
   <div class="wrap relative grid items-center gap-14 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-16">
-    <div>
+    <div data-reveal="heading">
       <span
         class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
@@ -121,7 +121,7 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
           rows.map((row) => (
             <li
               class:list={[
-                'group relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-[20px] border p-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-16px_rgb(17_18_17/0.5)] motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+                'group relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 rounded-[20px] border p-3.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-16px_rgb(17_18_17/0.5)]',
                 'main' in row ? 'border-ink bg-ink text-white' : 'border-hair bg-white text-ink hover:border-stone-400',
               ]}
             >
@@ -164,7 +164,7 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
                   <span class="max-[480px]:hidden">{t('contact.waOpen')}</span>
                   <ArrowRight
                     size={16}
-                    class="transition-transform duration-200 group-hover:translate-x-[3px] motion-reduce:transition-none"
+                    class="transition-transform duration-200 group-hover:translate-x-[3px]"
                   />
                 </span>
               ) : 'copy' in row ? (
@@ -180,7 +180,7 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
               ) : (
                 <ArrowUpRight
                   size={20}
-                  class="text-ink2 transition-transform duration-200 group-hover:translate-x-[3px] motion-reduce:transition-none"
+                  class="text-ink2 transition-transform duration-200 group-hover:translate-x-[3px]"
                 />
               )}
             </li>
@@ -358,14 +358,6 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
     50% {
       transform: scale(1.08);
       opacity: 1;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .chat-msg,
-    .chat-dot,
-    .contact-glow {
-      animation: none;
     }
   }
 </style>
