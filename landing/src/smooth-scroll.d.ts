@@ -1,5 +1,5 @@
-// SmoothScroll.astro Lenis nüsxəsini window.qrlLenis-ə yazır, BackToTop.astro oxuyur (telefonda və
-// "hərəkəti azalt" rejimində undefined). window.lenis adı işlənmir: Lenis onu özü elan edir, toqquşardı.
+// SmoothScroll.astro Lenis nüsxəsini window.qrlLenis-ə yazır, BackToTop.astro oxuyur (telefonda
+// undefined). window.lenis adı işlənmir: Lenis onu özü elan edir, toqquşardı.
 import type Lenis from 'lenis'
 
 declare global {
