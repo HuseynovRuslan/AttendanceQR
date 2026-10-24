@@ -22,8 +22,6 @@ const ROUNDING_TIERS = [
   { below: 1000, step: 10 },
   { below: 10000, step: 100 },
 ]
-// Başlıq (0) və tarix nişanı (1) artıq çıxır, rəqəmlər 2-dən başlayır (--i).
-const FIRST_STAT_RISE_INDEX = 2
 
 interface RoundedStat {
   value: number // saytda göstərilən rəqəm (183 450 üçün 183 — minlərlə)
@@ -40,7 +38,7 @@ function roundStat(exact: number): RoundedStat {
   return { value: Math.floor(exact / THOUSAND), inThousands: true }
 }
 
-// 1200 → «1 200». Skriptdəki formatNumber ilə eyni olmalıdır, yoxsa rəqəm sayma bitəndə «tullanır».
+// 1200 → «1 200».
 function formatNumber(value: number): string {
   return value.toLocaleString('en-US').replaceAll(',', THOUSANDS_SEPARATOR)
 }
@@ -75,14 +73,13 @@ const sources: StatSource[] = [
 // Rəqəmlərdən biri boşdursa (null və ya 0), STATS.show true olsa da zolaq çəkilmir.
 const hasAllNumbers = sources.every((source) => source.exact !== null && source.exact > 0)
 
-// value — sayğacın hədəfi, text — ilkin yazı (JS işləməsə də görünür), suffix — solğun «+» və ya «min+».
+// text — rəqəm (JS işləməsə də görünür), suffix — solğun «+» və ya «min+».
 const stats = sources.map((source) => {
   const rounded = roundStat(source.exact ?? 0)
   const unit = rounded.inThousands ? t('stats.thousand') : ''
   return {
     name: source.name,
     caption: source.caption,
-    value: rounded.value,
     text: formatNumber(rounded.value),
     suffix: `${unit}+`,
   }
@@ -110,7 +107,7 @@ const updatedLabel = formatMonthYear(STATS.updatedAt, lang)
         
         <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           
-          <div class="st-rise" style="--i:0">
+          <div data-reveal="heading">
             <p class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-white/80 uppercase">
               <span class="h-px w-8 bg-white/70" aria-hidden="true" />
               {t('stats.title')}
@@ -125,8 +122,8 @@ const updatedLabel = formatMonthYear(STATS.updatedAt, lang)
 
           
           <p
-            class="st-rise inline-flex items-center gap-2.5 self-start rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[13px] text-white/85 backdrop-blur-sm lg:self-auto"
-            style="--i:1"
+            class="inline-flex items-center gap-2.5 self-start rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-[13px] text-white/85 backdrop-blur-sm lg:self-auto"
+            data-reveal="fade"
           >
             <span class="relative flex h-2 w-2" aria-hidden="true">
               <span class="stats-live-ring absolute inset-0 rounded-full bg-[#6EE7B7]" />
@@ -137,19 +134,19 @@ const updatedLabel = formatMonthYear(STATS.updatedAt, lang)
         </div>
 
         
-        <dl class="mt-14 grid grid-cols-2 gap-x-6 gap-y-12 lg:mt-16 lg:grid-cols-4 lg:gap-0">
+        <dl class="mt-14 grid grid-cols-2 gap-x-6 gap-y-12 lg:mt-16 lg:grid-cols-4 lg:gap-0" data-reveal="cards" data-stats-list>
           {stats.map((stat, index) => (
             <div
-              class="st-rise lg:border-l lg:border-white/20 lg:px-6 lg:first:border-l-0 lg:first:pl-0 lg:last:pr-0"
-              style={`--i:${FIRST_STAT_RISE_INDEX + index}`}
+              class="lg:border-l lg:border-white/20 lg:px-6 lg:first:border-l-0 lg:first:pl-0 lg:last:pr-0"
+              style={`--i:${index}`}
             >
               {/* sr-only: yalnız ekran oxuyucu üçün qısa ad. */}
               <dt class="sr-only">{t(stat.name)}</dt>
 
-              {/* Rəqəm bölünməsin (nowrap), saymada titrəməsin (tabular-nums). data-stat-count — sayğacın hədəfi. */}
+              {/* Rəqəm bölünməsin (nowrap), saymada titrəməsin (tabular-nums). */}
               <dd class="text-[32px] leading-none font-semibold tracking-[-0.03em] whitespace-nowrap tabular-nums min-[380px]:text-[38px] sm:text-[52px] lg:text-[48px] xl:text-[60px]">
                 <span class="flex items-baseline">
-                  <span data-stat-count={stat.value}>{stat.text}</span>
+                  <span data-reveal="count">{stat.text}</span>
                   <span class="text-white/70">{stat.suffix}</span>
                 </span>
                 {/* Xətt <dd>-nin içindədir: <dl> içindəki <div>-də yalnız <dt> və <dd> ola bilər. */}
@@ -208,136 +205,41 @@ const updatedLabel = formatMonthYear(STATS.updatedAt, lang)
     }
   }
 
-  /* 3) Giriş animasiyası. Gizli başlanğıc yalnız [data-anim] altındadır: atribut skriptlə yazılır,
-     ona görə JS söndürülübsə hər şey görünür. `--i` — sıra nömrəsi, hər element 90ms gec. */
-  [data-anim] .st-rise {
-    opacity: 0;
-  }
-
-  [data-anim].is-live .st-rise {
-    animation: st-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-    animation-delay: calc(var(--i, 0) * 90ms);
-  }
-
-  @keyframes st-rise {
-    from {
-      opacity: 0;
-      transform: translateY(14px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-
-  /* Xətt sayma ilə birlikdə soldan dolur. */
+  /* 3) Xətt sayma ilə birlikdə soldan dolur (`--i` — rəqəmin sırası). */
   .st-line {
     transform-origin: left;
   }
 
-  [data-anim] .st-line {
+  :global(html.has-motion) .st-line {
     transform: scaleX(0);
   }
 
-  [data-anim].is-live .st-line {
+  :global(html.has-motion) .is-live .st-line {
     transform: scaleX(1);
     transition: transform 1.3s cubic-bezier(0.2, 0.7, 0.2, 1);
     transition-delay: calc(var(--i, 0) * 90ms + 150ms);
   }
-
-  /* 4) Hərəkəti azalt. */
-  @media (prefers-reduced-motion: reduce) {
-    .stats-live-ring {
-      animation: none;
-    }
-
-    [data-anim] .st-rise {
-      opacity: 1;
-      animation: none !important;
-    }
-
-    [data-anim] .st-line {
-      transform: none !important;
-      transition: none !important;
-    }
-  }
 </style>
 
 <script>
-  // ---------- Sabitlər ----------
-  // Bölmənin neçə hissəsi ekranda olanda animasiya və sayma başlasın (0.3 = 30%).
-  const LIVE_THRESHOLD = 0.3
-  // Hər rəqəm 0-dan son dəyərinə qədər bu qədər saniyə sayılır.
-  const COUNT_DURATION_MS = 1400
-  // Sayma bölmə görünəndən 0.2 saniyə sonra başlayır (o vaxt rəqəmin yazısı artıq görünməyə başlayır); hər növbəti rəqəm 90ms gec.
-  const FIRST_COUNT_DELAY_MS = 200
-  const COUNT_STAGGER_MS = 90
-  // Minliklərin ayırıcısı: bölünməyən boşluq (frontmatter-dəki ilə eyni).
-  const THOUSANDS_SEPARATOR = ' '
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
 
-  // Əvvəl sürətli, sonda yavaşlayan hərəkət (ease-out): progress 0…1 → nəticə 0…1.
-  function easeOutCubic(progress: number): number {
-    return 1 - Math.pow(1 - progress, 3)
-  }
-
-  // 1200 → «1 200». Frontmatter-dəki formatNumber ilə eyni qayda: sayma bitəndə rəqəm «tullanmasın».
-  function formatNumber(value: number): string {
-    return value.toLocaleString('en-US').replaceAll(',', THOUSANDS_SEPARATOR)
-  }
-
-  // Rəqəmi 0-dan data-stat-count dəyərinə qədər sayır. requestAnimationFrame funksiyanı ekranın növbəti yenilənməsində
-  // çağırır — hamar animasiya üçün. https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
-  function countUp(counter: HTMLElement, delayMs: number): void {
-    const target = Number(counter.dataset.statCount)
-    setTimeout(function () {
-      const startTime = performance.now()
-      function drawFrame(now: number): void {
-        const progress = Math.min((now - startTime) / COUNT_DURATION_MS, 1)
-        counter.textContent = formatNumber(Math.round(target * easeOutCubic(progress)))
-        if (progress < 1) {
-          requestAnimationFrame(drawFrame)
-        }
-      }
-      requestAnimationFrame(drawFrame)
-    }, delayMs)
-  }
-
-  // Bölmə ekrana ilk dəfə kifayət qədər girəndə `is-live` sinfini verir, rəqəmləri saymağa başlayır və izləməni DAYANDIRIR:
-  // hamısı bir dəfə olur. https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
-  function startWhenVisible(section: HTMLElement): void {
-    const observer = new IntersectionObserver(
-      function (entries) {
-        if (!entries[0].isIntersecting) {
-          return
-        }
-        section.classList.add('is-live')
-        const counters = section.querySelectorAll<HTMLElement>('[data-stat-count]')
-        counters.forEach(function (counter, index) {
-          countUp(counter, FIRST_COUNT_DELAY_MS + index * COUNT_STAGGER_MS)
-        })
-        observer.disconnect()
-      },
-      { threshold: LIVE_THRESHOLD }
-    )
-    observer.observe(section)
-  }
-
+  // ---------- Lines under the numbers: .is-live once the list is on screen ----------
   function initStats(): void {
     // Bölmə səhifədə olmaya bilər (STATS.show: false), onda heç nə etmirik.
     const section = document.querySelector<HTMLElement>('[data-stats]')
-    if (!section) {
+    const list = section?.querySelector<HTMLElement>('[data-stats-list]')
+    if (!section || !list) {
       return
     }
 
-    // «Hərəkəti azalt» seçilibsə və ya brauzer IntersectionObserver-i bilmirsə: `data-anim` yazılmır, sayma olmur —
-    // son rəqəmlər artıq HTML-dədir. https://developer.mozilla.org/en-US/docs/Web/API/Window/matchMedia
-    const isMotionReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (isMotionReduced || !('IntersectionObserver' in window)) {
-      return
-    }
-
-    section.dataset.anim = 'on'
-    startWhenVisible(section)
+    ScrollTrigger.create({
+      trigger: list,
+      start: REVEAL_START,
+      once: true,
+      onEnter: () => pageRevealed.then(() => section.classList.add('is-live')),
+    })
   }
 
   initStats()
