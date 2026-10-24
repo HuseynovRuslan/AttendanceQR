@@ -56,23 +56,23 @@ const FACT_ICON_STROKE = 2.5
   </div>
 
   <div class="wrap relative">
-        <div class="max-w-155">
+        <div class="max-w-155" data-reveal="heading">
       <span
-        class="rv inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
+        class="inline-flex items-center gap-3 text-[12px] font-bold tracking-[0.2em] text-brand uppercase"
       >
         <span aria-hidden="true" class="h-px w-8 bg-brand"></span>
         {t('sec.eyebrow')}
       </span>
       <h2
         id="security-title"
-        class="rv d1 mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
+        class="mt-5 text-[32px] leading-[1.1] font-semibold tracking-tight text-ink sm:text-[38px]"
       >
         {t('sec.title')}
       </h2>
-      <p class="rv d2 mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-pretty text-ink2">{t('sec.sub')}</p>
+      <p class="mt-4 max-w-[46ch] text-[15px] leading-[1.75] text-pretty text-ink2">{t('sec.sub')}</p>
     </div>
 
-        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:mt-14 lg:grid-cols-4">
+        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:mt-14 lg:grid-cols-4" data-reveal="cards" data-sec-cards data-skew>
       {
         cards.map((card, index) => (
           <article
@@ -97,10 +97,11 @@ const FACT_ICON_STROKE = 2.5
 
         <ul
       class="mt-10 flex list-none flex-col gap-3 border-t border-slate-200/80 pt-8 text-[14.5px] leading-[1.6] text-ink2 md:flex-row md:flex-wrap md:gap-x-10"
+      data-reveal="cards"
     >
       {
-        facts.map((fact, index) => (
-          <li class="sec-fact flex items-start gap-2.5" style={`--i:${index}`}>
+        facts.map((fact) => (
+          <li class="flex items-start gap-2.5">
             <Check size={FACT_ICON_SIZE} stroke-width={FACT_ICON_STROKE} class="mt-0.75 shrink-0 text-brand" />
             <span>{t(fact)}</span>
           </li>
@@ -156,8 +157,7 @@ const FACT_ICON_STROKE = 2.5
     box-shadow: 0 0 14px color-mix(in oklab, var(--color-brand) 45%, transparent);
   }
 
-  /* `data-anim`-i skript yazır; atribut yoxdursa (JS söndürülüb, hərəkət azaldılıb) qayda işləmir, hər şey görünür. */
-  [data-anim].is-live .sec-scan {
+  .is-live .sec-scan {
     animation: sec-scan 4.8s ease-in-out 0.3s 1 both;
   }
 
@@ -199,41 +199,11 @@ const FACT_ICON_STROKE = 2.5
       transform 0.45s var(--sec-ease);
   }
 
-  /* Gizli başlanğıc yalnız `[data-anim]` altındadır: atribut yoxdursa kartlar və faktlar görünür. */
-  [data-anim] .sec-card,
-  [data-anim] .sec-fact {
-    opacity: 0;
-  }
-
-  /* `transition` yox, `animation ... backwards`: bitəndən sonra heç nəyi üstünə yazmır, yoxsa hover-dəki
-     qalxma əzilərdi və stagger gecikməsi hover keçidinə də düşərdi. `--i` kartın sıra nömrəsidir. */
-  [data-anim].is-live .sec-card {
-    opacity: 1;
-    animation: sec-rise 0.7s var(--sec-ease) calc(var(--i) * 90ms) backwards;
-  }
-
-  /* Faktlar kartlardan sonra gəlir. */
-  [data-anim].is-live .sec-fact {
-    opacity: 1;
-    animation: sec-rise 0.6s ease calc(0.5s + var(--i) * 90ms) backwards;
-  }
-
-  @keyframes sec-rise {
-    from {
-      opacity: 0;
-      transform: translateY(14px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-
   /*
     İkon özü-özünü çəkir: dash 100 vahiddir (ikonun hər hissəsindən uzun), offset 100 xətti gizlədir, 0 isə çəkir.
     :global() lazımdır: Lucide-in <svg>-si bu komponentin scope atributunu almır; `.sec-icon` bu fayldadır, qayda sızmır.
   */
-  [data-anim] .sec-icon :global(svg *) {
+  :global(html.has-motion) .sec-icon :global(svg *) {
     stroke-dasharray: 100;
     stroke-dashoffset: 100;
   }
@@ -244,7 +214,7 @@ const FACT_ICON_STROKE = 2.5
   }
 
   /* `transition` tək xassədir: sonuncu qayda birincini silir, ona görə qıfılın transform keçidi burada da təkrarlanır. */
-  [data-anim].is-live .sec-icon :global(svg *) {
+  :global(html.has-motion) .is-live .sec-icon :global(svg *) {
     stroke-dashoffset: 0;
     transition:
       stroke-dashoffset 1.2s ease calc(0.25s + var(--i) * 90ms),
@@ -295,7 +265,7 @@ const FACT_ICON_STROKE = 2.5
     transform-origin: 17.5px 16.5px;
   }
 
-  /* `stroke-dasharray` keyframe-in ÖZÜNDƏDİR: yuxarıdakı qayda yalnız `[data-anim]` olanda yazılır,
+  /* `stroke-dasharray` keyframe-in ÖZÜNDƏDİR: yuxarıdakı qayda yalnız `html.has-motion` olanda yazılır,
      JS-siz səhifədə isə "✓" yenə də yenidən çəkilməlidir. Sonda dasharray 100 + offset 0 = tam xətt. */
   @keyframes sec-redraw {
     from {
@@ -316,68 +286,28 @@ const FACT_ICON_STROKE = 2.5
       transform: rotate(-360deg);
     }
   }
-
-  /* Skript bu halda `data-anim` yazmır; burada skan xətti, ikon hərəkətləri və hover qalxması söndürülür,
-     yalnız rənglər dəyişir. `!important` hover qaydalarının seçici gücünü aşmaq üçündür. */
-  @media (prefers-reduced-motion: reduce) {
-    .sec-scan {
-      display: none;
-    }
-
-    .sec-card,
-    .sec-icon,
-    .sec-icon :global(svg *) {
-      transition: none;
-      animation: none !important;
-    }
-
-    /* `[data-motion]` seçicini bilərəkdən yazırıq: o, qıfılın hover qaydası ilə eyni gücdə olsun
-       ki, bu qayda onu əzə bilsin (seçici gücü eyni olanda sonuncu yazılan qalib gəlir). */
-    .sec-card:hover,
-    .sec-card:hover .sec-icon,
-    .sec-card:hover .sec-icon[data-motion] :global(svg path) {
-      transform: none;
-    }
-  }
 </style>
 
 <script>
-  // Bölmənin neçə hissəsi ekranda olanda animasiya başlasın (0.25 = 25%). Mobildə bölmə hündürdür
-  // (dörd kart alt-alta), ona görə 100% yox, dörddə bir hissə kifayətdir.
-  const LIVE_THRESHOLD = 0.25
+  import { ScrollTrigger } from '../../scripts/motion/gsap'
+  import { REVEAL_START, pageRevealed } from '../../scripts/motion/shared'
+
   const SECTION_ID = 'security'
 
-  function isMotionReduced(): boolean {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  }
-
-  // `is-live` sinfi bir dəfə verilir və izləmə dayanır: animasiya yalnız bir dəfə oynanır.
-  function markLiveOnce(section: HTMLElement): void {
-    const observer = new IntersectionObserver(
-      function (entries) {
-        if (!entries[0].isIntersecting) {
-          return
-        }
-        section.classList.add('is-live')
-        observer.disconnect()
-      },
-      { threshold: LIVE_THRESHOLD }
-    )
-    observer.observe(section)
-  }
-
-  // ClientRouter işlənmir, skript səhifə başına bir dəfə işləyir. Əlavə olunsa: initSecurity-ni
-  // `astro:page-load`-da çağırın, `astro:before-swap`-da observer-i `disconnect()` edin.
+  // ---------- Icons draw and the QR scan line runs: .is-live once the cards are on screen ----------
   function initSecurity(): void {
     const section = document.getElementById(SECTION_ID)
-    if (!section || isMotionReduced() || !('IntersectionObserver' in window)) {
+    const cards = section?.querySelector<HTMLElement>('[data-sec-cards]')
+    if (!section || !cards) {
       return
     }
 
-    // Progressive enhancement: gizli başlanğıc yalnız `[data-anim]` altındadır, atribut isə yalnız JS
-    // işləyəndə yazılır — yoxsa kartlar, ikonlar və faktlar tam görünür.
-    section.dataset.anim = 'on'
-    markLiveOnce(section)
+    ScrollTrigger.create({
+      trigger: cards,
+      start: REVEAL_START,
+      once: true,
+      onEnter: () => pageRevealed.then(() => section.classList.add('is-live')),
+    })
   }
 
   initSecurity()
