@@ -1,11 +1,10 @@
 ---
 /*
- * Footer — hər səhifənin ən aşağısı: loqo, təsvir, mağaza düymələri, keçid sütunları, əlaqə, Instagram, müəllif hüququ.
+ * Footer — hər səhifənin ən aşağısı: loqo, təsvir, mağaza düymələri, keçid sütunları, əlaqə, sosial şəbəkələr, müəllif hüququ.
  * BaseLayout hər səhifənin sonuna qoyur. Props: lang — səhifənin dili.
  */
 import { Image } from 'astro:assets'
 // Lucide ikonları ayrı-ayrı fayldan idxal olunur (səbəb: Audience.astro).
-import ArrowUpRight from '@lucide/astro/icons/arrow-up-right'
 import MapPin from '@lucide/astro/icons/map-pin'
 import Smartphone from '@lucide/astro/icons/smartphone'
 import { useTranslations, localizedPath, type Lang, type UIKey } from '../../i18n/ui'
@@ -26,7 +25,6 @@ const homePath = localizedPath(lang, '/')
 //   hər səhifənin son blokunun alt padding-i bundan çox olmalıdır.
 // - `leading-normal` açıq yazılıb: Preflight yoxdur, body 1.6, h4 1.08 verir, dizayn isə 1.5-də ölçülüb.
 // - App Store nişanı link deyil, <span>-dır: Apple-ın rəsmi nişanı yalnız tətbiq App Store-da olanda işlədilə bilər.
-// - Instagram düyməsində `-ml-[7px]` ikonu yuxarıdakı əlaqə ikonları ilə eyni xəttə salır (düymənin eni dəyişsə yenidən ölç).
 // - Alt sətirdə `pr-14`: sağ-aşağıdakı üzən WhatsApp və «yuxarı» düymələri linklərin üstünə düşməsin.
 
 // ---------- Sabitlər ----------
@@ -36,8 +34,6 @@ const LOGO_WIDTH_PX = 214
 const BADGE_HEIGHT_PX = 40
 const CONTACT_ICON_SIZE = 16
 const SOON_ICON_SIZE = 15
-const INSTAGRAM_ICON_SIZE = 18
-const ARROW_ICON_SIZE = 16
 
 // İl build zamanı hesablanır: yeni ildə yenidən build olunmasa köhnə il qalır.
 const currentYear = new Date().getFullYear()
@@ -136,7 +132,7 @@ const contactRows = allContactRows.filter((contact) => contact.isVisible)
 
       <div class="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-[1fr_1fr_1.5fr] lg:col-span-7">
         <div>
-          <h4 class="font-mono text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.product')}</h4>
+          <h4 class="text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.product')}</h4>
           <ul class="mt-5 list-none space-y-3.5 text-[15px]">
             {
               productLinks.map((link) => (
@@ -151,7 +147,7 @@ const contactRows = allContactRows.filter((contact) => contact.isVisible)
         </div>
 
         <div>
-          <h4 class="font-mono text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.company')}</h4>
+          <h4 class="text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.company')}</h4>
           <ul class="mt-5 list-none space-y-3.5 text-[15px]">
             {
               companyLinks.map((link) => (
@@ -166,7 +162,7 @@ const contactRows = allContactRows.filter((contact) => contact.isVisible)
         </div>
 
         <div class="col-span-2 sm:col-span-1">
-          <h4 class="font-mono text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.contact')}</h4>
+          <h4 class="text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.contact')}</h4>
 
           <ul class="mt-5 list-none space-y-3 text-[15px]">
             {
@@ -195,30 +191,25 @@ const contactRows = allContactRows.filter((contact) => contact.isVisible)
             }
           </ul>
 
-          <a
-            href={SITE.instagram}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="group mt-6 -ml-[7px] inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] py-1.5 pr-4 pl-1.5 transition-colors hover:border-white/25 hover:bg-white/[.07]"
-          >
-            <span class="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-white/[.07] text-white">
-              <span
-                class="absolute inset-0 bg-linear-to-tr from-[#FEDA75] via-[#D62976] to-[#4F5BD5] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                aria-hidden="true"></span>
-              <span class="relative flex">
-                <ContactIcon name="instagram" size={INSTAGRAM_ICON_SIZE} />
-              </span>
-            </span>
-            <span class="flex flex-col leading-tight">
-              <span class="text-[11.5px] text-white/45">Instagram</span>
-              <span class="text-[15px] font-medium text-white/90">{SITE.instagramHandle}</span>
-            </span>
-            <ArrowUpRight
-              size={ARROW_ICON_SIZE}
-              class="ml-1 text-white/40 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white"
-              aria-hidden="true"
-            />
-          </a>
+          {/* Social icon buttons: same box as the contact icons above */}
+          <h4 class="mt-8 text-[11.5px] leading-normal font-medium tracking-[.16em] text-white/40 uppercase">{t('foot.social')}</h4>
+          <ul class="mt-4 flex list-none gap-2.5">
+            {
+              SITE.socials.map((social) => (
+                <li>
+                  <a
+                    href={social.url}
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={t(social.ariaKey)}
+                    class="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[.04] text-white/70 transition hover:border-brand hover:bg-brand hover:text-white"
+                  >
+                    <ContactIcon name={social.key} size={CONTACT_ICON_SIZE} />
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
         </div>
       </div>
     </div>
