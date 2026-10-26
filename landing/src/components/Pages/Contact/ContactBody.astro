@@ -74,15 +74,18 @@ const rows = [
     copy: SITE.email,
     copyLabel: t('contact.copyEmail'),
   },
-  {
-    key: 'instagram',
-    icon: 'instagram',
-    label: t('contact.instagram'),
-    value: SITE.instagramHandle,
-    href: SITE.instagram,
+  // Social cards (Instagram, TikTok, LinkedIn) from site.ts.
+  ...SITE.socials.map((social) => ({
+    key: social.key,
+    icon: social.key,
+    label: t(social.labelKey),
+    // Brand names: keep Latin uppercase (Azerbaijani uppercase turns "TikTok" into "TİKTOK").
+    labelLang: 'en',
+    value: social.handle,
+    href: social.url,
     external: true,
-    aria: `Instagram: ${SITE.instagramHandle}`,
-  },
+    aria: `${t(social.labelKey)}: ${social.handle}`,
+  })),
 ] as const
 
 const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
@@ -146,8 +149,9 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
 
               <span class="min-w-0">
                 <span
+                  lang={'labelLang' in row ? row.labelLang : undefined}
                   class:list={[
-                    'block font-mono text-[11px] tracking-[0.1em] uppercase',
+                    'block text-[11px] tracking-[0.1em] uppercase',
                     'main' in row ? 'text-white/60' : 'text-ink2',
                   ]}
                 >
@@ -237,7 +241,7 @@ const chatList = [t('contact.chatL1'), t('contact.chatL2'), t('contact.chatL3')]
                 <span class="rounded-lg bg-white px-2.5 py-1 text-[11.5px] text-stone-600 shadow-sm">
                   {t('contact.chatDay')}
                 </span>
-                <span class="font-mono text-[10px] tracking-[0.1em] text-stone-500 uppercase">
+                <span class="text-[10px] tracking-[0.1em] text-stone-500 uppercase">
                   {t('contact.chatSample')}
                 </span>
               </div>
