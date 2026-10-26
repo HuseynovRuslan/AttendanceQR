@@ -75,6 +75,8 @@ const orgLd = {
   name: SITE.name,
   url: site + '/',
   logo: site + '/logo-mark.png',
+  // Official social profiles (from site.ts).
+  sameAs: SITE.socials.map((social) => social.url),
   contactPoint: {
     '@type': 'ContactPoint',
     email: SITE.email,
