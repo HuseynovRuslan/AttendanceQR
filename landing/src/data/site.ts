@@ -19,9 +19,31 @@ export const SITE = {
   address: 'Bakı, Azərbaycan',
   // Android tətbiqi (GooglePlayBadge.astro). iPhone üçün mağaza tətbiqi yoxdur, brauzerdən PWA işləyir.
   playStore: 'https://play.google.com/store/apps/details?id=az.qrlog.app',
-  // Footer.astro-dakı Instagram düyməsi; ad linkdən çıxarılmır, ona görə ayrıca saxlanılır.
-  instagram: 'https://www.instagram.com/qrlog.az/',
-  instagramHandle: '@qrlog.az',
+  // Social links — the only place they live. Read by Footer, ContactBody and BaseLayout (JSON-LD sameAs).
+  // Clean URLs only (no ?igsh= / ?utm_). labelKey/ariaKey are ui.ts keys — add them in all three languages.
+  socials: [
+    {
+      key: 'instagram',
+      url: 'https://www.instagram.com/qrlog.az/',
+      handle: '@qrlog.az',
+      labelKey: 'contact.instagram',
+      ariaKey: 'social.instagram.aria',
+    },
+    {
+      key: 'tiktok',
+      url: 'https://www.tiktok.com/@qrlog.az',
+      handle: '@qrlog.az',
+      labelKey: 'contact.tiktok',
+      ariaKey: 'social.tiktok.aria',
+    },
+    {
+      key: 'linkedin',
+      url: 'https://www.linkedin.com/company/qrlog/',
+      handle: 'QRLog',
+      labelKey: 'contact.linkedin',
+      ariaKey: 'social.linkedin.aria',
+    },
+  ],
 } as const
 
 /** SITE.whatsapp üçün wa.me linki; `text` verilsə, çat açılanda hazır mesaj kimi yazılır. */
