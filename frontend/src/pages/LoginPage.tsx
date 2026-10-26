@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { endedSessionNotice, forgetEndedSessionNotice } from '../api/client'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { login, appLogin } from '../api/auth'
 import { isAppMode, isNativeApp } from '../lib/host'
 import { useAuth } from '../auth/AuthContext'
@@ -285,17 +285,11 @@ export function LoginPage() {
           </button>
         </div>
 
-        {/* Şirkət qeydiyyatı yalnız brauzerdədir. Android tətbiqi işçilər üçündür — hesabı şirkət açır. */}
+        {/* Şirkət qeydiyyatı linki müvəqqəti gizlədilib — backend hələ hazır deyil. Hazır olanda
+            brauzerdə (isNativeApp() deyilsə) bunu qaytarın və `Link` importunu bərpa edin:
+            Hesabınız yoxdur? <Link to="/register">Şirkəti qeydiyyatdan keçirin</Link> */}
         <p className="auth-foot auth-rise" style={riseOrder(8)}>
-          {isNativeApp() ? (
-            'Hesabınız yoxdursa, şirkətinizin rəhbərliyi ilə əlaqə saxlayın'
-          ) : (
-            <>
-              {/* Backend hələ şirkət qeydiyyatını dəstəkləmir, ona görə linki gizlətdik. Qeydiyyat üçün şirkət rəhbərliyi ilə əlaqə saxlayın. */}
-              {/* Hesabınız yoxdur? <Link to="/register">Şirkəti qeydiyyatdan keçirin</Link> */}
-              {console.log('Backend hələ şirkət qeydiyyatını dəstəkləmir, ona görə linki gizlətdik. Qeydiyyat üçün bizimlə əlaqə saxlayın.')}
-            </>
-          )}
+          Hesabınız yoxdursa, şirkətinizin rəhbərliyi ilə əlaqə saxlayın
         </p>
       </form>
     </AuthLayout>
