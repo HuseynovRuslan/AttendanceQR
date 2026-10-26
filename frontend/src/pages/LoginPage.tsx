@@ -291,7 +291,9 @@ export function LoginPage() {
             'Hesabınız yoxdursa, şirkətinizin rəhbərliyi ilə əlaqə saxlayın'
           ) : (
             <>
-              Hesabınız yoxdur? <Link to="/register">Şirkəti qeydiyyatdan keçirin</Link>
+              {/* Backend hələ şirkət qeydiyyatını dəstəkləmir, ona görə linki gizlətdik. Qeydiyyat üçün şirkət rəhbərliyi ilə əlaqə saxlayın. */}
+              {/* Hesabınız yoxdur? <Link to="/register">Şirkəti qeydiyyatdan keçirin</Link> */}
+              {console.log('Backend hələ şirkət qeydiyyatını dəstəkləmir, ona görə linki gizlətdik. Qeydiyyat üçün bizimlə əlaqə saxlayın.')}
             </>
           )}
         </p>
