@@ -17,6 +17,7 @@ import { getDeviceFingerprint } from '../lib/device'
 import { deviceRefusalCopy } from '../lib/deviceRefusal'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
+import { watchQueuedScan } from '../lib/queueWatch'
 import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless } from '../lib/qrless'
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
@@ -51,6 +52,9 @@ type Card = {
   final?: boolean
   /** The check-in selfie, shown back to the employee — the capture is disclosed, not covert. */
   photo?: string
+  /** One line about something optional that did NOT happen — a selfie that never reached the server —
+   *  said beside the result so nobody wonders whether it cost them the check-in. It did not. */
+  notice?: string
   showDeviceChangeLink?: boolean
   /** What the retry button says. Defaults to «Yenidən skan et»; a QR-less check-in has no poster to
    *  scan, and telling somebody to scan again sends them looking for one. */
@@ -170,6 +174,9 @@ export function ScanPage() {
   // «Siz artıq işdəsiniz — çıxırsınız?» — the check-in time it is asking about, while it is asked.
   const [earlyOutCheckIn, setEarlyOutCheckIn] = useState<string | null>(null)
   const earlyOutChoiceRef = useRef<((leaving: boolean) => void) | null>(null)
+  // Stops the watch over a scan saved on the phone (see saveLocally): on unmount, and before any fresh
+  // scan, so a card that is no longer on screen is never rewritten.
+  const queueWatchRef = useRef<(() => void) | null>(null)
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // Seconds left on the GPS wait, shown on the checklist. Only appears once the fix is taking long
   // enough to be worth explaining — a countdown that starts at 45 makes a two-second check look slow.
@@ -251,6 +258,7 @@ export function ScanPage() {
     void loadScanner()
     return () => {
       mountedRef.current = false
+      stopQueueWatch()
       void stopCamera()
     }
   }, [])
@@ -326,6 +334,7 @@ export function ScanPage() {
     setVerifying(true)
     setCameraError(null)
     setResult(null)
+    stopQueueWatch()
     setRadiusFail(null)
     setAtBranch(null)
     setQrlessReady(null)
@@ -685,6 +694,11 @@ export function ScanPage() {
     }
   }
 
+  function stopQueueWatch() {
+    queueWatchRef.current?.()
+    queueWatchRef.current = null
+  }
+
   // --- selfie (photo audit) front camera ------------------------------------
 
   // Holds on the intro card until the employee taps "Hazıram" or INTRO_MS elapses, whichever comes
@@ -926,6 +940,9 @@ export function ScanPage() {
     let confirmEarlyCheckOut = false
     // What the phone believes today is at this moment — read through the ref, never a stale closure.
     const known = todayRef.current
+    // Which tap this is, by what the phone knows of the day — or just «Skan» when it does not know and
+    // must not guess. Every card below that has to name the tap before the server has uses this.
+    const what = known.kind === 'in-progress' ? 'Çıxış' : known.kind === 'none' && !known.unknown ? 'Giriş' : 'Skan'
 
     /** The day stays as it is: they are at work, and said so. */
     function stayed(checkInIso: string | null) {
@@ -963,6 +980,12 @@ export function ScanPage() {
         }
         confirmEarlyCheckOut = true
       }
+      // Stamp WHOSE scan this is. The queue is device storage, not session storage, so on a shared
+      // site phone the next person to sign in would otherwise replay this as their own. '?? unknown'
+      // rather than undefined: undefined means "queued before this field existed" and is replayable
+      // by anyone, so a momentary decode failure must not mint a fresh unowned item and reopen the
+      // misattribution this stamp closes. The watch below reads the queue under the same name.
+      const owner = decodeJwt(getToken() ?? '')?.sub ?? 'unknown'
       try {
         await enqueueScan({
           clientScanId,
@@ -973,12 +996,7 @@ export function ScanPage() {
           photoBase64: photoBase64 ?? undefined,
           clientTimestampUtc,
           queuedAtMs: Date.now(),
-          // Stamp WHOSE scan this is. The queue is device storage, not session storage, so on a
-          // shared site phone the next person to sign in would otherwise replay this as their own.
-          // '?? unknown' rather than undefined: undefined means "queued before this field existed"
-          // and is replayable by anyone, so a momentary decode failure must not mint a fresh unowned
-          // item and reopen the misattribution this stamp closes.
-          employeeId: decodeJwt(getToken() ?? '')?.sub ?? 'unknown',
+          employeeId: owner,
           ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
         })
         // Saved on the device IS a success for the employee — same confident buzz as a live scan.
@@ -988,11 +1006,7 @@ export function ScanPage() {
           // Say WHICH it is. «Qeyd olundu ✓» on its own read as «you are checked in» to people who
           // were in fact checking out — or checking in a second time — and they found out a week
           // later on the tabel. When the phone does not know the day, it says so instead of guessing.
-          title: known.kind === 'in-progress'
-            ? 'Çıxış telefonda saxlanıldı'
-            : known.kind === 'none' && !known.unknown
-              ? 'Giriş telefonda saxlanıldı'
-              : 'Skan telefonda saxlanıldı',
+          title: `${what} telefonda saxlanıldı`,
           detail: `Saat ${fmtTime(clientTimestampUtc, '')} · hələ serverə çatmayıb`,
           // It used to promise «özü göndəriləcək — tətbiqi bağlaya bilərsiniz». There is no
           // background sync: a closed app sends nothing until it is opened again. The truth is one
@@ -1003,6 +1017,48 @@ export function ScanPage() {
           final: true,
           photo: photoBase64 ?? undefined,
         })
+        // The card says «hələ serverə çatmayıb» — and for as long as it is on screen, the page keeps
+        // trying to make that false: the shared drain every fifteen seconds (the one the heartbeat
+        // runs; it refuses to run twice at once, so the two can never send one tap in parallel), and
+        // the moment this tap has left the queue the card says what the server did with it. Nothing
+        // was lost on 24.10 — every tap was queued — but twenty-four people stood at the poster
+        // reading «saxlanıldı» with no way to know whether they were on the board, and the heartbeat
+        // only fires once a minute while the app happens to stay open. See lib/queueWatch.
+        stopQueueWatch()
+        queueWatchRef.current = watchQueuedScan(clientScanId, owner, (verdict) => {
+          const at = fmtTime(new Date(verdict.atMs).toISOString(), '')
+          if (verdict.outcome === 'rejected') {
+            // Replayed and REFUSED — wrong device, outside the fence. The drain has already told the
+            // admin and the home screen; this card must not go on saying «saxlanıldı» as if the day
+            // were safe. (The drain keeps the server's code, not its status; 400 stands for «refused».)
+            const card = errorResult(400, { error: verdict.code }, coords.accuracy)
+            if (card.tone === 'red') errorFeedback()
+            setResult({
+              ...card,
+              final: true,
+              note: [`Skan serverə çatdı (${at}), lakin qəbul edilmədi.`, card.note].filter(Boolean).join(' '),
+            })
+          } else {
+            successFeedback()
+            // Named by what the server said it recorded; failing that, by what the phone knew.
+            const did = verdict.outcome === 'sent' && verdict.action === 'CheckOut' ? 'Çıxış'
+              : verdict.outcome === 'sent' && verdict.action === 'CheckIn' ? 'Giriş' : what
+            setResult({
+              tone: 'green',
+              // «ignored»: the server already had the day and this tap changed nothing — which is
+              // true, and is not a check-out, so it is not called one.
+              title: verdict.outcome === 'ignored' ? 'Skan serverə çatdı' : `${did} qeydə alındı ✓`,
+              detail: `Saat ${fmtTime(clientTimestampUtc, '')} · serverə çatdı ${at}`,
+              note: verdict.outcome === 'ignored'
+                ? 'Gün serverdə artıq qeydə alınmışdı — bu skan heç nəyi dəyişmədi.'
+                : undefined,
+              final: true,
+              photo: photoBase64 ?? undefined,
+            })
+          }
+          // The banner above the card reads the day from the server — let it catch up.
+          void loadTodayStatus()
+        })
       } catch {
         // Both the scan AND the offline save failed — the worst case, and the one that used to leave
         // no trace at all. Queue a failure report so it reaches the Problems screen once back online.
@@ -1012,28 +1068,59 @@ export function ScanPage() {
       }
     }
 
+    // True once the selfie has been left out of the request — see post(). Stays true for the rest of
+    // this tap: the link has already shown it cannot carry the photo.
+    let photoDropped = false
+
+    /**
+     * POSTs the scan. Once as tapped and — if THAT throws (the deadline, a dropped connection) and a
+     * selfie was attached — once more straight away WITHOUT the selfie, on a shorter deadline.
+     *
+     * 24.10.2026, Heydər Əliyev Mərkəzi and the Balaxanı warehouse: the building Wi-Fi's uplink could
+     * not move a 50 kB selfie in twenty seconds. Every check-in timed out into the offline queue and
+     * reached the server 30–156 minutes later, when the app happened to be reopened; twenty-four
+     * people stood on the board as absent and their managers typed the records in by hand. The server
+     * was healthy the whole time. The scan itself is a few hundred bytes — it is the photo that does
+     * not fit through, and the photo is optional: the server records a check-in without one (face =
+     * NotChecked), and a check-in is never blocked by anything optional. Same clientScanId on both
+     * tries, so if the first DID land and only its answer was lost, the server answers AlreadyRecorded
+     * instead of writing a second record (handled below as the success it is).
+     */
+    async function post() {
+      for (;;) {
+        try {
+          return await apiRequest<ScanResponse>('/api/attendance/scan', {
+            method: 'POST',
+            // A wedged connection must become a queued scan, not an endless spinner: past this deadline
+            // the fetch throws and the catch below saves the tap. The server records in ~40ms — anything
+            // near 20s is infrastructure, and the idempotency id makes the later replay safe even if the
+            // server DID write before the deadline hit. The photo-less retry gets less: it is tiny, and
+            // the person has already waited twenty seconds.
+            timeoutMs: photoDropped ? 12_000 : 20_000,
+            body: {
+              qrToken,
+              deviceFingerprint: getDeviceFingerprint(),
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              // Omit entirely when there's no photo so the field stays optional on the wire.
+              ...(photoBase64 && !photoDropped ? { photoBase64 } : {}),
+              clientScanId,
+              ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
+            },
+          })
+        } catch (err) {
+          // No selfie to shed, or already shed: this really is the network — the caller queues the tap.
+          if (!photoBase64 || photoDropped) throw err
+          photoDropped = true
+        }
+      }
+    }
+
     try {
       // At most twice round: once as tapped, and once more if the server asks «are you leaving?» and
       // the answer is yes. Same id, same photo, same position — it is the same scan.
       for (;;) {
-        const { status, data } = await apiRequest<ScanResponse>('/api/attendance/scan', {
-          method: 'POST',
-          // A wedged connection must become a queued scan, not an endless spinner: past this deadline
-          // the fetch throws and the catch below saves the tap. The server records in ~40ms — anything
-          // near 20s is infrastructure, and the idempotency id makes the later replay safe even if the
-          // server DID write before the deadline hit.
-          timeoutMs: 20_000,
-          body: {
-            qrToken,
-            deviceFingerprint: getDeviceFingerprint(),
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            // Omit entirely when there's no photo so the field stays optional on the wire.
-            ...(photoBase64 ? { photoBase64 } : {}),
-            clientScanId,
-            ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
-          },
-        })
+        const { status, data } = await post()
 
         // The server did not JUDGE the scan — it was simply not there to answer (deploy window,
         // crashed backend behind the proxy). Same treatment as no network at all.
@@ -1055,6 +1142,21 @@ export function ScanPage() {
           continue
         }
 
+        // The server had this very tap already: the first try landed and only its answer was lost (see
+        // post). Nothing was written twice and nothing is missing — a success, named from what the
+        // phone knew of the day. The try that landed carried the selfie, so that is on the server too.
+        if (status === 200 && data?.action === 'AlreadyRecorded') {
+          successFeedback()
+          setResult({
+            tone: 'green',
+            title: `${what} qeydə alındı`,
+            detail: `Saat ${fmtTime(clientTimestampUtc, '')}`,
+            note: 'Skan serverə birinci cəhddə çatmışdı — təkrar qeyd edilmədi.',
+            final: true,
+            photo: photoBase64 ?? undefined,
+          })
+          return
+        }
         if (status === 200 && data?.action === 'CheckIn') {
           successFeedback()
           const face = faceLine(data.faceMatch ?? (qrless ? 'Pending' : undefined))
@@ -1069,8 +1171,12 @@ export function ScanPage() {
             // it is the one the manager will be looking at. Otherwise just tell them they were late (vs
             // their own hours, else the location's) — no reason asked.
             warn: face.warn ?? (data.late ? 'Gecikdiniz' : undefined),
+            // The selfie never left the phone (see post): one line says so, and says the check-in
+            // stands — a missing photo must never read as a missing day. The photo is not shown back
+            // either: that picture means «this is what was stored», and nothing was.
+            notice: photoDropped ? 'Zəif internet: şəkil göndərilmədi, giriş qeydə alındı.' : undefined,
             final: true,
-            photo: photoBase64 ?? undefined,
+            photo: photoBase64 && !photoDropped ? photoBase64 : undefined,
             openDays: data.openDays,
             // Check-in is the moment to ask: they're at work, looking at the screen, and the reminder
             // they're being offered fires later the same day.
@@ -1114,9 +1220,9 @@ export function ScanPage() {
         return
       }
     } catch {
-      // No connection, or the 20s deadline fired — instead of failing, save the scan on the device
-      // and sync it when the server is reachable again. GPS + selfie were already captured, so
-      // nothing is lost; only the round-trip is deferred.
+      // No connection, or both deadlines fired — with the selfie and then without it (see post).
+      // Instead of failing, save the scan on the device and sync it when the server is reachable
+      // again. GPS + selfie were already captured, so nothing is lost; only the round-trip is deferred.
       await saveLocally('network')
     }
   }
@@ -1618,6 +1724,7 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
         </p>
       )}
       {card.detail && <p className="mt-2 text-sm font-medium text-slate-200">{card.detail}</p>}
+      {card.notice && <p className="mt-2 text-xs font-semibold text-amber-200">{card.notice}</p>}
       {card.note && <p className="mt-1 text-xs text-slate-400">{card.note}</p>}
 
       {/* The running cost of forgetting to check out — shown at the one moment the employee is
@@ -1691,7 +1798,10 @@ function ResultCard({ card, onRetry, onClose }: { card: Card; onRetry: () => voi
 // --- helpers ---------------------------------------------------------------
 
 interface ScanResponse {
-  action?: 'CheckIn' | 'CheckOut'
+  /** AlreadyRecorded: the server had this clientScanId already — a replay, or a first try whose
+   *  answer was lost. Recorded exactly once either way. */
+  action?: 'CheckIn' | 'CheckOut' | 'AlreadyRecorded'
+  alreadyProcessed?: boolean
   recordId?: string
   status?: string
   // Backend flags: the check-in was late / the check-out early (vs the employee's own hours, else the
