@@ -343,6 +343,101 @@ public class ScanHandlerTests
         Assert.False(await h.Db.AuditLogs.AnyAsync(a => a.EventType == AuditEventType.CheckInOutsideFence));
     }
 
+    // --- an OFFLINE replay from outside the circle (OfflineFence) --------------------------------
+    // 27.10.2026, Balaxanı warehouse: 38 of 47 refused replays sat in one spot 300 m south of the
+    // poster — the phone's last fix on the way in — and each one was a worked day lost. These pin the
+    // slack and both of its limits: the distance, and that it is for stored scans only.
+
+    private static async Task BindPhone(Harness h)
+    {
+        h.Db.DeviceBindings.Add(new DeviceBinding
+        {
+            TenantId = TenantId,
+            EmployeeId = h.EmployeeId,
+            DeviceFingerprint = "device-fp-1",
+            DeviceLabel = "Android cihaz",
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task An_offline_replay_a_few_hundred_metres_out_is_recorded_and_measured()
+    {
+        using var h = new Harness();
+        await BindPhone(h);
+
+        // ~330 m north: outside the 150 m circle, well inside the slack. Queued two hours ago.
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.003, offline: true, clientTs: DateTime.UtcNow.AddHours(-2)));
+
+        Assert.Equal("CheckIn", Action(result));
+        Assert.Equal(1, await h.Db.AttendanceRecords.CountAsync());
+        // Never silent: the same measurement a fence-down branch writes, so the map and board show it.
+        var seen = await h.Db.AuditLogs.SingleAsync(a => a.EventType == AuditEventType.CheckInOutsideFence);
+        Assert.StartsWith("OutsideFenceAllowed|", seen.Reason);
+    }
+
+    [Fact]
+    public async Task The_same_position_sent_live_is_still_refused()
+    {
+        // A live scan's person is at the poster and can try again — the slack is not for them.
+        using var h = new Harness();
+        await BindPhone(h);
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.003));
+
+        Assert.Equal("OutsideRadius", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task An_offline_replay_beyond_the_slack_is_refused_as_before()
+    {
+        // ~1.7 km: not a stale fix any more. Rezidensiya's fifteen kilometres was a photo of the poster.
+        using var h = new Harness();
+        await BindPhone(h);
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.015, offline: true, clientTs: DateTime.UtcNow.AddHours(-2)));
+
+        Assert.Equal("OutsideRadius", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task An_offline_flag_without_the_phones_clock_gets_no_slack()
+    {
+        // The queue always sends the time the scan was taken; a request without it was never stored.
+        using var h = new Harness();
+        await BindPhone(h);
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.003, offline: true, clientTs: null));
+
+        Assert.Equal("OutsideRadius", Error(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+    }
+
+    [Fact]
+    public async Task An_offline_replay_from_outside_never_adopts_an_unknown_phone()
+    {
+        // Standing at the poster is the only evidence an automatic binding has. Inside the circle this
+        // phone would be adopted (AutoBind is on in the harness); from 330 m out it must not be.
+        using var h = new Harness();
+
+        var result = await h.Controller.Scan(h.Scan(lat: OfficeLat + 0.003, offline: true, clientTs: DateTime.UtcNow.AddHours(-2)));
+
+        Assert.Equal(StatusCodes.Status403Forbidden, StatusCode(result));
+        Assert.Equal(0, await h.Db.AttendanceRecords.CountAsync());
+        Assert.False(await h.Db.DeviceBindings.AnyAsync(b => b.EmployeeId == h.EmployeeId));
+    }
+
+    [Fact]
+    public void The_slack_is_measured_from_the_centre_and_stops_at_one_and_a_half_kilometres()
+    {
+        Assert.True(OfflineFence.Records(offline: true, carriesPhoneTime: true, distanceMeters: 1500));
+        Assert.False(OfflineFence.Records(offline: true, carriesPhoneTime: true, distanceMeters: 1501));
+        Assert.False(OfflineFence.Records(offline: false, carriesPhoneTime: true, distanceMeters: 300));
+        Assert.False(OfflineFence.Records(offline: true, carriesPhoneTime: false, distanceMeters: 300));
+    }
+
     // --- the fence for ONE person (Employee.RequireGeofenceOverride): null, true, false ------------
     // The admin form wrote these the wrong way round until 2026-10-16 (lib/fenceOverride). These pin
     // what each stored value DOES at the scan, so the form and the server can be checked against it.

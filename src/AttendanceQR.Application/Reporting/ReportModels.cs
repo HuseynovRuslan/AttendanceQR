@@ -286,7 +286,12 @@ public sealed record DayAttendanceRow(
     string? SecondShiftEnd = null,
     /// <summary>The person corrected this day themselves — allowed only where nobody else could (see
     /// AttendanceSelfCorrection), and shown as «öz düzəlişi» wherever the day is.</summary>
-    bool SelfCorrected = false);
+    bool SelfCorrected = false,
+    /// <summary>How far the check-in stood from the centre of the branch it was scanned at, in whole
+    /// metres — set only when that is OUTSIDE the branch's circle, null otherwise. Such a day exists
+    /// because the fence was switched off, or because an offline replay fell inside OfflineFence's
+    /// slack; either way the board says so, so a manager can look and, if need be, void it.</summary>
+    int? OutsideMeters = null);
 
 /// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
 /// check-out. Only ever sent for a day worked in more than one stretch.</summary>

@@ -116,13 +116,35 @@ const COLD_FIX_BUDGET_MS = 45_000
  */
 export const REFINE_MS = 15_000
 
-export async function getPosition(onCountdown?: (secondsLeft: number) => void): Promise<GeoResult> {
+/**
+ * A fix older than this was not taken now — it is the phone handing back where it LAST was.
+ *
+ * Şabanov İlqar at Socar-1, 26.10.2026: eight taps from one identical point 4062 m away, then seven
+ * from another 1173 m away, then in from inside the circle — all in two and a half minutes, which no
+ * walk explains. Both points were sharp (a good accuracy says nothing about WHEN the fix was taken),
+ * so the coarse-fix wait above let them straight through. The Balaxanı warehouse showed the same thing
+ * at scale: refused scans clustered on one spot 300 m south, where phones last had a fix on the way in.
+ * Such a fix is held like a coarse one — used only if nothing taken now arrives in time.
+ */
+export const STALE_FIX_MS = 20_000
+
+/** The exact point a scan was just refused from. Real fixes jitter in the sixth decimal; the same
+ *  point twice is the phone repeating a remembered position, not measuring a new one. */
+export type AvoidPoint = { latitude: number; longitude: number } | null | undefined
+
+function samePoint(c: GeolocationCoordinates, p: AvoidPoint): boolean {
+  return !!p && Math.abs(c.latitude - p.latitude) < 1e-6 && Math.abs(c.longitude - p.longitude) < 1e-6
+}
+
+export async function getPosition(onCountdown?: (secondsLeft: number) => void, avoid?: AvoidPoint): Promise<GeoResult> {
   if (!navigator.geolocation) return { ok: false, kind: 'unsupported' }
 
   const watched = await new Promise<GeolocationPosition | GeolocationPositionError | null>((resolve) => {
     let settled = false
     // The most accurate fix seen so far — held, not returned, while it is too coarse to judge a fence.
     let best: GeolocationPosition | null = null
+    // The best of the fixes that were NOT taken now (see STALE_FIX_MS / AvoidPoint) — the last resort.
+    let stale: GeolocationPosition | null = null
     let refine: ReturnType<typeof setTimeout> | undefined
     const finish = (v: GeolocationPosition | GeolocationPositionError | null) => {
       if (settled) return
@@ -136,12 +158,19 @@ export async function getPosition(onCountdown?: (secondsLeft: number) => void): 
 
     const id = navigator.geolocation.watchPosition(
       (pos) => {
+        // Remembered rather than measured: held aside, and the wait below gives the phone the same
+        // few seconds it gets to refine a coarse fix. Used only if nothing taken now arrives.
+        if (Date.now() - pos.timestamp > STALE_FIX_MS || samePoint(pos.coords, avoid)) {
+          if (!stale || pos.coords.accuracy < stale.coords.accuracy) stale = pos
+          if (refine === undefined) refine = setTimeout(() => finish(best ?? stale), REFINE_MS)
+          return
+        }
         const current = !best || pos.coords.accuracy < best.coords.accuracy ? pos : best
         best = current
         if (current.coords.accuracy <= POOR_ACCURACY_METERS) return finish(current)
         // Coarse: give the phone a little longer to refine it — started once, by the first coarse fix,
         // so a stream of coarse updates cannot keep pushing the answer further away.
-        if (refine === undefined) refine = setTimeout(() => finish(best), REFINE_MS)
+        if (refine === undefined) refine = setTimeout(() => finish(best ?? stale), REFINE_MS)
       },
       // A hard refusal is final and there is nothing to wait for; anything else may still resolve
       // itself when a satellite comes into view, so the watch stays open until the budget runs out.
@@ -157,7 +186,7 @@ export async function getPosition(onCountdown?: (secondsLeft: number) => void): 
     onCountdown?.(COLD_FIX_BUDGET_MS / 1000)
 
     // The overall budget still wins: a coarse fix first seen at 40 s is returned at 45, not at 55.
-    const deadline = setTimeout(() => finish(best), COLD_FIX_BUDGET_MS)
+    const deadline = setTimeout(() => finish(best ?? stale), COLD_FIX_BUDGET_MS)
   })
 
   if (watched && 'coords' in watched) return { ok: true, coords: watched.coords }

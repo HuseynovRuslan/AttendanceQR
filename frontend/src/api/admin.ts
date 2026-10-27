@@ -32,6 +32,9 @@ export interface DayAttendanceRow {
   /** Where the employee stood at check-in (scan position); null on older/admin records. */
   checkInLatitude?: number | null
   checkInLongitude?: number | null
+  /** Metres from the scanned branch's centre when the check-in fell OUTSIDE its circle (fence off,
+   *  or an offline scan inside the server's slack); null otherwise and on older backends. */
+  outsideMeters?: number | null
   /** The leave type on a leave day — "Vacation"/"Sick"/"Unpaid"/"Permission"/"Rest"/"BusinessTrip"
    *  (Ezamiyyət) — since the status collapses Vacation/Sick/Unpaid/BusinessTrip into OnLeave. Null on
    *  a non-leave day. */

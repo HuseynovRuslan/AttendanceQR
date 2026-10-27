@@ -30,7 +30,7 @@ import { getToken } from '../api/client'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { PushGate } from '../components/PushGate'
 import { ScanChecklist, type ScanChecks } from '../components/ScanChecklist'
-import { distanceMeters, FAILURE_REASON, getPosition, looksApproximate, POOR_ACCURACY_METERS, type GeoFailKind } from '../lib/geo'
+import { distanceMeters, FAILURE_REASON, getPosition, looksApproximate, POOR_ACCURACY_METERS, type AvoidPoint, type GeoFailKind } from '../lib/geo'
 import { PreciseLocationHelp } from '../components/PreciseLocationHelp'
 import { GpsHelp } from '../components/GpsHelp'
 import { CameraHelp, cameraFailKind, CAMERA_FAIL_REASON, type CameraFailKind } from '../components/CameraHelp'
@@ -177,6 +177,10 @@ export function ScanPage() {
   // Stops the watch over a scan saved on the phone (see saveLocally): on unmount, and before any fresh
   // scan, so a card that is no longer on screen is never rewritten.
   const queueWatchRef = useRef<(() => void) | null>(null)
+  // The exact point the last attempt was refused from for distance — by the pre-check or the server.
+  // A phone that has not measured anew hands the SAME point back (Şabanov, 26.10: eight identical
+  // taps from 4 km); the next lookup holds that point aside and waits for a fresh one (geo.AvoidPoint).
+  const refusedAtRef = useRef<AvoidPoint>(null)
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // Seconds left on the GPS wait, shown on the checklist. Only appears once the fix is taking long
   // enough to be worth explaining — a countdown that starts at 45 makes a two-second check look slow.
@@ -353,7 +357,7 @@ export function ScanPage() {
         getMyDeviceStatus(getDeviceFingerprint()).catch(() => null),
         delay(3000).then(() => null),
       ]),
-      getPosition((left) => setGeoWait(left <= 38 ? left : null)),
+      getPosition((left) => setGeoWait(left <= 38 ? left : null), refusedAtRef.current),
     ])
     setGeoWait(null)
 
@@ -441,6 +445,8 @@ export function ScanPage() {
           await delay(900)
           setVerifying(false)
           setRadiusFail({ distance: nearest.dist, name: nearest.name })
+          // The retry («Yenidən yoxla») must not be judged on this same remembered point again.
+          refusedAtRef.current = { latitude: position.coords.latitude, longitude: position.coords.longitude }
           return
         }
       } else {
@@ -921,7 +927,7 @@ export function ScanPage() {
     const qrless = qrToken === ''
     // Warmed by the pre-flight check, so this normally returns a cached fix immediately. If the
     // employee revoked the permission between the two, fall back to the same instructions.
-    const position = await getPosition()
+    const position = await getPosition(undefined, refusedAtRef.current)
     if (!position.ok) {
       reportFailure(FAILURE_REASON[position.kind])
       setGeo({ kind: 'failed', fail: position.kind })
@@ -1199,6 +1205,9 @@ export function ScanPage() {
           })
           return
         }
+        // Refused for distance: remember the exact point, so the retry waits for the phone to measure a
+        // new one instead of sending this remembered position again (see geo.AvoidPoint).
+        if (data?.error === 'OutsideRadius') refusedAtRef.current = { latitude: coords.latitude, longitude: coords.longitude }
         const card = errorResult(status, data, coords.accuracy)
         // A hard rejection (wrong device, inactive account) buzzes so it's felt; soft/yellow states
         // (QR expired, "too soon") stay silent — they aren't failures worth a jolt.

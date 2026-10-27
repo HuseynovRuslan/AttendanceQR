@@ -1182,6 +1182,22 @@ public sealed class ReportQueryService : IReportQueryService
             m => m.EmployeeId,
             m => m.CreatedByEmployeeId is Guid by ? markerNames.GetValueOrDefault(by) : null);
 
+        // The circle each check-in was judged by — the branch whose poster was scanned, which for a
+        // visiting worker is not their own — so a day let in from outside it (fence off, or an offline
+        // replay inside OfflineFence's slack) carries its distance onto the row.
+        var scannedAt = computed.Where(d => d.Record?.CheckInLatitude != null).Select(d => d.Record!.LocationId).Distinct().ToList();
+        var circles = await _db.Locations.AsNoTracking()
+            .Where(l => scannedAt.Contains(l.Id))
+            .Select(l => new { l.Id, l.Latitude, l.Longitude, l.RadiusMeters })
+            .ToDictionaryAsync(l => l.Id, ct);
+        int? OutsideMeters(AttendanceRecord? r)
+        {
+            if (r is not { CheckInLatitude: double lat, CheckInLongitude: double lng }) return null;
+            if (!double.IsFinite(lat) || !double.IsFinite(lng) || !circles.TryGetValue(r.LocationId, out var c)) return null;
+            var distance = GeoCalculator.DistanceMeters(lat, lng, c.Latitude, c.Longitude);
+            return distance > c.RadiusMeters ? (int)Math.Round(distance) : null;
+        }
+
         // Field/mobile attendance rides along on LiveDay — ComputeDayLiveAsync loaded it once, and has
         // already counted such a day as worked so the reports and the payroll agree with this board.
         return computed
@@ -1225,7 +1241,8 @@ public sealed class ReportQueryService : IReportQueryService
                     hours.Start.ToString("HH:mm"), hours.End.ToString("HH:mm"), d.Shift.ScheduleName,
                     d.Shift.HasSecondWindow ? d.Shift.SecondStart!.Value.ToString("HH:mm") : null,
                     d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null,
-                    selfCorrected.Contains(d.Employee.Id));
+                    selfCorrected.Contains(d.Employee.Id),
+                    OutsideMeters(d.Record));
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

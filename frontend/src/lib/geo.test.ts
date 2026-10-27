@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getPosition, POOR_ACCURACY_METERS, REFINE_MS, type GeoResult } from './geo'
+import { getPosition, POOR_ACCURACY_METERS, REFINE_MS, STALE_FIX_MS, type AvoidPoint, type GeoResult } from './geo'
 
 /**
  * What the phone hands back, and when. Real phones answer the watch asynchronously and often more
  * than once — a cell-tower estimate first, satellites later — which is the whole story here.
  */
-type Emit = { at: number; accuracy: number } | { at: number; deny: true }
+type Emit =
+  | { at: number; accuracy: number; ageMs?: number; latitude?: number }
+  | { at: number; deny: true }
 
 function fakePhone(script: Emit[], network?: { at: number; accuracy: number }) {
   const clearWatch = vi.fn()
@@ -13,7 +15,11 @@ function fakePhone(script: Emit[], network?: { at: number; accuracy: number }) {
     for (const e of script) {
       setTimeout(() => {
         if ('deny' in e) fail?.({ code: 1, message: 'denied' } as GeolocationPositionError)
-        else ok({ coords: { latitude: 40.34, longitude: 49.84, accuracy: e.accuracy }, timestamp: e.at } as GeolocationPosition)
+        // A fix is stamped with the moment it was TAKEN — now, unless the phone is replaying one.
+        else ok({
+          coords: { latitude: e.latitude ?? 40.34, longitude: 49.84, accuracy: e.accuracy },
+          timestamp: Date.now() - (e.ageMs ?? 0),
+        } as GeolocationPosition)
       }, e.at)
     }
     return 7
@@ -30,9 +36,9 @@ function fakePhone(script: Emit[], network?: { at: number; accuracy: number }) {
 }
 
 /** Starts a lookup and exposes its result as soon as it settles, so a test can ask "not yet?". */
-function start() {
+function start(avoid?: AvoidPoint) {
   const box: { result?: GeoResult } = {}
-  void getPosition().then((r) => { box.result = r })
+  void getPosition(undefined, avoid).then((r) => { box.result = r })
   return box
 }
 
@@ -133,5 +139,49 @@ describe('getPosition', () => {
 
     expect(accuracyOf(box.result)).toBe(2000)
     expect(phone.getCurrentPosition).not.toHaveBeenCalled()
+  })
+
+  // --- a fix remembered, not measured (STALE_FIX_MS / AvoidPoint) ---------------------------------
+  // Şabanov at Socar-1, 26.10.2026: sharp fixes from where the phone last was, 4 km and then 1 km
+  // out, repeated identically until the satellites locked. Accuracy cannot tell those apart; age can.
+
+  it('does not settle for a sharp fix the phone took minutes ago while a fresh one is coming', async () => {
+    fakePhone([{ at: 200, accuracy: 10, ageMs: 5 * 60_000, latitude: 40.30 }, { at: 4_000, accuracy: 12 }])
+    const box = start()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(box.result).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(3_100)
+    expect(box.result && box.result.ok && box.result.coords.latitude).toBe(40.34)
+  })
+
+  it('still uses a remembered fix when nothing fresh arrives — never worse than before', async () => {
+    fakePhone([{ at: 200, accuracy: 10, ageMs: STALE_FIX_MS + 1 }])
+    const box = start()
+
+    await vi.advanceTimersByTimeAsync(200 + REFINE_MS + 100)
+
+    expect(accuracyOf(box.result)).toBe(10)
+  })
+
+  it('treats the exact point a scan was just refused from as remembered, and waits for a new one', async () => {
+    fakePhone([{ at: 100, accuracy: 9 }, { at: 3_000, accuracy: 11, latitude: 40.341 }])
+    const box = start({ latitude: 40.34, longitude: 49.84 })
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(box.result).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(2_100)
+    expect(box.result && box.result.ok && box.result.coords.latitude).toBe(40.341)
+  })
+
+  it('takes a fresh fix at once, exactly as before', async () => {
+    fakePhone([{ at: 300, accuracy: 15, ageMs: 2_000 }])
+    const box = start({ latitude: 40.0, longitude: 49.0 })
+
+    await vi.advanceTimersByTimeAsync(400)
+
+    expect(accuracyOf(box.result)).toBe(15)
   })
 })

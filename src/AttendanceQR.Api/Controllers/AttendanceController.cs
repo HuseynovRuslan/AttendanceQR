@@ -777,12 +777,18 @@ public class AttendanceController : ControllerBase
         var distanceMeters = GeoCalculator.DistanceMeters(
             request.Latitude, request.Longitude, location.Latitude, location.Longitude);
         var fenced = CheckInMode.IsFenced(location.RequireGeofence, employee.RequireGeofenceOverride);
-        if (distanceMeters > location.RadiusMeters && !fenced)
+        // A scan stored on a phone with no signal and judged hours later carries whatever position the
+        // phone could manage alone — often the last fix on the way in. Within OfflineFence.SlackMeters it
+        // is recorded and measured instead of refused; see OfflineFence for the evidence and the limit.
+        var offlineSlack = distanceMeters > location.RadiusMeters && fenced
+            && OfflineFence.Records(request.Offline, request.ClientTimestampUtc is not null, distanceMeters);
+        if (distanceMeters > location.RadiusMeters && (!fenced || offlineSlack))
         {
-            // The wall is down at this branch: record where they were and carry on. Written as its own
-            // audit event rather than swallowed, because the whole point of switching the fence off is
-            // to COLLECT these points and size the circle from them — an allowance nobody can see is
-            // just a hole. Same "lat,lng,dist" shape as the rejection below, so one map reads both.
+            // The wall is down at this branch — or this is an offline replay inside the slack: record
+            // where they were and carry on. Written as its own audit event rather than swallowed,
+            // because an allowance nobody can see is just a hole: the board shows the distance and the
+            // Problems map draws the point. Same "lat,lng,dist" shape as the rejection below, so one
+            // map reads both.
             var seen = string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"OutsideFenceAllowed|{request.Latitude:F5},{request.Longitude:F5},{Math.Round(distanceMeters)}");
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInOutsideFence, seen, ip);
@@ -804,8 +810,10 @@ public class AttendanceController : ControllerBase
         // 5. Device. The fingerprint identifies a BROWSER STORAGE CONTEXT, not a phone — Safari and
         //    the installed PWA are separate contexts on the same handset and the web offers no way to
         //    link them. So the employee holds several bindings, and an unknown one arriving from
-        //    inside the geofence is adopted rather than rejected (while AutoBind is on).
-        var deviceRejection = await ResolveDeviceAsync(employee, request.DeviceFingerprint, ip);
+        //    inside the geofence is adopted rather than rejected (while AutoBind is on). An offline
+        //    replay let in from outside the circle never adopts one: standing at the poster is the
+        //    only evidence an adoption has.
+        var deviceRejection = await ResolveDeviceAsync(employee, request.DeviceFingerprint, ip, mayAdopt: !offlineSlack);
         if (deviceRejection is not null)
             return deviceRejection;
 
@@ -1422,8 +1430,10 @@ public class AttendanceController : ControllerBase
 
     // Decides whether this device may scan, adopting it if the rules allow. Returns null when the
     // scan may proceed, or the rejection to send back. Callers MUST have passed the geofence first —
-    // being physically at the location is the whole evidence behind an automatic binding.
-    private async Task<IActionResult?> ResolveDeviceAsync(Employee employee, string fingerprint, string? ip)
+    // being physically at the location is the whole evidence behind an automatic binding. A caller that
+    // let the scan in from outside the circle (an offline replay inside OfflineFence's slack) passes
+    // mayAdopt: false — a phone already bound still scans, an unknown one is refused as before.
+    private async Task<IActionResult?> ResolveDeviceAsync(Employee employee, string fingerprint, string? ip, bool mayAdopt = true)
     {
         var nowUtc = _clock.GetUtcNow().UtcDateTime;
 
@@ -1443,8 +1453,9 @@ public class AttendanceController : ControllerBase
         if (revoked is not null)
             return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint, cause: "DeviceRevoked");
 
-        // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change.
-        if (!_deviceOptions.AutoBind)
+        // Strict mode: the pre-rollout behaviour, one binding and an admin approves any change. And no
+        // adoption from outside the circle, whatever the mode.
+        if (!_deviceOptions.AutoBind || !mayAdopt)
             return await RejectDeviceAsync(employee, ip, fingerprint: fingerprint);
 
         // Private browsing hands out a fresh storage context per session — uncapped, it would mint a

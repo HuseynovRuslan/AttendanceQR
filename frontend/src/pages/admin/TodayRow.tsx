@@ -178,6 +178,18 @@ function Row({
             📴 oflayn
           </span>
         )}
+        {/* Let in from outside the branch's circle — the fence is off, or an offline scan whose phone
+            could only offer a remembered position. Never silent: a manager reads the distance here and
+            voids the day if it is not believable. */}
+        {r.outsideMeters != null && (
+          <span
+            className="tag"
+            title="Giriş filialın dairəsindən kənarda qeydə alınıb. Oflayn skanda telefon çox vaxt köhnə yeri göstərir; inanılmazdırsa, qeydi ləğv edin."
+            style={{ marginLeft: 6, background: 'var(--amber-bg)', color: 'var(--amber)' }}
+          >
+            📍 {r.outsideMeters} m kənar
+          </span>
+        )}
         {r.selfCorrected && (
           <span
             className="tag"
