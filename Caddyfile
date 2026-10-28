@@ -400,3 +400,12 @@ order.qrlog.az {
 	encode zstd gzip
 	reverse_proxy baxorders-web:8080
 }
+
+# BaxOrders executive prototype (added 2026-10-28 at the owner's request) — a static build served by its own
+# nginx container (`executive-proto` on attendanceqr_default, files in /opt/executive-proto/html). It holds real
+# order figures from the owner's workbook and, by the owner's choice, no login; search engines are asked not to index it.
+executive.qrlog.az {
+	encode zstd gzip
+	header X-Robots-Tag "noindex, nofollow"
+	reverse_proxy executive-proto:80
+}
