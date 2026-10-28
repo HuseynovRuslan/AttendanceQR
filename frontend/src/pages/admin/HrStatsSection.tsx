@@ -59,7 +59,7 @@ const todayCol: Col = { h: 'Bu gün', v: todayText, sort: todayText }
 function lists(minWorked: number): Record<string, ListDef> {
   return {
     late: {
-      title: 'Ən çox gecikən işçilər', sub: 'Hər kəs öz iş saatına görə', keep: (e) => e.lateDays > 0,
+      title: 'Ən çox gecikən işçilər', sub: 'Hər kəs öz iş saatına görə · 4 saatdan uzun «gecikmə» (səhv növbə) sayılmır', keep: (e) => e.lateDays > 0,
       order: (a, b) => b.lateDays - a.lateDays || b.lateMinutes - a.lateMinutes,
       cols: [
         { h: 'Gecikmə sayı', v: (e) => e.lateDays, sort: (e) => e.lateDays },
