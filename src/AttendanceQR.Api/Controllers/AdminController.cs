@@ -1422,6 +1422,20 @@ public class AdminController : ControllerBase
                 .ExecuteUpdateAsync(s => s.SetProperty(r => r.ReviewedByEmployeeId, (Guid?)null));
         }
 
+        // The other rows that name this person under a Restrict foreign key — not history, so not
+        // behind the gate above, and each of them failed the delete at the database: a 500 the admin
+        // saw only as «Silinmədi». Anyone who had ever been a manager could not be deleted (the access
+        // migration gave every manager role rows, and a demotion revokes them but keeps them), nor
+        // anyone who had asked for a PIN reset or resolved one. Tracked, so they go in the same
+        // SaveChanges as the person. «Revoked, never deleted» is the rule for taking a role away; a
+        // person deleted outright cannot keep rows that name them, and what they did stays in
+        // AuditLogs, unnamed. A request they only resolved is someone else's: the row stays, the
+        // resolver is cleared, as with the device-change requests they reviewed.
+        _db.RoleAssignments.RemoveRange(await _db.RoleAssignments.Where(a => a.EmployeeId == id).ToListAsync());
+        _db.PinResetRequests.RemoveRange(await _db.PinResetRequests.Where(r => r.EmployeeId == id).ToListAsync());
+        foreach (var resolved in await _db.PinResetRequests.Where(r => r.ResolvedByEmployeeId == id && r.EmployeeId != id).ToListAsync())
+            resolved.ResolvedByEmployeeId = null;
+
         // DeviceBinding and ManagedLocations cascade; AuditLogs are set null.
         _db.Employees.Remove(employee);
         await _db.SaveChangesAsync();

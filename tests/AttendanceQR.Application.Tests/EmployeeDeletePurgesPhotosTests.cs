@@ -142,6 +142,38 @@ public class EmployeeDeletePurgesPhotosTests
             return visit.Id;
         }
 
+        /// <summary>What a demoted manager is left with: the role rows the access migration made, revoked
+        /// by the demotion and kept, as role rows always are — plus one still live.</summary>
+        public void GiveThemRoles()
+        {
+            var role = new AccessRole { TenantId = TenantId, Name = "Filial meneceri (köhnə qayda)" };
+            Db.AccessRoles.Add(role);
+            Db.RoleAssignments.Add(new RoleAssignment
+            {
+                TenantId = TenantId, EmployeeId = EmployeeId, AccessRoleId = role.Id,
+                Scope = AccessScopeType.Branch, LocationId = LocationId, RevokedAtUtc = DateTime.UtcNow,
+            });
+            Db.RoleAssignments.Add(new RoleAssignment
+            {
+                TenantId = TenantId, EmployeeId = EmployeeId, AccessRoleId = role.Id, Scope = AccessScopeType.Company,
+            });
+            Db.SaveChanges();
+        }
+
+        /// <summary>A PIN reset they asked for, and one the admin asked for that they resolved.</summary>
+        public (Guid Own, Guid Resolved) GiveThemPinResets()
+        {
+            var own = new PinResetRequest { TenantId = TenantId, EmployeeId = EmployeeId };
+            var resolved = new PinResetRequest
+            {
+                TenantId = TenantId, EmployeeId = AdminId, Status = PinResetStatus.Resolved,
+                ResolvedByEmployeeId = EmployeeId, ResolvedAtUtc = DateTime.UtcNow,
+            };
+            Db.PinResetRequests.AddRange(own, resolved);
+            Db.SaveChanges();
+            return (own.Id, resolved.Id);
+        }
+
         public void Dispose() => Db.Dispose();
     }
 
@@ -238,6 +270,38 @@ public class EmployeeDeletePurgesPhotosTests
         Assert.Equal(StatusCodes.Status200OK, StatusCode(result));
         Assert.False(await h.Db.Employees.AnyAsync(e => e.Id == h.EmployeeId));
         Assert.Equal(0, Convert.ToInt32(Prop(result, "photosDeleted")));
+    }
+
+    // --- rows under a Restrict foreign key -----------------------------------------------------
+    // The database refuses to delete an employee while any of these name them; the in-memory provider
+    // checks no foreign keys, so these pin the cleanup itself. Before it, every former manager and
+    // everyone who had asked for a PIN reset failed to delete with a 500.
+
+    [Fact]
+    public async Task A_former_manager_goes_with_their_role_rows_revoked_or_not()
+    {
+        using var h = new Harness();
+        h.GiveThemRoles();
+
+        var result = await h.Controller.Delete(h.EmployeeId);
+
+        Assert.Equal(StatusCodes.Status200OK, StatusCode(result));
+        Assert.False(await h.Db.Employees.AnyAsync(e => e.Id == h.EmployeeId));
+        Assert.False(await h.Db.RoleAssignments.AnyAsync(a => a.EmployeeId == h.EmployeeId));
+    }
+
+    [Fact]
+    public async Task Their_pin_reset_requests_go_and_one_they_resolved_stays_without_them()
+    {
+        using var h = new Harness();
+        var (own, resolved) = h.GiveThemPinResets();
+
+        var result = await h.Controller.Delete(h.EmployeeId);
+
+        Assert.Equal(StatusCodes.Status200OK, StatusCode(result));
+        Assert.False(await h.Db.PinResetRequests.AnyAsync(r => r.Id == own));
+        var kept = await h.Db.PinResetRequests.SingleAsync(r => r.Id == resolved);
+        Assert.Null(kept.ResolvedByEmployeeId);
     }
 
     [Fact]
