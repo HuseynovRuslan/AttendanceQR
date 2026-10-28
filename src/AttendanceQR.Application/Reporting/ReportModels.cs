@@ -492,3 +492,57 @@ public sealed record StuckDeviceRow(
     string? Platform,
     /// <summary>Their most recent successful check-in ever, or null if they have never scanned.</summary>
     DateTime? LastSuccessfulScanAtUtc);
+
+/// <summary>
+/// «İşçi Statistikaları» — one person's figures over a period, for the leadership section of the
+/// dashboard. Counted from FINISHED days (DailySummary, up to yesterday) plus the leave register;
+/// today is reported separately in <see cref="Today"/>, because a day still running has no verdict.
+/// A percentage is null when there is nothing to divide by — shown as «—», never invented.
+/// </summary>
+public sealed record HrStatsEmployee(
+    Guid EmployeeId,
+    string Name,
+    Guid LocationId,
+    string LocationName,
+    string? Position,
+    /// <summary>Days with a check-in (on time, late, or not yet closed).</summary>
+    int WorkedDays,
+    int OnTimeDays,
+    /// <summary>Days judged late against the person's OWN hours (their shift, else the branch's).</summary>
+    int LateDays,
+    int LateMinutes,
+    /// <summary>Unexcused absences — Qayıb.</summary>
+    int AbsentDays,
+    int PermissionCount,
+    int PermissionDays,
+    int SickCount,
+    int SickDays,
+    /// <summary>Worked ÷ (worked + unexcused absences). Leave, permission and rest days are excluded.</summary>
+    double? AttendancePercent,
+    /// <summary>On-time ÷ (on-time + late) — days not yet closed carry no lateness verdict.</summary>
+    double? OnTimePercent,
+    /// <summary>Today, live: "present", "late", "permission", "sick", "leave", "absent", "dayOff" or null.</summary>
+    string? Today);
+
+public sealed record HrStatsLocation(
+    Guid LocationId,
+    string Name,
+    int Employees,
+    double? AttendancePercent,
+    int LateDays,
+    int PermissionCount,
+    int SickDays);
+
+public sealed record HrStatsReport(
+    DateOnly From,
+    DateOnly To,
+    /// <summary>The last finished day the period figures reach (yesterday, or To if earlier).</summary>
+    DateOnly CountedTo,
+    int ActiveEmployees,
+    int PresentToday,
+    int LateToday,
+    int PermissionToday,
+    int SickToday,
+    double? AttendancePercent,
+    IReadOnlyList<HrStatsEmployee> Employees,
+    IReadOnlyList<HrStatsLocation> Locations);

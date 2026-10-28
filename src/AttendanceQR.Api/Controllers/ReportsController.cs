@@ -302,6 +302,23 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
+    // GET /api/reports/hr-stats?from=yyyy-MM-dd&to=yyyy-MM-dd&locationId= — «İşçi Statistikaları» on the
+    // dashboard: per-person and per-branch figures over the period (finished days) plus today's live
+    // counts. Defaults to this month; a range is capped at a year so one request cannot scan the table.
+    [Permission(AccessPermissions.AttendanceView, LegacyRoles = "Admin,Manager")]
+    [HttpGet("hr-stats")]
+    public async Task<IActionResult> HrStats([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] Guid? locationId)
+    {
+        if (from is DateOnly f && to is DateOnly t && (t < f || t.DayNumber - f.DayNumber > 366))
+            return BadRequest(new { error = "InvalidRange" });
+
+        var (access, report) = await _reports.GetHrStatsAsync(
+            from, to, locationId, User.EmployeeId(), User.Role(), HttpContext.RequestAborted);
+        if (access == ReportAccess.Forbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Forbidden" });
+        return Ok(report);
+    }
+
     // GET /api/reports/problems?from=yyyy-MM-dd&to=yyyy-MM-dd — every rejected scan across the range:
     // who could not check in/out, and why. A range, not a day, so a problem from earlier in the week
     // does not silently age out of view. `date` is still accepted as a single-day shorthand.
