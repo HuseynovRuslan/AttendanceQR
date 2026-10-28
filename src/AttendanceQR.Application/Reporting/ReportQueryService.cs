@@ -797,6 +797,15 @@ public sealed class ReportQueryService : IReportQueryService
         }
     }
 
+    /// <summary>
+    /// A «late» longer than this is not lateness — it is the wrong shift on file (a night worker judged
+    /// against a day shift). Production, October 2026: 102 «late» days of more than eight hours, one
+    /// person averaging 13.8 hours a day, more than half of all late minutes. Such a day still counts as
+    /// worked; it just carries no lateness verdict, so the ranking shows people who came late, not
+    /// people whose schedule is wrong.
+    /// </summary>
+    public const int HrStatsLateCapMinutes = 240;
+
     public async Task<(ReportAccess Access, HrStatsReport? Report)> GetHrStatsAsync(
         DateOnly? from, DateOnly? to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
@@ -826,8 +835,10 @@ public sealed class ReportQueryService : IReportQueryService
                 {
                     EmployeeId = g.Key,
                     OnTime = g.Count(s => s.Status == DailySummaryStatus.OnTime),
-                    Late = g.Count(s => s.Status == DailySummaryStatus.Late),
-                    LateMinutes = g.Sum(s => s.Status == DailySummaryStatus.Late ? s.LateMinutes : 0),
+                    // Every late day still counts as worked; only a believable one counts as late.
+                    LateAll = g.Count(s => s.Status == DailySummaryStatus.Late),
+                    Late = g.Count(s => s.Status == DailySummaryStatus.Late && s.LateMinutes <= HrStatsLateCapMinutes),
+                    LateMinutes = g.Sum(s => s.Status == DailySummaryStatus.Late && s.LateMinutes <= HrStatsLateCapMinutes ? s.LateMinutes : 0),
                     Open = g.Count(s => s.Status == DailySummaryStatus.Incomplete),
                     Absent = g.Count(s => s.Status == DailySummaryStatus.Absent),
                 })
@@ -873,7 +884,7 @@ public sealed class ReportQueryService : IReportQueryService
         {
             var d = days.GetValueOrDefault(e.Id);
             var lv = leaveBy.GetValueOrDefault(e.Id);
-            var worked = (d?.OnTime ?? 0) + (d?.Late ?? 0) + (d?.Open ?? 0);
+            var worked = (d?.OnTime ?? 0) + (d?.LateAll ?? 0) + (d?.Open ?? 0);
             var absent = d?.Absent ?? 0;
             string? now = null;
             if (lv?.SickToday == true) now = "sick";
@@ -881,7 +892,7 @@ public sealed class ReportQueryService : IReportQueryService
             else if (todayBy.TryGetValue(e.Id, out var r))
                 now = r.Status switch
                 {
-                    DailySummaryStatus.Late => "late",
+                    DailySummaryStatus.Late => r.LateMinutes <= HrStatsLateCapMinutes ? "late" : "present",
                     DailySummaryStatus.OnTime or DailySummaryStatus.Incomplete => "present",
                     DailySummaryStatus.Permission => "permission",
                     DailySummaryStatus.OnLeave => "leave",
