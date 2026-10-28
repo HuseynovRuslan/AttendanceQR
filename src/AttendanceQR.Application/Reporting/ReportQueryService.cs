@@ -19,6 +19,13 @@ public interface IReportQueryService
     Task<(ReportAccess Access, AttendanceReport? Report)> GetSummaryAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
+    /// <summary>
+    /// «İşçi Statistikaları»: per-person and per-branch figures over [from..to] for the leadership
+    /// section of the dashboard, plus today's live counts. Same scope as the other reports.
+    /// </summary>
+    Task<(ReportAccess Access, HrStatsReport? Report)> GetHrStatsAsync(
+        DateOnly? from, DateOnly? to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default);
+
     /// <summary>Locations the caller may see/filter by (Admin=all, Manager=managed, Employee=own).</summary>
     Task<IReadOnlyList<LocationDto>> GetVisibleLocationsAsync(
         Guid requesterId, EmployeeRole role, CancellationToken ct = default);
@@ -788,6 +795,124 @@ public sealed class ReportQueryService : IReportQueryService
             }
             rows[i] = row with { Days = codes };
         }
+    }
+
+    public async Task<(ReportAccess Access, HrStatsReport? Report)> GetHrStatsAsync(
+        DateOnly? from, DateOnly? to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
+    {
+        role = await LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceView, ct);
+        var today = LocalToday();
+        var end = to is DateOnly t && t < today ? t : today;
+        var start = from ?? new DateOnly(today.Year, today.Month, 1);
+        if (start > end) start = end;
+
+        var (access, employees) = await ScopedEmployeesAsync(locationId, requesterId, role, ct);
+        if (access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, null);
+        var ids = employees.Select(e => e.Id).ToList();
+
+        // Finished days only — DailySummary is the record of a day that has ended. Aggregated in the
+        // database: one row per person, whatever the length of the period.
+        var countedTo = end < today ? end : today.AddDays(-1);
+        var scoped = await LocationScope.ApplyLocationScopeAsync(
+            _db, _db.DailySummaries.AsNoTracking().Where(s => s.SummaryDate >= start && s.SummaryDate <= countedTo),
+            requesterId, role, locationId, ct);
+        if (scoped.Access == ReportAccess.Forbidden)
+            return (ReportAccess.Forbidden, null);
+        var days = countedTo >= start
+            ? await scoped.Query
+                .GroupBy(s => s.EmployeeId)
+                .Select(g => new
+                {
+                    EmployeeId = g.Key,
+                    OnTime = g.Count(s => s.Status == DailySummaryStatus.OnTime),
+                    Late = g.Count(s => s.Status == DailySummaryStatus.Late),
+                    LateMinutes = g.Sum(s => s.Status == DailySummaryStatus.Late ? s.LateMinutes : 0),
+                    Open = g.Count(s => s.Status == DailySummaryStatus.Incomplete),
+                    Absent = g.Count(s => s.Status == DailySummaryStatus.Absent),
+                })
+                .ToDictionaryAsync(x => x.EmployeeId, ct)
+            : new();
+
+        // Sick leave and permissions from the leave register — DailySummary folds every leave type
+        // into one status, so it cannot tell a sick day from a holiday. Type and dates only.
+        var leaves = await _db.LeaveRecords.AsNoTracking()
+            .Where(l => (l.Type == LeaveType.Sick || l.Type == LeaveType.Permission)
+                        && l.FromDate <= end && l.ToDate >= start && ids.Contains(l.EmployeeId))
+            .Select(l => new { l.EmployeeId, l.Type, l.FromDate, l.ToDate })
+            .ToListAsync(ct);
+        static int Overlap(DateOnly a, DateOnly b, DateOnly from, DateOnly to)
+        {
+            var lo = a > from ? a : from;
+            var hi = b < to ? b : to;
+            return hi >= lo ? hi.DayNumber - lo.DayNumber + 1 : 0;
+        }
+        var leaveBy = leaves.GroupBy(l => l.EmployeeId).ToDictionary(g => g.Key, g => new
+        {
+            SickCount = g.Count(l => l.Type == LeaveType.Sick && l.FromDate <= countedTo),
+            SickDays = g.Where(l => l.Type == LeaveType.Sick).Sum(l => Overlap(l.FromDate, l.ToDate, start, countedTo)),
+            PermCount = g.Count(l => l.Type == LeaveType.Permission && l.FromDate <= countedTo),
+            PermDays = g.Where(l => l.Type == LeaveType.Permission).Sum(l => Overlap(l.FromDate, l.ToDate, start, countedTo)),
+            SickToday = g.Any(l => l.Type == LeaveType.Sick && l.FromDate <= today && l.ToDate >= today),
+            PermToday = g.Any(l => l.Type == LeaveType.Permission && l.FromDate <= today && l.ToDate >= today),
+        });
+
+        // Today, live — the same computation as the board, never a stored snapshot.
+        var (_, todayRows, _) = await LoadDayRowsAsync(today, today, locationId, requesterId, role, ct);
+        var todayBy = todayRows.GroupBy(r => r.EmployeeId).ToDictionary(g => g.Key, g => g.First());
+
+        var locationIds = employees.Select(e => e.LocationId).Distinct().ToList();
+        var locationNames = await _db.Locations.AsNoTracking()
+            .Where(l => locationIds.Contains(l.Id))
+            .Select(l => new { l.Id, l.Name })
+            .ToDictionaryAsync(l => l.Id, l => l.Name, ct);
+
+        static double? Percent(int part, int whole) => whole > 0 ? Math.Round(100.0 * part / whole, 1) : null;
+
+        var rows = employees.Select(e =>
+        {
+            var d = days.GetValueOrDefault(e.Id);
+            var lv = leaveBy.GetValueOrDefault(e.Id);
+            var worked = (d?.OnTime ?? 0) + (d?.Late ?? 0) + (d?.Open ?? 0);
+            var absent = d?.Absent ?? 0;
+            string? now = null;
+            if (lv?.SickToday == true) now = "sick";
+            else if (lv?.PermToday == true) now = "permission";
+            else if (todayBy.TryGetValue(e.Id, out var r))
+                now = r.Status switch
+                {
+                    DailySummaryStatus.Late => "late",
+                    DailySummaryStatus.OnTime or DailySummaryStatus.Incomplete => "present",
+                    DailySummaryStatus.Permission => "permission",
+                    DailySummaryStatus.OnLeave => "leave",
+                    DailySummaryStatus.DayOff => "dayOff",
+                    DailySummaryStatus.Absent => "absent",
+                    _ => null,
+                };
+            return new HrStatsEmployee(
+                e.Id, e.FullName, e.LocationId, locationNames.GetValueOrDefault(e.LocationId) ?? "—", e.Position,
+                worked, d?.OnTime ?? 0, d?.Late ?? 0, d?.LateMinutes ?? 0, absent,
+                lv?.PermCount ?? 0, lv?.PermDays ?? 0, lv?.SickCount ?? 0, lv?.SickDays ?? 0,
+                Percent(worked, worked + absent), Percent(d?.OnTime ?? 0, (d?.OnTime ?? 0) + (d?.Late ?? 0)), now);
+        }).OrderBy(r => r.Name).ToList();
+
+        var byLocation = rows.GroupBy(r => r.LocationId)
+            .Select(g => new HrStatsLocation(
+                g.Key, g.First().LocationName, g.Count(),
+                Percent(g.Sum(r => r.WorkedDays), g.Sum(r => r.WorkedDays + r.AbsentDays)),
+                g.Sum(r => r.LateDays), g.Sum(r => r.PermissionCount), g.Sum(r => r.SickDays)))
+            .OrderBy(l => l.Name)
+            .ToList();
+
+        return (ReportAccess.Allowed, new HrStatsReport(
+            start, end, countedTo,
+            rows.Count,
+            rows.Count(r => r.Today is "present" or "late"),
+            rows.Count(r => r.Today == "late"),
+            rows.Count(r => r.Today == "permission"),
+            rows.Count(r => r.Today == "sick"),
+            Percent(rows.Sum(r => r.WorkedDays), rows.Sum(r => r.WorkedDays + r.AbsentDays)),
+            rows, byLocation));
     }
 
     public async Task<(ReportAccess Access, AttendanceReport? Report)> GetSummaryAsync(
