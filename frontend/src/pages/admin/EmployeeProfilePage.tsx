@@ -29,7 +29,10 @@ import { useAccess, useHolds, useScopedRole } from '../../auth/AccessContext'
 import { listFailureText } from '../../lib/listFailure'
 import { AWAITING_APPROVAL, CORRECTION_ERROR, correctionError, useCorrectionReason } from '../../components/CorrectionReason'
 import { PersonAccessCard } from '../../components/PersonAccessCard'
-import { getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee } from '../../api/manager'
+import {
+  activeRefusalText, getManagerEmployee, resetManagerEmployeePin, updateManagerEmployee, withActive,
+  type ManagerEmployee,
+} from '../../api/manager'
 import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
 
 const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
@@ -241,35 +244,10 @@ export function EmployeeProfilePage() {
     // carries salary (their endpoint does not send it), so routing their save to the admin PUT would
     // wipe the salary of every person they toggled, silently, one at a time. The manager endpoint
     // has no salary field at all, which is why the branch is here and not a hidden input.
+    // A manager's `emp` IS their single card (see load), so withActive re-sends every field it carries —
+    // omitted means cleared, and nothing about the person may vanish because they were deactivated.
     const r = isManager
-      ? await updateManagerEmployee(emp.id, {
-          fullName: emp.fullName,
-          firstName: emp.firstName,
-          lastName: emp.lastName,
-          fatherName: emp.fatherName,
-          position: emp.position,
-          phoneNumber: emp.phoneNumber,
-          email: emp.email || null,
-          locationId: emp.locationId,
-          birthDate: emp.birthDate ?? null,
-          birthYear: emp.birthYear,
-          workStart: emp.workStart ?? null,
-          workEnd: emp.workEnd ?? null,
-          photoExempt: emp.photoExempt === true,
-          canFieldCheckIn: emp.canFieldCheckIn === true,
-          qrlessCheckInOverride: emp.qrlessCheckInOverride ?? null,
-          requireGeofenceOverride: emp.requireGeofenceOverride ?? null,
-          scheduleId: emp.scheduleId ?? null,
-          workCycleDays: emp.workCycleDays ?? null,
-          workCycleOnDays: emp.workCycleOnDays ?? null,
-          workCycleAnchor: emp.workCycleAnchor ?? null,
-          // Re-sent for the same reason as everything else here: omitted means cleared, and the
-          // note of who employs this person on paper must not vanish because somebody was
-          // deactivated.
-          paperEmployer: emp.paperEmployer ?? null,
-          paperSite: emp.paperSite ?? null,
-          isActive: !emp.isActive,
-        })
+      ? await updateManagerEmployee(emp.id, withActive(emp as unknown as ManagerEmployee, !emp.isActive))
       : await updateEmployee(emp.id, {
       fullName: emp.fullName,
       // Re-sent like the rest — an omitted part would blank it and the backend would recompose the
@@ -305,7 +283,12 @@ export function EmployeeProfilePage() {
         })
     setBusy(false)
     if (r.status === 200) void load()
-    else setErr('Status dəyişmədi')
+    else {
+      // Say which rule refused it. «Status dəyişmədi» alone read as a broken button, for a refusal that is
+      // working as meant (a fellow manager, another branch) as much as for a real fault.
+      const code = r.data && typeof r.data === 'object' && 'error' in r.data ? String(r.data.error) : undefined
+      setErr(activeRefusalText(code) ?? 'Status dəyişmədi')
+    }
   }
 
   async function onRevokeDevice(devId: string) {

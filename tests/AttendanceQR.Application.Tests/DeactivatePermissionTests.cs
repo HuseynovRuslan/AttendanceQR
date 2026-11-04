@@ -244,6 +244,116 @@ public class DeactivatePermissionTests
         Assert.True(Deactivatable(await Desk(w, Request(w, AccessPermissions.EmployeesView), w.E4).Employee(w.E1)));
     }
 
+    /// <summary>Each row of the manager's roster, as the list sends it: id → «deactivatable».</summary>
+    private static Dictionary<Guid, bool> RosterDeactivatable(IActionResult result)
+    {
+        var rows = (System.Collections.IEnumerable)Assert.IsType<OkObjectResult>(result).Value!;
+        var answer = new Dictionary<Guid, bool>();
+        foreach (var row in rows)
+        {
+            var type = row.GetType();
+            var deactivatable = type.GetProperty("deactivatable")
+                ?? throw new Xunit.Sdk.XunitException("the roster row does not say whether the person can be switched off");
+            answer[(Guid)type.GetProperty("id")!.GetValue(row)!] = (bool)deactivatable.GetValue(row)!;
+        }
+        return answer;
+    }
+
+    // A Legacy manager over two branches — the shape of a branch-scoped operator in a Legacy company (2026-11-04:
+    // 24 branches, Legacy, reported «cannot let anybody go»). The roster never said who could be switched off, so
+    // the row's menu offered nothing; the right itself was there all along.
+    [Fact]
+    public async Task A_legacy_managers_roster_says_who_they_may_switch_off()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        await SetModeAsync(w, AuthzMode.Legacy);
+
+        // M1 manages B1 and B2.
+        var rows = RosterDeactivatable(await Desk(w, Request(w, AccessPermissions.EmployeesView), w.M1).Employees());
+
+        Assert.True(rows[w.E1]);          // plain staff at B1
+        Assert.True(rows[w.E2]);          // plain staff at B2
+        Assert.False(rows[w.M2]);         // a fellow manager at B2 — an admin's decision
+        Assert.False(rows[w.Admin1]);     // the admin who clocks in at B1
+        Assert.False(rows[w.Operator]);   // a platform operator sitting at B2 as plain staff
+        Assert.False(rows.ContainsKey(w.E3));  // B3 is not theirs: not even listed
+        Assert.False(rows[w.M1]);         // themselves — listed, they work at B1, but never their own to switch off
+    }
+
+    [Fact]
+    public async Task In_enforced_the_roster_follows_the_right_not_the_edit()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        await GiveAsync(w, w.E2, AccessRoleTemplates.Timekeeper, w.B1);
+        await GiveAsync(w, w.E4, AccessRoleTemplates.StructureOperator, w.B1);
+        await SetModeAsync(w, AuthzMode.Enforced);
+
+        // The Tabelçi edits E1 but does not switch them off; the Struktur operatoru does both.
+        Assert.False(RosterDeactivatable(await Desk(w, Request(w, AccessPermissions.EmployeesView), w.E2).Employees())[w.E1]);
+        Assert.True(RosterDeactivatable(await Desk(w, Request(w, AccessPermissions.EmployeesView), w.E4).Employees())[w.E1]);
+    }
+
+    [Fact]
+    public async Task A_legacy_manager_switches_off_only_plain_staff_at_their_branches()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        await SetModeAsync(w, AuthzMode.Legacy);
+        var desk = () => Desk(w, Request(w, AccessPermissions.EmployeesUpdate), w.M1);
+
+        // A fellow manager at their branch: refused, by name.
+        var colleague = await desk().UpdateEmployee(w.M2, Edit(w.B2, isActive: false));
+        Assert.Equal("CannotDeactivateManager", ErrorOf(colleague));
+        // The admin who clocks in at their branch: refused.
+        var admin = await desk().UpdateEmployee(w.Admin1, Edit(w.B1, isActive: false));
+        Assert.Equal("ManagerCannotManageRole", ErrorOf(admin));
+        // Somebody at a branch they do not manage: not even found.
+        Assert.IsType<NotFoundObjectResult>(await desk().UpdateEmployee(w.E3, Edit(w.B3, isActive: false)));
+        Assert.True(StateOf(w, w.M2).Active);
+        Assert.True(StateOf(w, w.Admin1).Active);
+        Assert.True(StateOf(w, w.E3).Active);
+
+        // Their own plain staff: off, and back on.
+        Assert.IsType<OkObjectResult>(await desk().UpdateEmployee(w.E2, Edit(w.B2, isActive: false)));
+        Assert.False(StateOf(w, w.E2).Active);
+        Assert.IsType<OkObjectResult>(await desk().UpdateEmployee(w.E2, Edit(w.B2, isActive: true)));
+        Assert.True(StateOf(w, w.E2).Active);
+    }
+
+    [Fact]
+    public async Task Switching_somebody_off_keeps_their_days_tabel_and_audit()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        await SetModeAsync(w, AuthzMode.Legacy);
+        var day = new DateOnly(2026, 10, 30);
+        using (var seed = w.Context(AccessWorld.TenantA))
+        {
+            seed.AttendanceRecords.Add(new AttendanceRecord
+            {
+                TenantId = AccessWorld.TenantA, EmployeeId = w.E1, LocationId = w.B1, AttendanceDate = day,
+                CheckInAtUtc = new DateTime(2026, 10, 30, 5, 0, 0, DateTimeKind.Utc),
+            });
+            seed.DailySummaries.Add(new DailySummary
+            {
+                TenantId = AccessWorld.TenantA, EmployeeId = w.E1, LocationId = w.B1, SummaryDate = day, WorkedMinutes = 480,
+            });
+            seed.AuditLogs.Add(new AuditLog { TenantId = AccessWorld.TenantA, EmployeeId = w.E1, EventType = AuditEventType.CheckInSuccess });
+            await seed.SaveChangesAsync();
+        }
+
+        var off = await Desk(w, Request(w, AccessPermissions.EmployeesUpdate), w.M1).UpdateEmployee(w.E1, Edit(w.B1, isActive: false));
+        Assert.IsType<OkObjectResult>(off);
+
+        using var db = w.Context(AccessWorld.TenantA);
+        Assert.False(db.Employees.AsNoTracking().Single(e => e.Id == w.E1).IsActive);
+        Assert.Equal(1, db.AttendanceRecords.Count(a => a.EmployeeId == w.E1));
+        Assert.Equal(480, db.DailySummaries.Single(d => d.EmployeeId == w.E1).WorkedMinutes);
+        Assert.Equal(1, db.AuditLogs.Count(a => a.EmployeeId == w.E1 && a.EventType == AuditEventType.CheckInSuccess));
+    }
+
     [Fact]
     public async Task The_admin_desk_asks_the_same_right()
     {
