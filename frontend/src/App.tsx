@@ -11,7 +11,7 @@ import { AdminIndexRedirect } from './components/AdminIndexRedirect'
 import { HomeRedirect } from './components/HomeRedirect'
 import { useAuth } from './auth/AuthContext'
 import { getImpersonation } from './api/client'
-import { isOperatorHost } from './lib/host'
+import { isNativeApp, isOperatorHost } from './lib/host'
 import { LoginPage } from './pages/LoginPage'
 import { ActivatePage } from './pages/ActivatePage'
 import { ForgotPinPage } from './pages/ForgotPinPage'
@@ -83,6 +83,8 @@ const SelfCorrectionsPage = lazy(() => import('./pages/admin/SelfCorrectionsPage
 const BulkInvitePage = lazy(() => import('./pages/admin/BulkInvitePage').then(m => ({ default: m.BulkInvitePage })))
 const FieldVisitsAdminPage = lazy(() => import('./pages/admin/FieldVisitsAdminPage').then(m => ({ default: m.FieldVisitsAdminPage })))
 const FieldVisitsPage = lazy(() => import('./pages/FieldVisitsPage').then(m => ({ default: m.FieldVisitsPage })))
+// Şirkət qeydiyyatını yeni müştəri açır, işçi yox — ona görə işçinin telefonuna yüklənən əsas paketə düşmür.
+const RegisterPage = lazy(() => import('./pages/RegisterPage').then(m => ({ default: m.RegisterPage })))
 // The operator console (admin.qrlog.az) is its own chunk — only that host ever loads it.
 const OperatorRoutes = lazy(() => import('./pages/operator/OperatorRoutes').then(m => ({ default: m.OperatorRoutes })))
 const OperatorLoginPage = lazy(() => import('./pages/operator/OperatorLoginPage').then(m => ({ default: m.OperatorLoginPage })))
@@ -181,6 +183,9 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/activate" element={<ActivatePage />} />
       <Route path="/forgot-pin" element={<ForgotPinPage />} />
+      {/* Şirkət qeydiyyatı — giriş tələb etmir. Android tətbiqi işçilər üçündür, orada qeydiyyat yoxdur:
+          kimsə bu ünvana düşsə, giriş səhifəsinə yönləndiririk. */}
+      <Route path="/register" element={isNativeApp() ? <Navigate to="/login" replace /> : <RegisterPage />} />
       {/* Employee mobile shell: bottom-tab pages share the EmployeeLayout (light theme + tab bar). */}
       <Route
         element={

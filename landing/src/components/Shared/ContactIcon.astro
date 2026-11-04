@@ -1,0 +1,33 @@
+---
+/*
+  ContactIcon — əlaqə ikonları: phone, email (Lucide); whatsapp, instagram, tiktok, linkedin (Font Awesome brands, FaIcon ilə SVG).
+  İşlənir: Footer.astro və ContactBody.astro. Props: name, size (px, default 20), class (ikonlar currentColor ilə çəkilir).
+*/
+import Mail from '@lucide/astro/icons/mail'
+import Phone from '@lucide/astro/icons/phone'
+import { faInstagram } from '@fortawesome/free-brands-svg-icons/faInstagram'
+import { faLinkedinIn } from '@fortawesome/free-brands-svg-icons/faLinkedinIn'
+import { faTiktok } from '@fortawesome/free-brands-svg-icons/faTiktok'
+import { faWhatsapp } from '@fortawesome/free-brands-svg-icons/faWhatsapp'
+import FaIcon from './FaIcon.astro'
+
+interface Props {
+  name: 'phone' | 'email' | 'whatsapp' | 'instagram' | 'tiktok' | 'linkedin'
+  size?: number
+  class?: string
+}
+const { name, size = 20, class: className } = Astro.props
+
+// Brand icons: Lucide has none, so all come from Font Awesome brands 6.7.2.
+// LinkedIn uses the bare "in" glyph — the boxed one looks like a box inside our icon box.
+const brandIcons = {
+  whatsapp: faWhatsapp,
+  instagram: faInstagram,
+  tiktok: faTiktok,
+  linkedin: faLinkedinIn,
+}
+---
+
+{name === 'phone' && <Phone size={size} class={className} />}
+{name === 'email' && <Mail size={size} class={className} />}
+{name !== 'phone' && name !== 'email' && <FaIcon icon={brandIcons[name]} class={className} style={`font-size:${size}px`} />}

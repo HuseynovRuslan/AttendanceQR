@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellTime, exportRow, type ExportableRow, areaOf, uniqueAreas } from './exportRows'
+import { cellTime, exportRow, type ExportableRow, areaOf, sameArea, uniqueAreas, unlistedAreas } from './exportRows'
 
 // Baku is UTC+4. Every case below is one an adversarial audit of the morning report actually found:
 // a night that read backwards, a carried-over night that read as this morning, a field worker with no
@@ -139,5 +139,34 @@ describe('«Faktiki» ilə «sənəd üzrə» — eyni adamlar, iki quruluş', (
     ]
     expect(uniqueAreas(rows, 'actual')).toEqual(['Green Garden', 'Qala Anbar'])
     expect(uniqueAreas(rows, 'paper')).toEqual(['Green Garden', 'Nərimanov Ofis'])
+  })
+})
+
+describe('a company form for «Xülasə»', () => {
+  // Bakı Abadlıq's «Davamiyyət siyahısı» (2026-10-21), cut down: two branches and one line that has
+  // no branch behind it yet.
+  const form = ['Qala Anbar', 'Zoopark', 'İDEA', 'Bayıl yolu']
+
+  it('matches an area whatever the spacing or case, the way the server does', () => {
+    expect(sameArea('Qala Anbar', '  qala anbar ')).toBe(true)
+    // The Azerbaijani capital of «i» is «İ»; «I» is the capital of «ı».
+    expect(sameArea('İDEA', 'idea')).toBe(true)
+  })
+
+  it('keeps letters that are different letters apart', () => {
+    expect(sameArea('Bayıl yolu', 'Bayil yolu')).toBe(false)
+    expect(sameArea('Ərazi', 'Erazi')).toBe(false)
+  })
+
+  it('names the chosen areas the form has no line for — the ones the server would refuse', () => {
+    expect(unlistedAreas(['Qala Anbar', 'İDEA'], form)).toEqual([])
+    expect(unlistedAreas(['Qala Anbar', 'Ramana Yaşıllıq', 'Aeroport yolu'], form))
+      .toEqual(['Ramana Yaşıllıq', 'Aeroport yolu'])
+  })
+
+  it('treats a line with no branch as a line, not as a requirement', () => {
+    // Choosing fewer areas than the form has lines is fine — the other lines stay blank.
+    expect(unlistedAreas(['İDEA'], form)).toEqual([])
+    expect(unlistedAreas([], form)).toEqual([])
   })
 })

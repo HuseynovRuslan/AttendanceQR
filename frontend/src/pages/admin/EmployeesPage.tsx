@@ -44,6 +44,8 @@ import {
   getManagerSchedules,
   resetManagerEmployeePin,
   updateManagerEmployee,
+  withActive,
+  activeRefusalText,
   type ManagerEmployee,
   type ManagerEmployeeInput,
 } from '../../api/manager'
@@ -371,6 +373,8 @@ export function EmployeesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [linkBusyId, setLinkBusyId] = useState<string | null>(null)
   const [resettingId, setResettingId] = useState<string | null>(null)
+  /** A manager's «Deaktiv et» / «Aktiv et» on one row, in flight. */
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [refBusy, setRefBusy] = useState(false)
   const [link, setLink] = useState<{ name: string; result: InviteResult } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -908,6 +912,41 @@ export function EmployeesPage() {
     } else {
       const code = data && 'error' in data ? (data as { error: string }).error : ''
       setError(ERRORS[code] ?? 'PIN sıfırlanmadı')
+    }
+  }
+
+  /**
+   * «Deaktiv et» / «Aktiv et» from a manager's row. Until 2026-11-04 the only way was the «Status» dropdown at
+   * the bottom of the edit form, and a manager who looked in the row's menu — where an admin finds «Sil» —
+   * found nothing and reported that they could not let anybody go.
+   *
+   * Reads the person's card first: the manager update clears every field it is not given, and the row does
+   * not carry them all (see withActive). The server decides again on the write; this only offers what it said.
+   * Nothing is deleted — their days, tabel and audit stay; the account just cannot sign in.
+   */
+  async function onToggleActiveAsManager(e: AdminEmployeeRow) {
+    const next = !e.isActive
+    if (!window.confirm(next
+      ? `"${e.fullName}" yenidən aktiv edilsin?`
+      : `"${e.fullName}" deaktiv edilsin? Girişi bağlanacaq. Davamiyyət və tabel tarixçəsi qalır.`)) return
+    setError(null)
+    setOk(null)
+    setTogglingId(e.id)
+    const card = await getManagerEmployee(e.id)
+    if (card.status !== 200 || !card.data || 'error' in card.data) {
+      setTogglingId(null)
+      const code = card.data && 'error' in card.data ? card.data.error : undefined
+      setError(activeRefusalText(code) ?? 'İşçi məlumatı gəlmədi')
+      return
+    }
+    const res = await updateManagerEmployee(e.id, withActive(card.data, next))
+    setTogglingId(null)
+    if (res.status === 200 && res.data && 'id' in res.data) {
+      await refresh()
+      setOk(next ? `"${e.fullName}" yenidən aktivdir` : `"${e.fullName}" deaktiv edildi — «İşdən çıxanlar» siyahısındadır`)
+    } else {
+      const code = res.data && 'error' in res.data ? res.data.error : undefined
+      setError(activeRefusalText(code) ?? 'Status dəyişmədi')
     }
   }
 
@@ -2518,6 +2557,19 @@ ${back}`,
                               hidden: !e.activated || e.id === myId || !mayResetPins,
                               onClick: () => onResetPin(e),
                               title: 'İşçi PIN-ini unudubsa — müvəqqəti PIN ver',
+                            },
+                            {
+                              // Only where the server said so: their own branches' plain staff. Never a fellow
+                              // manager or an admin, and no «Sil» — a manager does not delete anybody.
+                              label: e.isActive ? 'Deaktiv et' : 'Aktiv et',
+                              icon: e.isActive ? <IconUserX /> : <IconCheck />,
+                              hidden: !mgr(e).deactivatable,
+                              danger: e.isActive,
+                              disabled: togglingId === e.id,
+                              onClick: () => void onToggleActiveAsManager(e),
+                              title: e.isActive
+                                ? 'İşdən çıxdı — giriş bağlanır, davamiyyət və tabel tarixçəsi qalır'
+                                : 'İşə qayıtdı — girişi yenidən açılır',
                             },
                           ]}
                         />

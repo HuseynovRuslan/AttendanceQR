@@ -1,0 +1,60 @@
+/* Legal note */
+.reg-legal {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--auth-muted);
+}
+.reg-legal a {
+  font-weight: 700;
+  color: var(--brand-blue);
+  text-decoration: none;
+}
+.reg-legal a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* PIN row with eye */
+.reg-pin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reg-pin-row .auth-digits {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Resend */
+.reg-resend {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--auth-muted);
+}
+.reg-resend .auth-link {
+  padding: 12px 4px;
+  font-variant-numeric: tabular-nums;
+}
+.reg-resend-note { margin-top: 4px; }
+
+/* Done */
+.reg-done-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: var(--auth-ok);
+  color: #fff;
+}
+.reg-done-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.reg-done-note { margin: 14px 0 22px; }
+.auth-title:focus { outline: none; }

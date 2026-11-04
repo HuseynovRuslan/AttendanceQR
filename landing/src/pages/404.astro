@@ -1,21 +1,177 @@
 ---
+/*
+ * 404 səhifəsi: Caddy dist/404.html-i /ru/ və /en/ daxil bütün tapılmayan ünvanlar üçün verir (Caddyfile-dakı handle_errors).
+ * Fayl yalnız AZ dilində yaranır; RU/EN mətnləri data-ru / data-en atributlarındadır, aşağıdakı skript ünvana görə əvəz edir.
+ */
+import ArrowLeft from '@lucide/astro/icons/arrow-left'
+import ArrowRight from '@lucide/astro/icons/arrow-right'
 import BaseLayout from '../layouts/BaseLayout.astro'
-import PageHero from '../components/PageHero.astro'
-import { useTranslations, localizedPath } from '../i18n/ui'
+import NotFoundScene from '../components/Pages/NotFound/NotFoundScene.astro'
+import { useTranslations, localizedPath, htmlLang } from '../i18n/ui'
 
-// Caddy serves this file for any unmatched path (see the `handle_errors` block in the Caddyfile).
 const lang = 'az' as const
 const t = useTranslations(lang)
+const tRu = useTranslations('ru')
+const tEn = useTranslations('en')
+
+// Hero.astro-dakı focusRing ilə eyni fokus halqası.
+const focusRing =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
 ---
 
-<BaseLayout lang={lang} path="/404/" title={`404 — ${t('nf.title')}`} description={t('nf.sub')} noindex heroTone="white">
-  <PageHero title="404" subtitle={t('nf.title')} />
-  <section class="prose-section">
-    <div class="wrap prose" style="text-align:center">
-      <p class="lead">{t('nf.sub')}</p>
-      <p class="prose-cta" style="justify-content:center">
-        <a class="btn btn-primary" href={localizedPath(lang, '/')}>{t('nf.btn')}</a>
+<BaseLayout
+  lang={lang}
+  path="/404/"  
+  title={`404 — ${t('nf.title')}`}
+  description={t('nf.sub')}
+  noindex
+  heroTone="white"
+>
+  <!-- BaseLayout artıq <main> verir, ona görə <section>. pb-24: footer 48px yuxarı minir (Footer.astro). data-nf-page və data-html-lang-* skriptin oxuduğu atributlardır -->
+  <section
+    class="wrap grid min-h-[78vh] items-center gap-6 pt-[calc(var(--header-h)+1rem)] pb-24 lg:grid-cols-[0.9fr_1.1fr] lg:gap-10"
+    data-nf-page
+    data-html-lang-ru={htmlLang.ru}
+    data-html-lang-en={htmlLang.en}
+  >
+    <div class="order-first lg:order-last">
+      <NotFoundScene />
+    </div>
+
+    <div class="max-w-[31rem]">
+      <p
+        class="nf-rise text-[5rem] leading-[0.9] font-extralight tracking-[-0.05em] text-[#C9CED8] select-none sm:text-[7.5rem] lg:text-[9rem]"
+        style="--i:0"
+        aria-hidden="true"
+      >
+        404
       </p>
+
+      <h1
+        class="nf-rise mt-4 text-[2.125rem] leading-[1.08] font-semibold tracking-[-0.03em] text-balance text-ink sm:text-[2.875rem]"
+        style="--i:1"
+        data-ru={tRu('nf.title')}
+        data-en={tEn('nf.title')}
+      >
+        {t('nf.title')}
+      </h1>
+
+      <p
+        class="nf-rise mt-5 text-[1rem] leading-[1.7] text-pretty text-ink2 sm:text-[1.0625rem]"
+        style="--i:2"
+        data-ru={tRu('nf.sub')}
+        data-en={tEn('nf.sub')}
+      >
+        {t('nf.sub')}
+      </p>
+
+      <div class="nf-rise mt-8 flex flex-wrap items-center gap-x-7 gap-y-4" style="--i:3">
+        <a
+          class={`group inline-flex h-12 items-center gap-2 rounded-2xl bg-brand px-6 text-[0.9375rem] leading-normal font-semibold text-white shadow-[0_0.875rem_1.75rem_-0.875rem_rgba(21,94,239,.75)] transition hover:-translate-y-0.5 hover:bg-brand-600 ${focusRing}`}
+          href={localizedPath(lang, '/')}
+          data-href-ru={localizedPath('ru', '/')}
+          data-href-en={localizedPath('en', '/')}
+        >
+          <ArrowLeft
+            class="size-[1.05rem] transition group-hover:-translate-x-0.5"
+            stroke-width={2.2}
+            aria-hidden="true"
+          />
+          <span data-ru={tRu('nf.btn')} data-en={tEn('nf.btn')}>{t('nf.btn')}</span>
+        </a>
+
+        <a
+          class={`group inline-flex items-center gap-2 rounded-lg text-[0.9375rem] leading-normal font-medium text-brand transition hover:text-brand-600 ${focusRing}`}
+          href={localizedPath(lang, '/elaqe/')}
+          data-href-ru={localizedPath('ru', '/elaqe/')}
+          data-href-en={localizedPath('en', '/elaqe/')}
+        >
+          <span data-ru={tRu('cta.btn1')} data-en={tEn('cta.btn1')}>{t('cta.btn1')}</span>
+          <ArrowRight
+            class="size-[1.05rem] transition group-hover:translate-x-1"
+            aria-hidden="true"
+          />
+        </a>
+      </div>
     </div>
   </section>
 </BaseLayout>
+
+<style>
+  /* `both` — gecikmə bitənə qədər element görünməz qalır. Gecikmə = sıra nömrəsi (--i, HTML-də) × --nf-rise-step. */
+  .nf-rise {
+    --nf-rise-time: 0.7s;
+    --nf-rise-step: 80ms;
+    animation: nf-rise var(--nf-rise-time) cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * var(--nf-rise-step));
+  }
+  @keyframes nf-rise {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  // Ünvana görə data-ru / data-en mətnlərini səhifəyə qoyur. Header və footer AZ qalır; skript işləməsə də AZ mətni görünür.
+
+  // AZ prefikssizdir, ona görə siyahıda yoxdur.
+  const SWITCHABLE_LANGS = ['ru', 'en']
+
+  // Ünvan /ru və ya /en ilə başlayırsa dili, əks halda null (AZ) qaytarır.
+  function detectLang(pathname: string): string | null {
+    for (const lang of SWITCHABLE_LANGS) {
+      const isThisLang = pathname === `/${lang}` || pathname.startsWith(`/${lang}/`)
+      if (isThisLang) {
+        return lang
+      }
+    }
+    return null
+  }
+
+  function translateTexts(lang: string) {
+    const elements = document.querySelectorAll(`[data-${lang}]`)
+    for (const element of elements) {
+      const text = element.getAttribute(`data-${lang}`)
+      if (text) {
+        element.textContent = text
+      }
+    }
+  }
+
+  function translateLinks(lang: string) {
+    const links = document.querySelectorAll(`[data-href-${lang}]`)
+    for (const link of links) {
+      const href = link.getAttribute(`data-href-${lang}`)
+      if (href) {
+        link.setAttribute('href', href)
+      }
+    }
+  }
+
+  // <html lang> və tab başlığı; başlıq formatı ("404 — ...") yuxarıdakı title={...} ilə eyni olmalıdır.
+  function translateDocument(lang: string) {
+    const page = document.querySelector('[data-nf-page]')
+    const htmlLangValue = page?.getAttribute(`data-html-lang-${lang}`)
+    if (htmlLangValue) {
+      document.documentElement.lang = htmlLangValue
+    }
+
+    const heading = document.querySelector('h1')
+    if (heading) {
+      document.title = `404 — ${heading.textContent}`
+    }
+  }
+
+  const detectedLang = detectLang(location.pathname)
+  if (detectedLang) {
+    translateTexts(detectedLang)
+    translateLinks(detectedLang)
+    translateDocument(detectedLang)
+  }
+</script>

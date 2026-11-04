@@ -513,3 +513,5 @@ frontend/android/app/google-services.json
 # would be written over the server's real one by the staging autodeploy's reset --hard.
 .env.staging
 .env.hr
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

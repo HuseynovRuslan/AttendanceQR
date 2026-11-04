@@ -1,10 +1,5 @@
 /*
- * global.css, put into the `base` cascade layer that tailwind.css declares.
- *
- * A file of its own so that Tailwind never compiles global.css. There is no Tailwind in this file, so
- * the Tailwind plugin passes it by and Vite inlines the import exactly as it always did. Compiled by
- * Tailwind, global.css would be re-minified differently, and each animation name in it that Tailwind
- * also uses (ping, pulse) would pull in Tailwind's keyframes of that name, outside any layer —
- * where they beat the site's own.
+ * global.css `base` qatına (tailwind.css-də elan olunub) salınır. Ayrı fayldır ki, Tailwind global.css-i
+ * kompilyasiya etməsin və qatsız (unlayered) buraxmasın: qatsız stil utility siniflərini üstələyərdi.
  */
 @import './global.css' layer(base);

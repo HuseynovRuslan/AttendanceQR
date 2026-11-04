@@ -25,6 +25,9 @@ export type ManagerRosterRow = AdminEmployeeRow & {
   manageable: boolean
   /** Another manager, or the admin who clocks in at their branch. */
   isColleague: boolean
+  /** The server's answer to «may I switch this one off or back on» — «employees.deactivate» over their branch,
+   *  plain staff only. False when the server did not say. */
+  deactivatable: boolean
 }
 
 export function toRosterRow(e: ManagerEmployee): ManagerRosterRow {
@@ -61,6 +64,7 @@ export function toRosterRow(e: ManagerEmployee): ManagerRosterRow {
     boundAtUtc: null,
     manageable: e.manageable !== false,
     isColleague: e.isColleague === true,
+    deactivatable: e.deactivatable === true,
   }
 }
 

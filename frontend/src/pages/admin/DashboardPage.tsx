@@ -15,6 +15,7 @@ import { faceIsFlagged } from '../../components/FaceFlagBadge'
 import { bucketOf, countToday, type TodayBucket } from './todayCounts'
 import { fmtTime } from '../../lib/format'
 import { matchesSearch } from '../../lib/searchFold'
+import { HrStatsSection } from './HrStatsSection'
 
 /**
  * The admin's live "today" board, dressed as the group panel a director reacted to — but in white,
@@ -700,6 +701,9 @@ export function DashboardPage() {
             )}
         </div>
       </section>
+
+      {/* Leadership statistics — its own period, branch filter and data source (/api/reports/hr-stats). */}
+      <HrStatsSection />
     </div>
   )
 }

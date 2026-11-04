@@ -561,10 +561,22 @@ public class ManagerController : ControllerBase
             .ToListAsync(HttpContext.RequestAborted);
 
         var enforced = await EnforcedRowsAsync();
+        // «employees.deactivate», asked once for the whole list — the scope MayDeactivateAsync asks per person, so
+        // the row and the single card give the same answer. The roster did not send it at all, so the row's menu
+        // could not offer «Deaktiv et» and the only way to switch somebody off was a dropdown at the bottom of
+        // the edit form.
+        var deactivateScope = await LocationScopeRules.ScopeAsync(
+            _db, self, User.Role(), AccessPermissions.EmployeesDeactivate, HttpContext.RequestAborted);
+        bool Manageable(Guid id, Guid locationId, bool legacy) =>
+            enforced?.Allows(ShadowRules.ManageableEmployee, id, locationId) ?? legacy;
         return Ok(rows.Select(r => new
         {
             r.id, r.isSelf,
-            manageable = enforced?.Allows(ShadowRules.ManageableEmployee, r.id, r.locationId) ?? r.manageable,
+            manageable = Manageable(r.id, r.locationId, r.manageable),
+            // Plain staff only: a fellow manager or an admin is switched off by an admin (CannotDeactivateManager),
+            // a platform operator never by a manager (CannotManageOperator) — UpdateEmployee refuses all three.
+            deactivatable = Manageable(r.id, r.locationId, r.manageable) && !r.isColleague && !operatorIds.Contains(r.id)
+                            && deactivateScope.Covers(r.locationId),
             r.isColleague, r.fullName, r.firstName, r.lastName, r.fatherName, r.position, r.paperEmployer, r.paperSite,
             phoneNumber = enforced is null || enforced.SeesContacts(r.id, r.locationId) ? r.phoneNumber : null,
             email = enforced is null || enforced.SeesContacts(r.id, r.locationId) ? r.email : null,

@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { applyBackspace, applyDigit, applyPaste } from './pinDigits'
+import { PinEyeButton } from './PinEyeButton'
 
 /**
  * The PIN box on the login screen: four squares instead of one long field.
@@ -57,24 +58,7 @@ export function PinInput({
     boxes.current[result.focus]?.focus()
   }
 
-  const eye = (
-    <button
-      type="button"
-      onClick={() => setVisible((v) => !v)}
-      aria-label={visible ? 'PIN-i gizlət' : 'PIN-i göstər'}
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        fontSize: 18,
-        lineHeight: 1,
-        padding: 4,
-        color: 'var(--c500)',
-      }}
-    >
-      {visible ? '🙈' : '👁️'}
-    </button>
-  )
+  const eye = <PinEyeButton visible={visible} onToggle={() => setVisible((v) => !v)} />
 
   if (freeform) {
     return (

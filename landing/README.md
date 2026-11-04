@@ -18,7 +18,7 @@ npm run preview  # build-i yoxla
 
 `npm run build` **`check`-i çağırmır** (`ops/build-landing.sh` da) — statik saytın deploy-ını tip
 xətasına bağlamaq istənilmədi. Ona görə dəyişiklikdən sonra `npm run check`-i özün işlət; hazırda
-55 faylda 0 xəta, 0 xəbərdarlıq verir (3 hint — istifadə olunmayan import və s., köhnədir).
+82 faylda 1 köhnə xəta verir (`Pages/Contact/ContactBody.astro` — `ContactIcon` adının tipi) və 2 hint (`blogShare.ts`, `PageLoader.astro`).
 
 **`package.json`-dakı `overrides` nədir?** `@astrojs/language-server` 2.15.4-ə bağlanıb. Yeni
 versiya (2.17) ESM-only `@astrojs/astro2tsx`-i `require()` edir, bu da Node **20.19+ / 22+** tələb
@@ -36,29 +36,34 @@ edir — Node 20.11-də `astro check` `ERR_REQUIRE_ESM` ilə düşür. Lokal Nod
 Səhifə slug-ları hər üç dildə azərbaycanca qalır (`/ru/qiymet/`, `/en/elaqe/`) — köhnə azərbaycanca
 URL-lər artıq indeksdədir və onları dəyişmək qazanc gətirmirdi.
 
-Bloq (`/bloq/`), `/mexfilik/` və `/hesab-silinmesi/` yalnız azərbaycancadır — `src/i18n/ui.ts` →
-`azOnlyRoutes`. Hüquqi iki səhifəyə hər dilin footer-i link verir (`hreflang="az"` ilə). Bloq linki
-footer-dən müvəqqəti çıxarılıb — bloqda üç məqalə olanda `Footer.astro`-dakı şərhə alınmış sətri qaytarın.
+Yalnız `/404/` azərbaycancadır — `src/i18n/ui.ts` → `azOnlyRoutes`. Məxfilik (`/mexfilik/`) və
+`/hesab-silinmesi/` üç dildədir, footer-də hər dil öz səhifəsinə aparır. Bloq üç dildədir: `/blog/`,
+`/ru/blog/`, `/en/blog/` (köhnə `/bloq/` ünvanı `astro.config.mjs`-dəki `redirects` ilə `/blog/`-a
+yönləndirilir). Bloq linki Header-də və Footer-də hər üç dildə aktivdir.
 
 ## Struktur
 
 ```
 src/
   assets/images/             # build-in hash-layıb /_astro/-ya yazdığı ikili fayllar
-    brand/                   #   logo-word, logo-mark-white
+    brand/                   #   logo-word (header), logo-word-white (footer: «QR» ağ, «Log» mavi)
     badges/                  #   Google-un rəsmi Google Play nişanları (EN, RU) — dəyişdirilmir
     customers/               #   müştəri loqoları (site.ts → CUSTOMERS)
     product/                 #   poster QR-ı, tətbiq ekranı
     problem/                 #   Problem.astro illüstrasiyaları
-  components/                # hər bölmə ayrıca komponent
+  components/                # hər bölmə öz qovluğunda: Hero/Hero.astro, Pricing/Pricing.astro, …
+    Shared/                  #   bir neçə yerdə işlənən parçalar (PhoneFrame, BackToTop, PageLoader, …)
+    Pages/<Ad>/              #   AZ/RU/EN nazik səhifələrin ortaq gövdəsi (About, Contact, Privacy, …)
+    Blog/                    #   bloq siyahısı, məqalə səhifəsi, süzgəc və paylaşma skriptləri
+    Landing.astro            #   ana səhifənin bölmələrini düzür
   content/blog/              # Markdown məqalələr
   data/site.ts               # domen, əlaqə, qiymət, rəylər — tərcümə olunmayan hər şey
   data/brand.ts              # header loqosunun tək derivative-i (preload və <img> eyni faylı istəyir)
   i18n/ui.ts                 # BÜTÜN tərcümələr (AZ/RU/EN) — mətn dəyişikliyi burada olur
   layouts/BaseLayout.astro   # SEO <head>, JSON-LD, Header + Footer, qlobal skriptlər
-  pages/                     # index, qiymet, haqqimizda, elaqe, bloq/ (+ ru/ və en/ variantları)
+  pages/                     # index, haqqimizda, elaqe, blog/ (+ ru/ və en/ variantları)
   styles/tailwind.css        # Tailwind v4 + tema (aşağıda: «Stil»)
-  styles/global.css          # saytın öz stilləri
+  styles/global.css          # saytın öz (kiçik) stilləri: reset, .wrap, .hero, rəylər, etibar lenti
   styles/global-layered.css  # global.css-i `base` layer-inə salır
 public/                      # YALNIZ sabit adla çağırılan dörd fayl:
   robots.txt                 #   /robots.txt
@@ -102,9 +107,8 @@ utility class-ları birbaşa yazmaq olar.
 - **Preflight (Tailwind-in reset-i) qoşulmayıb** — `global.css`-in öz reset-i var. Ona görə başlıqlar
   qalın, siyahılar markerli qalır; lazım olanda `font-normal`, `list-none` yazın.
 - Saytın rəngləri CSS dəyişənləridir: `text-(--ink)`, `bg-(--paper)`, `border-(--line)`.
-  `font-sans` / `font-mono` — IBM Plex.
-- `animate-spin`, `animate-ping`, `animate-pulse` işləyir, keyframe adları isə `tw-*`-dır:
-  `global.css`-də eyni adlı (`ping`, `pulse`) animasiyalar var.
+  `font-sans` — Onest, `font-mono` — IBM Plex Mono.
+- `animate-spin`, `animate-ping`, `animate-pulse` işləyir, keyframe adları `tw-*`-dır (`styles/tailwind.css`).
 - `global.css`-i `tailwind.css`-ə import etməyin — niyə ayrıca fayldan qoşulduğu
   `src/styles/global-layered.css`-də yazılıb.
 - **`tailwind.css`-i yerindən tərpətsən `source()`-u da düzəlt.**
@@ -124,17 +128,27 @@ utility class-ları birbaşa yazmaq olar.
   bütün qiymət bölməsini və naviqasiyadakı yerini birdən söndürür.
 - **Əlaqə (e-poçt, telefon, WhatsApp):** `src/data/site.ts` → `SITE`. `phone` boşdursa saytda heç
   bir telefon linki görünmür — işləməyən nömrə göstərməkdənsə heç nə göstərməmək seçildi. WhatsApp
-  nömrəsi telefondan fərqlidir (qəsdən); `wa.me` linkini `whatsappUrl()` qurur. Onu `/elaqe/`,
-  footer və hər səhifədəki üzən düymə (`WhatsAppButton.astro`) işlədir. Bütün CTA düymələri
-  (header, hero, qiymət planları, CTA zolağı) `/elaqe/` səhifəsinə yönəlir.
+  nömrəsi telefondan fərqlidir (qəsdən); `wa.me` linkini `whatsappUrl()` qurur. Onu `/elaqe/`
+  və hər səhifədəki üzən düymə (`WhatsAppButton.astro`) işlədir (footer-dəki WhatsApp sətri
+  müvəqqəti şərhdədir). Bütün CTA düymələri
+  (header, hero, qiymət planları) `/elaqe/` səhifəsinə yönəlir. Ayrıca «çağırış zolağı» (CTA bölməsi)
+  yoxdur: o, header-dəki «Əlaqə saxlayın» düyməsini təkrarladığı üçün silindi.
 - **Google Play linki:** `SITE.playStore`; nişan `GooglePlayBadge.astro`-dadır (Pwa bölməsi, footer).
+- **Instagram:** `SITE.instagram` (link) və `SITE.instagramHandle` (düymədə yazılan ad); footer-dəki düyməni
+  `Footer.astro` çəkir.
+- **«Rəqəmlərlə» zolağı (real rəqəmlər):** `src/data/site.ts` → `STATS`. Super admin panelindən (İcmal +
+  Şirkətlər) götürülən DƏQİQ rəqəmlər yazılır, saytda `Stats.astro` onları aşağı yuvarlaqlaşdırıb «+» ilə
+  göstərir (1 069 → «1 000+»). Yeniləmək — 3 addım: rəqəmləri dəyiş, `updatedAt`-i həmin günün tarixi et,
+  saytı yenidən build et. Zolağı gizlətmək üçün `show: false`; rəqəmlərdən biri `null` və ya `0`-dırsa zolaq
+  özü-özünə gizlənir. Rəqəmləri markup-a və ya `ui.ts`-ə yazmayın — yalnız `STATS`-da olsun.
 - **Müştəri rəyləri:** `src/data/site.ts` → `TESTIMONIALS`. Siyahı boş olduğu müddətdə bölmə
   ümumiyyətlə render olunmur. Ora yalnız **adı və vəzifəsi ilə paylaşılmasına icazə verilmiş** real
   sitatlar əlavə edin.
 - **Loqo / og şəkli:** saytda görünən loqolar `src/assets/images/brand/`-dədir; `og-image.png`
   və `logo-mark.png` (apple-touch-icon + JSON-LD) `public/` kökündə qalır — URL-ləri sabit
   olmalıdır.
-- **Yeni bloq yazısı:** `src/content/blog/` içinə `.md` (title, description, pubDate).
+- **Yeni bloq yazısı:** `src/content/blog/{az,ru,en}/` içinə eyni adla üç `.md` (title, description, pubDate,
+  category; ixtiyari: featured, cover, summary). Tərcümə çatışmasa, build xəta verir (`src/data/blog.ts`).
 
 ## Məzmun qaydası
 
@@ -143,7 +157,7 @@ istifadə statistikası, uydurma reytinq (JSON-LD-də `aggregateRating` yoxdur),
 loqoları və rəyləri, GDPR/“uçtan-uca şifrələmə” iddiaları, App Store vədi (iPhone-da məhsul
 PWA-dır; Android tətbiqi isə həqiqətən Google Play-dədir — `az.qrlog.app`) və “dinamik QR” (poster
 sabitdir — kod dəyişmir). Yoxlamalar dörddür — QR imzası, məkan (GPS), cihaz, üz — və sayı hər
-yerdə eyni olmalıdır (Hero, Stats, İş prinsipi, Saxtaya qarşı qoruma, Haqqımızda, meta təsvir).
+yerdə eyni olmalıdır (Hero, İş prinsipi, Saxtaya qarşı qoruma, Haqqımızda, meta təsvir).
 
 ## Deploy
 

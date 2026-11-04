@@ -22,7 +22,8 @@ export interface ManagerEmployee {
   /** Not ordinary staff — another manager, or the admin who clocks in at this branch. */
   isColleague?: boolean
   /** May this caller switch the person off or back on — «employees.deactivate» over their branch, which
-   *  `manageable` («employees.update») does not imply. Only the single card sends it. */
+   *  `manageable` («employees.update») does not imply. Plain staff only. The roster and the single card both
+   *  send it. */
   deactivatable?: boolean
   fullName: string
   firstName: string | null
@@ -131,6 +132,58 @@ export function createManagerEmployee(input: ManagerEmployeeInput) {
     method: 'POST',
     body: input,
   })
+}
+
+/**
+ * The whole card, sent back with only «active» changed — what «Deaktiv et» / «Aktiv et» sends.
+ *
+ * The manager update clears every field it is not given, so switching somebody off must re-send all of them:
+ * their shift, rotation, check-in overrides and paperwork note stay exactly as they were. Built from the single
+ * card (getManagerEmployee), never from a roster row — the card is the shape this update round-trips.
+ */
+export function withActive(card: ManagerEmployee, isActive: boolean): ManagerEmployeeInput {
+  return {
+    fullName: card.fullName,
+    firstName: card.firstName,
+    lastName: card.lastName,
+    fatherName: card.fatherName,
+    position: card.position,
+    phoneNumber: card.phoneNumber,
+    email: card.email || null,
+    locationId: card.locationId,
+    birthDate: card.birthDate ?? null,
+    birthYear: card.birthYear,
+    workStart: card.workStart ?? null,
+    workEnd: card.workEnd ?? null,
+    photoExempt: card.photoExempt === true,
+    canFieldCheckIn: card.canFieldCheckIn === true,
+    qrlessCheckInOverride: card.qrlessCheckInOverride ?? null,
+    requireGeofenceOverride: card.requireGeofenceOverride ?? null,
+    scheduleId: card.scheduleId ?? null,
+    workCycleDays: card.workCycleDays ?? null,
+    workCycleOnDays: card.workCycleOnDays ?? null,
+    workCycleAnchor: card.workCycleAnchor ?? null,
+    paperEmployer: card.paperEmployer ?? null,
+    paperSite: card.paperSite ?? null,
+    isActive,
+  }
+}
+
+/** Why the server refused to switch somebody off or back on, in the manager's words — a refusal must say
+ *  which rule it was, not «Status dəyişmədi». Undefined for a code this list does not know. */
+export function activeRefusalText(code: string | undefined): string | undefined {
+  switch (code) {
+    case 'DeactivateNotAllowed': return 'Bu filialda işçini işdən çıxartmaq hüququnuz yoxdur'
+    case 'CannotDeactivateManager': return 'Meneceri yalnız admin deaktiv edə bilər'
+    case 'ManagerCannotManageRole': return 'Admini və ya öz hesabınızı deaktiv edə bilməzsiniz'
+    case 'CannotManageOperator': return 'Bu hesabı deaktiv edə bilməzsiniz'
+    case 'EmployeeNotFound': return 'Bu işçi sizin filiallarınızda deyil'
+    case 'LocationNotManaged': return 'Bu işçi sizin filiallarınızda deyil'
+    case 'PhoneAlreadyExists': return 'Bu telefon nömrəsi başqa işçidə var — nömrəni düzəldin'
+    case 'EmailAlreadyExists': return 'Bu e-poçt başqa işçidə var — e-poçtu düzəldin'
+    case 'NeedEmailOrPhone': return 'İşçinin telefonu və ya e-poçtu olmalıdır'
+    default: return undefined
+  }
 }
 
 export function updateManagerEmployee(id: string, input: ManagerEmployeeInput) {

@@ -1,0 +1,36 @@
+---
+/*
+  FaIcon — Font Awesome Free ikonu inline SVG kimi: CDN stil vərəqi və ikon şrifti yüklənmir, brauzerə JS getmir.
+  İşlənir: WhatsAppButton, ContactIcon, BackToTop, BlogPost, AntiFraudPanel.
+  Props: icon (paketdən, məs. `faWhatsapp`), class, style.
+  Hündürlük 1em-dir, rəng currentColor: köhnə <i class="fa-..."> kimi font-size və color siniflərinə tabedir.
+*/
+// Font Awesome Free 6.7.2 by @fontawesome — https://fontawesome.com · License: https://fontawesome.com/license/free
+// Lisenziya şərhi CC BY 4.0-ın şərtidir — silmə.
+// Versiya 6.7.2-dir, 7 yox: köhnə CDN şrifti (6.0.0-beta2) ilə eyni görünür; 7-də ox və "check" formaları dəyişib.
+import type { IconDefinition } from '@fortawesome/free-solid-svg-icons'
+
+interface Props {
+  icon: IconDefinition
+  class?: string
+  style?: string
+}
+
+const { icon, class: className, style } = Astro.props
+const [width, height, , , pathData] = icon.icon
+const paths = Array.isArray(pathData) ? pathData : [pathData]
+
+// Font Awesome-un öz SVG ölçüsü: en ikonun nisbətindəndir, -0.125em şrift-ikonun mətn xəttindəki yeridir.
+const boxStyle = `height:1em;width:${width / height}em;vertical-align:-0.125em;overflow:visible`
+---
+
+<svg
+  class={className}
+  style={style ? `${boxStyle};${style}` : boxStyle}
+  viewBox={`0 0 ${width} ${height}`}
+  fill="currentColor"
+  aria-hidden="true"
+  focusable="false"
+>
+  {paths.map((path) => <path d={path} />)}
+</svg>

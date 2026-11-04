@@ -28,7 +28,13 @@ public record ExportDayRequest(
     /// It also carries the one label only the board can decide: «İşdə» while the day is still
     /// running, «Çıxış yoxdur» once it is over.
     /// </summary>
-    Dictionary<string, string>? BucketLabels = null);
+    Dictionary<string, string>? BucketLabels = null,
+    /// <summary>The structure the rows are grouped in: "actual" (branches) or "paper" (the areas the
+    /// paperwork names). Null from an older client.</summary>
+    string? View = null,
+    /// <summary>The company form chosen for «Xülasə» (DaySummaryTemplate.Key), or null for the
+    /// standard summary. Only ever one of the requesting company's own.</summary>
+    string? Template = null);
 
 public record ExportDayRow(
     string Name,

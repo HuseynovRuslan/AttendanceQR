@@ -314,6 +314,19 @@ export function unmarkAbsent(employeeId: string, date: string, reason: string) {
   )
 }
 
+/** A company's own form for the «Xülasə» sheet: its lines (area names) in its order. */
+export interface DayTemplate {
+  key: string
+  name: string
+  areas: string[]
+}
+
+/** GET /api/reports/day-templates — the forms this company can have «Xülasə» printed in. Empty for
+ *  almost every company. */
+export function getDayTemplates() {
+  return apiRequest<DayTemplate[]>('/api/reports/day-templates')
+}
+
 /** POST /api/reports/export-day — send the visible board rows, download a tidy .xlsx. Returns false on
  * failure. Reads the blob directly (not JSON), so it can't ride apiRequest. */
 export async function exportDayXlsx(payload: {
@@ -325,6 +338,10 @@ export async function exportDayXlsx(payload: {
   /** What the board calls each bucket — its words, so the sheet's headings cannot drift from the
    *  screen the file was exported from. Includes «İşdə» / «Çıxış yoxdur», which only the board knows. */
   bucketLabels?: Record<string, string>
+  /** The structure the rows are grouped in. A company form needs the branch view. */
+  view?: 'actual' | 'paper'
+  /** A company form for «Xülasə» (DayTemplate.key); absent for the standard summary. */
+  template?: string
 }): Promise<boolean> {
   const token = getToken()
   try {
@@ -1928,4 +1945,57 @@ export interface StuckDeviceRow {
 /** GET /api/reports/stuck-devices */
 export function getStuckDevices() {
   return apiRequest<StuckDeviceRow[] | { error: string }>('/api/reports/stuck-devices')
+}
+
+/** «İşçi Statistikaları» — one person's figures over the period (finished days) plus today, live. */
+export interface HrStatsEmployee {
+  employeeId: string
+  name: string
+  locationId: string
+  locationName: string
+  position: string | null
+  workedDays: number
+  onTimeDays: number
+  lateDays: number
+  lateMinutes: number
+  absentDays: number
+  permissionCount: number
+  permissionDays: number
+  sickCount: number
+  sickDays: number
+  /** null = nothing to divide by — shown as «—». */
+  attendancePercent: number | null
+  onTimePercent: number | null
+  today: 'present' | 'late' | 'permission' | 'sick' | 'leave' | 'absent' | 'dayOff' | null
+}
+
+export interface HrStatsLocation {
+  locationId: string
+  name: string
+  employees: number
+  attendancePercent: number | null
+  lateDays: number
+  permissionCount: number
+  sickDays: number
+}
+
+export interface HrStatsReport {
+  from: string
+  to: string
+  countedTo: string
+  activeEmployees: number
+  presentToday: number
+  lateToday: number
+  permissionToday: number
+  sickToday: number
+  attendancePercent: number | null
+  employees: HrStatsEmployee[]
+  locations: HrStatsLocation[]
+}
+
+/** GET /api/reports/hr-stats — the leadership statistics section of the dashboard. */
+export function getHrStats(from: string, to: string, locationId?: string) {
+  const q = new URLSearchParams({ from, to })
+  if (locationId) q.set('locationId', locationId)
+  return apiRequest<HrStatsReport | { error: string }>(`/api/reports/hr-stats?${q}`)
 }

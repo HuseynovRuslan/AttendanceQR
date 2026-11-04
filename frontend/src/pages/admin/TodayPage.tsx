@@ -1,10 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
-import { areaOf, exportRow, uniqueAreas, type AreaView } from './exportRows'
+import { areaOf, exportRow, uniqueAreas, unlistedAreas, type AreaView } from './exportRows'
 import { formatWorked, workedMinutes } from './todayShift'
 import { TodayRow } from './TodayRow'
 import { useSearchParams } from 'react-router-dom'
-import { exportDayXlsx, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow } from '../../api/admin'
+import {
+  exportDayXlsx, getDayTemplates, getToday, markAbsent, unmarkAbsent, type DayAttendanceRow, type DayTemplate,
+} from '../../api/admin'
 import { getImpersonation } from '../../api/client'
 import { addLeave, deleteLeave, type LeaveType } from '../../api/leaves'
 import { createManagerLeave, deleteManagerLeave } from '../../api/manager'
@@ -178,6 +180,16 @@ export function TodayPage() {
   // somebody else wants the branches. Both are the same people on the same day — only the shape of
   // the report differs — so it is one switch, not two exports to keep in step.
   const [exportView, setExportView] = useState<AreaView>('actual')
+  // A company's own form for «Xülasə» (Bakı Abadlıq's «Davamiyyət siyahısı»), offered only where the
+  // company has one. Null is the standard summary — and the start of every export, not a remembered
+  // choice: a form used because somebody else picked it on this device last week is exactly the
+  // surprise the dialog exists to prevent.
+  const [dayTemplates, setDayTemplates] = useState<DayTemplate[]>([])
+  const [exportTemplate, setExportTemplate] = useState<string | null>(null)
+  const chosenTemplate = dayTemplates.find((t) => t.key === exportTemplate) ?? null
+  // Whether an area can go into the file in the chosen form: always, unless the form has no line for it.
+  const fitsTemplate = (name: string, form: DayTemplate | null = chosenTemplate) =>
+    !form || unlistedAreas([name], form.areas).length === 0
 
   const pickPosition = useCallback((p: string) => setFilterPosition((v) => (v === p ? null : p)), [])
   const pickLocation = useCallback((id: string) => setFilterLocs([id]), [])
@@ -460,6 +472,7 @@ export function TodayPage() {
     // Pre-tick what the reader is already looking at: the areas they filtered to, or all of them.
     const picked = locations.filter((l) => filterLocs.includes(l.id)).map((l) => l.name)
     setExportView('actual')
+    setExportTemplate(null)
     setExportSites(picked.length ? picked : uniqueAreas(rows, 'actual'))
     setExportOpen(true)
   }
@@ -467,12 +480,37 @@ export function TodayPage() {
   // Switching the view re-ticks everything: a selection made in one structure means nothing in the
   // other — «Aeroport yolu» unticked as a branch does not name an area on the paper side — and
   // carrying it across would silently drop people from a file whose scope note still claims them.
+  // A company form goes with it: its lines are branches, and the paper side groups by names that
+  // need not be any.
   function switchExportView(view: AreaView) {
     setExportView(view)
+    setExportTemplate(null)
     setExportSites(uniqueAreas(rows, view))
   }
 
+  // Choosing a form ticks every area that has a line in it and nothing else; going back to the
+  // standard summary ticks everything again, as opening the dialog does.
+  function chooseExportTemplate(key: string | null) {
+    const form = dayTemplates.find((t) => t.key === key) ?? null
+    setExportTemplate(form?.key ?? null)
+    setExportSites(exportAreas.map((a) => a.name).filter((name) => fitsTemplate(name, form)))
+  }
+
+  useEffect(() => {
+    let alive = true
+    void getDayTemplates().then(({ status, data }) => {
+      if (alive && status === 200 && Array.isArray(data)) setDayTemplates(data)
+    })
+    return () => { alive = false }
+  }, [])
+
   async function runExport() {
+    // The dialog cannot tick an area the form has no line for; this is the same rule, once more,
+    // before anything is sent — the server would refuse the file anyway.
+    if (chosenTemplate && unlistedAreas(exportSites, chosenTemplate.areas).length > 0) {
+      setPhotoError('Seçilmiş ərazilərdən biri şablonda yoxdur')
+      return
+    }
     const chosen = new Set(exportSites)
     const inScope = (r: DayAttendanceRow) => chosen.has(areaOf(r, exportView))
     // Deliberately built from `rows`, not from `visible`. The screen's search, status and photo
@@ -524,6 +562,8 @@ export function TodayPage() {
         pending: STATUS_MAP.Pending.label,
         onboarding: STATUS_MAP.Onboarding.label,
       },
+      view: exportView,
+      template: chosenTemplate?.key,
     })
     setExporting(false)
     if (ok) setExportOpen(false)
@@ -1041,10 +1081,16 @@ export function TodayPage() {
           view={exportView}
           onView={switchExportView}
           hasPaper={rows.some((r) => r.paperSite)}
+          templates={dayTemplates}
+          template={chosenTemplate}
+          onTemplate={chooseExportTemplate}
+          fits={(name) => fitsTemplate(name)}
           selected={exportSites}
-          onToggle={(name) =>
-            setExportSites((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))}
-          onAll={() => setExportSites(exportAreas.map((a) => a.name))}
+          onToggle={(name) => {
+            if (!fitsTemplate(name)) return
+            setExportSites((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]))
+          }}
+          onAll={() => setExportSites(exportAreas.map((a) => a.name).filter((name) => fitsTemplate(name)))}
           onNone={() => setExportSites([])}
           busy={exporting}
           onRun={() => void runExport()}
@@ -1083,8 +1129,9 @@ export function TodayPage() {
  * scope is a surprise — hence the sites are ticked by hand every time, the file is headed with the
  * choice, and the dialog says out loud that the screen's own filters do not travel with it.
  */
-function ExportDialog({
-  date, areas, view, onView, hasPaper, selected, onToggle, onAll, onNone, busy, onRun, onClose,
+export function ExportDialog({
+  date, areas, view, onView, hasPaper, templates, template, onTemplate, fits,
+  selected, onToggle, onAll, onNone, busy, onRun, onClose,
 }: {
   date: string
   /** The areas of the CHOSEN view, with how many people each holds. */
@@ -1093,6 +1140,13 @@ function ExportDialog({
   onView: (v: AreaView) => void
   /** Whether anybody on this board actually has a «sənəd üzrə ərazi» written. */
   hasPaper: boolean
+  /** The company's own forms for «Xülasə» — empty for almost every company, and then nothing shows. */
+  templates: DayTemplate[]
+  /** The form chosen, or null for the standard summary. */
+  template: DayTemplate | null
+  onTemplate: (key: string | null) => void
+  /** Whether an area can be ticked in the chosen form (it has a line there). */
+  fits: (name: string) => boolean
   selected: string[]
   onToggle: (name: string) => void
   onAll: () => void
@@ -1159,6 +1213,44 @@ function ExportDialog({
           </div>
         </div>
 
+        {/* The company's own form, where it has one. Second, because it only exists for the branch
+            view, and before the list, because choosing it decides which areas can be ticked. */}
+        {view === 'actual' && templates.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="form-label" style={{ marginBottom: 6 }}>«Xülasə» vərəqi hansı formada olsun?</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={`btn btn-sm${template === null ? '' : ' btn-outline'}`}
+                onClick={() => onTemplate(null)}
+              >
+                Standart
+              </button>
+              {templates.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`btn btn-sm${template?.key === t.key ? '' : ' btn-outline'}`}
+                  onClick={() => onTemplate(t.key)}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
+              {template === null ? (
+                <>Hər seçilmiş ərazi üçün bir sətir — indiki qayda.</>
+              ) : (
+                <>
+                  Şablonun <b>{template.areas.length} sətri</b> şablondakı sıra və başlıqlarla çıxır.
+                  Seçilməyən və hələ filial kimi açılmayan sətirlər <b>boş</b> qalır. Şablonda olmayan
+                  ərazilər bu formada seçilə bilməz.
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <button className="btn btn-sm" onClick={onAll}>Hamısı</button>
           <button className="btn btn-sm" onClick={onNone}>Heç biri</button>
@@ -1168,19 +1260,28 @@ function ExportDialog({
         </div>
 
         <div style={{ border: '1px solid var(--c100)', borderRadius: 12, overflow: 'hidden', marginBottom: 14 }}>
-          {areas.map((a, i) => (
-            <label
-              key={a.name}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', cursor: 'pointer',
-                borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
-              }}
-            >
-              <input type="checkbox" checked={selected.includes(a.name)} onChange={() => onToggle(a.name)} />
-              <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{a.name}</span>
-              <span className="muted" style={{ fontSize: 12 }}>{a.count} nəfər</span>
-            </label>
-          ))}
+          {areas.map((a, i) => {
+            const fit = fits(a.name)
+            return (
+              <label
+                key={a.name}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                  cursor: fit ? 'pointer' : 'not-allowed', opacity: fit ? 1 : 0.55,
+                  borderTop: i === 0 ? 'none' : '1px solid var(--c100)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(a.name)}
+                  disabled={!fit}
+                  onChange={() => onToggle(a.name)}
+                />
+                <span style={{ flex: 1, fontSize: 13.5, color: 'var(--c900)' }}>{a.name}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{fit ? `${a.count} nəfər` : 'şablonda yoxdur'}</span>
+              </label>
+            )
+          })}
           {areas.length === 0 && (
             <div className="muted" style={{ padding: 14, fontSize: 13 }}>Bu gün üçün ərazi yoxdur.</div>
           )}

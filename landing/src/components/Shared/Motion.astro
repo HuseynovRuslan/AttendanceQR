@@ -1,0 +1,41 @@
+---
+// ---------- Site-wide motion: hidden start states, split-line masks, scroll reveals, desktop scroll accents ----------
+---
+
+<style is:global>
+  /* ---------- Scroll reveals: hidden until GSAP takes over (the header and hero are covered by the loader instead) ---------- */
+  html.has-motion [data-reveal]:not([data-motion-ready]) {
+    opacity: 0;
+  }
+
+  /* ---------- Split-line masks (layout stays the same) ---------- */
+  .split-line {
+    padding: 0.2em 0.1em;
+  }
+
+  .split-line-mask {
+    margin-inline: -0.1em;
+    margin-top: -0.4em;
+  }
+
+  .split-line-mask:first-child {
+    margin-top: -0.2em;
+  }
+
+  .split-line-mask:last-child {
+    margin-bottom: -0.2em;
+  }
+</style>
+
+<script>
+  import { initReveals } from '../../scripts/motion/reveal'
+  import { initScrollAccents } from '../../scripts/motion/scrollAccents'
+  import { refreshWhenPageSettles } from '../../scripts/motion/shared'
+
+  initReveals()
+  initScrollAccents()
+  refreshWhenPageSettles()
+
+  // ---------- Last motion script on the page: tell BaseLayout's switch that motion is ready ----------
+  document.documentElement.classList.add('motion-loaded')
+</script>
