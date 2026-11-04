@@ -212,6 +212,96 @@ describe('a branch manager on the same screen', () => {
   })
 })
 
+/** The row's «⋯» menu, opened: the labels it offers. */
+async function rowMenu(name: string): Promise<HTMLElement[]> {
+  const row = (await screen.findByText(name)).closest('tr')!
+  const dots = within(row).queryByRole('button', { name: 'Digər əməliyyatlar' })
+  if (!dots) return []
+  await act(async () => {
+    fireEvent.click(dots)
+  })
+  return screen.queryAllByRole('menuitem')
+}
+
+describe('a branch manager lets somebody go from the row (2026-11-04)', () => {
+  // A Legacy operator over 24 branches reported they could not deactivate anybody. The right was there: the
+  // form's «Status» dropdown worked. But the roster never said who could be switched off, so the row's menu —
+  // where an admin finds «Sil» — offered only «PIN sıfırla».
+  const ROSTER = [
+    managerRow('a', 'Aynur Həsənova', { deactivatable: true }),
+    managerRow('m', 'Murad Menecer', { isColleague: true, manageable: true, deactivatable: false }),
+    managerRow('t', 'Tural Tabelsiz', { deactivatable: false }),
+  ]
+
+  it('offers «Deaktiv et» only where the server said so — never «Sil»', async () => {
+    managerRoutes(OK(ROSTER))
+    renderPage()
+    const own = await rowMenu('Aynur Həsənova')
+    expect(own.map((b) => b.textContent)).toContain('Deaktiv et')
+    expect(own.some((b) => b.textContent === 'Sil')).toBe(false)
+    cleanup()
+
+    managerRoutes(OK(ROSTER))
+    renderPage()
+    expect((await rowMenu('Murad Menecer')).some((b) => b.textContent === 'Deaktiv et')).toBe(false)
+    cleanup()
+
+    managerRoutes(OK(ROSTER))
+    renderPage()
+    expect((await rowMenu('Tural Tabelsiz')).some((b) => b.textContent === 'Deaktiv et')).toBe(false)
+  })
+
+  it('switches the person off with their whole card re-sent, so nothing about them is cleared', async () => {
+    managerRoutes(OK(ROSTER))
+    net.routes['GET /api/manager/employees/a'] = OK({
+      ...managerRow('a', 'Aynur Həsənova', { deactivatable: true }),
+      email: 'aynur@test.local', scheduleId: 's1', paperSite: 'Park sənəddə',
+      qrlessCheckInOverride: true, requireGeofenceOverride: false, photoExempt: true,
+    })
+    net.routes['PUT /api/manager/employees/a'] = OK({ id: 'a' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage()
+
+    const item = (await rowMenu('Aynur Həsənova')).find((b) => b.textContent === 'Deaktiv et')!
+    await act(async () => {
+      fireEvent.click(item)
+    })
+    await waitFor(() => expect(net.calls.some((c) => c.method === 'PUT')).toBe(true))
+    expect(confirm.mock.calls[0][0]).toContain('tarixçəsi qalır')
+    const put = net.calls.find((c) => c.method === 'PUT')!
+    expect(put.path).toBe('/api/manager/employees/a')
+    const body = put.body as Record<string, unknown>
+    expect(body.isActive).toBe(false)
+    expect(body.scheduleId).toBe('s1')
+    expect(body.paperSite).toBe('Park sənəddə')
+    expect(body.qrlessCheckInOverride).toBe(true)
+    expect(body.requireGeofenceOverride).toBe(false)
+    expect(body.photoExempt).toBe(true)
+    expect(body.email).toBe('aynur@test.local')
+    for (const never of ['monthlySalary', 'role', 'managedLocationIds'])
+      expect(never in body).toBe(false)
+    // Never the delete endpoint.
+    expect(net.calls.some((c) => c.method === 'DELETE')).toBe(false)
+    expect(await screen.findByText(/deaktiv edildi/)).toBeTruthy()
+    confirm.mockRestore()
+  })
+
+  it('a refusal says which rule refused it', async () => {
+    managerRoutes(OK(ROSTER))
+    net.routes['GET /api/manager/employees/a'] = OK(managerRow('a', 'Aynur Həsənova', { deactivatable: true }))
+    net.routes['PUT /api/manager/employees/a'] = { status: 403, data: { error: 'DeactivateNotAllowed' } }
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage()
+
+    const item = (await rowMenu('Aynur Həsənova')).find((b) => b.textContent === 'Deaktiv et')!
+    await act(async () => {
+      fireEvent.click(item)
+    })
+    expect(await screen.findByText('Bu filialda işçini işdən çıxartmaq hüququnuz yoxdur')).toBeTruthy()
+    confirm.mockRestore()
+  })
+})
+
 describe('a company switched to Enforced: the list follows the role in the model', () => {
   const TIMEKEEPER = ['dashboard.view', 'attendance.view', 'employees.view', 'employees.contacts.view', 'employees.create',
     'employees.update', 'employees.reset_pin', 'devices.view', 'devices.approve', 'schedules.view', 'schedules.manage',
