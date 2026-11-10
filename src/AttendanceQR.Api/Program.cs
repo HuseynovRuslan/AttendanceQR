@@ -216,6 +216,11 @@ builder.Services.AddScoped<IVoteAnnouncer, VoteAnnouncer>();
 // reaches someone who already left. Never auto-closes anything.
 builder.Services.AddHostedService<ReminderJob>();
 
+// Presence checks («Mövcudluq yoxlaması»): for the few people a manager switched them on for, plans up to two
+// random «where are you» questions on each open day, sends them, and closes the unanswered ones. The plan is
+// in the PresenceChecks table, so a restart loses nothing. See PresenceCheck.
+builder.Services.AddHostedService<PresenceCheckWorker>();
+
 // Closes the "Ayın işçisi" ballot once a month ends: decides each branch winner and announces it.
 builder.Services.AddHostedService<MonthlyWinnerJob>();
 

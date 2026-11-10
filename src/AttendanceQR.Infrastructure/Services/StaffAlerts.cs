@@ -55,6 +55,15 @@ public static class StaffAlertKinds
     public const string PinResetRequested = "PinResetRequested";
 
     /// <summary>
+    /// A presence check («Mövcudluq yoxlaması», PresenceCheck) was answered from outside the branch's radius. The
+    /// only presence result a manager is told about: «no answer» is counted on the profile and never pushed — a
+    /// busy person and an absent one look the same from here, and a manager who is pinged for every phone left
+    /// in a pocket stops reading these. Goes at once (it is already evidence, nothing to wait out), once a day
+    /// per person like every alert here; a second «outside» the same day is in the profile's history.
+    /// </summary>
+    public const string PresenceOutside = "PresenceOutside";
+
+    /// <summary>
     /// How long a refused person gets to sort it out alone before their manager hears about it. Most
     /// do: 207 people met a location-permission refusal in the week to 03.10.2026, nearly all for a
     /// minute or two. Alerting on every one would teach managers to swipe these away; waiting, and
@@ -88,7 +97,7 @@ public static class StaffAlertKinds
     };
 
     public static bool IsAlertable(string kind) =>
-        kind == DeviceChangeRequested || kind == PinResetRequested || Blocked.ContainsKey(kind);
+        kind == DeviceChangeRequested || kind == PinResetRequested || kind == PresenceOutside || Blocked.ContainsKey(kind);
 
     /// <summary>A refusal waits out the grace period and is dropped if the person scanned meanwhile; a
     /// request goes at once.</summary>
@@ -127,6 +136,19 @@ public static class StaffAlertKinds
             : $"{Math.Floor(waited.TotalHours):0} saatdır";
         return ($"{employeeName} skan edə bilmir", $"{since} alınmır: {b.Problem}. {b.Fix}", b.Url);
     }
+
+    /// <summary>The push for <see cref="PresenceOutside"/>: who, how far from which branch, and at what time —
+    /// the facts, for the manager to judge. Tapping it opens the person's profile, where the history is.</summary>
+    public static (string Title, string Body, string Url) DescribePresence(
+        string employeeName, Guid employeeId, string? branchName, double? distanceMeters, DateTime answeredLocal, bool late)
+    {
+        var where = branchName is null ? "filialdan" : $"«{branchName}» filialından";
+        var distance = distanceMeters is double d && double.IsFinite(d) ? $"{Math.Round(d):0} m uzaqda" : "kənarda";
+        return (
+            $"{employeeName} filialdan kənardadır",
+            $"Saat {answeredLocal:HH:mm} yer yoxlamasında {where} {distance} idi{(late ? " (gec cavab)" : "")}.",
+            $"/admin/employees/{employeeId}");
+    }
 }
 
 public enum StaffAlertOutcome { Sent, Recovered, AlreadyHandled, AlreadyAlerted, NotAlertable, NoRecipients, UnknownEmployee }
@@ -156,6 +178,7 @@ public static class StaffAlertDispatcher
         if (employee is null)
             return StaffAlertOutcome.UnknownEmployee;
 
+        PresenceCheck? presence = null;
         if (StaffAlertKinds.WaitsForRecovery(alert.Kind))
         {
             var recovered = await db.AuditLogs.AnyAsync(a =>
@@ -164,6 +187,18 @@ public static class StaffAlertDispatcher
                 && a.CreatedAtUtc >= alert.RaisedAtUtc, ct);
             if (recovered)
                 return StaffAlertOutcome.Recovered;
+        }
+        else if (alert.Kind == StaffAlertKinds.PresenceOutside)
+        {
+            // The answer that raised it — read back for the distance and the branch, and because a day deleted in
+            // the meantime (its checks go with it) leaves nothing for the manager to open.
+            presence = await db.PresenceChecks.AsNoTracking()
+                .Where(c => c.EmployeeId == alert.EmployeeId && c.Result == PresenceCheckResult.Outside
+                            && c.RespondedAtUtc >= alert.RaisedAtUtc.AddMinutes(-1))
+                .OrderBy(c => c.RespondedAtUtc)
+                .FirstOrDefaultAsync(ct);
+            if (presence is null)
+                return StaffAlertOutcome.AlreadyHandled;
         }
         else
         {
@@ -219,7 +254,18 @@ public static class StaffAlertDispatcher
         if (recipients.Count == 0)
             return StaffAlertOutcome.NoRecipients;
 
-        var text = StaffAlertKinds.Describe(alert.Kind, employee.FullName, nowUtc - alert.RaisedAtUtc)!.Value;
+        (string Title, string Body, string Url) text;
+        if (presence is not null)
+        {
+            var branch = await db.Locations.AsNoTracking()
+                .Where(l => l.Id == presence.LocationId).Select(l => l.Name).FirstOrDefaultAsync(ct);
+            text = StaffAlertKinds.DescribePresence(employee.FullName, alert.EmployeeId, branch, presence.DistanceMeters,
+                TimeZoneInfo.ConvertTimeFromUtc(presence.RespondedAtUtc ?? alert.RaisedAtUtc, timeZone), presence.Late);
+        }
+        else
+        {
+            text = StaffAlertKinds.Describe(alert.Kind, employee.FullName, nowUtc - alert.RaisedAtUtc)!.Value;
+        }
         var reached = await notifier.NotifyEmployeesAsync(recipients, text.Title, text.Body, text.Url, ct);
 
         // Written even when nobody had a live subscription: the next refusal must not try again, and
@@ -257,6 +303,8 @@ public static class StaffAlertDispatcher
             StaffAlertKinds.PinResetRequested => ShadowRules.Decide(ShadowRules.CredentialTarget, holder, alert.EmployeeId,
                 home, subject, operators.Contains(alert.EmployeeId), holderHome),
             StaffAlertKinds.DeviceChangeRequested => holder.Covers(AccessPermissions.DevicesApprove, home),
+            // The push opens the presence history, which asks «attendance.fraud» — only those who can read it hear it.
+            StaffAlertKinds.PresenceOutside => holder.Covers(AccessPermissions.AttendanceFraud, home),
             _ => true,
         };
 

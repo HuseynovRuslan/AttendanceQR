@@ -88,6 +88,7 @@ public class AppDbContext : DbContext
     public DbSet<JobPosition> JobPositions => Set<JobPosition>();
     public DbSet<FieldVisit> FieldVisits => Set<FieldVisit>();
     public DbSet<FieldVisitChecklistItem> FieldVisitChecklistItems => Set<FieldVisitChecklistItem>();
+    public DbSet<PresenceCheck> PresenceChecks => Set<PresenceCheck>();
     public DbSet<PendingPhotoUpload> PendingPhotoUploads => Set<PendingPhotoUpload>();
 
     public DbSet<EquipmentRecord> EquipmentRecords => Set<EquipmentRecord>();
@@ -126,7 +127,7 @@ public class AppDbContext : DbContext
             typeof(MonthlyVoteBallot), typeof(MonthlyVoteTally), typeof(MonthlyWinner), typeof(VoteCampaign), typeof(JobPosition),
             typeof(FieldVisit), typeof(FieldVisitChecklistItem), typeof(PendingPhotoUpload),
             typeof(EquipmentRecord), typeof(Structure), typeof(AccessRole), typeof(RoleAssignment),
-            typeof(AuthzShadowEvent),
+            typeof(AuthzShadowEvent), typeof(PresenceCheck),
         };
         foreach (var t in tenantScoped)
         {
@@ -271,6 +272,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<FieldVisitChecklistItem>().HasIndex(i => new { i.TenantId, i.FieldVisitId });
 
         modelBuilder.Entity<TaskItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+
+        // Presence checks — indexes and keys in PresenceCheckConfiguration.
+        modelBuilder.Entity<PresenceCheck>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
