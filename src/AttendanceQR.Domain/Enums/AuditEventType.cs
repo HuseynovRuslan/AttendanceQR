@@ -97,5 +97,12 @@ public enum AuditEventType
     SelfCorrectionDecided = 26,
 
     // The company switched «a self-correction waits for a second approval» on or off. Written against who did it.
-    SelfCorrectionSettingChanged = 27
+    SelfCorrectionSettingChanged = 27,
+
+    // 28–38 are taken on the unmerged store-visits branch (StoreVisitCheckIn … StoreVisitSettingsChanged). Left
+    // free here so the two can meet without renumbering either.
+
+    // Presence checks («Mövcudluq yoxlaması») were switched on — for how long — or off for this person. Written
+    // against the person; the reason names who did it.
+    PresenceCheckSettingChanged = 39
 }

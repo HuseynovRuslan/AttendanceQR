@@ -19,6 +19,7 @@ import { getEmployeeAttendance, getPhotoUrl, adminUpdateRecord, adminCreateRecor
 import type { AttendanceRecord, PhotoUrlResponse } from '../../api/attendance'
 import { PhotoCompareModal } from '../../components/PhotoCompareModal'
 import { ShiftOverridesCard } from './ShiftOverridesCard'
+import { PresenceChecksCard } from './PresenceChecksCard'
 import { RecordBadge, leaveVisual } from '../../components/StatusBadge'
 import { initials } from '../../lib/att'
 import { fmtDate, fmtDuration, fmtPhone, fmtTime, fromCompanyInputValue, toCompanyInputValue } from '../../lib/format'
@@ -77,6 +78,8 @@ export function EmployeeProfilePage() {
   const mayCorrect = useHolds('attendance.correct', true)
   const mayViewPhotos = useHolds('attendance.photos.view', true)
   const mayRoster = useHolds('schedules.assign', true)
+  // Presence checks ride on the anti-fraud right, like voiding a faked day; the server narrows it to the caller's area.
+  const mayCheckPresence = useHolds('attendance.fraud', true)
   /**
    * Whether this caller may ACT on the person whose card is open.
    *
@@ -550,6 +553,9 @@ export function EmployeeProfilePage() {
       {/* The days this person worked somebody else's shift. Sits with how their days are DECIDED,
           directly under the month figures it changes — not down among the address fields. */}
       {id && mayRoster && <ShiftOverridesCard employeeId={id} onChanged={() => void load()} />}
+
+      {/* «Mövcudluq yoxlaması» — random «where are you» questions for one person, for a limited time. */}
+      {id && mayCheckPresence && <PresenceChecksCard employeeId={id} />}
 
       {/* Personal */}
       {/* Roles and where — for whoever the access API admits: the admin, and anybody whose role carries
