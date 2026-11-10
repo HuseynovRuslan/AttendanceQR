@@ -21,6 +21,7 @@ import { fmtDuration, fmtTime } from '../lib/format'
 import { knownToday, rememberToday } from '../lib/todayCache'
 import { IconQr } from '../components/icons'
 import { PhotoWarningGate } from '../components/PhotoWarningGate'
+import { PresenceCheckCard } from '../components/PresenceCheckCard'
 
 /** First day of the current month as "yyyy-MM-dd", for the month-to-date summary query. */
 function firstOfMonthStr(): string {
@@ -212,6 +213,9 @@ export function HomePage() {
       <OfflineRejectBanner />
       {/* Then what this phone is still holding — the scan they would otherwise make a second time. */}
       <PendingScansBanner />
+      {/* A «where are you» question a manager asked for — renders nothing for everybody else. Above the
+          announcements: it is the only thing here with a clock on it. */}
+      <PresenceCheckCard />
       <AnnouncementBanner />
       {/* Ayın işçisi modulu deaktivdir — mükafat kartı da gizlidir. */}
       {false && <AwardCard />}

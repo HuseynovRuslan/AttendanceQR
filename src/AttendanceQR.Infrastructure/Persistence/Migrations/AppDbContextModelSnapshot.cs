@@ -664,6 +664,15 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTime?>("PresenceCheckSetAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PresenceCheckSetByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PresenceCheckUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool?>("QrlessCheckInOverride")
                         .HasColumnType("boolean");
 
@@ -1429,6 +1438,86 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId");
 
                     b.ToTable("PinResetRequests", (string)null);
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.PresenceCheck", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<double?>("AccuracyMeters")
+                        .HasColumnType("double precision");
+
+                    b.Property<Guid>("AttendanceRecordId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("CheckDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("DistanceMeters")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("DueAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Late")
+                        .HasColumnType("boolean");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("RadiusMeters")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Reached")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RespondedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("AttendanceRecordId", "Slot")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "EmployeeId", "CheckDate");
+
+                    b.HasIndex("TenantId", "Result", "DueAtUtc");
+
+                    b.ToTable("PresenceChecks", (string)null);
                 });
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.ProcessedScan", b =>
@@ -2282,6 +2371,27 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ResolvedByEmployeeId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.PresenceCheck", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.AttendanceRecord", null)
+                        .WithMany()
+                        .HasForeignKey("AttendanceRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
                         .WithMany()

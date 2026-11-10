@@ -218,6 +218,22 @@ public class Employee : ITenantScoped, IHasWorkCycle
     public bool? RequireGeofenceOverride { get; set; }
 
     /// <summary>
+    /// Presence checks («Mövcudluq yoxlaması», <see cref="PresenceCheck"/>) are on for this person until this
+    /// moment. Null, or in the past, means off — which is how everybody starts.
+    ///
+    /// Always with an end: a manager switches it on for a reason and for 7, 14 or 30 days, and it switches
+    /// itself off. A check left running on somebody for months after the doubt has passed is surveillance
+    /// nobody decided on any more.
+    /// </summary>
+    public DateTime? PresenceCheckUntilUtc { get; set; }
+
+    /// <summary>Who switched presence checks on last, and when — shown beside the switch. The audit log carries
+    /// every change, off included.</summary>
+    public Guid? PresenceCheckSetByEmployeeId { get; set; }
+
+    public DateTime? PresenceCheckSetAtUtc { get; set; }
+
+    /// <summary>
     /// When the employee accepted the data-processing notice (GPS, check-in selfie, work data).
     ///
     /// The digital stand-in for a signature: the app stores face + location + salary, which is
