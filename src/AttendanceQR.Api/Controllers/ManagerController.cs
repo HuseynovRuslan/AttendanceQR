@@ -72,6 +72,48 @@ public class ManagerController : ControllerBase
         .Covers(locationId);
 
     /// <summary>
+    /// The check-in exceptions a person carries are rights of their own, not part of «employees.create» or
+    /// «employees.update»: «Səyyar» (<c>CanFieldCheckIn</c>) is «field_checkin.grant»; the person's own QR-free and
+    /// GPS-wall settings and the photo exemption are «checkin_rules.override» (the photo exemption joined it on
+    /// 2026-11-11, the owner's call — the catalogue has no key of its own for it). They are what decides how this
+    /// person proves they are at work, so the profile form must not carry them past somebody who does not hold
+    /// them — the Tabelçi template, for one, edits people and holds neither.
+    ///
+    /// Only what actually changes asks: on a new person the safe defaults (no field check-in, the branch's own
+    /// rules, a photo taken) ask nothing, and an edit that sends the card's values back asks nothing — so a
+    /// timekeeper still fixes a name or a shift. A change is asked for over the branch the person is at AND the
+    /// one they are going to, as the deactivation right is (<see cref="MayDeactivateAsync"/>). Answered by the
+    /// same scope every list narrows by: in Legacy and Shadow that is the manager's own branches, which every
+    /// path into this controller is already held to — so for today's managers nothing changes.
+    /// </summary>
+    /// <returns>A refusal (403, nothing written), or null to go on.</returns>
+    private async Task<IActionResult?> CheckInExceptionsRefusalAsync(
+        Employee? current, ManagerEmployeeRequest request, CancellationToken ct)
+    {
+        var fieldChanged = request.CanFieldCheckIn != (current?.CanFieldCheckIn ?? false);
+        var rulesChanged = request.QrlessCheckInOverride != current?.QrlessCheckInOverride
+                           || request.RequireGeofenceOverride != current?.RequireGeofenceOverride
+                           || request.PhotoExempt != (current?.PhotoExempt ?? false);
+        if (!fieldChanged && !rulesChanged)
+            return null;
+
+        Guid[] branches = current is null || current.LocationId == request.LocationId
+            ? [request.LocationId]
+            : [current.LocationId, request.LocationId];
+        async Task<bool> HoldsAsync(string permission)
+        {
+            var scope = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), permission, ct);
+            return branches.All(scope.Covers);
+        }
+
+        if (fieldChanged && !await HoldsAsync(AccessPermissions.FieldCheckInGrant))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "FieldCheckInNotAllowed" });
+        if (rulesChanged && !await HoldsAsync(AccessPermissions.CheckInRulesOverride))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CheckInRulesNotAllowed" });
+        return null;
+    }
+
+    /// <summary>
     /// THE authorization decision for a manager acting ON another account — every mutating
     /// per-employee endpoint below (profile edit, PIN reset, leaves) goes through here and nowhere
     /// else, so the rule cannot drift between endpoints.
@@ -702,6 +744,8 @@ public class ManagerController : ControllerBase
             return BadRequest(new { error = "NameRequired" });
         if (!await ManagesLocationAsync(request.LocationId))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "LocationNotManaged" });
+        if (await CheckInExceptionsRefusalAsync(null, request, ct) is { } exceptionsRefused)
+            return exceptionsRefused;
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var hasEmail = !string.IsNullOrWhiteSpace(request.Email);
@@ -781,6 +825,9 @@ public class ManagerController : ControllerBase
         // ManagedLocations), so for them nothing changes.
         if (request.IsActive != employee.IsActive && !await MayDeactivateAsync(employee.LocationId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "DeactivateNotAllowed" });
+        // Before anything is written to the tracked row: a refusal leaves the person exactly as they were.
+        if (await CheckInExceptionsRefusalAsync(employee, request, ct) is { } exceptionsRefused)
+            return exceptionsRefused;
 
         var phone = PhoneNumbers.Normalize(request.PhoneNumber);
         var email = string.IsNullOrWhiteSpace(request.Email) ? employee.Email : request.Email.Trim();
