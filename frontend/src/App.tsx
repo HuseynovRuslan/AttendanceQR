@@ -64,6 +64,12 @@ const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ defa
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const AccessPage = lazy(() => import('./pages/admin/AccessPage').then(m => ({ default: m.AccessPage })))
 const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
+// Design prototypes (demo data, nothing saved) exist only in a development build or one built with
+// VITE_PROTOTYPES=on. A production build folds this to `false`, and the prototype's chunk is not emitted at all.
+const PROTOTYPES = import.meta.env.DEV || import.meta.env.VITE_PROTOTYPES === 'on'
+const ApprovalsPrototype = PROTOTYPES
+  ? lazy(() => import('./pages/proto/approvals/ProtoApp').then(m => ({ default: m.ProtoApp })))
+  : null
 const SchedulesPage = lazy(() => import('./pages/admin/SchedulesPage').then(m => ({ default: m.SchedulesPage })))
 const VoteResultsPage = lazy(() => import('./pages/admin/VoteResultsPage').then(m => ({ default: m.VoteResultsPage })))
 const ReportsPage = lazy(() => import('./pages/admin/ReportsPage').then(m => ({ default: m.ReportsPage })))
@@ -344,6 +350,9 @@ function AppRoutes() {
       {/* Kiosk: one URL per location, no login. */}
       <Route path="/kiosk/:locationId" element={<KioskPage />} />
       <Route path="/kiosk" element={<KioskPage />} />
+
+      {/* Structure & approvals design prototype — development builds only (see PROTOTYPES). */}
+      {ApprovalsPrototype && <Route path="/prototip/tesdiq/*" element={<ApprovalsPrototype />} />}
 
       {/* Admin / Manager panel. */}
       <Route
