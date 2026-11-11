@@ -1,6 +1,7 @@
-/* Approval prototype — scoped under .apx-*, on QRLog's own tokens (theme.css). Loaded only by the prototype chunk. */
+/* Approval screens — scoped under .apx-*, on QRLog's own tokens (theme.css). Two roots share the tokens: .apx-app is
+   the design prototype's full-screen shell (rail + page), .apx-embed is the real screens inside the admin panel. */
 
-.apx-app {
+.apx-app, .apx-embed {
   --apx-ink: var(--c900);
   --apx-canvas: #F4F5F3;
   --apx-line: var(--c100);
@@ -13,18 +14,21 @@
   --apx-bad-bg: var(--clay-bg);
   --apx-off: var(--c500);
   --apx-off-bg: var(--c100);
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  min-height: 100vh;
-  background: var(--apx-canvas);
   color: var(--c700);
   font-family: 'Manrope', sans-serif;
   font-variant-numeric: tabular-nums;
 }
-.apx-app *:focus-visible { outline: 2px solid var(--leaf-d); outline-offset: 2px; border-radius: 6px }
-.apx-app button { font-family: inherit }
+.apx-app {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--apx-canvas);
+}
+.apx-app *:focus-visible, .apx-embed *:focus-visible { outline: 2px solid var(--leaf-d); outline-offset: 2px; border-radius: 6px }
+.apx-app button, .apx-embed button { font-family: inherit }
 /* Rows inside scrolling lists draw their focus ring inside, or the list's own edge clips it. */
-.apx-app .apx-item:focus-visible, .apx-app .apx-row:focus-visible, .apx-app .apx-q:focus-visible { outline-offset: -3px; border-radius: 10px }
+.apx-app .apx-item:focus-visible, .apx-app .apx-row:focus-visible, .apx-app .apx-q:focus-visible,
+.apx-embed .apx-item:focus-visible, .apx-embed .apx-q:focus-visible { outline-offset: -3px; border-radius: 10px }
 
 /* ---- rail: the product's own chrome ---- */
 .apx-rail {
@@ -251,7 +255,8 @@
 .apx-detail-h p { margin: 6px 0 0; font-size: 13.5px; color: var(--apx-meta) }
 .apx-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 22px; margin: 0 }
 .apx-facts dt { font-size: 12px; color: var(--apx-meta); font-weight: 600 }
-.apx-facts dd { margin: 3px 0 0; font-size: 14px; font-weight: 700; color: var(--apx-ink) }
+.apx-facts > div { min-width: 0 }
+.apx-facts dd { margin: 3px 0 0; font-size: 14px; font-weight: 700; color: var(--apx-ink); overflow-wrap: anywhere }
 .apx-sec-t { font-size: 13px; font-weight: 800; color: var(--apx-ink); margin: 0 0 8px }
 .apx-diff { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; border: 1px solid var(--apx-line); border-radius: 12px; overflow: hidden }
 .apx-diff th { font-size: 12px; font-weight: 700; color: var(--apx-meta); text-align: left; padding: 8px 14px; background: var(--c50) }
@@ -292,10 +297,13 @@
 .apx-type[aria-pressed='true'] svg { color: var(--leaf-d) }
 .apx-form { display: grid; gap: 16px }
 .apx-field { display: grid; gap: 6px }
-.apx-field > span { font-size: 12.5px; font-weight: 700; color: var(--c700) }
+.apx-field > span, .apx-field > label > span { font-size: 12.5px; font-weight: 700; color: var(--c700) }
+/* The shared phone field brings the panel's `.inp`; here it takes the sheet's input size so the column reads as one. */
+.apx-field .inp { height: 38px; padding: 0 12px; border-radius: 10px; font-size: 13.5px }
 .apx-field .apx-input, .apx-field .apx-select { width: 100% }
-/* Two classes deep on purpose: `.apx-field > span` (the label) would otherwise win and paint the error grey. */
-.apx-field .apx-field-err { font-size: 12.5px; color: var(--apx-bad); font-weight: 600; line-height: 1.4 }
+/* Two classes deep on purpose: `.apx-field > span` (the label) would otherwise win and paint the error grey. The second
+   selector is the error that belongs to a pair of fields (name and surname, phone or e-mail) and sits under both. */
+.apx-field .apx-field-err, .apx-form > .apx-field-err { font-size: 12.5px; color: var(--apx-bad); font-weight: 600; line-height: 1.4 }
 .apx-input[aria-invalid='true'], .apx-select[aria-invalid='true'], .apx-textarea[aria-invalid='true'] { border-color: var(--apx-bad) }
 .apx-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
 .apx-sheet-back { position: fixed; inset: 0; background: rgba(24, 25, 26, .38); z-index: 60; display: flex; justify-content: flex-end }
@@ -375,6 +383,51 @@
   .apx-pair { grid-template-columns: 1fr }
   .apx-table th:nth-child(n + 4), .apx-table td:nth-child(n + 4) { display: none }
 }
+/* ---- the real screens, inside the admin panel ---- */
+.apx-embed { display: grid; gap: 16px; min-width: 0 }
+/* The section's own switch between its screens: one row of tabs, scrolling sideways on a phone, so moving between
+   the queue and the branch never needs the menu drawer. */
+.apx-tabs { display: flex; gap: 4px; align-items: center; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--apx-line); margin: -4px 0 2px }
+.apx-tabs::-webkit-scrollbar { display: none }
+.apx-tabs a {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 12px; white-space: nowrap; flex-shrink: 0;
+  font-size: 13.5px; font-weight: 700; color: var(--c600); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.apx-tabs a:hover { color: var(--apx-ink) }
+.apx-tabs a[aria-current='page'] { color: var(--apx-ink); border-bottom-color: var(--leaf-d) }
+.apx-tabs-n { font-size: 11.5px; font-weight: 800; color: var(--apx-ink); background: var(--amber); border-radius: 999px; padding: 1px 7px }
+.apx-tabs-who { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-shrink: 0; padding-left: 12px; font-size: 12.5px; color: var(--apx-meta) }
+.apx-intro { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap }
+.apx-intro p { margin: 0; font-size: 14px; color: var(--c700); line-height: 1.5; max-width: 70ch }
+.apx-intro p b { color: var(--apx-ink) }
+.apx-info { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--c600); background: #fff; border: 1px solid var(--apx-line); border-radius: 12px; padding: 11px 14px; line-height: 1.5 }
+.apx-info svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; color: var(--c500) }
+.apx-hidden { color: var(--apx-meta); font-style: italic }
+.apx-req-n { font-size: 12px; font-weight: 700; color: var(--apx-meta); font-variant-numeric: tabular-nums }
+/* The one-time PIN: large, spaced, selectable, and gone when the dialog closes. */
+.apx-modal-back { position: fixed; inset: 0; background: rgba(24, 25, 26, .45); z-index: 70; display: grid; place-items: center; padding: 16px }
+.apx-modal { width: min(440px, 100%); background: #fff; border-radius: 18px; padding: 22px; display: grid; gap: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .25) }
+.apx-modal h2 { margin: 0; font-size: 18px; font-weight: 800; color: var(--apx-ink) }
+.apx-modal p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--c700) }
+.apx-pin { font-size: 38px; font-weight: 800; letter-spacing: .32em; color: var(--apx-ink); text-align: center; padding: 14px 0 14px .32em; background: var(--c50); border-radius: 14px; user-select: all }
+.apx-modal-f { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap }
+
+@media (max-width: 900px) {
+  /* The decision sits where the thumb is: at the bottom of the screen while a request is open. */
+  .apx-embed .apx-decide-bar {
+    position: sticky; bottom: 0; z-index: 5; margin: 0 -16px -18px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: #fff; border-top: 1px solid var(--apx-line); box-shadow: 0 -8px 24px rgba(24, 25, 26, .08);
+  }
+  .apx-embed .apx-decide-bar .apx-btn { flex: 1 1 0; justify-content: center; min-height: 44px }
+  .apx-tabs-who { display: none }
+  .apx-embed .apx-intro .apx-btn-go { width: 100%; justify-content: center; min-height: 44px }
+  /* Four statuses on one line that scrolls, not a second row that pushes the list down. */
+  /* `width: 0; min-width: 100%`: the row fills its line but asks nothing of the page's width, so it scrolls inside
+     instead of pushing the whole screen sideways. */
+  .apx-embed .apx-seg { flex-wrap: nowrap; width: 0; min-width: 100%; overflow-x: auto; scrollbar-width: none }
+  .apx-embed .apx-seg button { flex-shrink: 0; white-space: nowrap }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .apx-sheet { animation: none }
   .apx-skel i { animation: none }

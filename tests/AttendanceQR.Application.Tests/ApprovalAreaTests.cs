@@ -147,6 +147,52 @@ public class ApprovalAreaTests
         Assert.All(op.GetProperty("branches").EnumerateArray(), b => Assert.True(b.GetProperty("isApprover").GetBoolean()));
     }
 
+    [Fact]
+    public async Task Me_names_the_structure_and_shows_an_observer_their_branches_read_only()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+
+        var viewer = Json((await a.Desk().MeAsync(a.Observer, default)).Body).GetProperty("branches").EnumerateArray().ToList();
+        Assert.Equal(2, viewer.Count);
+        Assert.All(viewer, b =>
+        {
+            Assert.True(b.GetProperty("canView").GetBoolean());
+            Assert.False(b.GetProperty("canRequest").GetBoolean());
+            Assert.False(b.GetProperty("isApprover").GetBoolean());
+            Assert.False(b.GetProperty("canActDirectly").GetBoolean());
+            Assert.Equal("Aeroport yolu", b.GetProperty("structureName").GetString());
+        });
+        // Plain staff of the branch: nothing at all.
+        Assert.Equal(0, Json((await a.Desk().MeAsync(a.W.E2, default)).Body).GetProperty("branches").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task The_new_person_form_offers_the_catalogue_and_the_branchs_shifts_to_who_may_ask()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+        using (var db = a.Db())
+        {
+            db.JobPositions.Add(new JobPosition { TenantId = AccessWorld.TenantA, Name = "Bağban" });
+            db.Schedules.Add(new Schedule { TenantId = AccessWorld.TenantA, Name = "B1 səhər", LocationId = a.W.B1, ShiftStart = new TimeOnly(8, 0), ShiftEnd = new TimeOnly(17, 0) });
+            db.Schedules.Add(new Schedule { TenantId = AccessWorld.TenantA, Name = "Şirkət", ShiftStart = new TimeOnly(9, 0), ShiftEnd = new TimeOnly(18, 0) });
+            db.Schedules.Add(new Schedule { TenantId = AccessWorld.TenantA, Name = "B3 axşam", LocationId = a.W.B3, ShiftStart = new TimeOnly(14, 0), ShiftEnd = new TimeOnly(23, 0) });
+            await db.SaveChangesAsync();
+        }
+
+        var options = await a.Desk().OptionsAsync(a.Timekeeper, a.W.B1, default);
+        Assert.Equal(200, options.Status);
+        var body = Json(options.Body);
+        Assert.Equal(["Bağban"], body.GetProperty("positions").EnumerateArray().Select(p => p.GetString()));
+        Assert.Equal(["B1 səhər", "Şirkət"], body.GetProperty("schedules").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
+
+        // Not at a branch they do not ask for, not for plain staff, not for another company's branch.
+        Assert.Equal(403, (await a.Desk().OptionsAsync(a.Timekeeper, a.W.B2, default)).Status);
+        Assert.Equal(403, (await a.Desk().OptionsAsync(a.W.E2, a.W.B2, default)).Status);
+        Assert.Equal(404, (await a.Desk().OptionsAsync(a.Timekeeper, a.W.OtherBranch, default)).Status);
+    }
+
     // --- an Operator standing in for another structure ---------------------------------------------------
 
     /// <summary>Operator2 (S2's own operator) is named by the Company administrator to decide S1's requests.</summary>

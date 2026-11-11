@@ -160,10 +160,16 @@ export function SuperUsers() {
   const [pin, setPin] = useState<{ id: string; tempPin: string } | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
 
-  async function search(e?: FormEvent) {
+  /**
+   * `keepResult` is the refresh after an action. It must not wipe what that action just showed: the reset PIN is
+   * shown once and lives only in this state, and the refresh used to clear it the moment it appeared. The operator
+   * saw «reset» succeed with no PIN on the screen, reset again, and got the same blank (2026-11-11).
+   */
+  async function search(e?: FormEvent, keepResult = false) {
     e?.preventDefault()
     if (q.trim().length < 2) return
-    setLoading(true); setSearched(true); setPin(null); setMsg(null)
+    setLoading(true); setSearched(true)
+    if (!keepResult) { setPin(null); setMsg(null) }
     const { status, data } = await searchSuperUsers(q.trim())
     setLoading(false)
     setRows(status === 200 && Array.isArray(data) ? data : [])
@@ -181,7 +187,7 @@ export function SuperUsers() {
     if (res.status === 200 && res.data && !('error' in res.data)) {
       if (kind === 'pin' && 'tempPin' in res.data) setPin({ id: u.id, tempPin: (res.data as { tempPin: string }).tempPin })
       else setMsg(kind === 'reactivate' ? 'Hesab aktiv edildi ✓' : 'Sessiyalar bağlandı ✓')
-      await search()
+      await search(undefined, true)
     } else {
       setMsg('Alınmadı')
     }

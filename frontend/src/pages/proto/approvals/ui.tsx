@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
   IconAlert, IconBriefcase, IconCalendar, IconCalendarCheck, IconClock, IconPencil, IconPower, IconRefresh,
   IconThermometer, IconTrash, IconUser,
@@ -7,35 +7,10 @@ import {
   ROLE_LABEL, STATUS_LABEL, TYPE_LABEL, type ChangeRequest, type Persona, type RequestStatus, type RequestType, type RoleKind,
   type World,
 } from './model'
+import { day, when } from '../../approvals/shared'
 
-const MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avqust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr']
-
-/** «11 noyabr, 10:00» in Baku time — the prototype shows every moment the way a person here reads it. */
-export function when(iso: string): string {
-  const d = new Date(new Date(iso).getTime() + 4 * 3_600_000)
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}, ${hh}:${mm}`
-}
-
-export function day(isoDate: string): string {
-  const [y, m, dd] = isoDate.split('-').map(Number)
-  return `${dd} ${MONTHS[m - 1]}${y !== 2026 ? ` ${y}` : ''}`
-}
-
-/** How long something has waited, in words: «40 dəqiqə», «5 saat», «1 gün 7 saat». */
-export function waited(fromIso: string, now: Date): string {
-  const mins = Math.max(0, Math.round((now.getTime() - new Date(fromIso).getTime()) / 60_000))
-  if (mins < 60) return `${mins} dəqiqə`
-  const h = Math.floor(mins / 60)
-  if (h < 24) return `${h} saat`
-  const d = Math.floor(h / 24)
-  return h % 24 ? `${d} gün ${h % 24} saat` : `${d} gün`
-}
-
-export function initials(name: string): string {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
-}
+// The generic pieces live in pages/approvals/shared, which the real screens use as well.
+export { day, EmptyState, initials, Skeleton, useSheet, waited, when } from '../../approvals/shared'
 
 export function personName(w: World, id: string | undefined): string {
   return (id && w.personas.find((p) => p.id === id)?.name) || '—'
@@ -130,14 +105,6 @@ export function Route({ w, r, approverId }: { w: World; r: ChangeRequest; approv
   )
 }
 
-export function Skeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="apx-skel" aria-busy="true" aria-label="Yüklənir">
-      {Array.from({ length: rows }, (_, i) => <i key={i} />)}
-    </div>
-  )
-}
-
 export function ErrorState({ onRetry, what }: { onRetry: () => void; what: string }) {
   return (
     <div className="apx-state" role="alert">
@@ -149,49 +116,6 @@ export function ErrorState({ onRetry, what }: { onRetry: () => void; what: strin
       </button>
     </div>
   )
-}
-
-export function EmptyState({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
-  return (
-    <div className="apx-state">
-      <h3>{title}</h3>
-      <p>{text}</p>
-      {action}
-    </div>
-  )
-}
-
-/**
- * A side sheet's keyboard contract: focus moves in when it opens (the first field, else the sheet), Esc closes it,
- * Tab stays inside, and focus goes back to whatever opened it.
- */
-export function useSheet(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null)
-  const close = useRef(onClose)
-  close.current = onClose
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    const el = ref.current
-    const focusable = () => el
-      ? [...el.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])')]
-      : []
-    const first = focusable().find((x) => x.getAttribute('aria-label') !== 'Bağla')
-    ;(first ?? el)?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); close.current() }
-      if (e.key !== 'Tab') return
-      const f = focusable()
-      if (!f.length) return
-      if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus() }
-      else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      opener?.focus?.()
-    }
-  }, [])
-  return ref
 }
 
 /** A persona's role and the area it covers, as two plain lines. */

@@ -9,7 +9,7 @@ import { StructureExplorer } from './StructureExplorer'
 import { TimekeeperWorkspace } from './TimekeeperWorkspace'
 import { personaRole } from './ui'
 import { ViewerDashboard } from './ViewerDashboard'
-import './approvals.css'
+import '../../approvals/approvals.css'
 
 /**
  * Structure & approvals — a DESIGN PROTOTYPE on demo data. It is registered only in a development build (or one built
