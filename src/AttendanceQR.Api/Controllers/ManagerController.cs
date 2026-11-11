@@ -1028,10 +1028,23 @@ public class ManagerController : ControllerBase
     /// Silently skipping anyone out of reach rather than failing the whole call is deliberate too: a
     /// bulk action over a filtered list will sometimes include a name the manager may not act on, and
     /// refusing all of it would teach them to stop using the button.
+    ///
+    /// One route per capability, each gated by its own right (2026-11-11) — see AdminController.BulkShareDevice.
+    /// Inside, the capability's right is asked again over each person's branch, so a caller who holds it at one
+    /// branch and only sees another cannot reach the second, whatever the request's other rights.
     /// </summary>
+    [Permission(AccessPermissions.DevicesShareGrant, Twin = true)]
+    [HttpPost("employees/bulk-permission/share-device")]
+    public Task<IActionResult> BulkShareDevice([FromBody] BulkGrantRequest request) =>
+        BulkGrantAsync(request, BulkPermission.ShareDevice);
+
+    /// <summary>«Sahə ziyarəti» across this manager's own staff — see <see cref="BulkShareDevice"/>.</summary>
     [Permission(AccessPermissions.FieldCheckInGrant, Twin = true)]
-    [HttpPost("employees/bulk-permission")]
-    public async Task<IActionResult> BulkGrant([FromBody] BulkPermissionRequest request)
+    [HttpPost("employees/bulk-permission/field-check-in")]
+    public Task<IActionResult> BulkFieldCheckIn([FromBody] BulkGrantRequest request) =>
+        BulkGrantAsync(request, BulkPermission.FieldCheckIn);
+
+    private async Task<IActionResult> BulkGrantAsync(BulkGrantRequest request, BulkPermission which)
     {
         var ids = (request.EmployeeIds ?? []).Distinct().ToList();
         if (ids.Count == 0)
@@ -1041,13 +1054,17 @@ public class ManagerController : ControllerBase
 
         var ct = HttpContext.RequestAborted;
         var managed = await ManagedLocationIdsAsync();
-        var targets = await _db.Employees
-            .Where(e => ids.Contains(e.Id)
-                        && managed.Contains(e.LocationId)
-                        && e.Role == EmployeeRole.Employee)
-            .ToListAsync(ct);
+        // Legacy and Shadow: the manager's own branches again, so nothing changes for today's managers.
+        var right = await LocationScopeRules.ScopeAsync(_db, M15(), User.Role(), AdminController.RightFor(which), ct);
+        var targets = (await _db.Employees
+                .Where(e => ids.Contains(e.Id)
+                            && managed.Contains(e.LocationId)
+                            && e.Role == EmployeeRole.Employee)
+                .ToListAsync(ct))
+            .Where(e => right.Covers(e.LocationId))
+            .ToList();
 
-        var changed = AdminController.ApplyPermission(targets, request.Permission, request.Allowed);
+        var changed = AdminController.ApplyPermission(targets, which, request.Allowed);
         if (changed > 0)
             await _db.SaveChangesAsync(ct);
 

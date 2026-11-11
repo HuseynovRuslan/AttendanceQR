@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { BULK_ROUTE } from './admin'
 import type { LeaveBatchResult } from './leaves'
 
 // A manager's own write surface. Every call is scoped server-side to the branches they oversee, so
@@ -232,8 +233,8 @@ export function bulkPermissionAsManager(
   allowed: boolean,
 ) {
   return apiRequest<{ changed: number; total: number; skipped: number } | { error: string }>(
-    '/api/manager/employees/bulk-permission',
-    { method: 'POST', body: { employeeIds, permission, allowed } },
+    `/api/manager/employees/bulk-permission/${BULK_ROUTE[permission]}`,
+    { method: 'POST', body: { employeeIds, allowed } },
   )
 }
 

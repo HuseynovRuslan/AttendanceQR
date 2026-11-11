@@ -128,6 +128,31 @@ describe('a refused list is not an empty list', () => {
   })
 })
 
+describe('the admin’s bulk grants (2026-11-11)', () => {
+  it('«Ortaq telefon» goes to its own admin route with no capability in the body', async () => {
+    adminRoutes(OK({ items: [adminRow('e1', 'Zaur Əliyev')], total: 1, page: 1, pageSize: 25 }))
+    net.routes['POST /api/admin/employees/bulk-permission/share-device'] = OK({ changed: 1, total: 1, skipped: 0, allowed: true })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    try {
+      renderPage()
+
+      const row = (await screen.findByText('Zaur Əliyev')).closest('tr')!
+      await act(async () => {
+        fireEvent.click(within(row).getByRole('checkbox'))
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByText('Ortaq telefon'))
+      })
+      expect(await screen.findByText('1 nəfərə ortaq telefon icazəsi verildi')).toBeTruthy()
+      const call = net.calls.find((c) => c.method === 'POST')!
+      expect(call.path).toBe('/api/admin/employees/bulk-permission/share-device')
+      expect(call.body).toEqual({ employeeIds: ['e1'], allowed: true })
+    } finally {
+      confirm.mockRestore()
+    }
+  })
+})
+
 describe('the admin screen is the admin screen it was', () => {
   it('reads the admin roster and keeps the company tools', async () => {
     adminRoutes(OK({ items: [adminRow('e1', 'Zaur Əliyev')], total: 1, page: 1, pageSize: 25 }))
@@ -485,6 +510,98 @@ describe('a company switched to Enforced: the list follows the role in the model
       fireEvent.click(within(row2).getByRole('checkbox'))
     })
     expect(await screen.findByText('Sahə ziyarəti')).toBeTruthy()
+  })
+
+  // 2026-11-11: the two bulk grants are two rights — «Ortaq telefon» devices.share_grant, «Sahə ziyarəti»
+  // field_checkin.grant — each on its own route. Giving and taking back are offered only to the right's holder.
+  async function bulkOffers(perms: string[]) {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    renderEnforced('Employee', perms)
+    const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('checkbox'))
+    })
+    await screen.findByText(/işçi seçildi/)
+    const bar = {
+      share: screen.queryByText('Ortaq telefon') !== null,
+      field: screen.queryByText('Sahə ziyarəti') !== null,
+    }
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Daha çox/ }))
+    })
+    const back = {
+      share: screen.queryByText('Ortaq telefon icazəsini geri al') !== null,
+      field: screen.queryByText('Sahə ziyarəti icazəsini geri al') !== null,
+    }
+    cleanup()
+    return { bar, back }
+  }
+
+  it('each bulk grant — giving and taking back — is offered only to the holder of its own right', async () => {
+    const cases: [string[], boolean, boolean][] = [
+      [['devices.share_grant'], true, false],
+      [['field_checkin.grant'], false, true],
+      [[], false, false],
+      [['devices.share_grant', 'field_checkin.grant'], true, true],
+    ]
+    for (const [extra, share, field] of cases) {
+      const seen = await bulkOffers([...TIMEKEEPER, ...extra])
+      expect({ rights: extra, ...seen }).toEqual({
+        rights: extra, bar: { share, field }, back: { share, field },
+      })
+    }
+  })
+
+  it('a bulk grant goes to its own route and says how many changed and who was skipped', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova'), managerRow('b', 'Bəhruz Quliyev')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    net.routes['POST /api/manager/employees/bulk-permission/share-device'] = OK({ changed: 1, total: 1, skipped: 1, allowed: true })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    try {
+      renderEnforced('Employee', [...TIMEKEEPER, 'devices.share_grant'])
+
+      for (const name of ['Aynur Həsənova', 'Bəhruz Quliyev']) {
+        const row = (await screen.findByText(name)).closest('tr')!
+        await act(async () => {
+          fireEvent.click(within(row).getByRole('checkbox'))
+        })
+      }
+      await act(async () => {
+        fireEvent.click(screen.getByText('Ortaq telefon'))
+      })
+      expect(await screen.findByText(
+        '1 nəfərə ortaq telefon icazəsi verildi · 1 nəfər buraxıldı — onlar üçün bu icazəni dəyişmək hüququnuz yoxdur',
+      )).toBeTruthy()
+      const call = net.calls.find((c) => c.method === 'POST')!
+      expect(call.path).toBe('/api/manager/employees/bulk-permission/share-device')
+      expect(call.body).toEqual({ employeeIds: ['a', 'b'], allowed: true })
+    } finally {
+      confirm.mockRestore()
+    }
+  })
+
+  it('a refused bulk grant names the right that is missing', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    net.routes['POST /api/manager/employees/bulk-permission/field-check-in'] = { status: 403, data: null }
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    try {
+      renderEnforced('Employee', [...TIMEKEEPER, 'field_checkin.grant'])
+
+      const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+      await act(async () => {
+        fireEvent.click(within(row).getByRole('checkbox'))
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByText('Sahə ziyarəti'))
+      })
+      expect(await screen.findByText(
+        'Sahə ziyarəti icazəsini vermək və ya geri almaq hüququnuz yoxdur. Heç nə dəyişmədi.',
+      )).toBeTruthy()
+    } finally {
+      confirm.mockRestore()
+    }
   })
 
   it('an operator holding both rights changes the exceptions', async () => {

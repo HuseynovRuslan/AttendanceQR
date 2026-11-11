@@ -345,6 +345,15 @@ da, rol da ona yalnız sahib təyin edəndə verilir.
   (`FieldCheckInNotAllowed` və ya `CheckInRulesNotAllowed`) və heç nə yazılmır. Legacy və Shadow-da bugünkü
   menecer öz filiallarında hər iki hüququ daşıyır, ona görə onlar üçün heç nə dəyişmir. Giriş şəklinin
   istisnası sahibin 2026-11-11 qərarı ilə `checkin_rules.override`-a bağlandı.
+- **Toplu icazə (2026-11-11):** hər əməliyyatın öz endpoint-i və öz hüququ var:
+  - «Ortaq telefon» (`CanShareDevice`) → `devices.share_grant`;
+  - «Sahə ziyarəti» (`CanFieldCheckIn`) → `field_checkin.grant`.
+
+  Admin üçün `POST /api/admin/employees/bulk-permission/share-device` və `…/field-check-in`, menecer üçün
+  `POST /api/manager/employees/bulk-permission/share-device` və `…/field-check-in`. Əməliyyatı gövdədən oxuyan ümumi
+  `bulk-permission` route-u silindi: endpoint-in qapısı bir hüquq adlandırır, ona görə ikisini də
+  `field_checkin.grant` ilə qoruyurdu. Hüquq metod içində hər işçinin filialı üzrə yenidən yoxlanır. Sahədən kənar
+  adam buraxılır və cavabda `skipped` kimi sayılır.
 
 - **Tarixçə:** hər dəyişiklik yeni audit hadisəsi ilə yazılır (`CheckInRuleChanged`): kim, kimə,
   əvvəl → sonra. Bu gün yalnız geofence köçürməsi yazılır.

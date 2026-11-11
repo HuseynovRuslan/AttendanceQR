@@ -11,16 +11,18 @@ public enum BulkPermission
 }
 
 /// <summary>
-/// Grant or withdraw one opt-in capability for a list of employees.
+/// Grant or withdraw one opt-in capability for a list of employees. Which capability is the ROUTE's
+/// (…/bulk-permission/share-device, …/bulk-permission/field-check-in), not the body's: each is a right of its
+/// own in the permission model — «devices.share_grant», «field_checkin.grant» — and an endpoint's gate names
+/// one permission, so one route carrying both had to be gated by one of them for the other too (2026-11-11).
 /// </summary>
 /// <param name="Allowed">
 /// True grants, false withdraws. Explicit rather than a toggle: a bulk action over a filtered list
 /// must not depend on what each row happened to be, or pressing it twice would leave the branch in
 /// two different states with no way to tell which.
 /// </param>
-public record BulkPermissionRequest(
+public record BulkGrantRequest(
     IReadOnlyList<Guid>? EmployeeIds,
-    BulkPermission Permission,
     bool Allowed);
 
 /// <summary>
