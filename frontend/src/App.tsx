@@ -63,6 +63,10 @@ const MyAreaPage = lazy(() => import('./pages/admin/MyAreaPage').then(m => ({ de
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const AccessPage = lazy(() => import('./pages/admin/AccessPage').then(m => ({ default: m.AccessPage })))
+// Change requests — real screens on /api/approvals. Their chunk loads only when somebody opens them.
+const ApprovalCenterPage = lazy(() => import('./pages/admin/approvals/ApprovalCenterPage').then(m => ({ default: m.ApprovalCenterPage })))
+const OperatorDashboardPage = lazy(() => import('./pages/admin/approvals/OperatorDashboardPage').then(m => ({ default: m.OperatorDashboardPage })))
+const TimekeeperWorkspacePage = lazy(() => import('./pages/admin/approvals/TimekeeperWorkspacePage').then(m => ({ default: m.TimekeeperWorkspacePage })))
 const EquipmentPage = lazy(() => import('./pages/admin/EquipmentPage').then(m => ({ default: m.EquipmentPage })))
 // Design prototypes (demo data, nothing saved) exist only in a development build or one built with
 // VITE_PROTOTYPES=on. A production build folds this to `false`, and the prototype's chunk is not emitted at all.
@@ -428,6 +432,9 @@ function AppRoutes() {
         />
         {/* Roles and who holds them where — Phase 3. Admin only while the access API is. */}
         <Route path="access" element={<PanelPage path="access"><AccessPage /></PanelPage>} />
+        <Route path="approvals" element={<PanelPage path="approvals"><ApprovalCenterPage /></PanelPage>} />
+        <Route path="approvals/operator" element={<PanelPage path="approvals/operator"><OperatorDashboardPage /></PanelPage>} />
+        <Route path="approvals/branch" element={<PanelPage path="approvals/branch"><TimekeeperWorkspacePage /></PanelPage>} />
         {/* Equipment register — Admin only: it spans every office and site, and is not a branch
             screen. Arrived from `staging` wrapped in <AdminOnly>, which main replaced with the
             access table; see lib/panelAccess. */}
