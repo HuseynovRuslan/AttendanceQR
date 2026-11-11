@@ -63,6 +63,9 @@ services:
       Rekognition__SecretKey: ""
       Push__PublicKey: ""
       Push__PrivateKey: ""
+      # Change requests (docs/tesdiq-sistemi-faza1.md): the deployment switch is on for staging, so the flow can
+      # be accepted here. Nothing changes until an approval area is switched on, structure by structure.
+      Approvals__Enabled: ${Approvals__Enabled:-true}
       DeviceBinding__AutoBind: ${DeviceBinding__AutoBind:-true}
       DeviceBinding__MaxActiveDevices: ${DeviceBinding__MaxActiveDevices:-3}
       DeviceBinding__MaxBindsPer30Days: ${DeviceBinding__MaxBindsPer30Days:-3}

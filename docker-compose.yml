@@ -56,6 +56,8 @@ services:
       Storage__Minio__UseSsl: ${Storage__Minio__UseSsl:-true}
       # SigV4 signing region: empty for MinIO, "auto" for Cloudflare R2, bucket region for AWS S3.
       Storage__Minio__Region: ${Storage__Minio__Region:-}
+      # Change requests and approval areas (docs/tesdiq-sistemi-faza1.md). Off unless set.
+      Approvals__Enabled: ${Approvals__Enabled:-false}
       # Explicitly Production so seed/dev endpoints stay disabled and dev appsettings never loads.
       ASPNETCORE_ENVIRONMENT: Production
     ports:

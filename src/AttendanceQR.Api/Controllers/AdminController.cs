@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using AttendanceQR.Api.Approvals;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
@@ -34,6 +35,9 @@ public class AdminController : ControllerBase
     private readonly IPhotoStorageService _photoStorage;
     private readonly ILogger<AdminController> _logger;
 
+    // The approval flow's deployment switch. Null (the tests that build this controller by hand) reads as off.
+    private readonly ApprovalOptions? _approvals;
+
     public AdminController(
         AppDbContext db,
         IOptions<InvitationOptions> invitationOptions,
@@ -41,8 +45,10 @@ public class AdminController : ControllerBase
         ILoginLockoutStore lockout,
         AppOptions appOptions,
         IPhotoStorageService photoStorage,
-        ILogger<AdminController> logger)
+        ILogger<AdminController> logger,
+        ApprovalOptions? approvals = null)
     {
+        _approvals = approvals;
         _db = db;
         _invitationOptions = invitationOptions.Value;
         _passwordHasher = passwordHasher;
@@ -467,6 +473,12 @@ public class AdminController : ControllerBase
 
         if (!await _db.Locations.AnyAsync(l => l.Id == request.LocationId))
             return BadRequest(new { error = "LocationNotFound" });
+        // The Company administrator always decides in an approval area, so this never refuses an admin. It is here so
+        // that an admin's direct addition is recorded beside the area's requests, exactly as an operator's is.
+        var approval = await ApprovalGate.DirectChangeAsync(_db, _approvals, User.EmployeeId(), request.LocationId,
+            HttpContext.RequestAborted);
+        if (approval.Outcome == ApprovalGate.Outcome.Refused)
+            return StatusCode(StatusCodes.Status403Forbidden, approval.RefusalBody);
 
         var (takenEmails, takenPhones) = await LoadTakenIdentifiersAsync();
 
@@ -507,6 +519,7 @@ public class AdminController : ControllerBase
             return BadRequest(new { error = scheduleError });
         _db.Employees.Add(employee!);
         await RegisterPositionsAsync();
+        ApprovalGate.RecordDirect(_db, approval, User.EmployeeId(), employee!, DateTime.UtcNow);
         await _db.SaveChangesAsync();
         // A new Admin or Manager holds their role in the permission model from the first request.
         await AccessSeeder.ReconcileAfterWriteAsync(_db, employee!.TenantId, _logger, HttpContext.RequestAborted);

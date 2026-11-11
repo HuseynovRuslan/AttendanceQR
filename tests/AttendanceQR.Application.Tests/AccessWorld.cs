@@ -125,7 +125,11 @@ internal sealed class AccessWorld : IDisposable
     {
         var tenant = new TenantContext();
         tenant.Resolve(tenantId);
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_db, _root);
+        // The approval desk opens a transaction around «approve and apply». The in-memory store has none, and says
+        // so with a warning that is an error by default. It is ignored here, and the desk's tests pin what the
+        // missing transaction would otherwise hide (ApprovalFlowTests, the rollback cases).
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_db, _root)
+            .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning));
         if (interceptor is not null)
             options.AddInterceptors(interceptor);
         var db = new AppDbContext(options.Options, tenant, observer);

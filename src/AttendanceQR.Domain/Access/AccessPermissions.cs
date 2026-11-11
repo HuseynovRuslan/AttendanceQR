@@ -76,6 +76,15 @@ public static class AccessPermissions
     public const string AssignmentsCrossArea = "assignments.cross_area";
     public const string RolesManage = "roles.manage";
 
+    /// <summary>Asking for a change in an approval area, where it is not made directly but goes to the structure's
+    /// operator (ApprovalArea). Outside an approval area it means nothing: the same change is made as before.</summary>
+    public const string RequestsCreate = "requests.create";
+    /// <summary>Approving or rejecting the requests of a branch. Who actually decides a request is narrower than who
+    /// holds this anywhere: it is held over the request's structure or branch. A Company administrator, who holds
+    /// it company-wide, decides only while standing in for an operator (ApproverSubstitution).</summary>
+    public const string RequestsDecide = "requests.decide";
+    public const string RequestsView = "requests.view";
+
     public const string NotificationsStaffAlerts = "notifications.staff_alerts";
     public const string TasksUse = "tasks.use";
 
@@ -141,6 +150,9 @@ public static class AccessPermissions
         [AssignmentsManage] = "Rol təyin etmək",
         [AssignmentsCrossArea] = "Başqa sahənin işçisinə rol vermək",
         [RolesManage] = "Rolları idarə etmək",
+        [RequestsCreate] = "Müraciət yaratmaq",
+        [RequestsDecide] = "Müraciəti təsdiqləmək və rədd etmək",
+        [RequestsView] = "Müraciətləri görmək",
         [NotificationsStaffAlerts] = "İşçi problemi bildirişləri",
         [TasksUse] = "Tapşırıqlar lövhəsi",
         [HolidaysManage] = "Bayram və qeyri-iş günləri",
