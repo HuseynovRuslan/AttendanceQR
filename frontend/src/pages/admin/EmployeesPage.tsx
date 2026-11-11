@@ -104,11 +104,24 @@ function cycleLabel(days: number, onDays: number): string {
   return `${onDays} iş / ${days - onDays} istirahət`
 }
 
+/** Under a check-in exception the caller may see but not change: what is set is kept, not cleared. */
+function NoRightNote() {
+  return (
+    <span style={{ display: 'block', fontSize: 12, color: 'var(--c600)', marginTop: 2 }}>
+      Bu ayarı dəyişmək hüququnuz yoxdur — hazırkı vəziyyət saxlanılır.
+    </span>
+  )
+}
+
 const ERRORS: Record<string, string> = {
   // A branch manager's own refusals (their endpoints, since the one staff list).
   NameRequired: 'Ad tələb olunur',
   LocationNotManaged: 'Bu filial sizə aid deyil',
   DeactivateNotAllowed: 'İşçini işdən çıxartmaq və ya qaytarmaq hüququnuz yoxdur',
+  // A person's check-in exceptions are rights of their own — the server refuses the whole save without them.
+  FieldCheckInNotAllowed: 'Sahə girişi icazəsini dəyişmək hüququnuz yoxdur. Dəyişiklik yadda saxlanmadı.',
+  CheckInRulesNotAllowed:
+    'Fərdi giriş rejimini (QR posteri, GPS divarı, giriş şəkli) dəyişmək hüququnuz yoxdur. Dəyişiklik yadda saxlanmadı.',
   CannotDeactivateManager: 'Meneceri yalnız admin deaktiv edə bilər',
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
   PhoneAlreadyExists: 'Bu telefon nömrəsi artıq mövcuddur',
@@ -294,6 +307,11 @@ export function EmployeesPage() {
   const isManager = role === 'Manager'
   const mayCreate = useHolds('employees.create', true)
   const mayResetPins = useHolds('employees.reset_pin', true)
+  // How a person proves they are at work — field check-in, their own QR / GPS-wall settings, the photo — is a
+  // right of its own, not part of editing them. Without it the form shows what is set and sends it back as it
+  // is (the edit writes every field it is given); the server refuses a change regardless.
+  const mayGrantFieldCheckIn = useHolds('field_checkin.grant', true)
+  const mayOverrideCheckIn = useHolds('checkin_rules.override', true)
   /** A manager's whole roster, filtered and paged in the browser — see lib/managerRoster. */
   const [mgrAll, setMgrAll] = useState<ManagerEmployee[] | null>(null)
   /** The card a manager is editing: a colleague they may not switch off, and a branch that may not be
@@ -1825,6 +1843,7 @@ ${back}`,
             <input
               type="checkbox"
               checked={form.photoExempt}
+              disabled={!mayOverrideCheckIn}
               onChange={(e) => set('photoExempt', e.target.checked)}
               style={{ marginTop: 3 }}
             />
@@ -1833,6 +1852,7 @@ ${back}`,
               <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
                 Bu işçidə skan zamanı kamera açılmır. Yer və cihaz yoxlaması qüvvədə qalır.
               </span>
+              {!mayOverrideCheckIn && <NoRightNote />}
             </span>
           </label>
 
@@ -1842,6 +1862,7 @@ ${back}`,
             <input
               type="checkbox"
               checked={form.canFieldCheckIn}
+              disabled={!mayGrantFieldCheckIn}
               onChange={(e) => set('canFieldCheckIn', e.target.checked)}
               style={{ marginTop: 3 }}
             />
@@ -1850,6 +1871,7 @@ ${back}`,
               <span style={{ display: 'block', fontSize: 12, color: 'var(--c500)' }}>
                 İşçi QR-suz, GPS ilə sahə ziyarəti qeyd edə bilər (poster olmayan obyektlər üçün). Bağlı olsa, bu işçidə funksiya görünmür.
               </span>
+              {!mayGrantFieldCheckIn && <NoRightNote />}
             </span>
           </label>
 
@@ -1869,6 +1891,7 @@ ${back}`,
               <select
                 className="input"
                 value={form.qrlessOverride}
+                disabled={!mayOverrideCheckIn}
                 onChange={(e) => set('qrlessOverride', e.target.value as '' | 'on' | 'off')}
                 style={{ marginTop: 2 }}
               >
@@ -1883,6 +1906,7 @@ ${back}`,
               <select
                 className="input"
                 value={form.fenceOverride}
+                disabled={!mayOverrideCheckIn}
                 onChange={(e) => set('fenceOverride', e.target.value as '' | 'on' | 'off')}
                 style={{ marginTop: 2 }}
               >
@@ -1891,6 +1915,7 @@ ${back}`,
                 <option value="off">Rədd etmə — yalnız ölç (yeri xəritəyə düşür)</option>
               </select>
             </label>
+            {!mayOverrideCheckIn && <NoRightNote />}
 
             {form.qrlessOverride === 'on' && form.fenceOverride === 'off' && (
               <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 8 }}>
@@ -2224,13 +2249,15 @@ ${back}`,
                 >
                   <IconPhone /> Ortaq telefon
                 </button>
-                <button
-                  className="emp-bar-b"
-                  disabled={sharing}
-                  onClick={() => void setPermission(bulkTargets, 'FieldCheckIn', true)}
-                >
-                  <IconMapPin /> Sahə ziyarəti
-                </button>
+                {mayGrantFieldCheckIn && (
+                  <button
+                    className="emp-bar-b"
+                    disabled={sharing}
+                    onClick={() => void setPermission(bulkTargets, 'FieldCheckIn', true)}
+                  >
+                    <IconMapPin /> Sahə ziyarəti
+                  </button>
+                )}
                 <div className="emp-more-w">
                   <button className={`emp-bar-b${moreOpen ? ' on' : ''}`} onClick={() => setMoreOpen((v) => !v)}>
                     Daha çox <IconChevronDown />
@@ -2267,17 +2294,19 @@ ${back}`,
                             <i>Briqadanın telefonunda hesab saxlamaq bağlanır</i>
                           </span>
                         </button>
-                        <button
-                          className="emp-more-i danger"
-                          disabled={sharing}
-                          onClick={() => { setMoreOpen(false); void setPermission(bulkTargets, 'FieldCheckIn', false) }}
-                        >
-                          <IconMapPin />
-                          <span>
-                            Sahə ziyarəti icazəsini geri al
-                            <i>Plakatsız sahədə işləyənin yeganə giriş yolu bağlanır</i>
-                          </span>
-                        </button>
+                        {mayGrantFieldCheckIn && (
+                          <button
+                            className="emp-more-i danger"
+                            disabled={sharing}
+                            onClick={() => { setMoreOpen(false); void setPermission(bulkTargets, 'FieldCheckIn', false) }}
+                          >
+                            <IconMapPin />
+                            <span>
+                              Sahə ziyarəti icazəsini geri al
+                              <i>Plakatsız sahədə işləyənin yeganə giriş yolu bağlanır</i>
+                            </span>
+                          </button>
+                        )}
                         {!isManager && (
                           <button
                             className="emp-more-i danger"

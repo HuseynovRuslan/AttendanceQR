@@ -188,7 +188,7 @@ nəyin köçürüləcəyini göstərir.
 | `devices.revoke` | Telefonu ləğv etmək | Yazı | ✓ | ✓ filial |
 | `devices.share_grant` | Ortaq telefon icazəsi | Yazı | ✓ | ✓ filial |
 | `field_checkin.grant` | Fərdi səyyar giriş hüququ (`CanFieldCheckIn`) | Yazı | ✓ | ✓ filial |
-| `checkin_rules.override` | Fərdi QR-siz və GPS divarı istisnası | Yazı | ✓ | ✓ filial |
+| `checkin_rules.override` | Fərdi QR-siz, GPS divarı və giriş şəkli istisnası | Yazı | ✓ | ✓ filial |
 | `field_visits.view` | Sahə ziyarətləri lövhəsi | Oxu | ✓ | ✓ filial |
 | `field_visits.manage` | Ziyarət təyin etmək, qiymətləndirmək, ləğv etmək, məcburi çıxış | Yazı | ✓ | ✓ filial |
 | `field_visits.discard` | Tamamlanmış ziyarəti silmək | Yazı | ✓ | — |
@@ -334,9 +334,17 @@ da, rol da ona yalnız sahib təyin edəndə verilir.
 | Anlayış | Sahə | İcazə |
 |---|---|---|
 | Fərdi səyyar hüquq (`Employee.CanFieldCheckIn`) | İşçi | `field_checkin.grant` |
-| Fərdi QR-siz və GPS divarı istisnası (`*Override`) | İşçi | `checkin_rules.override` |
+| Fərdi QR-siz və GPS divarı istisnası (`*Override`), giriş şəkli istisnası (`PhotoExempt`) | İşçi | `checkin_rules.override` |
 | Filialın QR-siz rejimi, GPS divarı, dairəsi | Filial | `locations.geofence_manage` |
 | Sahə ziyarəti (`FieldVisit`) | Əməliyyat | `field_visits.view` / `manage` / `discard` |
+
+- **İşçi formasında (2026-11-11):** menecer masasının işçi yaratma və redaktəsi bu dörd sahəni yalnız
+  `employees.create` / `employees.update` ilə yazmır. Sahə dəyişirsə, öz icazəsi lazımdır, həm işçinin olduğu,
+  həm də köçdüyü filialda. Yeni işçidə standart dəyərlər (səyyar yox, filialın qaydası, şəkil tələb olunur)
+  əlavə icazə istəmir. Kartdan geri göndərilən dəyişməz dəyər də istəmir. İcazə yoxdursa, cavab 403-dür
+  (`FieldCheckInNotAllowed` və ya `CheckInRulesNotAllowed`) və heç nə yazılmır. Legacy və Shadow-da bugünkü
+  menecer öz filiallarında hər iki hüququ daşıyır, ona görə onlar üçün heç nə dəyişmir. Giriş şəklinin
+  istisnası sahibin 2026-11-11 qərarı ilə `checkin_rules.override`-a bağlandı.
 
 - **Tarixçə:** hər dəyişiklik yeni audit hadisəsi ilə yazılır (`CheckInRuleChanged`): kim, kimə,
   əvvəl → sonra. Bu gün yalnız geofence köçürməsi yazılır.
