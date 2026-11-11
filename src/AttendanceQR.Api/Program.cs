@@ -224,6 +224,18 @@ builder.Services.AddHostedService<PresenceCheckWorker>();
 // Closes the "Ayın işçisi" ballot once a month ends: decides each branch winner and announces it.
 builder.Services.AddHostedService<MonthlyWinnerJob>();
 
+// Change requests and approval areas (docs/tesdiq-sistemi-faza1.md). Off unless Approvals__Enabled is true in the
+// environment, and production's compose file sets false: while it is off, nothing reads the new tables and every
+// branch works as before. On, the flow still runs only in the areas switched on one by one.
+var approvalOptions = builder.Configuration.GetSection(AttendanceQR.Api.Approvals.ApprovalOptions.SectionName)
+    .Get<AttendanceQR.Api.Approvals.ApprovalOptions>() ?? new AttendanceQR.Api.Approvals.ApprovalOptions();
+builder.Services.AddSingleton(approvalOptions);
+builder.Services.AddScoped<AttendanceQR.Api.Approvals.ChangeRequestDesk>();
+builder.Services.AddScoped<AttendanceQR.Api.Approvals.ApprovalAreaDesk>();
+// Tells the approvers about a new request at once, and once a day about those waiting more than 24 hours. It
+// works from columns on the request, so a failed push never touches the request itself.
+builder.Services.AddHostedService<ApprovalNotifyWorker>();
+
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");

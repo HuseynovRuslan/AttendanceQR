@@ -44,6 +44,10 @@ public class AppDbContext : DbContext
     public DbSet<AccessRole> AccessRoles => Set<AccessRole>();
     public DbSet<RoleAssignment> RoleAssignments => Set<RoleAssignment>();
     public DbSet<AuthzShadowEvent> AuthzShadowEvents => Set<AuthzShadowEvent>();
+    public DbSet<ChangeRequest> ChangeRequests => Set<ChangeRequest>();
+    public DbSet<ChangeRequestEvent> ChangeRequestEvents => Set<ChangeRequestEvent>();
+    public DbSet<ApprovalArea> ApprovalAreas => Set<ApprovalArea>();
+    public DbSet<ApproverSubstitution> ApproverSubstitutions => Set<ApproverSubstitution>();
     public DbSet<DeviceBinding> DeviceBindings => Set<DeviceBinding>();
     public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
     public DbSet<PinResetRequest> PinResetRequests => Set<PinResetRequest>();
@@ -128,6 +132,7 @@ public class AppDbContext : DbContext
             typeof(FieldVisit), typeof(FieldVisitChecklistItem), typeof(PendingPhotoUpload),
             typeof(EquipmentRecord), typeof(Structure), typeof(AccessRole), typeof(RoleAssignment),
             typeof(AuthzShadowEvent), typeof(PresenceCheck),
+            typeof(ChangeRequest), typeof(ChangeRequestEvent), typeof(ApprovalArea), typeof(ApproverSubstitution),
         };
         foreach (var t in tenantScoped)
         {
@@ -147,6 +152,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AccessRole>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<RoleAssignment>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AuthzShadowEvent>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ChangeRequestEvent>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ApprovalArea>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ApproverSubstitution>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AttendanceRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceBinding>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<DeviceChangeRequest>().HasQueryFilter(e => e.TenantId == CurrentTenantId);

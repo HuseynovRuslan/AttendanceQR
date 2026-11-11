@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using AttendanceQR.Api.Approvals;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain;
@@ -44,14 +45,17 @@ public class ManagerController : ControllerBase
     // Platform operators, by employee id — never a manager's to manage, whatever role or branch the
     // row happens to carry.
     private readonly Guid[] _operatorIds;
+    // The approval flow's deployment switch. Null (the tests that build this desk by hand) reads as off.
+    private readonly ApprovalOptions? _approvals;
 
     public ManagerController(AppDbContext db, IPasswordHasher passwordHasher, IDailySummaryService dailySummaryService,
-        AppOptions appOptions)
+        AppOptions appOptions, ApprovalOptions? approvals = null)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _dailySummaryService = dailySummaryService;
         _operatorIds = appOptions.SuperAdminIdList();
+        _approvals = approvals;
     }
 
     private Guid M15() => User.EmployeeId();
@@ -747,51 +751,21 @@ public class ManagerController : ControllerBase
         if (await CheckInExceptionsRefusalAsync(null, request, ct) is { } exceptionsRefused)
             return exceptionsRefused;
 
-        var phone = PhoneNumbers.Normalize(request.PhoneNumber);
-        var hasEmail = !string.IsNullOrWhiteSpace(request.Email);
-        if (!hasEmail && phone is null)
-            return BadRequest(new { error = "NeedEmailOrPhone" });
+        // In an approval area the change is the operator's to make, or a request's to ask for. This holds in every
+        // AuthzMode: a timekeeper who is a Manager by today's role is still sent to «Müraciət göndər» here.
+        var approval = await ApprovalGate.DirectChangeAsync(_db, _approvals, M15(), request.LocationId, ct);
+        if (approval.Outcome == ApprovalGate.Outcome.Refused)
+            return StatusCode(StatusCodes.Status403Forbidden, approval.RefusalBody);
 
-        string? email = hasEmail ? request.Email!.Trim() : null;
-        if (email is not null && await _db.Employees.AnyAsync(e => e.Email == email, ct))
-            return Conflict(new { error = "EmailAlreadyExists" });
-        if (phone is not null && await _db.Employees.AnyAsync(e => e.PhoneNumber == phone, ct))
-            return Conflict(new { error = "PhoneAlreadyExists" });
+        // The rules of a new person are NewEmployee's, the same ones an approved request goes through.
+        var (ready, error, conflict) = await NewEmployee.PrepareAsync(_db, _passwordHasher, request, ct);
+        if (error is not null)
+            return conflict ? Conflict(new { error }) : BadRequest(new { error });
+        var (employee, tempPin) = (ready!.Employee, ready.TempPin);
 
-        var tempPin = PinRules.Generate();
-        var (composedName, firstName, lastName) =
-            EmployeeName.Resolve(request.FirstName, request.LastName, request.FullName);
-        var employee = new Employee
-        {
-            FullName = composedName,
-            FirstName = firstName,
-            LastName = lastName,
-            Email = email,
-            PhoneNumber = phone,
-            FatherName = string.IsNullOrWhiteSpace(request.FatherName) ? null : request.FatherName.Trim(),
-            Position = string.IsNullOrWhiteSpace(request.Position) ? null : request.Position.Trim(),
-            BirthDate = request.BirthDate,
-            BirthYear = request.BirthDate?.Year ?? request.BirthYear,
-            LocationId = request.LocationId,
-            Role = EmployeeRole.Employee,          // a manager can only ever create an Employee
-            PasswordHash = _passwordHasher.Hash(tempPin),
-            WorkStart = ParseTimeOrNull(request.WorkStart),
-            WorkEnd = ParseTimeOrNull(request.WorkEnd),
-            PhotoExempt = request.PhotoExempt,
-            CanFieldCheckIn = request.CanFieldCheckIn,
-            QrlessCheckInOverride = request.QrlessCheckInOverride,
-            RequireGeofenceOverride = request.RequireGeofenceOverride,
-            IsActive = true,
-            ActivatedAtUtc = DateTime.UtcNow,      // temp-PIN account — no activation link
-            MustChangePin = true,
-        };
-        if (WorkCycle.Apply(employee, request.WorkCycleDays, request.WorkCycleOnDays, request.WorkCycleAnchor) is { } cycleError)
-            return BadRequest(new { error = cycleError });
-        if (await ApplyScheduleAsync(employee, request.ScheduleId) is { } scheduleError)
-            return BadRequest(new { error = scheduleError });
-
-        _db.Employees.Add(employee);
-        await RegisterPositionAsync(employee.Position, ct);
+        await NewEmployee.AddAsync(_db, employee, ct);
+        // An operator adding somebody directly in an approval area: recorded beside the requests, in the same save.
+        ApprovalGate.RecordDirect(_db, approval, M15(), employee, DateTime.UtcNow);
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { id = employee.Id, tempPin });
@@ -1252,13 +1226,8 @@ public class ManagerController : ControllerBase
 
     // --- helpers ----------------------------------------------------------------
 
-    private async Task RegisterPositionAsync(string? position, CancellationToken ct)
-    {
-        var name = position?.Trim();
-        if (string.IsNullOrEmpty(name)) return;
-        if (!await _db.JobPositions.AnyAsync(p => p.Name == name, ct))
-            _db.JobPositions.Add(new JobPosition { Name = name });
-    }
+    private Task RegisterPositionAsync(string? position, CancellationToken ct) =>
+        NewEmployee.RegisterPositionAsync(_db, position, ct);
 
     private async Task RecomputeRangeAsync(DateOnly from, DateOnly to)
     {
@@ -1269,30 +1238,7 @@ public class ManagerController : ControllerBase
     private static TimeOnly? ParseTimeOrNull(string? value) =>
         TimeOnly.TryParse(value, out var t) ? t : null;
 
-    /// <summary>
-    /// Assigns (or clears) the employee's named shift. Returns an error code, or null on success.
-    ///
-    /// A shift from another company would be an outright tenant leak, so the id is verified against
-    /// the query-filtered set rather than trusted from the body.
-    /// </summary>
-    private async Task<string?> ApplyScheduleAsync(Employee employee, Guid? scheduleId)
-    {
-        if (scheduleId is not Guid id)
-        {
-            employee.ScheduleId = null;
-            return null;
-        }
-        var schedule = await _db.Schedules
-            .Where(s => s.Id == id)
-            .Select(s => new { s.LocationId })
-            .FirstOrDefaultAsync(HttpContext.RequestAborted);
-        if (schedule is null)
-            return "ScheduleNotFound";
-        // A shift pinned to a branch is offered only to that branch's staff — see ScheduleAssignmentRule,
-        // which the manager path shares so the two can never drift apart.
-        if (ScheduleAssignmentRule.Refusal(schedule.LocationId, employee.LocationId) is { } branchRefusal)
-            return branchRefusal;
-        employee.ScheduleId = id;
-        return null;
-    }
+    /// <summary>Assigns (or clears) the employee's named shift. See NewEmployee.ApplyScheduleAsync.</summary>
+    private Task<string?> ApplyScheduleAsync(Employee employee, Guid? scheduleId) =>
+        NewEmployee.ApplyScheduleAsync(_db, employee, scheduleId, HttpContext.RequestAborted);
 }

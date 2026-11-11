@@ -21,6 +21,11 @@ public sealed record AccessRoleTemplate(
 /// The roles every company starts with. Three are migration roles that reproduce today's access exactly;
 /// three are the Bakı Abadlıq starting templates for the new way of working, unassigned until the owner
 /// gives them to people. docs/strukturlar-ve-selahiyyetler.md §3.4.
+///
+/// The three unlocked templates are copied into a company once, when its roles are first made, and are the
+/// company's to edit from then on (AccessSeeder.EnsureTemplatesAsync). A permission added here therefore reaches
+/// only companies made after it. An existing company's owner adds it on the «Rollar» screen. That is how the
+/// request rights of 2026-11-11 arrive: nobody holds them until the owner gives them.
 /// </summary>
 public static class AccessRoleTemplates
 {
@@ -53,6 +58,11 @@ public static class AccessRoleTemplates
             LeavesView, LeavesManage, SchedulesView, SchedulesManage, SchedulesAssign, PayrollView,
             LocationsView, LocationsUpdate, LocationsGeofenceManage, LocationsQrPrint,
             NotificationsStaffAlerts, TasksUse,
+            // The two request rights act only inside an approval area (2026-11-11). There, today's branch manager
+            // is the person who keeps the branch's time: instead of adding somebody directly, they send the
+            // request. Outside an area they do nothing. They also keep the manager level with a timekeeper who
+            // holds them (AccessRules.Dominates), as before the rights existed.
+            RequestsCreate, RequestsView,
         ],
         IsLocked: true, IsLegacy: true, PeersManageable: true);
 
@@ -75,6 +85,7 @@ public static class AccessRoleTemplates
             SchedulesView, SchedulesManage, SchedulesAssign, LeavesView, LeavesManage,
             LocationsView, LocationsQrPrint, FieldVisitsView, FieldVisitsManage,
             AssignmentsView, NotificationsStaffAlerts,
+            RequestsCreate, RequestsDecide, RequestsView,
         ],
         IsLocked: false, IsLegacy: false, PeersManageable: false);
 
@@ -87,13 +98,14 @@ public static class AccessRoleTemplates
             DevicesView, DevicesApprove,
             SchedulesView, SchedulesManage, SchedulesAssign, LeavesView, LeavesManage,
             FieldVisitsView, NotificationsStaffAlerts,
+            RequestsCreate, RequestsView,
         ],
         IsLocked: false, IsLegacy: false, PeersManageable: false);
 
     public static readonly AccessRoleTemplate ObserverTemplate = new(
         Observer, "Müşahidəçi",
         "Yalnız baxır: davamiyyət, hesabatlar, filialların vəziyyəti. Heç nə dəyişmir.",
-        [DashboardView, AttendanceView, AttendanceExport, EmployeesView, LeavesView, SchedulesView, LocationsView, FieldVisitsView],
+        [DashboardView, AttendanceView, AttendanceExport, EmployeesView, LeavesView, SchedulesView, LocationsView, FieldVisitsView, RequestsView],
         IsLocked: false, IsLegacy: false, PeersManageable: false);
 
     public static readonly IReadOnlyList<AccessRoleTemplate> All =
