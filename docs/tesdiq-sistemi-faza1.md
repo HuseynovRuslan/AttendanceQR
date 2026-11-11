@@ -38,6 +38,9 @@ rolda heç vaxt yoxdur və bunu test qoruyur.
    - yeni cədvəllərdə nə olsa da, heç bir təsiri yoxdur.
 2. **Sahə açarı** `ApprovalAreas`. Struktur və ya strukturun bir filialı Company Admin tərəfindən ayrı-ayrılıqda açılır.
    Sətir yoxdursa, heç nə dəyişmir.
+   - Sahə qərar verən olmadan açılmır (`NoApproverInArea`).
+   - Struktur sahəsi üçün həmin strukturda **struktur səviyyəsində** `requests.decide` daşıyan aktiv operator lazımdır.
+     Operator yalnız filiallara ayrı-ayrılıqda təyin olunubsa, struktur sahəsi açılmır, filial sahələri isə açıla bilər.
 
 ## 3. Məlumat modeli
 
@@ -191,19 +194,20 @@ işçinin əlavə edilməsi müraciət tələb edir.
   - `Down` trigger-i, funksiyanı və 4 cədvəli silir;
   - mövcud məlumata təsiri yoxdur;
   - kodu geri qaytarmaq üçün miqrasiyanı geri almaq lazım deyil: köhnə kod yeni cədvəlləri sadəcə oxumur.
-- **Yoxlanılıb (müvəqqəti lokal PostgreSQL, sonra silindi):**
-  - bütün miqrasiya zənciri sıfırdan tətbiq olundu;
+- **Yoxlanılıb, həm PostgreSQL 16.15-də (production ilə eyni versiya), həm 18-də:**
+  - müvəqqəti, ayrıca bazada yoxlanıb, sonra baza silinib. Production və staging bazalarına toxunulmayıb;
+  - bütün miqrasiya zənciri (92 miqrasiya) sıfırdan tətbiq olundu;
   - `Down` və təkrar `Up` işlədi;
-  - real bazada 23 yoxlamanın hamısı keçdi:
+  - real bazada 30 yoxlamanın hamısı keçdi:
     - iki təsdiqçinin eyni vaxtda basması (iki ayrı bağlantı);
     - unikal pozuntuda tranzaksiyanın geri qaytarılması;
     - eyni açarla və eyni şəxs üçün eyni anda yaradılan müraciətlər;
     - nömrə yarışı;
     - trigger;
     - yoxlama şərtləri;
-    - başqa şirkətin filialına və müraciətinə kompozit açar qadağası.
-- **Versiya qeydi:** yoxlama PostgreSQL 18-də aparılıb, production 16-dır. İstifadə olunan imkanların hamısı
-  (qismən indeks, `NULLS NOT DISTINCT`, `EXECUTE FUNCTION` trigger-i) 16-da var.
+    - başqa şirkətin filialına və müraciətinə kompozit açar qadağası;
+    - əvəzedici Operator: təyinat, üst-üstə düşən təyinatın rəddi, müşahidəçinin rəddi, təsdiq, birbaşa dəyişiklik qadağası;
+    - müşahidəçinin detalında şəxsi məlumatın olmaması.
 
 ## 9. Staging qəbul planı
 

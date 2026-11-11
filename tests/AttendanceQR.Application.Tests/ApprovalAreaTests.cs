@@ -74,6 +74,20 @@ public class ApprovalAreaTests
     }
 
     [Fact]
+    public async Task A_structure_needs_its_own_structure_level_operator_while_a_branch_needs_one_at_the_branch()
+    {
+        using var a = await CreateAsync();
+        // S2's operator is taken away, and somebody gets the operator role at B3 only.
+        await a.RevokeAsync(a.Operator2, AccessRoleTemplates.StructureOperator);
+        await a.GiveAsync(a.W.M2, AccessRoleTemplates.StructureOperator, branch: a.W.B3);
+
+        var structure = await a.Areas().ActivateAsync(a.W.Admin1, new ApprovalAreaBody(AccessScopeType.Structure, a.S2, null), null, default);
+        Assert.Equal(409, structure.Status);
+        Assert.Equal("NoApproverInArea", Json(structure.Body).GetProperty("error").GetString());
+        Assert.Equal(201, (await a.Areas().ActivateAsync(a.W.Admin1, new ApprovalAreaBody(AccessScopeType.Branch, null, a.W.B3), null, default)).Status);
+    }
+
+    [Fact]
     public async Task One_branch_of_a_structure_can_be_switched_on_alone()
     {
         using var a = await CreateAsync();
