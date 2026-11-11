@@ -59,6 +59,13 @@ first with a patronymic and the staff list often does not, so a fuzzy match woul
 laptops on another — and nobody goes looking for a wrong link. Unlinked rows stay in the register; the
 admin links them by hand.
 
+**Change requests are switched on twice, and never company-wide.** `Approvals__Enabled` (production's compose file
+says `"false"`) and then an `ApprovalArea` per structure or branch, made by a Company administrator. A branch in no
+structure is never in an area. Inside an area a direct change is refused to anybody who does not hold
+`requests.decide` there, read from the permission model in every AuthzMode, so a Legacy Manager role is not a way
+around it. Adding a person goes through `NewEmployee` on both paths, the desk and an approved request. See
+`docs/tesdiq-sistemi-faza1.md`.
+
 **A value in `.env` alone reaches nothing.** Compose only passes variables named in the service's
 `environment:` block. Add it in both places.
 

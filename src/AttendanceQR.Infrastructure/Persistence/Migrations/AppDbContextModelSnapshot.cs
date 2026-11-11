@@ -172,6 +172,108 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("AnnouncementRecipients");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ApprovalArea", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ActivatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ActivatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeactivatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeactivatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("StructureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "LocationId");
+
+                    b.HasIndex("TenantId", "StructureId");
+
+                    b.HasIndex("TenantId", "Scope", "StructureId", "LocationId")
+                        .IsUnique()
+                        .HasFilter("\"DeactivatedAtUtc\" IS NULL");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "Scope", "StructureId", "LocationId"), false);
+
+                    b.ToTable("ApprovalAreas", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ApprovalAreas_Scope", "(\"Scope\" = 1 AND \"StructureId\" IS NOT NULL AND \"LocationId\" IS NULL) OR (\"Scope\" = 2 AND \"LocationId\" IS NOT NULL AND \"StructureId\" IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ApproverSubstitution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("EndsAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StructureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubstituteEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubstituteEmployeeId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "StructureId", "EndsAtUtc")
+                        .HasFilter("\"RevokedAtUtc\" IS NULL");
+
+                    b.ToTable("ApproverSubstitutions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ApproverSubstitutions_Period", "\"EndsAtUtc\" > \"StartsAtUtc\"");
+                        });
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.AttendanceRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -423,6 +525,166 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("AuthzShadowEvents", (string)null);
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ChangeRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AppliedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecidedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("DedupeKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("Direct")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("NotifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateOnly?>("RemindedOn")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("RequestedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("StructureIdAtCreation")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .HasFilter("\"EmployeeId\" IS NOT NULL");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("TenantId", "LocationId");
+
+                    b.HasIndex("TenantId", "Number")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "StructureIdAtCreation");
+
+                    b.HasIndex("TenantId", "RequestedByEmployeeId", "CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "Type", "DedupeKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ChangeRequests_OnePending")
+                        .HasFilter("\"Status\" = 0 AND \"DedupeKey\" IS NOT NULL");
+
+                    b.HasIndex("TenantId", "Status", "LocationId", "CreatedAtUtc");
+
+                    b.ToTable("ChangeRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ChangeRequests_Decision", "(\"Status\" = 0 AND \"DecidedAtUtc\" IS NULL AND \"DecidedByEmployeeId\" IS NULL AND \"AppliedAtUtc\" IS NULL) OR (\"Status\" IN (2, 3) AND \"DecidedAtUtc\" IS NOT NULL AND \"DecidedByEmployeeId\" IS NOT NULL AND \"AppliedAtUtc\" IS NULL) OR (\"Status\" = 1 AND \"DecidedAtUtc\" IS NOT NULL AND \"DecidedByEmployeeId\" IS NOT NULL AND \"AppliedAtUtc\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_ChangeRequests_Direct", "NOT \"Direct\" OR \"Status\" = 1");
+
+                            t.HasCheckConstraint("CK_ChangeRequests_Number", "\"Direct\" OR \"Number\" IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_ChangeRequests_RejectReason", "\"Status\" <> 2 OR length(btrim(coalesce(\"DecisionNote\", ''))) > 0");
+
+                            t.HasCheckConstraint("CK_ChangeRequests_Status", "\"Status\" IN (0, 1, 2, 3)");
+                        });
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ChangeRequestEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActorEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ChangeRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Data")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangeRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ChangeRequestEvents_OneDecision")
+                        .HasFilter("\"Kind\" IN (1, 2, 3, 6)");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "ChangeRequestId", "AtUtc");
+
+                    b.ToTable("ChangeRequestEvents", (string)null);
                 });
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.DailySummary", b =>
@@ -2067,6 +2329,49 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ApprovalArea", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Location", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "LocationId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Structure", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "StructureId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ApproverSubstitution", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("SubstituteEmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Structure", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "StructureId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.AttendanceRecord", b =>
                 {
                     b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
@@ -2108,6 +2413,49 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ChangeRequest", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Location", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "LocationId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Structure", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "StructureIdAtCreation")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ChangeRequestEvent", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.ChangeRequest", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ChangeRequestId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

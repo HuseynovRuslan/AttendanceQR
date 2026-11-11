@@ -15,7 +15,7 @@ public class AccessTemplatesTests
     [
         DashboardView, AttendanceView, AttendancePhotosView, AttendanceExport, EmployeesView, EmployeesContactsView,
         DevicesView, FieldVisitsView, LeavesView, SchedulesView, PayrollView, LocationsView, StructuresView,
-        AssignmentsView, EquipmentView, BillingView, DiagView,
+        AssignmentsView, EquipmentView, BillingView, DiagView, RequestsView,
     ];
 
     [Fact]
@@ -47,6 +47,9 @@ public class AccessTemplatesTests
             LeavesView, LeavesManage, SchedulesView, SchedulesManage, SchedulesAssign, PayrollView,
             LocationsView, LocationsUpdate, LocationsGeofenceManage, LocationsQrPrint,
             NotificationsStaffAlerts, TasksUse,
+            // Not today's: the request rights, which do nothing outside an approval area. Inside one, today's
+            // manager asks instead of adding (2026-11-11). See ApprovalScope.
+            RequestsCreate, RequestsView,
         ];
 
         Assert.Equal(today.Order(), AccessRoleTemplates.LegacyManagerTemplate.Permissions.Order());

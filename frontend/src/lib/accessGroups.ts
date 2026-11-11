@@ -17,6 +17,7 @@ const GROUPS: { title: string; prefixes: string[] }[] = [
   { title: 'Növbələr', prefixes: ['schedules'] },
   { title: 'Maaş', prefixes: ['payroll'] },
   { title: 'Filiallar', prefixes: ['locations'] },
+  { title: 'Müraciətlər və təsdiq', prefixes: ['requests'] },
   { title: 'Bildiriş və tapşırıqlar', prefixes: ['notifications', 'tasks'] },
   { title: 'Şirkət ayarları', prefixes: ['holidays', 'positions', 'announcements', 'votes', 'equipment', 'billing', 'diag'] },
   { title: 'Struktur və səlahiyyətlər', prefixes: ['structures', 'assignments', 'roles'] },

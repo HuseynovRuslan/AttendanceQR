@@ -104,5 +104,14 @@ public enum AuditEventType
 
     // Presence checks («Mövcudluq yoxlaması») were switched on — for how long — or off for this person. Written
     // against the person; the reason names who did it.
-    PresenceCheckSettingChanged = 39
+    PresenceCheckSettingChanged = 39,
+
+    // An approval area (a structure, or one branch of one) was switched on or off: from then on its changes go
+    // through requests, or are made directly again. Written against the person who did it; the reason names the
+    // area. See ApprovalArea.
+    ApprovalAreaChanged = 40,
+
+    // A Company administrator was set to stand in for a structure's operator until a given time, or the stand-in
+    // was ended early. See ApproverSubstitution.
+    ApproverSubstitutionChanged = 41
 }
