@@ -1,12 +1,15 @@
 namespace AttendanceQR.Domain.Entities;
 
 /// <summary>
-/// A Company administrator standing in for a structure's operator for a limited time, for example while the
-/// operator is on leave and the structure's requests must not wait.
+/// An existing Operator deciding one more structure's requests for a limited time, for example while that
+/// structure's own operator is on leave and its requests must not wait.
 ///
-/// The owner's rule (2026-11-11): only a Company administrator stands in, only through one of these, and the
-/// stand-in ends by itself at <see cref="EndsAtUtc"/>. Nobody else's right ever widens on its own. A structure's
-/// observer never starts deciding because the operator is away.
+/// The owner's rule (2026-11-11, revised the same day): a Company administrator picks somebody who is already an
+/// Operator elsewhere (holds «requests.decide» over a structure or a branch) and names the structure and the end.
+/// It lasts at most 31 days and ends by itself at <see cref="EndsAtUtc"/>. It gives the right to decide that
+/// structure's requests and to read what is decided, and nothing else: no direct changes there, no request of
+/// one's own there, no other screen. Nobody's right ever widens on its own: an observer is never made an
+/// approver, and a person's own request stays somebody else's to decide.
 ///
 /// A substitution is revoked, never deleted.
 /// </summary>

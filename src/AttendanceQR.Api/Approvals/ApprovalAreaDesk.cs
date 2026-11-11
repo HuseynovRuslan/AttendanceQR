@@ -13,8 +13,8 @@ public sealed record SubstitutionBody(
     Guid StructureId, Guid SubstituteEmployeeId, DateTime? StartsAtUtc, DateTime EndsAtUtc, string? Note);
 
 /// <summary>
-/// Switching the approval flow on and off, area by area, and the Company administrator's time-limited stand-in
-/// for an operator. Both are the Company administrator's alone. Each change is one audit line.
+/// Switching the approval flow on and off, area by area, and an Operator's time-limited stand-in for another
+/// structure. Both are the Company administrator's alone. Each change is one audit line.
 ///
 /// Switching on is safe by construction:
 /// <list type="bullet">
@@ -196,8 +196,8 @@ public sealed class ApprovalAreaDesk
     public async Task<DeskResult> CreateSubstitutionAsync(Guid callerId, SubstitutionBody body, string? ip, CancellationToken ct)
     {
         var now = Now;
-        var graph = await AccessGraph.LoadAsync(_db, ct);
-        if (!AccessProjection.IsCompanyAdmin(graph.For(callerId)))
+        var scope = await ApprovalScope.LoadAsync(_db, now, ct);
+        if (!AccessProjection.IsCompanyAdmin(scope.AccessOf(callerId)))
             return Forbidden();
         if ((body.Note?.Trim().Length ?? 0) > ChangeRequestDesk.MaxNote)
             return new DeskResult(400, new { error = "NoteTooLong" });
@@ -214,10 +214,13 @@ public sealed class ApprovalAreaDesk
             .FirstOrDefaultAsync(ct);
         if (substitute is null || !substitute.IsActive)
             return new DeskResult(404, new { error = "EmployeeNotFound" });
-        // The owner's rule 6: only a Company administrator stands in. An observer or a timekeeper is never made
-        // an approver this way.
-        if (!AccessProjection.IsCompanyAdmin(graph.For(body.SubstituteEmployeeId)))
-            return new DeskResult(409, new { error = "SubstituteMustBeCompanyAdmin" });
+        // The owner's rule 6: the stand-in is somebody who is already an Operator. An observer, a timekeeper or a
+        // Company administrator who decides nowhere is never made an approver this way.
+        if (!scope.IsOperator(body.SubstituteEmployeeId))
+            return new DeskResult(409, new { error = "SubstituteMustBeOperator" });
+        // Already deciding this structure's requests: a stand-in would add nothing.
+        if (scope.DecidesStructure(body.SubstituteEmployeeId, body.StructureId))
+            return new DeskResult(409, new { error = "AlreadyApproverOfStructure" });
 
         var starts = DateTime.SpecifyKind(body.StartsAtUtc ?? now, DateTimeKind.Utc);
         var ends = DateTime.SpecifyKind(body.EndsAtUtc, DateTimeKind.Utc);
@@ -225,6 +228,11 @@ public sealed class ApprovalAreaDesk
             return new DeskResult(400, new { error = "InvalidPeriod" });
         if (ends - starts > MaxStandIn)
             return new DeskResult(400, new { error = "SubstitutionTooLong" });
+        // One stand-in per person and structure at a time. To lengthen one, end it and give a new one, so the
+        // history says what happened.
+        if (await _db.ApproverSubstitutions.AnyAsync(s => s.RevokedAtUtc == null && s.StructureId == body.StructureId
+                && s.SubstituteEmployeeId == body.SubstituteEmployeeId && s.StartsAtUtc < ends && s.EndsAtUtc > starts, ct))
+            return new DeskResult(409, new { error = "SubstitutionOverlaps" });
 
         var row = new ApproverSubstitution
         {

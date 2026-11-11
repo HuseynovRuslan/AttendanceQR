@@ -1,8 +1,10 @@
 using System.Text.Json;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -491,10 +493,13 @@ public sealed class ChangeRequestDesk
         var names = await NamesAsync(
             lines.Select(e => e.ActorEmployeeId ?? Guid.Empty)
                 .Append(request.RequestedByEmployeeId).Append(request.DecidedByEmployeeId ?? Guid.Empty), ct);
+        var seesContacts = await SeesContactsAsync(callerId, request, scope, ct);
         return new DeskResult(200, new
         {
             request = Item(request, scope, names, callerId, Now),
-            payload = JsonSerializer.Deserialize<JsonElement>(request.Payload),
+            payload = PayloadFor(request, seesContacts),
+            // The screen says «gizlədilib» rather than showing an empty field as if nothing had been written.
+            contactsHidden = !seesContacts,
             note = request.Note,
             decisionNote = request.DecisionNote,
             employeeId = request.EmployeeId,
@@ -507,6 +512,52 @@ public sealed class ChangeRequestDesk
                 data = e.Data is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(e.Data),
             }),
         });
+    }
+
+    /// <summary>
+    /// Whether the caller reads the person's phone number, e-mail and birth date on this request. The line is the
+    /// staff card's (ManagerController.Employee, EnforcedRows.SeesContacts): «employees.contacts.view» over the
+    /// branch, because a phone number or an e-mail here is half of somebody's login. Seeing a request is not
+    /// enough. An observer holds «requests.view» and reads the name, the branch and the history, never the
+    /// numbers.
+    ///
+    /// Two more people read them, because the request is theirs. The person who asked wrote them. The person
+    /// deciding a pending request must see what they approve: the structure's operator, or an operator standing
+    /// in, who may hold no contact right over that branch otherwise. Once decided, the ordinary line applies.
+    ///
+    /// If the account the request made has since become somebody above plain staff, only the person and the
+    /// Company administrator read them, as on the card.
+    /// </summary>
+    private async Task<bool> SeesContactsAsync(Guid callerId, ChangeRequest request, ApprovalScope scope, CancellationToken ct)
+    {
+        var access = scope.AccessOf(callerId);
+        if (request.EmployeeId is Guid made)
+        {
+            if (made == callerId)
+                return true;
+            var role = await _db.Employees.AsNoTracking()
+                .Where(e => e.Id == made).Select(e => (EmployeeRole?)e.Role).FirstOrDefaultAsync(ct);
+            if (role is not null and not EmployeeRole.Employee)
+                return AccessProjection.IsCompanyAdmin(access);
+        }
+        if (request.RequestedByEmployeeId == callerId)
+            return true;
+        if (request.Status == ChangeRequestStatus.Pending && !request.Direct && scope.IsApprover(callerId, request.LocationId))
+            return true;
+        return access.Covers(AccessPermissions.EmployeesContactsView, request.LocationId);
+    }
+
+    /// <summary>The request's payload as this caller may read it. Without the contact right, the phone number, the
+    /// e-mail and the birth date are removed on the server, never merely hidden by the screen. A type this code
+    /// does not know how to redact is not shown at all to somebody who may not read contacts: closed by default.</summary>
+    internal static JsonElement? PayloadFor(ChangeRequest request, bool seesContacts)
+    {
+        if (request.Type == ChangeRequestType.EmployeeCreate
+            && JsonSerializer.Deserialize<EmployeeCreatePayload>(request.Payload, ApprovalGate.Json) is { } person)
+            return JsonSerializer.SerializeToElement(
+                seesContacts ? person : person with { PhoneNumber = null, Email = null, BirthDate = null },
+                ApprovalGate.Json);
+        return seesContacts ? JsonSerializer.Deserialize<JsonElement>(request.Payload) : null;
     }
 
     /// <summary>What the caller can do where requests are on, branch by branch: for the screen to offer «Müraciət

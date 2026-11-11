@@ -22,7 +22,7 @@ namespace AttendanceQR.Api.Approvals;
 /// is switched on. A branch with no structure never is (rule 1). Its changes stay direct, and nobody else is asked.</item>
 /// <item>A person asks («requests.create») where they hold that right, and only inside an area.</item>
 /// <item>A person decides a request when they hold «requests.decide» through an assignment to the request's
-/// structure or branch, or when they are a Company administrator standing in for that structure right now
+/// structure or branch, or when they are an Operator standing in for that structure right now
 /// (<see cref="ApproverSubstitution"/>, rule 6). Holding the right company-wide is not enough on its own: the
 /// Company administrator is not the daily approver. Nobody decides their own request.</item>
 /// <item>A person acts directly in an area when they hold «requests.decide» there at any level: the operator, and
@@ -101,12 +101,26 @@ public sealed class ApprovalScope
             && g.CoversBranch(locationId))
         || StandsIn(callerId, locationId);
 
-    /// <summary>A live stand-in for the branch's structure, and still a Company administrator. A stand-in given to
-    /// somebody who has since lost the role is worth nothing.</summary>
+    /// <summary>A live stand-in for the branch's structure, held by somebody who is still an Operator. A stand-in
+    /// given to somebody who has since lost the role is worth nothing. It reaches deciding and reading the
+    /// structure's requests, and nothing else: <see cref="MayActDirectly"/> and <see cref="MayRequest"/> do not
+    /// read it.</summary>
     public bool StandsIn(Guid callerId, Guid locationId) =>
         Branch(locationId) is { StructureId: Guid structure }
         && _standIns.Any(s => s.StructureId == structure && s.SubstituteEmployeeId == callerId)
-        && AccessProjection.IsCompanyAdmin(AccessOf(callerId));
+        && IsOperator(callerId);
+
+    /// <summary>An Operator: holds «requests.decide» through an assignment to a structure or a branch. The Company
+    /// administrator's company-wide right does not make one, and neither does «requests.view» (an observer).</summary>
+    public bool IsOperator(Guid employeeId) =>
+        AccessOf(employeeId).Grants.Any(g =>
+            g.Scope != AccessScopeType.Company && g.Permissions.Contains(AccessPermissions.RequestsDecide));
+
+    /// <summary>Decides this structure's requests through an assignment of their own (not a stand-in).</summary>
+    public bool DecidesStructure(Guid employeeId, Guid structureId) =>
+        AccessOf(employeeId).Grants.Any(g =>
+            g.Scope == AccessScopeType.Structure && g.StructureId == structureId
+            && g.Permissions.Contains(AccessPermissions.RequestsDecide));
 
     /// <summary>Everybody who decides this branch's requests now. These are the people notified about them. The
     /// caller removes anybody inactive and the person who asked.</summary>

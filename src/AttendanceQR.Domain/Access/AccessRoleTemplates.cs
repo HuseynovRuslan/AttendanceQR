@@ -58,10 +58,11 @@ public static class AccessRoleTemplates
             LeavesView, LeavesManage, SchedulesView, SchedulesManage, SchedulesAssign, PayrollView,
             LocationsView, LocationsUpdate, LocationsGeofenceManage, LocationsQrPrint,
             NotificationsStaffAlerts, TasksUse,
-            // The two request rights act only inside an approval area (2026-11-11). There, today's branch manager
-            // is the person who keeps the branch's time: instead of adding somebody directly, they send the
-            // request. Outside an area they do nothing. They also keep the manager level with a timekeeper who
-            // holds them (AccessRules.Dominates), as before the rights existed.
+            // Transition rights, approved by the owner on 2026-11-11. They act only inside an approval area, where
+            // today's branch manager is the person who keeps the branch's time: instead of adding somebody
+            // directly, they send the request. Outside an area they do nothing. Never «requests.decide»: today's
+            // manager asks and does not approve. They also keep the manager level with a timekeeper who holds
+            // them (AccessRules.Dominates), as before the rights existed.
             RequestsCreate, RequestsView,
         ],
         IsLocked: true, IsLegacy: true, PeersManageable: true);

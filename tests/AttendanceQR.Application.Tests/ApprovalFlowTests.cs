@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AttendanceQR.Api.Approvals;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
@@ -264,6 +265,95 @@ public class ApprovalFlowTests
         var foreign = await a.Desk().CreateEmployeeAsync(a.Timekeeper, Person(a.W.OtherBranch, "556666666"), null, default);
         Assert.Equal(404, foreign.Status);
         Assert.Equal("LocationNotFound", Json(foreign.Body).GetProperty("error").GetString());
+    }
+
+    // --- what a reader of a request may see -------------------------------------------------------------
+
+    private static EmployeeCreateRequestBody PersonWithDetails(Guid branch) =>
+        new("Aysel", "Məmmədova", "Rəşid", "551234567", "aysel@example.az", null, new DateOnly(1994, 5, 17), branch, null, "Yeni işçi");
+
+    private static async Task<JsonElement> PayloadAs(ApprovalWorld a, Guid caller, Guid id) =>
+        Json((await a.Desk().DetailAsync(caller, id, default)).Body);
+
+    [Fact]
+    public async Task An_observer_reads_the_request_but_never_the_persons_phone_email_or_birth_date()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+        var id = IdOf(await a.Desk().CreateEmployeeAsync(a.Timekeeper, PersonWithDetails(a.W.B1), null, default));
+
+        var observer = await PayloadAs(a, a.Observer, id);
+        Assert.True(observer.GetProperty("contactsHidden").GetBoolean());
+        var hidden = observer.GetProperty("payload");
+        Assert.Equal("Aysel", hidden.GetProperty("firstName").GetString());
+        Assert.Equal("Rəşid", hidden.GetProperty("fatherName").GetString());
+        Assert.Equal(JsonValueKind.Null, hidden.GetProperty("phoneNumber").ValueKind);
+        Assert.Equal(JsonValueKind.Null, hidden.GetProperty("email").ValueKind);
+        Assert.Equal(JsonValueKind.Null, hidden.GetProperty("birthDate").ValueKind);
+        // Not anywhere else in the answer either.
+        var raw = observer.GetRawText();
+        Assert.DoesNotContain("551234567", raw);
+        Assert.DoesNotContain("aysel@example.az", raw);
+        Assert.DoesNotContain("1994-05-17", raw);
+
+        // The person who asked, the operator who decides, today's manager of the branch and the Company
+        // administrator all hold the right (or wrote it), and read everything.
+        foreach (var reader in new[] { a.Timekeeper, a.Operator1, a.LegacyManager, a.W.Admin1 })
+        {
+            var full = await PayloadAs(a, reader, id);
+            Assert.False(full.GetProperty("contactsHidden").GetBoolean());
+            Assert.Equal("551234567", full.GetProperty("payload").GetProperty("phoneNumber").GetString());
+            Assert.Equal("aysel@example.az", full.GetProperty("payload").GetProperty("email").GetString());
+            Assert.Equal("1994-05-17", full.GetProperty("payload").GetProperty("birthDate").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task A_stand_in_reads_what_they_approve_while_it_waits_and_not_after()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+        var id = IdOf(await a.Desk().CreateEmployeeAsync(a.Timekeeper, PersonWithDetails(a.W.B1), null, default));
+        Assert.Equal(201, (await a.Areas().CreateSubstitutionAsync(a.W.Admin1,
+            new SubstitutionBody(a.S1, a.Operator2, null, a.Clock.Now.UtcDateTime.AddDays(2), null), null, default)).Status);
+
+        // M5 holds no contact right at B1. Deciding, they see what they decide.
+        Assert.False((await PayloadAs(a, a.Operator2, id)).GetProperty("contactsHidden").GetBoolean());
+        Assert.Equal(200, (await a.Desk().ApproveAsync(a.Operator2, id, null, default)).Status);
+        // Decided: the ordinary line again.
+        Assert.True((await PayloadAs(a, a.Operator2, id)).GetProperty("contactsHidden").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Once_the_account_is_above_plain_staff_only_the_company_administrator_reads_its_numbers()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+        var id = IdOf(await a.Desk().CreateEmployeeAsync(a.Timekeeper, PersonWithDetails(a.W.B1), null, default));
+        Assert.Equal(200, (await a.Desk().ApproveAsync(a.Operator1, id, null, default)).Status);
+        using (var db = a.Db())
+        {
+            db.Employees.Single(e => e.PhoneNumber == "551234567").Role = EmployeeRole.Manager;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True((await PayloadAs(a, a.Timekeeper, id)).GetProperty("contactsHidden").GetBoolean());
+        Assert.True((await PayloadAs(a, a.Operator1, id)).GetProperty("contactsHidden").GetBoolean());
+        Assert.False((await PayloadAs(a, a.W.Admin1, id)).GetProperty("contactsHidden").GetBoolean());
+    }
+
+    [Fact]
+    public void Todays_manager_and_the_new_roles_except_the_operator_never_decide()
+    {
+        // The owner's approval of 2026-11-11: the request rights on today's manager are a transition, and
+        // never the right to decide.
+        Assert.DoesNotContain(AccessPermissions.RequestsDecide, AccessRoleTemplates.LegacyManagerTemplate.Permissions);
+        Assert.Contains(AccessPermissions.RequestsCreate, AccessRoleTemplates.LegacyManagerTemplate.Permissions);
+        Assert.Contains(AccessPermissions.RequestsView, AccessRoleTemplates.LegacyManagerTemplate.Permissions);
+        Assert.DoesNotContain(AccessPermissions.RequestsDecide, AccessRoleTemplates.PinHelperTemplate.Permissions);
+        Assert.DoesNotContain(AccessPermissions.RequestsDecide, AccessRoleTemplates.TimekeeperTemplate.Permissions);
+        Assert.DoesNotContain(AccessPermissions.RequestsDecide, AccessRoleTemplates.ObserverTemplate.Permissions);
+        Assert.Contains(AccessPermissions.RequestsDecide, AccessRoleTemplates.StructureOperatorTemplate.Permissions);
     }
 
     // --- once, and only once ------------------------------------------------------------------------------

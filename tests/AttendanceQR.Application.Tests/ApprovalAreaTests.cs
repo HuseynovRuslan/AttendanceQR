@@ -133,63 +133,128 @@ public class ApprovalAreaTests
         Assert.All(op.GetProperty("branches").EnumerateArray(), b => Assert.True(b.GetProperty("isApprover").GetBoolean()));
     }
 
-    // --- a Company administrator standing in --------------------------------------------------------------
+    // --- an Operator standing in for another structure ---------------------------------------------------
+
+    /// <summary>Operator2 (S2's own operator) is named by the Company administrator to decide S1's requests.</summary>
+    private static async Task<Guid> StandInAsync(ApprovalWorld a, Guid operatorId, Guid structure, TimeSpan length)
+    {
+        var result = await a.Areas().CreateSubstitutionAsync(a.W.Admin2,
+            new SubstitutionBody(structure, operatorId, null, a.Clock.Now.UtcDateTime + length, "Rasim məzuniyyətdədir"), null, default);
+        Assert.True(result.Status == 201, $"stand-in answered {result.Status}: {Json(result.Body)}");
+        return Json(result.Body).GetProperty("id").GetGuid();
+    }
 
     [Fact]
-    public async Task A_stand_in_lets_a_company_administrator_decide_until_it_ends_by_itself()
+    public async Task Another_structures_operator_stands_in_and_the_stand_in_ends_by_itself()
     {
         using var a = await CreateAsync();
         await a.ActivateAsync(structure: a.S1);
         var first = IdOf(await a.Desk().CreateEmployeeAsync(a.Timekeeper, Person(a.W.B1, "551000011"), null, default));
         var second = IdOf(await a.Desk().CreateEmployeeAsync(a.Timekeeper, Person(a.W.B1, "551000012"), null, default));
 
-        var standIn = await a.Areas().CreateSubstitutionAsync(a.W.Admin2,
-            new SubstitutionBody(a.S1, a.W.Admin1, null, a.Clock.Now.UtcDateTime.AddDays(3), "Rasim məzuniyyətdədir"), null, default);
-        Assert.Equal(201, standIn.Status);
+        // Before: S1's requests are not theirs.
+        Assert.Equal(404, (await a.Desk().ApproveAsync(a.Operator2, first, null, default)).Status);
+
+        await StandInAsync(a, a.Operator2, a.S1, TimeSpan.FromDays(3));
         Assert.Single(a.Db().AuditLogs.AsNoTracking().Where(l => l.EventType == AuditEventType.ApproverSubstitutionChanged));
 
-        Assert.Equal(200, (await a.Desk().ApproveAsync(a.W.Admin1, first, null, default)).Status);
-        // Only for the structure it was given for: S2 is not theirs to decide.
-        await a.ActivateAsync(structure: a.S2);
-        var s2 = IdOf(await a.Desk().CreateEmployeeAsync(a.Operator2, Person(a.W.B3, "551000013"), null, default));
-        Assert.Equal(403, (await a.Desk().ApproveAsync(a.W.Admin1, s2, null, default)).Status);
+        // They see the queue and decide.
+        var me = Json((await a.Desk().MeAsync(a.Operator2, default)).Body);
+        Assert.Equal(2, me.GetProperty("queueCount").GetInt32());
+        Assert.Equal(200, (await a.Desk().ApproveAsync(a.Operator2, first, null, default)).Status);
 
         // Three days later it is over, with nobody having to remember to end it.
         a.Clock.Now = a.Clock.Now.AddDays(3).AddMinutes(1);
-        Assert.Equal(403, (await a.Desk().ApproveAsync(a.W.Admin1, second, null, default)).Status);
+        Assert.Equal(404, (await a.Desk().ApproveAsync(a.Operator2, second, null, default)).Status);
+        Assert.Equal(200, (await a.Desk().ApproveAsync(a.Operator1, second, null, default)).Status);
     }
 
     [Fact]
-    public async Task Only_a_company_administrator_stands_in_and_only_for_a_while()
+    public async Task A_stand_in_decides_and_reads_requests_and_nothing_more()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+        await StandInAsync(a, a.Operator2, a.S1, TimeSpan.FromDays(5));
+
+        // No direct change at the structure's branch, and no request of their own there.
+        using (var db = a.Db())
+            Assert.Equal(ApprovalGate.Outcome.Refused,
+                (await ApprovalGate.DirectChangeAsync(db, a.On, a.Operator2, a.W.B1, default)).Outcome);
+        Assert.Equal(403, (await a.Desk().CreateEmployeeAsync(a.Operator2, Person(a.W.B1, "551000031"), null, default)).Status);
+
+        // Their own request at a branch of the structure (M5 is today's manager of B2) stays somebody else's.
+        var own = IdOf(await a.Desk().CreateEmployeeAsync(a.Operator2, Person(a.W.B2, "551000032"), null, default));
+        var self = await a.Desk().ApproveAsync(a.Operator2, own, null, default);
+        Assert.Equal(403, self.Status);
+        Assert.Equal("SelfDecisionNotAllowed", Json(self.Body).GetProperty("error").GetString());
+        Assert.Equal(200, (await a.Desk().ApproveAsync(a.Operator1, own, null, default)).Status);
+
+        // A stand-in reaches one structure, the one it was given for. S2's requests are still not S1's operator's to
+        // decide (M4 sees them as today's manager of B3, and is told so).
+        await a.ActivateAsync(structure: a.S2);
+        var s2 = IdOf(await a.Desk().CreateEmployeeAsync(a.Operator2, Person(a.W.B3, "551000033"), null, default));
+        var other = await a.Desk().ApproveAsync(a.Operator1, s2, null, default);
+        Assert.Equal(403, other.Status);
+        Assert.Equal("NotApprover", Json(other.Body).GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Only_an_existing_operator_is_named_and_only_for_a_while()
     {
         using var a = await CreateAsync();
         var until = a.Clock.Now.UtcDateTime.AddDays(5);
+        async Task<(int Status, string? Error)> Name(Guid caller, Guid who, Guid structure, DateTime ends)
+        {
+            var r = await a.Areas().CreateSubstitutionAsync(caller, new SubstitutionBody(structure, who, null, ends, null), null, default);
+            return (r.Status, Json(r.Body).TryGetProperty("error", out var e) ? e.GetString() : null);
+        }
 
-        // An observer is never made an approver, this way or any other.
-        var observer = await a.Areas().CreateSubstitutionAsync(a.W.Admin1, new SubstitutionBody(a.S1, a.Observer, null, until, null), null, default);
-        Assert.Equal(409, observer.Status);
-        Assert.Equal("SubstituteMustBeCompanyAdmin", Json(observer.Body).GetProperty("error").GetString());
-        // Nor does an operator hand out stand-ins.
-        Assert.Equal(403, (await a.Areas().CreateSubstitutionAsync(a.Operator1, new SubstitutionBody(a.S1, a.W.Admin1, null, until, null), null, default)).Status);
-        // Longer than a month is a new operator, not a stand-in; and it must end in the future.
-        Assert.Equal(400, (await a.Areas().CreateSubstitutionAsync(a.W.Admin1,
-            new SubstitutionBody(a.S1, a.W.Admin1, null, a.Clock.Now.UtcDateTime.AddDays(32), null), null, default)).Status);
-        Assert.Equal(400, (await a.Areas().CreateSubstitutionAsync(a.W.Admin1,
-            new SubstitutionBody(a.S1, a.W.Admin1, null, a.Clock.Now.UtcDateTime.AddHours(-1), null), null, default)).Status);
+        // An observer, a timekeeper or a Company administrator who decides nowhere is never made an approver.
+        Assert.Equal((409, "SubstituteMustBeOperator"), await Name(a.W.Admin1, a.Observer, a.S1, until));
+        Assert.Equal((409, "SubstituteMustBeOperator"), await Name(a.W.Admin1, a.Timekeeper, a.S1, until));
+        Assert.Equal((409, "SubstituteMustBeOperator"), await Name(a.W.Admin1, a.W.Admin2, a.S1, until));
+        // S1's own operator already decides S1.
+        Assert.Equal((409, "AlreadyApproverOfStructure"), await Name(a.W.Admin1, a.Operator1, a.S1, until));
+        // An operator does not name stand-ins; the Company administrator does.
+        Assert.Equal((403, "CompanyAdminOnly"), await Name(a.Operator1, a.Operator2, a.S1, until));
+        // Longer than 31 days is a new operator, not a stand-in; and it must end in the future.
+        Assert.Equal((400, "SubstitutionTooLong"), await Name(a.W.Admin1, a.Operator2, a.S1, a.Clock.Now.UtcDateTime.AddDays(32)));
+        Assert.Equal((400, "InvalidPeriod"), await Name(a.W.Admin1, a.Operator2, a.S1, a.Clock.Now.UtcDateTime.AddHours(-1)));
         Assert.Empty(a.Db().ApproverSubstitutions.AsNoTracking());
+
+        // Exactly 31 days is allowed; a second one over the same days is refused.
+        Assert.Equal(201, (await Name(a.W.Admin1, a.Operator2, a.S1, a.Clock.Now.UtcDateTime.AddDays(31))).Status);
+        Assert.Equal((409, "SubstitutionOverlaps"), await Name(a.W.Admin1, a.Operator2, a.S1, until));
     }
 
     [Fact]
-    public async Task A_stand_in_ended_early_decides_nothing_more()
+    public async Task A_stand_in_ended_early_or_whose_holder_stopped_being_an_operator_decides_nothing()
     {
         using var a = await CreateAsync();
         await a.ActivateAsync(structure: a.S1);
         var id = IdOf(await a.Desk().CreateEmployeeAsync(a.Timekeeper, Person(a.W.B1), null, default));
-        var standIn = Json((await a.Areas().CreateSubstitutionAsync(a.W.Admin2,
-            new SubstitutionBody(a.S1, a.W.Admin1, null, a.Clock.Now.UtcDateTime.AddDays(2), null), null, default)).Body).GetProperty("id").GetGuid();
 
+        var standIn = await StandInAsync(a, a.Operator2, a.S1, TimeSpan.FromDays(2));
         Assert.Equal(200, (await a.Areas().RevokeSubstitutionAsync(a.W.Admin2, standIn, null, default)).Status);
-        Assert.Equal(403, (await a.Desk().ApproveAsync(a.W.Admin1, id, null, default)).Status);
+        Assert.Equal(404, (await a.Desk().ApproveAsync(a.Operator2, id, null, default)).Status);
+
+        await StandInAsync(a, a.Operator2, a.S1, TimeSpan.FromDays(2));
+        await a.RevokeAsync(a.Operator2, AccessRoleTemplates.StructureOperator);
+        Assert.Equal(404, (await a.Desk().ApproveAsync(a.Operator2, id, null, default)).Status);
+        Assert.Equal(ChangeRequestStatus.Pending, a.Request(id).Status);
+    }
+
+    [Fact]
+    public async Task A_stand_in_hears_about_the_structures_new_requests()
+    {
+        using var a = await CreateAsync();
+        await a.ActivateAsync(structure: a.S1);
+        await StandInAsync(a, a.Operator2, a.S1, TimeSpan.FromDays(2));
+        await a.Desk().CreateEmployeeAsync(a.Timekeeper, Person(a.W.B1), null, default);
+        var push = new Recorder();
+
+        await SweepAsync(a, push, a.Clock.Now.UtcDateTime);
+        Assert.Equal(new[] { a.Operator1, a.Operator2 }.Order(), Assert.Single(push.Sent).To.Order());
     }
 
     // --- telling the approvers ----------------------------------------------------------------------------
