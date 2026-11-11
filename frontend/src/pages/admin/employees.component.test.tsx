@@ -286,6 +286,29 @@ describe('a branch manager lets somebody go from the row (2026-11-04)', () => {
     confirm.mockRestore()
   })
 
+  it('a refused check-in exception says so in Azerbaijani, and a legacy manager’s controls stay open', async () => {
+    managerRoutes(OK(ROSTER))
+    net.routes['GET /api/manager/employees/a'] = OK({ ...managerRow('a', 'Aynur Həsənova'), email: 'aynur@test.local' })
+    net.routes['PUT /api/manager/employees/a'] = { status: 403, data: { error: 'CheckInRulesNotAllowed' } }
+    renderPage()
+
+    const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    await act(async () => {
+      fireEvent.click(within(row).getByText('Redaktə'))
+    })
+    const save = await screen.findByRole('button', { name: /Yadda saxla/ })
+    // Legacy: today's manager holds both rights over their branches — nothing is locked.
+    const field = screen.getByText('Sahə girişi icazəsi').closest('label')!.querySelector('input') as HTMLInputElement
+    expect(field.disabled).toBe(false)
+    expect(screen.queryByText(/Bu ayarı dəyişmək hüququnuz yoxdur/)).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(save)
+    })
+    expect(await screen.findByText(/Fərdi giriş rejimini \(QR posteri, GPS divarı, giriş şəkli\) dəyişmək hüququnuz yoxdur/))
+      .toBeTruthy()
+  })
+
   it('a refusal says which rule refused it', async () => {
     managerRoutes(OK(ROSTER))
     net.routes['GET /api/manager/employees/a'] = OK(managerRow('a', 'Aynur Həsənova', { deactivatable: true }))
@@ -382,6 +405,114 @@ describe('a company switched to Enforced: the list follows the role in the model
       el.previousElementSibling?.textContent === 'Status') as HTMLSelectElement
     expect(status.disabled).toBe(true)
     expect(screen.getByText('İşdən çıxartmaq hüququnuz yoxdur')).toBeTruthy()
+  })
+
+  // 2026-11-11: a person's check-in exceptions — field check-in, their own QR / GPS-wall settings, the photo —
+  // are «field_checkin.grant» and «checkin_rules.override», not part of «employees.update». The server refuses a
+  // change without them; the form shows what is set, locks it, and sends it back as it is.
+  const EXCEPTIONS_SET = {
+    canFieldCheckIn: true, qrlessCheckInOverride: true, requireGeofenceOverride: false, photoExempt: true,
+  }
+
+  /** The four controls, as the open form shows them. */
+  function exceptionControls() {
+    const box = (label: string) => screen.getByText(label).closest('label')!.querySelector('input') as HTMLInputElement
+    const select = (label: string) => [...document.querySelectorAll('form select')].find((el) =>
+      el.closest('label')?.textContent?.trimStart().startsWith(label)) as HTMLSelectElement
+    return {
+      field: box('Sahə girişi icazəsi'),
+      photo: box('Giriş şəkli tələb olunmasın'),
+      qr: select('QR posteri'),
+      fence: select('GPS divarı'),
+    }
+  }
+
+  async function openEdit(name: string) {
+    const row = (await screen.findByText(name)).closest('tr')!
+    await act(async () => {
+      fireEvent.click(within(row).getByText('Redaktə'))
+    })
+    return screen.findByRole('button', { name: /Yadda saxla/ })
+  }
+
+  it('a timekeeper sees a person’s check-in exceptions locked, and a save sends them back unchanged', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    net.routes['GET /api/manager/employees/a'] = OK({
+      ...managerRow('a', 'Aynur Həsənova', EXCEPTIONS_SET), email: 'aynur@test.local', deactivatable: false,
+    })
+    net.routes['PUT /api/manager/employees/a'] = OK({ id: 'a' })
+    renderEnforced('Employee', TIMEKEEPER)
+
+    const save = await openEdit('Aynur Həsənova')
+    const c = exceptionControls()
+    expect([c.field.disabled, c.photo.disabled, c.qr.disabled, c.fence.disabled]).toEqual([true, true, true, true])
+    // What is set is shown, not blanked.
+    expect(c.field.checked).toBe(true)
+    expect(c.photo.checked).toBe(true)
+    expect(c.qr.value).toBe('on')
+    expect(c.fence.value).toBe('off')
+    expect(screen.getAllByText('Bu ayarı dəyişmək hüququnuz yoxdur — hazırkı vəziyyət saxlanılır.')).toHaveLength(3)
+
+    await act(async () => {
+      fireEvent.click(save)
+    })
+    await waitFor(() => expect(net.calls.some((c) => c.method === 'PUT')).toBe(true))
+    const body = net.calls.find((c) => c.method === 'PUT')!.body as Record<string, unknown>
+    expect(body.canFieldCheckIn).toBe(true)
+    expect(body.qrlessCheckInOverride).toBe(true)
+    expect(body.requireGeofenceOverride).toBe(false)
+    expect(body.photoExempt).toBe(true)
+  })
+
+  it('a timekeeper’s bulk bar offers no «Sahə ziyarəti»; an operator holding the right gets it', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    renderEnforced('Employee', TIMEKEEPER)
+    const row = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('checkbox'))
+    })
+    expect(await screen.findByText(/işçi seçildi/)).toBeTruthy()
+    expect(screen.queryByText('Sahə ziyarəti')).toBeNull()
+    cleanup()
+
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    renderEnforced('Employee', [...TIMEKEEPER, 'field_checkin.grant'])
+    const row2 = (await screen.findByText('Aynur Həsənova')).closest('tr')!
+    await act(async () => {
+      fireEvent.click(within(row2).getByRole('checkbox'))
+    })
+    expect(await screen.findByText('Sahə ziyarəti')).toBeTruthy()
+  })
+
+  it('an operator holding both rights changes the exceptions', async () => {
+    managerRoutes(OK([managerRow('a', 'Aynur Həsənova')]))
+    net.routes['GET /api/manager/credential-targets'] = OK([])
+    net.routes['GET /api/manager/employees/a'] = OK({
+      ...managerRow('a', 'Aynur Həsənova'), email: 'aynur@test.local', deactivatable: true,
+    })
+    net.routes['PUT /api/manager/employees/a'] = OK({ id: 'a' })
+    renderEnforced('Employee', [...TIMEKEEPER, 'field_checkin.grant', 'checkin_rules.override'])
+
+    const save = await openEdit('Aynur Həsənova')
+    const c = exceptionControls()
+    expect([c.field.disabled, c.photo.disabled, c.qr.disabled, c.fence.disabled]).toEqual([false, false, false, false])
+    expect(screen.queryByText(/Bu ayarı dəyişmək hüququnuz yoxdur/)).toBeNull()
+    await act(async () => {
+      fireEvent.click(c.field)
+      fireEvent.change(c.fence, { target: { value: 'on' } })
+    })
+    await act(async () => {
+      fireEvent.click(save)
+    })
+    await waitFor(() => expect(net.calls.some((c) => c.method === 'PUT')).toBe(true))
+    const body = net.calls.find((c) => c.method === 'PUT')!.body as Record<string, unknown>
+    expect(body.canFieldCheckIn).toBe(true)
+    expect(body.requireGeofenceOverride).toBe(true)
+    expect(body.qrlessCheckInOverride).toBe(null)
+    expect(body.photoExempt).toBe(false)
   })
 
   it('the Company administrator keeps the admin’s list and its company tools', async () => {

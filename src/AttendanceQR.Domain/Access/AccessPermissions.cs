@@ -117,7 +117,7 @@ public static class AccessPermissions
         [DevicesRevoke] = "Telefonu ləğv etmək",
         [DevicesShareGrant] = "Ortaq telefon icazəsi",
         [FieldCheckInGrant] = "Səyyar giriş hüququ vermək",
-        [CheckInRulesOverride] = "Fərdi QR-siz / GPS istisnası",
+        [CheckInRulesOverride] = "Fərdi QR-siz / GPS / foto istisnası",
         [FieldVisitsView] = "Sahə ziyarətlərini görmək",
         [FieldVisitsManage] = "Sahə ziyarətlərini idarə etmək",
         [FieldVisitsDiscard] = "Tamamlanmış ziyarəti silmək",
