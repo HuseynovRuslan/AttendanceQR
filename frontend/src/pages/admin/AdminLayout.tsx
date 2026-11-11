@@ -8,6 +8,8 @@ import { useBranding, useFeatureEnabled, FEATURE } from '../../branding/Branding
 import { BrandLogo } from '../../components/BrandLogo'
 import { NotificationBell } from '../../components/NotificationBell'
 import { getSidebarBadges, type SidebarBadges } from '../../api/notifications'
+import { ApprovalsProvider, useApprovals } from './approvals/ApprovalsContext'
+import { screensFor } from './approvals/model'
 import {
   IconAlert,
   IconBell,
@@ -54,6 +56,9 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/my-leaves': { title: 'Məzuniyyət / İcazə', sub: 'Öz işçiləriniz üçün icazə və məzuniyyət' },
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/access': { title: 'Səlahiyyətlər', sub: 'Kimə hansı rol, harada — verilən hüquq növbəti açılışdan qüvvədədir' },
+  '/admin/approvals': { title: 'Təsdiq mərkəzi', sub: 'Müraciətlər, qərarlar və onların tarixçəsi' },
+  '/admin/approvals/operator': { title: 'Operator paneli', sub: 'Qərarınızı gözləyən müraciətlər, ən köhnəsi yuxarıda' },
+  '/admin/approvals/branch': { title: 'Mənim filialım', sub: 'Yeni işçi müraciətləri və onların statusu' },
   '/admin/my-area': { title: 'Mənim sahəm', sub: 'Rollarınız, filiallarınız və paneldə sizə nəyin açıldığı' },
   '/admin/equipment': { title: 'Kompüter inventarizasiyası', sub: 'İT avadanlıqlarının siyahısı — kimdə nə var' },
   '/admin/schedules': { title: 'Növbələr', sub: 'Saatlar, iş günləri və rotasiya — bir dəfə qurulur, işçilərə təyin edilir' },
@@ -76,7 +81,17 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
 
 const MOBILE_BREAKPOINT = 680
 
+/** The panel's frame, with the approval flow's answer (/api/approvals/me) beside the access one: the menu reads it
+ *  to show the section only where it is switched on and concerns this person. */
 export function AdminLayout() {
+  return (
+    <ApprovalsProvider>
+      <AdminLayoutFrame />
+    </ApprovalsProvider>
+  )
+}
+
+function AdminLayoutFrame() {
   const { role, email, logout } = useAuth()
   const { access } = useAccess()
   const branding = useBranding()
@@ -116,7 +131,21 @@ export function AdminLayout() {
     }).catch(() => {})
   }, [hasBell, location.pathname])
 
+  // The approval section's screens this person has. Empty while the switch is off or no area concerns them: then the
+  // three rows below are left out of the menu, whatever the role table says.
+  const approvals = useApprovals()
+  const approvalScreens = screensFor(approvals.view)
+  const approvalPath: Record<string, 'center' | 'operator' | 'branch'> = {
+    '/admin/approvals': 'center', '/admin/approvals/operator': 'operator', '/admin/approvals/branch': 'branch',
+  }
+  const { reload: reloadApprovals } = approvals
+  // A decision is a navigation away and back: the queue's count follows without a timer.
+  useEffect(() => {
+    if (location.pathname.startsWith('/admin/approvals')) reloadApprovals()
+  }, [location.pathname, reloadApprovals])
+
   const badgeFor: Record<string, number | undefined> = {
+    '/admin/approvals/operator': approvals.view.queueCount,
     '/admin/device-changes': badges?.deviceChanges,
     '/admin/pin-resets': badges?.pinResets,
     '/admin/open-records': badges?.openRecords,
@@ -206,6 +235,10 @@ export function AdminLayout() {
       // The inbox screens: rows that WAIT for the admin, as opposed to screens they go look at.
       title: 'Müraciətlər',
       links: [
+        // Change requests: shown only where the approval flow is switched on (see approvalScreens above).
+        { to: '/admin/approvals/operator', label: 'Operator paneli', Icon: IconClipboard },
+        { to: '/admin/approvals', label: 'Təsdiq mərkəzi', Icon: IconCheck },
+        { to: '/admin/approvals/branch', label: 'Mənim filialım', Icon: IconBuilding },
         { to: '/admin/device-changes', label: 'Cihazlar', Icon: IconPhone },
         { to: '/admin/pin-resets', label: 'PIN sıfırlama', Icon: IconKey },
       ],
@@ -232,7 +265,11 @@ export function AdminLayout() {
     // stayed shut, and for two commits a manager tapped them and was silently bounced back to the
     // today board — indistinguishable, from their side, from a mis-tap. Since Phase 4 the table is the
     // ONLY place a row is decided — the role conditions that used to sit in this array are gone.
-    .map((s) => ({ ...s, links: s.links.filter((l) => canOpen(l.to.replace('/admin/', ''), role, access)) }))
+    .map((s) => ({
+      ...s,
+      links: s.links.filter((l) => canOpen(l.to.replace('/admin/', ''), role, access)
+        && (!(l.to in approvalPath) || approvalScreens.includes(approvalPath[l.to]))),
+    }))
     .filter((s) => s.links.length > 0)
 
   // What the person's new role will open once the company switches — shown, greyed, rather than hidden,
@@ -277,7 +314,7 @@ export function AdminLayout() {
             <div key={section.title ?? `s${i}`} className="nav-section">
               {section.title && <div className="nav-section-title">{section.title}</div>}
               {section.links.map(({ to, label, Icon }) => (
-                <NavLink key={to} to={to} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
+                <NavLink key={to} to={to} end={to === '/admin/approvals'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                   <Icon />
                   <span className="nav-label">{label}</span>
                   {(badgeFor[to] ?? 0) > 0 && (

@@ -46,6 +46,11 @@ public sealed class ApprovalsController : ControllerBase
     public async Task<IActionResult> Me() =>
         _desk.Enabled ? Answer(await _desk.MeAsync(Caller, Ct)) : Ok(new { enabled = false });
 
+    // GET /api/approvals/options?locationId=…: the job titles and the branch's shifts, for the «Yeni işçi» form.
+    [HttpGet("options")]
+    public async Task<IActionResult> Options([FromQuery] Guid locationId) =>
+        Disabled() ?? Answer(await _desk.OptionsAsync(Caller, locationId, Ct));
+
     // GET /api/approvals/requests?view=queue|mine|all&status=Pending&locationId=…&limit=100
     [HttpGet("requests")]
     public async Task<IActionResult> List(

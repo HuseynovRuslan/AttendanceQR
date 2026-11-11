@@ -133,6 +133,7 @@ yoxdur, yalnız ad var.
 | Metod | Yol | Qeyd |
 |---|---|---|
 | GET | `/me` | Aktiv sahədə hansı filialda nə edə bildiyin və növbədə neçə müraciət olduğu |
+| GET | `/options?locationId=` | «Yeni işçi» forması üçün vəzifə kataloqu və filialın növbələri (Faza 2) |
 | GET | `/requests?view=queue\|mine\|all&status=&locationId=&limit=` | `queue`: məndən qərar gözləyənlər (ən köhnəsi yuxarıda) |
 | GET | `/requests/{id}` | Detal, payload, tarixçə, `canDecide`, `canCancel` |
 | POST | `/requests/employee-create` | «Yeni işçi» müraciəti. `Idempotency-Key` başlığı ilə |
@@ -284,7 +285,7 @@ Staging-də test strukturu və test şəxsləri istifadə olunur.
 
 ## 11. Bu mərhələdə olmayanlar
 
-- **Panel ekranları** (Təsdiq mərkəzi, Operator paneli). Prototip PR #47-dədir, ayrıca mərhələdə real API-yə qoşulacaq.
+- **Panel ekranları** (Təsdiq mərkəzi, Operator paneli). Faza 2-də qoşuldu: `docs/tesdiq-sistemi-faza2.md`.
 - **Qalan 8 əməliyyat** (bölmə 7), o cümlədən saatlıq icazə (4-cü qərar).
 - **Toplu idxal və dəvət.** Bu yollara yalnız Company Admin daxil ola bilir, ona görə sahədə qadağa tələb etmir.
   Bu mərhələdə onlar `Direct` qeydi yazmır.

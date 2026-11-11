@@ -103,7 +103,7 @@ const ALL_KEYS = [
   'locations.geofence_manage', 'locations.qr_print', 'locations.qr_invalidate', 'structures.view', 'structures.manage',
   'assignments.view', 'assignments.manage', 'assignments.cross_area', 'roles.manage', 'notifications.staff_alerts',
   'tasks.use', 'holidays.manage', 'positions.manage', 'announcements.manage', 'votes.manage', 'equipment.view',
-  'equipment.manage', 'billing.view', 'diag.view',
+  'equipment.manage', 'billing.view', 'diag.view', 'requests.create', 'requests.decide', 'requests.view',
 ]
 
 /** Today's manager as the seeder writes them (AccessRoleTemplates.cs): «Filial meneceri (köhnə qayda)» over
@@ -115,6 +115,9 @@ const LEGACY_MANAGER = [
   'field_checkin.grant', 'checkin_rules.override', 'field_visits.view', 'field_visits.manage', 'leaves.view',
   'leaves.manage', 'schedules.view', 'schedules.manage', 'schedules.assign', 'payroll.view', 'locations.view',
   'locations.update', 'locations.geofence_manage', 'locations.qr_print', 'notifications.staff_alerts', 'tasks.use',
+  // The two request rights of PR #48 (AccessRoleTemplates.LegacyManagerTemplate): today's manager asks in an
+  // approval area, and never decides.
+  'requests.create', 'requests.view',
 ]
 const PIN_HELPER = ['employees.reset_pin', 'employees.change_phone']
 const TIMEKEEPER = [

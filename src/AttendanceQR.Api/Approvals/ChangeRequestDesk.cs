@@ -565,24 +565,58 @@ public sealed class ChangeRequestDesk
     public async Task<DeskResult> MeAsync(Guid callerId, CancellationToken ct)
     {
         var scope = await ApprovalScope.LoadAsync(_db, Now, ct);
+        var structureNames = await _db.Structures.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        // Every branch in an area the caller has anything to do with: asks, decides, acts directly, or only
+        // reads (an observer). The screen picks the person's role from these flags; nothing here widens a right.
         var branches = scope.Branches
             .Where(b => scope.InArea(b.Id))
             .Select(b => new
             {
                 locationId = b.Id,
                 name = b.Name,
+                structureId = b.StructureId,
+                structureName = b.StructureId is Guid s ? structureNames.GetValueOrDefault(s) : null,
                 canRequest = scope.MayRequest(callerId, b.Id),
                 canActDirectly = scope.MayActDirectly(callerId, b.Id),
                 isApprover = scope.IsApprover(callerId, b.Id),
+                standsIn = scope.StandsIn(callerId, b.Id),
+                canView = scope.MayViewBranch(callerId, b.Id),
             })
-            .Where(b => b.canRequest || b.canActDirectly || b.isApprover)
-            .OrderBy(b => b.name)
+            .Where(b => b.canRequest || b.canActDirectly || b.isApprover || b.canView)
+            .OrderBy(b => b.structureName).ThenBy(b => b.name)
             .ToList();
         var queue = scope.ApproverBranches(callerId).ToList();
         var waiting = queue.Count == 0 ? 0 : await _db.ChangeRequests.CountAsync(r =>
             r.Status == ChangeRequestStatus.Pending && !r.Direct && r.RequestedByEmployeeId != callerId
             && queue.Contains(r.LocationId), ct);
         return new DeskResult(200, new { enabled = true, branches, queueCount = waiting });
+    }
+
+    /// <summary>
+    /// What the «Yeni işçi» form offers at one branch: the job titles of the catalogue and the shifts the branch may
+    /// use (its own and the company's). Asked of this desk rather than the manager desk because whoever may ask here
+    /// is a timekeeper, who in a Legacy company may be plain staff by today's role, and the manager desk is closed to
+    /// them. Answered only for a branch where the caller may ask or decide.
+    /// </summary>
+    public async Task<DeskResult> OptionsAsync(Guid callerId, Guid locationId, CancellationToken ct)
+    {
+        var scope = await ApprovalScope.LoadAsync(_db, Now, ct);
+        if (scope.Branch(locationId) is null)
+            return new DeskResult(404, new { error = "LocationNotFound" });
+        if (!scope.MayRequest(callerId, locationId) && !scope.IsApprover(callerId, locationId))
+            return new DeskResult(403, new { error = "RequestNotAllowed" });
+        var positions = await _db.JobPositions.AsNoTracking().OrderBy(p => p.Name).Select(p => p.Name).ToListAsync(ct);
+        var schedules = (await _db.Schedules.AsNoTracking()
+                .Where(s => s.LocationId == null || s.LocationId == locationId)
+                .OrderBy(s => s.Name)
+                .Select(s => new { s.Id, s.Name, s.ShiftStart, s.ShiftEnd, s.LocationId })
+                .ToListAsync(ct))
+            .Select(s => new
+            {
+                id = s.Id, name = s.Name, start = s.ShiftStart.ToString("HH:mm"), end = s.ShiftEnd.ToString("HH:mm"),
+                branchOnly = s.LocationId != null,
+            });
+        return new DeskResult(200, new { positions, schedules });
     }
 
     private object Item(ChangeRequest r, ApprovalScope scope, IReadOnlyDictionary<Guid, string> names, Guid callerId, DateTime now)
@@ -603,6 +637,8 @@ public sealed class ChangeRequestDesk
             createdAtUtc = r.CreatedAtUtc,
             decidedBy = r.DecidedByEmployeeId is Guid d ? names.GetValueOrDefault(d) : null,
             decidedAtUtc = r.DecidedAtUtc,
+            // The rejection's reason, so the person who asked reads it in their list without opening the request.
+            decisionNote = r.DecisionNote,
             waitingOver24h = pending && now - r.CreatedAtUtc > TimeSpan.FromHours(24),
             canDecide = pending && !r.Direct && r.RequestedByEmployeeId != callerId && scope.IsApprover(callerId, r.LocationId),
             canCancel = pending && !r.Direct && r.RequestedByEmployeeId == callerId,

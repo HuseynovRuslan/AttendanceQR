@@ -132,12 +132,21 @@ export const PANEL_PAGES: PanelPage[] = [
   // What I hold and where, and what opens for me after the switch. The landing page of somebody who
   // has a role in the new model but no panel role today.
   { path: 'my-area', label: 'Mənim sahəm', roles: BOTH, perms: [] },
+  // ── Change requests (docs/tesdiq-sistemi-faza1.md) ─────────────────────────────────────────────
+  // Opened by the request rights in every mode, as the server decides them, because a timekeeper or an observer
+  // may be plain staff by today's role. The menu adds one more gate the table cannot know: the deployment's
+  // switch and an approval area that concerns the person (/api/approvals/me). Off, nobody sees these rows.
+  { path: 'approvals', label: 'Təsdiq mərkəzi', roles: BOTH, perms: ['requests.view', 'requests.create', 'requests.decide'] },
+  // Today's manager asks and never decides, so the role opens this one only for the admin; an operator opens it by
+  // «requests.decide» (MODEL_GATED), whatever their role is today.
+  { path: 'approvals/operator', label: 'Operator paneli', roles: ADMIN, perms: ['requests.decide'] },
+  { path: 'approvals/branch', label: 'Mənim filialım', roles: BOTH, perms: ['requests.create'] },
 ]
 
 const BY_PATH = new Map(PANEL_PAGES.map((p) => [p.path, p]))
 
 /** The pages the permission model opens before the switch, for whoever holds what they ask. */
-const MODEL_GATED = new Set(['access', 'my-area'])
+const MODEL_GATED = new Set(['access', 'my-area', 'approvals', 'approvals/operator', 'approvals/branch'])
 
 function holds(access: PanelAccess | null | undefined, perms: string[]): boolean {
   if (!access?.panel) return false

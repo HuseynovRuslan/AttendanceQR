@@ -129,15 +129,17 @@ interface RequestOptions {
    * suppressed whenever this is set.
    */
   token?: string
+  /** Extra request headers — the approval requests' Idempotency-Key, for one. */
+  headers?: Record<string, string>
 }
 
 export async function apiRequest<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { method = 'GET', body, auth = true, timeoutMs, token: asToken } = options
+  const { method = 'GET', body, auth = true, timeoutMs, token: asToken, headers: extra } = options
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
   if (auth) {
     const token = asToken ?? getToken()
     if (token) headers.Authorization = `Bearer ${token}`

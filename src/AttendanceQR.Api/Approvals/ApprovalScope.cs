@@ -133,7 +133,8 @@ public sealed class ApprovalScope
     public bool MayView(Guid callerId, ChangeRequest request) =>
         request.RequestedByEmployeeId == callerId || MayViewBranch(callerId, request.LocationId);
 
-    private bool MayViewBranch(Guid callerId, Guid locationId)
+    /// <summary>Sees this branch's requests: any of the three request rights over it, or a live stand-in.</summary>
+    public bool MayViewBranch(Guid callerId, Guid locationId)
     {
         var access = AccessOf(callerId);
         return access.Covers(AccessPermissions.RequestsView, locationId)
