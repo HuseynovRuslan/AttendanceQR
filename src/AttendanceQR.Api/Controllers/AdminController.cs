@@ -1582,11 +1582,26 @@ public class AdminController : ControllerBase
     /// handset already carrying these people keeps working until its bindings are revoked, which is
     /// the shared-devices screen's job. Splitting it that way is deliberate — withdrawing a permission
     /// should never be the thing that strands somebody at a poster mid-morning.
+    ///
+    /// One route per capability (2026-11-11): «Ortaq telefon» is «devices.share_grant», «Sahə ziyarəti» is
+    /// «field_checkin.grant», and an endpoint's gate names one permission. A single route taking the capability
+    /// from the body was gated by «field_checkin.grant» for both, so the right to share phones neither opened it
+    /// nor was asked for. The manager's twins (ManagerController) split the same way.
     /// </summary>
+    [Permission(AccessPermissions.DevicesShareGrant, AtCompany = true)]
+    [HttpPost("bulk-permission/share-device")]
+    public Task<IActionResult> BulkShareDevice([FromBody] BulkGrantRequest request) =>
+        BulkGrantAsync(request, BulkPermission.ShareDevice);
+
+    /// <summary>«Sahə ziyarəti» for many people at once — see <see cref="BulkShareDevice"/>.</summary>
     [Permission(AccessPermissions.FieldCheckInGrant, AtCompany = true)]
-    [HttpPost("bulk-permission")]
-    public async Task<IActionResult> BulkGrant([FromBody] BulkPermissionRequest request)
+    [HttpPost("bulk-permission/field-check-in")]
+    public Task<IActionResult> BulkFieldCheckIn([FromBody] BulkGrantRequest request) =>
+        BulkGrantAsync(request, BulkPermission.FieldCheckIn);
+
+    private async Task<IActionResult> BulkGrantAsync(BulkGrantRequest request, BulkPermission which)
     {
+        var ct = HttpContext.RequestAborted;
         var ids = (request.EmployeeIds ?? []).Distinct().ToList();
         if (ids.Count == 0)
             return BadRequest(new { error = "NoEmployees" });
@@ -1595,14 +1610,28 @@ public class AdminController : ControllerBase
         if (ids.Count > 300)
             return BadRequest(new { error = "TooMany" });
 
-        var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(HttpContext.RequestAborted);
-        var changed = ApplyPermission(employees, request.Permission, request.Allowed);
+        // The capability's own right, over each person's branch — the same rule as the manager's twin. For an
+        // admin (and the Company administrator in Enforced) that is the whole company, so nobody is skipped.
+        var scope = await LocationScopeRules.ScopeAsync(_db, User.EmployeeId(), User.Role(), RightFor(which), ct);
+        var employees = (await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(ct))
+            .Where(e => scope.Covers(e.LocationId))
+            .ToList();
+        var changed = ApplyPermission(employees, which, request.Allowed);
 
         if (changed > 0)
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            await _db.SaveChangesAsync(ct);
 
-        return Ok(new { changed, total = employees.Count, allowed = request.Allowed });
+        return Ok(new { changed, total = employees.Count, skipped = ids.Count - employees.Count, allowed = request.Allowed });
     }
+
+    /// <summary>The permission-model right each bulk capability stands for — shared with the manager's twins so
+    /// the two desks can never ask for different things.</summary>
+    public static string RightFor(BulkPermission which) => which switch
+    {
+        BulkPermission.ShareDevice => AccessPermissions.DevicesShareGrant,
+        BulkPermission.FieldCheckIn => AccessPermissions.FieldCheckInGrant,
+        _ => throw new ArgumentOutOfRangeException(nameof(which), which, null),
+    };
 
     /// <summary>Sets one capability across a list, returning how many rows actually moved. Shared with
     /// the manager's own bulk endpoint so the two can never mean different things.</summary>

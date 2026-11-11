@@ -11,6 +11,7 @@ import {
   bulkResetPin,
   bulkSchedule,
   bulkPermission,
+  BULK_RIGHT,
   type BulkPermission,
   type BulkPinResult,
   deleteEmployee,
@@ -111,6 +112,18 @@ function NoRightNote() {
       Bu ayarı dəyişmək hüququnuz yoxdur — hazırkı vəziyyət saxlanılır.
     </span>
   )
+}
+
+/** What a refused bulk grant says — by the capability, since each is a right of its own. */
+function bulkPermissionError(permission: BulkPermission, status: number, data: unknown): string {
+  if (status === 403)
+    return permission === 'ShareDevice'
+      ? 'Ortaq telefon icazəsini vermək və ya geri almaq hüququnuz yoxdur. Heç nə dəyişmədi.'
+      : 'Sahə ziyarəti icazəsini vermək və ya geri almaq hüququnuz yoxdur. Heç nə dəyişmədi.'
+  const code = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : ''
+  if (code === 'NoEmployees') return 'Heç bir işçi seçilməyib'
+  if (code === 'TooMany') return 'Bir dəfədə ən çox 300 nəfər seçmək olar'
+  return 'Dəyişmədi — yenidən cəhd edin'
 }
 
 const ERRORS: Record<string, string> = {
@@ -312,6 +325,8 @@ export function EmployeesPage() {
   // is (the edit writes every field it is given); the server refuses a change regardless.
   const mayGrantFieldCheckIn = useHolds('field_checkin.grant', true)
   const mayOverrideCheckIn = useHolds('checkin_rules.override', true)
+  // «Ortaq telefon» in bulk is its own right (devices.share_grant), not «Sahə ziyarəti»'s (2026-11-11).
+  const mayShareDevices = useHolds(BULK_RIGHT.ShareDevice, true)
   /** A manager's whole roster, filtered and paged in the browser — see lib/managerRoster. */
   const [mgrAll, setMgrAll] = useState<ManagerEmployee[] | null>(null)
   /** The card a manager is editing: a colleague they may not switch off, and a branch that may not be
@@ -1183,22 +1198,28 @@ ${back}`,
     setSharing(true)
     // A manager's own route narrows it to their branches' plain staff and skips the rest, rather than
     // failing the call over one name they may not act on.
-    const { status } = isManager
+    const { status, data } = isManager
       ? await bulkPermissionAsManager(affected.map((t) => t.id), permission, allowed)
       : await bulkPermission(affected.map((t) => t.id), permission, allowed)
     setSharing(false)
-    if (status === 200) {
-      const changed = new Set(affected.map((t) => t.id))
-      setSelected((prev) => new Map([...prev].map(([id, r]) => [
-        id,
-        changed.has(id)
-          ? permission === 'ShareDevice' ? { ...r, canShareDevice: allowed } : { ...r, canFieldCheckIn: allowed }
-          : r,
-      ])))
+    if (status === 200 && data && 'changed' in data) {
+      const skipped = data.skipped ?? 0
+      // Only when nobody was skipped do we know every row moved; otherwise the refresh below is the truth.
+      if (skipped === 0) {
+        const changed = new Set(affected.map((t) => t.id))
+        setSelected((prev) => new Map([...prev].map(([id, r]) => [
+          id,
+          changed.has(id)
+            ? permission === 'ShareDevice' ? { ...r, canShareDevice: allowed } : { ...r, canFieldCheckIn: allowed }
+            : r,
+        ])))
+      }
       await refresh()
-      setOk(allowed ? `${affected.length} nəfərə icazə verildi` : `${affected.length} nəfərdən icazə alındı`)
+      const label = permission === 'ShareDevice' ? 'ortaq telefon' : 'sahə ziyarəti'
+      const done = allowed ? `${data.changed} nəfərə ${label} icazəsi verildi` : `${data.changed} nəfərdən ${label} icazəsi alındı`
+      setOk(skipped > 0 ? `${done} · ${skipped} nəfər buraxıldı — onlar üçün bu icazəni dəyişmək hüququnuz yoxdur` : done)
     } else {
-      setError('Dəyişmədi')
+      setError(bulkPermissionError(permission, status, data))
     }
   }
 
@@ -2242,13 +2263,15 @@ ${back}`,
                     </button>
                   </>
                 )}
-                <button
-                  className="emp-bar-b"
-                  disabled={sharing}
-                  onClick={() => void setPermission(bulkTargets, 'ShareDevice', true)}
-                >
-                  <IconPhone /> Ortaq telefon
-                </button>
+                {mayShareDevices && (
+                  <button
+                    className="emp-bar-b"
+                    disabled={sharing}
+                    onClick={() => void setPermission(bulkTargets, 'ShareDevice', true)}
+                  >
+                    <IconPhone /> Ortaq telefon
+                  </button>
+                )}
                 {mayGrantFieldCheckIn && (
                   <button
                     className="emp-bar-b"
@@ -2283,17 +2306,19 @@ ${back}`,
                             below each remove an ability somebody is relying on today — a brigade's
                             shared phone, a field worker's only way to clock in, a crew's hours. */}
                         <div className="emp-more-sep">Geri alan əməliyyatlar</div>
-                        <button
-                          className="emp-more-i danger"
-                          disabled={sharing}
-                          onClick={() => { setMoreOpen(false); void setPermission(bulkTargets, 'ShareDevice', false) }}
-                        >
-                          <IconPhone />
-                          <span>
-                            Ortaq telefon icazəsini geri al
-                            <i>Briqadanın telefonunda hesab saxlamaq bağlanır</i>
-                          </span>
-                        </button>
+                        {mayShareDevices && (
+                          <button
+                            className="emp-more-i danger"
+                            disabled={sharing}
+                            onClick={() => { setMoreOpen(false); void setPermission(bulkTargets, 'ShareDevice', false) }}
+                          >
+                            <IconPhone />
+                            <span>
+                              Ortaq telefon icazəsini geri al
+                              <i>Briqadanın telefonunda hesab saxlamaq bağlanır</i>
+                            </span>
+                          </button>
+                        )}
                         {mayGrantFieldCheckIn && (
                           <button
                             className="emp-more-i danger"
