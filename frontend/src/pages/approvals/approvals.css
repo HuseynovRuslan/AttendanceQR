@@ -301,8 +301,9 @@
 /* The shared phone field brings the panel's `.inp`; here it takes the sheet's input size so the column reads as one. */
 .apx-field .inp { height: 38px; padding: 0 12px; border-radius: 10px; font-size: 13.5px }
 .apx-field .apx-input, .apx-field .apx-select { width: 100% }
-/* Two classes deep on purpose: `.apx-field > span` (the label) would otherwise win and paint the error grey. */
-.apx-field .apx-field-err { font-size: 12.5px; color: var(--apx-bad); font-weight: 600; line-height: 1.4 }
+/* Two classes deep on purpose: `.apx-field > span` (the label) would otherwise win and paint the error grey. The second
+   selector is the error that belongs to a pair of fields (name and surname, phone or e-mail) and sits under both. */
+.apx-field .apx-field-err, .apx-form > .apx-field-err { font-size: 12.5px; color: var(--apx-bad); font-weight: 600; line-height: 1.4 }
 .apx-input[aria-invalid='true'], .apx-select[aria-invalid='true'], .apx-textarea[aria-invalid='true'] { border-color: var(--apx-bad) }
 .apx-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
 .apx-sheet-back { position: fixed; inset: 0; background: rgba(24, 25, 26, .38); z-index: 60; display: flex; justify-content: flex-end }
