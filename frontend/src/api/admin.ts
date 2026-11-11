@@ -421,6 +421,21 @@ export function recheckFaces() {
 export type BulkPermission = 'ShareDevice' | 'FieldCheckIn'
 
 /**
+ * Each capability is its own route and its own right (2026-11-11): «Ortaq telefon» → devices.share_grant,
+ * «Sahə ziyarəti» → field_checkin.grant. Shared with the manager's twins.
+ */
+export const BULK_ROUTE: Record<BulkPermission, string> = {
+  ShareDevice: 'share-device',
+  FieldCheckIn: 'field-check-in',
+}
+
+/** The permission-model right each capability needs — what the panel asks before offering it. */
+export const BULK_RIGHT: Record<BulkPermission, string> = {
+  ShareDevice: 'devices.share_grant',
+  FieldCheckIn: 'field_checkin.grant',
+}
+
+/**
  * Grant or withdraw one capability across many people.
  *
  * It exists for the arithmetic: ~260 workers own no phone and need ShareDevice, whole brigades work
@@ -429,8 +444,8 @@ export type BulkPermission = 'ShareDevice' | 'FieldCheckIn'
  */
 export function bulkPermission(employeeIds: string[], permission: BulkPermission, allowed: boolean) {
   return apiRequest<{ changed: number; total: number; skipped?: number } | { error: string }>(
-    '/api/admin/employees/bulk-permission',
-    { method: 'POST', body: { employeeIds, permission, allowed } },
+    `/api/admin/employees/bulk-permission/${BULK_ROUTE[permission]}`,
+    { method: 'POST', body: { employeeIds, allowed } },
   )
 }
 

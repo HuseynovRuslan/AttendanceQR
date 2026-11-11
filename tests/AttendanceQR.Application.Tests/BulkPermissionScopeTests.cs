@@ -108,8 +108,11 @@ public class BulkPermissionScopeTests
             return which == BulkPermission.ShareDevice ? e.CanShareDevice : e.CanFieldCheckIn;
         }
 
+        // Each capability has its own route since 2026-11-11 (BulkShareDevice / BulkFieldCheckIn).
         public Task<IActionResult> GrantAsync(IEnumerable<Guid> ids, BulkPermission which, bool allowed)
-            => Manager.BulkGrant(new BulkPermissionRequest(ids.ToList(), which, allowed));
+            => which == BulkPermission.ShareDevice
+                ? Manager.BulkShareDevice(new BulkGrantRequest(ids.ToList(), allowed))
+                : Manager.BulkFieldCheckIn(new BulkGrantRequest(ids.ToList(), allowed));
 
         public void Dispose() => Db.Dispose();
     }
