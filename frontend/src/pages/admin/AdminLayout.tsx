@@ -10,6 +10,7 @@ import { NotificationBell } from '../../components/NotificationBell'
 import { getSidebarBadges, type SidebarBadges } from '../../api/notifications'
 import { ApprovalsProvider, useApprovals } from './approvals/ApprovalsContext'
 import { screensFor } from './approvals/model'
+import { displayRoleName, roleDefinitionName } from '../../lib/roleNames'
 import {
   IconAlert,
   IconBell,
@@ -40,7 +41,6 @@ import {
 } from '../../components/icons'
 
 const ROLE_DOT: Record<string, string> = { Admin: '#F59E0B', Manager: '#7CB342' }
-const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri' }
 
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   // Deliberately EMPTY — see the topbar below. The dashboard writes its own «İdarəetmə paneli»
@@ -277,9 +277,12 @@ function AdminLayoutFrame() {
   const later = pagesAfterSwitch(role, access)
   const laterPages = PANEL_PAGES.filter((p) => p.menu !== false && later.has(p.path))
   // Their roles' names under the e-mail, for somebody the old two labels do not describe.
+  // Shown in English under the owner's hierarchy (lib/roleNames): the server's displayRole for the person, or
+  // the names of their roles for somebody today's two roles do not describe.
   const roleLabel = modelOnly
-    ? [...new Set((access?.assignments ?? []).map((a) => a.roleName).filter(Boolean))].join(', ') || 'Panel'
-    : ROLE_LABEL[role ?? ''] ?? role
+    ? [...new Set((access?.assignments ?? [])
+        .map((a) => roleDefinitionName(a.roleName, a.template, !!access?.roleHierarchy)).filter(Boolean))].join(', ') || 'Panel'
+    : displayRoleName(access?.displayRole, role)
 
   return (
     <div className="app">

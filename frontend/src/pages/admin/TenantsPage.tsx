@@ -38,6 +38,7 @@ import { COMPANY_TZ, fmtDate } from '../../lib/format'
 import { parseMoney, moneyInputFilter, formatMoney } from '../../lib/money'
 import { useCan } from '../operator/OperatorContext'
 import { IconCheck, IconUsers, IconX } from '../../components/icons'
+import { displayRoleName } from '../../lib/roleNames'
 
 /** EF entity names as the operator knows them. Anything unmapped falls through as-is. */
 const TABLE_NAMES: Record<string, string> = {
@@ -541,7 +542,7 @@ export function TenantsTab() {
   }
 
   async function borrowSeat(t: SuperTenant, target: ImpersonationTarget) {
-    const seat = target.role === 'Admin' ? 'admin' : 'menecer'
+    const seat = displayRoleName(target.displayRole, target.role)
     if (!window.confirm(
       `"${t.displayName}" şirkətində ${target.fullName} (${seat}) kimi daxil olursunuz.
 ` +
@@ -795,7 +796,7 @@ export function TenantsTab() {
               >
                 <span style={{ fontWeight: 700 }}>{x.fullName}</span>
                 <span className={`badge ${x.role === 'Admin' ? 'b-present' : 'b-sick'}`} style={{ marginLeft: 8 }}>
-                  {x.role === 'Admin' ? 'Admin' : 'Menecer'}
+                  {displayRoleName(x.displayRole, x.role)}
                 </span>
                 {x.role === 'Manager' && (
                   <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>

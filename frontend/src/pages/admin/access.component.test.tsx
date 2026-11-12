@@ -84,7 +84,8 @@ async function openRoles() {
   await act(async () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Rollar' }))
   })
-  await screen.findByText('Tabelçi')
+  // The built-in role, under its English name (lib/roleNames).
+  await screen.findByText('Timekeeper')
 }
 
 describe('an operator who may only look at assignments', () => {

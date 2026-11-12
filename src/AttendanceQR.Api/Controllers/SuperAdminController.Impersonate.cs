@@ -3,6 +3,7 @@ using AttendanceQR.Domain;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Security;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -60,13 +61,49 @@ public partial class SuperAdminController
                 .GroupBy(x => x.EmployeeId)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.Name).OrderBy(n => n).ToList());
 
+        // The name each seat is shown under (RoleDisplay: Company Admin, Structure Manager, Timekeeper, or a manager's
+        // old title where the company has no Structure Manager). Display only — which seat is borrowed, and what the
+        // session may do, is decided below by Role and the session's own gates, exactly as before.
+        var labels = await DisplayLabelsAsync(id, people.Select(e => (e.Id, e.Role)), ct);
+
         return Ok(people.Select(e => new
         {
             id = e.Id,
             fullName = e.FullName,
             role = e.Role.ToString(),
+            displayRole = labels.For(e.Id, e.Role),
             branches = branches.GetValueOrDefault(e.Id, new List<string>()),
         }));
+    }
+
+    // One company's role labels, read across the query filter the way the rest of this controller reads (an operator
+    // has no company of their own): the company's live roles, assignments, structure branches and managed branches,
+    // each narrowed to the company by its TenantId, built into the same graph the company's own requests use.
+    private async Task<RoleDisplay.Labels> DisplayLabelsAsync(
+        Guid tenantId, IEnumerable<(Guid Id, EmployeeRole Role)> people, CancellationToken ct)
+    {
+        var roles = await _db.AccessRoles.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.ArchivedAtUtc == null)
+            .ToDictionaryAsync(r => r.Id, ct);
+        var assignments = await _db.RoleAssignments.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.RevokedAtUtc == null)
+            .ToListAsync(ct);
+        var structureIds = assignments.Where(a => a.StructureId != null).Select(a => a.StructureId!.Value).Distinct().ToList();
+        var branchesOf = structureIds.Count == 0
+            ? new Dictionary<Guid, HashSet<Guid>>()
+            : (await _db.Locations.IgnoreQueryFilters().AsNoTracking()
+                    .Where(l => l.TenantId == tenantId && l.StructureId != null && structureIds.Contains(l.StructureId.Value))
+                    .Select(l => new { l.Id, StructureId = l.StructureId!.Value })
+                    .ToListAsync(ct))
+                .GroupBy(l => l.StructureId)
+                .ToDictionary(g => g.Key, g => g.Select(l => l.Id).ToHashSet());
+        var managed = (await _db.ManagedLocations.IgnoreQueryFilters().AsNoTracking()
+                .Where(m => m.TenantId == tenantId)
+                .Select(m => new { m.EmployeeId, m.LocationId })
+                .ToListAsync(ct))
+            .GroupBy(m => m.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.Select(m => m.LocationId).ToList());
+        return RoleDisplay.Compute(AccessGraph.Build(roles, assignments, branchesOf), people, managed);
     }
 
     // POST /api/super/tenants/{id}/impersonate — mint a short-lived session inside this company.

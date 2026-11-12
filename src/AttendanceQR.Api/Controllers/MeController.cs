@@ -36,6 +36,7 @@ public class MeController : ControllerBase
         var access = (await AccessGraph.LoadAsync(_db, ct)).For(User.EmployeeId());
         var mode = await AuthzObserver.ModeAsync(_db, _cache, ct);
         var legacyRole = User.Role();
+        var labels = await RoleDisplay.LoadAsync(_db, ct);
 
         // Names, so the panel can say «Aeroport yolu» and «Filial: Mərdəkan» rather than print ids. Only the
         // areas this person's own assignments reach — a timekeeper is not handed the company's map.
@@ -90,6 +91,32 @@ public class MeController : ControllerBase
                 locationIds = g.LocationIds.Order().ToArray(),
             }),
             branches,
+            // The name this person's role is SHOWN under (RoleDisplay) — Company Admin, Structure Manager,
+            // Timekeeper, Employee, or a manager's old title where the company has no Structure Manager — and
+            // whether the company has adopted the hierarchy (its role pickers then say Timekeeper). Display only.
+            displayRole = labels.For(User.EmployeeId(), legacyRole),
+            roleHierarchy = labels.Hierarchy,
+        });
+    }
+
+    // GET /api/me/role-labels — the names the panel shows the company's admins, managers and role holders under
+    // (RoleDisplay), for the staff list and the profile. Plain staff are not listed: they are «employee» by default.
+    // For whoever the panel is for; anybody else gets an empty answer. Display only — it opens nothing.
+    [HttpGet("role-labels")]
+    public async Task<IActionResult> RoleLabels()
+    {
+        var ct = HttpContext.RequestAborted;
+        var role = User.Role();
+        var mine = (await AccessGraph.LoadAsync(_db, ct)).For(User.EmployeeId());
+        if (role is not (EmployeeRole.Admin or EmployeeRole.Manager) && mine.Grants.Count == 0)
+            return Ok(new { hierarchy = false, labels = Array.Empty<object>() });
+        var labels = await RoleDisplay.LoadAsync(_db, ct);
+        return Ok(new
+        {
+            hierarchy = labels.Hierarchy,
+            labels = labels.ByEmployee
+                .Where(kv => kv.Value != RoleDisplay.Employee)
+                .Select(kv => new { id = kv.Key, role = kv.Value }),
         });
     }
 }

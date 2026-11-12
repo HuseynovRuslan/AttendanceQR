@@ -1,4 +1,5 @@
 using AttendanceQR.Domain.Access;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -98,6 +99,16 @@ public sealed class AccessGraph
                 .GroupBy(l => l.StructureId)
                 .ToDictionary(g => g.Key, g => g.Select(l => l.Id).ToHashSet());
 
+        return Build(roles, assignments, branchesOf);
+    }
+
+    /// <summary>The graph from rows already read: live roles by id, live assignments, and each structure's branches.
+    /// <see cref="LoadAsync"/> reads them through the company's query filter; the operator console, which works
+    /// across companies, reads one company's rows itself and builds the same graph from them.</summary>
+    public static AccessGraph Build(
+        IReadOnlyDictionary<Guid, AccessRole> roles, IEnumerable<RoleAssignment> assignments,
+        IReadOnlyDictionary<Guid, HashSet<Guid>> branchesOf)
+    {
         var byEmployee = new Dictionary<Guid, List<ResolvedGrant>>();
         foreach (var a in assignments)
         {

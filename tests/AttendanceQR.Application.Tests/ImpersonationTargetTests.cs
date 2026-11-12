@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -118,6 +119,31 @@ public class ImpersonationTargetTests
 
         public static T Read<T>(object row, string name) => (T)row.GetType().GetProperty(name)!.GetValue(row)!;
 
+        /// <summary>A manager holding the structure_operator role over <paramref name="branch"/> in
+        /// <paramref name="tenant"/> — a Structure Manager. Returns their id.</summary>
+        public Guid AddStructureManager(Guid tenant, Guid branch)
+        {
+            var id = Guid.NewGuid();
+            var role = new AccessRole
+            {
+                Id = Guid.NewGuid(), TenantId = tenant, Name = "Struktur operatoru", TemplateKey = "structure_operator",
+                Permissions = ["fieldvisits.view"], CreatedAtUtc = DateTime.UtcNow,
+            };
+            Db.AccessRoles.Add(role);
+            Db.Employees.Add(new Employee
+            {
+                Id = id, TenantId = tenant, FullName = "Struktur Meneceri " + id.ToString()[..4], Role = EmployeeRole.Manager,
+                IsActive = true, PasswordHash = "h", LocationId = branch, CreatedAtUtc = DateTime.UtcNow, ActivatedAtUtc = DateTime.UtcNow,
+            });
+            Db.RoleAssignments.Add(new RoleAssignment
+            {
+                Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = id, AccessRoleId = role.Id,
+                Scope = AccessScopeType.Branch, LocationId = branch, CreatedAtUtc = DateTime.UtcNow,
+            });
+            Db.SaveChanges();
+            return id;
+        }
+
         public static string ErrorOf(IActionResult result)
         {
             var bad = Assert.IsType<BadRequestObjectResult>(result);
@@ -148,6 +174,46 @@ public class ImpersonationTargetTests
 
         Assert.Contains("Musteri Admini", names);
         Assert.Contains("Filial Meneceri", names);
+    }
+
+    // --- the names the seats are shown under (RoleDisplay) — display only --------------------------
+
+    [Fact]
+    public async Task Without_a_structure_manager_the_admin_is_company_admin_and_a_manager_keeps_the_old_title()
+    {
+        // A company that has not adopted the hierarchy: nobody's title changes.
+        using var h = new Harness();
+        var rows = await h.TargetsAsync();
+        string Label(Guid id) => Harness.Read<string>(rows.Single(r => Harness.Read<Guid>(r, "id") == id), "displayRole");
+
+        Assert.Equal("companyAdmin", Label(h.CustomerAdminId));
+        Assert.Equal("manager", Label(h.ManagerId));
+    }
+
+    [Fact]
+    public async Task With_a_structure_manager_their_managers_show_as_timekeepers()
+    {
+        using var h = new Harness();
+        var sm = h.AddStructureManager(TenantId, h.BranchId);
+        var rows = await h.TargetsAsync();
+        string Label(Guid id) => Harness.Read<string>(rows.Single(r => Harness.Read<Guid>(r, "id") == id), "displayRole");
+
+        Assert.Equal("structureManager", Label(sm));
+        Assert.Equal("timekeeper", Label(h.ManagerId));
+        Assert.Equal("companyAdmin", Label(h.CustomerAdminId));
+        // The seat that is borrowed is still decided by Role, as before: the label changes nothing about it.
+        Assert.Equal("Manager", Harness.Read<string>(rows.Single(r => Harness.Read<Guid>(r, "id") == sm), "role"));
+    }
+
+    [Fact]
+    public async Task Another_companys_structure_manager_changes_no_title_here()
+    {
+        using var h = new Harness();
+        h.AddStructureManager(OtherTenantId, h.BranchId);   // same branch id, other company: must not count
+        var rows = await h.TargetsAsync();
+        var manager = rows.Single(r => Harness.Read<Guid>(r, "id") == h.ManagerId);
+
+        Assert.Equal("manager", Harness.Read<string>(manager, "displayRole"));
     }
 
     [Fact]

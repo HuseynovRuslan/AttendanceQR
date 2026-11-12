@@ -6,6 +6,8 @@ import {
 import { SCOPE_LABEL, TEMPLATE_HINT } from '../lib/accessGroups'
 import { IconX } from './icons'
 import { matchesSearch } from '../lib/searchFold'
+import { roleDefinitionName } from '../lib/roleNames'
+import { useAccess } from '../auth/AccessContext'
 
 /**
  * Giving somebody a role, in three steps: who, which role, where. Only what the server says it would allow
@@ -21,6 +23,8 @@ export function AssignRoleDrawer({
   onClose: () => void
   onDone: (message: string) => void
 }) {
+  // Built-in roles under their English names (lib/roleNames) — display only.
+  const hierarchy = !!useAccess().access?.roleHierarchy
   const [who, setWho] = useState<{ id: string; fullName: string } | null>(person ?? null)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<PersonHit[] | null>(null)
@@ -131,8 +135,8 @@ export function AssignRoleDrawer({
       const n = data.created.length
       onDone(
         n === 0
-          ? `${who.fullName}: «${role.name}» bu sahədə artıq var idi.`
-          : `${who.fullName}: «${role.name}» verildi${n > 1 ? ` (${n} filial)` : ''}. Növbəti açılışdan qüvvədədir.`,
+          ? `${who.fullName}: «${roleDefinitionName(role.name, role.templateKey, hierarchy)}» bu sahədə artıq var idi.`
+          : `${who.fullName}: «${roleDefinitionName(role.name, role.templateKey, hierarchy)}» verildi${n > 1 ? ` (${n} filial)` : ''}. Növbəti açılışdan qüvvədədir.`,
       )
     } else {
       setError(accessErrorText(data, labels))
@@ -220,7 +224,7 @@ export function AssignRoleDrawer({
                   className={`acc-option${r.roleId === roleId ? ' on' : ''}`}
                   onClick={() => pickRole(r)}
                 >
-                  <b>{r.name}</b>
+                  <b>{roleDefinitionName(r.name, r.templateKey, hierarchy)}</b>
                   <span>{(r.templateKey && TEMPLATE_HINT[r.templateKey]) || 'Şirkətin öz rolu'}</span>
                 </button>
               ))}

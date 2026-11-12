@@ -1429,6 +1429,9 @@ export interface ImpersonationTarget {
   id: string
   fullName: string
   role: 'Admin' | 'Manager'
+  /** The name the seat is shown under (server's RoleDisplay): companyAdmin, structureManager, timekeeper, or manager
+   *  where the company has no Structure Manager. Display only — the borrowed seat is decided by `role`. */
+  displayRole?: string
   /** The branches a manager would see. Empty for an admin (they see everything) and for a manager
    *  with nothing assigned yet — which is itself worth seeing before borrowing them. */
   branches: string[]
