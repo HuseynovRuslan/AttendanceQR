@@ -18,9 +18,10 @@ namespace AttendanceQR.Application.Tests;
 /// <summary>
 /// Pins the manager boundary on the field-visit surface — the same P0 rule as
 /// <see cref="ManagerAccountScopeTests"/>, enforced via <c>LocationScopeRules.CanManageEmployeeAsync</c>:
-/// a Manager may assign/cancel field visits (and appear/see people on the board and assignable list)
-/// only for Role==Employee workers in their managed branches. Admins and fellow managers who merely
-/// clock in at the branch are out of reach; an Admin caller keeps the whole tenant.
+/// a Manager may assign field visits (and see people on the assignable list) only for Role==Employee
+/// workers in their managed branches, and an Admin who clocks in at the branch is out of reach. The day's
+/// board shows a manager the visits of everybody at their branches except an admin — fellow managers
+/// included, as the today board does (2026-11-12). An Admin caller keeps the whole tenant.
 /// </summary>
 public class FieldVisitScopeTests
 {
@@ -220,7 +221,7 @@ public class FieldVisitScopeTests
     // --- board + assignable listings --------------------------------------------
 
     [Fact]
-    public async Task Manager_board_excludes_admin_and_manager_visits()
+    public async Task Manager_board_shows_fellow_managers_at_their_branches_but_never_an_admin()
     {
         using var h = new Harness();
         h.Visit(h.SameBranchEmployeeId);
@@ -228,10 +229,30 @@ public class FieldVisitScopeTests
         h.Visit(h.SameBranchManagerId);
 
         var ids = Ids(await h.AsManager.Board(h.Today()), "employeeId");
-        Assert.Equal(new[] { h.SameBranchEmployeeId }, ids);
+        Assert.Equal(new[] { h.SameBranchEmployeeId, h.SameBranchManagerId }.OrderBy(x => x), ids.OrderBy(x => x));
 
         // An admin keeps the full picture.
         Assert.Equal(3, Ids(await h.AsAdmin.Board(h.Today()), "employeeId").Count);
+    }
+
+    [Fact]
+    public async Task Manager_board_still_hides_other_branches_and_other_tenants()
+    {
+        using var h = new Harness();
+        h.Visit(h.OtherBranchEmployeeId);
+        h.Visit(h.OtherTenantEmployeeId);
+
+        Assert.Empty(Ids(await h.AsManager.Board(h.Today()), "employeeId"));
+    }
+
+    [Fact]
+    public async Task A_fellow_managers_row_on_the_board_opens()
+    {
+        // Every row the board shows must open: its checklist and work photos ask the manage rule, which reaches
+        // a fellow manager at one's own branch. An admin's would not — which is why an admin is not on the board.
+        using var h = new Harness();
+        var visit = h.Visit(h.SameBranchManagerId);
+        Assert.IsType<OkObjectResult>(await h.AsManager.Checklist(visit.Id));
     }
 
     [Fact]
