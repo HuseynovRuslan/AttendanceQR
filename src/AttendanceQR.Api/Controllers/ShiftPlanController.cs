@@ -353,6 +353,27 @@ public class ShiftPlanController : ControllerBase
         string? TokenOf(ShiftOverride? row) => row is null ? null
             : catalogue.TryGetValue(row.ScheduleId, out var s) && s.IsRestDay ? ShiftAssignment.Rest : row.ScheduleId.ToString();
 
+        // A day without a plan runs on the person's own shift — and «öz növbəsi» alone tells the reader nothing, so the
+        // labels name it: the standing shift that covered that date, its hours, or that it was not a working day.
+        var standingOnly = new ShiftOverrideMap(new Dictionary<(Guid, DateOnly), Guid>(), await _db.ShiftAssignments.AsNoTracking()
+            .Where(a => ids.Contains(a.EmployeeId) && a.From <= last && (a.Until == null || a.Until >= first))
+            .ToListAsync(ct));
+        var placeIds = people.Select(p => p.LocationId).Distinct().ToList();
+        var places = await _db.Locations.AsNoTracking().Where(l => placeIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, ct);
+        string LabelOf(Employee person, DateOnly date, string? token)
+        {
+            if (token is not null || !places.TryGetValue(person.LocationId, out var place))
+                return StandingShifts.DayLabel(token, catalogue);
+            var own = standingOnly.ScheduleFor(person.Id, date, person.ScheduleId, catalogue);
+            var shift = EffectiveShift.Resolve(person, own, place);
+            if (!shift.IsWorkingDay(date))
+                return "Öz növbəsi: İstirahət günü";
+            var hours = shift.HoursOn(date);
+            return own is { IsRestDay: false } named
+                ? $"Öz növbəsi: {named.Name} {hours.Start:HH\\:mm}–{hours.End:HH\\:mm}"
+                : $"Öz növbəsi: {hours.Start:HH\\:mm}–{hours.End:HH\\:mm}";
+        }
+
         var cells = new List<(Employee Person, DateOnly Date, string? Before, string? After)>();
         var unchanged = 0;
         foreach (var person in people)
@@ -365,7 +386,7 @@ public class ShiftPlanController : ControllerBase
 
         var pastDays = cells.Where(c => c.Date < today).Select(c => c.Date).Distinct().Count();
         var transitions = cells
-            .GroupBy(c => (From: StandingShifts.DayLabel(c.Before, catalogue), To: StandingShifts.DayLabel(c.After, catalogue)))
+            .GroupBy(c => (From: LabelOf(c.Person, c.Date, c.Before), To: LabelOf(c.Person, c.Date, c.After)))
             .Select(g => new { from = g.Key.From, to = g.Key.To, count = g.Count() })
             .OrderByDescending(t => t.count)
             .ToList();
@@ -401,11 +422,13 @@ public class ShiftPlanController : ControllerBase
         note = string.IsNullOrEmpty(note) ? "Növbə planı" : note[..Math.Min(note.Length, 200)];
         var now = DateTime.UtcNow;
         var what = string.Join(", ", tokens.Select(t => t is null ? "öz növbəsi" : StandingShifts.DayLabel(t, catalogue).Split(' ')[0]).Distinct());
+        var touchedFirst = cells.Count > 0 ? cells.Min(c => c.Date) : first;
+        var touchedLast = cells.Count > 0 ? cells.Max(c => c.Date) : last;
         var change = new ShiftPlanChange
         {
             LocationId = locationId, CreatedByEmployeeId = me,
             People = cells.Select(c => c.Person.Id).Distinct().Count(), Days = cells.Select(c => c.Date).Distinct().Count(),
-            Summary = $"{cells.Select(c => c.Person.Id).Distinct().Count()} işçi, {first:dd.MM}–{last:dd.MM.yyyy}: {what}",
+            Summary = $"{cells.Select(c => c.Person.Id).Distinct().Count()} işçi, {Span(touchedFirst, touchedLast)}: {what}",
         };
 
         int set = 0, cleared = 0;
@@ -437,7 +460,7 @@ public class ShiftPlanController : ControllerBase
             _db.ShiftPlanChangeItems.Add(new ShiftPlanChangeItem
             {
                 ChangeId = change.Id, EmployeeId = person.Id, Date = date, Before = before, After = after,
-                BeforeLabel = StandingShifts.DayLabel(before, catalogue), AfterLabel = StandingShifts.DayLabel(after, catalogue),
+                BeforeLabel = LabelOf(person, date, before), AfterLabel = LabelOf(person, date, after),
             });
         }
 
@@ -459,6 +482,10 @@ public class ShiftPlanController : ControllerBase
 
         return Ok(new { ok = true, set, cleared, unchanged, people = change.People, rebuiltDays = rebuilt, rebuildPending = pending, changeId = change.Id });
     }
+
+    /// <summary>The days a change touched, as the history heads it: «14.11.2026» or «12.11–13.11.2026» — not the range asked for.</summary>
+    private static string Span(DateOnly first, DateOnly last)
+        => first == last ? $"{first:dd.MM.yyyy}" : $"{first:dd.MM}–{last:dd.MM.yyyy}";
 
     /// <summary>A branch's recent changes, newest first: who, when, and every day's shift before and after.</summary>
     [HttpGet("changes")]

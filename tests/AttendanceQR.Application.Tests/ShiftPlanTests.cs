@@ -512,7 +512,7 @@ public class ShiftPlanTests
         var moves = preview.GetProperty("changes").EnumerateArray()
             .Select(c => $"{c.GetProperty("from").GetString()} → {c.GetProperty("to").GetString()}").ToList();
         Assert.Contains("Səhər 06:00–15:00 → Gecə 20:00–06:00", moves);
-        Assert.Contains("Öz növbəsi → Gecə 20:00–06:00", moves);
+        Assert.Contains("Öz növbəsi: Səhər 06:00–15:00 → Gecə 20:00–06:00", moves);   // the own shift is named, not just «öz növbəsi»
         Assert.Equal(h.Day.Id, Assert.Single(h.Rows(h.WorkerA)).ScheduleId); // nothing written
         Assert.Empty(h.Rows(h.WorkerA2));
     }
@@ -554,11 +554,12 @@ public class ShiftPlanTests
         Assert.Equal(2, history.Count);
         var original = history.Single(c => !c.GetProperty("isUndo").GetBoolean());
         Assert.Equal("Menecer", original.GetProperty("by").GetString());
+        Assert.Equal($"1 işçi, {day:dd.MM.yyyy}: Gecə", original.GetProperty("summary").GetString()); // one day reads as one day
         Assert.False(original.GetProperty("undoable").GetBoolean());
         Assert.NotNull(original.GetProperty("undoneAt").GetString());
         var item = original.GetProperty("items").EnumerateArray().Single();
         Assert.Equal("Aysel", item.GetProperty("employee").GetString());
-        Assert.Equal("Öz növbəsi", item.GetProperty("before").GetString());
+        Assert.Equal("Öz növbəsi: Səhər 06:00–15:00", item.GetProperty("before").GetString());
         Assert.Equal("Gecə 20:00–06:00", item.GetProperty("after").GetString());
 
         Assert.Equal(403, Status(await plan.Changes(h.BranchB)));
