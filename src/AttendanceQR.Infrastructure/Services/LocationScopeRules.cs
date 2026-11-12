@@ -1,5 +1,7 @@
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services.Access;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Infrastructure.Services;
@@ -272,5 +274,80 @@ public static class LocationScopeRules
 
         var managed = await LegacyManagedAsync(db, requesterId, ct);
         return managed.Contains(target.LocationId);
+    }
+
+    // ------------------------------------------------------------------------------------- field visits (reading)
+
+    /// <summary>
+    /// Who a caller may READ on the field-visit surface — the day's board and, behind each row, the visit's
+    /// checklist, its GPS points and its work photo. One answer for all of them, so a row never shows what its
+    /// detail then refuses, and a detail never opens for a row the board would not show.
+    ///
+    /// The owner's hierarchy (2026-11-12) is Company Admin → Structure Manager → Timekeeper → Employee:
+    /// <list type="bullet">
+    /// <item>Every manager reads the plain staff (Role == Employee) at the branches they manage.</item>
+    /// <item>A Structure Manager — somebody holding the <c>structure_operator</c> role, with «fieldvisits.view»,
+    /// over a branch or a structure — also reads the TIMEKEEPERS there: today's branch managers (Role == Manager)
+    /// who are not Structure Managers themselves.</item>
+    /// <item>A plain manager does not read a fellow manager's visits. That reach is the Structure Manager's,
+    /// given by the role and its branches, never by a person's name or by two managers sharing a branch.</item>
+    /// <item>Nobody below the company reads an Admin's visits, and another company's people are never in the
+    /// tenant-filtered queries to begin with.</item>
+    /// </list>
+    /// Acting on a visit — assign, cancel, review, force a check-out — still asks
+    /// <see cref="CanManageEmployeeAsync"/>; this rule only decides what can be seen.
+    /// </summary>
+    public sealed record FieldVisitReach(
+        IReadOnlySet<Guid> StaffBranches, IReadOnlySet<Guid> TimekeeperBranches, IReadOnlySet<Guid> StructureManagers)
+    {
+        public bool Sees(Guid employeeId, EmployeeRole role, Guid locationId) => role switch
+        {
+            EmployeeRole.Employee => StaffBranches.Contains(locationId),
+            EmployeeRole.Manager => TimekeeperBranches.Contains(locationId) && !StructureManagers.Contains(employeeId),
+            _ => false,
+        };
+    }
+
+    /// <summary>A Structure Manager: holds the <c>structure_operator</c> role over a structure or a branch.</summary>
+    public static bool IsStructureManager(EffectiveAccess access) =>
+        access.Grants.Any(g => g.TemplateKey == AccessRoleTemplates.StructureOperator && g.Scope != AccessScopeType.Company);
+
+    /// <summary>The caller's reach on the field-visit surface. <paramref name="managed"/> is the caller's own
+    /// branch scope as every other manager list computes it (ManagedLocationIdsAsync).</summary>
+    public static async Task<FieldVisitReach> FieldVisitReachAsync(
+        AppDbContext db, Guid callerId, IReadOnlyCollection<Guid> managed, CancellationToken ct)
+    {
+        var graph = await AccessGraph.LoadAsync(db, ct);
+        var asStructureManager = graph.For(callerId).Grants
+            .Where(g => g.TemplateKey == AccessRoleTemplates.StructureOperator && g.Scope != AccessScopeType.Company
+                        && g.Permissions.Contains(AccessPermissions.FieldVisitsView))
+            .SelectMany(g => g.LocationIds)
+            .ToHashSet();
+        var staff = managed.ToHashSet();
+        staff.UnionWith(asStructureManager);
+        var structureManagers = graph.People.Where(p => IsStructureManager(graph.For(p))).ToHashSet();
+        return new FieldVisitReach(staff, asStructureManager, structureManagers);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="callerId"/> may read <paramref name="targetEmployeeId"/>'s field visit — its
+    /// checklist and work photo. One's own visit, yes; an Admin (<paramref name="managed"/> null), anybody in the
+    /// company; a manager, by <see cref="FieldVisitReach"/>. Fail-closed: an unknown person is a no.
+    /// </summary>
+    public static async Task<bool> CanReadFieldVisitAsync(
+        AppDbContext db, Guid callerId, EmployeeRole role, IReadOnlyCollection<Guid>? managed, Guid targetEmployeeId,
+        CancellationToken ct)
+    {
+        if (callerId == targetEmployeeId)
+            return true;
+        if (managed is null)
+            return role == EmployeeRole.Admin;
+        var target = await db.Employees.Where(e => e.Id == targetEmployeeId)
+            .Select(e => new { e.Role, e.LocationId })
+            .FirstOrDefaultAsync(ct);
+        if (target is null)
+            return false;
+        var reach = await FieldVisitReachAsync(db, callerId, managed, ct);
+        return reach.Sees(targetEmployeeId, target.Role, target.LocationId);
     }
 }
