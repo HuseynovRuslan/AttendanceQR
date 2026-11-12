@@ -1,0 +1,176 @@
+/* «Növbə planı». Every rule is scoped under .sp-*: theme.css is global and unlayered, and so is this file, so a
+   bare element selector here would reach the employee screens too (see the note at the top of theme.css). */
+
+.sp *,.sp-drawer *,.sp-menu *,.sp-dialog *{box-sizing:border-box}
+.sp .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* ---- toolbar ---- */
+.sp-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
+.sp-field{display:flex;align-items:center}
+.sp-select,.sp-input{font:inherit;font-size:13px;color:var(--c900);background:var(--white);border:1px solid var(--c200);border-radius:10px;min-height:36px;padding:7px 10px}
+.sp-select:focus-visible,.sp-input:focus-visible{outline:2px solid var(--leaf);outline-offset:1px;border-color:var(--leaf)}
+.sp-bar .sp-select{min-width:180px;font-weight:700}
+.sp-search{position:relative;flex:1 1 180px;max-width:280px}
+.sp-search svg{position:absolute;left:10px;width:15px;height:15px;color:var(--c400);pointer-events:none}
+.sp-search input{width:100%;font:inherit;font-size:13px;border:1px solid var(--c200);border-radius:10px;min-height:36px;padding:7px 10px 7px 32px;background:var(--white);color:var(--c900)}
+.sp-search input:focus-visible{outline:2px solid var(--leaf);outline-offset:1px}
+.sp-views{flex:0 0 auto;min-width:210px}
+.sp-nav{display:flex;align-items:center;gap:4px}
+.sp-range{font-size:14px;font-weight:700;color:var(--c900);margin-left:8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.sp-new{margin-left:auto}
+.sp-toast{margin-bottom:12px}
+.sp-empty{text-align:center;color:var(--c500);font-size:14px;line-height:1.6}
+.sp-empty p{margin:0 auto 10px;max-width:56ch}
+
+/* ---- board ---- */
+.sp-board{padding:0;overflow:hidden;position:relative}
+.sp-busy{opacity:.65;transition:opacity .15s}
+.sp-scroll{overflow:auto;max-height:calc(100vh - 250px);min-height:240px}
+.sp-table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+.sp-table th,.sp-table td{border-bottom:1px solid var(--c100);text-align:left;vertical-align:middle}
+.sp-table thead th{position:sticky;top:0;z-index:2;background:var(--white);font-size:11px;font-weight:700;color:var(--c500);padding:8px 6px;border-bottom:1px solid var(--c200)}
+.sp-check{width:40px;padding:0 0 0 14px!important}
+.sp-check input{width:16px;height:16px;accent-color:var(--leaf);cursor:pointer}
+.sp-person{padding:8px 10px;font-weight:400;min-width:170px;max-width:220px}
+.sp-name{display:block;font-weight:700;color:var(--c900);font-size:13px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-pos{display:block;font-size:11px;color:var(--c500);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-sticky,.sp-sticky2{position:sticky;background:var(--white);z-index:1}
+.sp-sticky{left:0}
+.sp-sticky2{left:40px;box-shadow:1px 0 0 var(--c100)}
+.sp-table thead .sp-sticky,.sp-table thead .sp-sticky2{z-index:3}
+.sp-row-on > *{background:color-mix(in srgb,var(--leaf-bg) 70%,var(--white))}
+.sp-row-on .sp-sticky,.sp-row-on .sp-sticky2{background:color-mix(in srgb,var(--leaf-bg) 70%,var(--white))}
+
+.sp-dayhead{text-align:center!important;min-width:112px}
+.sp-compact .sp-dayhead{min-width:34px;padding:6px 2px!important}
+.sp-wd{display:block;font-weight:600}
+.sp-dn{display:block;font-size:14px;color:var(--c900);font-variant-numeric:tabular-nums}
+.sp-weekend .sp-dn{color:var(--c500)}
+.sp-dayhead.sp-today .sp-dn{display:inline-grid;place-items:center;min-width:26px;height:26px;border-radius:999px;background:var(--c900);color:#fff}
+.sp-cell{padding:3px;height:52px}
+.sp-compact .sp-cell{height:40px;padding:2px}
+.sp-cell.sp-today{background:color-mix(in srgb,var(--c50) 60%,var(--white))}
+.sp-cellbtn{position:relative;display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:2px;width:100%;height:100%;min-height:44px;padding:2px;border:1px solid transparent;border-radius:10px;background:transparent;cursor:pointer;font:inherit;text-align:left}
+.sp-compact .sp-cellbtn{min-height:34px;align-items:center}
+.sp-cellbtn:hover{border-color:var(--c200);background:var(--white)}
+.sp-cellbtn:focus-visible{outline:2px solid var(--leaf);outline-offset:1px}
+.sp-none{padding:22px;text-align:center;color:var(--c500)}
+
+/* ---- a day's chip: the shift's part of the day is its colour; planned is filled, a standing shift is outlined ---- */
+.sp-chip{display:flex;flex-direction:column;justify-content:center;gap:1px;min-height:30px;padding:4px 8px;border-radius:8px;font-size:12px;font-weight:700;line-height:1.2;border:1px solid transparent;overflow:hidden}
+.sp-compact .sp-chip{min-height:26px;padding:3px 0;align-items:center;font-size:11px;width:100%}
+.sp-chipname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-chiptime{font-size:11px;font-weight:600;opacity:.85;font-variant-numeric:tabular-nums}
+.sp-morning{--b:var(--amber);--bb:var(--amber-bg)}
+.sp-day{--b:var(--blue);--bb:var(--blue-bg)}
+.sp-evening{--b:var(--purple);--bb:var(--purple-bg)}
+.sp-night{--b:var(--c800);--bb:color-mix(in srgb,var(--c800) 12%,var(--white))}
+.sp-chip.sp-planned{background:var(--bb);color:color-mix(in srgb,var(--b) 75%,var(--c900));border-color:color-mix(in srgb,var(--b) 30%,transparent)}
+.sp-chip.sp-night.sp-planned{background:var(--c800);color:#fff;border-color:var(--c800)}
+.sp-chip.sp-own{background:transparent;color:var(--c600);border:1px dashed color-mix(in srgb,var(--b) 55%,var(--c200))}
+.sp-chip.sp-rest{background:repeating-linear-gradient(135deg,var(--c50) 0 6px,var(--white) 6px 12px);color:var(--c500);border-color:var(--c100);align-items:flex-start}
+.sp-compact .sp-chip.sp-rest{align-items:center}
+.sp-chip.sp-off{background:transparent;color:var(--c400);font-weight:400;align-items:center}
+.sp-chip.sp-leave{background:var(--teal-bg);color:var(--teal);border-color:color-mix(in srgb,var(--teal) 25%,transparent)}
+.sp-times{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--c500);font-variant-numeric:tabular-nums;padding:0 2px}
+.sp-times::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--leaf);flex:0 0 auto}
+.sp-missed{font-size:10.5px;font-weight:700;color:var(--clay);padding:0 2px}
+.sp-warn{position:absolute;top:2px;right:3px;display:grid;place-items:center;width:15px;height:15px;border-radius:999px;background:var(--amber);color:#fff;font-size:10px;font-weight:800}
+.sp-compact .sp-warn{width:7px;height:7px;font-size:0;top:1px;right:1px;box-shadow:0 0 0 1.5px var(--white)}
+
+.sp-legend{display:flex;flex-wrap:wrap;gap:8px 18px;list-style:none;margin:12px 2px 0;padding:0;font-size:12px;color:var(--c500)}
+.sp-legend li{display:flex;align-items:center;gap:6px}
+.sp-legend .sp-chip{display:inline-flex;min-height:22px;padding:2px 8px;font-size:11px}
+.sp-band{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--b);flex:0 0 auto}
+.sp-band.sp-restband{background:repeating-linear-gradient(135deg,var(--c200) 0 3px,var(--white) 3px 6px);border:1px solid var(--c200)}
+.sp-legend .sp-band{margin-left:6px}
+
+/* ---- the day: one list ---- */
+.sp-daylist{padding:4px 0}
+.sp-day-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--c100);background:var(--c50);font-size:13px;font-weight:700;color:var(--c700)}
+.sp-daytable td{padding:8px 10px}
+.sp-shiftselect{width:100%;max-width:340px}
+.sp-actual{width:120px;white-space:nowrap}
+.sp-hint{font-weight:400;color:var(--amber)}
+.sp-tag{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}
+.sp-tag-leave{background:var(--teal-bg);color:var(--teal)}
+
+/* ---- selection ---- */
+.sp-selection{position:sticky;bottom:14px;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:10px;width:fit-content;max-width:100%;margin:14px auto 0;padding:10px 12px 10px 16px;border-radius:14px;background:var(--c900);color:#fff;box-shadow:var(--sh);font-size:13px}
+.sp-selection .btn-ghost{color:#fff}
+.sp-selection .btn-ghost:hover{background:rgba(255,255,255,.12)}
+
+/* ---- one cell's menu ---- */
+.sp-menu{position:fixed;z-index:60;background:var(--white);border:1px solid var(--c100);border-radius:14px;box-shadow:var(--sh);padding:6px;max-height:min(420px,70vh);overflow:auto}
+.sp-menuhead{padding:8px 10px 8px;border-bottom:1px solid var(--c100);margin-bottom:4px}
+.sp-menuitem,.sp-shiftopt{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:8px 10px;border:0;border-radius:10px;background:transparent;font:inherit;font-size:13px;color:var(--c800);cursor:pointer;text-align:left}
+.sp-menuitem:hover,.sp-shiftopt:hover{background:var(--c50)}
+.sp-menuitem:focus-visible,.sp-shiftopt:focus-visible{outline:2px solid var(--leaf);outline-offset:-2px}
+.sp-menuitem[aria-checked="true"],.sp-shiftopt[aria-checked="true"]{background:var(--leaf-bg);color:var(--leaf-d);font-weight:700}
+.sp-menuname{flex:1;font-weight:600}
+.sp-menutime{font-size:12px;color:var(--c500);font-variant-numeric:tabular-nums}
+.sp-menuown{border-top:1px solid var(--c100);border-radius:0 0 10px 10px;margin-top:4px}
+
+/* ---- dialogs ---- */
+.sp-overlay{position:fixed;inset:0;z-index:70;background:rgba(24,25,26,.32);display:flex;justify-content:flex-end}
+.sp-dialog{margin:auto;width:min(440px,calc(100vw - 32px));background:var(--white);border-radius:var(--r-lg);box-shadow:var(--sh);padding:22px}
+.sp-dialog h2{font-size:17px;margin:0 0 8px}
+.sp-dialog p{font-size:14px;line-height:1.6;color:var(--c600);margin:0 0 18px}
+.sp-dialogbtns{display:flex;justify-content:flex-end;gap:8px}
+
+.sp-drawer{display:flex;flex-direction:column;width:min(480px,100vw);height:100%;background:var(--white);box-shadow:var(--sh)}
+.sp-drawerhead{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 12px 22px;border-bottom:1px solid var(--c100)}
+.sp-drawerhead h2{font-size:18px;margin:0}
+.sp-drawerbody{flex:1;overflow:auto;padding:16px 22px 22px;display:flex;flex-direction:column;gap:22px}
+.sp-drawerbody h3{font-size:13px;font-weight:800;color:var(--c900);margin:0 0 10px}
+.sp-sectionhead{display:flex;align-items:baseline;justify-content:space-between}
+.sp-count{display:inline-block;min-width:22px;padding:1px 7px;margin-left:4px;border-radius:999px;background:var(--c100);color:var(--c700);font-size:11px;text-align:center}
+.sp-drawerbody .sp-input{width:100%}
+.sp-picklist{list-style:none;margin:8px 0 0;padding:0;max-height:220px;overflow:auto;border:1px solid var(--c100);border-radius:12px}
+.sp-picklist li + li{border-top:1px solid var(--c100)}
+.sp-picklist label{display:grid;grid-template-columns:auto 1fr;column-gap:10px;align-items:center;padding:8px 12px;cursor:pointer}
+.sp-picklist input{width:16px;height:16px;accent-color:var(--leaf);grid-row:span 2}
+.sp-picklist label:hover{background:var(--c50)}
+.sp-shiftpick{display:flex;flex-direction:column;gap:2px;border:1px solid var(--c100);border-radius:12px;padding:4px}
+.sp-dates{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.sp-dates .sp-input{width:100%;min-width:0}
+.sp-datefield{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--c600)}
+.sp-switch{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px;color:var(--c700);cursor:pointer}
+.sp-switch input{width:16px;height:16px;accent-color:var(--leaf)}
+.sp-note{font-size:12px;color:var(--c500);line-height:1.5;margin:8px 0 0}
+.sp-note-warn{color:#9a5d17}
+.sp-reveal{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding:12px;border-radius:12px;background:var(--c50)}
+.sp-weekdays{display:flex;gap:6px;flex-wrap:wrap}
+.sp-wdbtn{min-width:44px;min-height:36px;border:1px solid var(--c200);border-radius:10px;background:var(--white);font:inherit;font-size:12px;font-weight:700;color:var(--c600);cursor:pointer}
+.sp-wdbtn[aria-pressed="true"]{background:var(--c900);border-color:var(--c900);color:#fff}
+.sp-wdbtn:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+.sp-quick{display:flex;gap:14px}
+.sp-cycle{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
+.sp-cycle .sp-chip{display:inline-flex;min-height:26px;padding:3px 10px;font-size:11px}
+.sp-drawerfoot{border-top:1px solid var(--c100);padding:14px 22px 18px}
+.sp-summary{margin:0 0 12px;font-size:13px;font-weight:700;color:var(--c700)}
+
+/* ---- loading ---- */
+.sp-skeleton{padding:14px}
+.sp-skelrow{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;padding:8px 0}
+.sp-skelrow span{height:30px;border-radius:8px;background:linear-gradient(90deg,var(--c50),var(--c100),var(--c50));background-size:200% 100%;animation:sp-shimmer 1.4s infinite}
+@keyframes sp-shimmer{to{background-position:-200% 0}}
+
+@media (prefers-reduced-motion: reduce){
+  .sp-skelrow span{animation:none}
+  .sp-busy{transition:none}
+}
+
+@media (max-width: 720px){
+  .sp-bar{gap:8px}
+  .sp-bar .sp-field:first-child{flex:1 1 100%}
+  .sp-bar .sp-select{min-width:0;width:100%}
+  .sp-search{max-width:none;flex:1 1 100%}
+  .sp-views{flex:1 1 auto;min-width:0}
+  .sp-new{margin-left:0;flex:1 1 100%}
+  .sp-range{margin-left:4px}
+  .sp-person{min-width:130px}
+  .sp-actual{display:none}
+  .sp-dates{grid-template-columns:1fr}
+  .sp-scroll{max-height:none}
+}
