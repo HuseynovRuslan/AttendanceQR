@@ -3,6 +3,8 @@ import {
   accessErrorText, getPersonAccess, isAccessError, revokeAssignment, type PersonAccess,
 } from '../api/access'
 import { AssignRoleDrawer } from './AssignRoleDrawer'
+import { roleDefinitionName } from '../lib/roleNames'
+import { useAccess } from '../auth/AccessContext'
 
 /**
  * «Hüquqlar» on a person's card: what they hold and where, what it adds up to, and — for whoever may —
@@ -13,6 +15,8 @@ import { AssignRoleDrawer } from './AssignRoleDrawer'
  * here — they follow the form.
  */
 export function PersonAccessCard({ employeeId, fullName }: { employeeId: string; fullName: string }) {
+  // Built-in roles under their English names (lib/roleNames) — display only.
+  const hierarchy = !!useAccess().access?.roleHierarchy
   const [data, setData] = useState<PersonAccess | null>(null)
   const [hidden, setHidden] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -72,7 +76,7 @@ export function PersonAccessCard({ employeeId, fullName }: { employeeId: string;
             <div key={a.id} className="acc-row">
               <div className="acc-row-main">
                 <div className="acc-row-meta">
-                  <span className="acc-badge role">{a.roleName}</span>
+                  <span className="acc-badge role">{roleDefinitionName(a.roleName, a.templateKey, hierarchy)}</span>
                   <span className="acc-badge area">{a.area}</span>
                   {a.system && <span className="acc-badge sys" title="İşçi formasındakı vəzifə və filiallardan gəlir">işçi formasından</span>}
                 </div>
@@ -81,7 +85,7 @@ export function PersonAccessCard({ employeeId, fullName }: { employeeId: string;
                 )}
               </div>
               {a.canRevoke && (
-                <button type="button" className="btn btn-sm" disabled={busyId === a.id} onClick={() => void revoke(a.id, a.roleName ?? 'rol')}>
+                <button type="button" className="btn btn-sm" disabled={busyId === a.id} onClick={() => void revoke(a.id, roleDefinitionName(a.roleName, a.templateKey, hierarchy) || 'rol')}>
                   Geri al
                 </button>
               )}

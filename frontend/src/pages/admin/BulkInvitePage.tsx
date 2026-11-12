@@ -12,8 +12,8 @@ import {
 import type { Role } from '../../lib/jwt'
 import { parseBulkText } from './bulkParse'
 import { IconCheck, IconX } from '../../components/icons'
-
-const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
+import { roleOptionName } from '../../lib/roleNames'
+import { useAccess } from '../../auth/AccessContext'
 
 type Mode = 'pin' | 'link'
 
@@ -32,6 +32,8 @@ function activationLink(url: string): string {
 }
 
 export function BulkInvitePage() {
+  // The role picker's words (lib/roleNames): Timekeeper where the company has a Structure Manager. Display only.
+  const hierarchy = !!useAccess().access?.roleHierarchy
   const [locations, setLocations] = useState<AdminLocation[]>([])
   const [locationId, setLocationId] = useState('')
   const [role, setRole] = useState<Role>('Employee')
@@ -201,8 +203,8 @@ export function BulkInvitePage() {
           <div style={{ flex: '0 1 180px' }}>
             <label className="form-label">Rol</label>
             <select className="inp" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-              <option value="Employee">{ROLE_LABEL.Employee}</option>
-              <option value="Manager">{ROLE_LABEL.Manager}</option>
+              <option value="Employee">{roleOptionName('Employee', hierarchy)}</option>
+              <option value="Manager">{roleOptionName('Manager', hierarchy)}</option>
             </select>
           </div>
         </div>

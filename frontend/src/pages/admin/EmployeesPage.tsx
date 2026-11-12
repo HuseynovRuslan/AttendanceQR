@@ -65,6 +65,8 @@ import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { CORRECTION_ERROR, useCorrectionReason } from '../../components/CorrectionReason'
 import { StatusBadge } from '../../components/StatusBadge'
 import { listFailureText } from '../../lib/listFailure'
+import { roleOptionName } from '../../lib/roleNames'
+import { useRoleLabels } from '../../lib/useRoleLabels'
 import {
   IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
   IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
@@ -96,7 +98,7 @@ function fromLocalInputValue(local: string): string | undefined {
   return fromCompanyInputValue(local)
 }
 
-const ROLE_LABEL: Record<Role, string> = { Employee: 'İşçi', Manager: 'Menecer', Admin: 'Admin' }
+const ROLES: Role[] = ['Employee', 'Manager', 'Admin']
 
 /** Names the common rotations the way a manager says them; anything else falls back to the numbers. */
 function cycleLabel(days: number, onDays: number): string {
@@ -309,6 +311,8 @@ function splitName(first: string | null | undefined, last: string | null | undef
 
 export function EmployeesPage() {
   const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
+  // The names roles are shown under (lib/roleNames) — display only; the filter still filters by today's role.
+  const roleLabels = useRoleLabels()
   // ONE staff list for admins and branch managers (Phase 4). A manager's list is their own roster —
   // GET /api/manager/employees: their branches, no salary, no role, no colleague's contacts — and every
   // write goes through their own endpoints, which the server checks row by row. The page only draws
@@ -2456,7 +2460,7 @@ ${back}`,
               aria-label="Rol"
             >
               <option value="">Bütün rollar</option>
-              {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {ROLES.map((r) => <option key={r} value={r}>{roleOptionName(r, roleLabels.hierarchy)}</option>)}
             </select>
           </div>}
           {activeFilterCount > 0 && (
@@ -2569,7 +2573,7 @@ ${back}`,
                   )}
                 </td>}
                 {cols.role && <td data-label="Rol">
-                  {ROLE_LABEL[e.role] ?? e.role}
+                  {roleLabels.nameOf(e.id, e.role)}
                   {/* A manager with no branches is not a lesser manager — they see nothing at all.
                       That is invisible from the admin's side unless the list says so. */}
                   {e.role === 'Manager' && (

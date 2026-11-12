@@ -8,6 +8,7 @@ import {
 } from '../../api/access'
 import { useAuth } from '../../auth/AuthContext'
 import { useAccess } from '../../auth/AccessContext'
+import { roleDefinitionName } from '../../lib/roleNames'
 import { AssignRoleDrawer } from '../../components/AssignRoleDrawer'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { IconX } from '../../components/icons'
@@ -79,6 +80,9 @@ export function AccessPage() {
 // ───────────────────────────── Təyinatlar ─────────────────────────────
 
 function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>; canAssign: boolean }) {
+  // Built-in roles under their English names (lib/roleNames) — display only.
+  const hierarchy = !!useAccess().access?.roleHierarchy
+  const roleName = (name: string | null | undefined, template: string | null | undefined) => roleDefinitionName(name, template, hierarchy)
   const [rows, setRows] = useState<AssignmentRow[] | null>(null)
   const [roles, setRoles] = useState<AccessRoleRow[]>([])
   const [query, setQuery] = useState('')
@@ -107,13 +111,13 @@ function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>;
   }, [rows, query, roleId, source])
 
   async function revoke(a: AssignmentRow) {
-    if (!window.confirm(`${a.employeeName}: «${a.roleName}» (${a.area}) geri alınsın?\n\nNövbəti açılışdan qüvvədədir.`)) return
+    if (!window.confirm(`${a.employeeName}: «${roleName(a.roleName, a.templateKey)}» (${a.area}) geri alınsın?\n\nNövbəti açılışdan qüvvədədir.`)) return
     setBusyId(a.id)
     setFeedback(null)
     const { status, data } = await revokeAssignment(a.id)
     setBusyId(null)
     if (status === 200) {
-      setFeedback({ ok: true, text: `${a.employeeName}: «${a.roleName}» geri alındı.` })
+      setFeedback({ ok: true, text: `${a.employeeName}: «${roleName(a.roleName, a.templateKey)}» geri alındı.` })
       void load()
     } else {
       setFeedback({ ok: false, text: accessErrorText(data, labels) })
@@ -126,7 +130,7 @@ function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>;
         <input className="inp" placeholder="Ad və ya sahə axtar…" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select className="inp" style={{ maxWidth: 220 }} value={roleId} onChange={(e) => setRoleId(e.target.value)}>
           <option value="">Bütün rollar</option>
-          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          {roles.map((r) => <option key={r.id} value={r.id}>{roleName(r.name, r.templateKey)}</option>)}
         </select>
         <select className="inp" style={{ maxWidth: 230 }} value={source} onChange={(e) => setSource(e.target.value as typeof source)}>
           <option value="manual">Əl ilə verilənlər</option>
@@ -165,7 +169,7 @@ function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>;
                   {a.employeeHome && <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}> · {a.employeeHome}</span>}
                 </span>
                 <div className="acc-row-meta">
-                  <span className="acc-badge role">{a.roleName}</span>
+                  <span className="acc-badge role">{roleName(a.roleName, a.templateKey)}</span>
                   <span className="acc-badge area">{a.area}</span>
                   {a.system && <span className="acc-badge sys" title="İşçi formasındakı vəzifə və filiallardan gəlir — orada dəyişin">işçi formasından</span>}
                   {!a.system && a.createdByName && <span>verən: {a.createdByName} · {fmtDateOfInstant(a.createdAtUtc)}</span>}
@@ -200,6 +204,8 @@ function AssignmentsTab({ labels, canAssign }: { labels: Record<string, string>;
 // ───────────────────────────── Rollar ─────────────────────────────
 
 function RolesTab({ catalogue, labels, canEdit }: { catalogue: Catalogue | null; labels: Record<string, string>; canEdit: boolean }) {
+  const hierarchy = !!useAccess().access?.roleHierarchy
+  const roleName = (r: AccessRoleRow) => roleDefinitionName(r.name, r.templateKey, hierarchy)
   const [rows, setRows] = useState<AccessRoleRow[] | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
@@ -216,15 +222,15 @@ function RolesTab({ catalogue, labels, canEdit }: { catalogue: Catalogue | null;
   }, [load])
 
   async function archive(r: AccessRoleRow) {
-    if (!window.confirm(`«${r.name}» arxivə göndərilsin? Sonra bərpa etmək olar.`)) return
+    if (!window.confirm(`«${roleName(r)}» arxivə göndərilsin? Sonra bərpa etmək olar.`)) return
     const { status, data } = await archiveAccessRole(r.id)
-    setFeedback(status === 200 ? { ok: true, text: `«${r.name}» arxivdədir.` } : { ok: false, text: accessErrorText(data, labels) })
+    setFeedback(status === 200 ? { ok: true, text: `«${roleName(r)}» arxivdədir.` } : { ok: false, text: accessErrorText(data, labels) })
     void load()
   }
 
   async function restore(r: AccessRoleRow) {
     const { status, data } = await restoreAccessRole(r.id)
-    setFeedback(status === 200 ? { ok: true, text: `«${r.name}» bərpa olundu.` } : { ok: false, text: accessErrorText(data, labels) })
+    setFeedback(status === 200 ? { ok: true, text: `«${roleName(r)}» bərpa olundu.` } : { ok: false, text: accessErrorText(data, labels) })
     void load()
   }
 
@@ -253,7 +259,7 @@ function RolesTab({ catalogue, labels, canEdit }: { catalogue: Catalogue | null;
             return (
               <div key={r.id} className="card acc-role-card" style={r.archived ? { opacity: 0.6 } : undefined}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <b style={{ fontSize: 15, color: 'var(--c900)' }}>{r.name}</b>
+                  <b style={{ fontSize: 15, color: 'var(--c900)' }}>{roleName(r)}</b>
                   {r.isLocked && <span className="acc-badge lock" title="Kodla müəyyən olunur, dəyişdirilmir">kilidli</span>}
                   {r.isLegacy && <span className="acc-badge sys">keçid rolu</span>}
                   {r.archived && <span className="acc-badge">arxivdə</span>}
@@ -497,7 +503,7 @@ function StructuresTab() {
   return (
     <div className="card card-pad">
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Struktur — bir neçə filialın birlikdə idarəsi. Struktur operatoru strukturun bütün filiallarında işləyir;
+        Struktur — bir neçə filialın birlikdə idarəsi. Structure Manager strukturun bütün filiallarında işləyir;
         filial strukturdan çıxanda hüquq da onunla gedir. Strukturlardan istifadə etmək məcburi deyil.
       </p>
       <div className="acc-toolbar">

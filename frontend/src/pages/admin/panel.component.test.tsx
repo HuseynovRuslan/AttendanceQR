@@ -166,7 +166,9 @@ describe('the menu of somebody whose panel comes from a new role', () => {
       expect(later).toContain(page)
     for (const page of ['Səlahiyyətlər', 'Filiallar', 'Maaş'])
       expect([...links, ...later]).not.toContain(page)
-    expect(container.textContent).toContain('Tabelçi')
+    // The built-in role under its English name (lib/roleNames), 2026-11-12.
+    expect(container.textContent).toContain('Timekeeper')
+    expect(container.textContent).not.toContain('Tabelçi')
     expect(container.textContent).toContain('Mərdəkan filialı')
   })
 
@@ -244,7 +246,8 @@ describe('a role or a branch given or taken shows without signing out', () => {
 
     await waitFor(() => expect(sidebar(container).links).toContain('Səlahiyyətlər'))
     expect(container.textContent).toContain('Bilgəh filialı')
-    expect(container.textContent).toContain('Struktur operatoru')
+    expect(container.textContent).toContain('Structure Manager')
+    expect(container.textContent).not.toContain('Struktur operatoru')
   })
 
   it('taken away, the panel narrows again on the next read', async () => {

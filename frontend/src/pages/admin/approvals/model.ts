@@ -15,7 +15,7 @@ export type ApprovalRole = 'companyAdmin' | 'operator' | 'timekeeper' | 'viewer'
 /** Shown in English, as the owner asked: these are the names of the roles in the product. */
 export const ROLE_NAME: Record<ApprovalRole, string> = {
   companyAdmin: 'Company Admin',
-  operator: 'Operator',
+  operator: 'Structure Manager',
   timekeeper: 'Timekeeper',
   viewer: 'Viewer',
 }

@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import type { DisplayRole } from '../lib/roleNames'
 
 /**
  * GET /api/me/access — what the signed-in person may do in the permission model, and where. Read from the
@@ -26,8 +27,23 @@ export interface MyAccess {
   }[]
   /** Every branch this person's assignments reach — all of them for company-wide. */
   branches: { id: string; name: string; structureId: string | null }[]
+  /** The name this person's role is SHOWN under (server's RoleDisplay). Display only. */
+  displayRole?: DisplayRole
+  /** The company has a Structure Manager: its role pickers say Timekeeper. */
+  roleHierarchy?: boolean
 }
 
 export function getMyAccess() {
   return apiRequest<MyAccess>('/api/me/access')
+}
+
+/** GET /api/me/role-labels — the names the company's admins, managers and role holders are shown under. Plain
+ *  staff are not listed: they are «employee». Display only. */
+export interface RoleLabels {
+  hierarchy: boolean
+  labels: { id: string; role: DisplayRole }[]
+}
+
+export function getRoleLabels() {
+  return apiRequest<RoleLabels>('/api/me/role-labels')
 }

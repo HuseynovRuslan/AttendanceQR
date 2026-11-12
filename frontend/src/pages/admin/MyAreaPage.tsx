@@ -4,6 +4,7 @@ import { FEATURE, useFeatureEnabled } from '../../branding/BrandingContext'
 import { useAccess } from '../../auth/AccessContext'
 import { groupPermissions, SCOPE_LABEL, TEMPLATE_HINT } from '../../lib/accessGroups'
 import { PANEL_PAGES, pagesAfterSwitch, pagesFor } from '../../lib/panelAccess'
+import { roleDefinitionName } from '../../lib/roleNames'
 
 const MODE_NOTE: Record<string, string> = {
   Legacy: 'Şirkət hələ köhnə qaydadadır: panelin hansı bölmələrinin açılması bugünkü rolunuzdan asılıdır.',
@@ -43,7 +44,7 @@ export function MyAreaPage() {
   for (const a of access.assignments) {
     const key = `${a.roleId}|${a.scope}|${a.structureId ?? ''}`
     const line = lines.get(key) ?? {
-      role: a.roleName ?? 'Rol',
+      role: roleDefinitionName(a.roleName, a.template, !!access.roleHierarchy) || 'Rol',
       hint: a.template ? TEMPLATE_HINT[a.template] ?? null : null,
       areas: [],
     }
