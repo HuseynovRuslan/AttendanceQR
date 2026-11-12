@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Api;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
@@ -134,6 +135,8 @@ public class ShiftPlanTests
         public Schedule Night { get; }
         public Schedule OtherBranchShift { get; }
         public List<DateOnly> Rebuilt { get; } = [];
+        /// <summary>When set, every rebuild fails — the database is down, the job is killed.</summary>
+        public bool FailRebuild { get; set; }
 
         public Harness()
         {
@@ -171,7 +174,7 @@ public class ShiftPlanTests
         private ClaimsPrincipal User(Guid id, EmployeeRole role) => new(new ClaimsIdentity(
             [new Claim("sub", id.ToString()), new Claim("role", role.ToString())], "test"));
 
-        public ShiftPlanController Plan(Guid id, EmployeeRole role) => new(Db, new RecordingSummaries(Rebuilt))
+        public ShiftPlanController Plan(Guid id, EmployeeRole role) => new(Db, Summaries)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = User(id, role) } },
         };
@@ -186,11 +189,15 @@ public class ShiftPlanTests
 
         public void Dispose() => Db.Dispose();
 
-        private sealed class RecordingSummaries(List<DateOnly> rebuilt) : IDailySummaryService
+        public IDailySummaryService Summaries => new RecordingSummaries(this);
+
+        private sealed class RecordingSummaries(Harness h) : IDailySummaryService
         {
             public Task<int> GenerateForDateAsync(DateOnly date, CancellationToken ct = default)
             {
-                rebuilt.Add(date);
+                if (h.FailRebuild)
+                    throw new InvalidOperationException("rebuild failed");
+                h.Rebuilt.Add(date);
                 return Task.FromResult(0);
             }
         }
@@ -415,5 +422,161 @@ public class ShiftPlanTests
 
         Assert.Equal(409, Status(refused));
         Assert.Equal("ScheduleInPlan", Body(refused).GetProperty("error").GetString());
+    }
+
+    // ---- standing shifts, history and undo ----------------------------------------------------------------------
+
+    private static Dictionary<Guid, Schedule> Catalogue(Harness h) => h.Db.Schedules.AsNoTracking().ToDictionary(s => s.Id);
+
+    private static async Task<Schedule?> On(Harness h, Guid employee, DateOnly date)
+    {
+        var own = h.Db.Employees.AsNoTracking().Single(e => e.Id == employee).ScheduleId;
+        var map = await ShiftOverrideMap.LoadAsync(h.Db, date, date, [employee], CancellationToken.None);
+        return map.ScheduleFor(employee, date, own, Catalogue(h));
+    }
+
+    [Fact]
+    public async Task Moving_somebody_to_another_standing_shift_keeps_their_past_on_the_old_one()
+    {
+        using var h = new Harness();
+        var worker = h.Db.Employees.Single(e => e.Id == h.WorkerA);
+        await StandingShifts.SetFromFormAsync(h.Db, worker, h.Night.Id, h.AdminId, CancellationToken.None);
+        h.Db.SaveChanges();
+
+        Assert.Equal("Səhər", (await On(h, h.WorkerA, Today.AddDays(-40)))!.Name); // last month: still the morning shift
+        Assert.Equal("Səhər", (await On(h, h.WorkerA, Today.AddDays(-1)))!.Name);
+        Assert.Equal("Gecə", (await On(h, h.WorkerA, Today))!.Name);
+        Assert.Equal(h.Night.Id, h.Db.Employees.AsNoTracking().Single(e => e.Id == h.WorkerA).ScheduleId);
+
+        var item = h.Db.ShiftPlanChangeItems.AsNoTracking().Single();
+        Assert.True(item.Standing);
+        Assert.Equal("Səhər 06:00–15:00", item.BeforeLabel);
+        Assert.Equal("Gecə 20:00–06:00", item.AfterLabel);
+    }
+
+    [Fact]
+    public async Task A_rotation_with_no_end_runs_past_any_day_limit_and_leaves_the_past_alone()
+    {
+        using var h = new Harness();
+        var start = Today.AddDays(1);
+        var result = await h.Plan(h.ManagerId, EmployeeRole.Manager).Apply(new ShiftPlanApplyRequest(
+            [h.WorkerA], [h.Day.Id.ToString(), h.Day.Id.ToString(), h.Night.Id.ToString(), h.Night.Id.ToString(), "rest", "rest"],
+            From: start, Standing: true));
+
+        Assert.Equal(200, Status(result));
+        Assert.Empty(h.Db.ShiftOverrides); // not three hundred day rows: one standing rule
+        Assert.Equal("Səhər", (await On(h, h.WorkerA, Today))!.Name);            // today and before: the old shift
+        Assert.Equal("Səhər", (await On(h, h.WorkerA, start.AddDays(300)))!.Name); // 300 % 6 = 0: a day shift
+        Assert.Equal("Gecə", (await On(h, h.WorkerA, start.AddDays(302)))!.Name);
+        var off = (await On(h, h.WorkerA, start.AddDays(304)))!;
+        Assert.True(off.IsRestDay);
+        Assert.Equal(0, off.WorkDaysMask);
+    }
+
+    [Fact]
+    public async Task A_failed_rebuild_leaves_a_note_and_the_plan_never_disagrees_with_it()
+    {
+        using var h = new Harness();
+        h.FailRebuild = true;
+        var worked = Today.AddDays(-3);
+        var result = await h.Plan(h.AdminId, EmployeeRole.Admin).Apply(new ShiftPlanApplyRequest(
+            [h.WorkerA], [h.Night.Id.ToString()], Dates: [worked], ConfirmPast: true));
+
+        Assert.Equal(200, Status(result));
+        Assert.Equal(1, Body(result).GetProperty("rebuildPending").GetInt32());
+        Assert.Single(h.Rows(h.WorkerA));                                // the plan is saved…
+        var note = h.Db.PendingSummaryRebuilds.AsNoTracking().Single();  // …with its stale day noted
+        Assert.Equal(worked, note.Date);
+        Assert.Equal(1, note.Attempts);
+
+        h.FailRebuild = false;                                           // the worker's next sweep
+        var (rebuilt, pending) = await PlanRebuilds.RunAsync(h.Db, h.Summaries, [worked], null, CancellationToken.None);
+        Assert.Equal((1, 0), (rebuilt, pending));
+        Assert.Empty(h.Db.PendingSummaryRebuilds.AsNoTracking());
+    }
+
+    [Fact]
+    public async Task A_preview_says_what_changes_and_writes_nothing()
+    {
+        using var h = new Harness();
+        var plan = h.Plan(h.AdminId, EmployeeRole.Admin);
+        var day = Today.AddDays(2);
+        await plan.Apply(new ShiftPlanApplyRequest([h.WorkerA], [h.Day.Id.ToString()], Dates: [day]));
+
+        var preview = Body(await plan.Apply(new ShiftPlanApplyRequest(
+            [h.WorkerA, h.WorkerA2], [h.Night.Id.ToString()], Dates: [day], Preview: true)));
+
+        Assert.True(preview.GetProperty("preview").GetBoolean());
+        Assert.Equal(1, preview.GetProperty("newDays").GetInt32());
+        Assert.Equal(1, preview.GetProperty("replacedDays").GetInt32());
+        var moves = preview.GetProperty("changes").EnumerateArray()
+            .Select(c => $"{c.GetProperty("from").GetString()} → {c.GetProperty("to").GetString()}").ToList();
+        Assert.Contains("Səhər 06:00–15:00 → Gecə 20:00–06:00", moves);
+        Assert.Contains("Öz növbəsi → Gecə 20:00–06:00", moves);
+        Assert.Equal(h.Day.Id, Assert.Single(h.Rows(h.WorkerA)).ScheduleId); // nothing written
+        Assert.Empty(h.Rows(h.WorkerA2));
+    }
+
+    [Fact]
+    public async Task Undo_puts_back_what_was_there_and_leaves_a_day_changed_since_alone()
+    {
+        using var h = new Harness();
+        var plan = h.Plan(h.AdminId, EmployeeRole.Admin);
+        var d1 = Today.AddDays(1);
+        var days = new List<DateOnly> { d1, d1.AddDays(1), d1.AddDays(2) };
+        await plan.Apply(new ShiftPlanApplyRequest([h.WorkerA], [h.Day.Id.ToString()], Dates: [d1]));   // before: a day shift on d1
+        var change = Body(await plan.Apply(new ShiftPlanApplyRequest([h.WorkerA], [h.Night.Id.ToString()], Dates: days)))
+            .GetProperty("changeId").GetGuid();
+        await plan.Apply(new ShiftPlanApplyRequest([h.WorkerA], ["rest"], Dates: [d1.AddDays(2)]));     // somebody changed d1+2 since
+
+        var undone = Body(await plan.Undo(change, null));
+        Assert.Equal(2, undone.GetProperty("reverted").GetInt32());
+        Assert.Equal(1, undone.GetProperty("kept").GetInt32());
+        var rows = h.Rows(h.WorkerA).ToDictionary(r => r.Date, r => r.ScheduleId);
+        Assert.Equal(h.Day.Id, rows[d1]);              // back to the day shift it was
+        Assert.False(rows.ContainsKey(d1.AddDays(1))); // back to no plan
+        Assert.Equal(h.RestId, rows[d1.AddDays(2)]);   // the later change wins
+
+        Assert.Equal(409, Status(await plan.Undo(change, null))); // once is enough
+    }
+
+    [Fact]
+    public async Task The_history_shows_each_days_shift_before_and_after_and_the_undo()
+    {
+        using var h = new Harness();
+        var plan = h.Plan(h.ManagerId, EmployeeRole.Manager);
+        var day = Today.AddDays(5);
+        var change = Body(await plan.Apply(new ShiftPlanApplyRequest([h.WorkerA], [h.Night.Id.ToString()], Dates: [day], LocationId: h.BranchA)))
+            .GetProperty("changeId").GetGuid();
+        await plan.Undo(change, null);
+
+        var history = Body(await plan.Changes(h.BranchA)).EnumerateArray().ToList();
+        Assert.Equal(2, history.Count);
+        var original = history.Single(c => !c.GetProperty("isUndo").GetBoolean());
+        Assert.Equal("Menecer", original.GetProperty("by").GetString());
+        Assert.False(original.GetProperty("undoable").GetBoolean());
+        Assert.NotNull(original.GetProperty("undoneAt").GetString());
+        var item = original.GetProperty("items").EnumerateArray().Single();
+        Assert.Equal("Aysel", item.GetProperty("employee").GetString());
+        Assert.Equal("Öz növbəsi", item.GetProperty("before").GetString());
+        Assert.Equal("Gecə 20:00–06:00", item.GetProperty("after").GetString());
+
+        Assert.Equal(403, Status(await plan.Changes(h.BranchB)));
+    }
+
+    [Fact]
+    public async Task Undoing_a_standing_change_puts_the_old_shift_back_from_the_same_day()
+    {
+        using var h = new Harness();
+        var plan = h.Plan(h.AdminId, EmployeeRole.Admin);
+        var change = Body(await plan.Apply(new ShiftPlanApplyRequest([h.WorkerA], [h.Night.Id.ToString()], From: Today.AddDays(1), Standing: true)))
+            .GetProperty("changeId").GetGuid();
+        Assert.Equal("Gecə", (await On(h, h.WorkerA, Today.AddDays(10)))!.Name);
+
+        Assert.Equal(200, Status(await plan.Undo(change, null)));
+
+        Assert.Equal("Səhər", (await On(h, h.WorkerA, Today.AddDays(10)))!.Name);
+        Assert.Empty(h.Db.ShiftAssignments.AsNoTracking());
+        Assert.Equal(h.Day.Id, h.Db.Employees.AsNoTracking().Single(e => e.Id == h.WorkerA).ScheduleId);
     }
 }

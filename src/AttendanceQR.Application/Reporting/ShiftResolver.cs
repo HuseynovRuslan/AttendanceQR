@@ -55,17 +55,25 @@ public static class ShiftResolver
     public static async Task<Schedule?> ScheduleOnAsync(
         AppDbContext db, Guid employeeId, Guid? ownScheduleId, DateOnly date, CancellationToken ct)
     {
-        var planned = await db.ShiftOverrides
-            .Where(o => o.EmployeeId == employeeId && o.Date == date)
-            .Select(o => (Guid?)o.ScheduleId)
-            .FirstOrDefaultAsync(ct);
-        if ((planned ?? ownScheduleId) is not Guid id)
-            return null;
-        var ids = ownScheduleId is Guid own && own != id ? new[] { id, own } : new[] { id };
-        var schedules = await db.Schedules
-            .Where(s => ids.Contains(s.Id) || (s.RevisionOfId != null && ids.Contains(s.RevisionOfId.Value)))
-            .ToDictionaryAsync(s => s.Id, ct);
-        return ScheduleOn(id, ownScheduleId, date, schedules);
+        var map = await ShiftOverrideMap.LoadAsync(db, date, date, [employeeId], ct);
+        var schedules = await db.Schedules.AsNoTracking().ToDictionaryAsync(s => s.Id, ct);
+        return map.ScheduleFor(employeeId, date, ownScheduleId, schedules);
+    }
+
+    /// <summary>
+    /// A day off for somebody whose hours are <paramref name="hoursScheduleId"/>'s (as that shift stood on the date):
+    /// the same hours, not a working day. With no such shift, the company's «İstirahət» row, or a plain day off.
+    /// </summary>
+    public static Schedule RestOn(Guid? hoursScheduleId, DateOnly date, IReadOnlyDictionary<Guid, Schedule> schedules)
+    {
+        if (hoursScheduleId is Guid id && schedules.TryGetValue(id, out var hours) && !hours.IsRestDay)
+            return RestDayOf(VersionOn(hours, date, schedules));
+        var rest = schedules.Values.FirstOrDefault(s => s.IsRestDay && s.RevisionOfId is null);
+        return RestDayOf(rest ?? new Schedule
+        {
+            Id = Guid.Empty, Name = "İstirahət", ShiftStart = new TimeOnly(9, 0), ShiftEnd = new TimeOnly(18, 0),
+            LateThresholdMinutes = 15, WorkDaysMask = 0, IsRestDay = true,
+        });
     }
 
     /// <summary>A shift as it stood on <paramref name="date"/>: the revision that covered it, or the shift itself.</summary>

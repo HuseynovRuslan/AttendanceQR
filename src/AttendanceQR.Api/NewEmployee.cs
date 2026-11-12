@@ -103,11 +103,11 @@ public static class NewEmployee
     /// A shift from another company would be an outright tenant leak, so the id is checked against the
     /// query-filtered set rather than trusted from the body.
     /// </summary>
-    public static async Task<string?> ApplyScheduleAsync(AppDbContext db, Employee employee, Guid? scheduleId, CancellationToken ct)
+    public static async Task<string?> ApplyScheduleAsync(AppDbContext db, Employee employee, Guid? scheduleId, CancellationToken ct, Guid? actorId = null)
     {
         if (scheduleId is not Guid id)
         {
-            employee.ScheduleId = null;
+            await StandingShifts.SetFromFormAsync(db, employee, null, actorId, ct);
             return null;
         }
         var schedule = await db.Schedules.Templates()
@@ -120,7 +120,8 @@ public static class NewEmployee
         // the admin path shares, so the two can never drift apart.
         if (ScheduleAssignmentRule.Refusal(schedule.LocationId, employee.LocationId) is { } branchRefusal)
             return branchRefusal;
-        employee.ScheduleId = id;
+        // From today on: the days before keep the shift they were worked on (StandingShifts).
+        await StandingShifts.SetFromFormAsync(db, employee, id, actorId, ct);
         return null;
     }
 }

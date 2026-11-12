@@ -60,6 +60,10 @@ public class AppDbContext : DbContext
     public DbSet<LeaveRecord> LeaveRecords => Set<LeaveRecord>();
     public DbSet<Schedule> Schedules => Set<Schedule>();
     public DbSet<ShiftOverride> ShiftOverrides => Set<ShiftOverride>();
+    public DbSet<ShiftAssignment> ShiftAssignments => Set<ShiftAssignment>();
+    public DbSet<ShiftPlanChange> ShiftPlanChanges => Set<ShiftPlanChange>();
+    public DbSet<ShiftPlanChangeItem> ShiftPlanChangeItems => Set<ShiftPlanChangeItem>();
+    public DbSet<PendingSummaryRebuild> PendingSummaryRebuilds => Set<PendingSummaryRebuild>();
 
     public DbSet<AbsenceMark> AbsenceMarks => Set<AbsenceMark>();
     public DbSet<AttendanceSelfCorrection> AttendanceSelfCorrections => Set<AttendanceSelfCorrection>();
@@ -168,6 +172,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<LeaveRecord>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<Schedule>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<ShiftOverride>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ShiftAssignment>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ShiftPlanChange>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<ShiftPlanChangeItem>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<PendingSummaryRebuild>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
         modelBuilder.Entity<AbsenceMark>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
 
         // A shift may belong to one branch or to the whole company (null). SetNull rather than
@@ -190,6 +198,12 @@ public class AppDbContext : DbContext
             .IsUnique();
         // Every read is «what applies on this date», so the date leads.
         modelBuilder.Entity<ShiftOverride>().HasIndex(o => new { o.TenantId, o.Date });
+        // A standing shift is read by person and date; the history by branch, newest first; one rebuild per day.
+        modelBuilder.Entity<ShiftAssignment>().HasIndex(a => new { a.TenantId, a.EmployeeId, a.From });
+        modelBuilder.Entity<ShiftPlanChange>().HasIndex(c => new { c.TenantId, c.LocationId, c.CreatedAtUtc });
+        modelBuilder.Entity<ShiftPlanChangeItem>().HasIndex(i => i.ChangeId);
+        modelBuilder.Entity<ShiftPlanChangeItem>().HasIndex(i => new { i.TenantId, i.EmployeeId, i.Date });
+        modelBuilder.Entity<PendingSummaryRebuild>().HasIndex(r => new { r.TenantId, r.Date }).IsUnique();
 
         // One mark per person per day — the question «did they come» has one answer, and a second row
         // would leave two people's names on the same deduction.

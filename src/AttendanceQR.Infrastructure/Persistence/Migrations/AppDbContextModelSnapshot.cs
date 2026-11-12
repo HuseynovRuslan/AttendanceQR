@@ -1667,6 +1667,32 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("PendingPhotoUploads");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.PendingSummaryRebuild", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("PendingSummaryRebuilds");
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.PinResetRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1984,6 +2010,41 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("Schedules");
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ShiftAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("From")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Steps")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("Until")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "EmployeeId", "From");
+
+                    b.ToTable("ShiftAssignments");
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.ShiftOverride", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2019,6 +2080,100 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ShiftOverrides");
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ShiftPlanChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Days")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("LocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("People")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UndoOfId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UndoneAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UndoneByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "LocationId", "CreatedAtUtc");
+
+                    b.ToTable("ShiftPlanChanges");
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.ShiftPlanChangeItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("After")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AfterLabel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Before")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BeforeLabel")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ChangeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Standing")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangeId");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Date");
+
+                    b.ToTable("ShiftPlanChangeItems");
                 });
 
             modelBuilder.Entity("AttendanceQR.Domain.Entities.Structure", b =>

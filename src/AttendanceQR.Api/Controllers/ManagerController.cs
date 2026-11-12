@@ -1252,5 +1252,5 @@ public class ManagerController : ControllerBase
 
     /// <summary>Assigns (or clears) the employee's named shift. See NewEmployee.ApplyScheduleAsync.</summary>
     private Task<string?> ApplyScheduleAsync(Employee employee, Guid? scheduleId) =>
-        NewEmployee.ApplyScheduleAsync(_db, employee, scheduleId, HttpContext.RequestAborted);
+        NewEmployee.ApplyScheduleAsync(_db, employee, scheduleId, HttpContext.RequestAborted, User.EmployeeId());
 }
