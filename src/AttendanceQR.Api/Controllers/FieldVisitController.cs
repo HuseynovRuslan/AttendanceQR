@@ -528,13 +528,24 @@ public class FieldVisitController : ControllerBase
         var ct = HttpContext.RequestAborted;
         var day = date ?? TodayLocal();
 
-        // A manager sees only their branches' workers' visits (PII: phone, GPS, selfies); an Admin, all.
+        // A manager sees the visits of the people at the branches they manage — the plain staff AND the fellow
+        // managers there — and their own; an Admin, all.
+        //
+        // It stopped at Role==Employee since the P0 of 2026-08-08, and was left there when the rest of the panel
+        // moved on: the today board, the tabel and the reports have shown a manager everyone at their branches
+        // for a while (LocationScopeRules.CanAccessEmployeeAsync — seeing is wider than managing). So a manager
+        // with sixteen site managers under them saw all of them arrive on the today board and none of their
+        // field days here. An Admin who clocks in at the branch stays off this board: every row opens a
+        // checklist and work photos, which ask CanManageEmployeeAsync — a fellow manager at one's own branch
+        // yes, an admin never — and a row that refuses to open is worse than no row. Assigning, cancelling and
+        // forcing a check-out are unchanged: they ask that same manage rule.
         var managed = await ManagedScopeAsync(ct);
         var me = Me;
         var query = _db.FieldVisits.Where(v => v.VisitDate == day);
         if (managed != null)
             query = query.Where(v => v.EmployeeId == me || _db.Employees.Any(e =>
-                e.Id == v.EmployeeId && managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee));
+                e.Id == v.EmployeeId && managed.Contains(e.LocationId)
+                && (e.Role == EmployeeRole.Employee || e.Role == EmployeeRole.Manager)));
 
         var visits = await query
             .OrderBy(v => v.Status).ThenBy(v => v.CheckInAtUtc)
