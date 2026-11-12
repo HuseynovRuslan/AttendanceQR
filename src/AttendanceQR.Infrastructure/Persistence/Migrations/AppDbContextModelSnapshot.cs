@@ -1925,6 +1925,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<string>("DayHours")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsRestDay")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("LateThresholdMinutes")
                         .HasColumnType("integer");
 
@@ -1934,6 +1937,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("RevisionOfId")
+                        .HasColumnType("uuid");
 
                     b.Property<TimeOnly?>("SecondShiftEnd")
                         .HasColumnType("time without time zone");
@@ -1950,6 +1956,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateOnly?>("ValidUntil")
+                        .HasColumnType("date");
+
                     b.Property<DateOnly?>("WorkCycleAnchor")
                         .HasColumnType("date");
 
@@ -1965,6 +1974,8 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("LocationId");
+
+                    b.HasIndex("RevisionOfId");
 
                     b.HasIndex("TenantId");
 

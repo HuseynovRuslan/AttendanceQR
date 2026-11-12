@@ -110,7 +110,7 @@ public static class NewEmployee
             employee.ScheduleId = null;
             return null;
         }
-        var schedule = await db.Schedules
+        var schedule = await db.Schedules.Templates()
             .Where(s => s.Id == id)
             .Select(s => new { s.LocationId })
             .FirstOrDefaultAsync(ct);

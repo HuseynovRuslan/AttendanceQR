@@ -1690,7 +1690,7 @@ public class AdminController : ControllerBase
         Guid? scheduleLocationId = null;
         if (request.ScheduleId is Guid sid)
         {
-            var schedule = await _db.Schedules
+            var schedule = await _db.Schedules.Templates()
                 .Where(s => s.Id == sid)
                 .Select(s => new { s.LocationId })
                 .FirstOrDefaultAsync(ct);
@@ -1828,7 +1828,7 @@ public class AdminController : ControllerBase
             employee.ScheduleId = null;
             return null;
         }
-        var schedule = await _db.Schedules
+        var schedule = await _db.Schedules.Templates()
             .Where(s => s.Id == id)
             .Select(s => new { s.LocationId })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);

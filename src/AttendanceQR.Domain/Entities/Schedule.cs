@@ -12,9 +12,11 @@ namespace AttendanceQR.Domain.Entities;
 ///
 /// So it is now a LIVE reference: <see cref="Employee.ScheduleId"/> points here, and every screen
 /// resolves an employee's hours and days through it. The consequence has to be understood before
-/// editing one: changing a shift's hours changes how PAST days are reported too, because reports are
-/// recomputed from the schedule rather than from a copy taken at the time. That is the accepted
-/// trade — versioning shifts would be a much larger feature — and the admin UI says so out loud.
+/// editing one used to change how PAST days were reported too, because reports are recomputed from the
+/// schedule rather than from a copy taken at the time. Since 2026-11-12 an edit that changes how a day is
+/// judged keeps the shift as it was in a revision row (<see cref="RevisionOfId"/>, <see cref="ValidUntil"/>):
+/// a day before the edit is resolved against the revision, a day after against this row. See
+/// AttendanceQR.Application ShiftResolver, the one place that picks between them.
 ///
 /// Assigning a shift is optional. An employee with no ScheduleId keeps the older behaviour: their own
 /// WorkStart/WorkEnd if set, otherwise the location's. See AttendanceQR.Application EffectiveShift,
@@ -111,4 +113,23 @@ public class Schedule : ITenantScoped, IHasWorkCycle
     public DateOnly? WorkCycleAnchor { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// The company's «İstirahət»: what a plan writes on a day somebody does not work. It is never a template
+    /// anybody picks or is put on — the resolver turns it into the person's own hours on a day that is not a
+    /// working day, so a rest day reaches every rule downstream (no «Qayıb», no reminder) without a branch of its
+    /// own. One per company, made the first time a plan needs it.
+    /// </summary>
+    public bool IsRestDay { get; set; }
+
+    /// <summary>
+    /// Set on a revision: the shift <see cref="RevisionOfId"/> as it was up to and including
+    /// <see cref="ValidUntil"/>. Written when an edit changes how a day is judged, so a past day recomputed
+    /// later (a correction, a leave entry) is still measured by the hours it was worked under. A revision is
+    /// never listed, picked or edited.
+    /// </summary>
+    public Guid? RevisionOfId { get; set; }
+
+    /// <inheritdoc cref="RevisionOfId"/>
+    public DateOnly? ValidUntil { get; set; }
 }

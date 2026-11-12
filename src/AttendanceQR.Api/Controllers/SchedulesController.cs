@@ -1,4 +1,5 @@
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
@@ -32,14 +33,20 @@ public class SchedulesController : ControllerBase
 {
     private readonly AppDbContext _db;
 
-    public SchedulesController(AppDbContext db) => _db = db;
+    private readonly TimeZoneInfo _zone;
+
+    public SchedulesController(AppDbContext db, AppOptions? appOptions = null)
+    {
+        _db = db;
+        _zone = ScheduleRevisions.Zone(appOptions?.TimeZone);
+    }
 
     [Permission(AccessPermissions.SchedulesView)]
     [HttpGet]
     public async Task<IActionResult> List()
     {
         var ct = HttpContext.RequestAborted;
-        var query = _db.Schedules.AsQueryable();
+        var query = _db.Schedules.Templates();
 
         if (User.Role() == EmployeeRole.Manager)
         {
@@ -112,11 +119,12 @@ public class SchedulesController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] ScheduleRequest request)
     {
-        var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
+        var schedule = await _db.Schedules.Templates().FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
         if (schedule is null)
             return NotFound(new { error = "ScheduleNotFound" });
         if (!TryParse(request, out var start, out var end, out var error))
             return BadRequest(new { error });
+        var before = ShiftResolver.Snapshot(schedule);
 
         schedule.Name = request.Name.Trim();
         schedule.ShiftStart = start;
@@ -143,6 +151,7 @@ public class SchedulesController : ControllerBase
                 return Conflict(new { error = "ScheduleUsedByOtherBranch", employeeCount = stranded });
         }
 
+        await ScheduleRevisions.KeepAsync(_db, schedule, before, ScheduleRevisions.Today(_zone), _zone, HttpContext.RequestAborted);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
     }
@@ -156,13 +165,19 @@ public class SchedulesController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
+        var schedule = await _db.Schedules.Templates().FirstOrDefaultAsync(s => s.Id == id, HttpContext.RequestAborted);
         if (schedule is null)
             return NotFound(new { error = "ScheduleNotFound" });
 
         var assigned = await _db.Employees.CountAsync(e => e.ScheduleId == id, HttpContext.RequestAborted);
         if (assigned > 0)
             return Conflict(new { error = "ScheduleInUse", employeeCount = assigned });
+        // A shift still written on a day ahead in somebody's plan would leave that day pointing at nothing —
+        // it would quietly fall back to the person's own shift. Refused with the count, like a shift in use.
+        var today = ScheduleRevisions.Today(ScheduleRevisions.Zone(_zone.Id));
+        var planned = await _db.ShiftOverrides.CountAsync(o => o.ScheduleId == id && o.Date >= today, HttpContext.RequestAborted);
+        if (planned > 0)
+            return Conflict(new { error = "ScheduleInPlan", dayCount = planned });
 
         _db.Schedules.Remove(schedule);
         await _db.SaveChangesAsync(HttpContext.RequestAborted);

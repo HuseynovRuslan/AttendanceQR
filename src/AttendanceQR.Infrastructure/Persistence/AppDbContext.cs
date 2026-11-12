@@ -180,6 +180,8 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.LocationId)
             .OnDelete(DeleteBehavior.SetNull);
         modelBuilder.Entity<Schedule>().HasIndex(s => new { s.TenantId, s.LocationId });
+        // A shift's revisions are read with it by every resolver that loads one shift on its own.
+        modelBuilder.Entity<Schedule>().HasIndex(s => s.RevisionOfId);
         // One override per person per day — «he worked two different shifts that day» is not a thing,
         // and without the constraint a double-click would leave two rows and a coin toss over which
         // one decides the hours somebody is paid for.

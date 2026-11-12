@@ -271,16 +271,16 @@ public class AttendanceController : ControllerBase
         var loc = await _db.Locations.FirstOrDefaultAsync(l => l.Id == profile.LocationId, HttpContext.RequestAborted);
         if (loc is not null)
         {
-            var sched = profile.ScheduleId is Guid schId
-                ? await _db.Schedules.FirstOrDefaultAsync(s => s.Id == schId, HttpContext.RequestAborted)
-                : null;
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+            // Today's plan — a planned shift, a cover or a rest day — not only the standing shift: on a planned day
+            // the card and the check-out reminder have to show the hours the person is actually on.
+            var sched = await ShiftResolver.ScheduleOnAsync(_db, employeeId, profile.ScheduleId, today, HttpContext.RequestAborted);
             var shift = EffectiveShift.Resolve(
                 profile.WorkStart, profile.WorkEnd, profile.WorkCycleDays, profile.WorkCycleOnDays,
                 profile.WorkCycleAnchor, sched, loc);
             // Today's hours: the app prints these on the check-in card and times the check-out
             // reminder against them, so on a day the crew starts later it must say so.
-            var todayHours = shift.HoursOn(DateOnly.FromDateTime(
-                TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone)));
+            var todayHours = shift.HoursOn(today);
             shiftStart = todayHours.Start.ToString("HH:mm");
             shiftEnd = todayHours.End.ToString("HH:mm");
         }
@@ -1382,16 +1382,7 @@ public class AttendanceController : ControllerBase
     /// </summary>
     internal async Task<EffectiveShift> ResolveShiftAsync(Employee employee, Location location, DateOnly date)
     {
-        var ct = HttpContext.RequestAborted;
-        var covering = await _db.ShiftOverrides
-            .Where(o => o.EmployeeId == employee.Id && o.Date == date)
-            .Select(o => (Guid?)o.ScheduleId)
-            .FirstOrDefaultAsync(ct);
-
-        var scheduleId = covering ?? employee.ScheduleId;
-        var schedule = scheduleId is Guid id
-            ? await _db.Schedules.FirstOrDefaultAsync(s => s.Id == id, ct)
-            : null;
+        var schedule = await ShiftResolver.ScheduleOnAsync(_db, employee.Id, employee.ScheduleId, date, HttpContext.RequestAborted);
         return EffectiveShift.Resolve(employee, schedule, location);
     }
 

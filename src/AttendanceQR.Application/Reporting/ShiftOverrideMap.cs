@@ -39,12 +39,11 @@ public sealed class ShiftOverrideMap
         => On(employeeId, date) ?? ownScheduleId;
 
     /// <summary>
-    /// The schedule object itself, resolved through the override. Every call site is one line, which is
-    /// the only way eight of them stay in agreement.
+    /// The schedule object itself, resolved through the override — and through <see cref="ShiftResolver"/>: a rest
+    /// day, and the shift as it was on that date. Every call site is one line, which is the only way eight of them
+    /// stay in agreement.
     /// </summary>
     public Schedule? ScheduleFor(
         Guid employeeId, DateOnly date, Guid? ownScheduleId, IReadOnlyDictionary<Guid, Schedule> schedules)
-        => EffectiveScheduleId(employeeId, date, ownScheduleId) is Guid id
-            ? schedules.GetValueOrDefault(id)
-            : null;
+        => ShiftResolver.ScheduleOn(EffectiveScheduleId(employeeId, date, ownScheduleId), ownScheduleId, date, schedules);
 }
