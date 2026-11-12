@@ -32,7 +32,7 @@ yalnız aktiv sahədəki filialları qaytarır. Rolun adı ingiliscə yazılır,
 ## 3. Avtomatik aktivləşmə yoxdur
 
 Ekran yalnız üç şərt birlikdə ödənəndə açılır:
-- serverin açarı açıqdır (production-da bağlıdır);
+- serverin açarı açıqdır (production-da 2026-11-12-dən açıqdır);
 - şirkətdə aktiv sahə var;
 - şəxsin icazəsi var: `requests.view`, `requests.create` və ya `requests.decide`.
 
