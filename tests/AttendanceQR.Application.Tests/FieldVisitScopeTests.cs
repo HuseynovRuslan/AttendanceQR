@@ -3,6 +3,7 @@ using System.Security.Claims;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -18,9 +19,13 @@ namespace AttendanceQR.Application.Tests;
 /// <summary>
 /// Pins the manager boundary on the field-visit surface — the same P0 rule as
 /// <see cref="ManagerAccountScopeTests"/>, enforced via <c>LocationScopeRules.CanManageEmployeeAsync</c>:
-/// a Manager may assign/cancel field visits (and appear/see people on the board and assignable list)
-/// only for Role==Employee workers in their managed branches. Admins and fellow managers who merely
-/// clock in at the branch are out of reach; an Admin caller keeps the whole tenant.
+/// a Manager may assign field visits (and see people on the assignable list) only for Role==Employee
+/// workers in their managed branches, and an Admin who clocks in at the branch is out of reach.
+/// Reading (the day's board, a visit's checklist and work photo) is LocationScopeRules.FieldVisitReach, the
+/// owner's hierarchy of 2026-11-12: a manager reads the plain staff at their branches; a Structure Manager (the
+/// structure_operator role over branches) also reads the Timekeepers there — the branch managers who are not
+/// Structure Managers themselves; nobody below the company reads an Admin's visits. An Admin caller keeps the
+/// whole tenant.
 /// </summary>
 public class FieldVisitScopeTests
 {
@@ -32,6 +37,8 @@ public class FieldVisitScopeTests
         public AppDbContext Db { get; }
         public FieldVisitController AsManager { get; }
         public FieldVisitController AsAdmin { get; }
+        public FieldVisitController AsStructureManager { get; }
+        public Guid StructureManagerId { get; } = Guid.NewGuid();   // a manager of BranchA who may become a Structure Manager
         public Guid BranchA { get; } = Guid.NewGuid();   // managed
         public Guid BranchB { get; } = Guid.NewGuid();   // same tenant, not managed
         public Guid ManagerId { get; } = Guid.NewGuid();
@@ -54,6 +61,7 @@ public class FieldVisitScopeTests
             Db.Tenants.Add(new Tenant { Id = TenantA, Name = "A", Slug = "a", DisplayName = "A", IsActive = true });
             Db.Tenants.Add(new Tenant { Id = TenantB, Name = "B", Slug = "b", DisplayName = "B", IsActive = true });
             Db.ManagedLocations.Add(new ManagedLocation { EmployeeId = ManagerId, LocationId = BranchA, TenantId = TenantA });
+            Db.ManagedLocations.Add(new ManagedLocation { EmployeeId = StructureManagerId, LocationId = BranchA, TenantId = TenantA });
 
             // Everyone gets CanFieldCheckIn so a 403 in these tests can ONLY come from the manage rule,
             // never from the separate NotFieldWorker gate.
@@ -63,10 +71,35 @@ public class FieldVisitScopeTests
             Db.Employees.Add(Person(SameBranchManagerId, "İkinci Menecer", EmployeeRole.Manager, BranchA, TenantA));
             Db.Employees.Add(Person(OtherBranchEmployeeId, "Başqa Filial", EmployeeRole.Employee, BranchB, TenantA));
             Db.Employees.Add(Person(OtherTenantEmployeeId, "Başqa Tenant", EmployeeRole.Employee, BranchA, TenantB));
+            Db.Employees.Add(Person(StructureManagerId, "Struktur Meneceri", EmployeeRole.Manager, BranchA, TenantA));
             Db.SaveChanges();
 
             AsManager = Controller(ManagerId, EmployeeRole.Manager);
             AsAdmin = Controller(SameBranchAdminId, EmployeeRole.Admin);
+            AsStructureManager = Controller(StructureManagerId, EmployeeRole.Manager);
+        }
+
+        /// <summary>Gives <paramref name="employeeId"/> the structure_operator role over these branches — what makes a
+        /// Structure Manager. Nothing else about the person changes: they stay Role == Manager.</summary>
+        public void GrantStructureManager(Guid employeeId, bool fieldVisitsView = true, bool revoked = false, params Guid[] branches)
+        {
+            var role = new AccessRole
+            {
+                Id = Guid.NewGuid(), TenantId = TenantA, Name = "Struktur operatoru", TemplateKey = AccessRoleTemplates.StructureOperator,
+                Permissions = fieldVisitsView
+                    ? [AccessPermissions.FieldVisitsView, AccessPermissions.EmployeesView]
+                    : [AccessPermissions.EmployeesView],
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            Db.AccessRoles.Add(role);
+            foreach (var b in branches)
+                Db.RoleAssignments.Add(new RoleAssignment
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantA, EmployeeId = employeeId, AccessRoleId = role.Id,
+                    Scope = AccessScopeType.Branch, LocationId = b, CreatedAtUtc = DateTime.UtcNow,
+                    RevokedAtUtc = revoked ? DateTime.UtcNow : null,
+                });
+            Db.SaveChanges();
         }
 
         private FieldVisitController Controller(Guid callerId, EmployeeRole role)
@@ -220,8 +253,9 @@ public class FieldVisitScopeTests
     // --- board + assignable listings --------------------------------------------
 
     [Fact]
-    public async Task Manager_board_excludes_admin_and_manager_visits()
+    public async Task Plain_manager_board_shows_the_staff_not_a_fellow_manager_or_an_admin()
     {
+        // Two managers sharing a branch do not get each other's field days: that reach is the Structure Manager's.
         using var h = new Harness();
         h.Visit(h.SameBranchEmployeeId);
         h.Visit(h.SameBranchAdminId);
@@ -232,6 +266,114 @@ public class FieldVisitScopeTests
 
         // An admin keeps the full picture.
         Assert.Equal(3, Ids(await h.AsAdmin.Board(h.Today()), "employeeId").Count);
+    }
+
+    [Fact]
+    public async Task Manager_board_still_hides_other_branches_and_other_tenants()
+    {
+        using var h = new Harness();
+        h.Visit(h.OtherBranchEmployeeId);
+        h.Visit(h.OtherTenantEmployeeId);
+
+        Assert.Empty(Ids(await h.AsManager.Board(h.Today()), "employeeId"));
+    }
+
+    [Fact]
+    public async Task Plain_manager_cannot_read_a_fellow_managers_checklist_or_work_photo()
+    {
+        // The detail follows the board: what is not on it does not open by id either.
+        using var h = new Harness();
+        var visit = h.Visit(h.SameBranchManagerId);
+        AssertForbidden(await h.AsManager.Checklist(visit.Id));
+        AssertForbidden(await h.AsManager.WorkPhoto(visit.Id));
+    }
+
+    // --- Structure Manager --------------------------------------------------------
+
+    [Fact]
+    public async Task Structure_manager_board_shows_staff_and_timekeepers_of_their_branches()
+    {
+        using var h = new Harness();
+        h.GrantStructureManager(h.StructureManagerId, branches: h.BranchA);
+        h.Visit(h.SameBranchEmployeeId);
+        h.Visit(h.SameBranchManagerId);   // a Timekeeper: Role == Manager, not a Structure Manager
+        h.Visit(h.ManagerId);             // another Timekeeper at the same branch
+        h.Visit(h.SameBranchAdminId);     // never
+        h.Visit(h.OtherBranchEmployeeId); // not their branch
+        h.Visit(h.OtherTenantEmployeeId); // not their company
+
+        var ids = Ids(await h.AsStructureManager.Board(h.Today()), "employeeId");
+        Assert.Equal(new[] { h.SameBranchEmployeeId, h.SameBranchManagerId, h.ManagerId }.OrderBy(x => x), ids.OrderBy(x => x));
+    }
+
+    [Fact]
+    public async Task Structure_manager_reads_a_timekeepers_checklist_and_work_photo_but_not_an_admins()
+    {
+        using var h = new Harness();
+        h.GrantStructureManager(h.StructureManagerId, branches: h.BranchA);
+        var timekeeper = h.Visit(h.SameBranchManagerId);
+        var admin = h.Visit(h.SameBranchAdminId);
+
+        Assert.IsType<OkObjectResult>(await h.AsStructureManager.Checklist(timekeeper.Id));
+        Assert.IsType<OkObjectResult>(await h.AsStructureManager.WorkPhoto(timekeeper.Id));
+        AssertForbidden(await h.AsStructureManager.Checklist(admin.Id));
+        AssertForbidden(await h.AsStructureManager.WorkPhoto(admin.Id));
+    }
+
+    [Fact]
+    public async Task Structure_manager_does_not_see_another_structure_managers_visits()
+    {
+        using var h = new Harness();
+        h.GrantStructureManager(h.StructureManagerId, branches: h.BranchA);
+        h.GrantStructureManager(h.SameBranchManagerId, branches: h.BranchA);   // a peer, not a Timekeeper
+        var peer = h.Visit(h.SameBranchManagerId);
+
+        Assert.Empty(Ids(await h.AsStructureManager.Board(h.Today()), "employeeId"));
+        AssertForbidden(await h.AsStructureManager.Checklist(peer.Id));
+    }
+
+    [Fact]
+    public async Task Structure_manager_reach_is_the_roles_branches_not_more()
+    {
+        // The role over BranchB only, and no managed branch: BranchB's staff come into reach; BranchA's managers do
+        // not become their Timekeepers.
+        using var h = new Harness();
+        h.Db.ManagedLocations.RemoveRange(h.Db.ManagedLocations.Where(m => m.EmployeeId == h.StructureManagerId));
+        h.Db.SaveChanges();
+        h.GrantStructureManager(h.StructureManagerId, branches: h.BranchB);
+        h.Visit(h.OtherBranchEmployeeId);
+        h.Visit(h.SameBranchManagerId);
+
+        Assert.Equal(new[] { h.OtherBranchEmployeeId }, Ids(await h.AsStructureManager.Board(h.Today()), "employeeId"));
+    }
+
+    [Fact]
+    public async Task The_role_without_field_visit_rights_or_revoked_gives_no_timekeeper_reach()
+    {
+        using (var h = new Harness())
+        {
+            h.GrantStructureManager(h.StructureManagerId, fieldVisitsView: false, branches: h.BranchA);
+            h.Visit(h.SameBranchManagerId);
+            Assert.Empty(Ids(await h.AsStructureManager.Board(h.Today()), "employeeId"));
+        }
+        using (var h = new Harness())
+        {
+            h.GrantStructureManager(h.StructureManagerId, revoked: true, branches: h.BranchA);
+            h.Visit(h.SameBranchManagerId);
+            Assert.Empty(Ids(await h.AsStructureManager.Board(h.Today()), "employeeId"));
+        }
+    }
+
+    [Fact]
+    public async Task Writing_is_unchanged_by_the_reading_rule()
+    {
+        // Acting still asks CanManageEmployeeAsync, exactly as before: the owner's 2026-09-18 reach to a fellow
+        // manager for assigning stays, and an admin's visit stays out of reach for everybody below the company.
+        using var h = new Harness();
+        Assert.IsType<OkObjectResult>(await h.AsManager.Assign(new AssignFieldVisitRequest(h.SameBranchManagerId)));
+        h.GrantStructureManager(h.StructureManagerId, branches: h.BranchA);
+        var admin = h.Visit(h.SameBranchAdminId);
+        AssertForbidden(await h.AsStructureManager.Cancel(admin.Id));
     }
 
     [Fact]

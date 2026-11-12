@@ -24,10 +24,11 @@ build-də açılır və serverə heç nə göndərmir.
 `requests.view` daşıyır. Bunlar müvəqqəti keçid hüquqlarıdır və yalnız aktiv sahədə işləyir. `requests.decide` bu
 rolda heç vaxt yoxdur və bunu test qoruyur.
 
-## 2. İki açar — production-da hər ikisi bağlıdır
+## 2. İki açar — yerləşdirmə açarı production-da açıqdır, sahələr ayrı-ayrılıqda açılır
 
 1. **Yerləşdirmə açarı** `Approvals__Enabled`:
-   - production compose faylında açıq-aşkar `"false"` yazılıb, `.env`-dən oxunmur, ona görə açmaq üçün PR lazımdır;
+   - production compose faylında açıq-aşkar yazılıb, `.env`-dən oxunmur, ona görə dəyişmək üçün PR lazımdır;
+   - production-da 2026-11-12-dən `"true"`-dur. Açar açıq olanda sahə açılmamış heç bir filialda heç nə dəyişmir;
    - lokal mühitdə default `false`-dur;
    - staging-də `true`-dur.
 

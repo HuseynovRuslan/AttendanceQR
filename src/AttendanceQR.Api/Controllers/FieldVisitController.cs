@@ -528,13 +528,25 @@ public class FieldVisitController : ControllerBase
         var ct = HttpContext.RequestAborted;
         var day = date ?? TodayLocal();
 
-        // A manager sees only their branches' workers' visits (PII: phone, GPS, selfies); an Admin, all.
+        // Who is on the board is LocationScopeRules.FieldVisitReach — the same answer the checklist and the work
+        // photo behind each row give, so a row never shows what its detail then refuses. A manager: the plain staff
+        // at their branches and their own visits. A Structure Manager (the structure_operator role over branches)
+        // also: the Timekeepers there — today's branch managers who are not Structure Managers themselves. A plain
+        // manager does not get a fellow manager's field days; nobody below the company gets an Admin's. An Admin:
+        // everyone.
         var managed = await ManagedScopeAsync(ct);
         var me = Me;
         var query = _db.FieldVisits.Where(v => v.VisitDate == day);
         if (managed != null)
-            query = query.Where(v => v.EmployeeId == me || _db.Employees.Any(e =>
-                e.Id == v.EmployeeId && managed.Contains(e.LocationId) && e.Role == EmployeeRole.Employee));
+        {
+            var reach = await LocationScopeRules.FieldVisitReachAsync(_db, me, managed, ct);
+            var staff = reach.StaffBranches.ToList();
+            var timekeepers = reach.TimekeeperBranches.ToList();
+            var structureManagers = reach.StructureManagers.ToList();
+            query = query.Where(v => v.EmployeeId == me || _db.Employees.Any(e => e.Id == v.EmployeeId && (
+                (e.Role == EmployeeRole.Employee && staff.Contains(e.LocationId))
+                || (e.Role == EmployeeRole.Manager && timekeepers.Contains(e.LocationId) && !structureManagers.Contains(e.Id)))));
+        }
 
         var visits = await query
             .OrderBy(v => v.Status).ThenBy(v => v.CheckInAtUtc)
@@ -878,7 +890,8 @@ public class FieldVisitController : ControllerBase
             .Select(v => new { v.EmployeeId }).FirstOrDefaultAsync(ct);
         if (visit is null)
             return NotFound(new { error = "VisitNotFound" });
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+        // Reading, not acting: the board's rule (FieldVisitReach), so the row and its detail agree.
+        if (!await LocationScopeRules.CanReadFieldVisitAsync(_db, Me, User.Role(), await ManagedScopeAsync(ct), visit.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var items = await _db.FieldVisitChecklistItems
@@ -904,7 +917,8 @@ public class FieldVisitController : ControllerBase
             .FirstOrDefaultAsync(ct);
         if (visit is null)
             return NotFound(new { error = "VisitNotFound" });
-        if (!await LocationScopeRules.CanManageEmployeeAsync(_db, Me, User.Role(), visit.EmployeeId, ct))
+        // Reading, not acting: the board's rule (FieldVisitReach), so the row and its detail agree.
+        if (!await LocationScopeRules.CanReadFieldVisitAsync(_db, Me, User.Role(), await ManagedScopeAsync(ct), visit.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
         var url = visit.WorkPhotoKey is null ? null : await _photoStorage.GetPresignedUrlAsync(visit.WorkPhotoKey, ct);

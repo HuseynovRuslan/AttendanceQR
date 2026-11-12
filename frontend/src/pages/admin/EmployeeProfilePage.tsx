@@ -35,8 +35,7 @@ import {
   type ManagerEmployee,
 } from '../../api/manager'
 import { getEquipmentByEmployee, type EquipmentRecord } from '../../api/equipment'
-
-const ROLE_LABEL: Record<string, string> = { Admin: 'Admin', Manager: 'Filial meneceri', Employee: 'İşçi' }
+import { useRoleLabels } from '../../lib/useRoleLabels'
 
 /**
  * What the server refused, said plainly. Every one of these used to arrive as «Qeyd yaradılmadı»,
@@ -65,6 +64,8 @@ const CREATE_ERROR: Record<string, string> = {
  * with the key actions (edit, PIN reset, activate/deactivate, invite link) in one place. All data comes
  * from existing admin endpoints — no new backend. Reached at /admin/employees/:id. */
 export function EmployeeProfilePage() {
+  // The name the role is shown under (lib/roleNames) — display only.
+  const roleLabels = useRoleLabels()
   const { ask: askReason, dialog: reasonDialog } = useCorrectionReason()
   // Role decides which API this screen talks to, never what it hides. A manager's data comes from
   // /api/manager/*, which cannot carry salary or role at all.
@@ -434,7 +435,7 @@ export function EmployeeProfilePage() {
               <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, color: 'var(--c400)', marginLeft: 8, whiteSpace: 'nowrap' }}>ID {emp.id.slice(0, 8)}</span>
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 9 }}>
-              <span className="tag">{ROLE_LABEL[emp.role] ?? emp.role}</span>
+              <span className="tag">{roleLabels.nameOf(emp.id, emp.role)}</span>
               <span className={`badge ${emp.isActive ? 'b-present' : 'b-absent'}`}>{emp.isActive ? 'Aktiv' : 'Deaktiv'}</span>
               {!emp.activated && <span className="badge b-late">Aktivləşməyib</span>}
               <span className={`badge ${emp.hasDevice ? 'b-device' : 'b-nodevice'}`}>{emp.hasDevice ? 'Cihaz bağlı' : 'Cihaz yox'}</span>
