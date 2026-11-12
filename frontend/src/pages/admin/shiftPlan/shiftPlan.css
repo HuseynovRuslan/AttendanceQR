@@ -17,7 +17,7 @@
 .sp-views{flex:0 0 auto;min-width:210px}
 .sp-nav{display:flex;align-items:center;gap:4px}
 .sp-range{font-size:14px;font-weight:700;color:var(--c900);margin-left:8px;white-space:nowrap;font-variant-numeric:tabular-nums}
-.sp-new{margin-left:auto}
+.sp-actions{display:flex;gap:8px;margin-left:auto}
 .sp-toast{margin-bottom:12px}
 .sp-empty{text-align:center;color:var(--c500);font-size:14px;line-height:1.6}
 .sp-empty p{margin:0 auto 10px;max-width:56ch}
@@ -167,10 +167,59 @@
   .sp-bar .sp-select{min-width:0;width:100%}
   .sp-search{max-width:none;flex:1 1 100%}
   .sp-views{flex:1 1 auto;min-width:0}
-  .sp-new{margin-left:0;flex:1 1 100%}
+  .sp-actions{margin-left:0;flex:1 1 100%}
+  .sp-actions .btn{flex:1}
   .sp-range{margin-left:4px}
   .sp-person{min-width:130px}
   .sp-actual{display:none}
   .sp-dates{grid-template-columns:1fr}
   .sp-scroll{max-height:none}
+}
+
+/* ---- the undo in a toast, the preview, the history ---- */
+.sp-toast{align-items:center}
+.sp-toast > span{flex:1}
+.sp-undo{flex:0 0 auto;background:var(--white)}
+.sp-preview{display:flex;flex-direction:column;gap:12px}
+.sp-previewlead{margin:0;font-size:14px;line-height:1.6;color:var(--c700)}
+.sp-counts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0}
+.sp-counts > div{padding:10px 12px;border:1px solid var(--c100);border-radius:12px;background:var(--white)}
+.sp-counts dt{font-size:12px;color:var(--c500);font-weight:600}
+.sp-counts dd{margin:2px 0 0;font-size:18px;font-weight:800;color:var(--c900);font-variant-numeric:tabular-nums}
+.sp-counts .sp-count-warn{border-color:color-mix(in srgb,var(--amber) 45%,var(--c100));background:var(--amber-bg)}
+.sp-moves{list-style:none;margin:0;padding:0;border:1px solid var(--c100);border-radius:12px}
+.sp-moves li{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;align-items:center;gap:8px;padding:9px 12px;font-size:13px}
+.sp-moves li + li{border-top:1px solid var(--c100)}
+.sp-movefrom{color:var(--c500)}
+.sp-moveto{font-weight:700;color:var(--c900)}
+.sp-arrow{color:var(--c400)}
+.sp-movecount{font-size:12px;font-weight:700;color:var(--c600);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sp-history{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.sp-history > li{padding:12px 14px;border:1px solid var(--c100);border-radius:14px}
+.sp-history-undone{opacity:.7}
+.sp-historyhead{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--c500)}
+.sp-historywhen{font-variant-numeric:tabular-nums}
+.sp-historywho{font-weight:700;color:var(--c700)}
+.sp-historywhat{margin:6px 0 0;font-size:13px;font-weight:700;color:var(--c900);line-height:1.45}
+.sp-historyacts{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px}
+.sp-historytable{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.sp-historytable th{text-align:left;font-weight:700;color:var(--c500);padding:4px 6px;border-bottom:1px solid var(--c100)}
+.sp-historytable td{padding:5px 6px;border-bottom:1px solid var(--c100);vertical-align:top}
+.sp-before{color:var(--c500)}
+.sp-after{font-weight:700;color:var(--c900)}
+.sp-labelnote{display:block;font-size:11px;font-weight:500;color:var(--c400)}
+.sp-nowrap{white-space:nowrap}
+.sp-previewwho{margin:0;font-size:13px;line-height:1.5;color:var(--c600)}
+.sp-previewwho b{color:var(--c900)}
+@media (max-width: 720px){ .sp-counts{grid-template-columns:1fr} .sp-moves li{grid-template-columns:1fr auto} .sp-arrow{display:none} }
+
+/* ---- the day on a phone: the name on one line, the whole shift under it — a cut-off «Səhər 06:…» is a guess ---- */
+@media (max-width: 720px){
+  .sp-daytable, .sp-daytable thead, .sp-daytable tbody{display:block}
+  .sp-daytable tr{display:grid;grid-template-columns:36px minmax(0,1fr);align-items:center;padding:8px 12px 10px 4px;border-bottom:1px solid var(--c100)}
+  .sp-daytable tr > th, .sp-daytable tr > td{padding:0;border:0}
+  .sp-daytable thead th:nth-child(3), .sp-daytable .sp-actual{display:none}
+  .sp-daytable tbody td:nth-child(3){grid-column:2;padding-top:6px}
+  .sp-daytable .sp-person{min-width:0}
+  .sp-daytable .sp-shiftselect{max-width:none}
 }

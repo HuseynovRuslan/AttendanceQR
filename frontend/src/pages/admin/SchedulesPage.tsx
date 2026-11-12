@@ -579,7 +579,6 @@ function ShiftTemplates() {
 export function SchedulesPage() {
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'sablonlar' ? 'templates' : 'plan'
-  const mayStanding = useScopedRole('schedules.assign') === 'Admin'
   const show = (next: 'plan' | 'templates') => setParams(next === 'plan' ? {} : { tab: 'sablonlar' }, { replace: true })
   return (
     <div>
@@ -587,7 +586,7 @@ export function SchedulesPage() {
         <button type="button" className="seg-btn" aria-pressed={tab === 'plan'} onClick={() => show('plan')}>Plan</button>
         <button type="button" className="seg-btn" aria-pressed={tab === 'templates'} onClick={() => show('templates')}>Növbə şablonları</button>
       </div>
-      {tab === 'plan' ? <ShiftPlanner mayStanding={mayStanding} /> : <ShiftTemplates />}
+      {tab === 'plan' ? <ShiftPlanner /> : <ShiftTemplates />}
     </div>
   )
 }

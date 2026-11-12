@@ -3,7 +3,10 @@ import {
   applyShiftPlan,
   getPlanLocations,
   getShiftPlan,
+  undoPlanChange,
   type PlanApply,
+  type PlanChange,
+  type PlanPreview,
   type PlanDay,
   type PlanEmployee,
   type PlanGrid,
@@ -11,7 +14,9 @@ import {
   type PlanShift,
 } from '../../../api/shiftPlan'
 import { IconCheck, IconChevronLeft, IconChevronRight, IconSearch, IconX } from '../../../components/icons'
+import { HistoryPanel } from './HistoryPanel'
 import { PlanDrawer, type DrawerSeed } from './PlanDrawer'
+import { PreviewSummary } from './PreviewSummary'
 import {
   bandOf, dayLabel, datesOf, initials, LEAVE_LABEL, rangeLabel, rangeOf, shortRestDays, step, weekday, WEEKDAYS_SHORT, type View,
 } from './planModel'
@@ -54,9 +59,16 @@ const ERRORS: Record<string, string> = {
   NoEmployees: 'İşçi seçilməyib.',
 }
 
-type Pending = { request: PlanApply; pastDays: number; done?: (n: number) => void }
+type Pending =
+  | { kind: 'apply'; request: PlanApply; pastDays: number; done?: (n: number) => void }
+  | { kind: 'undo'; change: string; pastDays: number }
 
-export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
+/** A bulk change waiting for its yes, with what the server says it will do. */
+type Check = { request: PlanApply; preview: PlanPreview }
+
+type Toast = { ok: boolean; text: string; undo?: string }
+
+export function ShiftPlanner() {
   const [locations, setLocations] = useState<PlanLocation[] | null>(null)
   const [locationId, setLocationId] = useState<string | null>(null)
   const [view, setView] = useState<View>(() =>
@@ -71,7 +83,10 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
   const [drawer, setDrawer] = useState<DrawerSeed | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null)
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [check, setCheck] = useState<Check | null>(null)
+  const [history, setHistory] = useState(false)
+  const [historyKey, setHistoryKey] = useState(0)
   const request = useRef(0)
 
   const { from, to } = useMemo(() => rangeOf(view, anchor), [view, anchor])
@@ -101,7 +116,11 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
   }, [locationId, from, to])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { if (toast) { const t = window.setTimeout(() => setToast(null), 4000); return () => window.clearTimeout(t) } }, [toast])
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(null), toast.undo ? 12000 : 5000)
+    return () => window.clearTimeout(t)
+  }, [toast])
 
   const today = grid?.today ?? localToday()
   const dates = useMemo(() => datesOf(from, to), [from, to])
@@ -120,23 +139,74 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
   /** Saves a plan; asks first when it reaches back into days already worked. */
   const apply = useCallback(async (body: PlanApply, done?: (n: number) => void) => {
     setSaving(true)
-    const { status, data } = await applyShiftPlan(body)
+    const { status, data } = await applyShiftPlan({ ...body, locationId })
     setSaving(false)
     if (status === 200 && data && 'ok' in data) {
       const n = data.set + data.cleared
-      setToast({ ok: true, text: n === 0 ? 'Dəyişiklik yoxdur — plan artıq belədir.' : `Plan yadda saxlandı: ${n} gün${data.rebuiltDays ? `, ${data.rebuiltDays} keçmiş gün yenidən hesablandı` : ''}.` })
+      const rebuilt = data.rebuiltDays ? `, ${data.rebuiltDays} keçmiş gün yenidən hesablandı` : ''
+      const waiting = data.rebuildPending ? ` ${data.rebuildPending} keçmiş günün hesabatı hələ yenilənir — bir neçə dəqiqəyə hazır olacaq.` : ''
+      setToast({
+        ok: true,
+        text: n === 0 ? 'Dəyişiklik yoxdur — plan artıq belədir.' : `Plan yadda saxlandı: ${body.standing ? `${data.people} işçinin daimi növbəsi` : `${n} gün`}${rebuilt}.${waiting}`,
+        undo: data.changeId ?? undefined,
+      })
       setPending(null)
+      setCheck(null)
+      setHistoryKey((k) => k + 1)
       done?.(n)
       void load()
       return true
     }
     if (status === 409 && data && 'error' in data && data.error === 'PastDatesNeedConfirm') {
-      setPending({ request: body, pastDays: data.pastDays ?? 0, done })
+      setCheck(null)
+      setPending({ kind: 'apply', request: body, pastDays: data.pastDays ?? 0, done })
       return false
     }
     const code = data && 'error' in data ? data.error : ''
     setToast({ ok: false, text: ERRORS[code] ?? 'Plan yadda saxlanmadı. Yenidən cəhd edin.' })
     return false
+  }, [load, locationId])
+
+  /** Asks the server what a bulk change would do, and shows it for a yes before anything is written. */
+  const ask = useCallback(async (body: PlanApply) => {
+    setSaving(true)
+    const { status, data } = await applyShiftPlan({ ...body, locationId, preview: true })
+    setSaving(false)
+    if (status === 200 && data && 'preview' in data) {
+      setCheck({ request: body, preview: data })
+      return
+    }
+    const code = data && 'error' in data ? data.error : ''
+    setToast({ ok: false, text: ERRORS[code] ?? 'Plan yoxlanmadı. Yenidən cəhd edin.' })
+  }, [locationId])
+
+  /** Puts back what a change replaced; days somebody changed since are left as they are now. */
+  const undo = useCallback(async (change: string, confirmPast = false) => {
+    setSaving(true)
+    const { status, data } = await undoPlanChange(change, confirmPast)
+    setSaving(false)
+    if (status === 200 && data && 'ok' in data) {
+      setToast({
+        ok: true,
+        text: `Geri alındı: ${data.reverted} dəyişiklik${data.kept ? `. ${data.kept} gün sonradan yenidən dəyişdirildiyi üçün olduğu kimi saxlandı` : ''}.`,
+      })
+      setPending(null)
+      setHistoryKey((k) => k + 1)
+      void load()
+      return
+    }
+    if (status === 409 && data && 'error' in data && data.error === 'PastDatesNeedConfirm') {
+      setPending({ kind: 'undo', change, pastDays: data.pastDays ?? 0 })
+      return
+    }
+    const code = data && 'error' in data ? data.error : ''
+    setToast({
+      ok: false,
+      text: code === 'AlreadyUndone' ? 'Bu dəyişiklik artıq geri alınıb.'
+        : code === 'NothingToUndo' ? 'Geri alınacaq bir şey qalmayıb — bütün günlər sonradan yenidən dəyişdirilib.'
+          : code === 'TooOld' ? '30 gündən köhnə dəyişiklik geri alınmır.'
+            : 'Geri alınmadı. Yenidən cəhd edin.',
+    })
   }, [load])
 
   function chooseLocation(id: string) {
@@ -201,12 +271,19 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
           <span className="sp-range" aria-live="polite">{rangeLabel(view, from, to)}</span>
         </div>
 
-        <button type="button" className="btn btn-primary sp-new" onClick={openDrawer} disabled={!grid || noShifts}>Yeni plan</button>
+        <div className="sp-actions">
+          <button type="button" className="btn" onClick={() => setHistory(true)} disabled={!locationId}>Tarixçə</button>
+          <button type="button" className="btn btn-primary" onClick={openDrawer} disabled={!grid || noShifts}>Yeni plan</button>
+        </div>
       </div>
 
       {toast && (
         <div className={`fb ${toast.ok ? 'fb-ok' : 'fb-err'} sp-toast`} role="status">
           {toast.ok ? <IconCheck /> : <IconX />}<span>{toast.text}</span>
+          {toast.undo && (
+            <button type="button" className="btn btn-sm sp-undo" disabled={saving}
+              onClick={() => { const id = toast.undo!; setToast(null); void undo(id) }}>Geri al</button>
+          )}
         </div>
       )}
 
@@ -247,7 +324,9 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
               onToggle={toggle}
               onToggleAll={toggleAll}
               saving={saving}
-              onChoose={(employeeIds, value) => void apply({ employeeIds, steps: [value], dates: [anchor] })}
+              onChoose={(employeeIds, value) => void (employeeIds.length > 1
+                ? ask({ employeeIds, steps: [value], dates: [anchor] })
+                : apply({ employeeIds, steps: [value], dates: [anchor] }))}
             />
           ) : (
             <Grid
@@ -296,12 +375,30 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
           employees={grid.employees}
           shifts={shifts}
           today={today}
-          mayStanding={mayStanding}
+          locationId={locationId}
           saving={saving}
           onClose={() => setDrawer(null)}
           onApply={(body) => apply(body, () => { setDrawer(null); setSelected(new Set()) })}
-          onStanding={() => { setDrawer(null); setSelected(new Set()); void load() }}
-          onMessage={(ok, text) => setToast({ ok, text })}
+        />
+      )}
+
+      {check && (
+        <CheckDialog
+          check={check}
+          names={(grid?.employees ?? []).filter((e) => check.request.employeeIds.includes(e.id)).map((e) => e.name)}
+          saving={saving}
+          onCancel={() => setCheck(null)}
+          onConfirm={() => void apply(check.request, () => setSelected(new Set()))}
+        />
+      )}
+
+      {history && locationId && (
+        <HistoryPanel
+          locationId={locationId}
+          reloadKey={historyKey}
+          busy={saving}
+          onClose={() => setHistory(false)}
+          onUndo={(change: PlanChange) => void undo(change.id)}
         />
       )}
 
@@ -310,7 +407,9 @@ export function ShiftPlanner({ mayStanding }: { mayStanding: boolean }) {
           pending={pending}
           saving={saving}
           onCancel={() => setPending(null)}
-          onConfirm={() => void apply({ ...pending.request, confirmPast: true }, pending.done)}
+          onConfirm={() => void (pending.kind === 'undo'
+            ? undo(pending.change, true)
+            : apply({ ...pending.request, confirmPast: true }, pending.done))}
         />
       )}
     </div>
@@ -399,14 +498,15 @@ function ShiftSelect(props: {
   onChange: (value: string) => void
 }) {
   const { value, shifts, own, placeholder, label, disabled, onChange } = props
+  // The shift first: on a phone the end of the text is what gets cut off, and the hours are what matters.
   const ownText = own
-    ? own.working && own.start ? `Öz növbəsi · ${own.shift ?? ''} ${own.start}–${own.end}` : 'Öz növbəsi · istirahət günü'
+    ? own.working && own.start ? `${[own.shift, `${own.start}–${own.end}`].filter(Boolean).join(' ')} · öz növbəsi` : 'İstirahət günü · öz növbəsi'
     : 'Öz növbəsinə qaytar'
   return (
     <select className="sp-select sp-shiftselect" value={value} aria-label={label ?? placeholder} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
       {placeholder && <option value="" disabled>{placeholder}</option>}
       <option value="clear">{ownText}</option>
-      {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.start}–{s.end}{s.overnight ? ' (gecə)' : ''}</option>)}
+      {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.start}–{s.end}</option>)}
       <option value="rest">İstirahət</option>
     </select>
   )
@@ -498,9 +598,10 @@ function Chip({ day, compact }: { day: PlanDay; compact: boolean }) {
   const planned = day.kind === 'plan'
   return (
     <span className={`sp-chip sp-${band}${planned ? ' sp-planned' : ' sp-own'}`}>
-      {compact ? initials(day.shift ?? '') : (
+      {/* A shift with no name (the branch's own hours) shows its start hour — a «—» would read as «nothing». */}
+      {compact ? (day.shift ? initials(day.shift) : (day.start ?? '').slice(0, 2)) : (
         <>
-          <span className="sp-chipname">{day.shift}</span>
+          {day.shift && <span className="sp-chipname">{day.shift}</span>}
           <span className="sp-chiptime">{day.start}–{day.end}</span>
         </>
       )}
@@ -595,12 +696,35 @@ function ConfirmPast({ pending, saving, onCancel, onConfirm }: { pending: Pendin
       <div ref={ref} className="sp-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sp-past-title" aria-describedby="sp-past-text">
         <h2 id="sp-past-title">Keçmiş günlər dəyişəcək</h2>
         <p id="sp-past-text">
-          Plan <b>{pending.pastDays}</b> keçmiş günü əhatə edir. O günlərin tabeli, saatları və maaş hesabatı yeni növbəyə görə
-          yenidən hesablanacaq. Dəyişiklik kimin etdiyi ilə birlikdə qeydə alınır.
+          {pending.kind === 'undo' ? 'Geri alma' : 'Plan'} <b>{pending.pastDays}</b> keçmiş günü əhatə edir. O günlərin tabeli, saatları və maaş
+          hesabatı yenidən hesablanacaq. Dəyişiklik kimin etdiyi ilə birlikdə tarixçəyə yazılır və 30 gün ərzində geri alına bilər.
         </p>
         <div className="sp-dialogbtns">
           <button type="button" className="btn" onClick={onCancel}>Ləğv et</button>
           <button type="button" className="btn btn-primary" disabled={saving} onClick={onConfirm}>Bəli, dəyiş</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CheckDialog({ check, names, saving, onCancel, onConfirm }: { check: Check; names: string[]; saving: boolean; onCancel: () => void; onConfirm: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    ref.current?.querySelector<HTMLButtonElement>('.btn')?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+  const nothing = !check.preview.standing && (check.preview.newDays ?? 0) + (check.preview.replacedDays ?? 0) + (check.preview.clearedDays ?? 0) === 0
+  return (
+    <div className="sp-overlay" role="presentation">
+      <div ref={ref} className="sp-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sp-check-title">
+        <h2 id="sp-check-title">{check.preview.people} işçi üçün dəyişiklik</h2>
+        <PreviewSummary preview={check.preview} names={names} />
+        <div className="sp-dialogbtns">
+          <button type="button" className="btn" onClick={onCancel}>Ləğv et</button>
+          <button type="button" className="btn btn-primary" disabled={saving || nothing} onClick={onConfirm}>Təsdiqlə və yadda saxla</button>
         </div>
       </div>
     </div>
