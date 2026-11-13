@@ -48,6 +48,8 @@ public class ManagerController : ControllerBase
     // The approval flow's deployment switch. Null (the tests that build this desk by hand) reads as off.
     private readonly ApprovalOptions? _approvals;
 
+    private readonly TimeZoneInfo _zone;
+
     public ManagerController(AppDbContext db, IPasswordHasher passwordHasher, IDailySummaryService dailySummaryService,
         AppOptions appOptions, ApprovalOptions? approvals = null)
     {
@@ -55,6 +57,7 @@ public class ManagerController : ControllerBase
         _passwordHasher = passwordHasher;
         _dailySummaryService = dailySummaryService;
         _operatorIds = appOptions.SuperAdminIdList();
+        _zone = ScheduleRevisions.Zone(appOptions.TimeZone);
         _approvals = approvals;
     }
 
@@ -372,7 +375,7 @@ public class ManagerController : ControllerBase
     [HttpGet("schedules")]
     public async Task<IActionResult> Schedules()
     {
-        var rows = await _db.Schedules
+        var rows = await _db.Schedules.Templates()
             .OrderBy(sc => sc.Name)
             .Select(sc => new
             {
@@ -459,11 +462,12 @@ public class ManagerController : ControllerBase
     public async Task<IActionResult> UpdateSchedule(Guid id, [FromBody] ScheduleRequest request)
     {
         var ct = HttpContext.RequestAborted;
-        var schedule = await _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == id, ct);
+        var schedule = await _db.Schedules.Templates().FirstOrDefaultAsync(sc => sc.Id == id, ct);
         if (schedule is null)
             return NotFound(new { error = "ScheduleNotFound" });
         if (!TryParseSchedule(request, out var start, out var end, out var error))
             return BadRequest(new { error });
+        var before = ShiftResolver.Snapshot(schedule);
         if (await HasOutsideUseAsync(id))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "ScheduleUsedOutsideBranch" });
 
@@ -478,6 +482,8 @@ public class ManagerController : ControllerBase
         if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
             return BadRequest(new { error = dayHoursError });
 
+        var zone = _zone;
+        await ScheduleRevisions.KeepAsync(_db, schedule, before, ScheduleRevisions.Today(zone), zone, ct);
         await _db.SaveChangesAsync(ct);
         return Ok(new { id = schedule.Id });
     }
@@ -490,13 +496,19 @@ public class ManagerController : ControllerBase
     public async Task<IActionResult> DeleteSchedule(Guid id)
     {
         var ct = HttpContext.RequestAborted;
-        var schedule = await _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == id, ct);
+        var schedule = await _db.Schedules.Templates().FirstOrDefaultAsync(sc => sc.Id == id, ct);
         if (schedule is null)
             return NotFound(new { error = "ScheduleNotFound" });
 
         var assigned = await _db.Employees.CountAsync(e => e.ScheduleId == id, ct);
         if (assigned > 0)
             return Conflict(new { error = "ScheduleInUse", employeeCount = assigned });
+        // A shift still written on a day ahead in somebody's plan would leave that day pointing at nothing —
+        // it would quietly fall back to the person's own shift. Refused with the count, like a shift in use.
+        var today = ScheduleRevisions.Today(_zone);
+        var planned = await _db.ShiftOverrides.CountAsync(o => o.ScheduleId == id && o.Date >= today, ct);
+        if (planned > 0)
+            return Conflict(new { error = "ScheduleInPlan", dayCount = planned });
 
         _db.Schedules.Remove(schedule);
         await _db.SaveChangesAsync(ct);
@@ -1240,5 +1252,5 @@ public class ManagerController : ControllerBase
 
     /// <summary>Assigns (or clears) the employee's named shift. See NewEmployee.ApplyScheduleAsync.</summary>
     private Task<string?> ApplyScheduleAsync(Employee employee, Guid? scheduleId) =>
-        NewEmployee.ApplyScheduleAsync(_db, employee, scheduleId, HttpContext.RequestAborted);
+        NewEmployee.ApplyScheduleAsync(_db, employee, scheduleId, HttpContext.RequestAborted, User.EmployeeId());
 }

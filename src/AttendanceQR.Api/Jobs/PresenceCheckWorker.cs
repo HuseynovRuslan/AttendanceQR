@@ -150,9 +150,7 @@ public static class PresenceCheckSweep
         var byId = people.ToDictionary(e => e.Id);
         var locations = await db.Locations.ToDictionaryAsync(l => l.Id, ct);
         var schedules = await db.Schedules.ToDictionaryAsync(s => s.Id, ct);
-        var overrides = new ShiftOverrideMap(await db.ShiftOverrides
-            .Where(o => ids.Contains(o.EmployeeId) && o.Date >= since)
-            .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
+        var overrides = await ShiftOverrideMap.LoadAsync(db, since, since.AddDays(31), ids, ct);
 
         var added = 0;
         foreach (var record in open.Where(r => !alreadyPlanned.Contains(r.Id)))

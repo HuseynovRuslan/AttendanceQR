@@ -80,7 +80,7 @@ public class ShiftOverridesController : ControllerBase
         if (!await LocationScopeRules.CanScheduleEmployeeAsync(_db, User.EmployeeId(), User.Role(), request.EmployeeId, ct))
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "OutOfScope" });
 
-        var schedule = await _db.Schedules.FirstOrDefaultAsync(s => s.Id == request.ScheduleId, ct);
+        var schedule = await _db.Schedules.Templates().FirstOrDefaultAsync(s => s.Id == request.ScheduleId, ct);
         if (schedule is null)
             return BadRequest(new { error = "ScheduleNotFound" });
 

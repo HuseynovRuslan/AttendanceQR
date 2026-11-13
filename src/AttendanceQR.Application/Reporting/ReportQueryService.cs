@@ -295,9 +295,7 @@ public sealed class ReportQueryService : IReportQueryService
         var schedules = await _db.Schedules.AsNoTracking().ToDictionaryAsync(sc => sc.Id, ct);
         // Whoever covered somebody else's shift on THIS date is judged by that shift — one query, and
         // the day's arithmetic downstream is untouched.
-        var dayOverrides = new ShiftOverrideMap(await _db.ShiftOverrides
-            .Where(o => o.Date == date)
-            .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
+        var dayOverrides = await ShiftOverrideMap.LoadAsync(_db, date, date, null, ct);
 
         var nonWorkingLocationIds = await _db.NonWorkingDays
             .Where(n => n.Date == date && (n.LocationId == null || locationIds.Contains(n.LocationId.Value)))
@@ -606,9 +604,7 @@ public sealed class ReportQueryService : IReportQueryService
         var tabelSchedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
         // The whole month's cover shifts in one query — the grid walks every employee-day, and a
         // per-cell lookup is how a tabel becomes a minute.
-        var tabelOverrides = new ShiftOverrideMap(await _db.ShiftOverrides
-            .Where(o => o.Date >= from && o.Date <= to && employeeIds.Contains(o.EmployeeId))
-            .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
+        var tabelOverrides = await ShiftOverrideMap.LoadAsync(_db, from, to, employeeIds, ct);
 
         // DailySummaryStatus collapses every kind of approved leave into OnLeave; the tabel has to
         // tell M from X from ÖM, so the leave type comes straight from the LeaveRecords for the month.

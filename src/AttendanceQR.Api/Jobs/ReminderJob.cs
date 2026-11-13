@@ -119,9 +119,7 @@ public sealed class ReminderJob : BackgroundService
                 var locations = await db.Locations.ToDictionaryAsync(l => l.Id, ct);
                 var schedules = await db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
                 // Today's cover shifts, so a reminder is about the shift the person is actually on.
-                var overrides = new ShiftOverrideMap(await db.ShiftOverrides
-                    .Where(o => o.Date == todayLocal)
-                    .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
+                var overrides = await ShiftOverrideMap.LoadAsync(db, todayLocal, todayLocal, null, ct);
                 var records = await db.AttendanceRecords
                     .Where(r => r.AttendanceDate >= todayLocal.AddDays(-1))
                     .ToListAsync(ct);

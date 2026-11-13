@@ -52,9 +52,7 @@ public sealed class DailySummaryService : IDailySummaryService
         var schedules = await _db.Schedules.ToDictionaryAsync(sc => sc.Id, ct);
         // «Əvəzləmə» for this one date: whoever worked somebody else's shift is judged by THAT shift,
         // which is what lets a cover night be an overnight at all.
-        var overrides = new ShiftOverrideMap(await _db.ShiftOverrides
-            .Where(o => o.Date == date)
-            .ToDictionaryAsync(o => (o.EmployeeId, o.Date), o => o.ScheduleId, ct));
+        var overrides = await ShiftOverrideMap.LoadAsync(_db, date, date, null, ct);
 
         // «Qayıb yaz» for this date: the people a manager has stated did not come. Absence is no longer
         // inferred for anyone who has never recorded any attendance (see IsStillOnboarding), so this

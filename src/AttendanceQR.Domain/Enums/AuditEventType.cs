@@ -113,5 +113,9 @@ public enum AuditEventType
 
     // A Company administrator was set to stand in for a structure's operator until a given time, or the stand-in
     // was ended early. See ApproverSubstitution.
-    ApproverSubstitutionChanged = 41
+    ApproverSubstitutionChanged = 41,
+
+    // Somebody's plan changed: which shift, or a rest day, on which days. One row per person per change, naming
+    // the days, the shifts and who made it — so «who moved me to nights?» has an answer. See ShiftPlanController.
+    ShiftPlanChanged = 42
 }
