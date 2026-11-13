@@ -49,6 +49,14 @@ employee with `WorkCycleDays` set ignores the mask entirely — see `AttendanceC
 `.IsScheduledWorkingDay`, the one place this is decided, and `WorkCycle.Apply`, the one place it is
 written. Holidays (`NonWorkingDay`) still apply on top.
 
+**A day's shift is picked in one place.** `ShiftResolver` (behind `ShiftOverrideMap.ScheduleFor`) decides
+which schedule judges a person's day: that day's plan row (`ShiftOverride` — a planned shift, a cover, or the
+company's «İstirahət», which is the person's own hours on a day that is not a working day), else their own shift —
+and an edited shift as it stood on that date (revision rows: `RevisionOfId`, `ValidUntil`). Never look a schedule
+up by id for a day's arithmetic, and never change a shift's hours with SQL: the edit endpoints keep the old
+version so past days are not re-judged; a direct update skips that. The plan screen is `/admin/schedules`
+(`ShiftPlanController`); recurrence is written out day by day when saved, not kept as a rule.
+
 **The equipment register mirrors the spreadsheet, not the devices.** `/admin/equipment` is one row
 per *person*, with the columns of "İT AVADANLIQLARININ SİYAHISI" — the file it is imported from has no
 inventory numbers and describes kit in prose ("1 ədəd masaüstü ofis kompüteri, 2 ədəd monitor HP 27"),

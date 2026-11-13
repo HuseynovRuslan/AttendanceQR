@@ -1153,15 +1153,6 @@ public class AdminAttendanceController : ControllerBase
     /// one, otherwise their own. An admin correcting a cover night has to recompute it against the
     /// shift that night was actually worked under, or the correction re-states the error it is fixing.
     /// </summary>
-    private async Task<Schedule?> ScheduleForAsync(Employee employee, DateOnly date)
-    {
-        var ct = HttpContext.RequestAborted;
-        var covering = await _db.ShiftOverrides
-            .Where(o => o.EmployeeId == employee.Id && o.Date == date)
-            .Select(o => (Guid?)o.ScheduleId)
-            .FirstOrDefaultAsync(ct);
-
-        var id = covering ?? employee.ScheduleId;
-        return id is Guid sid ? await _db.Schedules.FirstOrDefaultAsync(sc => sc.Id == sid, ct) : null;
-    }
+    private Task<Schedule?> ScheduleForAsync(Employee employee, DateOnly date)
+        => ShiftResolver.ScheduleOnAsync(_db, employee.Id, employee.ScheduleId, date, HttpContext.RequestAborted);
 }

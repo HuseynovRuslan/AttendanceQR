@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import {
   createSchedule,
@@ -22,6 +23,7 @@ import { useHolds, useScopedRole } from '../../auth/AccessContext'
 import { WorkCyclePicker, NO_CYCLE, type WorkCycleValue } from '../../components/WorkCyclePicker'
 import { IconCheck, IconTrash, IconX } from '../../components/icons'
 import { listFailureText } from '../../lib/listFailure'
+import { ShiftPlanner } from './shiftPlan/ShiftPlanner'
 
 /**
  * Named shifts ("Növbələr") — hours, working days and an optional rotation, defined once and assigned
@@ -83,7 +85,7 @@ const EMPTY: FormState = {
   dayHours: {},
 }
 
-export function SchedulesPage() {
+function ShiftTemplates() {
   // The shifts' shape by «schedules.view» — in Enforced the narrowed one for anybody but the Company
   // administrator; the writes are «schedules.manage» (see mayManage below).
   const role = useScopedRole('schedules.view')
@@ -246,6 +248,8 @@ export function SchedulesPage() {
     if (status === 200) { setOk('Növbə silindi'); void refresh() }
     else if (data && 'error' in data && data.error === 'ScheduleInUse')
       setErr('Bu növbədə işçi var — silmək olmaz')
+    else if (data && 'error' in data && data.error === 'ScheduleInPlan')
+      setErr('Bu növbə qarşıdakı günlərin planında var — əvvəlcə planı dəyişin')
     else setErr('Silinmədi')
   }
 
@@ -267,8 +271,8 @@ export function SchedulesPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <p className="muted" style={{ fontSize: 13, margin: 0, maxWidth: '62ch', lineHeight: 1.6 }}>
-          Növbəni bir dəfə qurursunuz, sonra işçiləri ona təyin edirsiniz. Saatları dəyişsəniz, o
-          növbədəki <b>bütün</b> işçilərə — keçmiş günlərin hesabatına da — təsir edir.
+          Növbəni bir dəfə qurursunuz, sonra işçiləri ona təyin edir və ya «Plan»da günlərə yazırsınız. Saatları
+          dəyişsəniz, yeni saatlar <b>bu gündən</b> qüvvəyə minir — keçmiş günlərin hesabatı köhnə saatlarla qalır.
           {isManager && ' Başqa filialın işçisi olan növbəni dəyişə bilməzsiniz.'}
         </p>
         {mayManage && <button className="btn btn-primary" onClick={startCreate}>+ Yeni növbə</button>}
@@ -564,6 +568,25 @@ export function SchedulesPage() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * «Növbələr»: the plan first — who works which shift on which day — and the shift templates behind it second. The
+ * templates are set up once; the plan is the daily work, so it is what the page opens on.
+ */
+export function SchedulesPage() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'sablonlar' ? 'templates' : 'plan'
+  const show = (next: 'plan' | 'templates') => setParams(next === 'plan' ? {} : { tab: 'sablonlar' }, { replace: true })
+  return (
+    <div>
+      <div className="seg" role="group" aria-label="Növbələr" style={{ maxWidth: 360, marginBottom: 16 }}>
+        <button type="button" className="seg-btn" aria-pressed={tab === 'plan'} onClick={() => show('plan')}>Plan</button>
+        <button type="button" className="seg-btn" aria-pressed={tab === 'templates'} onClick={() => show('templates')}>Növbə şablonları</button>
+      </div>
+      {tab === 'plan' ? <ShiftPlanner /> : <ShiftTemplates />}
     </div>
   )
 }

@@ -1690,7 +1690,7 @@ public class AdminController : ControllerBase
         Guid? scheduleLocationId = null;
         if (request.ScheduleId is Guid sid)
         {
-            var schedule = await _db.Schedules
+            var schedule = await _db.Schedules.Templates()
                 .Where(s => s.Id == sid)
                 .Select(s => new { s.LocationId })
                 .FirstOrDefaultAsync(ct);
@@ -1700,6 +1700,8 @@ public class AdminController : ControllerBase
         }
 
         var employees = await _db.Employees.Where(e => ids.Contains(e.Id)).ToListAsync(ct);
+        var catalogue = await _db.Schedules.AsNoTracking().ToDictionaryAsync(s => s.Id, ct);
+        var items = new List<ShiftPlanChangeItem>();
         int changed = 0, skipped = 0;
         foreach (var e in employees)
         {
@@ -1711,10 +1713,24 @@ public class AdminController : ControllerBase
                 continue;
             }
             if (e.ScheduleId == request.ScheduleId) continue;
-            e.ScheduleId = request.ScheduleId;
+            // From today on, into the plan's history — the days before keep their shift (StandingShifts).
+            if (await StandingShifts.ChangeAsync(_db, e, StandingShifts.StepsOf(request.ScheduleId), StandingShifts.Today(), catalogue, ct) is { } item)
+                items.Add(item);
             changed++;
         }
 
+        if (items.Count > 0)
+        {
+            var change = new ShiftPlanChange
+            {
+                CreatedByEmployeeId = User.EmployeeId(), People = items.Count, Days = 1,
+                LocationId = employees.Select(x => x.LocationId).Distinct().Count() == 1 ? employees[0].LocationId : null,
+                Summary = $"{items.Count} işçi: daimi növbə → {items[0].AfterLabel}",
+            };
+            foreach (var item in items) item.ChangeId = change.Id;
+            _db.ShiftPlanChanges.Add(change);
+            _db.ShiftPlanChangeItems.AddRange(items);
+        }
         if (changed > 0) await _db.SaveChangesAsync(ct);
         return Ok(new { changed, skipped, total = employees.Count });
     }
@@ -1825,10 +1841,10 @@ public class AdminController : ControllerBase
     {
         if (scheduleId is not Guid id)
         {
-            employee.ScheduleId = null;
+            await StandingShifts.SetFromFormAsync(_db, employee, null, User.EmployeeId(), HttpContext.RequestAborted);
             return null;
         }
-        var schedule = await _db.Schedules
+        var schedule = await _db.Schedules.Templates()
             .Where(s => s.Id == id)
             .Select(s => new { s.LocationId })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
@@ -1840,7 +1856,8 @@ public class AdminController : ControllerBase
         if (ScheduleAssignmentRule.Refusal(schedule.LocationId, employee.LocationId) is { } branchRefusal)
             return branchRefusal;
 
-        employee.ScheduleId = id;
+        // From today on: the days before keep the shift they were worked on (StandingShifts).
+        await StandingShifts.SetFromFormAsync(_db, employee, id, User.EmployeeId(), HttpContext.RequestAborted);
         return null;
     }
 }

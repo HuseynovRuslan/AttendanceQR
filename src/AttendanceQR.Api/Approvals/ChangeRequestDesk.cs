@@ -606,7 +606,7 @@ public sealed class ChangeRequestDesk
         if (!scope.MayRequest(callerId, locationId) && !scope.IsApprover(callerId, locationId))
             return new DeskResult(403, new { error = "RequestNotAllowed" });
         var positions = await _db.JobPositions.AsNoTracking().OrderBy(p => p.Name).Select(p => p.Name).ToListAsync(ct);
-        var schedules = (await _db.Schedules.AsNoTracking()
+        var schedules = (await _db.Schedules.AsNoTracking().Templates()
                 .Where(s => s.LocationId == null || s.LocationId == locationId)
                 .OrderBy(s => s.Name)
                 .Select(s => new { s.Id, s.Name, s.ShiftStart, s.ShiftEnd, s.LocationId })
