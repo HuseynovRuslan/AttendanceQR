@@ -384,6 +384,23 @@ public class LastNightArrivalTests
         Assert.Equal(D1, Assert.Single(await h.RecordsAsync()).AttendanceDate);
     }
 
+    [Theory]
+    [InlineData(true, false)]   // a holiday declared for THIS person's branch: the night was not a working one
+    [InlineData(false, true)]   // another branch's holiday says nothing about this night
+    public async Task A_branch_holiday_counts_only_for_its_own_branch(bool ownBranch, bool filedUnderNight)
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        h.Db.NonWorkingDays.Add(new NonWorkingDay
+        {
+            TenantId = TenantId, Date = D0, Description = "Filial bayramı", LocationId = ownBranch ? h.LocationId : Guid.NewGuid(),
+        });
+        h.Db.SaveChanges();
+
+        await h.At(Utc(D1, 0, 3)).Scan(h.Poster());
+
+        Assert.Equal(filedUnderNight ? D0 : D1, Assert.Single(await h.RecordsAsync()).AttendanceDate);
+    }
+
     [Fact]
     public async Task A_night_with_a_field_visit_keeps_the_scan_on_the_new_day()
     {
