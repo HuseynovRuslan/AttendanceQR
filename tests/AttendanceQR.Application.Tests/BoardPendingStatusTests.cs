@@ -5,9 +5,10 @@ using AttendanceQR.Domain.Enums;
 namespace AttendanceQR.Application.Tests;
 
 /// <summary>
-/// The board's "not due yet" status. A scheduled worker whose shift hasn't started shows "Pending",
-/// not the red "Absent" — fixing a board that could not tell a night worker whose shift is at 21:00
-/// apart from someone who simply did not come.
+/// The board's "not due yet" status — «Gözlənilir». A scheduled worker whose shift hasn't started shows
+/// "Pending", not the red "Absent" — fixing a board that could not tell a night worker whose shift is at
+/// 21:00 apart from someone who simply did not come. Since 2026-11-14 the rule is <see cref="PendingRule"/>
+/// and the reports read it too (TodayPendingReportsTests); these pin the board's spelling of it.
 /// </summary>
 public class BoardPendingStatusTests
 {
@@ -29,16 +30,18 @@ public class BoardPendingStatusTests
     /// <summary>A Wednesday — these shifts have no per-day hours, so any weekday reads the same.</summary>
     private static readonly DateOnly Day1 = new(2026, 9, 2);
 
-    private static string Status(EffectiveShift shift, int hour, int minute, bool isToday = true) =>
+    private static string Status(EffectiveShift shift, int hour, int minute, int dayOffset = 0) =>
         ReportQueryService.BoardDisplayStatus(
-            DailySummaryStatus.Absent, shift, isToday, new TimeOnly(hour, minute), Day1);
+            DailySummaryStatus.Absent, shift, Day1.AddDays(dayOffset).ToDateTime(new TimeOnly(hour, minute)), Day1);
 
     [Theory]
-    // Night shift 21:00–07:00 — pending all day until it is nearly due, then a real absence.
+    // Night shift 21:00–07:00 — pending all day until it is due, then a real absence.
     [InlineData(10, 0, "Pending")]  // morning, shift is 11h away
     [InlineData(20, 0, "Pending")]  // just before start
     [InlineData(21, 10, "Pending")] // within the 15-min grace
-    [InlineData(21, 30, "Absent")]  // past grace — genuinely a no-show for tonight
+    [InlineData(21, 15, "Pending")] // the last minute of the grace is still grace
+    [InlineData(21, 16, "Absent")]  // past grace — genuinely a no-show for tonight
+    [InlineData(21, 30, "Absent")]
     public void NightShift_PendingUntilDue(int hour, int minute, string expected)
         => Assert.Equal(expected, Status(Night(), hour, minute));
 
@@ -54,7 +57,20 @@ public class BoardPendingStatusTests
     public void PastDay_NeverPending_AnAbsenceStaysAnAbsence()
     {
         // A finished day: a no-show is a real absence, never "not due yet", whatever the hour shown.
-        Assert.Equal("Absent", Status(Day(), 7, 0, isToday: false));
+        Assert.Equal("Absent", Status(Day(), 7, 0, dayOffset: 1));
+        Assert.Equal("Absent", Status(Day(), 7, 0, dayOffset: 2));
+    }
+
+    [Theory]
+    // 23:50 + 15 minutes = 00:05 the NEXT day. Not cut at 23:59 any more (owner, 2026-11-14).
+    [InlineData(0, 23, 55, "Pending")]
+    [InlineData(1, 0, 3, "Pending")]
+    [InlineData(1, 0, 5, "Pending")]
+    [InlineData(1, 0, 6, "Absent")]
+    public void LateNightGrace_RunsPastMidnight(int dayOffset, int hour, int minute, string expected)
+    {
+        var lateNight = EffectiveShift.Resolve(new TimeOnly(23, 50), new TimeOnly(8, 0), null, 1, null, null, Loc());
+        Assert.Equal(expected, Status(lateNight, hour, minute, dayOffset));
     }
 
     [Fact]
@@ -63,7 +79,7 @@ public class BoardPendingStatusTests
         // The relabel is exactly for the would-be Qayıb. A day off, leave, or a present worker is
         // never touched — those are already unambiguous.
         var s = Day();
-        foreach (var st in new[] { DailySummaryStatus.OnTime, DailySummaryStatus.DayOff, DailySummaryStatus.OnLeave, DailySummaryStatus.Incomplete })
-            Assert.Equal(st.ToString(), ReportQueryService.BoardDisplayStatus(st, s, true, new TimeOnly(6, 0), Day1));
+        foreach (var st in new[] { DailySummaryStatus.OnTime, DailySummaryStatus.DayOff, DailySummaryStatus.OnLeave, DailySummaryStatus.Incomplete, DailySummaryStatus.Permission })
+            Assert.Equal(st.ToString(), ReportQueryService.BoardDisplayStatus(st, s, Day1.ToDateTime(new TimeOnly(6, 0)), Day1));
     }
 }

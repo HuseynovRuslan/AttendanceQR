@@ -12,13 +12,14 @@ export const STATUS_MAP: Record<string, { cls: string; label: string; icon: 'che
   OnTime: { cls: 'b-present', label: 'Tamamlayıb', icon: 'check' },
   Late: { cls: 'b-present', label: 'Tamamlayıb', icon: 'check' },
   Absent: { cls: 'b-absent', label: 'Qayıb', icon: 'x' },
-  // Board-only: a scheduled worker whose shift hasn't started yet. Neutral, NOT the red Qayıb — a
-  // 21:00 night worker at 10:00 is not a no-show, their shift is later. Set by the live board; the
-  // stored DailySummaryStatus never carries it.
-  // «Növbəsi başlamayıb», not «Gözlənilir». The day is not late and nobody is waiting on this
-  // person: their shift has simply not begun yet — a night guard at nine in the morning. «Gözlənilir»
-  // sat next to «Qayıb» on the board and read as the first stage of being absent.
-  Pending: { cls: 'b-pending', label: 'Növbəsi başlamayıb', icon: 'clock' },
+  // A scheduled worker whose start + late grace has not passed yet. Neutral, NOT the red Qayıb — a
+  // 21:00 night worker at 10:00 is not a no-show, their shift is later. The stored DailySummaryStatus
+  // never carries it; the server computes it live (PendingRule) for the board AND, since 2026-11-14,
+  // for the tabel («G»), the payroll, the reports and the profile — one rule, one word.
+  // «Gözlənilir» (owner's decision, 2026-11-14). It replaced «Növbəsi başlamayıb», which had been
+  // chosen because «Gözlənilir» once read as the first stage of being absent; the owner wants the one
+  // word on every screen, and the tabel's legend spells out what it means.
+  Pending: { cls: 'b-pending', label: 'Gözlənilir', icon: 'clock' },
   // Board-only, like Pending: imported but no first scan yet — the phone is still being handed over,
   // permissions granted, the shift assigned. NOT the red Qayıb: 290 of these drowned the 67 real
   // no-shows the morning a company onboarded. The stored DailySummaryStatus never carries it, and the
