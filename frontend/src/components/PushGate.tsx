@@ -62,7 +62,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
 
       {state === 'ask' && (
         <>
-          <h2 className="mt-3 text-xl font-bold">Bildirişləri aktiv edin</h2>
+          <h2 className="mt-3 text-xl font-bold text-white">Bildirişləri aktiv edin</h2>
           <p className="mt-2 text-sm text-slate-300">
             Şirkət elanları, növbənin başlaması və bitməsi barədə xatırlatmalar telefonunuza bu yolla
             çatdırılır. Çıxış qeyd edilmədikdə həmin gün <b className="text-white">0 saat</b> hesablanır.
@@ -80,7 +80,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
 
       {state === 'install' && (
         <>
-          <h2 className="mt-3 text-xl font-bold">Proqramı ana ekrana əlavə edin</h2>
+          <h2 className="mt-3 text-xl font-bold text-white">Proqramı ana ekrana əlavə edin</h2>
           <p className="mt-2 text-sm text-slate-300">
             Brauzer səhifəsində bildiriş dəstəklənmir. Aşağıdakı <b>Paylaş</b> düyməsi →
             <b> «Ana ekrana əlavə et»</b> seçin və proqramı oradan açın — bildirişlər işləyəcək.
@@ -93,7 +93,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
 
       {state === 'blocked' && (
         <>
-          <h2 className="mt-3 text-xl font-bold">Bildirişlər bağlıdır</h2>
+          <h2 className="mt-3 text-xl font-bold text-white">Bildirişlər bağlıdır</h2>
           <p className="mt-2 text-sm text-slate-300">
             Bildirişlərə icazə bloklanıb. Elanları və xatırlatmaları almaq üçün brauzer
             parametrlərindən bu sayta bildiriş icazəsi verin.

@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react'
 import { getMyBilling, type MyBilling } from '../../api/admin'
 import { IconAlert, IconCheck, IconX } from '../../components/icons'
+import { formatMoney as azn } from '../../lib/money'
 
 const MONTHS = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun',
   'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr',
 ]
 
-/** AZN with two decimals, in the local grouping. */
-function azn(n: number): string {
-  return n.toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -66,7 +63,7 @@ export function BillingPage() {
           <span>
             <b>Demo versiya</b> — {fmtDate(data.trialEndsAtUtc)} tarixinədək pulsuz istifadə edirsiniz
             {data.trialDaysLeft > 0 && <> ({data.trialDaysLeft} gün qalıb)</>}. Demo bitəndən sonra
-            aylıq məbləğ <b>{azn(m.amount)} ₼</b> olacaq. Bu müddətdə heç bir məhdudiyyət yoxdur.
+            aylıq məbləğ <b>{azn(m.amount)}</b> olacaq. Bu müddətdə heç bir məhdudiyyət yoxdur.
           </span>
         </div>
       )}
@@ -101,16 +98,16 @@ export function BillingPage() {
           <div className="card-title">
             {data.onTrial ? 'Demo bitəndən sonra — aylıq' : `${MONTHS[now.getMonth()]} — aylıq`}
           </div>
-          <div style={{ fontSize: 26, fontWeight: 800 }}>{azn(m.amount)} ₼</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{azn(m.amount)}</div>
           {m.isNegotiated ? (
             <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Sizinlə razılaşdırılmış qiymət</div>
           ) : (
             // "Why is it 248 ₼" is the question a bill gets asked. Answering it here is cheaper than
             // answering it on the telephone.
             <div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.6 }}>
-              {data.employees} işçi × {azn(m.ratePerEmployee)} ₼ = {azn(m.employeeTotal)} ₼
+              {data.employees} işçi × {azn(m.ratePerEmployee)} = {azn(m.employeeTotal)}
               <br />
-              {data.locations} filial × {azn(m.locationFee)} ₼ = {azn(m.locationTotal)} ₼
+              {data.locations} filial × {azn(m.locationFee)} = {azn(m.locationTotal)}
             </div>
           )}
         </div>
@@ -149,7 +146,7 @@ export function BillingPage() {
                   <tr key={`${i.year}-${i.month}`}>
                     <td>{MONTHS[i.month - 1]} {i.year}</td>
                     <td className="num">{i.employeeCount}</td>
-                    <td className="num mono">{azn(i.amount)} ₼</td>
+                    <td className="num mono">{azn(i.amount)}</td>
                     <td>
                       {i.isPaid ? (
                         <span className="badge b-present">Ödənilib</span>
