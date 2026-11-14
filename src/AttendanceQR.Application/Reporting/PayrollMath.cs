@@ -41,9 +41,15 @@ public static class PayrollMath
         //
         // Subtracted rather than never-added, because leaveDays is also a REPORTED figure and must
         // keep counting calendar days: «14 gün məzuniyyət» is 14 days, weekends included.
-        int offDayLeaveDays = 0)
+        int offDayLeaveDays = 0,
+        // «Gözlənilir» days (PendingRule): scheduled working days whose shift has not started yet. They
+        // go INTO the divisor and NOT into the deduction. The divisor is a count of working days in the
+        // period, and the day is one — before this existed it arrived inside absentDays and was counted
+        // there; taking it out of the absence without putting it back here would have shrunk the
+        // divisor and raised everybody's daily rate until the shift began.
+        int pendingDays = 0)
     {
-        var scheduled = workDays + absentDays + leaveDays + permissionDays + tripDays - offDayLeaveDays;
+        var scheduled = workDays + absentDays + leaveDays + permissionDays + tripDays - offDayLeaveDays + pendingDays;
         if (scheduled <= 0)
             return (0, 0m, 0m, salary);   // salary set but no working day fell in the period
 

@@ -1,3 +1,5 @@
+import { formatNumber } from './numberFormat'
+
 /**
  * Parse a user-typed AZN amount to a non-negative number, or null when it is empty or ambiguous.
  *
@@ -23,7 +25,7 @@ export function moneyInputFilter(value: string): string {
   return cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, '')
 }
 
-/** "1250 ₼" — Azerbaijani-grouped, up to 2 decimals. */
+/** «1 250,00 ₼» — the one money format on every screen (see numberFormat.ts for why not toLocaleString). */
 export function formatMoney(n: number): string {
-  return `${n.toLocaleString('az-AZ', { maximumFractionDigits: 2 })} ₼`
+  return `${formatNumber(n, 2)} ₼`
 }

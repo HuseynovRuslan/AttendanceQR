@@ -1984,7 +1984,7 @@ export interface HrStatsEmployee {
   /** null = nothing to divide by — shown as «—». */
   attendancePercent: number | null
   onTimePercent: number | null
-  today: 'present' | 'late' | 'permission' | 'sick' | 'leave' | 'absent' | 'dayOff' | null
+  today: 'present' | 'late' | 'permission' | 'sick' | 'leave' | 'absent' | 'pending' | 'dayOff' | null
 }
 
 export interface HrStatsLocation {

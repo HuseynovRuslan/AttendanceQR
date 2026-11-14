@@ -53,6 +53,9 @@ thead .tb-name-col { background: var(--c50); z-index: 3; }
    not read as one; it is a day off, so it stays in the grey family and is simply darker than H. */
 .tb-rest    { background: #E4E7EA; color: #4B5563; }
 .tb-future  { background: repeating-linear-gradient(45deg, #fff, #fff 3px, #fafafa 3px, #fafafa 6px); }
+/* G — Gözlənilir: not due yet. Neutral slate with a hairline, so it reads as "not decided", never as
+   a pale Qayıb; the same fill as the Excel file (#E9EDF2). */
+.tb-pending { background: #E9EDF2; color: #52637A; box-shadow: inset 0 0 0 1px #CBD5E1; }
 /* A day the person corrected themselves (the single-admin rule): visible on screen and on paper. */
 .tb-self    { box-shadow: inset 0 0 0 2px var(--clay, #B91C1C); font-weight: 800; }
 

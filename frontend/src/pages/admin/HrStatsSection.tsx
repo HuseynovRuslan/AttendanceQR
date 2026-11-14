@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import { getHrStats, type HrStatsEmployee, type HrStatsLocation, type HrStatsReport } from '../../api/admin'
 import { EmployeeLink } from '../../components/EmployeeLink'
 import { matchesSearch } from '../../lib/searchFold'
+import { formatPercent } from '../../lib/numberFormat'
 import {
   IconAlarmClock, IconAlert, IconCalendarCheck, IconChart, IconCheck, IconChevronLeft, IconChevronRight,
   IconMapPin, IconSearch, IconThermometer, IconTrophy, IconUsers, IconUserX, IconX,
@@ -45,11 +46,7 @@ const PRESETS: [Preset, string][] = [['month', 'Bu ay'], ['lastMonth', 'Keçən 
 const TOP = 10
 const PAGE = 20
 
-const pct = (v: number | null | undefined) => {
-  if (v == null) return '—'
-  const r = Math.round(v * 10) / 10
-  return `${Number.isInteger(r) ? r : r.toFixed(1)}%`
-}
+const pct = formatPercent // «92,2%» — one decimal at most, a dash when there is no value
 const minutes = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} saat ${m % 60} dəq` : `${m} dəq`)
 const unit = (n: ReactNode, u: string) => <>{n}<small>{u}</small></>
 const byName = (a: HrStatsEmployee, b: HrStatsEmployee) => a.name.localeCompare(b.name, 'az')
@@ -62,6 +59,8 @@ const TODAY: Record<string, { label: string; tone: Tone }> = {
   sick: { label: 'Xəstəlik', tone: 'purple' },
   leave: { label: 'Məzuniyyət', tone: 'slate' },
   absent: { label: 'Hələ gəlməyib', tone: 'clay' },
+  // Start + late grace not passed yet (the server's PendingRule) — not an absence.
+  pending: { label: 'Gözlənilir', tone: 'slate' },
   dayOff: { label: 'İstirahət', tone: 'slate' },
 }
 

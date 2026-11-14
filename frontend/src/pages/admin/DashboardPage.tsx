@@ -31,7 +31,7 @@ import { HrStatsSection } from './HrStatsSection'
 type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'dayOff' | 'trip'
 
 const BUCKET_LABEL: Record<Bucket, string> = {
-  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Növbəsi başlamayıb', onboarding: 'Aktivləşdirməyib',
+  total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir', onboarding: 'Aktivləşdirməyib',
   sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə',
   rest: 'İstirahət (təyin edilmiş)', dayOff: 'Həftəlik istirahət',
   trip: 'Ezamiyyət',
@@ -218,7 +218,9 @@ export function DashboardPage() {
   const onLeaveTotal = counts.sick + counts.onLeave + counts.unpaid + counts.trip
   // Aktivləşdirməmişlər bu gün gözlənilənlərə DAXİL DEYİL — telefonları hələ paylanmayıb, iştirak
   // faizinin məxrəcində olmaları faizi mənasız edərdi.
-  const notExpected = counts.dayOff + onLeaveTotal + counts.permission + counts.onboarding
+  // «Gözlənilir» is not expected YET (PendingRule): counting it as expected-but-absent made the morning
+  // rate read low for every shift that starts later in the day — the server's trend already agrees.
+  const notExpected = counts.dayOff + onLeaveTotal + counts.permission + counts.onboarding + counts.pending
   const expected = total - notExpected
   const attended = counts.present + counts.incomplete
   const overallRate = expected ? Math.round((attended / expected) * 100) : 0
@@ -455,7 +457,7 @@ export function DashboardPage() {
         <Pill tone="slate" n={<CountUp value={total} />} label="Ümumi işçi" active={openBucket === 'total'} onClick={() => openPill('total')} />
         <Pill tone="blue" n={<CountUp value={onDutyNow} />} label="İşdə" active={openBucket === 'in'} onClick={() => openPill('in')} />
         <Pill tone="clay" n={<CountUp value={counts.absent} />} label="Qayıb" active={openBucket === 'absent'} onClick={() => openPill('absent')} />
-        {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Növbəsi başlamayıb" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
+        {counts.pending > 0 && <Pill tone="slate" n={counts.pending} label="Gözlənilir" active={openBucket === 'pending'} onClick={() => openPill('pending')} />}
         {counts.onboarding > 0 && <Pill tone="slate" n={counts.onboarding} label="Aktivləşdirməyib" active={openBucket === 'onboarding'} onClick={() => openPill('onboarding')} />}
         {counts.sick > 0 && <Pill tone="clay" n={counts.sick} label="Xəstəlik" active={openBucket === 'sick'} onClick={() => openPill('sick')} />}
         {counts.onLeave > 0 && <Pill tone="purple" n={counts.onLeave} label="Məzuniyyət" active={openBucket === 'vacation'} onClick={() => openPill('vacation')} />}

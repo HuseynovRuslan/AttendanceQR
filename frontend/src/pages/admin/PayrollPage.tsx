@@ -8,6 +8,7 @@ import {
   type PayrollReport,
 } from '../../api/admin'
 import { IconDownload, IconX } from '../../components/icons'
+import { formatMoney } from '../../lib/money'
 
 function localDateISO(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -19,10 +20,10 @@ const firstOfMonthISO = () => {
 }
 const todayISO = () => localDateISO(new Date())
 
-// AZN with two decimals; blank when the salary isn't set (so we never print a misleading 0 ₼).
+// «1 000,00 ₼»; a dash when the salary isn't set (so we never print a misleading 0 ₼).
 function azn(n: number | null | undefined): string {
   if (n == null) return '—'
-  return n.toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 export function PayrollPage() {
@@ -105,10 +106,8 @@ export function PayrollPage() {
           </button>
         </div>
         <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 10, marginBottom: 0 }}>
-          Ödəniləcək = Aylıq maaş − (gündəlik × [icazəsiz qayıb + ödənişsiz məzuniyyət]). Məzuniyyət,
-          xəstəlik və icazə çıxılmır; ÖDƏNİŞSİZ məzuniyyət çıxılır — adı bunu deyir və əvvəl səhvən
-          tam maaşla ödənilirdi. Overtime
-          saatları ayrıca göstərilir, avtomatik pula çevrilmir.
+          Ödəniləcək = aylıq maaş − gündəlik maaş × (icazəsiz qayıb + ödənişsiz məzuniyyət). Əlavə
+          saatlar Excel faylında ayrıca göstərilir, pula çevrilmir.
         </p>
       </div>
 
