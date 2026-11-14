@@ -9,7 +9,6 @@ import {
 import { IconDownload } from '../../components/icons'
 import { formatNumber } from '../../lib/numberFormat'
 import { tabelScopeLabel, wholeScopeLabel } from '../../lib/tabelScope'
-import { useAuth } from '../../auth/AuthContext'
 import { useAccess } from '../../auth/AccessContext'
 import './tabel.css'
 
@@ -47,7 +46,6 @@ const WEEKDAY_AZ = ['B', 'Be', 'Ça', 'Çə', 'Ca', 'Cü', 'Ş'] // Sunday..Satu
  * other reports. The screen's job is only to make a 31-wide grid readable and printable.
  */
 export function TabelPage() {
-  const { role } = useAuth()
   const { access } = useAccess()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
@@ -104,8 +102,8 @@ export function TabelPage() {
   const hiddenRows = report ? report.rows.length - rows.length : 0
   // What «all» means for this person, and the heading's scope — from the role and /api/me/access,
   // never from the report's scopeLabel (see lib/tabelScope).
-  const allLabel = wholeScopeLabel(role, access)
-  const scope = tabelScopeLabel(locationId, locations, role, access)
+  const allLabel = wholeScopeLabel(access)
+  const scope = tabelScopeLabel(locationId, locations, access)
 
   return (
     <div className="tb-wrap">

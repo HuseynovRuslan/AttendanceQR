@@ -107,7 +107,7 @@ export function PayrollPage() {
         </div>
         <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 10, marginBottom: 0 }}>
           Ödəniləcək = aylıq maaş − gündəlik maaş × (icazəsiz qayıb + ödənişsiz məzuniyyət). Əlavə
-          saatlar ayrıca göstərilir, pula çevrilmir.
+          saatlar Excel faylında ayrıca göstərilir, pula çevrilmir.
         </p>
       </div>
 
