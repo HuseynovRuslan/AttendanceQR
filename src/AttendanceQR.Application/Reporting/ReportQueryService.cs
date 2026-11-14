@@ -100,13 +100,23 @@ public sealed class ReportQueryService : IReportQueryService
     private readonly AppDbContext _db;
     private readonly TimeZoneInfo _timeZone;
     private readonly string[] _hiddenEmails;
+    // The wall clock, so a test can pin it. In production TimeProvider.System (registered in Program.cs),
+    // which reads exactly what DateTime.UtcNow did. Every "now" and "today" in this class comes from here:
+    // «Gözlənilir» turns on the minute, and a rule about the minute cannot be tested against a real clock.
+    private readonly TimeProvider _clock;
 
-    public ReportQueryService(AppDbContext db, AppOptions options)
+    public ReportQueryService(AppDbContext db, AppOptions options, TimeProvider? clock = null)
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
         _hiddenEmails = options.HiddenEmailList();
+        _clock = clock ?? TimeProvider.System;
     }
+
+    private DateTime NowUtc() => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>Now in company time (Asia/Baku in production).</summary>
+    private DateTime NowLocal() => TimeZoneInfo.ConvertTimeFromUtc(NowUtc(), _timeZone);
 
     /// <summary>One employee-day's computed figures — the shape DailySummary persists, and the shape
     /// every reporting aggregate here consumes. A finished day is read from the table; today is
@@ -122,7 +132,12 @@ public sealed class ReportQueryService : IReportQueryService
         int OvertimeMinutes,
         int LateMinutes,
         int EarlyLeaveMinutes = 0,
-        int EarlyArriveMinutes = 0);
+        int EarlyArriveMinutes = 0,
+        // «Gözlənilir» (PendingRule): Status stays Absent — the day IS a scheduled working day, and the
+        // payroll's count of working days must not move — but it is not an absence yet. Every reader
+        // that counts or prints an absence asks this first. Only a live day can carry it; a row read
+        // from DailySummaries never does.
+        bool Pending = false);
 
     /// <summary>An in-scope employee plus the fields the day computation needs.</summary>
     private sealed record ScopedEmployee(
@@ -165,7 +180,7 @@ public sealed class ReportQueryService : IReportQueryService
         DateTime? LastCheckOutAtUtc = null,
         IReadOnlyList<DayBlock>? BlockSpans = null);
 
-    private DateOnly LocalToday() => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+    private DateOnly LocalToday() => DateOnly.FromDateTime(NowLocal());
 
     /// <summary>
     /// The active employees this caller may see — the live-path twin of
@@ -445,11 +460,15 @@ public sealed class ReportQueryService : IReportQueryService
     private async Task<(ReportAccess Access, List<DayRow> Rows, string Label)> LoadDayRowsAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct)
     {
-        var today = LocalToday();
+        // One reading of the clock for the whole call, so «today», «yesterday» and every «Gözlənilir»
+        // below are judged at the same instant.
+        var nowLocal = NowLocal();
+        var today = DateOnly.FromDateTime(nowLocal);
+        var yesterday = today.AddDays(-1);
         var rows = new List<DayRow>();
 
         // Finished days: straight from the table.
-        var persistedTo = to < today ? to : today.AddDays(-1);
+        var persistedTo = to < today ? to : yesterday;
         var scoped = await LocationScope.ApplyLocationScopeAsync(
             _db, _db.DailySummaries.Where(s => s.SummaryDate >= from && s.SummaryDate <= persistedTo),
             requesterId, role, locationId, ct);
@@ -461,31 +480,109 @@ public sealed class ReportQueryService : IReportQueryService
             rows.AddRange(await scoped.Query
                 .Select(s => new DayRow(
                     s.EmployeeId, s.LocationId, s.SummaryDate, s.CheckInAtUtc, s.CheckOutAtUtc,
-                    s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes, s.EarlyLeaveMinutes, s.EarlyArriveMinutes))
+                    s.Status, s.WorkedMinutes, s.OvertimeMinutes, s.LateMinutes, s.EarlyLeaveMinutes, s.EarlyArriveMinutes,
+                    false))
                 .ToListAsync(ct));
         }
 
-        // Today (only if the range actually reaches it): computed, never read.
-        if (from <= today && today <= to)
+        // Yesterday is not always finished. Two cases, both computed live like today instead of read:
+        //   • the nightly job (00:30) has not written it yet — the table holds nothing for it, and every
+        //     reader fell back to the calendar: the tabel printed Q for everybody, people who worked
+        //     included, for half an hour each night;
+        //   • a shift that began late last night may still be inside its grace, which is not cut at
+        //     midnight (23:50 + 15 → 00:05). A stored row cannot know the clock, so until the longest
+        //     late threshold in the company has passed since midnight, yesterday is judged live.
+        var liveYesterday = from <= yesterday && yesterday <= to
+            && (!rows.Any(r => r.Date == yesterday)
+                || nowLocal.TimeOfDay.TotalMinutes <= await LongestGraceMinutesAsync(ct));
+
+        var liveDays = new List<DateOnly>();
+        if (liveYesterday) liveDays.Add(yesterday);
+        if (from <= today && today <= to) liveDays.Add(today);
+
+        if (liveDays.Count > 0)
         {
             var (access, employees) = await ScopedEmployeesAsync(locationId, requesterId, role, ct);
             if (access == ReportAccess.Forbidden)
                 return (ReportAccess.Forbidden, [], "Forbidden");
 
-            // Somebody still being set up is dropped from the REPORTS for today, exactly as the
-            // nightly job will drop them from the stored row tonight — otherwise a report covering
-            // today would count an onboarding day as Qayıb and then quietly stop counting it at
-            // midnight. Deliberately filtered HERE and not inside ComputeDayLiveAsync: the live
-            // board shares that method and must keep showing these people, because "hasn't scanned
-            // yet" is exactly what an admin needs to see today. The board reports presence; this
-            // path feeds the summary, the tabel and the payroll, which decide money.
-            var isOnboarding = await OnboardingCheckerAsync(employees.Select(e => e.Id).ToList(), ct);
-            rows.AddRange((await ComputeDayLiveAsync(today, employees, ct))
-                .Where(d => !isOnboarding(d.Employee.Id, today))
-                .Select(d => ToDayRow(d, today)));
+            if (liveYesterday)
+                rows.RemoveAll(r => r.Date == yesterday);
+            // Who is still being set up, and since when each account exists: read once for both live days
+            // (the dashboard polls this between midnight and the nightly job, when there are two).
+            var ids = employees.Select(e => e.Id).ToList();
+            var isOnboarding = await OnboardingCheckerAsync(ids, ct);
+            var activatedOn = (await _db.Employees.AsNoTracking()
+                    .Where(e => ids.Contains(e.Id) && e.ActivatedAtUtc != null)
+                    .Select(e => new { e.Id, e.ActivatedAtUtc })
+                    .ToListAsync(ct))
+                .ToDictionary(e => e.Id, e => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.ActivatedAtUtc!.Value, _timeZone)));
+            foreach (var day in liveDays)
+                rows.AddRange(await LiveReportRowsAsync(day, employees, isOnboarding, activatedOn, nowLocal, ct));
         }
 
         return (ReportAccess.Allowed, rows, scoped.Label);
+    }
+
+    /// <summary>
+    /// The report rows for a day that is still open — today, or yesterday until it is settled — made the
+    /// way the nightly job (DailySummaryService.GenerateForDateAsync) will store it tonight, plus the one
+    /// thing a stored row cannot know: the clock. Mirrors the job's three decisions, in its order:
+    ///   1. a day before the account was activated is no day at all;
+    ///   2. somebody still being set up is left out — unless a manager marked the day «Qayıb yaz», or
+    ///      a leave covers it; both are somebody's decision, not an inference from silence;
+    ///   3. «Qayıb yaz» with no scan, no leave and no field visit is Q — at once, never «Gözlənilir».
+    /// Then <see cref="PendingRule"/>: an inferred absence that is not yet due is «Gözlənilir».
+    ///
+    /// The onboarding filter lives HERE and not inside ComputeDayLiveAsync on purpose: the live board
+    /// shares that method and must keep showing these people, because "hasn't scanned yet" is exactly
+    /// what an admin needs to see today. The board reports presence; this path feeds the summary, the
+    /// tabel and the payroll, which decide money.
+    /// </summary>
+    private async Task<List<DayRow>> LiveReportRowsAsync(
+        DateOnly date, List<ScopedEmployee> employees, Func<Guid, DateOnly, bool> isOnboarding,
+        IReadOnlyDictionary<Guid, DateOnly> activatedOn, DateTime nowLocal, CancellationToken ct)
+    {
+        var rows = new List<DayRow>(employees.Count);
+        if (employees.Count == 0)
+            return rows;
+
+        var ids = employees.Select(e => e.Id).ToList();
+        var marked = (await _db.AbsenceMarks.AsNoTracking()
+                .Where(a => a.Date == date && ids.Contains(a.EmployeeId))
+                .Select(a => a.EmployeeId)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+        foreach (var d in await ComputeDayLiveAsync(date, employees, ct))
+        {
+            var id = d.Employee.Id;
+            if (activatedOn.TryGetValue(id, out var activated) && activated > date)
+                continue;
+            var isMarked = marked.Contains(id);
+            if (!isMarked && d.Leave is null && isOnboarding(id, date))
+                continue;
+
+            var row = ToDayRow(d, date);
+            if (isMarked && d.Record is null && d.Leave is null && d.FieldIn is null)
+                row = row with { Status = DailySummaryStatus.Absent };
+            else if (PendingRule.IsPending(row.Status, d.Shift, date, nowLocal))
+                row = row with { Pending = true };
+            rows.Add(row);
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// The longest late threshold any shift in this company has — the furthest past midnight a grace that
+    /// began yesterday can reach. Branch hours and named shifts (every version) are the only two places a
+    /// threshold lives. Two small reads, made only when yesterday is in the asked range.
+    /// </summary>
+    private async Task<int> LongestGraceMinutesAsync(CancellationToken ct)
+    {
+        var branch = await _db.Locations.AsNoTracking().Select(l => (int?)l.LateThresholdMinutes).MaxAsync(ct) ?? 0;
+        var named = await _db.Schedules.AsNoTracking().Select(s => (int?)s.LateThresholdMinutes).MaxAsync(ct) ?? 0;
+        return Math.Max(branch, named);
     }
 
     /// <summary>
@@ -544,6 +641,10 @@ public sealed class ReportQueryService : IReportQueryService
     // rest day into a day of annual leave on the timesheet the accountant reconciles.
     private const string CodeRest = "İs";       // təyin edilmiş istirahət — a granted day off
     private const string CodeFuture = "";       // a day that has not happened yet this month
+    // «Gözlənilir» — a working day whose start + late grace has not passed yet (PendingRule). Only ever
+    // today's column, or yesterday's for the minutes a late-night grace runs past midnight; a finished
+    // month never prints it. Counted in neither İş nor Qayıb.
+    private const string CodePending = "G";
     // İmport olunub, hələ ilk skanı yoxdur (bax IsStillOnboarding). Qayıb DEYİL: telefon hələ
     // paylanmayıb — bu günlər tabeldə də, maaşda da heç kimin əleyhinə işləmir.
     private const string CodeNotActivated = "–";
@@ -561,6 +662,7 @@ public sealed class ReportQueryService : IReportQueryService
         new TabelLegendItem(CodeWeekend, "Həftəlik istirahət"),
         new TabelLegendItem(CodeRest, "İstirahət (təyin edilmiş)"),
         new TabelLegendItem(CodeNotActivated, "Aktivləşdirməyib (ilk skana qədər)"),
+        new TabelLegendItem(CodePending, "Gözlənilir — növbə və gecikmə həddi hələ bitməyib"),
     };
 
     public async Task<(ReportAccess Access, TabelReport? Report)> GetTabelAsync(
@@ -618,6 +720,28 @@ public sealed class ReportQueryService : IReportQueryService
         // the loop. LeaveCodeFor cannot answer it: its fallback deliberately returns «M».
         bool HasLeave(Guid employeeId, DateOnly date) =>
             leaves.Any(l => l.EmployeeId == employeeId && l.FromDate <= date && l.ToDate >= date);
+
+        // «Qayıb yaz» for the month. A manager's mark is precisely how somebody who has never scanned
+        // gets a Qayıb (see AbsenceMark) — the nightly job writes it, and the payroll deducts it. The
+        // onboarding guard below swallowed it all the same and printed «–», so the tabel showed no
+        // absence on a day the payroll was charging for. Like a leave, the mark is somebody's
+        // decision, and it beats the guard (owner, 2026-11-14: «Qayıb yaz» is Q in every calculation).
+        var marks = (await _db.AbsenceMarks.AsNoTracking()
+                .Where(a => employeeIds.Contains(a.EmployeeId) && a.Date >= from && a.Date <= to)
+                .Select(a => new { a.EmployeeId, a.Date })
+                .ToListAsync(ct))
+            .Select(a => (a.EmployeeId, a.Date))
+            .ToHashSet();
+        // …but only from the day the account existed: the nightly job skips a day before activation
+        // outright, mark or not, so nothing is stored or deducted for it and the tabel must not invent it.
+        var activatedOn = (await _db.Employees.AsNoTracking()
+                .Where(x => employeeIds.Contains(x.Id) && x.ActivatedAtUtc != null)
+                .Select(x => new { x.Id, x.ActivatedAtUtc })
+                .ToListAsync(ct))
+            .ToDictionary(x => x.Id, x => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(x.ActivatedAtUtc!.Value, _timeZone)));
+        bool HasMark(Guid employeeId, DateOnly date) =>
+            marks.Contains((employeeId, date))
+            && (!activatedOn.TryGetValue(employeeId, out var activated) || date >= activated);
 
         string LeaveCodeFor(Guid employeeId, DateOnly date)
         {
@@ -681,12 +805,12 @@ public sealed class ReportQueryService : IReportQueryService
                 // to 6 September, activated on the 25th and therefore still inside the grace window,
                 // printed «–» on every cell of his holiday instead of «M». His employer had recorded
                 // the leave and the timesheet denied it.
-                if (isOnboarding(e.Id, date) && !HasLeave(e.Id, date))
+                if (isOnboarding(e.Id, date) && !HasLeave(e.Id, date) && !HasMark(e.Id, date))
                 {
                     codes[day - 1] = CodeNotActivated;
                     continue;
                 }
-                if (isOnboarding(e.Id, date))
+                if (isOnboarding(e.Id, date) && !HasMark(e.Id, date))
                 {
                     // On leave and still onboarding: print the leave. Falls through to no summary row
                     // (none was written for these days), which the branch below would otherwise read
@@ -708,6 +832,7 @@ public sealed class ReportQueryService : IReportQueryService
                         // Any activity is worked time, including a missing check-out — that is a
                         // check-out problem for another screen, not an absence here.
                         DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete => CodeWorked,
+                        DailySummaryStatus.Absent when d.Pending => CodePending,
                         DailySummaryStatus.Absent => CodeAbsent,
                         DailySummaryStatus.OnLeave => LeaveCodeFor(e.Id, date),
                         DailySummaryStatus.Permission => CodePermission,
@@ -893,6 +1018,7 @@ public sealed class ReportQueryService : IReportQueryService
                     DailySummaryStatus.Permission => "permission",
                     DailySummaryStatus.OnLeave => "leave",
                     DailySummaryStatus.DayOff => "dayOff",
+                    DailySummaryStatus.Absent when r.Pending => "pending",
                     DailySummaryStatus.Absent => "absent",
                     _ => null,
                 };
@@ -944,6 +1070,7 @@ public sealed class ReportQueryService : IReportQueryService
                 // they were working that day, and this report is history.
                 LocationName = locationNames.GetValueOrDefault(r.LocationId, string.Empty),
                 r.Status,
+                r.Pending,
                 // Carried so an Ezamiyyət day can be told from an annual-leave one below; both arrive
                 // here as OnLeave and the status alone cannot separate them.
                 r.Date,
@@ -1041,7 +1168,9 @@ public sealed class ReportQueryService : IReportQueryService
                 g.Select(x => x.LocationName).First(),
                 WorkDays: g.Count(x => x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete),
                 LateCount: g.Count(x => x.Status == DailySummaryStatus.Late),
-                AbsentDays: g.Count(x => x.Status == DailySummaryStatus.Absent),
+                // «Gözlənilir» is not an absence (PendingRule) — counted apart, so the payroll can keep it
+                // in its count of working days without deducting it.
+                AbsentDays: g.Count(x => x.Status == DailySummaryStatus.Absent && !x.Pending),
                 // Today is excluded: a shift still running is not a missed check-out. It stays inside
                 // WorkDays above — the day IS being worked — and its hours land when they scan out.
                 IncompleteDays: g.Count(x => x.Status == DailySummaryStatus.Incomplete && x.Date != todayLocal),
@@ -1070,7 +1199,8 @@ public sealed class ReportQueryService : IReportQueryService
                     x.Status is DailySummaryStatus.OnLeave or DailySummaryStatus.Permission
                     && !IsScheduledDay(x.EmployeeId, x.Date)),
                 PaperEmployer: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperEmployer,
-                PaperSite: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperSite))
+                PaperSite: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperSite,
+                PendingDays: g.Count(x => x.Status == DailySummaryStatus.Absent && x.Pending)))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 
@@ -1121,7 +1251,7 @@ public sealed class ReportQueryService : IReportQueryService
             .Where(r => r.EmployeeId == employeeId)
             .OrderBy(r => r.Date)
             .Select(r => new EmployeeDayRow(
-                r.Date, r.Status.ToString(), r.CheckInAtUtc, r.CheckOutAtUtc, r.WorkedMinutes, r.LateMinutes,
+                r.Date, r.Pending ? "Pending" : r.Status.ToString(), r.CheckInAtUtc, r.CheckOutAtUtc, r.WorkedMinutes, r.LateMinutes,
                 // Sent for EVERY day a leave record explains, not only the OnLeave ones. İstirahət
                 // resolves to DayOff — the same status an ordinary Sunday carries — so withholding
                 // the type here left every screen downstream unable to tell a granted rest day from
@@ -1186,10 +1316,10 @@ public sealed class ReportQueryService : IReportQueryService
             if (salary is > 0m)
                 (scheduled, perDay, deduction, payable) = PayrollMath.Compute(
                     salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays,
-                    r.UnpaidDays, r.OffDayLeaveDays);
+                    r.UnpaidDays, r.OffDayLeaveDays, r.PendingDays);
             else
                 scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays
-                            - r.OffDayLeaveDays;
+                            - r.OffDayLeaveDays + r.PendingDays;
 
             return new PayrollRow(
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,
@@ -1282,7 +1412,7 @@ public sealed class ReportQueryService : IReportQueryService
         if (isToday)
             computed = await CarryOverOpenShiftsAsync(day, employees, computed, ct);
 
-        var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var nowLocal = NowLocal();
 
         // Who is still being set up (imported, no first scan yet — see IsStillOnboarding). Their
         // "Absent" is relabelled "Onboarding" for the BOARD ONLY, the same way "Pending" and "Field"
@@ -1319,7 +1449,7 @@ public sealed class ReportQueryService : IReportQueryService
         return computed
             .Select(d =>
             {
-                var status = BoardDisplayStatus(d.Computed.Status, d.Shift, isToday, nowLocal, day);
+                var status = BoardDisplayStatus(d.Computed.Status, d.Shift, nowLocal, day);
                 var hours = d.Shift.HoursOn(day);
                 // A field check-in with no office record → "Sahədə". Checked before the status is read
                 // for anything else, because ComputeDayLiveAsync now scores such a day as worked, so
@@ -1392,7 +1522,7 @@ public sealed class ReportQueryService : IReportQueryService
         if (withoutToday.Count == 0)
             return computed;
 
-        var nowLocal = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var nowLocal = TimeOnly.FromDateTime(NowLocal());
 
         var yesterday = await ComputeDayLiveAsync(day.AddDays(-1), withoutToday, ct);
         var stillOpen = yesterday
@@ -1421,27 +1551,16 @@ public sealed class ReportQueryService : IReportQueryService
     /// still ten hours away. Until their start time plus its late grace has passed, that is not an
     /// absence — it is "not due yet". Once the grace passes with no check-in, it becomes a real Qayıb.
     ///
-    /// Board only, and only for today: a finished past day's Absent is a genuine absence and stays.
-    /// The <see cref="DailySummaryStatus"/> enum, the nightly summary, the tabel and payroll are all
-    /// untouched — this is purely how the live board labels a not-yet-due worker.
+    /// It was board-only until 2026-11-14, and that was the problem: the tabel, the payroll and every
+    /// report kept calling the same person Qayıb from midnight. The rule now lives in
+    /// <see cref="PendingRule"/> and the reports read it too (LoadDayRowsAsync), so this is only the
+    /// board's spelling of it. A past day is never «Gözlənilir» because its due moment has passed —
+    /// except yesterday while a shift that began late last night is still inside its grace, which is
+    /// no longer cut at midnight (23:50 + 15 → 00:05).
     /// </summary>
     internal static string BoardDisplayStatus(
-        DailySummaryStatus computed, EffectiveShift shift, bool isToday, TimeOnly nowLocal, DateOnly date)
-    {
-        if (!isToday || computed != DailySummaryStatus.Absent)
-            return computed.ToString();
-
-        // Integer minutes rather than TimeOnly.AddMinutes so a grace that would spill past midnight
-        // (a shift starting at 23:5x) is capped at end-of-day instead of wrapping to 00:1x and
-        // flipping the comparison. "Due" = shift start + the shift's own late threshold.
-        // This day's start, not the shift's ordinary one — on a day the crew starts an hour later,
-        // "not due yet" has to move with them or the board calls them absent for that hour.
-        var startMin = (int)shift.HoursOn(date).Start.ToTimeSpan().TotalMinutes;
-        var dueMin = Math.Min(startMin + shift.LateThresholdMinutes, 24 * 60 - 1);
-        var nowMin = (int)nowLocal.ToTimeSpan().TotalMinutes;
-
-        return nowMin <= dueMin ? "Pending" : nameof(DailySummaryStatus.Absent);
-    }
+        DailySummaryStatus computed, EffectiveShift shift, DateTime nowLocal, DateOnly date) =>
+        PendingRule.IsPending(computed, shift, date, nowLocal) ? "Pending" : computed.ToString();
 
     /// <summary>
     /// Whether an overnight shift that started yesterday could still be running at <paramref name="nowLocal"/>.
@@ -1593,7 +1712,8 @@ public sealed class ReportQueryService : IReportQueryService
         var totalCheckIns = summaries.Count(s => s.CheckInAtUtc != null);
         var totalCheckOuts = summaries.Count(s => s.CheckOutAtUtc != null);
         var lateCount = summaries.Count(s => s.Status == DailySummaryStatus.Late);
-        var absentCount = summaries.Count(s => s.Status == DailySummaryStatus.Absent);
+        // «Gözlənilir» is neither absent nor yet expected (PendingRule) — the board's own reading.
+        var absentCount = summaries.Count(s => s.Status == DailySummaryStatus.Absent && !s.Pending);
 
         // Incomplete means "checked in, never out". On a finished day that is a forgotten check-out —
         // the day reads as zero hours until an admin closes it, so it needs attention. On TODAY it
@@ -1634,7 +1754,8 @@ public sealed class ReportQueryService : IReportQueryService
                 // permission so a holiday-heavy day doesn't read as poor attendance. Same rule as the
                 // live "today" rate, one day at a time.
                 var attended = g.Count(x => x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete);
-                var expected = g.Count(x => x.Status is not (DailySummaryStatus.DayOff or DailySummaryStatus.OnLeave or DailySummaryStatus.Permission));
+                var expected = g.Count(x => x.Status is not (DailySummaryStatus.DayOff or DailySummaryStatus.OnLeave or DailySummaryStatus.Permission)
+                                            && !x.Pending);
                 var rate = expected > 0 ? Math.Round(attended * 100.0 / expected, 1) : 0;
                 return new DailyTrendPoint(g.Key, g.Count(x => x.CheckInAtUtc != null), g.Count(x => x.CheckOutAtUtc != null), rate);
             })
@@ -1709,7 +1830,7 @@ public sealed class ReportQueryService : IReportQueryService
         if (role != EmployeeRole.Admin && role != EmployeeRole.Manager)
             return (ReportAccess.Forbidden, null);
 
-        var from = DateTime.UtcNow.AddDays(-Math.Clamp(days, 1, 120));
+        var from = NowUtc().AddDays(-Math.Clamp(days, 1, 120));
 
         var locations = await _db.Locations
             .Where(l => l.IsActive && l.RequireGeofence)
@@ -1809,7 +1930,7 @@ public sealed class ReportQueryService : IReportQueryService
             return (ReportAccess.Forbidden, null);
 
         days = Math.Clamp(days, 7, 90);
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
+        var today = DateOnly.FromDateTime(NowLocal());
         var from = today.AddDays(-days);
 
         // Manager scope: their branches, plain employees only — identical to the boards. Read BEFORE
@@ -1928,7 +2049,7 @@ public sealed class ReportQueryService : IReportQueryService
             return (ReportAccess.Forbidden, []);
 
         var ids = employees.Select(e => e.Id).ToList();
-        var since = DateTime.UtcNow.AddDays(-30);
+        var since = NowUtc().AddDays(-30);
 
         // Device-family failures only: things a phone setting fixes. OutsideRadius or a shared-device
         // refusal are different problems with different screens.

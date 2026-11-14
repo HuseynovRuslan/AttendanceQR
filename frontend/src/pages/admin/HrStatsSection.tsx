@@ -59,6 +59,8 @@ const TODAY: Record<string, { label: string; tone: Tone }> = {
   sick: { label: 'Xəstəlik', tone: 'purple' },
   leave: { label: 'Məzuniyyət', tone: 'slate' },
   absent: { label: 'Hələ gəlməyib', tone: 'clay' },
+  // Start + late grace not passed yet (the server's PendingRule) — not an absence.
+  pending: { label: 'Gözlənilir', tone: 'slate' },
   dayOff: { label: 'İstirahət', tone: 'slate' },
 }
 

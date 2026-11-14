@@ -54,6 +54,9 @@ public sealed class ExcelReportExporter : IExcelReportExporter
     // the other instead of reading either.
     private static readonly XLColor HeaderBlue = XLColor.FromHtml("#1E70C8");
     private static readonly XLColor TotalBand = XLColor.FromHtml("#FFF4CE");
+    // The tabel's «Gözlənilir» code (ReportQueryService.CodePending) and its neutral fill.
+    private const string PendingCode = "G";
+    private static readonly XLColor PendingFill = XLColor.FromHtml("#E9EDF2");
 
     /// <summary>Azerbaijani collation, so «Ə» and «İ» sort where a reader expects rather than after Z.</summary>
     private static readonly StringComparer Az = BuildAz();
@@ -433,6 +436,10 @@ public sealed class ExcelReportExporter : IExcelReportExporter
                 cell.Value = own ? r.Days[d] + "*" : r.Days[d];
                 if (own)
                     cell.Style.Fill.BackgroundColor = XLColor.LightPink;
+                // «G» — Gözlənilir: the shift has not started yet. Neutral grey, so it never reads as the
+                // first stage of an absence; the legend below says what it is.
+                else if (r.Days[d] == PendingCode)
+                    cell.Style.Fill.BackgroundColor = PendingFill;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             }
             ws.Cell(row, 2 + days + 1).Value = r.WorkedDays;
@@ -457,6 +464,8 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         {
             ws.Cell(lr, 1).Value = item.Code;
             ws.Cell(lr, 1).Style.Font.Bold = true;
+            if (item.Code == PendingCode)
+                ws.Cell(lr, 1).Style.Fill.BackgroundColor = PendingFill;
             ws.Cell(lr, 2).Value = item.Label;
             lr++;
         }

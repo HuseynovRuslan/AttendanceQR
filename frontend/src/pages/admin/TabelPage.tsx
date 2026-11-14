@@ -33,6 +33,10 @@ const CODE_CLASS: Record<string, string> = {
   // the month reads as though nobody ever assigned one: two thirds of every leave filed in this
   // product is an İstirahət, and until now all of them printed as the plain weekend.
   'İs': 'tb-rest',
+  // «G» — Gözlənilir: the shift (start + late grace) has not passed yet, so it is neither worked nor an
+  // absence. Only ever today's column, or yesterday's for the minutes a late-night grace runs past
+  // midnight. Neutral on purpose: it must never read as the first stage of a Qayıb.
+  'G': 'tb-pending',
 }
 
 /** Weekday initial under each day number, so the eye can find Sundays without counting. */

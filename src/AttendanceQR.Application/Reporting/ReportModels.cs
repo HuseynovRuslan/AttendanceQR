@@ -61,7 +61,12 @@ public sealed record EmployeeReportRow(
     // where the person actually worked — but the file the owner reads has to be able to say why a
     // name on Green Garden's report sits on Bakı Abadlıq's payroll, instead of leaving them to ask.
     string? PaperEmployer = null,
-    string? PaperSite = null);
+    string? PaperSite = null,
+    // «Gözlənilir» days (PendingRule): scheduled working days whose start + late grace has not passed
+    // yet — today, or yesterday for the minutes a late-night grace runs past midnight. NOT in
+    // AbsentDays, so nothing is deducted for them; added back into the payroll's count of working
+    // days (PayrollMath), so the daily rate does not move while a shift has not started.
+    int PendingDays = 0);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(
