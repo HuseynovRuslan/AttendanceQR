@@ -903,6 +903,21 @@ public class AttendanceController : ControllerBase
                         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
                         return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
                     }
+                    // The same «are you leaving?» the day path asks (EarlyCheckOutRules). A night can now be
+                    // opened AFTER midnight — an arrival filed under last night — and a «did it work?» tap
+                    // twenty minutes later used to land here and close the whole night in silence; the real
+                    // exit at 08:00 was then refused as a repeat. Nothing is written; the check-in stands.
+                    if (EarlyCheckOutRules.NeedsConfirmation(openNight.CheckInAtUtc, nowUtc, request.ConfirmEarlyCheckOut))
+                    {
+                        await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected,
+                            request.Offline ? "OfflineEarlyCheckOutIgnored" : "EarlyCheckOutUnconfirmed", ip);
+                        return Conflict(new
+                        {
+                            error = "ConfirmEarlyCheckOut",
+                            checkInAtUtc = openNight.CheckInAtUtc,
+                            minutes = EarlyCheckOutRules.ConfirmWithinMinutes,
+                        });
+                    }
                     // Closed against the shift the NIGHT was worked under — the hours, the early-leave
                     // test and the overnight arithmetic all belong to that shift, not to today's.
                     return await CheckOutAsync(openNight, employee, location, nightShift, nowUtc, ip,
@@ -966,21 +981,22 @@ public class AttendanceController : ControllerBase
             }
 
             // The ARRIVAL for last night's shift, made after midnight: filed under last night's date, the
-            // working day it belongs to, at its real time (NightScanRules.IsArrivalForLastNightsShift).
-            // Before this a 00:03 arrival for a 23:50 shift opened the new day, and the night it was for
-            // stayed empty and became a Qayıb once its grace ran out. Reached only after every guard
-            // above has passed, and only when last night has no record at all — so it can never write a
-            // second record for a day, and never touches a night that the close or repeat rules own.
-            // QR, QR-less and offline scans all come through here with nowLocal = the scan's own time.
+            // working day it belongs to, at its real time. Before this a 00:03 arrival for a 23:50 shift
+            // opened the new day, and the night it was for stayed empty and became a Qayıb once its grace
+            // ran out. The timetable is asked first and costs nothing (NightScanRules.
+            // MayBeArrivalForLastNightsShift) — at the morning peak a day-shift arrival never reaches the
+            // database here. Only then is last night checked to be free (LastNightIsFreeAsync). Reached
+            // only after every guard above has passed, so it can never write a second record for a day,
+            // and never touches a night the close or repeat rules own. QR, QR-less and offline scans all
+            // come through here with nowLocal = the scan's own time.
             if (nowLocal.Hour < NightScanRules.MorningBefore)
             {
                 var (nightStart, nightEnd) = nightShift.HoursOn(yesterday);
-                var lastNightHasRecord = await _db.AttendanceRecords.AnyAsync(r =>
-                    r.EmployeeId == employee.Id && r.AttendanceDate == yesterday);
-                if (NightScanRules.IsArrivalForLastNightsShift(
+                if (NightScanRules.MayBeArrivalForLastNightsShift(
                         TimeOnly.FromDateTime(nowLocal),
-                        nightShift.IsWorkingDay(yesterday), nightStart, nightEnd, lastNightHasRecord,
-                        shift.IsWorkingDay(today), shift.HoursOn(today).Start))
+                        nightShift.IsWorkingDay(yesterday), nightStart, nightEnd,
+                        shift.IsWorkingDay(today), shift.HoursOn(today).Start)
+                    && await LastNightIsFreeAsync(employee, yesterday))
                 {
                     return await CheckInAsync(employee, location, nightShift, yesterday, nowUtc, ip, request.PhotoBase64,
                         request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
@@ -1096,6 +1112,25 @@ public class AttendanceController : ControllerBase
         // Already checked in and out today.
         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "AlreadyCompleted", ip);
         return Conflict(new { error = "AlreadyCompleted" });
+    }
+
+    /// <summary>
+    /// The database half of «is this last night's arrival?» (NightScanRules.MayBeArrivalForLastNightsShift
+    /// is the timetable half): last night carries nothing that already decides it — no attendance record of
+    /// any kind, no leave, no holiday for the person's own branch, no field visit. The facts the nightly
+    /// summary reads to decide whether a day was a working day, so a night somebody was on sick leave is
+    /// never turned into a worked night by a morning tap.
+    /// </summary>
+    private async Task<bool> LastNightIsFreeAsync(Employee employee, DateOnly night)
+    {
+        if (await _db.AttendanceRecords.AnyAsync(r => r.EmployeeId == employee.Id && r.AttendanceDate == night))
+            return false;
+        if (await _db.LeaveRecords.AnyAsync(l => l.EmployeeId == employee.Id && l.FromDate <= night && l.ToDate >= night))
+            return false;
+        if (await _db.NonWorkingDays.AnyAsync(n => n.Date == night && (n.LocationId == null || n.LocationId == employee.LocationId)))
+            return false;
+        return !await _db.FieldVisits.AnyAsync(v => v.EmployeeId == employee.Id && v.VisitDate == night
+                                                    && v.Status != FieldVisitStatus.Cancelled && v.CheckInAtUtc != null);
     }
 
     private async Task<IActionResult> CheckInAsync(

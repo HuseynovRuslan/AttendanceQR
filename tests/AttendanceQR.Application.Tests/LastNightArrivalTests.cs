@@ -200,14 +200,18 @@ public class LastNightArrivalTests
     }
 
     [Fact]
-    public async Task An_open_night_is_still_closed_by_the_scan_as_before()
+    public async Task An_open_night_is_still_closed_by_the_scan_but_asks_first_when_it_is_soon()
     {
         using var h = new Harness(NightStart, NightEnd);
         h.Seed(D0, Utc(D0, 23, 52), null);
 
-        var result = await h.At(Utc(D1, 0, 30)).Scan(h.Poster());
+        // 38 minutes after arriving: the same «are you leaving?» the day path asks within two hours.
+        var soon = await h.At(Utc(D1, 0, 30)).Scan(h.Poster());
+        Assert.IsType<ConflictObjectResult>(soon);
+        Assert.Null(Assert.Single(await h.RecordsAsync()).CheckOutAtUtc);
 
-        Assert.Equal("CheckOut", Action(result));
+        var confirmed = await h.At(Utc(D1, 0, 31)).Scan(h.Poster() with { ConfirmEarlyCheckOut = true });
+        Assert.Equal("CheckOut", Action(confirmed));
         Assert.Equal(D0, Assert.Single(await h.RecordsAsync()).AttendanceDate);
     }
 
@@ -329,22 +333,128 @@ public class LastNightArrivalTests
     // ─── the rule and the lateness, on their own ─────────────────────────────────────────────────────
 
     [Theory]
-    //          now     working  start  end    record  todayWork todayStart  expected
-    [InlineData("00:03", true, "23:50", "08:00", false, true, "23:50", true)]
-    [InlineData("07:59", true, "23:50", "08:00", false, true, "23:50", true)]
-    [InlineData("08:00", true, "23:50", "08:00", false, true, "23:50", false)]  // the shift is over
-    [InlineData("12:30", true, "23:50", "13:00", false, true, "23:50", false)]  // afternoon: never
-    [InlineData("00:03", false, "23:50", "08:00", false, true, "23:50", false)] // last night was off
-    [InlineData("00:03", true, "08:00", "18:00", false, true, "08:00", false)]  // not overnight
-    [InlineData("00:03", true, "23:50", "08:00", true, true, "23:50", false)]   // night already has a record
-    [InlineData("06:30", true, "23:50", "08:00", false, true, "06:00", false)]  // today's own shift has begun
-    [InlineData("05:30", true, "23:50", "08:00", false, true, "06:00", true)]   // …but not yet
-    [InlineData("06:30", true, "23:50", "08:00", false, false, "06:00", true)]  // today is a day off
-    public void The_rule(string now, bool working, string start, string end, bool hasRecord,
-        bool todayWorking, string todayStart, bool expected)
-        => Assert.Equal(expected, NightScanRules.IsArrivalForLastNightsShift(
-            TimeOnly.Parse(now), working, TimeOnly.Parse(start), TimeOnly.Parse(end), hasRecord,
-            todayWorking, TimeOnly.Parse(todayStart)));
+    //          now     scheduled start   end   todayScheduled todayStart  expected
+    [InlineData("00:03", true, "23:50", "08:00", true, "23:50", true)]   // consecutive nights
+    [InlineData("07:59", true, "23:50", "08:00", true, "23:50", true)]
+    [InlineData("00:03", true, "23:50", "08:00", true, "14:00", true)]   // today starts in the afternoon
+    [InlineData("00:03", true, "23:50", "08:00", false, "23:50", true)]  // today is a day off
+    [InlineData("08:00", true, "23:50", "08:00", true, "23:50", false)]  // the shift is over
+    [InlineData("12:30", true, "23:50", "13:00", true, "23:50", false)]  // afternoon: never
+    [InlineData("00:03", false, "23:50", "08:00", true, "23:50", false)] // last night was not scheduled
+    [InlineData("00:03", true, "08:00", "18:00", true, "08:00", false)]  // not overnight
+    [InlineData("05:30", true, "22:00", "08:00", true, "08:00", false)]  // today has a MORNING shift: today's
+    [InlineData("02:00", true, "22:00", "08:00", true, "06:00", false)]  // …at any hour before noon
+    [InlineData("07:45", true, "22:00", "08:00", true, "00:00", false)]  // a shift starting at midnight is a morning one
+    public void The_timetable_half_of_the_rule(string now, bool scheduled, string start, string end,
+        bool todayScheduled, string todayStart, bool expected)
+        => Assert.Equal(expected, NightScanRules.MayBeArrivalForLastNightsShift(
+            TimeOnly.Parse(now), scheduled, TimeOnly.Parse(start), TimeOnly.Parse(end),
+            todayScheduled, TimeOnly.Parse(todayStart)));
+
+    // ─── review findings: a night that is not free, a morning crew, the «did it work?» tap ───────────
+
+    [Theory]
+    [InlineData(LeaveType.Sick)]
+    [InlineData(LeaveType.Vacation)]
+    [InlineData(LeaveType.Permission)]
+    public async Task A_night_covered_by_leave_is_never_turned_into_a_worked_night(LeaveType type)
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        h.Db.LeaveRecords.Add(new LeaveRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = h.EmployeeId, FromDate = D0, ToDate = D0,
+            Type = type, CreatedByEmployeeId = h.EmployeeId,
+        });
+        h.Db.SaveChanges();
+
+        await h.At(Utc(D1, 0, 3)).Scan(h.Poster());
+
+        Assert.Equal(D1, Assert.Single(await h.RecordsAsync()).AttendanceDate);
+    }
+
+    [Fact]
+    public async Task A_holiday_night_keeps_the_scan_on_the_new_day()
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        h.Db.NonWorkingDays.Add(new NonWorkingDay { TenantId = TenantId, Date = D0, Description = "Bayram" });
+        h.Db.SaveChanges();
+
+        await h.At(Utc(D1, 0, 3)).Scan(h.Poster());
+
+        Assert.Equal(D1, Assert.Single(await h.RecordsAsync()).AttendanceDate);
+    }
+
+    [Fact]
+    public async Task A_night_with_a_field_visit_keeps_the_scan_on_the_new_day()
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        h.Db.FieldVisits.Add(new FieldVisit
+        {
+            TenantId = TenantId, EmployeeId = h.EmployeeId, VisitDate = D0, Status = FieldVisitStatus.Completed,
+            CheckInAtUtc = Utc(D0, 23, 50), CheckOutAtUtc = Utc(D1, 0, 1),
+        });
+        h.Db.SaveChanges();
+
+        await h.At(Utc(D1, 0, 3)).Scan(h.Poster());
+
+        Assert.Single(await h.RecordsAsync(), r => r.AttendanceDate == D1);
+    }
+
+    [Theory]
+    [InlineData(7, 45)]  // early for this morning's 08:00 start
+    [InlineData(3, 0)]   // or hours before it: with a morning shift today, a morning scan is today's
+    public async Task A_morning_crew_after_a_night_shift_files_under_today(int hour, int minute)
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        // The plan puts this person on 08:00–15:00 today, after last night's 23:50–08:00.
+        var morning = Guid.NewGuid();
+        h.Db.Schedules.Add(new Schedule
+        {
+            Id = morning, TenantId = TenantId, Name = "Səhər", ShiftStart = new TimeOnly(8, 0),
+            ShiftEnd = new TimeOnly(15, 0), LateThresholdMinutes = 15, WorkDaysMask = 127,
+        });
+        h.Db.ShiftOverrides.Add(new ShiftOverride
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = h.EmployeeId, Date = D1, ScheduleId = morning,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+        h.Db.SaveChanges();
+
+        await h.At(Utc(D1, hour, minute)).Scan(h.Poster());
+
+        Assert.Equal(D1, Assert.Single(await h.RecordsAsync()).AttendanceDate);
+    }
+
+    [Fact]
+    public async Task A_did_it_work_tap_after_a_night_arrival_asks_before_closing_the_night()
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        await h.At(Utc(D1, 0, 3)).Scan(h.Poster());
+
+        // Seventeen minutes later — not a leaving, a «did it work?».
+        var tap = await h.At(Utc(D1, 0, 20)).Scan(h.Poster());
+        var conflict = Assert.IsType<ConflictObjectResult>(tap);
+        Assert.Equal("ConfirmEarlyCheckOut", conflict.Value!.GetType().GetProperty("error")!.GetValue(conflict.Value));
+        Assert.Null(Assert.Single(await h.RecordsAsync()).CheckOutAtUtc);   // nothing written
+
+        // Said yes: then it is a real early exit, and it closes the night it belongs to.
+        var yes = await h.At(Utc(D1, 0, 25)).Scan(h.Poster() with { ConfirmEarlyCheckOut = true });
+        Assert.Equal("CheckOut", Action(yes));
+        var night = Assert.Single(await h.RecordsAsync());
+        Assert.Equal(D0, night.AttendanceDate);
+        Assert.Equal(Utc(D1, 0, 25), night.CheckOutAtUtc);
+    }
+
+    [Fact]
+    public async Task An_ordinary_night_exit_hours_later_needs_no_confirmation()
+    {
+        using var h = new Harness(NightStart, NightEnd);
+        h.Seed(D0, Utc(D0, 23, 48), null);
+
+        var result = await h.At(Utc(D1, 7, 55)).Scan(h.Poster());
+
+        Assert.Equal("CheckOut", Action(result));
+    }
 
     [Theory]
     [InlineData(0, 23, 55, AttendanceStatus.OnTime)]  // the old time-of-day test wrapped 23:50+15 to 00:05 and said Late

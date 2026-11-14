@@ -65,7 +65,8 @@ public static class NightScanRules
 
     /// <summary>
     /// A scan between midnight and noon, with no record yet today, from somebody whose shift LAST NIGHT
-    /// is still running — is it that shift's arrival?
+    /// is still running — could it be that shift's arrival? The TIMETABLE half of the answer; the caller
+    /// adds the half that needs the database (see AttendanceController, «last night is free»).
     ///
     /// The scan files by the company date, so an arrival at 00:03 for a 23:50 shift opened a record on
     /// the NEW day. Last night's shift stayed empty, turned Qayıb when its grace ran out at 00:05 and
@@ -80,22 +81,24 @@ public static class NightScanRules
     ///
     /// All of these, or nothing changes:
     ///   • before noon — the pivot every night rule here already uses;
-    ///   • last night was a working day for this person, of a shift that crosses midnight by that day's
-    ///     own hours (the plan's, a rotation's, a named shift's — whatever resolved for that date);
+    ///   • last night was a scheduled working day for this person, of a shift that crosses midnight by
+    ///     that day's own hours (the plan's, a rotation's, a named shift's — whatever resolved for it);
     ///   • the scan is before that shift ends;
-    ///   • last night has no record at all — one arrival opens one day, and a record that exists (open
-    ///     or closed) is the business of the overnight-close and repeat-exit rules, untouched;
-    ///   • today's own shift has not begun — a crew starting this morning is never pulled back into
-    ///     the night before.
+    ///   • today has NO morning shift. If today's own shift starts before noon, every morning scan is
+    ///     today's, exactly as before: somebody who skipped a night and comes early for a 08:00 start
+    ///     must never be filed under the night — that would leave the morning they work empty, and a
+    ///     day they worked would be docked. Ambiguity resolves to the old behaviour, not to a guess.
+    /// And then, from the database: last night has no record at all (one arrival opens one day; an
+    /// existing record is the business of the overnight-close and repeat-exit rules), no leave, no
+    /// holiday and no field visit — the same «was it a working day» the nightly summary decides by.
     /// </summary>
-    public static bool IsArrivalForLastNightsShift(
+    public static bool MayBeArrivalForLastNightsShift(
         TimeOnly nowLocal,
-        bool lastNightIsWorkingDay, TimeOnly lastNightStart, TimeOnly lastNightEnd, bool lastNightHasRecord,
-        bool todayIsWorkingDay, TimeOnly todayStart)
+        bool lastNightIsScheduled, TimeOnly lastNightStart, TimeOnly lastNightEnd,
+        bool todayIsScheduled, TimeOnly todayStart)
         => nowLocal.Hour < MorningBefore
-           && lastNightIsWorkingDay
+           && lastNightIsScheduled
            && lastNightEnd < lastNightStart
            && nowLocal < lastNightEnd
-           && !lastNightHasRecord
-           && !(todayIsWorkingDay && todayStart <= nowLocal);
+           && !(todayIsScheduled && todayStart.Hour < MorningBefore);
 }

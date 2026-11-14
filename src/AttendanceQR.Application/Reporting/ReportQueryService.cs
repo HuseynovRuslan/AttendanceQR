@@ -508,8 +508,17 @@ public sealed class ReportQueryService : IReportQueryService
 
             if (liveYesterday)
                 rows.RemoveAll(r => r.Date == yesterday);
+            // Who is still being set up, and since when each account exists: read once for both live days
+            // (the dashboard polls this between midnight and the nightly job, when there are two).
+            var ids = employees.Select(e => e.Id).ToList();
+            var isOnboarding = await OnboardingCheckerAsync(ids, ct);
+            var activatedOn = (await _db.Employees.AsNoTracking()
+                    .Where(e => ids.Contains(e.Id) && e.ActivatedAtUtc != null)
+                    .Select(e => new { e.Id, e.ActivatedAtUtc })
+                    .ToListAsync(ct))
+                .ToDictionary(e => e.Id, e => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.ActivatedAtUtc!.Value, _timeZone)));
             foreach (var day in liveDays)
-                rows.AddRange(await LiveReportRowsAsync(day, employees, nowLocal, ct));
+                rows.AddRange(await LiveReportRowsAsync(day, employees, isOnboarding, activatedOn, nowLocal, ct));
         }
 
         return (ReportAccess.Allowed, rows, scoped.Label);
@@ -531,19 +540,14 @@ public sealed class ReportQueryService : IReportQueryService
     /// tabel and the payroll, which decide money.
     /// </summary>
     private async Task<List<DayRow>> LiveReportRowsAsync(
-        DateOnly date, List<ScopedEmployee> employees, DateTime nowLocal, CancellationToken ct)
+        DateOnly date, List<ScopedEmployee> employees, Func<Guid, DateOnly, bool> isOnboarding,
+        IReadOnlyDictionary<Guid, DateOnly> activatedOn, DateTime nowLocal, CancellationToken ct)
     {
         var rows = new List<DayRow>(employees.Count);
         if (employees.Count == 0)
             return rows;
 
         var ids = employees.Select(e => e.Id).ToList();
-        var isOnboarding = await OnboardingCheckerAsync(ids, ct);
-        var activatedOn = (await _db.Employees.AsNoTracking()
-                .Where(e => ids.Contains(e.Id) && e.ActivatedAtUtc != null)
-                .Select(e => new { e.Id, e.ActivatedAtUtc })
-                .ToListAsync(ct))
-            .ToDictionary(e => e.Id, e => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(e.ActivatedAtUtc!.Value, _timeZone)));
         var marked = (await _db.AbsenceMarks.AsNoTracking()
                 .Where(a => a.Date == date && ids.Contains(a.EmployeeId))
                 .Select(a => a.EmployeeId)
