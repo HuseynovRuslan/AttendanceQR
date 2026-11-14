@@ -965,6 +965,28 @@ public class AttendanceController : ControllerBase
                 return Conflict(new { error = "AlreadyCompleted" });
             }
 
+            // The ARRIVAL for last night's shift, made after midnight: filed under last night's date, the
+            // working day it belongs to, at its real time (NightScanRules.IsArrivalForLastNightsShift).
+            // Before this a 00:03 arrival for a 23:50 shift opened the new day, and the night it was for
+            // stayed empty and became a Qayıb once its grace ran out. Reached only after every guard
+            // above has passed, and only when last night has no record at all — so it can never write a
+            // second record for a day, and never touches a night that the close or repeat rules own.
+            // QR, QR-less and offline scans all come through here with nowLocal = the scan's own time.
+            if (nowLocal.Hour < NightScanRules.MorningBefore)
+            {
+                var (nightStart, nightEnd) = nightShift.HoursOn(yesterday);
+                var lastNightHasRecord = await _db.AttendanceRecords.AnyAsync(r =>
+                    r.EmployeeId == employee.Id && r.AttendanceDate == yesterday);
+                if (NightScanRules.IsArrivalForLastNightsShift(
+                        TimeOnly.FromDateTime(nowLocal),
+                        nightShift.IsWorkingDay(yesterday), nightStart, nightEnd, lastNightHasRecord,
+                        shift.IsWorkingDay(today), shift.HoursOn(today).Start))
+                {
+                    return await CheckInAsync(employee, location, nightShift, yesterday, nowUtc, ip, request.PhotoBase64,
+                        request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
+                }
+            }
+
             return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
                 request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
         }
@@ -1087,7 +1109,10 @@ public class AttendanceController : ControllerBase
             LocationId = location.Id,
             AttendanceDate = today,
             CheckInAtUtc = nowUtc,
-            Status = DetermineStatus(shift.HoursOn(today).Start, shift.LateThresholdMinutes, nowUtc, _timeZone),
+            // Judged on the day the record is FILED under, not on the clock's time of day alone: a 23:50
+            // start with fifteen minutes of grace is due at 00:05 the next morning, and comparing times
+            // of day wrapped that to 00:05 the same evening — so a 23:55 arrival read as late.
+            Status = DetermineStatus(today, shift.HoursOn(today).Start, shift.LateThresholdMinutes, nowUtc, _timeZone),
             WasOffline = wasOffline,
             SubmittedAtUtc = wasOffline ? submittedAtUtc : null,
             // The position their scan passed the geofence with — for the dashboard map.
@@ -1398,6 +1423,20 @@ public class AttendanceController : ControllerBase
     {
         var nowLocal = LocalTimeOfDay(nowUtc, timeZone);
         return nowLocal > shiftStart.AddMinutes(lateThresholdMinutes) ? AttendanceStatus.Late : AttendanceStatus.OnTime;
+    }
+
+    /// <summary>
+    /// The same verdict, measured on the calendar: late once the instant is past <paramref name="attendanceDate"/>'s
+    /// start + threshold. Identical to the time-of-day version whenever start + threshold stays inside the day;
+    /// different — and right — when it does not (23:50 + 15 is 00:05 TOMORROW, and an arrival filed under the
+    /// night it belongs to may be made after midnight). The scan path uses this one.
+    /// </summary>
+    internal static AttendanceStatus DetermineStatus(
+        DateOnly attendanceDate, TimeOnly shiftStart, int lateThresholdMinutes, DateTime nowUtc, TimeZoneInfo timeZone)
+    {
+        var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), timeZone);
+        var due = attendanceDate.ToDateTime(shiftStart).AddMinutes(lateThresholdMinutes);
+        return nowLocal > due ? AttendanceStatus.Late : AttendanceStatus.OnTime;
     }
 
     /// <summary>True when the check-out is more than lateThreshold minutes before shiftEnd — the same
