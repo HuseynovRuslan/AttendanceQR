@@ -1412,24 +1412,11 @@ public class AttendanceController : ControllerBase
     }
 
     /// <summary>
-    /// OnTime unless the current time is past shiftStart + lateThreshold. shiftStart is the employee's
-    /// own WorkStart when set, else the location's ShiftStart (see EffectiveShiftStart).
-    /// Note: shift times and server time are treated as the same reference here; a real
-    /// deployment would carry a per-location timezone.
-    /// Internal (not private) so AdminAttendanceController can recompute the same way when an
-    /// admin edits/creates a record's check-in time.
-    /// </summary>
-    internal static AttendanceStatus DetermineStatus(TimeOnly shiftStart, int lateThresholdMinutes, DateTime nowUtc, TimeZoneInfo timeZone)
-    {
-        var nowLocal = LocalTimeOfDay(nowUtc, timeZone);
-        return nowLocal > shiftStart.AddMinutes(lateThresholdMinutes) ? AttendanceStatus.Late : AttendanceStatus.OnTime;
-    }
-
-    /// <summary>
-    /// The same verdict, measured on the calendar: late once the instant is past <paramref name="attendanceDate"/>'s
-    /// start + threshold. Identical to the time-of-day version whenever start + threshold stays inside the day;
-    /// different — and right — when it does not (23:50 + 15 is 00:05 TOMORROW, and an arrival filed under the
-    /// night it belongs to may be made after midnight). The scan path uses this one.
+    /// OnTime unless the instant is past <paramref name="attendanceDate"/>'s shift start + late threshold —
+    /// measured on the calendar, not on the time of day. The two agree whenever start + threshold stays inside
+    /// the day; when it does not (23:50 + 15 is 00:05 TOMORROW) only this is right, and an arrival filed under
+    /// the night it belongs to may be made after midnight. The ONE lateness verdict: the scan, an admin's edit,
+    /// a hand-written day and an approved self-correction all ask it. Internal so AdminAttendanceController can.
     /// </summary>
     internal static AttendanceStatus DetermineStatus(
         DateOnly attendanceDate, TimeOnly shiftStart, int lateThresholdMinutes, DateTime nowUtc, TimeZoneInfo timeZone)

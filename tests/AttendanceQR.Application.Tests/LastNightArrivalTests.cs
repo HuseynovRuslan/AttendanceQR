@@ -363,8 +363,6 @@ public class LastNightArrivalTests
         var at = Utc(D0, hour, minute);
         var start = new TimeOnly(9, 0);
         Assert.Equal(expected, AttendanceController.DetermineStatus(D0, start, 15, at, Baku));
-        Assert.Equal(AttendanceController.DetermineStatus(start, 15, at, Baku),
-            AttendanceController.DetermineStatus(D0, start, 15, at, Baku));
     }
 
     // ─── stubs ───────────────────────────────────────────────────────────────────────────────────────

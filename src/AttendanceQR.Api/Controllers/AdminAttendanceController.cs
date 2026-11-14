@@ -905,8 +905,12 @@ public class AdminAttendanceController : ControllerBase
             var shift = employee is null
                 ? EffectiveShift.Resolve(null, null, null, 1, null, null, location)
                 : EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
+            // On the calendar of the day the record belongs to, exactly as the scan judges it: a night
+            // that began at 23:50 is due at 00:05 the next morning, and an arrival corrected to 23:55
+            // is on time — the time-of-day comparison used here wrapped 00:05 to the same evening.
             record.Status = AttendanceController.DetermineStatus(
-                shift.HoursOn(record.AttendanceDate).Start, shift.LateThresholdMinutes, checkIn.Value, _timeZone);
+                record.AttendanceDate, shift.HoursOn(record.AttendanceDate).Start, shift.LateThresholdMinutes,
+                checkIn.Value, _timeZone);
         }
         if (checkOut is not null)
             record.CheckOutAtUtc = checkOut;
@@ -915,18 +919,24 @@ public class AdminAttendanceController : ControllerBase
 
     /// <summary>A day written by hand for somebody who never scanned. Not added or saved here.</summary>
     private async Task<AttendanceRecord> NewRecordAsync(
-        Employee employee, Location location, DateOnly date, DateTime checkIn, DateTime? checkOut, Guid manualBy) => new()
+        Employee employee, Location location, DateOnly date, DateTime checkIn, DateTime? checkOut, Guid manualBy)
     {
-        EmployeeId = employee.Id,
-        LocationId = employee.LocationId,
-        AttendanceDate = date,
-        CheckInAtUtc = checkIn,
-        CheckOutAtUtc = checkOut,
-        ManualByEmployeeId = manualBy, // created by hand, not a scan
-        Status = AttendanceController.DetermineStatus(
-            EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, date), location).HoursOn(date).Start,
-            location.LateThresholdMinutes, checkIn, _timeZone),
-    };
+        // The same verdict the scan would have given: that day's start and the SHIFT's own late threshold,
+        // on the calendar of the day written. The branch's threshold was read here before, so a person on
+        // a named shift with thirty minutes' grace was marked late by the branch's fifteen.
+        var shift = EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, date), location);
+        return new AttendanceRecord
+        {
+            EmployeeId = employee.Id,
+            LocationId = employee.LocationId,
+            AttendanceDate = date,
+            CheckInAtUtc = checkIn,
+            CheckOutAtUtc = checkOut,
+            ManualByEmployeeId = manualBy, // created by hand, not a scan
+            Status = AttendanceController.DetermineStatus(
+                date, shift.HoursOn(date).Start, shift.LateThresholdMinutes, checkIn, _timeZone),
+        };
+    }
 
     /// <summary>
     /// The company's self-corrections — one's own, and those of the people whose days the caller may see —
