@@ -83,7 +83,7 @@ export function KioskPage() {
   if (!locationId) {
     return (
       <Centered>
-        <h1 className="text-3xl font-bold">Kiosk</h1>
+        <h1 className="text-3xl font-bold text-white">Kiosk</h1>
         <p className="text-slate-400 mt-3">
           URL-də filial ID yoxdur. Nümunə: <code>/kiosk/&lt;locationId&gt;</code>
         </p>
@@ -95,7 +95,7 @@ export function KioskPage() {
     return (
       <Centered>
         <div className="text-5xl mb-3">⚠️</div>
-        <h1 className="text-3xl font-bold">Filial tapılmadı</h1>
+        <h1 className="text-3xl font-bold text-white">Filial tapılmadı</h1>
         <p className="text-slate-400 mt-3">Kiosk URL-ini yoxlayın.</p>
       </Centered>
     )
@@ -104,7 +104,7 @@ export function KioskPage() {
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-between py-10 px-4">
       <header className="text-center">
-        <h1 className="text-4xl md:text-5xl font-bold">{locationName ?? '…'}</h1>
+        <h1 className="text-4xl md:text-5xl font-bold text-white">{locationName ?? '…'}</h1>
         <p className="text-3xl md:text-4xl text-slate-200 mt-3 tabular-nums">
           {/* Baku's clock, not the tablet's. This screen is what an employee checks their scan
               against; a device with a mis-set timezone would have it quietly disagreeing with the

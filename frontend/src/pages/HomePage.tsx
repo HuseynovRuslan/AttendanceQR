@@ -13,7 +13,6 @@ import { FieldVisitCards } from '../components/FieldVisitCards'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
-import { AssistantFab } from '../components/AssistantFab'
 import { firstName, initials, nightShiftState, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
 import { QUEUE_CHANGED, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { fmtDuration, fmtTime } from '../lib/format'
@@ -199,11 +198,11 @@ export function HomePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <AssistantFab />
-      {/* The "meet the assistant" dialog is gone (owner's call, 2026-08-24): it announced itself to
-          every employee once, and an announcement people did not ask for is a door in the way of the
-          one thing they opened the app to do. The assistant itself is unchanged — the blue button and
-          the menu row are still there for anyone who wants it. */}
+      {/* No floating assistant button here (owner's call, 2026-11-14). The whole check-in card is one
+          button, and anything floating over this screen lands on it at some scroll position: the
+          labelled pill covered «Skan üçün toxunun», and even a 48 px icon kept a corner of the card
+          that opened the chat instead of the scanner. The assistant itself is unchanged — Profil →
+          «Süni intellekt köməkçisi» — and the "meet the assistant" dialog stays gone (2026-08-24). */}
       {/* Before everything, and over everything: it is the only thing on this screen somebody else
           wrote to this person by hand, and the only one that has to be acknowledged. */}
       <PhotoWarningGate />
