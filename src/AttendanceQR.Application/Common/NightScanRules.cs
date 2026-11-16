@@ -76,14 +76,23 @@ public static class NightScanRules
     ///
     /// WHICH shift is a question of the timetable, never of the late threshold. The threshold only says
     /// whether the arrival was late (00:03 on time, 00:06 late, for 23:50 + 15). The window in which a
-    /// scan can still be last night's arrival is the shift itself: from midnight until it ends. After
-    /// its end a scan cannot be the arrival of a shift that is over, and the ordinary rules decide it.
+    /// scan can still be last night's arrival is the FIRST HALF of that shift (owner's revision,
+    /// 2026-11-16): 18:00–08:00 until 01:00, 22:00–06:00 until 02:00, 23:50–08:00 until 03:55.
+    ///
+    /// Why not the whole shift, as it first shipped: a guard on 18:00–08:00 who had not worked the night
+    /// scanned at 07:46 and was filed as having ARRIVED for it — a night he was not there for became a
+    /// worked day, and the day he did work (in at 07:46, out at 17:51) read as zero hours. A scan in the
+    /// last hours of a night is not that night's arrival; in the sixty days before, fifteen such scans
+    /// after an unrecorded night were mostly the start of a DAY's work — in around seven, out shortly
+    /// before the evening shift. So the second half keeps the ordinary filing (today), exactly as before
+    /// this rule existed, and the evening arrival that follows is protected by
+    /// <see cref="IsEveningArrivalOverStrayDay"/> and <see cref="MayOpenNightAfterMorningBlock"/>.
     ///
     /// All of these, or nothing changes:
     ///   • before noon — the pivot every night rule here already uses;
     ///   • last night was a scheduled working day for this person, of a shift that crosses midnight by
     ///     that day's own hours (the plan's, a rotation's, a named shift's — whatever resolved for it);
-    ///   • the scan is before that shift ends;
+    ///   • the scan is in the first half of that shift (<see cref="FirstHalfEndsAfterMidnight"/>);
     ///   • today has NO morning shift. If today's own shift starts before noon, every morning scan is
     ///     today's, exactly as before: somebody who skipped a night and comes early for a 08:00 start
     ///     must never be filed under the night — that would leave the morning they work empty, and a
@@ -99,6 +108,60 @@ public static class NightScanRules
         => nowLocal.Hour < MorningBefore
            && lastNightIsScheduled
            && lastNightEnd < lastNightStart
-           && nowLocal < lastNightEnd
+           && FirstHalfEndsAfterMidnight(lastNightStart, lastNightEnd) is TimeOnly firstHalfEnds
+           && nowLocal < firstHalfEnds
            && !(todayIsScheduled && todayStart.Hour < MorningBefore);
+
+    /// <summary>
+    /// The time of day, on the morning after, at which a night shift's first half ends — the shift's
+    /// midpoint. 18:00–08:00 → 01:00, 22:00–06:00 → 02:00, 23:50–08:00 → 03:55. Strictly before it a
+    /// scan may still be that night's arrival; from it on, never.
+    ///
+    /// Null when there is no first half left after midnight — a shift that does not cross midnight, or
+    /// one whose midpoint is at or before midnight (22:00–01:00): every after-midnight scan of it is in
+    /// its second half.
+    /// </summary>
+    public static TimeOnly? FirstHalfEndsAfterMidnight(TimeOnly start, TimeOnly end)
+    {
+        if (end >= start) return null;
+        var day = TimeSpan.FromDays(1);
+        var length = end.ToTimeSpan() - start.ToTimeSpan() + day;
+        var midpoint = start.ToTimeSpan() + length / 2;
+        return midpoint > day ? TimeOnly.FromTimeSpan(midpoint - day) : null;
+    }
+
+    /// <summary>
+    /// The evening ARRIVAL of a night worker whose day so far holds one stretch, opened AND closed in
+    /// the morning — may it open the night as a second stretch instead of being refused as
+    /// «artıq tamamlamısınız»?
+    ///
+    /// A morning stretch on a night worker's own day comes from a scan in the second half of the night
+    /// before, which now files under today (see <see cref="MayBeArrivalForLastNightsShift"/>): somebody
+    /// genuinely arriving at 02:30 for an 18:00–08:00 shift is filed today, leaves at 08:00, and comes
+    /// back at 17:55 for tonight. Refusing that arrival leaves tonight unrecorded, and the next morning's
+    /// exit then finds nothing to close and opens a stray — the cascade the rules above exist to stop.
+    /// The same holds for a «did it work?» tap confirmed as a check-out minutes after a morning scan.
+    ///
+    /// Narrow on purpose, all of these or nothing changes:
+    ///   • today's shift crosses midnight and starts at noon or later — a night, not a long day;
+    ///   • it declares no second window — a split day has its own rule (<see cref="SplitShiftRules"/>);
+    ///   • the day holds exactly one stretch, closed, and both its ends are in the MORNING, which a shift
+    ///     starting in the evening could not have produced. A day stretch closed in the afternoon
+    ///     (07:46 → 17:51, a day's cover) is not this, and a scan after it is refused exactly as before;
+    ///   • the clock is in the afternoon and no more than <see cref="SplitShiftRules.EarlyToleranceHours"/>
+    ///     before the shift starts — an afternoon mis-tap must not open a night that the next morning's
+    ///     exit then closes as a phantom twenty-hour shift.
+    /// </summary>
+    public static bool MayOpenNightAfterMorningBlock(
+        TimeOnly nowLocal, TimeOnly shiftStart, bool isOvernight, bool hasSecondWindow,
+        int blocksToday, bool anyOpen, TimeOnly? onlyBlockInLocal, TimeOnly? onlyBlockOutLocal)
+        => isOvernight
+           && !hasSecondWindow
+           && shiftStart.Hour >= MorningBefore
+           && blocksToday == 1
+           && !anyOpen
+           && onlyBlockInLocal is TimeOnly opened && opened.Hour < MorningBefore
+           && onlyBlockOutLocal is TimeOnly closed && closed.Hour < MorningBefore
+           && nowLocal.Hour >= MorningBefore
+           && nowLocal >= shiftStart.AddHours(-SplitShiftRules.EarlyToleranceHours);
 }
