@@ -714,8 +714,15 @@ public sealed class ReportQueryService : IReportQueryService
 
         // DailySummaryStatus collapses every kind of approved leave into OnLeave; the tabel has to
         // tell M from X from ÖM, so the leave type comes straight from the LeaveRecords for the month.
+        // «Elastik qrafik» with a WEEKLY norm is compared over whole Monday-to-Sunday weeks, so the weeks at the month's
+        // edges reach into the months beside it. Every month-only question below still asks only the month's dates.
+        var weekFrom = from.AddDays(-(((int)from.DayOfWeek + 6) % 7));
+        var weekTo = to.AddDays(6 - (((int)to.DayOfWeek + 6) % 7));
+        var anyWeeklyNorm = tabelSchedules.Values.Any(sc =>
+            sc.IsFlexible && sc.FlexibleNormPeriod == FlexibleNormPeriod.Week && sc.FlexibleNormMinutes is > 0);
+
         var leaves = await _db.LeaveRecords
-            .Where(l => employeeIds.Contains(l.EmployeeId) && l.FromDate <= to && l.ToDate >= from)
+            .Where(l => employeeIds.Contains(l.EmployeeId) && l.FromDate <= weekTo && l.ToDate >= weekFrom)
             .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate, l.Type })
             .ToListAsync(ct);
 
@@ -780,9 +787,23 @@ public sealed class ReportQueryService : IReportQueryService
 
         // Company holidays, for the flexible norm: a bayram is not a day anybody is expected to make hours on.
         var monthHolidays = await _db.NonWorkingDays
-            .Where(n => n.Date >= from && n.Date <= to)
+            .Where(n => n.Date >= weekFrom && n.Date <= weekTo)
             .Select(n => new { n.Date, n.LocationId })
             .ToListAsync(ct);
+
+        // The hours of the edge weeks' days outside the month — only when somebody has a weekly norm, and only up to
+        // today. The same computed rows as the month's, so a week's total cannot disagree with its own cells.
+        var edgeMinutes = new Dictionary<(Guid, DateOnly), int>();
+        if (anyWeeklyNorm)
+        {
+            foreach (var (edgeFrom, edgeTo) in new[] { (weekFrom, from.AddDays(-1)), (to.AddDays(1), weekTo < today ? weekTo : today) })
+            {
+                if (edgeFrom > edgeTo) continue;
+                var (_, edgeRows, _) = await LoadDayRowsAsync(edgeFrom, edgeTo, locationId, requesterId, role, ct);
+                foreach (var er in edgeRows)
+                    edgeMinutes[(er.EmployeeId, er.Date)] = er.WorkedMinutes;
+            }
+        }
 
         var rows = new List<TabelRow>(employees.Count);
         foreach (var e in employees.OrderBy(e => e.FullName))
@@ -793,6 +814,8 @@ public sealed class ReportQueryService : IReportQueryService
             string?[]? flexCells = null;
             double normMinutes = 0;
             var anyNorm = false;
+            // Weekly norm: the week (by its Monday) and the norm in force in it, the latest day winning.
+            Dictionary<DateOnly, int>? weekNorms = null;
 
             for (var day = 1; day <= daysInMonth; day++)
             {
@@ -902,20 +925,51 @@ public sealed class ReportQueryService : IReportQueryService
                             _ => null,
                         };
 
-                        // The norm, for comparison only. Leave and holidays are not days anybody is expected to make
-                        // hours on; a weekly norm is spread over the week's seven days.
-                        var onLeave = HasLeave(e.Id, date);
-                        var holiday = monthHolidays.Any(h => h.Date == date && (h.LocationId == null || h.LocationId == dayLocation.Id));
-                        if (dayShift.NormMinutes is int norm && !onLeave && !holiday)
+                        // The norm, for comparison only.
+                        // - Daily: summed over the norm's days; leave and holidays are not days anybody is expected to
+                        //   make hours on.
+                        // - Weekly: NEVER divided into days. The week's whole total is set against it, week by week,
+                        //   below: 40 hours is 40 hours however the person spreads them.
+                        if (dayShift.NormMinutes is int norm)
                         {
-                            anyNorm = true;
                             if (dayShift.NormPeriod == FlexibleNormPeriod.Week)
-                                normMinutes += norm / 7.0;
-                            else if (dayShift.IsNormDay(date))
+                            {
+                                weekNorms ??= new Dictionary<DateOnly, int>();
+                                weekNorms[date.AddDays(-(((int)date.DayOfWeek + 6) % 7))] = norm;
+                            }
+                            else if (dayShift.IsNormDay(date) && !HasLeave(e.Id, date)
+                                     && !monthHolidays.Any(h => h.Date == date && (h.LocationId == null || h.LocationId == dayLocation.Id)))
+                            {
+                                anyNorm = true;
                                 normMinutes += norm;
+                            }
                         }
                     }
                 }
+            }
+
+            // The weekly norm, week by week: the norm as set, against everything worked Monday to Sunday.
+            List<TabelNormWeek>? normWeeks = null;
+            if (weekNorms is not null)
+            {
+                var homeLocation = locationById.GetValueOrDefault(e.Id);
+                normWeeks = weekNorms.OrderBy(w => w.Key).Select(w =>
+                {
+                    var monday = w.Key;
+                    var sunday = monday.AddDays(6);
+                    var minutes = 0;
+                    var interrupted = false;
+                    for (var dd = monday; dd <= sunday && dd <= today; dd = dd.AddDays(1))
+                    {
+                        minutes += dd >= from && dd <= to
+                            ? (byKey.TryGetValue((e.Id, dd), out var wr) ? wr.WorkedMinutes : 0)
+                            : edgeMinutes.GetValueOrDefault((e.Id, dd));
+                        interrupted |= HasLeave(e.Id, dd)
+                            || monthHolidays.Any(h => h.Date == dd && (h.LocationId == null || h.LocationId == homeLocation));
+                    }
+                    return new TabelNormWeek(monday, sunday, Math.Round(w.Value / 60.0, 1), Math.Round(minutes / 60.0, 1),
+                        Finished: sunday < today, HasLeaveOrHoliday: interrupted);
+                }).ToList();
             }
 
             // Admin-declared holidays turn a weekend/absent cell into B. Applied last so it wins over
@@ -927,7 +981,9 @@ public sealed class ReportQueryService : IReportQueryService
                 codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1),
                 selfDays.Where(x => x.EmployeeId == e.Id).Select(x => x.Date.Day).Order().ToList(),
                 flexCells,
-                anyNorm ? Math.Round(normMinutes / 60.0, 1) : null));
+                anyNorm ? Math.Round(normMinutes / 60.0, 1) : null,
+                normWeeks,
+                normWeeks is { Count: > 0 } ? normWeeks[^1].NormHours : null));
         }
 
         // Overlay admin-declared non-working days (bayram) as B, on the cells that are otherwise empty
@@ -1028,6 +1084,53 @@ public sealed class ReportQueryService : IReportQueryService
                 .ToDictionaryAsync(x => x.EmployeeId, ct)
             : new();
 
+        // «Elastik qrafik»: nobody is DUE on a flexible day, so it has no place in an attendance or a punctuality
+        // rate. Counted as worked with nothing ever absent, every flexible person read 100 %. Their flexible days
+        // come out of both rates and are counted on their own (FlexibleWorkedDays); fixed days before or after a
+        // switch still count as they always did. Only a company that has a flexible shift pays for this pass.
+        var flexibleWorked = new Dictionary<Guid, int>();
+        if (countedTo >= start && await _db.Schedules.AnyAsync(sc => sc.IsFlexible, ct))
+        {
+            var hrSchedules = await _db.Schedules.AsNoTracking().ToDictionaryAsync(sc => sc.Id, ct);
+            var hrOverrides = await ShiftOverrideMap.LoadAsync(_db, start, countedTo, ids, ct);
+            var flexDates = new Dictionary<Guid, HashSet<DateOnly>>();
+            foreach (var e in employees)
+                for (var date = start; date <= countedTo; date = date.AddDays(1))
+                    if (hrOverrides.ScheduleFor(e.Id, date, e.ScheduleId, hrSchedules) is { IsFlexible: true })
+                    {
+                        if (!flexDates.TryGetValue(e.Id, out var set))
+                            flexDates[e.Id] = set = new HashSet<DateOnly>();
+                        set.Add(date);
+                    }
+
+            if (flexDates.Count > 0)
+            {
+                var flexPeople = flexDates.Keys.ToList();
+                var theirDays = await scoped.Query
+                    .Where(sm => flexPeople.Contains(sm.EmployeeId))
+                    .Select(sm => new { sm.EmployeeId, sm.SummaryDate, sm.Status, sm.LateMinutes })
+                    .ToListAsync(ct);
+                foreach (var g in theirDays.GroupBy(sm => sm.EmployeeId))
+                {
+                    var flex = flexDates[g.Key];
+                    flexibleWorked[g.Key] = g.Count(sm => flex.Contains(sm.SummaryDate)
+                        && sm.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete);
+                    var fixedDays = g.Where(sm => !flex.Contains(sm.SummaryDate)).ToList();
+                    // The same shape as the database aggregate above, recounted over the fixed-hours days only.
+                    days[g.Key] = new
+                    {
+                        EmployeeId = g.Key,
+                        OnTime = fixedDays.Count(sm => sm.Status == DailySummaryStatus.OnTime),
+                        LateAll = fixedDays.Count(sm => sm.Status == DailySummaryStatus.Late),
+                        Late = fixedDays.Count(sm => sm.Status == DailySummaryStatus.Late && sm.LateMinutes <= HrStatsLateCapMinutes),
+                        LateMinutes = fixedDays.Sum(sm => sm.Status == DailySummaryStatus.Late && sm.LateMinutes <= HrStatsLateCapMinutes ? sm.LateMinutes : 0),
+                        Open = fixedDays.Count(sm => sm.Status == DailySummaryStatus.Incomplete),
+                        Absent = fixedDays.Count(sm => sm.Status == DailySummaryStatus.Absent),
+                    };
+                }
+            }
+        }
+
         // Sick leave and permissions from the leave register — DailySummary folds every leave type
         // into one status, so it cannot tell a sick day from a holiday. Type and dates only.
         var leaves = await _db.LeaveRecords.AsNoTracking()
@@ -1088,7 +1191,8 @@ public sealed class ReportQueryService : IReportQueryService
                 e.Id, e.FullName, e.LocationId, locationNames.GetValueOrDefault(e.LocationId) ?? "—", e.Position,
                 worked, d?.OnTime ?? 0, d?.Late ?? 0, d?.LateMinutes ?? 0, absent,
                 lv?.PermCount ?? 0, lv?.PermDays ?? 0, lv?.SickCount ?? 0, lv?.SickDays ?? 0,
-                Percent(worked, worked + absent), Percent(d?.OnTime ?? 0, (d?.OnTime ?? 0) + (d?.Late ?? 0)), now);
+                Percent(worked, worked + absent), Percent(d?.OnTime ?? 0, (d?.OnTime ?? 0) + (d?.Late ?? 0)), now,
+                flexibleWorked.GetValueOrDefault(e.Id));
         }).OrderBy(r => r.Name).ToList();
 
         var byLocation = rows.GroupBy(r => r.LocationId)

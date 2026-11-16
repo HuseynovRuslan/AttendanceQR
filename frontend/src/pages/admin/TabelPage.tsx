@@ -5,6 +5,7 @@ import {
   getTabel,
   type LocationDto,
   type TabelReport,
+  type TabelRow,
 } from '../../api/admin'
 import { IconDownload } from '../../components/icons'
 import { formatNumber } from '../../lib/numberFormat'
@@ -112,7 +113,9 @@ export function TabelPage() {
   const rows = report ? report.rows.slice(0, RENDER_CAP) : []
   const hiddenRows = report ? report.rows.length - rows.length : 0
   // The «Norma» column only when somebody on the page is on a flexible shift with a norm.
-  const hasNorm = rows.some((r) => r.normHours != null)
+  const hasNorm = rows.some((r) => r.normHours != null || r.weeklyNormHours != null)
+  // «Elastik qrafik» with a weekly norm: compared week by week below the grid, never as a month figure.
+  const weekly = rows.filter((r) => r.normWeeks && r.normWeeks.length > 0)
   // What «all» means for this person, and the heading's scope — from the role and /api/me/access,
   // never from the report's scopeLabel (see lib/tabelScope).
   const allLabel = wholeScopeLabel(access)
@@ -224,8 +227,10 @@ export function TabelPage() {
                   {hasNorm && (
                     <td className="tb-total-col" title={r.normHours != null
                       ? `Fərq: ${formatNumber((r.workedHours ?? 0) - r.normHours, 1, { trim: true })} saat`
-                      : undefined}>
-                      {r.normHours != null ? formatNumber(r.normHours, 1, { trim: true }) : ''}
+                      : r.weeklyNormHours != null ? 'Həftəlik norma — həftələr üzrə müqayisə cədvəlin altındadır' : undefined}>
+                      {r.normHours != null
+                        ? formatNumber(r.normHours, 1, { trim: true })
+                        : r.weeklyNormHours != null ? `${formatNumber(r.weeklyNormHours, 1, { trim: true })}/həftə` : ''}
                     </td>
                   )}
                 </tr>
@@ -234,6 +239,8 @@ export function TabelPage() {
           </table>
         </div>
       )}
+
+      {weekly.length > 0 && <WeeklyNorm rows={weekly} />}
 
       {report && (
         <div className="tb-legend">
@@ -253,5 +260,55 @@ export function TabelPage() {
         </div>
       )}
     </div>
+  )
+}
+
+/** «12.11» — the week's edges, day and month: a week often starts in the month before. */
+function dayMonth(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
+}
+
+/**
+ * «Elastik qrafik» with a weekly norm: each Monday-to-Sunday week's whole total against the norm as set. Never divided
+ * into days — 40 hours is 40 hours however they were spread — and never a violation: a short week is shown, not judged.
+ */
+function WeeklyNorm({ rows }: { rows: TabelRow[] }) {
+  return (
+    <section className="tb-weekly" aria-labelledby="tb-weekly-h">
+      <h3 id="tb-weekly-h" className="tb-weekly-title">Həftəlik norma — faktiki saat</h3>
+      <p className="tb-weekly-note">Bazar ertəsindən bazara qədər ümumi saat. Norma yalnız müqayisə üçündür.</p>
+      <div className="tb-scroll">
+        <table className="tb-grid tb-weekly-grid">
+          <thead>
+            <tr>
+              <th className="tb-name-col">İşçi</th>
+              <th>Həftə</th>
+              <th>Faktiki</th>
+              <th>Norma</th>
+              <th>Fərq</th>
+              <th>Qeyd</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.flatMap((r) => (r.normWeeks ?? []).map((w, i) => {
+              const diff = w.workedHours - w.normHours
+              const note = [!w.finished && 'həftə bitməyib', w.hasLeaveOrHoliday && 'məzuniyyət/bayram var'].filter(Boolean).join(', ')
+              return (
+                <tr key={`${r.employeeId}-${w.from}`}>
+                  {i === 0 && <td className="tb-name-col" rowSpan={r.normWeeks!.length}><div className="tb-name">{r.employeeName}</div></td>}
+                  <td>{dayMonth(w.from)} – {dayMonth(w.to)}</td>
+                  <td>{formatNumber(w.workedHours, 1, { trim: true })}</td>
+                  <td>{formatNumber(w.normHours, 1, { trim: true })}</td>
+                  <td className={w.finished && diff < 0 ? 'tb-weekly-short' : undefined}>
+                    {diff > 0 ? '+' : ''}{formatNumber(diff, 1, { trim: true })}
+                  </td>
+                  <td className="tb-weekly-flag">{note}</td>
+                </tr>
+              )
+            }))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }

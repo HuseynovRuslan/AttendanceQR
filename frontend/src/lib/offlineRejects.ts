@@ -84,4 +84,8 @@ export const REJECT_CODE_TEXT: Record<string, string> = {
   DeviceAccountLimit: 'bu telefonda çox hesab var',
   LocationInactive: 'filial deaktivdir',
   OfflineTooOld: 'çox gec göndərilib',
+  // «Elastik qrafik»: an offline tap on a long-open session — nobody could answer «leaving, or arriving?».
+  ConfirmLongSession: 'açıq sessiya uzun idi — rəhbər çıxış vaxtını yoxlamalıdır',
+  ForgottenCheckOutToday: 'bu günün girişi açıq qalıb',
+  OutOfOrder: 'skan vaxtı açıq sessiyadan əvvəldir',
 }

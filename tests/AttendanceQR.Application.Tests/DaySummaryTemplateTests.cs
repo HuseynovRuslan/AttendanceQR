@@ -168,7 +168,7 @@ public class DaySummaryTemplateTests
     }
 
     [Fact]
-    public void The_paper_form_has_no_Elastik_column_so_a_flexible_no_scan_day_stays_where_it_stood()
+    public void A_flexible_no_scan_day_gets_its_own_column_after_the_form_never_a_rest_day()
     {
         var rows = new List<DayBoardSheet.Row>();
         rows.AddRange(People("Qala Anbar", "dayOff", 2));
@@ -178,9 +178,17 @@ public class DaySummaryTemplateTests
         var ws = wb.Worksheet("Xülasə");
         var row = LineRow("Qala Anbar");
 
-        // The form's columns still add up to «İşçi sayı»: nobody falls out of the sheet.
-        Assert.Equal(3, ws.Cell(row, Col("Həftəlik istirahət")).GetValue<int>());
+        Assert.Equal(2, ws.Cell(row, Col("Həftəlik istirahət")).GetValue<int>());   // not folded into rest
+        Assert.Equal(0, ws.Cell(row, Col("Qayıb")).GetValue<int>());                // nor into absence
         Assert.Equal(3, ws.Cell(row, Col("İşçi sayı")).GetValue<int>());
+        // After the form's last column, so every column of the form keeps its letter.
+        var flex = Headings.Length + 1;
+        Assert.Equal("Elastik, giriş yoxdur", ws.Cell(2, flex).GetString());
+        Assert.Equal(1, ws.Cell(row, flex).GetValue<int>());
+
+        // A day with nobody in it: the form exactly as it was.
+        using var plain = Build(People("Qala Anbar", "dayOff", 2), Form);
+        Assert.DoesNotContain(plain.Worksheet("Xülasə").Row(2).CellsUsed(), c => c.GetString() == "Elastik, giriş yoxdur");
     }
 
     [Fact]

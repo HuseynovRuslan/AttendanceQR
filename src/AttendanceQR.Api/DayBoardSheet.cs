@@ -267,13 +267,20 @@ public static class DayBoardSheet
                 $"No line in «{template.Name}» for: {string.Join(", ", unlisted)}", nameof(template));
 
         var ws = wb.Worksheets.Add("Xülasə");
-        var cols = TemplateColumns.Length + 2;
+        // The form's own columns, word for word — and, only on a day somebody on «Elastik qrafik» has not scanned,
+        // one more AFTER them. The form has no word for that day: it is neither a rest day nor an absence, and
+        // filing it under either would misreport the person. Appended, so every column of the form keeps its
+        // letter; absent on every day nobody is in it, so the form is the form.
+        var columns = groups.Any(g => Count(g.People, FlexNoScan) > 0)
+            ? [.. TemplateColumns, (FlexNoScan, "Elastik, giriş yoxdur")]
+            : TemplateColumns;
+        var cols = columns.Length + 2;
         const int headerRow = 2;
 
         ws.Cell(headerRow, 1).Value = "№";
         ws.Cell(headerRow, 2).Value = "Ərazi";
-        for (var i = 0; i < TemplateColumns.Length; i++)
-            ws.Cell(headerRow, i + 3).Value = TemplateColumns[i].Header;
+        for (var i = 0; i < columns.Length; i++)
+            ws.Cell(headerRow, i + 3).Value = columns[i].Header;
 
         // Each line's people. A list rather than a lookup by name, so two spellings of one area that
         // the sheet's comparison treats as the same land on the same line instead of the second
@@ -293,15 +300,15 @@ public static class DayBoardSheet
             ws.Cell(r, 2).Value = lines[i].Area;
             if (!lines[i].Filled)
                 continue;
-            for (var c = 0; c < TemplateColumns.Length; c++)
-                ws.Cell(r, c + 3).Value = TemplateValue(lines[i].People, TemplateColumns[c].Source);
+            for (var c = 0; c < columns.Length; c++)
+                ws.Cell(r, c + 3).Value = TemplateValue(lines[i].People, columns[c].Source);
         }
 
         ws.Cell(r, 1).Value = "CƏMİ";
         ws.Range(r, 1, r, 2).Merge();
-        for (var c = 0; c < TemplateColumns.Length; c++)
+        for (var c = 0; c < columns.Length; c++)
         {
-            var source = TemplateColumns[c].Source;
+            var source = columns[c].Source;
             ws.Cell(r, c + 3).Value = lines.Where(l => l.Filled).Sum(l => TemplateValue(l.People, source));
         }
 
@@ -331,12 +338,8 @@ public static class DayBoardSheet
         ws.Column(3).Width = 11;
     }
 
-    // The paper form has no «Elastik» column and its columns must still add up to «İşçi sayı», so a flexible
-    // no-scan day stands where it stood before that bucket existed: under «Həftəlik istirahət».
     private static int TemplateValue(List<Row> people, string source)
-        => source == Headcount ? people.Count
-        : source == "dayOff" ? Count(people, "dayOff") + Count(people, FlexNoScan)
-        : Count(people, source);
+        => source == Headcount ? people.Count : Count(people, source);
 
     private static void BuildDetail(
         XLWorkbook wb, string title, string? scopeNote, Func<string, string> label,

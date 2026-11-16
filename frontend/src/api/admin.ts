@@ -1852,8 +1852,24 @@ export interface TabelRow {
    * no flexible day at all.
    */
   flexibleCells?: (string | null)[] | null
-  /** The flexible shift's hour norm over the month so far — comparison only. */
+  /** A DAILY norm summed over the month's norm days so far — comparison only. Never set for a weekly norm. */
   normHours?: number | null
+  /** A WEEKLY norm, week by week (Monday–Sunday): the week's whole total against the norm, never divided into days. */
+  normWeeks?: TabelNormWeek[] | null
+  /** The weekly norm in hours, for the «Norma» column. */
+  weeklyNormHours?: number | null
+}
+
+export interface TabelNormWeek {
+  /** Monday and Sunday, ISO dates — the edge weeks reach into the months beside this one. */
+  from: string
+  to: string
+  normHours: number
+  workedHours: number
+  /** The week's Sunday has passed. */
+  finished: boolean
+  /** Leave or a holiday fell in it — the norm is not reduced for it, the reader is told. */
+  hasLeaveOrHoliday: boolean
 }
 
 export interface TabelReport {
@@ -2003,6 +2019,8 @@ export interface HrStatsEmployee {
   attendancePercent: number | null
   onTimePercent: number | null
   today: 'present' | 'late' | 'permission' | 'sick' | 'leave' | 'absent' | 'pending' | 'dayOff' | null
+  /** Days worked on «Elastik qrafik» — outside workedDays and both rates: nobody was due, so there is no rate. */
+  flexibleWorkedDays?: number
 }
 
 export interface HrStatsLocation {

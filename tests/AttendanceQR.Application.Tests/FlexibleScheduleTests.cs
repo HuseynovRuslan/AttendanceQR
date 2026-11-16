@@ -40,6 +40,7 @@ public class FlexibleScheduleTests
     private static readonly DateOnly Mon = new(2026, 10, 5);
     private static readonly DateOnly Tue = new(2026, 10, 6);
     private static readonly DateOnly Wed = new(2026, 10, 7);
+    private static readonly DateOnly Thu = new(2026, 10, 8);
 
     private static DateTime Utc(DateOnly date, int hour, int minute = 0) =>
         TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(new TimeOnly(hour, minute)), Baku);
@@ -129,12 +130,14 @@ public class FlexibleScheduleTests
                 },
             };
 
-        public ScanRequest Poster(DateTime? offlineAtUtc = null, Guid? clientScanId = null, bool confirm = false) =>
+        public ScanRequest Poster(DateTime? offlineAtUtc = null, Guid? clientScanId = null, bool confirm = false,
+            string? longSession = null) =>
             new(_qr.Generate(LocationId, 1), "device-fp-1", Lat, Lng,
                 ClientScanId: clientScanId, ClientTimestampUtc: offlineAtUtc, Offline: offlineAtUtc is not null,
-                ConfirmEarlyCheckOut: confirm);
+                ConfirmEarlyCheckOut: confirm, LongSession: longSession);
 
-        public Task<IActionResult> ScanAt(DateTime utc, Guid? who = null) => At(utc, who).Scan(Poster());
+        public Task<IActionResult> ScanAt(DateTime utc, Guid? who = null, string? longSession = null, Guid? clientScanId = null) =>
+            At(utc, who).Scan(Poster(clientScanId: clientScanId, longSession: longSession));
 
         public List<AttendanceRecord> Sessions(Guid? who = null) =>
             Db.AttendanceRecords.AsNoTracking()
@@ -174,21 +177,31 @@ public class FlexibleScheduleTests
     // ─── the rule on its own ────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void The_session_rule_closes_tonight_and_this_morning_but_never_yesterday_morning()
+    public void The_session_rule_closes_a_night_asks_about_a_long_one_and_leaves_yesterday_morning_open()
     {
+        const FlexibleScanRules.Outcome In = FlexibleScanRules.Outcome.CheckIn, Out = FlexibleScanRules.Outcome.CheckOut,
+            Ask = FlexibleScanRules.Outcome.AskLongSession;
         // Nothing open → a session starts.
-        Assert.Equal(FlexibleScanRules.Outcome.CheckIn, FlexibleScanRules.Decide(null, null, Utc(Mon, 9), Mon));
-        // Opened the same day, however long ago → this scan closes it.
-        Assert.Equal(FlexibleScanRules.Outcome.CheckOut, FlexibleScanRules.Decide(Utc(Mon, 0, 30), Mon, Utc(Mon, 23, 0), Mon));
-        // The night: 22:00 → 06:00 the next morning is one session.
-        Assert.Equal(FlexibleScanRules.Outcome.CheckOut, FlexibleScanRules.Decide(Utc(Mon, 22), Mon, Utc(Tue, 6), Tue));
-        // Sixteen hours exactly is still a session…
-        Assert.Equal(FlexibleScanRules.Outcome.CheckOut, FlexibleScanRules.Decide(Utc(Mon, 18), Mon, Utc(Tue, 10), Tue));
-        // …a minute more is yesterday's forgotten check-out: left open, a new session starts.
-        Assert.Equal(FlexibleScanRules.Outcome.CheckIn, FlexibleScanRules.Decide(Utc(Mon, 18), Mon, Utc(Tue, 10, 1), Tue));
-        Assert.Equal(FlexibleScanRules.Outcome.CheckIn, FlexibleScanRules.Decide(Utc(Mon, 9), Mon, Utc(Tue, 9), Tue));
+        Assert.Equal(In, FlexibleScanRules.Decide(null, null, Utc(Mon, 9), Mon));
+        // Up to twelve hours closes, whatever the calendar: a day's work, a night shift, a 20:00–08:00 guard night.
+        Assert.Equal(Out, FlexibleScanRules.Decide(Utc(Mon, 9), Mon, Utc(Mon, 21), Mon));
+        Assert.Equal(Out, FlexibleScanRules.Decide(Utc(Mon, 22), Mon, Utc(Tue, 6), Tue));
+        Assert.Equal(Out, FlexibleScanRules.Decide(Utc(Mon, 20), Mon, Utc(Tue, 8), Tue));
+        // Twelve to sixteen hours: the end of a long night, or an arrival after a forgotten check-out — asked.
+        Assert.Equal(Ask, FlexibleScanRules.Decide(Utc(Mon, 18), Mon, Utc(Tue, 8), Tue));       // 14 h guard night
+        Assert.Equal(Ask, FlexibleScanRules.Decide(Utc(Mon, 14), Mon, Utc(Tue, 5), Tue));       // forgot at the afternoon's end
+        Assert.Equal(Ask, FlexibleScanRules.Decide(Utc(Mon, 18), Mon, Utc(Tue, 10), Tue));      // sixteen exactly
+        // Past sixteen hours since an earlier day: a forgotten check-out, left open; a new session starts.
+        Assert.Equal(In, FlexibleScanRules.Decide(Utc(Mon, 18), Mon, Utc(Tue, 10, 1), Tue));
+        Assert.Equal(In, FlexibleScanRules.Decide(Utc(Mon, 9), Mon, Utc(Tue, 9), Tue));
+        // The same day is never «forgotten» by the rule — one day holds one open session — so a long one is asked.
+        Assert.Equal(Ask, FlexibleScanRules.Decide(Utc(Mon, 7), Mon, Utc(Mon, 21, 1), Mon));
+        Assert.Equal(Ask, FlexibleScanRules.Decide(Utc(Mon, 0, 30), Mon, Utc(Mon, 23), Mon));
         // An offline scan from before the open session began cannot close it.
         Assert.Equal(FlexibleScanRules.Outcome.OutOfOrder, FlexibleScanRules.Decide(Utc(Mon, 12), Mon, Utc(Mon, 9), Mon));
+        // The screens: a night is running until sixteen hours, never «forgotten» before.
+        Assert.False(FlexibleScanRules.IsForgotten(Utc(Mon, 18), Mon, Utc(Tue, 9), Tue));
+        Assert.True(FlexibleScanRules.IsForgotten(Utc(Mon, 9), Mon, Utc(Tue, 9), Tue));
     }
 
     [Fact]
@@ -309,6 +322,91 @@ public class FlexibleScheduleTests
         var tuesday = await h.SummaryAsync(Tue);
         Assert.Equal(0, tuesday!.WorkedMinutes);                     // not written twice
         Assert.Equal(DailySummaryStatus.DayOff, tuesday.Status);
+    }
+
+    [Fact]
+    public async Task A_long_night_is_asked_about_and_closed_once_the_person_says_they_are_leaving()
+    {
+        using var h = new Harness();
+        await h.ScanAt(Utc(Mon, 18));
+        var scanId = Guid.NewGuid();
+
+        var asked = await h.ScanAt(Utc(Tue, 8), clientScanId: scanId);
+        Assert.Equal("ConfirmLongSession", Error(asked));
+        Assert.Equal(14.0, Field(asked, "hours"));
+        Assert.Equal(false, Field(asked, "sameDay"));
+        Assert.Null(Assert.Single(h.Sessions()).CheckOutAtUtc);         // nothing written while asking
+
+        var answered = await h.ScanAt(Utc(Tue, 8), longSession: "close", clientScanId: scanId);
+        Assert.Null(Error(answered));
+        Assert.Equal("CheckOut", Field(answered, "action"));
+        var night = Assert.Single(h.Sessions());
+        Assert.Equal(Mon, night.AttendanceDate);                          // filed under the day it began
+        Assert.Equal(Utc(Tue, 8), night.CheckOutAtUtc);
+        Assert.Equal(14 * 60, (await h.SummaryAsync(Mon))!.WorkedMinutes);
+    }
+
+    [Fact]
+    public async Task A_forgotten_afternoon_stays_open_when_the_person_says_they_are_arriving_and_two_open_sessions_do_not_mix()
+    {
+        using var h = new Harness();
+        await h.ScanAt(Utc(Mon, 14));                                     // never signed out
+
+        Assert.Equal("ConfirmLongSession", Error(await h.ScanAt(Utc(Tue, 5))));
+        var arrival = await h.ScanAt(Utc(Tue, 5), longSession: "new");
+        Assert.Equal("CheckIn", Field(arrival, "action"));
+
+        var sessions = h.Sessions();
+        Assert.Equal(2, sessions.Count);
+        Assert.Null(sessions[0].CheckOutAtUtc);                           // Monday: open, for the admin — no exit invented
+        Assert.Equal((Tue, (DateTime?)null), (sessions[1].AttendanceDate, sessions[1].CheckOutAtUtc));
+        Assert.Contains(h.Db.AuditLogs.AsNoTracking(), a => a.Reason == "FlexibleForgottenReported|2026-10-05");
+
+        // Two sessions are open now. The next scan closes TODAY's (the newest), never Monday's.
+        var leaving = await h.ScanAt(Utc(Tue, 13));
+        Assert.Equal("CheckOut", Field(leaving, "action"));
+        sessions = h.Sessions();
+        Assert.Null(sessions[0].CheckOutAtUtc);
+        Assert.Equal(Utc(Tue, 13), sessions[1].CheckOutAtUtc);
+        Assert.Equal(8 * 60, (await h.SummaryAsync(Tue))!.WorkedMinutes);
+        Assert.Equal(DailySummaryStatus.Incomplete, (await h.SummaryAsync(Mon))!.Status);   // open ≠ 0 saat
+    }
+
+    [Fact]
+    public async Task A_long_session_from_this_morning_is_asked_about_and_never_doubled_on_the_same_day()
+    {
+        using var h = new Harness();
+        await h.ScanAt(Utc(Mon, 7));
+
+        var asked = await h.ScanAt(Utc(Mon, 20));
+        Assert.Equal("ConfirmLongSession", Error(asked));
+        Assert.Equal(true, Field(asked, "sameDay"));
+
+        // «I forgot to sign out»: one day holds one open session, so nothing is opened beside it and nothing closed —
+        // the arrival is on the Problems screen with this morning's time, for the admin.
+        var forgot = await h.ScanAt(Utc(Mon, 20), longSession: "new");
+        Assert.Equal("ForgottenCheckOutToday", Error(forgot));
+        var open = Assert.Single(h.Sessions());
+        Assert.Null(open.CheckOutAtUtc);
+        Assert.Contains(h.Db.AuditLogs.AsNoTracking(), a => a.EventType == AuditEventType.CheckInRejected
+                                                            && a.Reason == "FlexibleForgottenToday|07:00");
+
+        // «Yes, a long day»: closed at this scan.
+        var closed = await h.ScanAt(Utc(Mon, 20, 5), longSession: "close");
+        Assert.Equal("CheckOut", Field(closed, "action"));
+        Assert.Equal(13 * 60 + 5, (await h.SummaryAsync(Mon))!.WorkedMinutes);
+    }
+
+    [Fact]
+    public async Task An_offline_scan_on_a_long_session_is_refused_and_reported_never_guessed()
+    {
+        using var h = new Harness();
+        await h.ScanAt(Utc(Mon, 18));
+
+        var replay = await h.At(Utc(Tue, 9)).Scan(h.Poster(offlineAtUtc: Utc(Tue, 8)));
+        Assert.Equal("ConfirmLongSession", Error(replay));
+        Assert.Null(Assert.Single(h.Sessions()).CheckOutAtUtc);           // still open: neither closed nor doubled
+        Assert.Contains(h.Db.AuditLogs.AsNoTracking(), a => a.Reason == "FlexibleLongSessionOffline");
     }
 
     [Fact]
@@ -511,6 +609,65 @@ public class FlexibleScheduleTests
         Assert.Null(fixedRow.FlexibleCells);
         Assert.Null(fixedRow.NormHours);
         Assert.Equal("Q", fixedRow.Days[Tue.Day - 1]);
+    }
+
+    [Fact]
+    public async Task A_weekly_norm_is_compared_week_by_week_and_never_divided_into_days()
+    {
+        using var h = new Harness(normMinutes: 40 * 60, period: FlexibleNormPeriod.Week);
+        // Week of 5 October: Monday 8 h, Tuesday 10 h, Wednesday nothing, Thursday 10 h — however it is spread.
+        await h.ScanAt(Utc(Mon, 9)); await h.ScanAt(Utc(Mon, 17));
+        await h.ScanAt(Utc(Tue, 9)); await h.ScanAt(Utc(Tue, 19));
+        await h.ScanAt(Utc(Thu, 10)); await h.ScanAt(Utc(Thu, 20));
+        for (var d = First; d <= new DateOnly(2026, 10, 9); d = d.AddDays(1))
+            await new DailySummaryService(h.Db, new AppOptions { TimeZone = "Asia/Baku" }).GenerateForDateAsync(d);
+
+        var reports = new ReportQueryService(h.Db, new AppOptions { TimeZone = "Asia/Baku" },
+            new FixedClock(Utc(new DateOnly(2026, 10, 10), 12)));
+        var (_, tabel) = await reports.GetTabelAsync(2026, 10, null, h.AdminId, EmployeeRole.Admin);
+        var flex = tabel!.Rows.Single(r => r.EmployeeId == h.EmployeeId);
+
+        Assert.Null(flex.NormHours);                      // no month figure made of sevenths
+        Assert.Equal(40, flex.WeeklyNormHours);
+        var weeks = flex.NormWeeks!;
+        Assert.Equal(2, weeks.Count);
+        // 28 Sep – 4 Oct reaches back into September: the whole week, the 1st's eight hours in it.
+        Assert.Equal((new DateOnly(2026, 9, 28), new DateOnly(2026, 10, 4), 40.0, 8.0, true),
+            (weeks[0].From, weeks[0].To, weeks[0].NormHours, weeks[0].WorkedHours, weeks[0].Finished));
+        // This week, still running: 8 + 10 + 10 against the full 40, not against 6 days × 40/7.
+        Assert.Equal((Mon, 40.0, 28.0, false), (weeks[1].From, weeks[1].NormHours, weeks[1].WorkedHours, weeks[1].Finished));
+
+        var fixedRow = tabel.Rows.Single(r => r.EmployeeId == h.FixedId);
+        Assert.Null(fixedRow.NormWeeks);
+        Assert.Null(fixedRow.WeeklyNormHours);
+    }
+
+    // ─── «İşçi Statistikaları» ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Hr_stats_take_flexible_days_out_of_the_attendance_rate_instead_of_reading_100_percent()
+    {
+        using var h = new Harness();
+        await h.ScanAt(Utc(Mon, 9)); await h.ScanAt(Utc(Mon, 17));
+        for (var d = First; d <= new DateOnly(2026, 10, 9); d = d.AddDays(1))
+            await new DailySummaryService(h.Db, new AppOptions { TimeZone = "Asia/Baku" }).GenerateForDateAsync(d);
+
+        var reports = new ReportQueryService(h.Db, new AppOptions { TimeZone = "Asia/Baku" },
+            new FixedClock(Utc(new DateOnly(2026, 10, 10), 12)));
+        var (_, stats) = await reports.GetHrStatsAsync(First, new DateOnly(2026, 10, 9), null, h.AdminId, EmployeeRole.Admin);
+
+        var flex = stats!.Employees.Single(e => e.EmployeeId == h.EmployeeId);
+        Assert.Null(flex.AttendancePercent);              // nobody was due — there is no rate, not 100 %
+        Assert.Null(flex.OnTimePercent);                  // nor a punctuality one
+        Assert.Equal(0, flex.WorkedDays);
+        Assert.Equal(2, flex.FlexibleWorkedDays);         // the 1st and Monday, counted on their own
+
+        var fixedOne = stats.Employees.Single(e => e.EmployeeId == h.FixedId);
+        Assert.Equal(1, fixedOne.WorkedDays);             // the 1st; every other day of the week is a Qayıb
+        Assert.True(fixedOne.AbsentDays > 0);
+        Assert.True(fixedOne.AttendancePercent < 100);
+        // The company's rate is the fixed staff's alone: the flexible person adds nothing to either side.
+        Assert.Equal(fixedOne.AttendancePercent, stats.AttendancePercent);
     }
 
     // ─── another company ────────────────────────────────────────────────────────────────────────────

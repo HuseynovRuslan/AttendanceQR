@@ -79,13 +79,15 @@ type ListDef = {
   empty: string
 }
 
-function lists(minWorked: number): Record<string, ListDef> {
+function lists(minWorked: number, flexible: boolean): Record<string, ListDef> {
+  // «Elastik qrafik»: those days have no due time and no due day, so they are in neither rate — said where it matters.
+  const flexNote = flexible ? ' · elastik qrafikli günlər sayılmır' : ''
   const live = (title: string, sub: string, tone: Tone, Icon: Icon, keep: ListDef['keep'], empty: string): ListDef =>
     ({ title, sub, tone, Icon, keep, order: byName, empty })
   return {
     disciplined: {
       title: 'Ən intizamlı işçilər', tone: 'teal', Icon: IconTrophy,
-      sub: `Vaxtında gəlmə faizinə görə · ən azı ${minWorked} iş günü olanlar · faiz bərabərdirsə, çox işləyən öndədir`,
+      sub: `Vaxtında gəlmə faizinə görə · ən azı ${minWorked} iş günü olanlar · faiz bərabərdirsə, çox işləyən öndədir${flexNote}`,
       keep: (e) => e.onTimePercent != null && e.workedDays >= minWorked,
       order: (a, b) => (b.onTimePercent ?? 0) - (a.onTimePercent ?? 0) || b.workedDays - a.workedDays,
       primary: { label: 'Vaxtında gəlmə', num: (e) => e.onTimePercent ?? -1, show: (e) => pct(e.onTimePercent), bar: 'percent' },
@@ -130,7 +132,7 @@ function lists(minWorked: number): Record<string, ListDef> {
     },
     attendance: {
       title: 'Davamiyyət faizi', tone: 'slate', Icon: IconChart,
-      sub: 'Ən aşağıdan · gəldiyi gün ÷ (gəldiyi + səbəbsiz gəlmədiyi gün)',
+      sub: `Ən aşağıdan · gəldiyi gün ÷ (gəldiyi + səbəbsiz gəlmədiyi gün)${flexNote}`,
       keep: (e) => e.attendancePercent != null,
       order: (a, b) => (a.attendancePercent ?? 0) - (b.attendancePercent ?? 0) || b.absentDays - a.absentDays,
       primary: { label: 'Davamiyyət', num: (e) => e.attendancePercent ?? -1, show: (e) => pct(e.attendancePercent), bar: 'percent' },
@@ -195,8 +197,9 @@ export function HrStatsSection() {
 
   const countedDays = report ? Math.max(0, (Date.parse(report.countedTo) - Date.parse(report.from)) / 86_400_000 + 1) : 0
   const noDays = report != null && report.countedTo < report.from
-  const defs = useMemo(() => lists(countedDays >= 10 ? 5 : 1), [countedDays])
   const emps = useMemo(() => report?.employees ?? [], [report])
+  const anyFlexible = emps.some((e) => (e.flexibleWorkedDays ?? 0) > 0)
+  const defs = useMemo(() => lists(countedDays >= 10 ? 5 : 1, anyFlexible), [countedDays, anyFlexible])
   const def = defs[selected]
 
   const cards = useMemo(() => {

@@ -1170,7 +1170,49 @@ public class AttendanceController : ControllerBase
             .OrderByDescending(r => r.CheckInAtUtc)
             .FirstOrDefaultAsync();
 
-        switch (FlexibleScanRules.Decide(open?.CheckInAtUtc, open?.AttendanceDate, nowUtc, today))
+        var outcome = FlexibleScanRules.Decide(open?.CheckInAtUtc, open?.AttendanceDate, nowUtc, today);
+
+        // A long session: the end of a long night, or a new arrival after a forgotten check-out. Only the person knows,
+        // so the phone asks and sends the answer back with the same scan (same id, same selfie).
+        var reportedForgotten = false;
+        if (outcome == FlexibleScanRules.Outcome.AskLongSession)
+        {
+            var sameDay = open!.AttendanceDate >= today;
+            var answer = request.LongSession?.Trim().ToLowerInvariant();
+            if (answer == "close")
+                outcome = FlexibleScanRules.Outcome.CheckOut;
+            else if (answer == "new" && !sameDay)
+            {
+                outcome = FlexibleScanRules.Outcome.CheckIn;
+                reportedForgotten = true;
+            }
+            else if (answer == "new")
+            {
+                // One day may hold only one open session, so an arrival cannot be opened beside this morning's
+                // forgotten one — and closing that one at this scan would pay the gap. Neither is guessed: the scan is
+                // refused with its time in the audit (the Problems screen shows it), and the admin puts in the real
+                // exit and the arrival.
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
+                    $"FlexibleForgottenToday|{TimeZoneInfo.ConvertTimeFromUtc(open.CheckInAtUtc!.Value, _timeZone):HH:mm}", ip);
+                return Conflict(new { error = "ForgottenCheckOutToday", checkInAtUtc = open.CheckInAtUtc });
+            }
+            else
+            {
+                // Not answered — or an offline replay, which nobody can answer any more. Nothing is written either way:
+                // the open session stays as it is, and the refusal is on the Problems screen with its time.
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected,
+                    request.Offline ? "FlexibleLongSessionOffline" : "FlexibleLongSessionAsked", ip);
+                return Conflict(new
+                {
+                    error = "ConfirmLongSession",
+                    checkInAtUtc = open.CheckInAtUtc,
+                    hours = Math.Round((nowUtc - open.CheckInAtUtc!.Value).TotalHours, 1),
+                    sameDay,
+                });
+            }
+        }
+
+        switch (outcome)
         {
             case FlexibleScanRules.Outcome.OutOfOrder:
                 // Only an offline replay can be earlier than a session already on the books. Refused rather than
@@ -1206,10 +1248,11 @@ public class AttendanceController : ControllerBase
 
             default:
                 // A stale session (a forgotten check-out from an earlier day) is left exactly as it is: no exit is
-                // invented for it. It is noted so the audit shows why a second open day exists.
+                // invented for it. It is noted so the audit shows why a second open day exists — and whether the person
+                // said so themselves.
                 if (open is not null)
                     await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess,
-                        $"FlexibleStaleSessionLeftOpen|{open.AttendanceDate:yyyy-MM-dd}", ip);
+                        $"{(reportedForgotten ? "FlexibleForgottenReported" : "FlexibleStaleSessionLeftOpen")}|{open.AttendanceDate:yyyy-MM-dd}", ip);
 
                 // The same cool-off every check-in has: a tap a minute after a check-out is the «did it work?» retry,
                 // not a new session. Absolute difference — an offline batch can arrive out of client-time order.
