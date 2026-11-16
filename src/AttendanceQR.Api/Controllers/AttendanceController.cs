@@ -951,9 +951,14 @@ public class AttendanceController : ControllerBase
             if (nowLocal.Hour < NightScanRules.MorningBefore
                 && (shift.IsOvernightOn(today) || nightShift.CrossesIntoNextMorningOn(yesterday)))
             {
+                // The LATEST exit of yesterday's stretches. A day can hold two — a split crew's
+                // 07:00–11:00 and 22:00–07:00, or a morning stretch and the night opened after it —
+                // and an unordered pick could return the earlier one, dated yesterday, so a repeat of
+                // THIS morning's exit went unrecognised and opened a stray day.
                 var closedAtUtc = await _db.AttendanceRecords
                     .Where(r => r.EmployeeId == employee.Id && r.AttendanceDate == yesterday
                                 && r.CheckOutAtUtc != null)
+                    .OrderByDescending(r => r.CheckOutAtUtc)
                     .Select(r => r.CheckOutAtUtc)
                     .FirstOrDefaultAsync();
                 var closedOn = closedAtUtc is DateTime closed
@@ -988,10 +993,12 @@ public class AttendanceController : ControllerBase
                 return Conflict(new { error = "AlreadyCompleted" });
             }
 
-            // The ARRIVAL for last night's shift, made after midnight: filed under last night's date, the
-            // working day it belongs to, at its real time. Before this a 00:03 arrival for a 23:50 shift
-            // opened the new day, and the night it was for stayed empty and became a Qayıb once its grace
-            // ran out. The timetable is asked first and costs nothing (NightScanRules.
+            // The ARRIVAL for last night's shift, made after midnight in the FIRST HALF of that shift:
+            // filed under last night's date, the working day it belongs to, at its real time. Before this
+            // a 00:03 arrival for a 23:50 shift opened the new day, and the night it was for stayed empty
+            // and became a Qayıb once its grace ran out. A scan in the night's second half is not its
+            // arrival and falls through to today's ordinary check-in below, as it always did — see
+            // NightScanRules for why. The timetable is asked first and costs nothing (NightScanRules.
             // MayBeArrivalForLastNightsShift) — at the morning peak a day-shift arrival never reaches the
             // database here. Only then is last night checked to be free (LastNightIsFreeAsync). Reached
             // only after every guard above has passed, so it can never write a second record for a day,
@@ -1097,7 +1104,19 @@ public class AttendanceController : ControllerBase
         var reopenAfterFieldVisit = record is { CheckOutAtUtc: not null }
             && SplitShiftRules.MayReopenAfterFieldVisit(record.ClosedByFieldVisitId is not null, blocks.Count);
 
+        // A night worker's evening arrival after a stretch that was opened and closed this MORNING —
+        // a scan in the second half of last night, filed today and closed at the morning exit, or a
+        // morning tap confirmed as a check-out. Refusing it would leave tonight unrecorded and start
+        // the morning-stray cascade. NightScanRules.MayOpenNightAfterMorningBlock holds the conditions.
+        TimeOnly? LocalTime(DateTime? utc) => utc is DateTime u
+            ? TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(u, _timeZone)) : null;
+        var nightAfterMorning = NightScanRules.MayOpenNightAfterMorningBlock(
+            TimeOnly.FromDateTime(nowLocal), shift.HoursOn(today).Start, shift.IsOvernightOn(today),
+            shift.HasSecondWindow, blocks.Count, anyOpen: false,
+            LocalTime(record?.CheckInAtUtc), LocalTime(record?.CheckOutAtUtc));
+
         if (reopenAfterFieldVisit
+            || nightAfterMorning
             || SplitShiftRules.MayOpenSecondBlock(
                 TimeOnly.FromDateTime(nowLocal), shift.HasSecondWindow,
                 shift.SecondStart, shift.SecondEnd, blocks.Count, anyOpen: false))
@@ -1112,7 +1131,8 @@ public class AttendanceController : ControllerBase
             }
 
             await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess,
-                reopenAfterFieldVisit ? "ReopenedAfterFieldVisit" : "SecondBlockOpened", ip);
+                reopenAfterFieldVisit ? "ReopenedAfterFieldVisit"
+                : nightAfterMorning ? "NightOpenedAfterMorningBlock" : "SecondBlockOpened", ip);
             return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
                 request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
         }
