@@ -312,6 +312,9 @@ export interface OpenRecord {
    *  shows every day scanned at their branches, but closing one stops at their own plain staff.
    *  Absent (an older server) reads as closable, which is what the screen assumed before. */
   closable?: boolean
+  /** «Elastik qrafik» on that day: no shift end to suggest or to batch-close at — the admin types the real exit.
+   *  Absent (an older server) reads as a fixed shift. */
+  flexible?: boolean
 }
 
 /** GET /api/admin/attendance/open — past days with a check-in but no check-out (today excluded).
@@ -343,7 +346,8 @@ export function recomputeDays(from: string, to: string) {
 
 /** The reason is required since 2026-10-15 — one for the batch, written into each day's audit line. */
 export function closeOpenDays(recordIds: string[], reason: string) {
-  return apiRequest<{ closed: number; skipped: number; awaiting?: number } | { error: string }>(
+  // flexible: «Elastik qrafik» sessions left out — they have no shift end; each is closed by hand with its real time.
+  return apiRequest<{ closed: number; skipped: number; awaiting?: number; flexible?: number } | { error: string }>(
     '/api/admin/attendance/close-open',
     { method: 'POST', body: { recordIds, reason } },
   )

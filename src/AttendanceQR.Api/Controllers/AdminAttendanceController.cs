@@ -84,9 +84,26 @@ public class AdminAttendanceController : ControllerBase
                 checkInAtUtc = r.CheckInAtUtc,
                 e.Role,
                 EmployeeLocationId = e.LocationId,
+                OwnScheduleId = e.ScheduleId,
             })
             .Take(500)
             .ToListAsync(HttpContext.RequestAborted);
+
+        // «Elastik qrafik»: a flexible session has no shift end, so this screen must not offer one (it used to put
+        // 18:00 in the box for everybody, and a blind «Bağla» paid hours nobody worked) — the admin types the real
+        // exit. Resolved per person per date by the one resolver every report uses, so a person moved onto or off a
+        // flexible shift is judged by the shift of THAT day. The batch close leaves these out for the same reason.
+        var flexibleRecords = new HashSet<Guid>();
+        if (rows.Count > 0 && await _db.Schedules.AnyAsync(s => s.IsFlexible, HttpContext.RequestAborted))
+        {
+            var people = rows.Select(x => x.employeeId).Distinct().ToList();
+            var map = await ShiftOverrideMap.LoadAsync(
+                _db, rows.Min(x => x.attendanceDate), rows.Max(x => x.attendanceDate), people, HttpContext.RequestAborted);
+            var schedules = await _db.Schedules.AsNoTracking().ToDictionaryAsync(s => s.Id, HttpContext.RequestAborted);
+            foreach (var x in rows)
+                if (map.ScheduleFor(x.employeeId, x.attendanceDate, x.OwnScheduleId, schedules) is { IsFlexible: true })
+                    flexibleRecords.Add(x.recordId);
+        }
 
         // The list is what a manager SEES — every day scanned at their branches — but closing one goes
         // through CanManageEmployeeAsync, which stops at plain staff of their own branches. So their own
@@ -104,6 +121,8 @@ public class AdminAttendanceController : ControllerBase
                            // Plain staff, and since 2026-09-18 a fellow manager — both of the caller's own branches.
                            || ((x.Role == EmployeeRole.Employee || x.Role == EmployeeRole.Manager)
                                && managed.Contains(x.EmployeeLocationId))),
+            // No shift end to suggest or to batch-close at — the real exit time is typed by hand.
+            flexible = flexibleRecords.Contains(x.recordId),
         }));
     }
 
@@ -207,6 +226,9 @@ public class AdminAttendanceController : ControllerBase
         var ownClosed = new HashSet<Guid>();
         var skipped = 0;
         var awaiting = 0;
+        // Flexible sessions left out — counted apart so the screen can say why («saatı əl ilə yazın»), not lumped
+        // in with «bugünkü və ya səlahiyyətdən kənar».
+        var flexible = 0;
         var days = new HashSet<DateOnly>();
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         SelfCorrectionVerdict? ownVerdict = null;
@@ -233,7 +255,7 @@ public class AdminAttendanceController : ControllerBase
             var shift = EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
             // «Elastik qrafik» has no shift end to close at — closing there would invent an exit time (23:59) that
             // nobody scanned. Such a session is corrected one at a time, with the real time, and is left for that.
-            if (shift.IsFlexible) { skipped++; continue; }
+            if (shift.IsFlexible) { flexible++; continue; }
             var closeAt = ShiftEndUtc(shift, record.AttendanceDate, record.CheckInAtUtc!.Value);
             if (closeAt <= record.CheckInAtUtc) { skipped++; continue; }
 
@@ -258,7 +280,7 @@ public class AdminAttendanceController : ControllerBase
         }
 
         if (closed.Count == 0 && awaiting == 0)
-            return Ok(new { closed = 0, skipped, awaiting });
+            return Ok(new { closed = 0, skipped, awaiting, flexible });
 
         await _db.SaveChangesAsync(ct);
 
@@ -271,7 +293,7 @@ public class AdminAttendanceController : ControllerBase
         foreach (var day in days)
             await _dailySummaryService.GenerateForDateAsync(day, ct);
 
-        return Ok(new { closed = closed.Count, skipped, awaiting });
+        return Ok(new { closed = closed.Count, skipped, awaiting, flexible });
     }
 
     /// <summary>How many days one press may close. High enough for a month's backlog at a big company,

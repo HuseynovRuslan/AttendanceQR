@@ -169,6 +169,8 @@ export function ScanPage() {
   const [todayAsOf, setTodayAsOf] = useState<number | null>(null)
   // «Siz artıq işdəsiniz — çıxırsınız?» — the check-in time it is asking about, while it is asked.
   const [earlyOutCheckIn, setEarlyOutCheckIn] = useState<string | null>(null)
+  // «Elastik qrafik»: the exit closes this SESSION, not the day — another may start in a few minutes.
+  const [earlyOutFlexible, setEarlyOutFlexible] = useState(false)
   const earlyOutChoiceRef = useRef<((leaving: boolean) => void) | null>(null)
   // «Elastik qrafik»: a session open long enough that this tap may end it or follow a forgotten check-out.
   const [longAsk, setLongAsk] = useState<{ checkIn: string; hours: number; sameDay: boolean } | null>(null)
@@ -769,9 +771,13 @@ export function ScanPage() {
   }
 
   /** Asks «Siz artıq işdəsiniz — işdən çıxırsınız?» and resolves with the answer. Never rejects. */
-  function askEarlyCheckOut(checkInIso: string | null): Promise<boolean> {
+  function askEarlyCheckOut(checkInIso: string | null, flexible = false): Promise<boolean> {
     return new Promise((resolve) => {
       setEarlyOutCheckIn(checkInIso ?? '')
+      // The server says so when it asks; offline, the profile does. Read through the ref, not the state — the
+      // scan may have started before the profile arrived, and the state seen here would be that render's.
+      setEarlyOutFlexible(flexible)
+      if (!flexible) void profileReadyRef.current.then((p) => { if (p?.isFlexible) setEarlyOutFlexible(true) })
       setPhase('confirmOut')
       earlyOutChoiceRef.current = (leaving) => {
         earlyOutChoiceRef.current = null
@@ -1067,7 +1073,7 @@ export function ScanPage() {
         // Checked in not long ago: this scan would close the day, so the server wants a yes first.
         if (status === 409 && data?.error === 'ConfirmEarlyCheckOut' && !confirmEarlyCheckOut) {
           const checkIn = data.checkInAtUtc ?? (known.kind === 'in-progress' ? known.checkInAtUtc : null)
-          const leaving = await askEarlyCheckOut(checkIn)
+          const leaving = await askEarlyCheckOut(checkIn, data.flexible === true)
           setPhase('processing')
           if (!leaving) {
             stayed(checkIn)
@@ -1469,7 +1475,7 @@ export function ScanPage() {
               {earlyOutCheckIn
                 ? <>Giriş saatınız: <b className="text-white">{fmtTime(earlyOutCheckIn, '')}</b>. </>
                 : null}
-              Bu skan <b className="text-amber-300">ÇIXIŞ</b> sayılacaq və iş gününüz bağlanacaq.
+              Bu skan <b className="text-amber-300">ÇIXIŞ</b> sayılacaq və iş {earlyOutFlexible ? 'sessiyanız' : 'gününüz'} bağlanacaq.
             </p>
             {/* The safe answer is the big one. A «did it work?» retry is by far the commonest reason
                 to be here, and a wrong «yes» ends somebody's paid day at eight in the morning. */}
@@ -1764,6 +1770,8 @@ interface ScanResponse {
   /** «Elastik qrafik», ConfirmLongSession: how long the open session has run, and whether it began today. */
   hours?: number
   sameDay?: boolean
+  /** «Elastik qrafik», ConfirmEarlyCheckOut: the exit closes a session, not the day. */
+  flexible?: boolean
   /** QR-less check-in only: the face verdict decided before this reply
    *  (Ok · Mismatch · NoFace · MultiFace · NoReference · Error). Absent on a poster scan. */
   faceMatch?: string
