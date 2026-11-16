@@ -1565,7 +1565,9 @@ public class AttendanceController : ControllerBase
             checkOutAtUtc = nowUtc,
             // Tells the app to prompt for an early-departure reason (skippable).
             earlyDeparture = IsEarlyDeparture(
-                shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone)
+                shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone),
+            // «Elastik qrafik»: the phone's card then does not say «Sabaha qədər!» — another session may start today.
+            flexible = shift.IsFlexible,
         });
     }
 

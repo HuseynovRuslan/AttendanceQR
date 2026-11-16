@@ -262,4 +262,42 @@ public class DayBoardSheetTests
         // The column was inserted BEFORE Status; every cell after it had to move with its header.
         Assert.Equal("Tamamlayıb", borrowed.Cell(status).GetString());
     }
+
+    [Fact]
+    public void A_day_of_several_sessions_prints_the_last_departure_the_hours_and_each_session()
+    {
+        // The client sends «Çıxış» as the LAST session's departure and the hours the server counted; the sheet
+        // adds every session after the columns a reader already knows, and only when somebody has several.
+        using var wb = Build(
+            new DayBoardSheet.Row("Elastik İşçi", "", "Ofis", "Tamamlayıb", "09:00", "21:30", "var", "present",
+                Worked: "10:30", Sessions: "09:00–12:00, 13:00–18:00, 19:00–21:30"),
+            new DayBoardSheet.Row("Gecə İşçisi", "", "Ofis", "Tamamlayıb", "09:00", "06:00 (+1)", "var", "present",
+                Worked: "11:00", Sessions: "09:00–12:00, 22:00–06:00 (+1)"),
+            new DayBoardSheet.Row("Sabit İşçi", "", "Ofis", "Tamamlayıb", "09:00", "18:00", "var", "present",
+                Worked: "09:00"));
+
+        var ws = wb.Worksheet("Davamiyyət");
+        var header = RowStarting(ws, "Ad Soyad")!;
+        Assert.Equal("Şəkil", header.Cell(8).GetString());       // the eight known columns stay where they were
+        Assert.Equal("İşlənmiş", header.Cell(9).GetString());
+        Assert.Equal("Sessiyalar", header.Cell(10).GetString());
+
+        var flex = RowStarting(ws, "Elastik İşçi")!;
+        Assert.Equal("21:30", flex.Cell(7).GetString());
+        Assert.Equal("10:30", flex.Cell(9).GetString());
+        Assert.Equal("09:00–12:00, 13:00–18:00, 19:00–21:30", flex.Cell(10).GetString());
+        Assert.Equal("22:00–06:00 (+1)", RowStarting(ws, "Gecə İşçisi")!.Cell(10).GetString().Split(", ")[1]);
+        var plain = RowStarting(ws, "Sabit İşçi")!;
+        Assert.Equal("09:00", plain.Cell(9).GetString());
+        Assert.Equal(string.Empty, plain.Cell(10).GetString());
+    }
+
+    [Fact]
+    public void Nobody_with_several_sessions_means_no_sessions_column()
+    {
+        using var wb = Build(Person("Aygün", "Qala Anbar", "present"));
+        var header = RowStarting(wb.Worksheet("Davamiyyət"), "Ad Soyad")!;
+        Assert.Equal("İşlənmiş", header.Cell(9).GetString());
+        Assert.Equal(string.Empty, header.Cell(10).GetString());
+    }
 }

@@ -1671,7 +1671,8 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null,
                     selfCorrected.Contains(d.Employee.Id),
                     OutsideMeters(d.Record),
-                    d.Shift.IsFlexible);
+                    d.Shift.IsFlexible,
+                    d.Computed.WorkedMinutes);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();

@@ -58,6 +58,9 @@ export interface DayAttendanceRow {
   blockSpans?: { inAtUtc: string | null; outAtUtc: string | null }[] | null
   /** When the LAST stretch ended — on a split day the night's departure, not the morning block's. */
   lastCheckOutAtUtc?: string | null
+  /** Minutes worked as the SERVER counts them: closed sessions added up, the breaks between them unpaid, an open
+   *  session not counted yet. The figure the tabel and payroll read — the day's Excel prints this one. */
+  workedMinutes?: number | null
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null
@@ -291,6 +294,10 @@ export interface ExportDayRowInput {
    *  never from the status text, so the workbook cannot disagree with the screen it came from. */
   bucket?: string
   position?: string
+  /** «08:00» / «03:05 + açıq» / «açıq» — the server's own hours for the day (exportRows.workedText). */
+  worked?: string
+  /** «09:00–12:00, 13:00–18:00» — only on a day worked in more than one session. */
+  sessions?: string
 }
 
 // --- «Qayıb yaz» -----------------------------------------------------------

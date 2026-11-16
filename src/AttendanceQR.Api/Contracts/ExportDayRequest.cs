@@ -51,4 +51,10 @@ public record ExportDayRow(
     /// <summary>«Bakı Abadlıq Xidməti / Nərimanov Ofis» — whose books this person is on, when it is
     /// not the company whose board this is. Empty on almost every row, and that is the point: the few
     /// that are filled are the ones the reader keeps asking about.</summary>
-    string? Paper = null);
+    string? Paper = null,
+    /// <summary>«08:00», «03:05 + açıq», «açıq» — the hours the server counted for the day (closed sessions only),
+    /// and whether one is still open. Empty when there is nothing to count.</summary>
+    string? Worked = null,
+    /// <summary>«09:00–12:00, 13:00–18:00» — every session, only on a day worked in more than one. The first arrival
+    /// and the last departure alone hide the break between them, which is exactly what is not paid.</summary>
+    string? Sessions = null);

@@ -486,7 +486,8 @@ public class FlexibleScheduleTests
         // Late on fixed hours: 09:00 + 15 min grace, in at 09:40.
         var arrival = await h.ScanAt(Utc(Mon, 9, 40), h.FixedId);
         Assert.Equal(true, Field(arrival, "late"));
-        await h.ScanAt(Utc(Mon, 18), h.FixedId);
+        // The check-out says it is a fixed day, so the phone's card keeps «Sabaha qədər!».
+        Assert.Equal(false, Field(await h.ScanAt(Utc(Mon, 18), h.FixedId), "flexible"));
         // A fixed shift still refuses a third scan of a finished day.
         Assert.Equal("AlreadyCompleted", Error(await h.ScanAt(Utc(Mon, 19), h.FixedId)));
 
@@ -707,6 +708,59 @@ public class FlexibleScheduleTests
         var scheduleSeenByB = await ShiftResolver.ScheduleOnAsync(dbB, personB.Id, personB.ScheduleId, Mon, default);
         Assert.Null(scheduleSeenByB);
         Assert.False(EffectiveShift.Resolve(personB, scheduleSeenByB, locB).IsFlexible);
+    }
+
+    // ─── the day's board and its Excel ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task The_board_sends_the_last_departure_every_session_and_the_servers_own_hours_which_the_summary_agrees_with()
+    {
+        using var h = new Harness();
+        // Monday: three sessions, 09:00–12:00, 13:00–18:00, 19:00–21:30 — 3 h + 5 h + 2½ h, the breaks unpaid.
+        await h.ScanAt(Utc(Mon, 9));
+        var firstOut = await h.ScanAt(Utc(Mon, 12));
+        Assert.Equal(true, Field(firstOut, "flexible"));   // the phone's card: no «Sabaha qədər!»
+        await h.ScanAt(Utc(Mon, 13)); await h.ScanAt(Utc(Mon, 18));
+        await h.ScanAt(Utc(Mon, 19)); await h.ScanAt(Utc(Mon, 21, 30));
+        // Tuesday: a morning, then a night across midnight — 09:00–12:00 and 22:00–06:00, both Tuesday's.
+        await h.ScanAt(Utc(Tue, 9)); await h.ScanAt(Utc(Tue, 12));
+        await h.ScanAt(Utc(Tue, 22)); await h.ScanAt(Utc(Wed, 6));
+        // Thursday: 09:00–12:00, then 13:00 and never closed — a forgotten check-out on a past day.
+        await h.ScanAt(Utc(Thu, 9)); await h.ScanAt(Utc(Thu, 12));
+        await h.ScanAt(Utc(Thu, 13));
+
+        var reports = new ReportQueryService(h.Db, new AppOptions { TimeZone = "Asia/Baku" },
+            new FixedClock(Utc(new DateOnly(2026, 10, 10), 12)));
+        async Task<DayAttendanceRow> Board(DateOnly d) =>
+            (await reports.GetTodayAttendanceAsync(h.AdminId, EmployeeRole.Admin, d)).Single(r => r.EmployeeId == h.EmployeeId);
+
+        var mon = await Board(Mon);
+        Assert.Equal(Utc(Mon, 9), mon.CheckInAtUtc);           // the first arrival
+        Assert.Equal(Utc(Mon, 12), mon.CheckOutAtUtc);         // the FIRST session's exit — what the Excel used to print
+        Assert.Equal(Utc(Mon, 21, 30), mon.LastCheckOutAtUtc); // the last departure — what it prints now
+        Assert.Equal(3, mon.Blocks);
+        Assert.Equal(3, mon.BlockSpans!.Count);
+        Assert.Equal(180 + 300 + 150, mon.WorkedMinutes);      // 10 h 30, not 12 h 30 from 09:00 to 21:30
+
+        var tue = await Board(Tue);
+        Assert.Equal(Utc(Wed, 6), tue.LastCheckOutAtUtc);      // the night's exit, the next morning
+        Assert.Equal(180 + 480, tue.WorkedMinutes);
+        var wed = await Board(Wed);
+        Assert.Null(wed.CheckInAtUtc);                         // the night is Tuesday's, counted once
+        Assert.Equal(0, wed.WorkedMinutes ?? 0);
+
+        var thu = await Board(Thu);
+        Assert.Null(thu.LastCheckOutAtUtc);                    // the last session is open: no departure to print
+        Assert.Null(thu.BlockSpans![^1].OutAtUtc);
+        Assert.Equal(180, thu.WorkedMinutes);                  // the open one is not counted, never estimated
+        Assert.Equal("Incomplete", thu.Status);
+
+        // The same figures the nightly summary stores — the tabel and payroll read those.
+        foreach (var (date, row) in new[] { (Mon, mon), (Tue, tue), (Wed, wed), (Thu, thu) })
+        {
+            var stored = await h.SummaryAsync(date);
+            Assert.Equal(stored!.WorkedMinutes, row.WorkedMinutes ?? 0);
+        }
     }
 
     // ─── «Çıxışı unudulan günlər» ───────────────────────────────────────────────────────────────────
