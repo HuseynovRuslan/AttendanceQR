@@ -443,11 +443,14 @@ public class FlexibleScheduleTests
         Assert.Null(Error(confirmed));
         Assert.Equal(Utc(Mon, 10), Single().CheckOutAtUtc);
 
-        // A tap a minute after leaving is the «did it work?» retry, not a new session.
-        Assert.Equal("AlreadyCompleted", Error(await h.ScanAt(Utc(Mon, 10, 1))));
+        // A tap a minute after leaving is the «did it work?» retry, not a new session — and not «the day is over»
+        // either: a flexible person may start another session a few minutes later.
+        Assert.Equal("TooSoonAfterCheckOut", Error(await h.ScanAt(Utc(Mon, 10, 1))));
         Assert.Single(h.Sessions());
+        Assert.Equal("CheckIn", Field(await h.ScanAt(Utc(Mon, 10, 6)), "action"));   // five minutes on: a new session
+        Assert.Equal(2, h.Sessions().Count);
 
-        AttendanceRecord Single() => Assert.Single(h.Sessions());
+        AttendanceRecord Single() => h.Sessions()[0];
     }
 
     [Fact]

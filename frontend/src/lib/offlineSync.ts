@@ -70,6 +70,8 @@ const ALREADY_RECORDED = new Set([
   // A tap soon after arriving that nobody confirmed as leaving: the server kept the check-in and
   // ignored the retry, which is the outcome the person wanted. Their day is open for the real exit.
   'ConfirmEarlyCheckOut',
+  // «Elastik qrafik»: a retry right after a check-out. The check-out stands; nothing was lost.
+  'TooSoonAfterCheckOut',
 ])
 
 /** The server's error code, when the body carries one. */

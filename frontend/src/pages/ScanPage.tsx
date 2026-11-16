@@ -2118,6 +2118,15 @@ function errorResult(status: number, data: ScanResponse | null, accuracy?: numbe
     case 'TokenExpired':
     case 'TokenReused':
       return { tone: 'yellow', title: 'QR kod köhnəlib', detail: 'Yenidən skan edin.' }
+    case 'TooSoonAfterCheckOut':
+      // «Elastik qrafik»: the «did it work?» tap right after leaving. Not «the day is over» — another session may
+      // start in a few minutes.
+      return {
+        tone: 'green',
+        title: 'Çıxışınız indicə qeydə alınıb',
+        detail: `Yeni sessiya üçün ${data?.minutes ?? 5} dəqiqə sonra yenidən skan edin.`,
+        final: true,
+      }
     case 'ForgottenCheckOutToday':
       // «Elastik qrafik»: this morning's session was never closed, and one day holds one open session. Nothing was
       // guessed — the admin puts in the real exit and this arrival.
