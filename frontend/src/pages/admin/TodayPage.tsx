@@ -452,7 +452,10 @@ export function TodayPage() {
   // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
   // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
   // leave. The type is already on the row and was simply never read here.
-  const statusLabel = (r: DayAttendanceRow) => dayLabel(r.status, r.leaveType, incompleteLabel)
+  // «Elastik qrafik» with no scan: the same words as its card and its badge — never «Həftəlik istirahət».
+  const statusLabel = (r: DayAttendanceRow) => bucketOf(r) === 'flexNoScan'
+    ? 'Elastik, giriş yoxdur'
+    : dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
   // The areas of the CHOSEN view, gathered from the board's own rows.
