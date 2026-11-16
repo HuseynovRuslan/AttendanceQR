@@ -294,7 +294,15 @@ public sealed record DayAttendanceRow(
     bool SelfCorrected = false,
     /// <summary>«Elastik qrafik»: the shift has no hours — the board prints «Elastik» instead of 00:00–23:59, and a
     /// day with no scan is «giriş yoxdur», not a day off and not an absence.</summary>
-    bool IsFlexible = false);
+    bool IsFlexible = false,
+    /// <summary>
+    /// Minutes worked on this day as the SERVER counts them — every closed session added up, the breaks between a
+    /// day's sessions unpaid, an open session not counted until it is closed. The same figure the nightly summary
+    /// stores and the tabel and payroll read (<c>AttendanceCalculator.MergedWorkedMinutes</c>), sent so the day's
+    /// Excel prints that figure rather than a second sum of its own: a workbook whose hours differ from the tabel's
+    /// for the same person and day is a payroll dispute waiting to happen.
+    /// </summary>
+    int? WorkedMinutes = null);
 
 /// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
 /// check-out. Only ever sent for a day worked in more than one stretch.</summary>

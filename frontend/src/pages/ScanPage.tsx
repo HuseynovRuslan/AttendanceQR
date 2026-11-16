@@ -37,6 +37,7 @@ import { PhotoIntro } from '../components/PhotoIntro'
 import { checkForFace } from '../lib/faceCheck'
 import { getMyProfile, todayAnswered, whyUnreachable, type MyProfile } from '../api/attendance'
 import { fmtTime } from '../lib/format'
+import { checkOutCardText, formatDuration } from '../lib/checkOutCard'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -1116,12 +1117,14 @@ export function ScanPage() {
         }
         if (status === 200 && data?.action === 'CheckOut') {
           successFeedback()
-          const worked = data.recordId ? await workedDurationText(data.recordId) : undefined
+          const minutes = data.recordId ? await workedMinutesOf(data.recordId) : undefined
           setResult({
             tone: 'green',
-            title: 'Çıxış qeydə alındı',
-            detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc, '')}`,
-            note: 'Sabaha qədər!',
+            // «Elastik qrafik» is told apart by the server, which judged the scan: «Sabaha qədər!» is for a day
+            // that ends here, and a flexible one does not — see checkOutCardText.
+            ...checkOutCardText({
+              flexible: data.flexible === true, qrless, minutes, at: fmtTime(data.checkOutAtUtc, ''),
+            }),
             warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
             final: true,
             // Offered here too — more chances to get it switched on; it self-hides once it is.
@@ -1770,7 +1773,8 @@ interface ScanResponse {
   /** «Elastik qrafik», ConfirmLongSession: how long the open session has run, and whether it began today. */
   hours?: number
   sameDay?: boolean
-  /** «Elastik qrafik», ConfirmEarlyCheckOut: the exit closes a session, not the day. */
+  /** «Elastik qrafik»: on ConfirmEarlyCheckOut the exit closes a session, not the day; on a CheckOut the card
+   *  does not say «Sabaha qədər!». */
   flexible?: boolean
   /** QR-less check-in only: the face verdict decided before this reply
    *  (Ok · Mismatch · NoFace · MultiFace · NoReference · Error). Absent on a poster scan. */
@@ -1888,20 +1892,15 @@ function minutesBetween(startIso: string, endIso: string): number {
   return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000)
 }
 
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${h} saat ${m} dəqiqə işlədiniz`
-}
 
 // Checkout response carries no duration, so read today's record from /me and compute it.
-async function workedDurationText(recordId: string): Promise<string | undefined> {
+async function workedMinutesOf(recordId: string): Promise<number | undefined> {
   try {
     const { status, data } = await apiRequest<MeRecord[]>('/api/attendance/me')
     if (status !== 200 || !Array.isArray(data)) return undefined
     const record = data.find((r) => r.recordId === recordId)
     if (!record?.checkInAtUtc || !record.checkOutAtUtc) return undefined
-    return formatDuration(minutesBetween(record.checkInAtUtc, record.checkOutAtUtc))
+    return minutesBetween(record.checkInAtUtc, record.checkOutAtUtc)
   } catch {
     return undefined
   }

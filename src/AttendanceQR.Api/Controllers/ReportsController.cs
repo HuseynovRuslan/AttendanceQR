@@ -196,7 +196,9 @@ public class ReportsController : ControllerBase
                 row.CheckOut ?? string.Empty,
                 row.Photo ?? string.Empty,
                 row.Bucket,
-                row.Paper ?? string.Empty))
+                row.Paper ?? string.Empty,
+                row.Worked ?? string.Empty,
+                row.Sessions ?? string.Empty))
             .ToList();
 
         // A company form for «Xülasə», when the reader chose one. Only this company's (a key from

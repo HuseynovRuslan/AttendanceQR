@@ -74,7 +74,15 @@ public static class DayBoardSheet
             .ToArray();
 
     private static readonly string[] DetailHeaders =
-        ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"];
+        ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil", "İşlənmiş"];
+
+    /// <summary>
+    /// Every session of a day worked in more than one — added after the other columns, and only when somebody in
+    /// the file has such a day. «Giriş 09:00 · Çıxış 18:00» on a day worked 09:00–12:00 and 13:00–18:00 reads as
+    /// nine hours; the sessions say where the unpaid hour went. Appended rather than inserted so the eight columns
+    /// a reader already knows stay where they were.
+    /// </summary>
+    private const string SessionsHeader = "Sessiyalar";
 
     private const string Headcount = "headcount";
 
@@ -139,7 +147,11 @@ public static class DayBoardSheet
         // «Sənəd üzrə» — the employer the paperwork names when it is not this board's company.
         // Blank on nearly every row; the few that are filled answer the question this file used to
         // raise and could not settle: why a name appears on a company's list that does not employ them.
-        string Paper = "");
+        string Paper = "",
+        // The hours the SERVER counted for the day (closed sessions only, the break between sessions unpaid) and
+        // every session when there were several — see ExportDayRow. «Çıxış» is the LAST session's departure.
+        string Worked = "",
+        string Sessions = "");
 
     /// <param name="labels">
     /// The board's word for each bucket, keyed by bucket name. Anything missing falls back to
@@ -346,7 +358,9 @@ public static class DayBoardSheet
         List<(string Site, List<Row> People)> groups)
     {
         var ws = wb.Worksheets.Add("Davamiyyət");
-        var cols = DetailHeaders.Length;
+        var withSessions = groups.Any(g => g.People.Any(p => p.Sessions.Length > 0));
+        string[] headers = withSessions ? [.. DetailHeaders, SessionsHeader] : DetailHeaders;
+        var cols = headers.Length;
 
         ws.Cell(1, 1).Value = title;
         ws.Range(1, 1, 1, cols).Merge();
@@ -363,7 +377,7 @@ public static class DayBoardSheet
 
         const int headerRow = 4;
         for (var i = 0; i < cols; i++)
-            ws.Cell(headerRow, i + 1).Value = DetailHeaders[i];
+            ws.Cell(headerRow, i + 1).Value = headers[i];
 
         var head = ws.Range(headerRow, 1, headerRow, cols);
         head.Style.Font.Bold = true;
@@ -395,6 +409,9 @@ public static class DayBoardSheet
                 ws.Cell(r, 6).Value = p.CheckIn;
                 ws.Cell(r, 7).Value = p.CheckOut;
                 ws.Cell(r, 8).Value = p.Photo;
+                ws.Cell(r, 9).Value = p.Worked;
+                if (withSessions)
+                    ws.Cell(r, 10).Value = p.Sessions;
                 r++;
             }
 
@@ -416,6 +433,9 @@ public static class DayBoardSheet
         ws.Column(5).Width = 11;
         ws.Column(6).Width = 11;
         ws.Column(7).Width = 9;
+        ws.Column(9).Width = 13;
+        if (withSessions)
+            ws.Column(10).Width = 36;
         ws.SheetView.FreezeRows(headerRow);
     }
 
