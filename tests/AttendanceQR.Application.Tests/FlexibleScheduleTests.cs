@@ -436,7 +436,10 @@ public class FlexibleScheduleTests
         await h.ScanAt(Utc(Mon, 9));
 
         Assert.Equal("TooSoonToCheckOut", Error(await h.ScanAt(Utc(Mon, 9, 2))));
-        Assert.Equal("ConfirmEarlyCheckOut", Error(await h.ScanAt(Utc(Mon, 10))));
+        var early = await h.ScanAt(Utc(Mon, 10));
+        Assert.Equal("ConfirmEarlyCheckOut", Error(early));
+        // The phone then says «iş sessiyanız bağlanacaq», not «iş gününüz»: only this session ends.
+        Assert.Equal(true, Field(early, "flexible"));
         Assert.Null(Single().CheckOutAtUtc);
 
         var confirmed = await h.At(Utc(Mon, 10)).Scan(h.Poster(confirm: true));
@@ -704,6 +707,51 @@ public class FlexibleScheduleTests
         var scheduleSeenByB = await ShiftResolver.ScheduleOnAsync(dbB, personB.Id, personB.ScheduleId, Mon, default);
         Assert.Null(scheduleSeenByB);
         Assert.False(EffectiveShift.Resolve(personB, scheduleSeenByB, locB).IsFlexible);
+    }
+
+    // ─── «Çıxışı unudulan günlər» ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_forgotten_flexible_check_out_is_never_given_a_shift_end_but_a_fixed_one_still_is()
+    {
+        using var h = new Harness();
+        // Monday, both forgot to scan out: the flexible person came at 10:00, the fixed colleague at 09:00.
+        var flexibleDay = new AttendanceRecord
+        {
+            TenantId = TenantId, EmployeeId = h.EmployeeId, LocationId = h.LocationId, AttendanceDate = Mon,
+            CheckInAtUtc = Utc(Mon, 10), Status = AttendanceStatus.OnTime,
+        };
+        var fixedDay = new AttendanceRecord
+        {
+            TenantId = TenantId, EmployeeId = h.FixedId, LocationId = h.LocationId, AttendanceDate = Mon,
+            CheckInAtUtc = Utc(Mon, 9), Status = AttendanceStatus.OnTime,
+        };
+        h.Db.AttendanceRecords.AddRange(flexibleDay, fixedDay);
+        h.Db.SaveChanges();
+        var admin = h.As(new AdminAttendanceController(h.Db, new StubSummary(), new StubQueue(), new StubPhoto(),
+            NullLogger<AdminAttendanceController>.Instance, new AppOptions { TimeZone = "Asia/Baku" }));
+
+        // The list says which is which — the screen leaves the flexible row's time empty and out of «Hamısını seç».
+        var rows = Assert.IsAssignableFrom<IEnumerable<object>>(Assert.IsType<OkObjectResult>(await admin.Open()).Value).ToList();
+        object Row(Guid id) => rows.Single(r => (Guid)r.GetType().GetProperty("recordId")!.GetValue(r)! == id);
+        Assert.Equal(true, Row(flexibleDay.Id).GetType().GetProperty("flexible")!.GetValue(Row(flexibleDay.Id)));
+        Assert.Equal(false, Row(fixedDay.Id).GetType().GetProperty("flexible")!.GetValue(Row(fixedDay.Id)));
+
+        // The batch, sent both anyway (an older screen): the fixed day closes at its 18:00, the flexible one is left
+        // open and counted apart — no exit time is invented.
+        var batch = await admin.CloseOpenDays(new CloseOpenDaysRequest([flexibleDay.Id, fixedDay.Id], "Çıxışı unudub"));
+        Assert.Equal(1, Field(batch, "closed"));
+        Assert.Equal(1, Field(batch, "flexible"));
+        Assert.Equal(0, Field(batch, "skipped"));
+        Assert.Equal(Utc(Mon, 18), h.Db.AttendanceRecords.AsNoTracking().Single(r => r.Id == fixedDay.Id).CheckOutAtUtc);
+        Assert.Null(h.Db.AttendanceRecords.AsNoTracking().Single(r => r.Id == flexibleDay.Id).CheckOutAtUtc);
+
+        // The real time, typed by the admin, closes it — and is audited like any correction.
+        var typed = await admin.Update(flexibleDay.Id, new AdminAttendanceUpdateRequest(null, Utc(Mon, 15, 30), "15:30-da getdi"));
+        Assert.IsType<OkObjectResult>(typed);
+        Assert.Equal(Utc(Mon, 15, 30), h.Db.AttendanceRecords.AsNoTracking().Single(r => r.Id == flexibleDay.Id).CheckOutAtUtc);
+        Assert.Contains(h.Db.AuditLogs.AsNoTracking().Where(a => a.EmployeeId == h.EmployeeId).AsEnumerable(),
+            a => a.Reason != null && a.Reason.Contains("15:30-da getdi"));
     }
 
     // ─── stubs ──────────────────────────────────────────────────────────────────────────────────────

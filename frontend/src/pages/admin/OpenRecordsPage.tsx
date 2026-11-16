@@ -16,6 +16,8 @@ function toLocalInput(d: Date): string {
 
 // Default check-out: the check-in's own date at 18:00 local — a plausible end of a work day, which
 // the admin can override. There is no per-employee schedule to derive a truer value from yet.
+// Never for «Elastik qrafik» (r.flexible): it has no end of day, and a blind «Bağla» on 18:00 paid hours that
+// nobody worked — or took away hours somebody did. The box starts empty there and «Bağla» waits for a real time.
 function defaultCheckout(checkInIso: string): string {
   const d = new Date(checkInIso)
   d.setHours(18, 0, 0, 0)
@@ -104,6 +106,7 @@ export function OpenRecordsPage() {
         `${data.closed} gün bağlandı`,
         data.awaiting ? `${data.awaiting} gün (öz gününüz) təsdiqə göndərildi` : null,
         data.skipped > 0 ? `${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)` : null,
+        data.flexible ? `${data.flexible} elastik sessiya toxunulmadı — çıxış saatını sətirdə əl ilə yazın` : null,
       ].filter(Boolean).join(' · '),
     )
     setPicked(new Set())
@@ -111,11 +114,16 @@ export function OpenRecordsPage() {
   }
 
   function timeFor(r: OpenRecord): string {
-    return times[r.recordId] ?? defaultCheckout(r.checkInAtUtc)
+    return times[r.recordId] ?? (r.flexible ? '' : defaultCheckout(r.checkInAtUtc))
   }
 
   async function close(r: OpenRecord) {
     const local = timeFor(r)
+    // An empty (or half-typed — the browser reports those as empty) box is never a time.
+    if (!local) {
+      setError(r.flexible ? 'Elastik qrafik: real çıxış tarixini və saatını yazın' : 'Çıxış vaxtını daxil edin')
+      return
+    }
     const iso = fromCompanyInputValue(local)
     if (new Date(iso) < new Date(r.checkInAtUtc)) {
       setError('Çıxış girişdən əvvəl ola bilməz')
@@ -147,7 +155,11 @@ export function OpenRecordsPage() {
   // pretends it can be fixed from here, and selecting «all» selects only what can.
   const canClose = (r: OpenRecord) => r.closable !== false
   const closable = (rows ?? []).filter(canClose)
-  const closableCount = closable.length
+  // The batch closes each day at its shift's end — a flexible session has none, so it is closed one at a time,
+  // with the time the admin types. Left out of «Hamısını seç» rather than skipped by the server after the fact.
+  const batchable = closable.filter((r) => !r.flexible)
+  const closableCount = batchable.length
+  const flexibleCount = closable.length - closableCount
 
   return (
     <div>
@@ -185,17 +197,23 @@ export function OpenRecordsPage() {
                 düyməsinə basa bilərsiniz. Toplu bağlamada hər gün <b>həmin işçinin öz növbəsinin
                 bitmə saatı</b> ilə yazılır.
               </div>
-              {closableCount < count && (
+              {closable.length < count && (
                 <div style={{ fontSize: 13, color: 'var(--c600)', marginTop: 6 }}>
-                  {count - closableCount} gün — sizin özünüzün, həmkar menecerin və ya adminin — yalnız admin
+                  {count - closable.length} gün — sizin özünüzün, həmkar menecerin və ya adminin — yalnız admin
                   tərəfindən bağlana bilər.
+                </div>
+              )}
+              {flexibleCount > 0 && (
+                <div style={{ fontSize: 13, color: 'var(--c600)', marginTop: 6 }}>
+                  {flexibleCount} elastik sessiya toplu bağlanmır — elastik qrafikin bitmə saatı yoxdur. Real çıxış
+                  saatını sətirdə yazıb «Bağla» basın.
                 </div>
               )}
             </div>
             {mayCorrect && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 className="btn btn-sm"
-                onClick={() => setPicked(new Set(picked.size === closableCount ? [] : closable.map((r) => r.recordId)))}
+                onClick={() => setPicked(new Set(picked.size === closableCount ? [] : batchable.map((r) => r.recordId)))}
                 disabled={bulkBusy || closableCount === 0}
               >
                 {picked.size === closableCount && closableCount > 0 ? 'Seçimi ləğv et' : `Hamısını seç (${closableCount})`}
@@ -262,7 +280,7 @@ export function OpenRecordsPage() {
                   aria-label="Hamısını seç"
                   checked={closableCount > 0 && picked.size === closableCount}
                   disabled={closableCount === 0}
-                  onChange={() => setPicked(new Set(picked.size === closableCount ? [] : closable.map((r) => r.recordId)))}
+                  onChange={() => setPicked(new Set(picked.size === closableCount ? [] : batchable.map((r) => r.recordId)))}
                 />
               </th>
               <th>İşçi</th>
@@ -280,12 +298,16 @@ export function OpenRecordsPage() {
                     type="checkbox"
                     aria-label={`${r.employeeName} — seç`}
                     checked={picked.has(r.recordId)}
-                    disabled={!canClose(r)}
+                    disabled={!canClose(r) || r.flexible}
+                    title={r.flexible ? 'Elastik sessiya toplu bağlanmır — çıxış saatını sətirdə yazın' : undefined}
                     onChange={() => toggle(r.recordId)}
                   />
                 </td>
                 <td>
-                  <div style={{ fontWeight: 700, color: 'var(--c900)' }}><EmployeeLink id={r.employeeId} name={r.employeeName} /></div>
+                  <div style={{ fontWeight: 700, color: 'var(--c900)' }}>
+                    <EmployeeLink id={r.employeeId} name={r.employeeName} />
+                    {r.flexible && <> <span className="pill pill-info">Elastik</span></>}
+                  </div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.locationName}</div>
                 </td>
                 <td data-label="Tarix" className="mono">{fmtDate(r.attendanceDate)}</td>
@@ -297,13 +319,27 @@ export function OpenRecordsPage() {
                     className="inp"
                     type="datetime-local"
                     value={timeFor(r)}
+                    min={toLocalInput(new Date(r.checkInAtUtc))}
                     disabled={!canClose(r)}
+                    required={r.flexible}
+                    aria-label={`${r.employeeName} — çıxış vaxtı`}
+                    aria-invalid={r.flexible && !timeFor(r) ? true : undefined}
                     onChange={(e) => setTimes((prev) => ({ ...prev, [r.recordId]: e.target.value }))}
                   />
+                  {r.flexible && !timeFor(r) && canClose(r) && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      Elastik qrafik — real çıxış saatını yazın
+                    </div>
+                  )}
                 </td>
                 <td data-label="">
                   {canClose(r) && mayCorrect ? (
-                    <button className="btn btn-primary btn-sm" disabled={busyId === r.recordId} onClick={() => close(r)}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={busyId === r.recordId || !timeFor(r)}
+                      title={!timeFor(r) ? 'Əvvəlcə çıxış vaxtını yazın' : undefined}
+                      onClick={() => close(r)}
+                    >
                       <IconCheck /> Bağla
                     </button>
                   ) : (

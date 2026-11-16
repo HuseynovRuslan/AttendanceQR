@@ -1245,6 +1245,9 @@ public class AttendanceController : ControllerBase
                         error = "ConfirmEarlyCheckOut",
                         checkInAtUtc = open.CheckInAtUtc,
                         minutes = EarlyCheckOutRules.ConfirmWithinMinutes,
+                        // The phone says «iş sessiyanız bağlanacaq», not «iş gününüz»: a flexible day is never closed,
+                        // only this one session — another may start in a few minutes.
+                        flexible = true,
                     });
                 }
                 // Closed against the session's OWN day's shift — the night that began yesterday is yesterday's.
