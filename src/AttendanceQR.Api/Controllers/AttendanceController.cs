@@ -1263,8 +1263,10 @@ public class AttendanceController : ControllerBase
                     .FirstOrDefaultAsync();
                 if (lastCheckOutUtc is DateTime co && (nowUtc - co).Duration() < TimeSpan.FromMinutes(MinCheckoutMinutes))
                 {
+                    // Its own answer, not «AlreadyCompleted»: a flexible day is never «completed» — the person may
+                    // start another session in a few minutes, and «Bu gün tamamlanıb» told them they could not.
                     await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "TooSoonAfterCheckOut", ip);
-                    return Conflict(new { error = "AlreadyCompleted" });
+                    return Conflict(new { error = "TooSoonAfterCheckOut", minutes = MinCheckoutMinutes });
                 }
 
                 return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
