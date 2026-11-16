@@ -76,3 +76,12 @@ thead .tb-name-col { background: var(--c50); z-index: 3; }
   .app, .main, .content { display: block !important; }
   .sidebar, .topbar, .admin-nav { display: none !important; }
 }
+
+/* «Elastik qrafik» weekly norm: week by week, under the grid. */
+.tb-weekly { display: flex; flex-direction: column; gap: 6px; }
+.tb-weekly-title { font-size: 15px; font-weight: 800; color: var(--c900); margin: 0; }
+.tb-weekly-note { font-size: 12px; color: var(--c500); margin: 0; }
+.tb-weekly-grid td { width: auto; padding: 4px 10px; font-weight: 600; }
+.tb-weekly-grid th { padding: 6px 10px; }
+.tb-weekly-short { color: var(--clay); }
+.tb-weekly-flag { font-weight: 500 !important; color: var(--c500); text-align: left !important; }

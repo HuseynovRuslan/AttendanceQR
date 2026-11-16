@@ -231,6 +231,9 @@ public class AdminAttendanceController : ControllerBase
             if (location is null || employee is null) { skipped++; continue; }
 
             var shift = EffectiveShift.Resolve(employee, await ScheduleForAsync(employee, record.AttendanceDate), location);
+            // «Elastik qrafik» has no shift end to close at — closing there would invent an exit time (23:59) that
+            // nobody scanned. Such a session is corrected one at a time, with the real time, and is left for that.
+            if (shift.IsFlexible) { skipped++; continue; }
             var closeAt = ShiftEndUtc(shift, record.AttendanceDate, record.CheckInAtUtc!.Value);
             if (closeAt <= record.CheckInAtUtc) { skipped++; continue; }
 

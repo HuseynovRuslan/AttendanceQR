@@ -21,6 +21,8 @@ export interface TodayLike {
   leaveType?: string | null
   /** A «Sahədə» day is closed by the worker leaving the SITE, not by an office scan. */
   fieldCheckOutAtUtc?: string | null
+  /** «Elastik qrafik»: no hours, so a day without a scan is neither a day off nor an absence. */
+  isFlexible?: boolean
 }
 
 export interface TodayCounts {
@@ -36,6 +38,9 @@ export interface TodayCounts {
    *  manager files one is to be able to see it again; merged into dayOff it was invisible among the
    *  two hundred people whose Sunday it simply was. */
   rest: number
+  /** «Elastik qrafik», nobody has scanned yet: 0 hours so far — not an absence (nobody was due) and not the roster's
+   *  day off (there is none). Under «Həftəlik istirahət» it told a manager these people had the day off. */
+  flexNoScan: number
   /** Məzuniyyət — annual leave ONLY. Not sick, not unpaid, not a work trip, not a rest day. */
   onLeave: number
   /** Ödənişsiz məzuniyyət, apart: it is not paid, and the dashboard already counted it separately —
@@ -50,7 +55,7 @@ export interface TodayCounts {
 
 const EMPTY: TodayCounts = {
   present: 0, absent: 0, pending: 0, onboarding: 0, incomplete: 0,
-  dayOff: 0, rest: 0, onLeave: 0, unpaid: 0, sick: 0, trip: 0, permission: 0,
+  dayOff: 0, rest: 0, flexNoScan: 0, onLeave: 0, unpaid: 0, sick: 0, trip: 0, permission: 0,
 }
 
 export type TodayBucket = keyof TodayCounts
@@ -75,6 +80,7 @@ export function bucketOf(r: TodayLike): TodayBucket {
   if (r.status === 'Onboarding') return 'onboarding'
   // DayOff carries two facts under one status: the roster's own day off, and one a manager granted.
   // Only leaveType separates them, and it now travels for rest days too.
+  if (r.status === 'DayOff' && r.isFlexible && !r.leaveType) return 'flexNoScan'
   if (r.status === 'DayOff') return r.leaveType === 'Rest' ? 'rest' : 'dayOff'
   if (r.status === 'OnLeave') {
     if (r.leaveType === 'Sick') return 'sick'

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PlanDay } from '../../../api/shiftPlan'
 import {
-  addDays, bandOf, cellsOf, initials, maskOf, rangeLabel, rangeOf, rotationSteps, ROTATIONS, shortRestDays, step, weekday, WORKWEEK,
+  addDays, bandOf, cellsOf, hoursText, initials, maskOf, rangeLabel, rangeOf, rotationSteps, ROTATIONS, shortRestDays, step, weekday, WORKWEEK,
 } from './planModel'
 
 const day = (date: string, start: string | null, end: string | null, overnight = false, working = true): PlanDay => ({
@@ -38,6 +38,12 @@ describe('dates', () => {
 })
 
 describe('shifts at a glance', () => {
+  it('prints «istənilən saat» for an «Elastik» shift, never its 00:00–23:59', () => {
+    expect(hoursText({ start: null, end: null, flexible: true })).toBe('istənilən saat')
+    expect(hoursText({ start: '00:00', end: '23:59', flexible: true })).toBe('istənilən saat')
+    expect(hoursText({ start: '09:00', end: '18:00' })).toBe('09:00–18:00')
+  })
+
   it('colours a shift by the part of the day it starts in', () => {
     expect(bandOf('06:00', false)).toBe('morning')
     expect(bandOf('10:00', false)).toBe('day')

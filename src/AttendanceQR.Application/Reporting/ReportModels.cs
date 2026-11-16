@@ -296,7 +296,10 @@ public sealed record DayAttendanceRow(
     /// metres — set only when that is OUTSIDE the branch's circle, null otherwise. Such a day exists
     /// because the fence was switched off, or because an offline replay fell inside OfflineFence's
     /// slack; either way the board says so, so a manager can look and, if need be, void it.</summary>
-    int? OutsideMeters = null);
+    int? OutsideMeters = null,
+    /// <summary>«Elastik qrafik»: the shift has no hours — the board prints «Elastik» instead of 00:00–23:59, and a
+    /// day with no scan is «giriş yoxdur», not a day off and not an absence.</summary>
+    bool IsFlexible = false);
 
 /// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
 /// check-out. Only ever sent for a day worked in more than one stretch.</summary>
@@ -417,7 +420,34 @@ public sealed record TabelRow(
     int LeaveDays,
     double WorkedHours,
     /// <summary>Days of the month (1-based) the person corrected themselves — «öz düzəlişi» on those cells.</summary>
-    IReadOnlyList<int>? SelfCorrectedDays = null);
+    IReadOnlyList<int>? SelfCorrectedDays = null,
+    /// <summary>
+    /// «Elastik qrafik»: per day, what to print INSTEAD of the code — the hours worked ("8", "7.5"), "0" for a day with
+    /// no scan, "Açıq" for a session nobody closed. Null for a day judged on fixed hours (the code stands), and for a
+    /// leave, a holiday or a future day on a flexible day too (their code says it). Null altogether when no day of the
+    /// month was flexible — so every fixed-shift row is exactly what it was.
+    /// </summary>
+    IReadOnlyList<string?>? FlexibleCells = null,
+    /// <summary>
+    /// A DAILY norm summed over the month's norm days so far, for comparison only; null when none. A weekly norm is
+    /// never spread over days — see <see cref="NormWeeks"/>.
+    /// </summary>
+    double? NormHours = null,
+    /// <summary>
+    /// A WEEKLY norm, compared week by week against the week's whole total (Monday to Sunday, including the days of
+    /// a week that fall in the month before or after). Null when the person had no weekly norm this month.
+    /// </summary>
+    IReadOnlyList<TabelNormWeek>? NormWeeks = null,
+    /// <summary>The weekly norm in hours (the latest in the month), for the «Norma» column; null without one.</summary>
+    double? WeeklyNormHours = null);
+
+/// <summary>
+/// One Monday-to-Sunday week of an «Elastik qrafik» weekly norm: the norm as set (never divided into days), the hours
+/// actually worked that week, whether the week is over, and whether leave or a holiday fell in it — the norm is not
+/// reduced for those automatically; the flag tells the reader why a week may sit below it.
+/// </summary>
+public sealed record TabelNormWeek(
+    DateOnly From, DateOnly To, double NormHours, double WorkedHours, bool Finished, bool HasLeaveOrHoliday);
 
 public sealed record TabelLegendItem(string Code, string Label);
 
@@ -515,7 +545,7 @@ public sealed record HrStatsEmployee(
     Guid LocationId,
     string LocationName,
     string? Position,
-    /// <summary>Days with a check-in (on time, late, or not yet closed).</summary>
+    /// <summary>Days with a check-in (on time, late, or not yet closed) on a fixed-hours shift — see <see cref="FlexibleWorkedDays"/>.</summary>
     int WorkedDays,
     int OnTimeDays,
     /// <summary>Days judged late against the person's OWN hours (their shift, else the branch's).</summary>
@@ -532,7 +562,12 @@ public sealed record HrStatsEmployee(
     /// <summary>On-time ÷ (on-time + late) — days not yet closed carry no lateness verdict.</summary>
     double? OnTimePercent,
     /// <summary>Today, live: "present", "late", "permission", "sick", "leave", "absent", "dayOff" or null.</summary>
-    string? Today);
+    string? Today,
+    /// <summary>
+    /// Days worked under «Elastik qrafik». Kept out of <see cref="WorkedDays"/> and out of both rates: nobody was due,
+    /// so there is no attendance or punctuality to measure — a person on it only would otherwise read 100 %.
+    /// </summary>
+    int FlexibleWorkedDays = 0);
 
 public sealed record HrStatsLocation(
     Guid LocationId,

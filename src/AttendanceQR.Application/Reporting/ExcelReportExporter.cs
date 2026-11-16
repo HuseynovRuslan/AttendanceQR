@@ -397,8 +397,10 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("Tabel");
         var days = report.DaysInMonth;
-        // Columns: name, position, then one per day, then three totals.
-        var totalCols = 2 + days + 3;
+        // Columns: name, position, then one per day, then three totals — and a fourth, «Norma», only when somebody on
+        // the sheet is on a flexible shift with an hour norm (every fixed-hours sheet is exactly what it was).
+        var hasNorm = report.Rows.Any(r => r.NormHours is not null || r.WeeklyNormHours is not null);
+        var totalCols = 2 + days + 3 + (hasNorm ? 1 : 0);
 
         // Title across the whole grid.
         var monthName = AzMonths[Math.Clamp(report.Month - 1, 0, 11)];
@@ -416,6 +418,8 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.Cell(hr, 2 + days + 1).Value = "İş günü";
         ws.Cell(hr, 2 + days + 2).Value = "Qayıb";
         ws.Cell(hr, 2 + days + 3).Value = "Saat";
+        if (hasNorm)
+            ws.Cell(hr, 2 + days + 4).Value = "Norma";
 
         var header = ws.Range(hr, 1, hr, totalCols);
         header.Style.Font.Bold = true;
@@ -433,7 +437,9 @@ public sealed class ExcelReportExporter : IExcelReportExporter
                 var cell = ws.Cell(row, 3 + d);
                 // A day the person corrected themselves: the code, a star, and a colour — on paper too.
                 var own = r.SelfCorrectedDays?.Contains(d + 1) == true;
-                cell.Value = own ? r.Days[d] + "*" : r.Days[d];
+                // «Elastik qrafik»: the hours worked instead of the code — «8», «0», «Açıq».
+                var shown = r.FlexibleCells?[d] ?? r.Days[d];
+                cell.Value = own ? shown + "*" : shown;
                 if (own)
                     cell.Style.Fill.BackgroundColor = XLColor.LightPink;
                 // «G» — Gözlənilir: the shift has not started yet. Neutral grey, so it never reads as the
@@ -445,6 +451,11 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(row, 2 + days + 1).Value = r.WorkedDays;
             ws.Cell(row, 2 + days + 2).Value = r.AbsentDays;
             ws.Cell(row, 2 + days + 3).Value = r.WorkedHours;
+            if (hasNorm && r.NormHours is double norm)
+                ws.Cell(row, 2 + days + 4).Value = norm;
+            // A weekly norm is not a month figure: it is said as what it is, and compared week by week on its own sheet.
+            else if (hasNorm && r.WeeklyNormHours is double weekly)
+                ws.Cell(row, 2 + days + 4).Value = $"{weekly.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}/həftə";
             row++;
         }
 
@@ -460,6 +471,13 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.Cell(lr, 1).Value = "İşarələr:";
         ws.Cell(lr, 1).Style.Font.Bold = true;
         lr++;
+        if (report.Rows.Any(r => r.FlexibleCells is not null))
+        {
+            ws.Cell(lr, 1).Value = "8 / 0 / Açıq";
+            ws.Cell(lr, 1).Style.Font.Bold = true;
+            ws.Cell(lr, 2).Value = "Elastik qrafik: işlənmiş saat / giriş yoxdur / çıxış qeyd olunmayıb";
+            lr++;
+        }
         foreach (var item in report.Legend)
         {
             ws.Cell(lr, 1).Value = item.Code;
@@ -484,8 +502,59 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.SheetView.FreezeColumns(2);
         ws.SheetView.FreezeRows(2);
 
+        BuildWeeklyNorm(workbook, report);
+
         using var s2 = new MemoryStream();
         workbook.SaveAs(s2);
         return s2.ToArray();
+    }
+
+    /// <summary>
+    /// «Həftəlik norma» — only when somebody on the sheet has a weekly «Elastik» norm. One line per person and week:
+    /// the week's whole total (Monday to Sunday, the edge weeks reaching into the months beside it) against the norm
+    /// as set. Never divided into days; a week with leave or a holiday says so instead of being quietly reduced.
+    /// </summary>
+    private static void BuildWeeklyNorm(XLWorkbook workbook, TabelReport report)
+    {
+        var people = report.Rows.Where(r => r.NormWeeks is { Count: > 0 }).ToList();
+        if (people.Count == 0)
+            return;
+
+        var ws = workbook.Worksheets.Add("Həftəlik norma");
+        string[] headers = ["İşçi", "Həftə", "Faktiki saat", "Norma", "Fərq", "Qeyd"];
+        for (var i = 0; i < headers.Length; i++)
+            ws.Cell(1, i + 1).Value = headers[i];
+        var head = ws.Range(1, 1, 1, headers.Length);
+        head.Style.Font.Bold = true;
+        head.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E70C8");
+        head.Style.Font.FontColor = XLColor.White;
+
+        var row = 2;
+        foreach (var person in people)
+            foreach (var w in person.NormWeeks!)
+            {
+                ws.Cell(row, 1).Value = person.EmployeeName;
+                ws.Cell(row, 2).Value = $"{w.From:dd.MM} – {w.To:dd.MM}";
+                ws.Cell(row, 3).Value = w.WorkedHours;
+                ws.Cell(row, 4).Value = w.NormHours;
+                ws.Cell(row, 5).Value = Math.Round(w.WorkedHours - w.NormHours, 1);
+                var notes = new List<string>();
+                if (!w.Finished) notes.Add("həftə bitməyib");
+                if (w.HasLeaveOrHoliday) notes.Add("məzuniyyət/bayram var");
+                ws.Cell(row, 6).Value = string.Join(", ", notes);
+                row++;
+            }
+
+        var table = ws.Range(1, 1, row - 1, headers.Length);
+        table.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        table.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+        ws.Cell(row + 1, 1).Value = "Norma yalnız müqayisə üçündür — çatışmazlıq pozuntu sayılmır.";
+        ws.Cell(row + 1, 1).Style.Font.Italic = true;
+        ws.Column(1).Width = 26;
+        ws.Column(2).Width = 16;
+        for (var c = 3; c <= 5; c++)
+            ws.Column(c).Width = 12;
+        ws.Column(6).Width = 28;
+        ws.SheetView.FreezeRows(1);
     }
 }

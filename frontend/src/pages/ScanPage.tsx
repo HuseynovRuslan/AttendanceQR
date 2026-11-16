@@ -65,7 +65,7 @@ type Card = {
   /** Offer to switch the checkout reminder on right here (check-in only). */
   offerPush?: boolean
 }
-type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'confirmOut' | 'processing' | 'done'
+type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'confirmOut' | 'confirmLong' | 'processing' | 'done'
 
 // The employee reads what is about to happen before the front camera opens. Auto-advances so a
 // hesitant person cannot block the queue by never tapping "Hazıram".
@@ -181,6 +181,9 @@ export function ScanPage() {
   // A phone that has not measured anew hands the SAME point back (Şabanov, 26.10: eight identical
   // taps from 4 km); the next lookup holds that point aside and waits for a fresh one (geo.AvoidPoint).
   const refusedAtRef = useRef<AvoidPoint>(null)
+  // «Elastik qrafik»: a session open long enough that this tap may end it or follow a forgotten check-out.
+  const [longAsk, setLongAsk] = useState<{ checkIn: string; hours: number; sameDay: boolean } | null>(null)
+  const longChoiceRef = useRef<((answer: 'close' | 'new') => void) | null>(null)
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // Seconds left on the GPS wait, shown on the checklist. Only appears once the fix is taking long
   // enough to be worth explaining — a countdown that starts at 45 makes a two-second check look slow.
@@ -798,6 +801,22 @@ export function ScanPage() {
     })
   }
 
+  /**
+   * «Elastik qrafik»: «finishing the session you started at 18:00?» — resolves with the answer. Asked only when the
+   * session has run long (FlexibleScanRules.ConfirmAfterHours); the server decides that, never the phone.
+   */
+  function askLongSession(checkIn: string, hours: number, sameDay: boolean): Promise<'close' | 'new'> {
+    return new Promise((resolve) => {
+      setLongAsk({ checkIn, hours, sameDay })
+      setPhase('confirmLong')
+      longChoiceRef.current = (answer) => {
+        longChoiceRef.current = null
+        setLongAsk(null)
+        resolve(answer)
+      }
+    })
+  }
+
   async function onDecoded(text: string) {
     if (busyRef.current) return
     // Kitabxana 2.0 sign-in, not a check-in. The kiosk at book.qrlog.az shows this QR so an employee
@@ -944,6 +963,8 @@ export function ScanPage() {
     // Set once the employee has answered «bəli, çıxıram». Travels with the scan, online or queued —
     // soon after arriving the server takes a check-out only with it (EarlyCheckOutRules).
     let confirmEarlyCheckOut = false
+    // «Elastik qrafik»: the answer to the long-session question, once asked.
+    let longSession: 'close' | 'new' | null = null
     // What the phone believes today is at this moment — read through the ref, never a stale closure.
     const known = todayRef.current
     // Which tap this is, by what the phone knows of the day — or just «Skan» when it does not know and
@@ -1112,6 +1133,7 @@ export function ScanPage() {
               ...(photoBase64 && !photoDropped ? { photoBase64 } : {}),
               clientScanId,
               ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
+              ...(longSession ? { longSession } : {}),
             },
           })
         } catch (err) {
@@ -1163,6 +1185,15 @@ export function ScanPage() {
           })
           return
         }
+
+        // «Elastik qrafik»: the open session has run long — the end of a long night, or a new arrival after a
+        // forgotten check-out. Asked once; the same scan goes back with the answer.
+        if (status === 409 && data?.error === 'ConfirmLongSession' && !longSession && data.checkInAtUtc) {
+          longSession = await askLongSession(data.checkInAtUtc, data.hours ?? 0, data.sameDay === true)
+          setPhase('processing')
+          continue
+        }
+
         if (status === 200 && data?.action === 'CheckIn') {
           successFeedback()
           const face = faceLine(data.faceMatch ?? (qrless ? 'Pending' : undefined))
@@ -1573,6 +1604,30 @@ export function ScanPage() {
           </div>
         )}
 
+        {phase === 'confirmLong' && longAsk && (
+          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+            <p className="text-xl font-bold text-amber-400">Sessiyanız {formatHours(longAsk.hours)} saatdır açıqdır</p>
+            <p className="text-center text-base text-slate-300">
+              {longAsk.sameDay ? 'Bu gün' : 'Dünən'} <b className="text-white">{fmtTime(longAsk.checkIn, '')}</b>-da giriş etmisiniz.
+              İndi işi bitirirsiniz?
+            </p>
+            {/* Two real answers, neither is the «safe» one: a wrong yes pays a night at home, a wrong no leaves a
+                worked night at zero. Both are said in full so nobody taps through. */}
+            <button
+              onClick={() => longChoiceRef.current?.('close')}
+              className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
+            >
+              Bəli, işi indi bitirirəm
+            </button>
+            <button
+              onClick={() => longChoiceRef.current?.('new')}
+              className="w-full rounded-2xl border border-slate-500 py-4 text-base font-bold text-white"
+            >
+              Xeyr, çıxışı unutmuşam — indi gəlmişəm
+            </button>
+          </div>
+        )}
+
         {phase === 'processing' && (
           <p className="text-lg animate-pulse">Yoxlanılır…</p>
         )}
@@ -1826,6 +1881,9 @@ interface ScanResponse {
   minutes?: number
   /** Past days this employee left open (checked in, never out) — each counts as zero hours. */
   openDays?: number
+  /** «Elastik qrafik», ConfirmLongSession: how long the open session has run, and whether it began today. */
+  hours?: number
+  sameDay?: boolean
   /** QR-less check-in only: the face verdict decided before this reply
    *  (Ok · Mismatch · NoFace · MultiFace · NoReference · Error). Absent on a poster scan. */
   faceMatch?: string
@@ -2060,6 +2118,24 @@ function errorResult(status: number, data: ScanResponse | null, accuracy?: numbe
     case 'TokenExpired':
     case 'TokenReused':
       return { tone: 'yellow', title: 'QR kod köhnəlib', detail: 'Yenidən skan edin.' }
+    case 'ForgottenCheckOutToday':
+      // «Elastik qrafik»: this morning's session was never closed, and one day holds one open session. Nothing was
+      // guessed — the admin puts in the real exit and this arrival.
+      return {
+        tone: 'yellow',
+        title: 'Bu günün girişi açıq qalıb',
+        detail: data?.checkInAtUtc ? `Bu gün ${fmtTime(data.checkInAtUtc, '')}-da etdiyiniz girişin çıxışı qeyd olunmayıb.` : undefined,
+        note: 'Rəhbərinizə deyin: çıxış vaxtını və indiki gəlişinizi qeyd etsin. Skanınız qeydiyyatdadır.',
+        final: true,
+      }
+    case 'ConfirmLongSession':
+      // Only reached without an answer — i.e. never online (the question is asked); kept so a stray reply reads sensibly.
+      return {
+        tone: 'yellow',
+        title: 'Sessiya uzun müddət açıqdır',
+        detail: 'Rəhbərinizə deyin ki, çıxış vaxtını yoxlasın.',
+        final: true,
+      }
     case 'AlreadyCompleted':
       return {
         tone: 'yellow',
@@ -2084,4 +2160,9 @@ function errorResult(status: number, data: ScanResponse | null, accuracy?: numbe
       // QR signature/format failures and anything else — show the reason the backend returned.
       return { tone: 'yellow', title: 'QR kod qəbul edilmədi', detail: err ?? `HTTP ${status}` }
   }
+}
+
+/** «13,5» — hours with at most one decimal, Azerbaijani comma. */
+function formatHours(hours: number): string {
+  return (Math.round(hours * 10) / 10).toString().replace('.', ',')
 }

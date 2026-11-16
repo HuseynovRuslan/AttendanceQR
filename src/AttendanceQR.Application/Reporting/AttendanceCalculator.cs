@@ -309,6 +309,15 @@ public static class AttendanceCalculator
         if (record.CheckOutAtUtc is null)
             return new DayComputation(DailySummaryStatus.Incomplete, 0, 0, 0);
 
+        // «Elastik qrafik»: the day is what was worked, and nothing else. There is no hour the person was due at, so
+        // there is nothing to be late for, nothing to leave early from and nothing to work over. Said outright here
+        // rather than left to the whole-day window the resolver hands out (which already yields these zeros), so the
+        // rule is readable where the day is computed. Minutes are out − in, across midnight if the session crossed
+        // it — the whole session belongs to the day it started on, like every night shift's.
+        if (shift.IsFlexible)
+            return new DayComputation(DailySummaryStatus.OnTime,
+                (int)Math.Round((record.CheckOutAtUtc.Value - record.CheckInAtUtc.Value).TotalMinutes), 0, 0);
+
         // The hours THIS DAY was worked to, not the shift's ordinary ones: a crew whose weekend
         // starts an hour later would otherwise be judged an hour late every Saturday and Sunday.
         // Resolved from the record's own date, which is why it sits below the null checks — with no

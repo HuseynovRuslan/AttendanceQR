@@ -168,6 +168,30 @@ public class DaySummaryTemplateTests
     }
 
     [Fact]
+    public void A_flexible_no_scan_day_gets_its_own_column_after_the_form_never_a_rest_day()
+    {
+        var rows = new List<DayBoardSheet.Row>();
+        rows.AddRange(People("Qala Anbar", "dayOff", 2));
+        rows.AddRange(People("Qala Anbar", "flexNoScan", 1));
+
+        using var wb = Build(rows, Form);
+        var ws = wb.Worksheet("Xülasə");
+        var row = LineRow("Qala Anbar");
+
+        Assert.Equal(2, ws.Cell(row, Col("Həftəlik istirahət")).GetValue<int>());   // not folded into rest
+        Assert.Equal(0, ws.Cell(row, Col("Qayıb")).GetValue<int>());                // nor into absence
+        Assert.Equal(3, ws.Cell(row, Col("İşçi sayı")).GetValue<int>());
+        // After the form's last column, so every column of the form keeps its letter.
+        var flex = Headings.Length + 1;
+        Assert.Equal("Elastik, giriş yoxdur", ws.Cell(2, flex).GetString());
+        Assert.Equal(1, ws.Cell(row, flex).GetValue<int>());
+
+        // A day with nobody in it: the form exactly as it was.
+        using var plain = Build(People("Qala Anbar", "dayOff", 2), Form);
+        Assert.DoesNotContain(plain.Worksheet("Xülasə").Row(2).CellsUsed(), c => c.GetString() == "Elastik, giriş yoxdur");
+    }
+
+    [Fact]
     public void CEMI_adds_up_the_lines_that_have_people_and_the_blank_lines_add_nothing()
     {
         var rows = new List<DayBoardSheet.Row>();

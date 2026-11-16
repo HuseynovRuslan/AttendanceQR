@@ -5,6 +5,7 @@ import {
   getTabel,
   type LocationDto,
   type TabelReport,
+  type TabelRow,
 } from '../../api/admin'
 import { IconDownload } from '../../components/icons'
 import { formatNumber } from '../../lib/numberFormat'
@@ -37,6 +38,13 @@ const CODE_CLASS: Record<string, string> = {
   // absence. Only ever today's column, or yesterday's for the minutes a late-night grace runs past
   // midnight. Neutral on purpose: it must never read as the first stage of a Qayıb.
   'G': 'tb-pending',
+}
+
+/** A flexible day's cell: hours worked read as worked, «0» as a quiet day, «Açıq» as the one thing to fix. */
+function flexibleCellClass(cell: string): string {
+  if (cell === 'Açıq') return 'tb-absent'
+  if (cell === '0') return 'tb-off'
+  return 'tb-work'
 }
 
 /** Weekday initial under each day number, so the eye can find Sundays without counting. */
@@ -104,6 +112,10 @@ export function TabelPage() {
   const RENDER_CAP = 400
   const rows = report ? report.rows.slice(0, RENDER_CAP) : []
   const hiddenRows = report ? report.rows.length - rows.length : 0
+  // The «Norma» column only when somebody on the page is on a flexible shift with a norm.
+  const hasNorm = rows.some((r) => r.normHours != null || r.weeklyNormHours != null)
+  // «Elastik qrafik» with a weekly norm: compared week by week below the grid, never as a month figure.
+  const weekly = rows.filter((r) => r.normWeeks && r.normWeeks.length > 0)
   // What «all» means for this person, and the heading's scope — from the role and /api/me/access,
   // never from the report's scopeLabel (see lib/tabelScope).
   const allLabel = wholeScopeLabel(access)
@@ -170,6 +182,7 @@ export function TabelPage() {
                 <th className="tb-total-col">İş</th>
                 <th className="tb-total-col">Qayıb</th>
                 <th className="tb-total-col">Saat</th>
+                {hasNorm && <th className="tb-total-col" title="Elastik qrafikin saat norması — yalnız müqayisə üçün">Norma</th>}
               </tr>
             </thead>
             <tbody>
@@ -182,6 +195,22 @@ export function TabelPage() {
                   {r.days.map((code, i) => {
                     // A day the person corrected themselves: the code, a star, and a word on hover.
                     const own = r.selfCorrectedDays?.includes(i + 1) === true
+                    // «Elastik qrafik»: the hours worked instead of the code — «8», «0», «Açıq».
+                    const flex = r.flexibleCells?.[i] ?? null
+                    if (flex != null) {
+                      return (
+                        <td
+                          key={i}
+                          className={`${flexibleCellClass(flex)}${own ? ' tb-self' : ''}`}
+                          title={flex === 'Açıq'
+                            ? 'Elastik qrafik — çıxış qeyd olunmayıb, düzəliş gözləyir'
+                            : `Elastik qrafik — ${flex.replace('.', ',')} saat işləyib`}
+                          style={flex === 'Açıq' ? { fontSize: 10 } : undefined}
+                        >
+                          {flex.replace('.', ',')}{own && '*'}
+                        </td>
+                      )
+                    }
                     return (
                       <td
                         key={i}
@@ -195,6 +224,15 @@ export function TabelPage() {
                   <td className="tb-total-col tb-total-work">{r.workedDays}</td>
                   <td className="tb-total-col tb-total-absent">{r.absentDays || ''}</td>
                   <td className="tb-total-col">{r.workedHours ? formatNumber(r.workedHours, 1, { trim: true }) : ''}</td>
+                  {hasNorm && (
+                    <td className="tb-total-col" title={r.normHours != null
+                      ? `Fərq: ${formatNumber((r.workedHours ?? 0) - r.normHours, 1, { trim: true })} saat`
+                      : r.weeklyNormHours != null ? 'Həftəlik norma — həftələr üzrə müqayisə cədvəlin altındadır' : undefined}>
+                      {r.normHours != null
+                        ? formatNumber(r.normHours, 1, { trim: true })
+                        : r.weeklyNormHours != null ? `${formatNumber(r.weeklyNormHours, 1, { trim: true })}/həftə` : ''}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -202,8 +240,17 @@ export function TabelPage() {
         </div>
       )}
 
+      {weekly.length > 0 && <WeeklyNorm rows={weekly} />}
+
       {report && (
         <div className="tb-legend">
+          {/* «Elastik qrafik»: its cells are hours, so the legend says what the three kinds of cell mean. */}
+          {report.rows.some((r) => r.flexibleCells) && (
+            <span className="tb-legend-item">
+              <span className="tb-legend-code tb-work">8</span>
+              Elastik qrafik: işlənmiş saat · «0» — giriş yoxdur · «Açıq» — çıxış qeyd olunmayıb
+            </span>
+          )}
           {report.legend.map((item) => (
             <span key={item.code} className="tb-legend-item">
               <span className={`tb-legend-code ${CODE_CLASS[item.code] ?? ''}`}>{item.code}</span>
@@ -213,5 +260,55 @@ export function TabelPage() {
         </div>
       )}
     </div>
+  )
+}
+
+/** «12.11» — the week's edges, day and month: a week often starts in the month before. */
+function dayMonth(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
+}
+
+/**
+ * «Elastik qrafik» with a weekly norm: each Monday-to-Sunday week's whole total against the norm as set. Never divided
+ * into days — 40 hours is 40 hours however they were spread — and never a violation: a short week is shown, not judged.
+ */
+function WeeklyNorm({ rows }: { rows: TabelRow[] }) {
+  return (
+    <section className="tb-weekly" aria-labelledby="tb-weekly-h">
+      <h3 id="tb-weekly-h" className="tb-weekly-title">Həftəlik norma — faktiki saat</h3>
+      <p className="tb-weekly-note">Bazar ertəsindən bazara qədər ümumi saat. Norma yalnız müqayisə üçündür.</p>
+      <div className="tb-scroll">
+        <table className="tb-grid tb-weekly-grid">
+          <thead>
+            <tr>
+              <th className="tb-name-col">İşçi</th>
+              <th>Həftə</th>
+              <th>Faktiki</th>
+              <th>Norma</th>
+              <th>Fərq</th>
+              <th>Qeyd</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.flatMap((r) => (r.normWeeks ?? []).map((w, i) => {
+              const diff = w.workedHours - w.normHours
+              const note = [!w.finished && 'həftə bitməyib', w.hasLeaveOrHoliday && 'məzuniyyət/bayram var'].filter(Boolean).join(', ')
+              return (
+                <tr key={`${r.employeeId}-${w.from}`}>
+                  {i === 0 && <td className="tb-name-col" rowSpan={r.normWeeks!.length}><div className="tb-name">{r.employeeName}</div></td>}
+                  <td>{dayMonth(w.from)} – {dayMonth(w.to)}</td>
+                  <td>{formatNumber(w.workedHours, 1, { trim: true })}</td>
+                  <td>{formatNumber(w.normHours, 1, { trim: true })}</td>
+                  <td className={w.finished && diff < 0 ? 'tb-weekly-short' : undefined}>
+                    {diff > 0 ? '+' : ''}{formatNumber(diff, 1, { trim: true })}
+                  </td>
+                  <td className="tb-weekly-flag">{note}</td>
+                </tr>
+              )
+            }))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }

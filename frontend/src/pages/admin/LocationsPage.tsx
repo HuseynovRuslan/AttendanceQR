@@ -454,7 +454,7 @@ export function LocationsPage() {
               <option value="">Qrafik seçin…</option>
               {schedules.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.isOvernight ? '🌙 ' : ''}{s.name} ({s.shiftStart}–{s.shiftEnd})
+                  {s.isOvernight ? '🌙 ' : ''}{s.name} ({s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}`})
                 </option>
               ))}
             </select>

@@ -52,6 +52,11 @@ namespace AttendanceQR.Api.Contracts;
 /// The employee answered «bəli, çıxıram» to the phone's question — needed for a check-out within two
 /// hours of arriving, which is otherwise read as a «did it work?» retry. See EarlyCheckOutRules.
 /// </param>
+/// <param name="LongSession">
+/// «Elastik qrafik» only — the employee's answer to «finishing the session you started at …?», asked when it has run
+/// longer than FlexibleScanRules.ConfirmAfterHours: "close" (yes, I am leaving now) or "new" (no — I forgot to sign out,
+/// I am arriving). Null until asked. No validation attribute on purpose: see the record-validation note above.
+/// </param>
 public record ScanRequest(
     string? QrToken,
     string DeviceFingerprint,
@@ -61,4 +66,5 @@ public record ScanRequest(
     Guid? ClientScanId = null,
     DateTime? ClientTimestampUtc = null,
     bool Offline = false,
-    bool ConfirmEarlyCheckOut = false);
+    bool ConfirmEarlyCheckOut = false,
+    string? LongSession = null);

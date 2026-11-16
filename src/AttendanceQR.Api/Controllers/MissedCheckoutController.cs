@@ -2,6 +2,7 @@ using AttendanceQR.Api.Contracts;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Application.Reporting;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -33,6 +34,18 @@ public class MissedCheckoutController : ControllerBase
     }
 
     /// <summary>The company day — what AttendanceDate is stamped with. See AttendanceController.Scan.</summary>
+    /// <summary>Was this person on «Elastik qrafik» on <paramref name="date"/>? Resolved like the scan resolves it.</summary>
+    private async Task<bool> IsFlexibleOnAsync(Guid employeeId, DateOnly date)
+    {
+        var ct = HttpContext.RequestAborted;
+        var employee = await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId, ct);
+        if (employee is null) return false;
+        var location = await _db.Locations.AsNoTracking().FirstOrDefaultAsync(l => l.Id == employee.LocationId, ct);
+        if (location is null) return false;
+        var schedule = await ShiftResolver.ScheduleOnAsync(_db, employeeId, employee.ScheduleId, date, ct);
+        return EffectiveShift.Resolve(employee, schedule, location).IsFlexible;
+    }
+
     private DateOnly TodayLocal() =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone));
 
@@ -51,6 +64,13 @@ public class MissedCheckoutController : ControllerBase
             .OrderByDescending(r => r.AttendanceDate)
             .Select(r => new { r.Id, r.AttendanceDate, r.CheckInAtUtc })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        // «Elastik qrafik»: last night's session is not a forgotten check-out while a scan can still close it — the
+        // person may be at work right now. Only once FlexibleScanRules says it is stale does the banner speak.
+        if (open?.CheckInAtUtc is DateTime openedAt && open.AttendanceDate == today.AddDays(-1)
+            && !FlexibleScanRules.IsForgotten(openedAt, open.AttendanceDate, DateTime.UtcNow, today)
+            && await IsFlexibleOnAsync(employeeId, open.AttendanceDate))
+            open = null;
 
         var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var monthlyCount = await CountThisMonthAsync(employeeId, monthStart, HttpContext.RequestAborted);
