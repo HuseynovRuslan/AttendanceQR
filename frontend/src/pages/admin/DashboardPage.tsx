@@ -28,12 +28,12 @@ import { HrStatsSection } from './HrStatsSection'
  * restated the same numbers a third time and nobody read them.
  */
 
-type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'dayOff' | 'trip'
+type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 'sick' | 'vacation' | 'unpaid' | 'permission' | 'rest' | 'dayOff' | 'flexNoScan' | 'trip'
 
 const BUCKET_LABEL: Record<Bucket, string> = {
   total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir', onboarding: 'Aktivləşdirməyib',
   sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə',
-  rest: 'İstirahət (təyin edilmiş)', dayOff: 'Həftəlik istirahət',
+  rest: 'İstirahət (təyin edilmiş)', dayOff: 'Həftəlik istirahət', flexNoScan: 'Elastik, giriş yoxdur',
   trip: 'Ezamiyyət',
 }
 
@@ -54,7 +54,7 @@ const BUCKET_LABEL: Record<Bucket, string> = {
 export const PILL_BUCKET: Record<Exclude<Bucket, 'total'>, TodayBucket> = {
   in: 'incomplete', done: 'present', absent: 'absent', pending: 'pending', onboarding: 'onboarding',
   sick: 'sick', vacation: 'onLeave', unpaid: 'unpaid', permission: 'permission',
-  rest: 'rest', dayOff: 'dayOff', trip: 'trip',
+  rest: 'rest', dayOff: 'dayOff', flexNoScan: 'flexNoScan', trip: 'trip',
 }
 
 function rowInBucket(r: DayAttendanceRow, bucket: Bucket): boolean {
@@ -220,7 +220,8 @@ export function DashboardPage() {
   // faizinin məxrəcində olmaları faizi mənasız edərdi.
   // «Gözlənilir» is not expected YET (PendingRule): counting it as expected-but-absent made the morning
   // rate read low for every shift that starts later in the day — the server's trend already agrees.
-  const notExpected = counts.dayOff + onLeaveTotal + counts.permission + counts.onboarding + counts.pending
+  // «Elastik qrafik» with no scan: nobody was due, so they are not in the rate's denominator either.
+  const notExpected = counts.dayOff + counts.flexNoScan + onLeaveTotal + counts.permission + counts.onboarding + counts.pending
   const expected = total - notExpected
   const attended = counts.present + counts.incomplete
   const overallRate = expected ? Math.round((attended / expected) * 100) : 0
@@ -468,6 +469,7 @@ export function DashboardPage() {
             the record to be able to see. The roster's own day off follows it, and says so. */}
         {counts.rest > 0 && <Pill tone="purple" n={counts.rest} label="İstirahət (təyin edilmiş)" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
         {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="Həftəlik istirahət" active={openBucket === 'dayOff'} onClick={() => openPill('dayOff')} />}
+        {counts.flexNoScan > 0 && <Pill tone="purple" n={counts.flexNoScan} label="Elastik, giriş yoxdur" active={openBucket === 'flexNoScan'} onClick={() => openPill('flexNoScan')} />}
         <Pill tone="leaf" n={<CountUp value={counts.present} />} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
       </section>
 

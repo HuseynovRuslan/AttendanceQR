@@ -165,6 +165,8 @@ export interface MyProfile {
    *  check-in is overdue (shift is over) and nudge them to check out. */
   shiftStart?: string | null
   shiftEnd?: string | null
+  /** «Elastik qrafik»: no hours (shiftStart/shiftEnd are null) — come and go any time, several sessions a day. */
+  isFlexible?: boolean
 }
 
 /** Records the employee's acceptance of the data-processing notice. Idempotent — the first

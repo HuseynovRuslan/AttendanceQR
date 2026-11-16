@@ -136,7 +136,8 @@ public class ShiftPlanController : ControllerBase
                 var hours = shift.HoursOn(date);
                 var holiday = holidays.GetValueOrDefault(date);
                 var rest = planned is Guid pid && schedules.TryGetValue(pid, out var plannedSchedule) && plannedSchedule.IsRestDay;
-                var working = shift.IsWorkingDay(date) && holiday is null;
+                // «Elastik qrafik» has no day off of its own: any day is one the person may come — but a holiday still is one.
+                var working = (shift.IsWorkingDay(date) || shift.IsFlexible) && holiday is null;
                 var leave = leaves.FirstOrDefault(l => l.EmployeeId == p.Id && l.FromDate <= date && l.ToDate >= date);
                 worked.TryGetValue((p.Id, date), out var times);
                 return new
@@ -145,9 +146,10 @@ public class ShiftPlanController : ControllerBase
                     kind = planned is null ? (working ? "base" : "off") : rest ? "rest" : "plan",
                     scheduleId = rest ? null : planned ?? map.EffectiveScheduleId(p.Id, date, p.ScheduleId),
                     shift = rest ? "İstirahət" : schedule?.Name,
-                    start = rest ? null : hours.Start.ToString("HH:mm"),
-                    end = rest ? null : hours.End.ToString("HH:mm"),
+                    start = rest || shift.IsFlexible ? null : hours.Start.ToString("HH:mm"),
+                    end = rest || shift.IsFlexible ? null : hours.End.ToString("HH:mm"),
                     overnight = !rest && shift.IsOvernightOn(date),
+                    flexible = !rest && shift.IsFlexible,
                     working,
                     holiday,
                     leave = leave?.Type.ToString(),
@@ -169,7 +171,7 @@ public class ShiftPlanController : ControllerBase
                 .Select(s => new
                 {
                     id = s.Id, name = s.Name, start = s.ShiftStart.ToString("HH:mm"), end = s.ShiftEnd.ToString("HH:mm"),
-                    overnight = s.ShiftEnd < s.ShiftStart, locationId = s.LocationId,
+                    overnight = s.ShiftEnd < s.ShiftStart, locationId = s.LocationId, flexible = s.IsFlexible,
                 }),
             employees = rows,
         });
@@ -366,6 +368,9 @@ public class ShiftPlanController : ControllerBase
                 return StandingShifts.DayLabel(token, catalogue);
             var own = standingOnly.ScheduleFor(person.Id, date, person.ScheduleId, catalogue);
             var shift = EffectiveShift.Resolve(person, own, place);
+            // «Elastik qrafik» has no days to be off on and no hours to print.
+            if (shift.IsFlexible)
+                return $"Öz növbəsi: {StandingShifts.FlexibleName(own?.Name)}";
             if (!shift.IsWorkingDay(date))
                 return "Öz növbəsi: İstirahət günü";
             var hours = shift.HoursOn(date);

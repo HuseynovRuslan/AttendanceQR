@@ -397,8 +397,10 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         using var workbook = new XLWorkbook();
         var ws = workbook.Worksheets.Add("Tabel");
         var days = report.DaysInMonth;
-        // Columns: name, position, then one per day, then three totals.
-        var totalCols = 2 + days + 3;
+        // Columns: name, position, then one per day, then three totals — and a fourth, «Norma», only when somebody on
+        // the sheet is on a flexible shift with an hour norm (every fixed-hours sheet is exactly what it was).
+        var hasNorm = report.Rows.Any(r => r.NormHours is not null);
+        var totalCols = 2 + days + 3 + (hasNorm ? 1 : 0);
 
         // Title across the whole grid.
         var monthName = AzMonths[Math.Clamp(report.Month - 1, 0, 11)];
@@ -416,6 +418,8 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.Cell(hr, 2 + days + 1).Value = "İş günü";
         ws.Cell(hr, 2 + days + 2).Value = "Qayıb";
         ws.Cell(hr, 2 + days + 3).Value = "Saat";
+        if (hasNorm)
+            ws.Cell(hr, 2 + days + 4).Value = "Norma";
 
         var header = ws.Range(hr, 1, hr, totalCols);
         header.Style.Font.Bold = true;
@@ -433,7 +437,9 @@ public sealed class ExcelReportExporter : IExcelReportExporter
                 var cell = ws.Cell(row, 3 + d);
                 // A day the person corrected themselves: the code, a star, and a colour — on paper too.
                 var own = r.SelfCorrectedDays?.Contains(d + 1) == true;
-                cell.Value = own ? r.Days[d] + "*" : r.Days[d];
+                // «Elastik qrafik»: the hours worked instead of the code — «8», «0», «Açıq».
+                var shown = r.FlexibleCells?[d] ?? r.Days[d];
+                cell.Value = own ? shown + "*" : shown;
                 if (own)
                     cell.Style.Fill.BackgroundColor = XLColor.LightPink;
                 // «G» — Gözlənilir: the shift has not started yet. Neutral grey, so it never reads as the
@@ -445,6 +451,8 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             ws.Cell(row, 2 + days + 1).Value = r.WorkedDays;
             ws.Cell(row, 2 + days + 2).Value = r.AbsentDays;
             ws.Cell(row, 2 + days + 3).Value = r.WorkedHours;
+            if (hasNorm && r.NormHours is double norm)
+                ws.Cell(row, 2 + days + 4).Value = norm;
             row++;
         }
 
@@ -460,6 +468,13 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         ws.Cell(lr, 1).Value = "İşarələr:";
         ws.Cell(lr, 1).Style.Font.Bold = true;
         lr++;
+        if (report.Rows.Any(r => r.FlexibleCells is not null))
+        {
+            ws.Cell(lr, 1).Value = "8 / 0 / Açıq";
+            ws.Cell(lr, 1).Style.Font.Bold = true;
+            ws.Cell(lr, 2).Value = "Elastik qrafik: işlənmiş saat / giriş yoxdur / çıxış qeyd olunmayıb";
+            lr++;
+        }
         foreach (var item in report.Legend)
         {
             ws.Cell(lr, 1).Value = item.Code;

@@ -54,6 +54,18 @@ const ERRORS: Record<string, string> = {
   WorkCycleOnDaysInvalid: 'İş günlərinin sayı dövrədən az olmalıdır',
   WorkCycleAnchorRequired: 'Dövrə üçün işlədiyi bir gün seçilməlidir',
   ScheduleNotFound: 'Növbə tapılmadı',
+  FlexibleNormTooLarge: 'Norma çox böyükdür — gün üçün ən çox 24, həftə üçün ən çox 168 saat',
+  FlexibleNormNegative: 'Norma mənfi ola bilməz',
+  FlexibleNormPeriodInvalid: 'Norma gün və ya həftə üçün olmalıdır',
+}
+
+type NormKind = 'none' | 'day' | 'week'
+
+/** «norma 8 saat/gün», «norma 40 saat/həftə», «normasız» — how a flexible shift's norm reads in the list. */
+function normLabel(s: Pick<Schedule, 'flexibleNormMinutes' | 'flexibleNormPeriod'>): string {
+  if (!s.flexibleNormMinutes) return 'normasız'
+  const h = Math.round((s.flexibleNormMinutes / 60) * 100) / 100
+  return `norma ${String(h).replace('.', ',')} saat/${s.flexibleNormPeriod === 'week' ? 'həftə' : 'gün'}`
 }
 
 type FormState = {
@@ -70,6 +82,11 @@ type FormState = {
   cycle: WorkCycleValue
   /** Days whose hours differ, keyed by .NET day number as a string ("0" = Sunday … "6" = Saturday). */
   dayHours: Record<string, { start: string; end: string }>
+  /** «Elastik qrafik» — no hours; see Schedule.isFlexible. */
+  flexible: boolean
+  normKind: NormKind
+  /** Hours, as typed («8», «7,5»). */
+  normHours: string
 }
 
 const EMPTY: FormState = {
@@ -83,6 +100,9 @@ const EMPTY: FormState = {
   workDaysMask: 126,
   cycle: NO_CYCLE,
   dayHours: {},
+  flexible: false,
+  normKind: 'none',
+  normHours: '8',
 }
 
 function ShiftTemplates() {
@@ -179,6 +199,11 @@ function ShiftTemplates() {
         ? { days: s.workCycleDays, onDays: s.workCycleOnDays ?? 1, anchor: s.workCycleAnchor ?? '' }
         : NO_CYCLE,
       dayHours: { ...(s.dayHours ?? {}) },
+      flexible: !!s.isFlexible,
+      normKind: s.isFlexible && s.flexibleNormMinutes ? (s.flexibleNormPeriod === 'week' ? 'week' : 'day') : 'none',
+      normHours: s.isFlexible && s.flexibleNormMinutes
+        ? String(Math.round((s.flexibleNormMinutes / 60) * 100) / 100).replace('.', ',')
+        : s.flexibleNormPeriod === 'week' ? '40' : '8',
     })
     setErr(null); setOk(null)
     setShowForm(true)
@@ -206,7 +231,42 @@ function ShiftTemplates() {
 
   async function save() {
     if (!form.name.trim()) { setErr('Ad tələb olunur'); return }
+    // A flexible shift's norm, in minutes — checked here so the admin sees the problem before the round trip.
+    let normMinutes: number | null = null
+    if (form.flexible && form.normKind !== 'none') {
+      const hours = Number(form.normHours.replace(',', '.'))
+      const max = form.normKind === 'week' ? 168 : 24
+      if (!Number.isFinite(hours) || hours <= 0 || hours > max) {
+        setErr(`Norma 0-dan böyük və ${max} saatdan az olmalıdır`)
+        return
+      }
+      normMinutes = Math.round(hours * 60)
+    }
     setSaving(true); setErr(null)
+    if (form.flexible) {
+      // No hours, no rotation, no second stretch and no per-day hours: the server stores the whole day. The mask is
+      // kept only for a DAILY norm (the days it applies on).
+      const flexiblePayload: ScheduleInput = {
+        name: form.name.trim(),
+        locationId: form.locationId || null,
+        shiftStart: '00:00',
+        shiftEnd: '23:59',
+        secondShiftStart: null,
+        secondShiftEnd: null,
+        lateThresholdMinutes: Number(form.lateThresholdMinutes) || 0,
+        workDaysMask: form.workDaysMask,
+        workCycleDays: null,
+        workCycleOnDays: null,
+        workCycleAnchor: null,
+        dayHours: {},
+        isFlexible: true,
+        flexibleNormMinutes: normMinutes,
+        flexibleNormPeriod: form.normKind === 'week' ? 'week' : 'day',
+      }
+      const res = editingId ? await api.update(editingId, flexiblePayload) : await api.create(flexiblePayload)
+      afterSave(res)
+      return
+    }
     const payload: ScheduleInput = {
       name: form.name.trim(),
       locationId: form.locationId || null,
@@ -224,15 +284,22 @@ function ShiftTemplates() {
       // A rotation replaces the weekly calendar, so "this weekday is different" has nothing to attach
       // to — the form hides the section then, and this makes sure a leftover cannot be saved either.
       dayHours: form.cycle.days ? {} : form.dayHours,
+      // Said outright, so turning «Elastik» off on an existing shift really turns it off.
+      isFlexible: false,
     }
     const res = editingId ? await api.update(editingId, payload) : await api.create(payload)
+    afterSave(res)
+  }
+
+  function afterSave(res: { status: number; data?: unknown }) {
+    const data = res.data as { error?: string } | undefined
     setSaving(false)
-    if (res.status === 200 && res.data && !('error' in res.data)) {
+    if (res.status === 200 && data && !('error' in data)) {
       setOk(editingId ? 'Növbə yeniləndi' : 'Növbə yaradıldı')
       setShowForm(false)
       void refresh()
     } else {
-      const code = res.data && 'error' in res.data ? res.data.error : ''
+      const code = data && 'error' in data ? data.error ?? '' : ''
       setErr(ERRORS[code] ?? 'Yadda saxlanmadı')
     }
   }
@@ -326,6 +393,7 @@ function ShiftTemplates() {
                 ))}
               </select>
             </div>
+            {!form.flexible && (
             <div>
               <label className="form-label">Gecikmə həddi (dəq)</label>
               <input
@@ -336,8 +404,31 @@ function ShiftTemplates() {
                 onChange={(e) => setForm((f) => ({ ...f, lateThresholdMinutes: e.target.value }))}
               />
             </div>
+            )}
           </div>
 
+          {/* İş rejimi. «Sabit saatlar» is every shift there has ever been; «Elastik» has no hours at all, so
+              everything below that describes hours is hidden rather than left to be filled in for nothing. */}
+          <div style={{ marginBottom: 14 }}>
+            <label className="form-label">İş rejimi</label>
+            <div className="seg" role="group" aria-label="İş rejimi" style={{ maxWidth: 360 }}>
+              <button type="button" className="seg-btn" aria-pressed={!form.flexible}
+                onClick={() => setForm((f) => ({ ...f, flexible: false }))}>Sabit saatlar</button>
+              <button type="button" className="seg-btn" aria-pressed={form.flexible}
+                onClick={() => setForm((f) => ({ ...f, flexible: true }))}>Elastik</button>
+            </div>
+          </div>
+
+          {form.flexible && (
+            <FlexibleFields
+              form={form}
+              setForm={setForm}
+              onToggleDay={toggleDay}
+              editing={editingId != null}
+            />
+          )}
+
+          {!form.flexible && (<>
           <div className="form-row cols2">
             <div>
               <label className="form-label">Başlama</label>
@@ -454,6 +545,7 @@ function ShiftTemplates() {
           )}
 
           <WorkCyclePicker value={form.cycle} onChange={(cycle) => setForm((f) => ({ ...f, cycle }))} />
+          </>)}
 
           {err && <div className="fb fb-err" style={{ marginTop: 10 }}><IconX /><span>{err}</span></div>}
 
@@ -507,6 +599,12 @@ function ShiftTemplates() {
                         </div>
                       </td>
                       <td data-label="Saatlar">
+                        {s.isFlexible ? (
+                          <>
+                            <span className="pill pill-info">Elastik</span>
+                            <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 4 }}>{normLabel(s)}</div>
+                          </>
+                        ) : (<>
                         {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
                         {/* A split day's second stretch. Shown on its own line rather than appended:
                             the two are hours apart with the crew at home in between, and «07:00–11:00
@@ -516,8 +614,13 @@ function ShiftTemplates() {
                             + {s.secondShiftStart}–{s.secondShiftEnd} 🌙
                           </div>
                         )}
+                        </>)}
                       </td>
-                      <td data-label="Günlər">{daysLabel(s)}</td>
+                      <td data-label="Günlər">
+                        {s.isFlexible
+                          ? s.flexibleNormMinutes && s.flexibleNormPeriod !== 'week' ? `Norma: ${daysLabel(s)}` : 'İstənilən gün'
+                          : daysLabel(s)}
+                      </td>
                       <td data-label="İşçi">
                         <span style={{ fontWeight: 700 }}>{people.length}</span>
                         {people.length > 0 && (
@@ -568,6 +671,84 @@ function ShiftTemplates() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The «Elastik» half of the shift form: what the mode means, in one sentence the admin can repeat to staff, and the
+ * optional hour norm. Kept apart so the fixed-hours form above stays exactly as it was.
+ */
+function FlexibleFields({ form, setForm, onToggleDay, editing }: {
+  form: FormState
+  setForm: (update: (f: FormState) => FormState) => void
+  onToggleDay: (bit: number) => void
+  editing: boolean
+}) {
+  const kinds: { key: NormKind; label: string }[] = [
+    { key: 'none', label: 'Normasız' },
+    { key: 'day', label: 'Gündəlik' },
+    { key: 'week', label: 'Həftəlik' },
+  ]
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div className="fb fb-info" style={{ marginBottom: 14 }}>
+        <span>
+          İşçi <b>istənilən saatda</b> gəlib-gedir, gündə bir neçə dəfə də ola bilər. Gecikmə, tez çıxma və qayıb
+          hesablanmır — yalnız <b>faktiki işlənmiş saatlar</b>. Gəlmədiyi gün 0 saatdır; gecə yarısını keçən iş
+          başladığı günə yazılır.
+          {editing && <> Dəyişiklik <b>bu gündən</b> qüvvəyə minir — keçmiş günlər əvvəlki qaydada qalır.</>}
+        </span>
+      </div>
+
+      <label className="form-label">Saat norması <span className="muted">(istəyə bağlı — yalnız müqayisə üçün)</span></label>
+      <div className="seg" role="group" aria-label="Saat norması" style={{ maxWidth: 360, marginBottom: 10 }}>
+        {kinds.map((k) => (
+          <button key={k.key} type="button" className="seg-btn" aria-pressed={form.normKind === k.key}
+            onClick={() => setForm((f) => ({
+              ...f,
+              normKind: k.key,
+              // A sensible starting figure when switching between day and week.
+              normHours: k.key === 'week' && f.normKind !== 'week' ? '40' : k.key === 'day' && f.normKind !== 'day' ? '8' : f.normHours,
+            }))}>{k.label}</button>
+        ))}
+      </div>
+
+      {form.normKind !== 'none' && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <input
+            className="inp"
+            inputMode="decimal"
+            style={{ width: 110 }}
+            aria-label="Norma, saat"
+            value={form.normHours}
+            onChange={(e) => setForm((f) => ({ ...f, normHours: e.target.value }))}
+          />
+          <span className="muted">saat / {form.normKind === 'week' ? 'həftə' : 'gün'}</span>
+        </div>
+      )}
+
+      {form.normKind === 'day' && (
+        <div style={{ marginBottom: 6 }}>
+          <label className="form-label">Norma hansı günlərə aiddir</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {DAYS.map((d, i) => {
+              const on = (form.workDaysMask & (1 << BIT[i])) !== 0
+              return (
+                <button key={d} type="button" className={on ? 'chip active' : 'chip'} onClick={() => onToggleDay(BIT[i])}>
+                  {d}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="muted" style={{ fontSize: 12, lineHeight: 1.6 }}>
+        {form.normKind === 'none'
+          ? 'Hesabatda yalnız işlənmiş saatlar göstərilir.'
+          : 'Hesabat və tabeldə «Norma» ilə müqayisə göstərilir. Normanın tamamlanmaması gecikmə və ya qayıb sayılmır.'}
+      </div>
     </div>
   )
 }

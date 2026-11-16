@@ -1951,6 +1951,15 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<string>("DayHours")
                         .HasColumnType("text");
 
+                    b.Property<int?>("FlexibleNormMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FlexibleNormPeriod")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsFlexible")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsRestDay")
                         .HasColumnType("boolean");
 

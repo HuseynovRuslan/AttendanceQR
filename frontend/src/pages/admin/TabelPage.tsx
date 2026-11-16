@@ -39,6 +39,13 @@ const CODE_CLASS: Record<string, string> = {
   'G': 'tb-pending',
 }
 
+/** A flexible day's cell: hours worked read as worked, «0» as a quiet day, «Açıq» as the one thing to fix. */
+function flexibleCellClass(cell: string): string {
+  if (cell === 'Açıq') return 'tb-absent'
+  if (cell === '0') return 'tb-off'
+  return 'tb-work'
+}
+
 /** Weekday initial under each day number, so the eye can find Sundays without counting. */
 const WEEKDAY_AZ = ['B', 'Be', 'Ça', 'Çə', 'Ca', 'Cü', 'Ş'] // Sunday..Saturday
 
@@ -104,6 +111,8 @@ export function TabelPage() {
   const RENDER_CAP = 400
   const rows = report ? report.rows.slice(0, RENDER_CAP) : []
   const hiddenRows = report ? report.rows.length - rows.length : 0
+  // The «Norma» column only when somebody on the page is on a flexible shift with a norm.
+  const hasNorm = rows.some((r) => r.normHours != null)
   // What «all» means for this person, and the heading's scope — from the role and /api/me/access,
   // never from the report's scopeLabel (see lib/tabelScope).
   const allLabel = wholeScopeLabel(access)
@@ -170,6 +179,7 @@ export function TabelPage() {
                 <th className="tb-total-col">İş</th>
                 <th className="tb-total-col">Qayıb</th>
                 <th className="tb-total-col">Saat</th>
+                {hasNorm && <th className="tb-total-col" title="Elastik qrafikin saat norması — yalnız müqayisə üçün">Norma</th>}
               </tr>
             </thead>
             <tbody>
@@ -182,6 +192,22 @@ export function TabelPage() {
                   {r.days.map((code, i) => {
                     // A day the person corrected themselves: the code, a star, and a word on hover.
                     const own = r.selfCorrectedDays?.includes(i + 1) === true
+                    // «Elastik qrafik»: the hours worked instead of the code — «8», «0», «Açıq».
+                    const flex = r.flexibleCells?.[i] ?? null
+                    if (flex != null) {
+                      return (
+                        <td
+                          key={i}
+                          className={`${flexibleCellClass(flex)}${own ? ' tb-self' : ''}`}
+                          title={flex === 'Açıq'
+                            ? 'Elastik qrafik — çıxış qeyd olunmayıb, düzəliş gözləyir'
+                            : `Elastik qrafik — ${flex.replace('.', ',')} saat işləyib`}
+                          style={flex === 'Açıq' ? { fontSize: 10 } : undefined}
+                        >
+                          {flex.replace('.', ',')}{own && '*'}
+                        </td>
+                      )
+                    }
                     return (
                       <td
                         key={i}
@@ -195,6 +221,13 @@ export function TabelPage() {
                   <td className="tb-total-col tb-total-work">{r.workedDays}</td>
                   <td className="tb-total-col tb-total-absent">{r.absentDays || ''}</td>
                   <td className="tb-total-col">{r.workedHours ? formatNumber(r.workedHours, 1, { trim: true }) : ''}</td>
+                  {hasNorm && (
+                    <td className="tb-total-col" title={r.normHours != null
+                      ? `Fərq: ${formatNumber((r.workedHours ?? 0) - r.normHours, 1, { trim: true })} saat`
+                      : undefined}>
+                      {r.normHours != null ? formatNumber(r.normHours, 1, { trim: true }) : ''}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -204,6 +237,13 @@ export function TabelPage() {
 
       {report && (
         <div className="tb-legend">
+          {/* «Elastik qrafik»: its cells are hours, so the legend says what the three kinds of cell mean. */}
+          {report.rows.some((r) => r.flexibleCells) && (
+            <span className="tb-legend-item">
+              <span className="tb-legend-code tb-work">8</span>
+              Elastik qrafik: işlənmiş saat · «0» — giriş yoxdur · «Açıq» — çıxış qeyd olunmayıb
+            </span>
+          )}
           {report.legend.map((item) => (
             <span key={item.code} className="tb-legend-item">
               <span className={`tb-legend-code ${CODE_CLASS[item.code] ?? ''}`}>{item.code}</span>

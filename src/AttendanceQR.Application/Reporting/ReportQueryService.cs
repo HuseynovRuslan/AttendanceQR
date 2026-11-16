@@ -649,6 +649,10 @@ public sealed class ReportQueryService : IReportQueryService
     // paylanmayıb — bu günlər tabeldə də, maaşda da heç kimin əleyhinə işləmir.
     private const string CodeNotActivated = "–";
 
+    /// <summary>A flexible day's hours as the tabel prints them: «8», «7.5» — one decimal, none when whole.</summary>
+    private static string FormatHours(int minutes)
+        => Math.Round(minutes / 60.0, 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
     private static readonly IReadOnlyList<TabelLegendItem> TabelLegend = new[]
     {
         new TabelLegendItem(CodeWorked, "İşlədi"),
@@ -774,11 +778,21 @@ public sealed class ReportQueryService : IReportQueryService
         // Fast lookup of the computed day per (employee, date).
         var byKey = dayRows.ToDictionary(r => (r.EmployeeId, r.Date));
 
+        // Company holidays, for the flexible norm: a bayram is not a day anybody is expected to make hours on.
+        var monthHolidays = await _db.NonWorkingDays
+            .Where(n => n.Date >= from && n.Date <= to)
+            .Select(n => new { n.Date, n.LocationId })
+            .ToListAsync(ct);
+
         var rows = new List<TabelRow>(employees.Count);
         foreach (var e in employees.OrderBy(e => e.FullName))
         {
             var codes = new string[daysInMonth];
             int worked = 0, absent = 0, leave = 0, workedMinutes = 0;
+            // «Elastik qrafik»: the hours to print on a flexible day instead of its code, and the norm so far.
+            string?[]? flexCells = null;
+            double normMinutes = 0;
+            var anyNorm = false;
 
             for (var day = 1; day <= daysInMonth; day++)
             {
@@ -862,6 +876,46 @@ public sealed class ReportQueryService : IReportQueryService
                 if (code == CodeWorked) worked++;
                 else if (code == CodeAbsent) absent++;
                 else if (code is CodeVacation or CodeSick or CodeUnpaid or CodePermission or CodeBusinessTrip) leave++;
+
+                // «Elastik qrafik» — asked of the shift THIS DAY was worked under (a revision answers for a day before
+                // the company switched), so a month that changed mode mid-way prints codes up to the switch and
+                // hours after it.
+                var dayLocation = locationEntityById.GetValueOrDefault(locationById.GetValueOrDefault(e.Id));
+                if (dayLocation is not null)
+                {
+                    var dayShift = EffectiveShift.Resolve(
+                        e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                        tabelOverrides.ScheduleFor(e.Id, date, e.ScheduleId, tabelSchedules), dayLocation);
+                    if (dayShift.IsFlexible)
+                    {
+                        flexCells ??= new string?[daysInMonth];
+                        var dayMinutes = byKey.TryGetValue((e.Id, date), out var fd) ? fd.WorkedMinutes : 0;
+                        flexCells[day - 1] = code switch
+                        {
+                            // A session nobody closed is not «0 saat»: it is an open question for the admin.
+                            CodeWorked when byKey.TryGetValue((e.Id, date), out var od)
+                                            && od.Status == DailySummaryStatus.Incomplete => "Açıq",
+                            CodeWorked => FormatHours(dayMinutes),
+                            // No scan on a flexible day: nothing was due, nothing was missed — just no hours.
+                            CodeWeekend => "0",
+                            // Leave, a granted rest day, «–»: the code says it.
+                            _ => null,
+                        };
+
+                        // The norm, for comparison only. Leave and holidays are not days anybody is expected to make
+                        // hours on; a weekly norm is spread over the week's seven days.
+                        var onLeave = HasLeave(e.Id, date);
+                        var holiday = monthHolidays.Any(h => h.Date == date && (h.LocationId == null || h.LocationId == dayLocation.Id));
+                        if (dayShift.NormMinutes is int norm && !onLeave && !holiday)
+                        {
+                            anyNorm = true;
+                            if (dayShift.NormPeriod == FlexibleNormPeriod.Week)
+                                normMinutes += norm / 7.0;
+                            else if (dayShift.IsNormDay(date))
+                                normMinutes += norm;
+                        }
+                    }
+                }
             }
 
             // Admin-declared holidays turn a weekend/absent cell into B. Applied last so it wins over
@@ -871,7 +925,9 @@ public sealed class ReportQueryService : IReportQueryService
                 positionById.GetValueOrDefault(e.Id),
                 locationNames.GetValueOrDefault(e.LocationId, ""),
                 codes, worked, absent, leave, Math.Round(workedMinutes / 60.0, 1),
-                selfDays.Where(x => x.EmployeeId == e.Id).Select(x => x.Date.Day).Order().ToList()));
+                selfDays.Where(x => x.EmployeeId == e.Id).Select(x => x.Date.Day).Order().ToList(),
+                flexCells,
+                anyNorm ? Math.Round(normMinutes / 60.0, 1) : null));
         }
 
         // Overlay admin-declared non-working days (bayram) as B, on the cells that are otherwise empty
@@ -901,6 +957,7 @@ public sealed class ReportQueryService : IReportQueryService
             var row = rows[i];
             var empLoc = locationByEmployee.GetValueOrDefault(row.EmployeeId);
             var codes = row.Days.ToArray();
+            var flex = row.FlexibleCells?.ToArray();
             foreach (var h in holidays)
             {
                 if (h.Date > today) continue;
@@ -912,9 +969,14 @@ public sealed class ReportQueryService : IReportQueryService
                 // granted off does not undo the granting, and overwriting it lost the day twice, first
                 // into the weekend and then into the holiday.
                 if (codes[idx] == CodeWeekend)
+                {
                     codes[idx] = CodeHoliday;
+                    // A flexible day with no scan that is a bayram reads «B», not «0».
+                    if (flex is not null && flex[idx] == "0")
+                        flex[idx] = null;
+                }
             }
-            rows[i] = row with { Days = codes };
+            rows[i] = row with { Days = codes, FlexibleCells = flex };
         }
     }
 
@@ -1487,7 +1549,8 @@ public sealed class ReportQueryService : IReportQueryService
                     hours.Start.ToString("HH:mm"), hours.End.ToString("HH:mm"), d.Shift.ScheduleName,
                     d.Shift.HasSecondWindow ? d.Shift.SecondStart!.Value.ToString("HH:mm") : null,
                     d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null,
-                    selfCorrected.Contains(d.Employee.Id));
+                    selfCorrected.Contains(d.Employee.Id),
+                    d.Shift.IsFlexible);
             })
             .OrderBy(r => r.EmployeeName)
             .ToList();
@@ -1530,8 +1593,12 @@ public sealed class ReportQueryService : IReportQueryService
             // Yesterday's date on both counts: the shift that is still running started then, and on a
             // schedule with per-day hours it is yesterday's pair that says whether it crosses midnight
             // and when it ends.
-            .Where(d => d.Shift.CrossesIntoNextMorningOn(day.AddDays(-1))
-                        && WithinOvernightWindow(d.Shift, nowLocal, day.AddDays(-1)))
+            .Where(d => d.Shift.IsFlexible
+                // «Elastik qrafik»: last night's session is still running for as long as a scan could still close
+                // it — the same rule the scan applies (FlexibleScanRules), so the board and the poster agree.
+                ? !FlexibleScanRules.IsForgotten(d.Record!.CheckInAtUtc!.Value, day.AddDays(-1), NowUtc(), day)
+                : d.Shift.CrossesIntoNextMorningOn(day.AddDays(-1))
+                  && WithinOvernightWindow(d.Shift, nowLocal, day.AddDays(-1)))
             .ToDictionary(d => d.Employee.Id);
         if (stillOpen.Count == 0)
             return computed;
@@ -1977,6 +2044,8 @@ public sealed class ReportQueryService : IReportQueryService
             var shift = EffectiveShift.Resolve(
                 e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
                 schedule, location);
+            // «Elastik qrafik» has no hours for arrivals to disagree with — every arrival fits.
+            if (shift.IsFlexible) continue;
 
             judged++;
             var off = 0;

@@ -49,13 +49,15 @@ export interface TodayRowProps {
 }
 
 const PAST_INCOMPLETE = { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
+/** «Elastik qrafik», no scan: nothing was due, nothing was missed — not a day off and not an absence. */
+const FLEXIBLE_NO_SCAN = { cls: 'b-pending', label: 'Giriş yoxdur', icon: 'calendar' as const }
 
 function Row({
   r, showLocCol, showPosition, showSchedule, showWorked, isToday,
   workedText, running, mayViewPhotos, mayGiveReason, assigning, photoBusy,
   onPosition, onLocation, onReason, onPhoto,
 }: TodayRowProps) {
-  const hours = showSchedule ? shiftHours(r) : null
+  const hours = showSchedule ? (r.isFlexible ? 'Elastik' : shiftHours(r)) : null
   const canGiveReason = mayGiveReason && (r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
     || ((r.status === 'OnLeave' || r.status === 'Permission') && !!r.leaveId))
 
@@ -115,7 +117,9 @@ function Row({
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
           <StatusBadge
             status={r.status}
-            override={r.status === 'Incomplete' && !isToday ? PAST_INCOMPLETE : dayVisual(r.status, r.leaveType)}
+            override={r.status === 'Incomplete' && !isToday ? PAST_INCOMPLETE
+              : r.isFlexible && r.status === 'DayOff' && !r.leaveType ? FLEXIBLE_NO_SCAN
+              : dayVisual(r.status, r.leaveType)}
           />
           {/* Which rows can be given a reason.
               «Aktivləşdirməyib»: the person whose day nobody can decide but a human — no scan history,

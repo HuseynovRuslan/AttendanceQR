@@ -168,6 +168,22 @@ public class DaySummaryTemplateTests
     }
 
     [Fact]
+    public void The_paper_form_has_no_Elastik_column_so_a_flexible_no_scan_day_stays_where_it_stood()
+    {
+        var rows = new List<DayBoardSheet.Row>();
+        rows.AddRange(People("Qala Anbar", "dayOff", 2));
+        rows.AddRange(People("Qala Anbar", "flexNoScan", 1));
+
+        using var wb = Build(rows, Form);
+        var ws = wb.Worksheet("Xülasə");
+        var row = LineRow("Qala Anbar");
+
+        // The form's columns still add up to «İşçi sayı»: nobody falls out of the sheet.
+        Assert.Equal(3, ws.Cell(row, Col("Həftəlik istirahət")).GetValue<int>());
+        Assert.Equal(3, ws.Cell(row, Col("İşçi sayı")).GetValue<int>());
+    }
+
+    [Fact]
     public void CEMI_adds_up_the_lines_that_have_people_and_the_blank_lines_add_nothing()
     {
         var rows = new List<DayBoardSheet.Row>();

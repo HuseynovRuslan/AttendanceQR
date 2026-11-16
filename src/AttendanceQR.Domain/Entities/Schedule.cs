@@ -132,4 +132,40 @@ public class Schedule : ITenantScoped, IHasWorkCycle
 
     /// <inheritdoc cref="RevisionOfId"/>
     public DateOnly? ValidUntil { get; set; }
+
+    /// <summary>
+    /// «Elastik qrafik»: nobody on this shift is due at any hour. They come and go when they like, as often as they
+    /// like, across midnight if they like — and the day is the sum of the stretches actually worked. No lateness,
+    /// no early leave, no «Qayıb»: a day with no scan is a day with no hours, never an absence.
+    ///
+    /// A property of the SHIFT, like the second window and the rest day, and for the same reason: every screen
+    /// already asks one resolver what a person's day is (<c>EffectiveShift</c>), and a shift is what that resolver
+    /// hands back. So a company that wants it everywhere has one «Elastik» shift and everybody on it; a company
+    /// with an office on flexible hours and a cleaning crew on a rota has both, side by side. And because an edit
+    /// that changes how a day is judged is kept as a revision (<see cref="RevisionOfId"/>), turning it on or off
+    /// never re-judges a day worked before the change.
+    ///
+    /// The fixed-hours fields above are ignored while this is on — the resolver hands out a whole-day window
+    /// (00:00–23:59) whatever they hold, so a consumer that has not learnt this flag still never finds anybody
+    /// late, early or due.
+    /// </summary>
+    public bool IsFlexible { get; set; }
+
+    /// <summary>
+    /// Optional hours a flexible shift is expected to add up to, in minutes — per day or per week
+    /// (<see cref="FlexibleNormPeriod"/>). Null = «Normasız»: only the hours worked are counted. Used for
+    /// COMPARISON in reports only: falling short of it never makes a day late, absent or anything else.
+    /// A daily norm applies on the days in <see cref="WorkDaysMask"/>; a weekly one per Monday–Sunday week.
+    /// </summary>
+    public int? FlexibleNormMinutes { get; set; }
+
+    /// <inheritdoc cref="FlexibleNormMinutes"/>
+    public FlexibleNormPeriod FlexibleNormPeriod { get; set; } = FlexibleNormPeriod.Day;
+}
+
+/// <summary>What a flexible shift's hour norm is counted over — see <see cref="Schedule.FlexibleNormMinutes"/>.</summary>
+public enum FlexibleNormPeriod
+{
+    Day = 0,
+    Week = 1,
 }

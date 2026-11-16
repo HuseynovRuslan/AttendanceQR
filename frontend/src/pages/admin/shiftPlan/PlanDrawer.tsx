@@ -3,7 +3,7 @@ import { applyShiftPlan, type PlanApply, type PlanEmployee, type PlanPreview, ty
 import { IconX } from '../../../components/icons'
 import { PreviewSummary } from './PreviewSummary'
 import {
-  addDays, bandOf, cellsOf, daysBetween, maskOf, needsSecondShift, rotationSteps, ROTATIONS, weekday, WEEKDAYS_SHORT, WORKWEEK,
+  addDays, bandOf, cellsOf, daysBetween, hoursText, maskOf, needsSecondShift, rotationSteps, ROTATIONS, weekday, WEEKDAYS_SHORT, WORKWEEK,
 } from './planModel'
 
 /**
@@ -169,7 +169,7 @@ export function PlanDrawer(props: {
                   <button key={s.id} type="button" role="radio" aria-checked={shift === s.id} className="sp-shiftopt" onClick={() => setShift(s.id)}>
                     <span className={`sp-band sp-${bandOf(s.start, s.overnight)}`} aria-hidden />
                     <span className="sp-menuname">{s.name}</span>
-                    <span className="sp-menutime">{s.start}–{s.end}</span>
+                    <span className="sp-menutime">{hoursText(s)}</span>
                   </button>
                 ))}
                 {repeat !== 'rotation' && !open && (
@@ -243,7 +243,7 @@ export function PlanDrawer(props: {
                     <label className="sp-datefield">
                       <span>İkinci növbə</span>
                       <select className="sp-select" value={second} onChange={(e) => setSecond(e.target.value)}>
-                        {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.start}–{s.end}</option>)}
+                        {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} · {hoursText(s)}</option>)}
                       </select>
                     </label>
                   )}

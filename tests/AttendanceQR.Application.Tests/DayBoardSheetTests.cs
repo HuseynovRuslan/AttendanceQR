@@ -84,6 +84,28 @@ public class DayBoardSheetTests
     }
 
     [Fact]
+    public void An_Elastik_column_appears_only_when_somebody_is_in_it()
+    {
+        // A company with no flexible staff gets exactly the summary it always got.
+        using (var plain = Build(Person("Aygün", "Qala Anbar", "present"), Person("Cavid", "Qala Anbar", "dayOff")))
+        {
+            var headers = plain.Worksheet("Xülasə").Row(4).CellsUsed().Select(c => c.GetString()).ToList();
+            Assert.DoesNotContain("Elastik, giriş yoxdur", headers);
+        }
+
+        using var wb = Build(Person("Aygün", "Qala Anbar", "present"), Person("Fidan", "Qala Anbar", "flexNoScan"));
+        var ws = wb.Worksheet("Xülasə");
+        var row = RowStarting(ws, "Qala Anbar")!;
+        var cells = ws.Row(4).CellsUsed().ToList();
+        var flex = cells.Single(c => c.GetString() == "Elastik, giriş yoxdur").Address.ColumnNumber;
+        var dayOff = cells.Single(c => c.GetString() == "İstirahət").Address.ColumnNumber;
+        var absent = cells.Single(c => c.GetString() == "Qayıb").Address.ColumnNumber;
+        Assert.Equal(1, row.Cell(flex).GetValue<int>());
+        Assert.Equal(0, row.Cell(dayOff).GetValue<int>());   // not a day off …
+        Assert.Equal(0, row.Cell(absent).GetValue<int>());   // … and not an absence
+    }
+
+    [Fact]
     public void The_company_line_is_summed_from_the_same_rows_it_sits_under()
     {
         using var wb = Build(

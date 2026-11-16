@@ -167,6 +167,12 @@ public static class StandingShifts
     }
 
     /// <summary>One day's label: a shift with its hours, the rest day, or no plan.</summary>
+    /// <summary>«Sərbəst (elastik)» — but «Elastik qrafik» as it is: the mode said twice reads as a typo.</summary>
+    public static string FlexibleName(string? name) =>
+        string.IsNullOrWhiteSpace(name) ? "Elastik"
+        : name.Contains("elastik", StringComparison.OrdinalIgnoreCase) ? name
+        : $"{name} (elastik)";
+
     public static string DayLabel(string? token, IReadOnlyDictionary<Guid, Schedule> schedules)
     {
         if (string.IsNullOrEmpty(token))
@@ -174,7 +180,9 @@ public static class StandingShifts
         if (token == ShiftAssignment.Rest)
             return "İstirahət";
         if (Guid.TryParse(token, out var id) && schedules.TryGetValue(id, out var s))
-            return s.IsRestDay ? "İstirahət" : $"{s.Name} {s.ShiftStart:HH\\:mm}–{s.ShiftEnd:HH\\:mm}";
+            return s.IsRestDay ? "İstirahət"
+                : s.IsFlexible ? FlexibleName(s.Name)
+                : $"{s.Name} {s.ShiftStart:HH\\:mm}–{s.ShiftEnd:HH\\:mm}";
         return "Silinmiş növbə";
     }
 }

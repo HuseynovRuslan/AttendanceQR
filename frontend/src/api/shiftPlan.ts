@@ -17,6 +17,8 @@ export interface PlanShift {
   end: string
   overnight: boolean
   locationId: string | null
+  /** «Elastik qrafik»: no hours — start/end are the whole day and mean nothing to print. */
+  flexible?: boolean
 }
 
 /**
@@ -36,6 +38,8 @@ export interface PlanDay {
   start: string | null
   end: string | null
   overnight: boolean
+  /** «Elastik qrafik»: the person comes when they come — start/end are null, and the day is never «off». */
+  flexible?: boolean
   working: boolean
   holiday: string | null
   leave: string | null

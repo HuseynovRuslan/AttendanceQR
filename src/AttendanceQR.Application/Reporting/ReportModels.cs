@@ -291,7 +291,10 @@ public sealed record DayAttendanceRow(
     string? SecondShiftEnd = null,
     /// <summary>The person corrected this day themselves — allowed only where nobody else could (see
     /// AttendanceSelfCorrection), and shown as «öz düzəlişi» wherever the day is.</summary>
-    bool SelfCorrected = false);
+    bool SelfCorrected = false,
+    /// <summary>«Elastik qrafik»: the shift has no hours — the board prints «Elastik» instead of 00:00–23:59, and a
+    /// day with no scan is «giriş yoxdur», not a day off and not an absence.</summary>
+    bool IsFlexible = false);
 
 /// <summary>One stretch of presence within a day — a check-in and, once it has happened, its
 /// check-out. Only ever sent for a day worked in more than one stretch.</summary>
@@ -412,7 +415,16 @@ public sealed record TabelRow(
     int LeaveDays,
     double WorkedHours,
     /// <summary>Days of the month (1-based) the person corrected themselves — «öz düzəlişi» on those cells.</summary>
-    IReadOnlyList<int>? SelfCorrectedDays = null);
+    IReadOnlyList<int>? SelfCorrectedDays = null,
+    /// <summary>
+    /// «Elastik qrafik»: per day, what to print INSTEAD of the code — the hours worked ("8", "7.5"), "0" for a day with
+    /// no scan, "Açıq" for a session nobody closed. Null for a day judged on fixed hours (the code stands), and for a
+    /// leave, a holiday or a future day on a flexible day too (their code says it). Null altogether when no day of the
+    /// month was flexible — so every fixed-shift row is exactly what it was.
+    /// </summary>
+    IReadOnlyList<string?>? FlexibleCells = null,
+    /// <summary>The flexible shift's hour norm over the month's days so far, for comparison only; null when none.</summary>
+    double? NormHours = null);
 
 public sealed record TabelLegendItem(string Code, string Label);
 

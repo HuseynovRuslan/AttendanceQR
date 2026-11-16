@@ -109,7 +109,10 @@ public class SchedulesController : ControllerBase
 
         if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
             return BadRequest(new { error = dayHoursError });
+        if (ScheduleFlexibility.Apply(schedule, request) is { } flexibleError)
+            return BadRequest(new { error = flexibleError });
         _db.Schedules.Add(schedule);
+        ScheduleFlexibility.AuditIfChanged(_db, null, schedule, User.EmployeeId(), HttpContext.Connection.RemoteIpAddress?.ToString());
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
     }
@@ -139,6 +142,8 @@ public class SchedulesController : ControllerBase
 
         if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
             return BadRequest(new { error = dayHoursError });
+        if (ScheduleFlexibility.Apply(schedule, request) is { } flexibleError)
+            return BadRequest(new { error = flexibleError });
 
         // Moving a shift to a branch strands anyone already on it who works somewhere else — their
         // hours would come from a shift their branch no longer offers. Refused with the count, the
@@ -152,6 +157,7 @@ public class SchedulesController : ControllerBase
         }
 
         await ScheduleRevisions.KeepAsync(_db, schedule, before, ScheduleRevisions.Today(_zone), _zone, HttpContext.RequestAborted);
+        ScheduleFlexibility.AuditIfChanged(_db, before, schedule, User.EmployeeId(), HttpContext.Connection.RemoteIpAddress?.ToString());
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(Project(schedule));
     }
@@ -191,6 +197,13 @@ public class SchedulesController : ControllerBase
         {
             error = "NameRequired";
             return false;
+        }
+        if (ScheduleFlexibility.HoursOptional(r))
+        {
+            // «Elastik»: the form sends no hours; ScheduleFlexibility.Apply stores the whole day.
+            start = new TimeOnly(0, 0);
+            end = new TimeOnly(23, 59);
+            return true;
         }
         if (!TimeOnly.TryParse(r.ShiftStart, out start))
         {
@@ -239,6 +252,10 @@ public class SchedulesController : ControllerBase
         isSplit = s.SecondShiftStart is not null && s.SecondShiftEnd is not null,
         lateThresholdMinutes = s.LateThresholdMinutes,
         workDaysMask = s.WorkDaysMask,
+        // «Elastik qrafik»: the hours above mean nothing then — the list and the pickers say «Elastik» instead.
+        isFlexible = s.IsFlexible,
+        flexibleNormMinutes = s.FlexibleNormMinutes,
+        flexibleNormPeriod = s.FlexibleNormPeriod == FlexibleNormPeriod.Week ? "week" : "day",
         workCycleDays = s.WorkCycleDays,
         workCycleOnDays = s.WorkCycleOnDays,
         workCycleAnchor = s.WorkCycleAnchor,

@@ -275,7 +275,7 @@ const PAGE_SIZE = 25
 type BranchOption = Pick<AdminLocation, 'id' | 'name'> & { canCreate?: boolean; canMove?: boolean }
 /** A shift in the pickers. A manager's shift list carries no branch, so it is offered for every branch;
  *  the server refuses another site's shift either way (ScheduleBelongsToOtherBranch). */
-type ShiftOption = Pick<Schedule, 'id' | 'name' | 'shiftStart' | 'shiftEnd' | 'isOvernight'> & { locationId: string | null }
+type ShiftOption = Pick<Schedule, 'id' | 'name' | 'shiftStart' | 'shiftEnd' | 'isOvernight' | 'isFlexible'> & { locationId: string | null }
 
 /** Until the first /stats answers. Shown as zeros rather than as an empty card. */
 const ZERO_STATS: EmployeeStats = {
@@ -1996,7 +1996,7 @@ ${back}`,
                 .filter((s) => s.locationId === null || s.locationId === form.locationId)
                 .map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} · {s.shiftStart}–{s.shiftEnd}{s.isOvernight ? ' 🌙' : ''}
+                    {s.name} · {s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}${s.isOvernight ? ' 🌙' : ''}`}
                   </option>
                 ))}
               <option value="__new__">＋ Yeni növbə yarat…</option>
@@ -2255,7 +2255,7 @@ ${back}`,
                     >
                       <option value="">Növbə seçin…</option>
                       {schedules.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} · {s.shiftStart}–{s.shiftEnd}</option>
+                        <option key={s.id} value={s.id}>{s.name} · {s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}`}</option>
                       ))}
                     </select>
                     <button

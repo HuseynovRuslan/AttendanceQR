@@ -83,6 +83,14 @@ export function rangeLabel(view: View, from: string, to: string): string {
  */
 export type Band = 'morning' | 'day' | 'evening' | 'night'
 
+/**
+ * «06:00–15:00», or «istənilən saat» for an «Elastik» shift — it has no hours of its own, and its name usually says
+ * «Elastik» already («Elastik qrafik · Elastik» would read as a typo).
+ */
+export function hoursText(s: { start: string | null; end: string | null; flexible?: boolean }): string {
+  return s.flexible ? 'istənilən saat' : `${s.start}–${s.end}`
+}
+
 export function bandOf(start: string | null, overnight: boolean): Band {
   const hour = start ? Number(start.slice(0, 2)) : 9
   // By when it starts: an evening shift that runs past midnight is still the evening shift people know it as.

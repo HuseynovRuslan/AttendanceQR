@@ -60,7 +60,18 @@ public static class DayBoardSheet
         ("rest", "İstirahət (təyin edilmiş)"),
         ("pending", "Növbəsi başlamayıb"),
         ("onboarding", "Aktivləşdirməyib"),
+        // «Elastik qrafik», nobody scanned: 0 hours — not absent, and not a day off either. Printed only when
+        // somebody is in it (see ColumnsFor), so a company with no flexible staff gets the file it always got.
+        (FlexNoScan, "Elastik, giriş yoxdur"),
     ];
+
+    private const string FlexNoScan = "flexNoScan";
+
+    /// <summary>The summary's columns for these people: every standing one, and «Elastik» only when it counts someone.</summary>
+    private static (string Bucket, string Fallback)[] ColumnsFor(List<(string Site, List<Row> People)> groups)
+        => SummaryColumns
+            .Where(c => c.Bucket != FlexNoScan || groups.Any(g => Count(g.People, FlexNoScan) > 0))
+            .ToArray();
 
     private static readonly string[] DetailHeaders =
         ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"];
@@ -179,7 +190,8 @@ public static class DayBoardSheet
         List<(string Site, List<Row> People)> groups)
     {
         var ws = wb.Worksheets.Add("Xülasə");
-        var cols = SummaryColumns.Length + 2; // site + headcount + the buckets
+        var columns = ColumnsFor(groups);
+        var cols = columns.Length + 2; // site + headcount + the buckets
 
         ws.Cell(1, 1).Value = title;
         ws.Range(1, 1, 1, cols).Merge();
@@ -197,8 +209,8 @@ public static class DayBoardSheet
         const int headerRow = 4;
         ws.Cell(headerRow, 1).Value = "Ərazi";
         ws.Cell(headerRow, 2).Value = "İşçi sayı";
-        for (var i = 0; i < SummaryColumns.Length; i++)
-            ws.Cell(headerRow, i + 3).Value = label(SummaryColumns[i].Bucket);
+        for (var i = 0; i < columns.Length; i++)
+            ws.Cell(headerRow, i + 3).Value = label(columns[i].Bucket);
 
         var head = ws.Range(headerRow, 1, headerRow, cols);
         head.Style.Font.Bold = true;
@@ -212,8 +224,8 @@ public static class DayBoardSheet
         {
             ws.Cell(r, 1).Value = site;
             ws.Cell(r, 2).Value = people.Count;
-            for (var i = 0; i < SummaryColumns.Length; i++)
-                ws.Cell(r, i + 3).Value = Count(people, SummaryColumns[i].Bucket);
+            for (var i = 0; i < columns.Length; i++)
+                ws.Cell(r, i + 3).Value = Count(people, columns[i].Bucket);
             r++;
         }
 
@@ -221,8 +233,8 @@ public static class DayBoardSheet
         // source — a total that can disagree with its own table is worse than no total.
         ws.Cell(r, 1).Value = "CƏMİ";
         ws.Cell(r, 2).Value = groups.Sum(g => g.People.Count);
-        for (var i = 0; i < SummaryColumns.Length; i++)
-            ws.Cell(r, i + 3).Value = groups.Sum(g => Count(g.People, SummaryColumns[i].Bucket));
+        for (var i = 0; i < columns.Length; i++)
+            ws.Cell(r, i + 3).Value = groups.Sum(g => Count(g.People, columns[i].Bucket));
 
         var total = ws.Range(r, 1, r, cols);
         total.Style.Font.Bold = true;
@@ -319,8 +331,12 @@ public static class DayBoardSheet
         ws.Column(3).Width = 11;
     }
 
+    // The paper form has no «Elastik» column and its columns must still add up to «İşçi sayı», so a flexible
+    // no-scan day stands where it stood before that bucket existed: under «Həftəlik istirahət».
     private static int TemplateValue(List<Row> people, string source)
-        => source == Headcount ? people.Count : Count(people, source);
+        => source == Headcount ? people.Count
+        : source == "dayOff" ? Count(people, "dayOff") + Count(people, FlexNoScan)
+        : Count(people, source);
 
     private static void BuildDetail(
         XLWorkbook wb, string title, string? scopeNote, Func<string, string> label,

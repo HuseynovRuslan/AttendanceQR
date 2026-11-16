@@ -11,6 +11,8 @@ import {
 export interface DayAttendanceRow {
   /** The person corrected this day themselves — only where nobody else could; «öz düzəlişi» on the row. */
   selfCorrected?: boolean
+  /** «Elastik qrafik»: no hours — the schedule cell says «Elastik», and a day with no scan is «Giriş yoxdur». */
+  isFlexible?: boolean
   employeeId: string
   employeeName: string
   locationId: string
@@ -1737,8 +1739,19 @@ export interface Schedule {
    * appear; everything else follows the shift's own times.
    */
   dayHours: Record<string, { start: string; end: string }>
+  /**
+   * «Elastik qrafik»: nobody on this shift is due at any hour — they come and go when they like, several times a
+   * day, across midnight if they like; the day is the hours actually worked. No lateness, no early leave, no
+   * «Qayıb». The hours above mean nothing then (the server stores 00:00–23:59).
+   */
+  isFlexible?: boolean
+  /** Optional hour norm for a flexible shift, in minutes; null = «Normasız». Comparison only. */
+  flexibleNormMinutes?: number | null
+  /** What the norm is counted over. A daily norm applies on the workDaysMask days. */
+  flexibleNormPeriod?: 'day' | 'week'
 }
 
+/** isFlexible left out (undefined) means «unchanged» on the server — see ScheduleFlexibility. */
 export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight' | 'locationName'>
 
 /**
@@ -1833,6 +1846,14 @@ export interface TabelRow {
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
   workedHours: number
+  /**
+   * «Elastik qrafik»: per day, what to print INSTEAD of the code — hours («8», «7.5»), «0» for no scan, «Açıq» for a
+   * session nobody closed; null where the code stands (a fixed-hours day, a leave, a holiday). Absent for a row with
+   * no flexible day at all.
+   */
+  flexibleCells?: (string | null)[] | null
+  /** The flexible shift's hour norm over the month so far — comparison only. */
+  normHours?: number | null
 }
 
 export interface TabelReport {

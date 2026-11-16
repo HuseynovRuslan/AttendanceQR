@@ -404,6 +404,11 @@ public class ManagerController : ControllerBase
                 // The raw column: DayHours.Parse cannot run inside the SQL projection, so it is
                 // turned into the map below, once the rows are in memory.
                 dayHoursSpec = sc.DayHours,
+                // «Elastik qrafik» — sent so the manager's form can show it and round-trip it; their save sends
+                // no mode, which the server reads as «unchanged» (ScheduleFlexibility).
+                isFlexible = sc.IsFlexible,
+                flexibleNormMinutes = sc.FlexibleNormMinutes,
+                flexibleNormWeekly = sc.FlexibleNormPeriod == FlexibleNormPeriod.Week,
             })
             .ToListAsync(HttpContext.RequestAborted);
 
@@ -416,6 +421,8 @@ public class ManagerController : ControllerBase
             r.secondShiftStart, r.secondShiftEnd, r.isSplit,
             r.lateThresholdMinutes, r.workDaysMask,
             r.workCycleDays, r.workCycleOnDays, r.workCycleAnchor, r.isOvernight,
+            r.isFlexible, r.flexibleNormMinutes,
+            flexibleNormPeriod = r.flexibleNormWeekly ? "week" : "day",
             dayHours = DayHours.Parse(r.dayHoursSpec).ToDictionary(
                 kv => ((int)kv.Key).ToString(),
                 kv => new { start = kv.Value.Start.ToString(@"HH\:mm"), end = kv.Value.End.ToString(@"HH\:mm") }),
@@ -448,8 +455,11 @@ public class ManagerController : ControllerBase
 
         if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
             return BadRequest(new { error = dayHoursError });
+        if (ScheduleFlexibility.Apply(schedule, request) is { } flexibleError)
+            return BadRequest(new { error = flexibleError });
 
         _db.Schedules.Add(schedule);
+        ScheduleFlexibility.AuditIfChanged(_db, null, schedule, User.EmployeeId(), HttpContext.Connection.RemoteIpAddress?.ToString());
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(new { id = schedule.Id });
     }
@@ -481,9 +491,12 @@ public class ManagerController : ControllerBase
 
         if (ScheduleDayHours.Apply(schedule, request.DayHours) is { } dayHoursError)
             return BadRequest(new { error = dayHoursError });
+        if (ScheduleFlexibility.Apply(schedule, request) is { } flexibleError)
+            return BadRequest(new { error = flexibleError });
 
         var zone = _zone;
         await ScheduleRevisions.KeepAsync(_db, schedule, before, ScheduleRevisions.Today(zone), zone, ct);
+        ScheduleFlexibility.AuditIfChanged(_db, before, schedule, User.EmployeeId(), HttpContext.Connection.RemoteIpAddress?.ToString());
         await _db.SaveChangesAsync(ct);
         return Ok(new { id = schedule.Id });
     }
@@ -533,6 +546,7 @@ public class ManagerController : ControllerBase
     {
         start = default; end = default; error = null;
         if (string.IsNullOrWhiteSpace(r.Name)) { error = "NameRequired"; return false; }
+        if (ScheduleFlexibility.HoursOptional(r)) { start = new TimeOnly(0, 0); end = new TimeOnly(23, 59); return true; }
         if (!TimeOnly.TryParse(r.ShiftStart, out start)) { error = "ShiftStartInvalid"; return false; }
         if (!TimeOnly.TryParse(r.ShiftEnd, out end)) { error = "ShiftEndInvalid"; return false; }
         if (r.LateThresholdMinutes < 0) { error = "LateThresholdNegative"; return false; }

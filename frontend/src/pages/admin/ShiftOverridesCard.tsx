@@ -123,7 +123,7 @@ export function ShiftOverridesCard({ employeeId, onChanged }: {
           <select className="inp" value={scheduleId} onChange={(e) => setScheduleId(e.target.value)} style={control}>
             <option value="">Seçin…</option>
             {schedules.map((s) => (
-              <option key={s.id} value={s.id}>{s.name} · {s.shiftStart}–{s.shiftEnd}</option>
+              <option key={s.id} value={s.id}>{s.name} · {s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}`}</option>
             ))}
           </select>
         </label>

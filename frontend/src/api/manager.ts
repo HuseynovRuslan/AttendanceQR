@@ -318,6 +318,10 @@ export interface ManagerSchedule {
   isOvernight: boolean
   /** Days whose hours differ, keyed by day number as a string ("0" = Sunday … "6" = Saturday). */
   dayHours: Record<string, { start: string; end: string }>
+  /** «Elastik qrafik» — see Schedule.isFlexible in api/admin. */
+  isFlexible?: boolean
+  flexibleNormMinutes?: number | null
+  flexibleNormPeriod?: 'day' | 'week'
 }
 
 export function getManagerSchedules() {
@@ -334,6 +338,10 @@ export interface ManagerScheduleInput {
   workCycleDays: number | null
   workCycleOnDays: number | null
   workCycleAnchor: string | null
+  /** Left out = «unchanged» on the server, so an older form never flips a flexible shift back. */
+  isFlexible?: boolean
+  flexibleNormMinutes?: number | null
+  flexibleNormPeriod?: 'day' | 'week'
 }
 
 export function createManagerSchedule(input: ManagerScheduleInput) {
