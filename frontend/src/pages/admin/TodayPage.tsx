@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
-import { areaOf, exitOf, exportRow, uniqueAreas, unlistedAreas, type AreaView } from './exportRows'
+import { areaOf, boardExitOf, exportRow, uniqueAreas, unlistedAreas, type AreaView } from './exportRows'
 import { formatWorked, workedMinutes } from './todayShift'
 import { TodayRow } from './TodayRow'
 import { useSearchParams } from 'react-router-dom'
@@ -968,7 +968,7 @@ export function TodayPage() {
                     // itself would make every row new on every tick. A string that has not changed
                     // lets React skip the row entirely.
                     const worked = cols.worked ? workedMinutes(r, nowMs, isToday) : null
-                    const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc) && !exitOf(r)
+                    const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc) && !boardExitOf(r)
                     return (
                       <TodayRow
                         key={r.employeeId}

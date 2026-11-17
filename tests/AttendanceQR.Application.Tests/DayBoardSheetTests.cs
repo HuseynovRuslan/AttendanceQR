@@ -40,6 +40,14 @@ public class DayBoardSheetTests
         return new XLWorkbook(new MemoryStream(bytes));
     }
 
+    /// <summary>The same file for a company that uses a «Elastik qrafik» shift.</summary>
+    private static XLWorkbook BuildFlexible(params DayBoardSheet.Row[] rows)
+    {
+        var bytes = DayBoardSheet.Build(
+            "Davamiyyət — 7 sentyabr", rows, "3 ərazi seçilib", BoardWords, template: null, flexibleCompany: true);
+        return new XLWorkbook(new MemoryStream(bytes));
+    }
+
     /// <summary>Finds a row on a sheet by the text in its first column.</summary>
     private static IXLRow? RowStarting(IXLWorksheet ws, string text)
         => ws.RowsUsed().FirstOrDefault(r => r.Cell(1).GetString().StartsWith(text, StringComparison.Ordinal));
@@ -264,11 +272,11 @@ public class DayBoardSheetTests
     }
 
     [Fact]
-    public void A_day_of_several_sessions_prints_the_last_departure_the_hours_and_each_session()
+    public void A_flexible_company_s_day_of_several_sessions_prints_the_last_departure_the_hours_and_each_session()
     {
         // The client sends «Çıxış» as the LAST session's departure and the hours the server counted; the sheet
         // adds every session after the columns a reader already knows, and only when somebody has several.
-        using var wb = Build(
+        using var wb = BuildFlexible(
             new DayBoardSheet.Row("Elastik İşçi", "", "Ofis", "Tamamlayıb", "09:00", "21:30", "var", "present",
                 Worked: "10:30", Sessions: "09:00–12:00, 13:00–18:00, 19:00–21:30"),
             new DayBoardSheet.Row("Gecə İşçisi", "", "Ofis", "Tamamlayıb", "09:00", "06:00 (+1)", "var", "present",
@@ -295,9 +303,37 @@ public class DayBoardSheetTests
     [Fact]
     public void Nobody_with_several_sessions_means_no_sessions_column()
     {
-        using var wb = Build(Person("Aygün", "Qala Anbar", "present"));
+        using var wb = BuildFlexible(Person("Aygün", "Qala Anbar", "present"));
         var header = RowStarting(wb.Worksheet("Davamiyyət"), "Ad Soyad")!;
         Assert.Equal("İşlənmiş", header.Cell(9).GetString());
         Assert.Equal(string.Empty, header.Cell(10).GetString());
+    }
+
+    [Fact]
+    public void A_company_on_fixed_hours_only_gets_the_eight_columns_it_always_got()
+    {
+        // The board sends the hours and the sessions for everybody; a company that has never had a flexible shift
+        // must still receive its morning file exactly as before — no ninth column, no tenth, nothing in them.
+        using var wb = Build(
+            new DayBoardSheet.Row("İkiqat İşçi", "", "Ofis", "Tamamlayıb", "08:00", "20:00", "var", "present",
+                Worked: "08:00", Sessions: "08:00–12:00, 16:00–20:00"),
+            new DayBoardSheet.Row("Sabit İşçi", "", "Ofis", "Tamamlayıb", "09:00", "18:00", "var", "present",
+                Worked: "09:00"));
+
+        var ws = wb.Worksheet("Davamiyyət");
+        var header = RowStarting(ws, "Ad Soyad")!;
+        Assert.Equal(
+            ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"],
+            Enumerable.Range(1, 8).Select(c => header.Cell(c).GetString()));
+        Assert.Equal(8, header.LastCellUsed()!.Address.ColumnNumber);
+        foreach (var name in new[] { "İkiqat İşçi", "Sabit İşçi" })
+        {
+            var row = RowStarting(ws, name)!;
+            Assert.Equal(string.Empty, row.Cell(9).GetString());
+            Assert.Equal(string.Empty, row.Cell(10).GetString());
+        }
+        // The title and the site banner span the eight columns, as they always did.
+        Assert.Contains(ws.MergedRanges, m => m.RangeAddress.ToString() == "A1:H1");
+        Assert.Equal(8, ws.LastColumnUsed()!.ColumnNumber());
     }
 }

@@ -6,7 +6,7 @@ import { FaceFlagBadge } from '../../components/FaceFlagBadge'
 import { IconCamera, IconClock, IconPencil } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 import { initials, shiftHours, shiftTitle } from './todayShift'
-import { exitOf } from './exportRows'
+import { boardExitOf } from './exportRows'
 
 /**
  * One line of the board — pulled out of the page and memoised.
@@ -183,18 +183,6 @@ function Row({
             📴 oflayn
           </span>
         )}
-        {/* Let in from outside the branch's circle — the fence is off, or an offline scan whose phone
-            could only offer a remembered position. Never silent: a manager reads the distance here and
-            voids the day if it is not believable. */}
-        {r.outsideMeters != null && (
-          <span
-            className="tag"
-            title="Giriş filialın dairəsindən kənarda qeydə alınıb. Oflayn skanda telefon çox vaxt köhnə yeri göstərir; inanılmazdırsa, qeydi ləğv edin."
-            style={{ marginLeft: 6, background: 'var(--amber-bg)', color: 'var(--amber)' }}
-          >
-            📍 {r.outsideMeters} m kənar
-          </span>
-        )}
         {r.selfCorrected && (
           <span
             className="tag"
@@ -216,7 +204,7 @@ function Row({
             night were never recorded. */}
         {/* The LAST session's departure, and nothing while it is open — falling back to the first session's
             exit showed somebody back at work as gone. The day's Excel reads the same function. */}
-        {exitOf(r) ? fmtTime(exitOf(r)) : ''}
+        {boardExitOf(r) ? fmtTime(boardExitOf(r)) : ''}
         {/* The count alone did not read: «07:18 → 11:19 · 2 blok» looked like one unbroken stretch
             with a puzzling label, and the whole point of a split day is that the person went home in
             between. So the stretches are named under the times. */}

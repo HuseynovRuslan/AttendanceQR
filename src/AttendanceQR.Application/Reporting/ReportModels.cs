@@ -292,11 +292,6 @@ public sealed record DayAttendanceRow(
     /// <summary>The person corrected this day themselves — allowed only where nobody else could (see
     /// AttendanceSelfCorrection), and shown as «öz düzəlişi» wherever the day is.</summary>
     bool SelfCorrected = false,
-    /// <summary>How far the check-in stood from the centre of the branch it was scanned at, in whole
-    /// metres — set only when that is OUTSIDE the branch's circle, null otherwise. Such a day exists
-    /// because the fence was switched off, or because an offline replay fell inside OfflineFence's
-    /// slack; either way the board says so, so a manager can look and, if need be, void it.</summary>
-    int? OutsideMeters = null,
     /// <summary>«Elastik qrafik»: the shift has no hours — the board prints «Elastik» instead of 00:00–23:59, and a
     /// day with no scan is «giriş yoxdur», not a day off and not an absence.</summary>
     bool IsFlexible = false,

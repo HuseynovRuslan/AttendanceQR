@@ -87,6 +87,15 @@ public interface IReportQueryService
     Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
     /// <summary>
+    /// Whether this company has a «Elastik qrafik» shift — a current one, or a past revision of one that was switched
+    /// back to fixed hours. The day's Excel adds its «İşlənmiş» and «Sessiyalar» columns only then: a company that has
+    /// only ever run fixed hours gets exactly the file it always got, column for column (owner's decision, 17.11).
+    /// A revision counts on purpose, so an old day exported again after a switch back keeps the shape it was made in.
+    /// Scoped to the caller's company by the query filter, like every other read here.
+    /// </summary>
+    Task<bool> UsesFlexibleSchedulesAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// The monthly timesheet grid ("Aylıq Tabel"): one row per in-scope employee, one code per day.
     /// Built on the same per-day computation as the summary, so it shares its scope authority and its
     /// day-counting — the tabel and the summary can never disagree about who worked when.
@@ -1431,6 +1440,9 @@ public sealed class ReportQueryService : IReportQueryService
     public Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default) =>
         LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceExport, ct);
 
+    public Task<bool> UsesFlexibleSchedulesAsync(CancellationToken ct = default) =>
+        _db.Schedules.AnyAsync(s => s.IsFlexible, ct);
+
     public async Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)
     {
@@ -1610,22 +1622,6 @@ public sealed class ReportQueryService : IReportQueryService
             m => m.EmployeeId,
             m => m.CreatedByEmployeeId is Guid by ? markerNames.GetValueOrDefault(by) : null);
 
-        // The circle each check-in was judged by — the branch whose poster was scanned, which for a
-        // visiting worker is not their own — so a day let in from outside it (fence off, or an offline
-        // replay inside OfflineFence's slack) carries its distance onto the row.
-        var scannedAt = computed.Where(d => d.Record?.CheckInLatitude != null).Select(d => d.Record!.LocationId).Distinct().ToList();
-        var circles = await _db.Locations.AsNoTracking()
-            .Where(l => scannedAt.Contains(l.Id))
-            .Select(l => new { l.Id, l.Latitude, l.Longitude, l.RadiusMeters })
-            .ToDictionaryAsync(l => l.Id, ct);
-        int? OutsideMeters(AttendanceRecord? r)
-        {
-            if (r is not { CheckInLatitude: double lat, CheckInLongitude: double lng }) return null;
-            if (!double.IsFinite(lat) || !double.IsFinite(lng) || !circles.TryGetValue(r.LocationId, out var c)) return null;
-            var distance = GeoCalculator.DistanceMeters(lat, lng, c.Latitude, c.Longitude);
-            return distance > c.RadiusMeters ? (int)Math.Round(distance) : null;
-        }
-
         // Field/mobile attendance rides along on LiveDay — ComputeDayLiveAsync loaded it once, and has
         // already counted such a day as worked so the reports and the payroll agree with this board.
         return computed
@@ -1670,7 +1666,6 @@ public sealed class ReportQueryService : IReportQueryService
                     d.Shift.HasSecondWindow ? d.Shift.SecondStart!.Value.ToString("HH:mm") : null,
                     d.Shift.HasSecondWindow ? d.Shift.SecondEnd!.Value.ToString("HH:mm") : null,
                     selfCorrected.Contains(d.Employee.Id),
-                    OutsideMeters(d.Record),
                     d.Shift.IsFlexible,
                     d.Computed.WorkedMinutes);
             })

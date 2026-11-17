@@ -8,7 +8,6 @@ import { EmptyCard, HistoryRow, SkeletonList } from '../components/employeeBits'
 import { InstallHint, installNudgeActive } from '../components/InstallHint'
 import { AnnouncementBanner } from '../components/AnnouncementBanner'
 import { OfflineRejectBanner } from '../components/OfflineRejectBanner'
-import { PendingScansBanner } from '../components/PendingScansBanner'
 import { readRejectsFor, REJECTS_CHANGED } from '../lib/offlineRejects'
 import { FieldVisitCards } from '../components/FieldVisitCards'
 import { AwardCard } from '../components/AwardCard'
@@ -213,8 +212,6 @@ export function HomePage() {
       <InstallHint onShown={setInstallShown} />
       {/* First, because it is the only thing here that costs the employee a day's pay if unread. */}
       <OfflineRejectBanner />
-      {/* Then what this phone is still holding — the scan they would otherwise make a second time. */}
-      <PendingScansBanner />
       {/* A «where are you» question a manager asked for — renders nothing for everybody else. Above the
           announcements: it is the only thing here with a clock on it. */}
       <PresenceCheckCard />
