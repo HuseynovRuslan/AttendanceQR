@@ -6,7 +6,7 @@ import { FaceFlagBadge } from '../../components/FaceFlagBadge'
 import { IconCamera, IconClock, IconPencil } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 import { initials, shiftHours, shiftTitle } from './todayShift'
-import { exitOf } from './exportRows'
+import { boardExitOf } from './exportRows'
 
 /**
  * One line of the board — pulled out of the page and memoised.
@@ -204,7 +204,7 @@ function Row({
             night were never recorded. */}
         {/* The LAST session's departure, and nothing while it is open — falling back to the first session's
             exit showed somebody back at work as gone. The day's Excel reads the same function. */}
-        {exitOf(r) ? fmtTime(exitOf(r)) : ''}
+        {boardExitOf(r) ? fmtTime(boardExitOf(r)) : ''}
         {/* The count alone did not read: «07:18 → 11:19 · 2 blok» looked like one unbroken stretch
             with a puzzling label, and the whole point of a split day is that the person went home in
             between. So the stretches are named under the times. */}

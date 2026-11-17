@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellTime, exitOf, exportRow, hasOpenSession, sessionsText, workedText, type ExportableRow, areaOf, sameArea, uniqueAreas, unlistedAreas } from './exportRows'
+import { boardExitOf, cellTime, exitOf, exportRow, hasOpenSession, sessionsText, workedText, type ExportableRow, areaOf, sameArea, uniqueAreas, unlistedAreas } from './exportRows'
 
 // Baku is UTC+4. Every case below is one an adversarial audit of the morning report actually found:
 // a night that read backwards, a carried-over night that read as this morning, a field worker with no
@@ -172,8 +172,9 @@ describe('a company form for «Xülasə»', () => {
 })
 
 // A day worked in several sessions — «Elastik qrafik», or a split-shift crew. Baku is UTC+4.
-describe('a day of several sessions', () => {
+describe('a flexible day of several sessions', () => {
   const three = row({
+    isFlexible: true,
     checkInAtUtc: '2026-10-05T05:00:00Z', checkOutAtUtc: '2026-10-05T08:00:00Z',        // 09:00–12:00
     blockSpans: [
       { inAtUtc: '2026-10-05T05:00:00Z', outAtUtc: '2026-10-05T08:00:00Z' },           // 09:00–12:00
@@ -193,6 +194,7 @@ describe('a day of several sessions', () => {
 
   it('stamps a session across midnight with the next day, once', () => {
     const night = row({
+      isFlexible: true,
       checkInAtUtc: '2026-10-06T05:00:00Z', checkOutAtUtc: '2026-10-06T08:00:00Z',
       blockSpans: [
         { inAtUtc: '2026-10-06T05:00:00Z', outAtUtc: '2026-10-06T08:00:00Z' },         // 09:00–12:00
@@ -208,6 +210,7 @@ describe('a day of several sessions', () => {
 
   it('prints no departure while the last session is open, and never estimates it', () => {
     const open = row({
+      isFlexible: true,
       checkInAtUtc: '2026-10-08T05:00:00Z', checkOutAtUtc: '2026-10-08T08:00:00Z',
       lastCheckOutAtUtc: null,
       blockSpans: [
@@ -233,5 +236,43 @@ describe('a day of several sessions', () => {
     expect(workedText(row({ checkInAtUtc: '2026-10-05T05:00:00Z', workedMinutes: 0 }))).toBe('açıq')
     expect(workedText(row({ status: 'Absent', workedMinutes: 0 }))).toBe('')
     expect(sessionsText(plain, '2026-10-05')).toBe('')
+  })
+})
+
+describe('a FIXED two-block day (ikiqat gün) keeps exactly what main showed', () => {
+  // 08:00–12:00 and 16:00–20:00. The first block was left at 11:00, early, with a reason — and that reason lives on
+  // the FIRST block's record. Owner's decision, 17.11: a fixed shift's board and file do not change in this release.
+  const closed = row({
+    checkInAtUtc: '2026-10-05T04:00:00Z', checkOutAtUtc: '2026-10-05T07:00:00Z',        // 08:00–11:00
+    lastCheckOutAtUtc: '2026-10-05T16:00:00Z',                                          // 20:00
+    earlyDepartureReason: 'Həkimə',
+    blockSpans: [
+      { inAtUtc: '2026-10-05T04:00:00Z', outAtUtc: '2026-10-05T07:00:00Z' },           // 08:00–11:00
+      { inAtUtc: '2026-10-05T12:00:00Z', outAtUtc: '2026-10-05T16:00:00Z' },           // 16:00–20:00
+    ],
+    workedMinutes: 420,
+  })
+
+  it("the file prints the first block's departure with its own early reason, as before", () => {
+    expect(exitOf(closed)).toBe('2026-10-05T07:00:00Z')
+    expect(exportRow(closed, '2026-10-05', 'Tamamlayıb').checkOut).toBe('11:00 (tez: Həkimə)')
+  })
+
+  it("the board shows the last block's departure once there is one, as before", () => {
+    expect(boardExitOf(closed)).toBe('2026-10-05T16:00:00Z')
+  })
+
+  it("while the second block is open the board and the file both show the first block's exit, as before", () => {
+    const open = { ...closed, lastCheckOutAtUtc: null, earlyDepartureReason: null,
+      blockSpans: [closed.blockSpans![0], { inAtUtc: '2026-10-05T12:00:00Z', outAtUtc: null }] }
+    expect(boardExitOf(open)).toBe('2026-10-05T07:00:00Z')
+    expect(exitOf(open)).toBe('2026-10-05T07:00:00Z')
+    expect(hasOpenSession(open)).toBe(true)   // only feeds «İşlənmiş», which a fixed-only company never gets
+  })
+
+  it("the same two blocks on a flexible shift read the last session — the rule is the shift's, not the shape's", () => {
+    const flexible = { ...closed, isFlexible: true, earlyDepartureReason: null }
+    expect(exitOf(flexible)).toBe('2026-10-05T16:00:00Z')
+    expect(boardExitOf(flexible)).toBe('2026-10-05T16:00:00Z')
   })
 })

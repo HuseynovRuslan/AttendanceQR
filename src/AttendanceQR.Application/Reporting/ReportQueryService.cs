@@ -87,6 +87,15 @@ public interface IReportQueryService
     Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default);
 
     /// <summary>
+    /// Whether this company has a «Elastik qrafik» shift — a current one, or a past revision of one that was switched
+    /// back to fixed hours. The day's Excel adds its «İşlənmiş» and «Sessiyalar» columns only then: a company that has
+    /// only ever run fixed hours gets exactly the file it always got, column for column (owner's decision, 17.11).
+    /// A revision counts on purpose, so an old day exported again after a switch back keeps the shape it was made in.
+    /// Scoped to the caller's company by the query filter, like every other read here.
+    /// </summary>
+    Task<bool> UsesFlexibleSchedulesAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// The monthly timesheet grid ("Aylıq Tabel"): one row per in-scope employee, one code per day.
     /// Built on the same per-day computation as the summary, so it shares its scope authority and its
     /// day-counting — the tabel and the summary can never disagree about who worked when.
@@ -1430,6 +1439,9 @@ public sealed class ReportQueryService : IReportQueryService
 
     public Task<EmployeeRole> ExportRoleAsync(Guid requesterId, EmployeeRole role, CancellationToken ct = default) =>
         LocationScopeRules.EffectiveRoleAsync(_db, requesterId, role, AccessPermissions.AttendanceExport, ct);
+
+    public Task<bool> UsesFlexibleSchedulesAsync(CancellationToken ct = default) =>
+        _db.Schedules.AnyAsync(s => s.IsFlexible, ct);
 
     public async Task<(ReportAccess Access, PayrollReport? Report)> GetPayrollAsync(
         DateOnly from, DateOnly to, Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct = default)

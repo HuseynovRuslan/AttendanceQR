@@ -24,6 +24,10 @@ export interface ExportableRow {
   leaveType?: string | null
   checkInAtUtc?: string | null
   checkOutAtUtc?: string | null
+  /** The last block's departure on a day of several (null while it is open) — the board's «Çıxış» for fixed shifts. */
+  lastCheckOutAtUtc?: string | null
+  /** «Elastik qrafik» — the only rows whose «Çıxış» is the last session's; see exitOf. */
+  isFlexible?: boolean
   fieldCheckInAtUtc?: string | null
   fieldCheckOutAtUtc?: string | null
   lateArrivalReason?: string | null
@@ -68,18 +72,32 @@ export const entryOf = (r: ExportableRow) => r.checkInAtUtc ?? r.fieldCheckInAtU
 const sessionsOf = (r: ExportableRow) => (r.blockSpans && r.blockSpans.length > 1 ? r.blockSpans : null)
 
 /**
- * The day's departure: the LAST session's — and nothing while that session is still open.
+ * The departure the morning FILE prints.
  *
- * `checkOutAtUtc` belongs to the day's FIRST session, so a flexible worker who left at 12:00 and came back at
- * 13:00 exported «Çıxış 12:00» while standing at work, and one who finished at 18:00 still read «12:00». The
- * server's `lastCheckOutAtUtc` is null exactly when the last session is open, and falling back from it to
- * `checkOutAtUtc` brought the first session's exit straight back — so a day of several sessions reads its
- * last one and nothing else. The board's «Çıxış» cell uses this too, so the screen and the file agree.
+ * «Elastik qrafik»: the LAST session's — and nothing while that session is still open. `checkOutAtUtc` belongs to
+ * the day's FIRST session, so a flexible worker who left at 12:00 and came back at 13:00 exported «Çıxış 12:00»
+ * while standing at work. The server's `lastCheckOutAtUtc` is null exactly when the last session is open, and
+ * falling back from it to `checkOutAtUtc` brought the first session's exit straight back — so a flexible day of
+ * several sessions reads its last one and nothing else.
+ *
+ * A FIXED shift prints exactly what it always printed: the first block's departure, with that block's early-leave
+ * reason beside it (the reason belongs to the first block's record, and beside the last block's time it would
+ * say the wrong block left early). Owner's decision, 17.11: a fixed shift's file does not change in this release.
  */
 export function exitOf(r: ExportableRow): string | null | undefined {
-  const sessions = sessionsOf(r)
+  const sessions = r.isFlexible ? sessionsOf(r) : null
   if (sessions) return sessions[sessions.length - 1].outAtUtc
   return r.checkOutAtUtc ?? r.fieldCheckOutAtUtc
+}
+
+/**
+ * The departure the BOARD shows in its «Çıxış» cell, and whether that row is still running. Flexible rows: the same
+ * as the file (exitOf). Fixed rows: what the board has always shown — the last block's departure once it has one,
+ * else the first's — untouched by this release, like the fixed rows of the file.
+ */
+export function boardExitOf(r: ExportableRow): string | null | undefined {
+  if (r.isFlexible) return exitOf(r)
+  return r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc
 }
 
 /** Whether a session of this day has begun and not ended — at work today, a forgotten check-out on a past day. */
