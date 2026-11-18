@@ -67,6 +67,7 @@ import { StatusBadge } from '../../components/StatusBadge'
 import { listFailureText } from '../../lib/listFailure'
 import { roleOptionName } from '../../lib/roleNames'
 import { useRoleLabels } from '../../lib/useRoleLabels'
+import { FREE_MODE, shiftOptionLabel } from '../../lib/shiftLabel'
 import {
   IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
   IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
@@ -1154,8 +1155,11 @@ export function EmployeesPage() {
         : `${targets.length} nəfər «${shift!.name}» növbəsinə keçirilsin?
 
 ` +
-          `Saat: ${shift!.shiftStart}–${shift!.shiftEnd}. Növbənin saatı sonradan dəyişsə, ` +
-          'KEÇMİŞ günlər də yenidən hesablanır — hesabatlar növbədən oxunur.',
+          (shift!.isFlexible
+            // A free-hours shift has no hours to quote: the stored 00:00–23:59 is a placeholder, not a time.
+            ? `${FREE_MODE}: saat yoxdur — işçilər istənilən saatda gəlib-gedir, gecikmə və qayıb hesablanmır.`
+            : `Saat: ${shift!.shiftStart}–${shift!.shiftEnd}. Növbənin saatı sonradan dəyişsə, ` +
+              'KEÇMİŞ günlər də yenidən hesablanır — hesabatlar növbədən oxunur.'),
     )) return
 
     setSharing(true)
@@ -1996,7 +2000,7 @@ ${back}`,
                 .filter((s) => s.locationId === null || s.locationId === form.locationId)
                 .map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} · {s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}${s.isOvernight ? ' 🌙' : ''}`}
+                    {shiftOptionLabel(s, { moon: true })}
                   </option>
                 ))}
               <option value="__new__">＋ Yeni növbə yarat…</option>
@@ -2255,7 +2259,7 @@ ${back}`,
                     >
                       <option value="">Növbə seçin…</option>
                       {schedules.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} · {s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}`}</option>
+                        <option key={s.id} value={s.id}>{shiftOptionLabel(s)}</option>
                       ))}
                     </select>
                     <button

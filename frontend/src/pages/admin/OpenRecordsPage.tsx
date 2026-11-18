@@ -106,7 +106,7 @@ export function OpenRecordsPage() {
         `${data.closed} gün bağlandı`,
         data.awaiting ? `${data.awaiting} gün (öz gününüz) təsdiqə göndərildi` : null,
         data.skipped > 0 ? `${data.skipped} gün toxunulmadı (bugünkü və ya səlahiyyətdən kənar)` : null,
-        data.flexible ? `${data.flexible} elastik sessiya toxunulmadı — çıxış saatını sətirdə əl ilə yazın` : null,
+        data.flexible ? `${data.flexible} sərbəst qrafikli sessiya toxunulmadı — çıxış saatını sətirdə əl ilə yazın` : null,
       ].filter(Boolean).join(' · '),
     )
     setPicked(new Set())
@@ -121,7 +121,7 @@ export function OpenRecordsPage() {
     const local = timeFor(r)
     // An empty (or half-typed — the browser reports those as empty) box is never a time.
     if (!local) {
-      setError(r.flexible ? 'Elastik qrafik: real çıxış tarixini və saatını yazın' : 'Çıxış vaxtını daxil edin')
+      setError(r.flexible ? 'Sərbəst iş qrafiki: real çıxış tarixini və saatını yazın' : 'Çıxış vaxtını daxil edin')
       return
     }
     const iso = fromCompanyInputValue(local)
@@ -205,7 +205,7 @@ export function OpenRecordsPage() {
               )}
               {flexibleCount > 0 && (
                 <div style={{ fontSize: 13, color: 'var(--c600)', marginTop: 6 }}>
-                  {flexibleCount} elastik sessiya toplu bağlanmır — elastik qrafikin bitmə saatı yoxdur. Real çıxış
+                  {flexibleCount} sərbəst qrafikli sessiya toplu bağlanmır — sərbəst iş qrafikinin bitmə saatı yoxdur. Real çıxış
                   saatını sətirdə yazıb «Bağla» basın.
                 </div>
               )}
@@ -299,14 +299,14 @@ export function OpenRecordsPage() {
                     aria-label={`${r.employeeName} — seç`}
                     checked={picked.has(r.recordId)}
                     disabled={!canClose(r) || r.flexible}
-                    title={r.flexible ? 'Elastik sessiya toplu bağlanmır — çıxış saatını sətirdə yazın' : undefined}
+                    title={r.flexible ? 'Sərbəst qrafikli sessiya toplu bağlanmır — çıxış saatını sətirdə yazın' : undefined}
                     onChange={() => toggle(r.recordId)}
                   />
                 </td>
                 <td>
                   <div style={{ fontWeight: 700, color: 'var(--c900)' }}>
                     <EmployeeLink id={r.employeeId} name={r.employeeName} />
-                    {r.flexible && <> <span className="pill pill-info">Elastik</span></>}
+                    {r.flexible && <> <span className="pill pill-info">Sərbəst</span></>}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.locationName}</div>
                 </td>
@@ -328,7 +328,7 @@ export function OpenRecordsPage() {
                   />
                   {r.flexible && !timeFor(r) && canClose(r) && (
                     <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                      Elastik qrafik — real çıxış saatını yazın
+                      Sərbəst iş qrafiki — real çıxış saatını yazın
                     </div>
                   )}
                 </td>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { enablePush, isSubscribed, pushPermission, pushSupported } from '../lib/push'
+import { enablePush, isSubscribed, pushPermission, pushServerEnabled, pushSupported } from '../lib/push'
 import { isStandalone } from '../lib/device'
 
 /**
@@ -28,11 +28,15 @@ export function PushEnablePrompt({
     // Permission was refused in the browser: the API can no longer re-ask, so the button is useless.
     // Instead of vanishing (a dead end — the employee just stops getting reminders forever), fall
     // through to a recovery card that points at the one place that can still fix it: device settings.
-    if (pushPermission() === 'denied') {
-      setBlocked(true)
-      return
-    }
-    void isSubscribed().then((sub) => setShow(!sub))
+    void pushServerEnabled().then((on) => {
+      // A server that sends no push (a test copy) has nothing to switch on and nothing to unblock.
+      if (!on) return
+      if (pushPermission() === 'denied') {
+        setBlocked(true)
+        return
+      }
+      void isSubscribed().then((sub) => setShow(!sub))
+    })
   }, [])
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { enablePush, isSubscribed, markPushGateShown, pushPermission, pushSupported } from '../lib/push'
+import { enablePush, isSubscribed, markPushGateShown, pushPermission, pushServerEnabled, pushSupported } from '../lib/push'
 import { isStandalone } from '../lib/device'
 
 /**
@@ -23,6 +23,11 @@ export function PushGate({ onDone }: { onDone: () => void }) {
     void (async () => {
       // Already on — nothing to ask, and it must not cost them a tap.
       if (pushSupported() && pushPermission() !== 'denied' && (await isSubscribed())) {
+        if (!cancelled) onDone()
+        return
+      }
+      // A server that sends no push has nothing to ask for — not even once a day.
+      if (pushSupported() && !(await pushServerEnabled())) {
         if (!cancelled) onDone()
         return
       }

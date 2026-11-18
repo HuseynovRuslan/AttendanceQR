@@ -50,7 +50,7 @@ describe('«Çıxışı unudulan günlər» — elastik qrafik', () => {
     const flex = rowOf('Elastik İşçi')
     const time = within(flex).getByLabelText('Elastik İşçi — çıxış vaxtı') as HTMLInputElement
     expect(time.value).toBe('')
-    expect(within(flex).getByText('Elastik qrafik — real çıxış saatını yazın')).toBeTruthy()
+    expect(within(flex).getByText('Sərbəst iş qrafiki — real çıxış saatını yazın')).toBeTruthy()
     expect((within(flex).getByRole('button', { name: /Bağla/ }) as HTMLButtonElement).disabled).toBe(true)
 
     fireEvent.change(time, { target: { value: '2026-11-14T15:30' } })
@@ -69,6 +69,6 @@ describe('«Çıxışı unudulan günlər» — elastik qrafik', () => {
     expect((within(rowOf('Elastik İşçi')).getByLabelText('Elastik İşçi — seç') as HTMLInputElement).disabled).toBe(true)
     expect((within(rowOf('Sabit İşçi')).getByLabelText('Sabit İşçi — seç') as HTMLInputElement).disabled).toBe(false)
     expect(screen.getByRole('button', { name: 'Hamısını seç (1)' })).toBeTruthy()
-    expect(screen.getByText(/1 elastik sessiya toplu bağlanmır/)).toBeTruthy()
+    expect(screen.getByText(/1 sərbəst qrafikli sessiya toplu bağlanmır/)).toBeTruthy()
   })
 })

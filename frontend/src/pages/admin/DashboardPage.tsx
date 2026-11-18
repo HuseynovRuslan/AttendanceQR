@@ -33,7 +33,7 @@ type Bucket = 'total' | 'in' | 'done' | 'absent' | 'pending' | 'onboarding' | 's
 const BUCKET_LABEL: Record<Bucket, string> = {
   total: 'Ümumi işçi', in: 'İşdə', done: 'Tamamlayıb', absent: 'Qayıb', pending: 'Gözlənilir', onboarding: 'Aktivləşdirməyib',
   sick: 'Xəstəlik', vacation: 'Məzuniyyət', unpaid: 'Ödənişsiz', permission: 'İcazə',
-  rest: 'İstirahət (təyin edilmiş)', dayOff: 'Həftəlik istirahət', flexNoScan: 'Elastik, giriş yoxdur',
+  rest: 'İstirahət (təyin edilmiş)', dayOff: 'Həftəlik istirahət', flexNoScan: 'Sərbəst qrafik, giriş yoxdur',
   trip: 'Ezamiyyət',
 }
 
@@ -469,7 +469,7 @@ export function DashboardPage() {
             the record to be able to see. The roster's own day off follows it, and says so. */}
         {counts.rest > 0 && <Pill tone="purple" n={counts.rest} label="İstirahət (təyin edilmiş)" active={openBucket === 'rest'} onClick={() => openPill('rest')} />}
         {counts.dayOff > 0 && <Pill tone="purple" n={counts.dayOff} label="Həftəlik istirahət" active={openBucket === 'dayOff'} onClick={() => openPill('dayOff')} />}
-        {counts.flexNoScan > 0 && <Pill tone="purple" n={counts.flexNoScan} label="Elastik, giriş yoxdur" active={openBucket === 'flexNoScan'} onClick={() => openPill('flexNoScan')} />}
+        {counts.flexNoScan > 0 && <Pill tone="purple" n={counts.flexNoScan} label="Sərbəst qrafik, giriş yoxdur" active={openBucket === 'flexNoScan'} onClick={() => openPill('flexNoScan')} />}
         <Pill tone="leaf" n={<CountUp value={counts.present} />} label="Tamamlayıb" active={openBucket === 'done'} onClick={() => openPill('done')} />
       </section>
 

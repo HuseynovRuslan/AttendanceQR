@@ -81,7 +81,7 @@ type ListDef = {
 
 function lists(minWorked: number, flexible: boolean): Record<string, ListDef> {
   // «Elastik qrafik»: those days have no due time and no due day, so they are in neither rate — said where it matters.
-  const flexNote = flexible ? ' · elastik qrafikli günlər sayılmır' : ''
+  const flexNote = flexible ? ' · sərbəst qrafikli günlər sayılmır' : ''
   const live = (title: string, sub: string, tone: Tone, Icon: Icon, keep: ListDef['keep'], empty: string): ListDef =>
     ({ title, sub, tone, Icon, keep, order: byName, empty })
   return {

@@ -17,7 +17,7 @@ import { getDeviceFingerprint } from '../lib/device'
 import { deviceRefusalCopy } from '../lib/deviceRefusal'
 import { shouldShowPushGate } from '../lib/push'
 import { enqueueScan, isServerUnavailable, scansFor, type QueuedScan } from '../lib/offlineQueue'
-import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless } from '../lib/qrless'
+import { mayPassOutsideFence, qrlessRoute, recallFence, recallFreeHours, recallQrless, rememberFence, rememberFreeHours, rememberQrless } from '../lib/qrless'
 import { decodeJwt } from '../lib/jwt'
 import { ForeignQrDetector, looksLikeQrToken } from '../lib/qrShape'
 import { todayStr, withPendingScans } from '../lib/att'
@@ -276,6 +276,7 @@ export function ScanPage() {
           const sub = decodeJwt(getToken() ?? '')?.sub ?? null
           rememberQrless(sub, me.qrlessCheckIn === true)
           rememberFence(sub, me.requireGeofence !== false)
+          rememberFreeHours(sub, me.isFlexible === true)
         }
         return me
       })
@@ -778,7 +779,11 @@ export function ScanPage() {
       // The server says so when it asks; offline, the profile does. Read through the ref, not the state — the
       // scan may have started before the profile arrived, and the state seen here would be that render's.
       setEarlyOutFlexible(flexible)
-      if (!flexible) void profileReadyRef.current.then((p) => { if (p?.isFlexible) setEarlyOutFlexible(true) })
+      if (!flexible) {
+        // Offline the profile request fails too: what the last profile said is kept on the phone.
+        if (recallFreeHours(decodeJwt(getToken() ?? '')?.sub ?? null) === true) setEarlyOutFlexible(true)
+        void profileReadyRef.current.then((p) => { if (p?.isFlexible) setEarlyOutFlexible(true) })
+      }
       setPhase('confirmOut')
       earlyOutChoiceRef.current = (leaving) => {
         earlyOutChoiceRef.current = null

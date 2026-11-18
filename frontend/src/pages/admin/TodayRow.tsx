@@ -58,7 +58,7 @@ function Row({
   workedText, running, mayViewPhotos, mayGiveReason, assigning, photoBusy,
   onPosition, onLocation, onReason, onPhoto,
 }: TodayRowProps) {
-  const hours = showSchedule ? (r.isFlexible ? 'Elastik' : shiftHours(r)) : null
+  const hours = showSchedule ? (r.isFlexible ? 'Sərbəst' : shiftHours(r)) : null
   const canGiveReason = mayGiveReason && (r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
     || ((r.status === 'OnLeave' || r.status === 'Permission') && !!r.leaveId))
 

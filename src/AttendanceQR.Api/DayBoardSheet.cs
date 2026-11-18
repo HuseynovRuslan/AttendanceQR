@@ -62,7 +62,7 @@ public static class DayBoardSheet
         ("onboarding", "Aktivləşdirməyib"),
         // «Elastik qrafik», nobody scanned: 0 hours — not absent, and not a day off either. Printed only when
         // somebody is in it (see ColumnsFor), so a company with no flexible staff gets the file it always got.
-        (FlexNoScan, "Elastik, giriş yoxdur"),
+        (FlexNoScan, "Sərbəst qrafik, giriş yoxdur"),
     ];
 
     private const string FlexNoScan = "flexNoScan";
@@ -298,7 +298,7 @@ public static class DayBoardSheet
         // filing it under either would misreport the person. Appended, so every column of the form keeps its
         // letter; absent on every day nobody is in it, so the form is the form.
         var columns = groups.Any(g => Count(g.People, FlexNoScan) > 0)
-            ? [.. TemplateColumns, (FlexNoScan, "Elastik, giriş yoxdur")]
+            ? [.. TemplateColumns, (FlexNoScan, "Sərbəst qrafik, giriş yoxdur")]
             : TemplateColumns;
         var cols = columns.Length + 2;
         const int headerRow = 2;

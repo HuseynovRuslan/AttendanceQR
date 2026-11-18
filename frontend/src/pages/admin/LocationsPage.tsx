@@ -18,6 +18,7 @@ import {
 import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../components/icons'
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import { listFailureText } from '../../lib/listFailure'
+import { shiftParenLabel } from '../../lib/shiftLabel'
 
 type FormState = {
   name: string
@@ -454,7 +455,7 @@ export function LocationsPage() {
               <option value="">Qrafik seçin…</option>
               {schedules.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.isOvernight ? '🌙 ' : ''}{s.name} ({s.isFlexible ? 'Elastik' : `${s.shiftStart}–${s.shiftEnd}`})
+                  {s.isOvernight ? '🌙 ' : ''}{shiftParenLabel(s)}
                 </option>
               ))}
             </select>
