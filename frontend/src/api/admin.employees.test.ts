@@ -102,10 +102,71 @@ describe('the roster endpoints', () => {
     expect(p.get('status')).toBe('nopush')
   })
 
-  it('a picker that genuinely needs every name says so, and gets rows not a page envelope', async () => {
+  it('a picker that genuinely needs every name walks the pages, and gets rows not a page envelope', async () => {
     const { data } = await getAllEmployees()
 
-    expect(qs()).toContain('pageSize=2000')
+    expect(qs()).toContain('pageSize=200')
+    expect(urls).toHaveLength(1) // an empty company is one request
     expect(data).toEqual([])
+  })
+})
+
+/**
+ * «Bütün işçilər» for the shift counts and the equipment picker. The server never returns more than 200
+ * rows per request and answers a bigger ask with its default 25 — which is how «pageSize: 2000» showed the
+ * first 25 people of every company for seven weeks. The roster is read page by page until it is whole.
+ */
+describe('getAllEmployees — the whole roster, not its first page', () => {
+  const person = (i: number) => ({ id: `e${i}`, fullName: `İşçi ${i}` })
+  let asked: URLSearchParams[]
+
+  function serve(total: number, failOnPage?: number) {
+    asked = []
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
+    vi.stubGlobal('fetch', (url: string) => {
+      const p = new URLSearchParams(url.slice(url.indexOf('?') + 1))
+      asked.push(p)
+      const page = Number(p.get('page')), size = Number(p.get('pageSize'))
+      if (page === failOnPage) return Promise.resolve({ status: 500, text: () => Promise.resolve('') })
+      const from = (page - 1) * size
+      const items = Array.from({ length: Math.max(0, Math.min(size, total - from)) }, (_, k) => person(from + k))
+      return Promise.resolve({ status: 200, text: () => Promise.resolve(JSON.stringify({ items, total, page, pageSize: size })) })
+    })
+  }
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads every page of a big company — 929 people, nobody missing, nobody twice', async () => {
+    serve(929)
+    const { status, data } = await getAllEmployees()
+
+    expect(status).toBe(200)
+    expect(data).toHaveLength(929)
+    expect(new Set(data!.map((e) => e.id)).size).toBe(929)
+    expect(asked.map((p) => p.get('page'))).toEqual(['1', '2', '3', '4', '5'])
+    expect(asked.every((p) => p.get('pageSize') === '200')).toBe(true)
+  })
+
+  it('stops after one request when the company fits in a page', async () => {
+    serve(49)
+    const { data } = await getAllEmployees()
+
+    expect(data).toHaveLength(49)
+    expect(asked).toHaveLength(1)
+  })
+
+  it('an exactly full last page does not cost an extra empty request', async () => {
+    serve(400)
+    const { data } = await getAllEmployees()
+
+    expect(data).toHaveLength(400)
+    expect(asked).toHaveLength(2)
+  })
+
+  it('a failed page is a failure, not a quietly shorter roster', async () => {
+    serve(929, 3)
+    const { status, data } = await getAllEmployees()
+
+    expect(status).toBe(500)
+    expect(data).toBeNull()
   })
 })
