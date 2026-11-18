@@ -1,5 +1,6 @@
 import { fmtTime, toCompanyInputValue } from '../../lib/format'
 import { bucketOf } from './todayCounts'
+import { formatWorked } from './todayShift'
 
 /**
  * Turning one board row into one line of the workbook the leadership receives.
@@ -23,12 +24,20 @@ export interface ExportableRow {
   leaveType?: string | null
   checkInAtUtc?: string | null
   checkOutAtUtc?: string | null
+  /** The last block's departure on a day of several (null while it is open) — the board's «Çıxış» for fixed shifts. */
+  lastCheckOutAtUtc?: string | null
+  /** «Elastik qrafik» — the only rows whose «Çıxış» is the last session's; see exitOf. */
+  isFlexible?: boolean
   fieldCheckInAtUtc?: string | null
   fieldCheckOutAtUtc?: string | null
   lateArrivalReason?: string | null
   earlyDepartureReason?: string | null
   wasOffline?: boolean
   hasPhoto?: boolean
+  /** Each session, only on a day worked in more than one (the server sends nothing for an ordinary day). */
+  blockSpans?: { inAtUtc: string | null; outAtUtc: string | null }[] | null
+  /** The server's own count for the day — closed sessions only. See DayAttendanceRow.workedMinutes. */
+  workedMinutes?: number | null
 }
 
 /**
@@ -58,7 +67,73 @@ export function cellTime(iso: string | null | undefined, base: string): string {
  * full day at an ad-hoc site exported as «Sahədə — —» while being counted under «Tamamlayıb».
  */
 export const entryOf = (r: ExportableRow) => r.checkInAtUtc ?? r.fieldCheckInAtUtc
-export const exitOf = (r: ExportableRow) => r.checkOutAtUtc ?? r.fieldCheckOutAtUtc
+
+/** Sessions of a day worked in more than one, else null — the one test every caller below asks. */
+const sessionsOf = (r: ExportableRow) => (r.blockSpans && r.blockSpans.length > 1 ? r.blockSpans : null)
+
+/**
+ * The departure the morning FILE prints.
+ *
+ * «Elastik qrafik»: the LAST session's — and nothing while that session is still open. `checkOutAtUtc` belongs to
+ * the day's FIRST session, so a flexible worker who left at 12:00 and came back at 13:00 exported «Çıxış 12:00»
+ * while standing at work. The server's `lastCheckOutAtUtc` is null exactly when the last session is open, and
+ * falling back from it to `checkOutAtUtc` brought the first session's exit straight back — so a flexible day of
+ * several sessions reads its last one and nothing else.
+ *
+ * A FIXED shift prints exactly what it always printed: the first block's departure, with that block's early-leave
+ * reason beside it (the reason belongs to the first block's record, and beside the last block's time it would
+ * say the wrong block left early). Owner's decision, 17.11: a fixed shift's file does not change in this release.
+ */
+export function exitOf(r: ExportableRow): string | null | undefined {
+  const sessions = r.isFlexible ? sessionsOf(r) : null
+  if (sessions) return sessions[sessions.length - 1].outAtUtc
+  return r.checkOutAtUtc ?? r.fieldCheckOutAtUtc
+}
+
+/**
+ * The departure the BOARD shows in its «Çıxış» cell, and whether that row is still running. Flexible rows: the same
+ * as the file (exitOf). Fixed rows: what the board has always shown — the last block's departure once it has one,
+ * else the first's — untouched by this release, like the fixed rows of the file.
+ */
+export function boardExitOf(r: ExportableRow): string | null | undefined {
+  if (r.isFlexible) return exitOf(r)
+  return r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc
+}
+
+/** Whether a session of this day has begun and not ended — at work today, a forgotten check-out on a past day. */
+export function hasOpenSession(r: ExportableRow): boolean {
+  const sessions = sessionsOf(r)
+  if (sessions) return sessions.some((s) => !!s.inAtUtc && !s.outAtUtc)
+  return !!entryOf(r) && !exitOf(r)
+}
+
+/**
+ * «09:00–12:00, 13:00–18:00» — every session, only on a day worked in more than one. Each time is stamped with
+ * its own day when that is not the exported one (`cellTime`), so a session across midnight reads «22:00–06:00
+ * (+1)» and an open one reads «açıq».
+ */
+export function sessionsText(r: ExportableRow, date: string): string {
+  const sessions = sessionsOf(r)
+  if (!sessions) return ''
+  return sessions
+    .map((s) => `${cellTime(s.inAtUtc, date) || '—'}–${s.outAtUtc ? cellTime(s.outAtUtc, date) : 'açıq'}`)
+    .join(', ')
+}
+
+/**
+ * The «İşlənmiş» cell: the hours the SERVER counted (closed sessions; the break between sessions unpaid), and
+ * «açıq» beside them while a session is still open — never an estimate of it. The same figure the tabel reads, so
+ * the file and the tabel cannot disagree about a person's day. Empty when the day had no session at all, and when
+ * an older server sends no figure (nothing is better than a second, different sum).
+ */
+export function workedText(r: ExportableRow): string {
+  const open = hasOpenSession(r)
+  const minutes = r.workedMinutes
+  if (minutes == null) return ''
+  if (minutes > 0) return open ? `${formatWorked(minutes)} + açıq` : formatWorked(minutes)
+  if (open) return 'açıq'
+  return entryOf(r) ? formatWorked(0) : ''
+}
 
 export interface ExportRowOut {
   name: string
@@ -70,6 +145,10 @@ export interface ExportRowOut {
   photo: string
   bucket: string
   paper: string
+  /** «08:00» / «03:05 + açıq» / «açıq» — see workedText. */
+  worked: string
+  /** «09:00–12:00, 13:00–18:00» on a day of several sessions, else empty. */
+  sessions: string
 }
 
 /**
@@ -103,6 +182,8 @@ export function exportRow(
     paper: r.paperEmployer
       ? `${r.paperEmployer}${r.paperSite ? ` / ${r.paperSite}` : ''}`
       : '',
+    worked: workedText(r),
+    sessions: sessionsText(r, date),
   }
 }
 

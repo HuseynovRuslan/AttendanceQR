@@ -206,3 +206,29 @@ export function nightShiftState(
   if (!last?.checkInAtUtc || last.checkOutAtUtc) return null
   return { kind: 'night', checkIn: last.checkInAtUtc }
 }
+
+/**
+ * The longest a flexible session may run and still be closed by a scan on a LATER day — the server's
+ * FlexibleScanRules.MaxSessionHours, copied deliberately so the card never promises a check-out the scan will not
+ * perform.
+ */
+export const FLEXIBLE_MAX_SESSION_HOURS = 16
+
+/**
+ * «Elastik qrafik»: last night's session still running this morning. The same job nightShiftState does for a night
+ * shift, for somebody who has no shift at all: in at 22:00, at 02:00 there is no row for today, and without this the
+ * card would say «Giriş et · Hələ giriş etməmisiniz» to a person at work. The server's rule, not an approximation:
+ * today has no row, yesterday's is open, and it was opened at most 16 hours ago.
+ */
+export function flexibleSessionState(
+  records: AttendanceRecord[],
+  now: Date = new Date(),
+): { kind: 'night'; checkIn: string } | null {
+  const today = companyDate(now)
+  if (records.some((r) => r.attendanceDate === today && r.checkInAtUtc)) return null
+  const last = records.find((r) => r.attendanceDate === dayBefore(today))
+  if (!last?.checkInAtUtc || last.checkOutAtUtc) return null
+  const openFor = now.getTime() - new Date(last.checkInAtUtc).getTime()
+  if (openFor < 0 || openFor > FLEXIBLE_MAX_SESSION_HOURS * 3600_000) return null
+  return { kind: 'night', checkIn: last.checkInAtUtc }
+}

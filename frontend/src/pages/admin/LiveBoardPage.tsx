@@ -25,6 +25,8 @@ const OFF_LABEL: Record<string, string> = { DayOff: 'İş günü deyil', OnLeave
 // day, a work trip) reads as "Məzuniyyət" on the kiosk board. DayOff/Permission keep their fixed text.
 function offLabel(r: DayAttendanceRow): string {
   if (r.status === 'OnLeave') return leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
+  // «Elastik qrafik»: there is no work day to not be on — they simply have not come.
+  if (r.status === 'DayOff' && r.isFlexible && !r.leaveType) return 'Elastik, giriş yoxdur'
   return OFF_LABEL[r.status] ?? 'Yoxdur'
 }
 

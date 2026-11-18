@@ -94,6 +94,17 @@ public class AbsenceMarksController : ControllerBase
                      && l.FromDate <= request.Date && l.ToDate >= request.Date, ct))
             return BadRequest(new { error = "HasLeave" });
 
+        // «Elastik qrafik» has no day anybody is due on, so there is no absence to state: a day with no scan is a day
+        // with no hours. Refused for the shift THAT day was on — a day before the company switched keeps its «Qayıb».
+        var target = await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == request.EmployeeId, ct);
+        var targetLocation = target is null ? null
+            : await _db.Locations.AsNoTracking().FirstOrDefaultAsync(l => l.Id == target.LocationId, ct);
+        if (target is not null && targetLocation is not null
+            && EffectiveShift.Resolve(target,
+                    await ShiftResolver.ScheduleOnAsync(_db, target.Id, target.ScheduleId, request.Date, ct), targetLocation)
+                .IsFlexible)
+            return BadRequest(new { error = "FlexibleSchedule" });
+
         var note = reason[..Math.Min(reason.Length, 200)]; // the column holds 200; the audit line keeps all of it
 
         var existing = await _db.AbsenceMarks

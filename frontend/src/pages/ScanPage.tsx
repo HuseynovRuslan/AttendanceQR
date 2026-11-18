@@ -37,6 +37,7 @@ import { PhotoIntro } from '../components/PhotoIntro'
 import { checkForFace } from '../lib/faceCheck'
 import { getMyProfile, todayAnswered, whyUnreachable, type MyProfile } from '../api/attendance'
 import { fmtTime } from '../lib/format'
+import { checkOutCardText, formatDuration } from '../lib/checkOutCard'
 
 type Card = {
   tone: 'green' | 'red' | 'yellow'
@@ -61,7 +62,7 @@ type Card = {
   /** Offer to switch the checkout reminder on right here (check-in only). */
   offerPush?: boolean
 }
-type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'confirmOut' | 'processing' | 'done'
+type Phase = 'scanning' | 'intro' | 'photo' | 'recheck' | 'confirmOut' | 'confirmLong' | 'processing' | 'done'
 
 // The employee reads what is about to happen before the front camera opens. Auto-advances so a
 // hesitant person cannot block the queue by never tapping "Hazıram".
@@ -169,7 +170,12 @@ export function ScanPage() {
   const [todayAsOf, setTodayAsOf] = useState<number | null>(null)
   // «Siz artıq işdəsiniz — çıxırsınız?» — the check-in time it is asking about, while it is asked.
   const [earlyOutCheckIn, setEarlyOutCheckIn] = useState<string | null>(null)
+  // «Elastik qrafik»: the exit closes this SESSION, not the day — another may start in a few minutes.
+  const [earlyOutFlexible, setEarlyOutFlexible] = useState(false)
   const earlyOutChoiceRef = useRef<((leaving: boolean) => void) | null>(null)
+  // «Elastik qrafik»: a session open long enough that this tap may end it or follow a forgotten check-out.
+  const [longAsk, setLongAsk] = useState<{ checkIn: string; hours: number; sameDay: boolean } | null>(null)
+  const longChoiceRef = useRef<((answer: 'close' | 'new') => void) | null>(null)
   const [geo, setGeo] = useState<GeoState>({ kind: 'checking' })
   // Seconds left on the GPS wait, shown on the checklist. Only appears once the fix is taking long
   // enough to be worth explaining — a countdown that starts at 45 makes a two-second check look slow.
@@ -766,14 +772,34 @@ export function ScanPage() {
   }
 
   /** Asks «Siz artıq işdəsiniz — işdən çıxırsınız?» and resolves with the answer. Never rejects. */
-  function askEarlyCheckOut(checkInIso: string | null): Promise<boolean> {
+  function askEarlyCheckOut(checkInIso: string | null, flexible = false): Promise<boolean> {
     return new Promise((resolve) => {
       setEarlyOutCheckIn(checkInIso ?? '')
+      // The server says so when it asks; offline, the profile does. Read through the ref, not the state — the
+      // scan may have started before the profile arrived, and the state seen here would be that render's.
+      setEarlyOutFlexible(flexible)
+      if (!flexible) void profileReadyRef.current.then((p) => { if (p?.isFlexible) setEarlyOutFlexible(true) })
       setPhase('confirmOut')
       earlyOutChoiceRef.current = (leaving) => {
         earlyOutChoiceRef.current = null
         setEarlyOutCheckIn(null)
         resolve(leaving)
+      }
+    })
+  }
+
+  /**
+   * «Elastik qrafik»: «finishing the session you started at 18:00?» — resolves with the answer. Asked only when the
+   * session has run long (FlexibleScanRules.ConfirmAfterHours); the server decides that, never the phone.
+   */
+  function askLongSession(checkIn: string, hours: number, sameDay: boolean): Promise<'close' | 'new'> {
+    return new Promise((resolve) => {
+      setLongAsk({ checkIn, hours, sameDay })
+      setPhase('confirmLong')
+      longChoiceRef.current = (answer) => {
+        longChoiceRef.current = null
+        setLongAsk(null)
+        resolve(answer)
       }
     })
   }
@@ -924,6 +950,8 @@ export function ScanPage() {
     // Set once the employee has answered «bəli, çıxıram». Travels with the scan, online or queued —
     // soon after arriving the server takes a check-out only with it (EarlyCheckOutRules).
     let confirmEarlyCheckOut = false
+    // «Elastik qrafik»: the answer to the long-session question, once asked.
+    let longSession: 'close' | 'new' | null = null
     // What the phone believes today is at this moment — read through the ref, never a stale closure.
     const known = todayRef.current
 
@@ -1032,6 +1060,7 @@ export function ScanPage() {
             ...(photoBase64 ? { photoBase64 } : {}),
             clientScanId,
             ...(confirmEarlyCheckOut ? { confirmEarlyCheckOut: true } : {}),
+            ...(longSession ? { longSession } : {}),
           },
         })
 
@@ -1045,13 +1074,21 @@ export function ScanPage() {
         // Checked in not long ago: this scan would close the day, so the server wants a yes first.
         if (status === 409 && data?.error === 'ConfirmEarlyCheckOut' && !confirmEarlyCheckOut) {
           const checkIn = data.checkInAtUtc ?? (known.kind === 'in-progress' ? known.checkInAtUtc : null)
-          const leaving = await askEarlyCheckOut(checkIn)
+          const leaving = await askEarlyCheckOut(checkIn, data.flexible === true)
           setPhase('processing')
           if (!leaving) {
             stayed(checkIn)
             return
           }
           confirmEarlyCheckOut = true
+          continue
+        }
+
+        // «Elastik qrafik»: the open session has run long — the end of a long night, or a new arrival after a
+        // forgotten check-out. Asked once; the same scan goes back with the answer.
+        if (status === 409 && data?.error === 'ConfirmLongSession' && !longSession && data.checkInAtUtc) {
+          longSession = await askLongSession(data.checkInAtUtc, data.hours ?? 0, data.sameDay === true)
+          setPhase('processing')
           continue
         }
 
@@ -1080,12 +1117,14 @@ export function ScanPage() {
         }
         if (status === 200 && data?.action === 'CheckOut') {
           successFeedback()
-          const worked = data.recordId ? await workedDurationText(data.recordId) : undefined
+          const minutes = data.recordId ? await workedMinutesOf(data.recordId) : undefined
           setResult({
             tone: 'green',
-            title: 'Çıxış qeydə alındı',
-            detail: worked ?? `Saat ${fmtTime(data.checkOutAtUtc, '')}`,
-            note: 'Sabaha qədər!',
+            // «Elastik qrafik» is told apart by the server, which judged the scan: «Sabaha qədər!» is for a day
+            // that ends here, and a flexible one does not — see checkOutCardText.
+            ...checkOutCardText({
+              flexible: data.flexible === true, qrless, minutes, at: fmtTime(data.checkOutAtUtc, ''),
+            }),
             warn: data.earlyDeparture ? 'Tez çıxdınız' : undefined,
             final: true,
             // Offered here too — more chances to get it switched on; it self-hides once it is.
@@ -1439,7 +1478,7 @@ export function ScanPage() {
               {earlyOutCheckIn
                 ? <>Giriş saatınız: <b className="text-white">{fmtTime(earlyOutCheckIn, '')}</b>. </>
                 : null}
-              Bu skan <b className="text-amber-300">ÇIXIŞ</b> sayılacaq və iş gününüz bağlanacaq.
+              Bu skan <b className="text-amber-300">ÇIXIŞ</b> sayılacaq və iş {earlyOutFlexible ? 'sessiyanız' : 'gününüz'} bağlanacaq.
             </p>
             {/* The safe answer is the big one. A «did it work?» retry is by far the commonest reason
                 to be here, and a wrong «yes» ends somebody's paid day at eight in the morning. */}
@@ -1454,6 +1493,30 @@ export function ScanPage() {
               className="text-sm text-slate-400 underline underline-offset-4"
             >
               Bəli, işdən çıxıram
+            </button>
+          </div>
+        )}
+
+        {phase === 'confirmLong' && longAsk && (
+          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+            <p className="text-xl font-bold text-amber-400">Sessiyanız {formatHours(longAsk.hours)} saatdır açıqdır</p>
+            <p className="text-center text-base text-slate-300">
+              {longAsk.sameDay ? 'Bu gün' : 'Dünən'} <b className="text-white">{fmtTime(longAsk.checkIn, '')}</b>-da giriş etmisiniz.
+              İndi işi bitirirsiniz?
+            </p>
+            {/* Two real answers, neither is the «safe» one: a wrong yes pays a night at home, a wrong no leaves a
+                worked night at zero. Both are said in full so nobody taps through. */}
+            <button
+              onClick={() => longChoiceRef.current?.('close')}
+              className="w-full rounded-2xl bg-white py-4 text-base font-bold text-slate-900"
+            >
+              Bəli, işi indi bitirirəm
+            </button>
+            <button
+              onClick={() => longChoiceRef.current?.('new')}
+              className="w-full rounded-2xl border border-slate-500 py-4 text-base font-bold text-white"
+            >
+              Xeyr, çıxışı unutmuşam — indi gəlmişəm
             </button>
           </div>
         )}
@@ -1707,6 +1770,12 @@ interface ScanResponse {
   minutes?: number
   /** Past days this employee left open (checked in, never out) — each counts as zero hours. */
   openDays?: number
+  /** «Elastik qrafik», ConfirmLongSession: how long the open session has run, and whether it began today. */
+  hours?: number
+  sameDay?: boolean
+  /** «Elastik qrafik»: on ConfirmEarlyCheckOut the exit closes a session, not the day; on a CheckOut the card
+   *  does not say «Sabaha qədər!». */
+  flexible?: boolean
   /** QR-less check-in only: the face verdict decided before this reply
    *  (Ok · Mismatch · NoFace · MultiFace · NoReference · Error). Absent on a poster scan. */
   faceMatch?: string
@@ -1823,20 +1892,15 @@ function minutesBetween(startIso: string, endIso: string): number {
   return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000)
 }
 
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${h} saat ${m} dəqiqə işlədiniz`
-}
 
 // Checkout response carries no duration, so read today's record from /me and compute it.
-async function workedDurationText(recordId: string): Promise<string | undefined> {
+async function workedMinutesOf(recordId: string): Promise<number | undefined> {
   try {
     const { status, data } = await apiRequest<MeRecord[]>('/api/attendance/me')
     if (status !== 200 || !Array.isArray(data)) return undefined
     const record = data.find((r) => r.recordId === recordId)
     if (!record?.checkInAtUtc || !record.checkOutAtUtc) return undefined
-    return formatDuration(minutesBetween(record.checkInAtUtc, record.checkOutAtUtc))
+    return minutesBetween(record.checkInAtUtc, record.checkOutAtUtc)
   } catch {
     return undefined
   }
@@ -1941,6 +2005,33 @@ function errorResult(status: number, data: ScanResponse | null, accuracy?: numbe
     case 'TokenExpired':
     case 'TokenReused':
       return { tone: 'yellow', title: 'QR kod köhnəlib', detail: 'Yenidən skan edin.' }
+    case 'TooSoonAfterCheckOut':
+      // «Elastik qrafik»: the «did it work?» tap right after leaving. Not «the day is over» — another session may
+      // start in a few minutes.
+      return {
+        tone: 'green',
+        title: 'Çıxışınız indicə qeydə alınıb',
+        detail: `Yeni sessiya üçün ${data?.minutes ?? 5} dəqiqə sonra yenidən skan edin.`,
+        final: true,
+      }
+    case 'ForgottenCheckOutToday':
+      // «Elastik qrafik»: this morning's session was never closed, and one day holds one open session. Nothing was
+      // guessed — the admin puts in the real exit and this arrival.
+      return {
+        tone: 'yellow',
+        title: 'Bu günün girişi açıq qalıb',
+        detail: data?.checkInAtUtc ? `Bu gün ${fmtTime(data.checkInAtUtc, '')}-da etdiyiniz girişin çıxışı qeyd olunmayıb.` : undefined,
+        note: 'Rəhbərinizə deyin: çıxış vaxtını və indiki gəlişinizi qeyd etsin. Skanınız qeydiyyatdadır.',
+        final: true,
+      }
+    case 'ConfirmLongSession':
+      // Only reached without an answer — i.e. never online (the question is asked); kept so a stray reply reads sensibly.
+      return {
+        tone: 'yellow',
+        title: 'Sessiya uzun müddət açıqdır',
+        detail: 'Rəhbərinizə deyin ki, çıxış vaxtını yoxlasın.',
+        final: true,
+      }
     case 'AlreadyCompleted':
       return {
         tone: 'yellow',
@@ -1965,4 +2056,9 @@ function errorResult(status: number, data: ScanResponse | null, accuracy?: numbe
       // QR signature/format failures and anything else — show the reason the backend returned.
       return { tone: 'yellow', title: 'QR kod qəbul edilmədi', detail: err ?? `HTTP ${status}` }
   }
+}
+
+/** «13,5» — hours with at most one decimal, Azerbaijani comma. */
+function formatHours(hours: number): string {
+  return (Math.round(hours * 10) / 10).toString().replace('.', ',')
 }

@@ -64,6 +64,19 @@ describe('a work trip is not a holiday', () => {
 })
 
 describe('the rest of the board', () => {
+  it('puts an «Elastik» person with no scan under their own card, not «Həftəlik istirahət» or «Qayıb»', () => {
+    const c = countToday([
+      { status: 'DayOff', isFlexible: true },
+      { status: 'DayOff' },
+      { status: 'DayOff', isFlexible: true, leaveType: 'Rest' },
+    ])
+    expect(c.flexNoScan).toBe(1)
+    expect(c.dayOff).toBe(1)
+    expect(c.rest).toBe(1)
+    expect(c.absent).toBe(0)
+    expect(bucketOf({ status: 'Incomplete', isFlexible: true })).toBe('incomplete')
+  })
+
   it('counts the ordinary statuses', () => {
     const c = countToday([
       row('OnTime'), row('Late'),

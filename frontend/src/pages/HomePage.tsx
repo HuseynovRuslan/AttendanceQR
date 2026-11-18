@@ -13,7 +13,7 @@ import { FieldVisitCards } from '../components/FieldVisitCards'
 import { AwardCard } from '../components/AwardCard'
 import { PushEnablePrompt } from '../components/PushEnablePrompt'
 import { MissedCheckoutBanner } from '../components/MissedCheckoutBanner'
-import { firstName, initials, nightShiftState, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
+import { firstName, flexibleSessionState, initials, nightShiftState, todayState, todayStr, withPendingScans, type TodayState } from '../lib/att'
 import { QUEUE_CHANGED, scansFor, type QueuedScan } from '../lib/offlineQueue'
 import { fmtDuration, fmtTime } from '../lib/format'
 import { knownToday, rememberToday } from '../lib/todayCache'
@@ -157,7 +157,10 @@ export function HomePage() {
   const again = today.kind === 'none' ? (today.again ?? (today.unknown ? 'unknown' : undefined)) : undefined
   // A night worker's shift lives on YESTERDAY's row until noon. Without this the screen tells someone
   // who has been at work since eight in the evening that they have not checked in — see nightShiftState.
-  const night = nightShiftState(records, profile?.shiftStart, profile?.shiftEnd)
+  // «Elastik qrafik» has no shift to read that from; its session rule says it instead (see flexibleSessionState).
+  const night = profile?.isFlexible
+    ? flexibleSessionState(records)
+    : nightShiftState(records, profile?.shiftStart, profile?.shiftEnd)
   const recent = records.slice(0, 3)
   // A worker with an open/assigned field visit has no QR poster to scan — don't bounce them to /scan.
   const hasActionableField = fieldVisits.some((v) => v.status === 'Assigned' || v.status === 'CheckedIn')
@@ -242,6 +245,12 @@ export function HomePage() {
               🕐 Növbəniz: {profile.shiftStart}–{profile.shiftEnd}
             </div>
           )}
+          {/* «Elastik qrafik»: no hours to print — the person may come and go at any time. */}
+          {profile?.isFlexible && (
+            <div className="mt-1 text-base font-semibold text-blue-700">
+              🕐 Növbəniz: Elastik — istənilən saatda
+            </div>
+          )}
         </div>
       </div>
 
@@ -290,7 +299,7 @@ export function HomePage() {
       {loading && !slow ? (
         <div className="h-44 animate-pulse rounded-3xl bg-slate-100" />
       ) : (
-        <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} asOf={asOf} why={offline || undefined} onScan={() => navigate('/scan')} />
+        <ScanHero today={today} night={night} shiftEnd={profile?.shiftEnd} qrless={profile?.qrlessCheckIn} flexible={profile?.isFlexible} asOf={asOf} why={offline || undefined} onScan={() => navigate('/scan')} />
       )}
 
       <div>
@@ -337,12 +346,14 @@ function isOverdue(checkInIso: string, shiftEnd?: string | null): boolean {
  *  bottom bar. Context-aware: green "Giriş et" before check-in, blue "Çıxış et" while at work (red and
  *  insistent once the shift is over — a forgotten check-out reads as zero hours), a calm summary once
  *  the day is done. The whole card is the tap target. */
-function ScanHero({ today, night, shiftEnd, qrless, asOf, why, onScan }: {
+function ScanHero({ today, night, shiftEnd, qrless, flexible, asOf, why, onScan }: {
   today: TodayState
   night: { kind: 'night'; checkIn: string } | null
   shiftEnd?: string | null
   /** No poster at this branch — the same tap, but the words must not say "scan". */
   qrless?: boolean
+  /** «Elastik qrafik»: another scan opens a new session, not «the second part of the shift». */
+  flexible?: boolean
   /** The day came from the phone's memory, not the server — when the server last said it. */
   asOf?: number | null
   /** Why the server could not be asked — no signal on the phone, or the server itself. */
@@ -370,7 +381,7 @@ function ScanHero({ today, night, shiftEnd, qrless, asOf, why, onScan }: {
         </div>
         <div className="mt-1 text-3xl font-extrabold">Çıxış et</div>
         <div className="mt-1 text-sm opacity-90">
-          Dünən axşam {fmtTime(night.checkIn)}-də giriş etmisiniz
+          Dünən {flexible ? '' : 'axşam '}{fmtTime(night.checkIn)}-də giriş etmisiniz
           {over ? ' · çıxışı unutmayın!' : shiftEnd ? ` · Növbə bitir ${shiftEnd}` : ''}
         </div>
         <span className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2.5 text-base font-bold">
@@ -416,7 +427,7 @@ function ScanHero({ today, night, shiftEnd, qrless, asOf, why, onScan }: {
           {today.again === 'field'
             ? 'Səyyar işdən qayıtmısınızsa, burada giriş edin'
             : today.again === 'second'
-              ? 'Növbənin ikinci hissəsi üçün giriş edin'
+              ? flexible ? 'Yenidən işə başlayırsınızsa, giriş edin' : 'Növbənin ikinci hissəsi üçün giriş edin'
               : 'Hələ giriş etməmisiniz'}
         </div>
         {staleLine}

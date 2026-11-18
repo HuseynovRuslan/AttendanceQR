@@ -6,6 +6,7 @@ import { FaceFlagBadge } from '../../components/FaceFlagBadge'
 import { IconCamera, IconClock, IconPencil } from '../../components/icons'
 import { fmtTime } from '../../lib/format'
 import { initials, shiftHours, shiftTitle } from './todayShift'
+import { boardExitOf } from './exportRows'
 
 /**
  * One line of the board — pulled out of the page and memoised.
@@ -49,13 +50,15 @@ export interface TodayRowProps {
 }
 
 const PAST_INCOMPLETE = { cls: 'b-absent', label: 'Çıxış yoxdur', icon: 'x' as const }
+/** «Elastik qrafik», no scan: nothing was due, nothing was missed — not a day off and not an absence. */
+const FLEXIBLE_NO_SCAN = { cls: 'b-pending', label: 'Giriş yoxdur', icon: 'calendar' as const }
 
 function Row({
   r, showLocCol, showPosition, showSchedule, showWorked, isToday,
   workedText, running, mayViewPhotos, mayGiveReason, assigning, photoBusy,
   onPosition, onLocation, onReason, onPhoto,
 }: TodayRowProps) {
-  const hours = showSchedule ? shiftHours(r) : null
+  const hours = showSchedule ? (r.isFlexible ? 'Elastik' : shiftHours(r)) : null
   const canGiveReason = mayGiveReason && (r.status === 'Absent' || r.status === 'Onboarding' || r.status === 'DayOff'
     || ((r.status === 'OnLeave' || r.status === 'Permission') && !!r.leaveId))
 
@@ -115,7 +118,9 @@ function Row({
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
           <StatusBadge
             status={r.status}
-            override={r.status === 'Incomplete' && !isToday ? PAST_INCOMPLETE : dayVisual(r.status, r.leaveType)}
+            override={r.status === 'Incomplete' && !isToday ? PAST_INCOMPLETE
+              : r.isFlexible && r.status === 'DayOff' && !r.leaveType ? FLEXIBLE_NO_SCAN
+              : dayVisual(r.status, r.leaveType)}
           />
           {/* Which rows can be given a reason.
               «Aktivləşdirməyib»: the person whose day nobody can decide but a human — no scan history,
@@ -197,9 +202,9 @@ function Row({
         {/* On a day worked in two stretches this is the NIGHT's departure, not the morning block's —
             otherwise the row would read «07:00 → 11:00» and look as though the nine hours after ten at
             night were never recorded. */}
-        {(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-          ? fmtTime(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
-          : ''}
+        {/* The LAST session's departure, and nothing while it is open — falling back to the first session's
+            exit showed somebody back at work as gone. The day's Excel reads the same function. */}
+        {boardExitOf(r) ? fmtTime(boardExitOf(r)) : ''}
         {/* The count alone did not read: «07:18 → 11:19 · 2 blok» looked like one unbroken stretch
             with a puzzling label, and the whole point of a split day is that the person went home in
             between. So the stretches are named under the times. */}

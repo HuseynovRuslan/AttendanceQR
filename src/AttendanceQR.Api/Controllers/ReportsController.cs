@@ -180,7 +180,7 @@ public class ReportsController : ControllerBase
     // both need the leave type, and re-deriving them here would put the «Ezamiyyət exported as
     // Məzuniyyət» bug in a second place. What the board shows is what the file says.
     [HttpPost("export-day")]
-    public IActionResult ExportDay([FromBody] ExportDayRequest request)
+    public async Task<IActionResult> ExportDay([FromBody] ExportDayRequest request)
     {
         var data = request.Rows ?? [];
         if (data.Count > 5000)
@@ -196,7 +196,9 @@ public class ReportsController : ControllerBase
                 row.CheckOut ?? string.Empty,
                 row.Photo ?? string.Empty,
                 row.Bucket,
-                row.Paper ?? string.Empty))
+                row.Paper ?? string.Empty,
+                row.Worked ?? string.Empty,
+                row.Sessions ?? string.Empty))
             .ToList();
 
         // A company form for «Xülasə», when the reader chose one. Only this company's (a key from
@@ -216,8 +218,13 @@ public class ReportsController : ControllerBase
                 return BadRequest(new { error = "AreaNotInTemplate", areas = unlisted });
         }
 
+        // «İşlənmiş» and «Sessiyalar» are «Elastik qrafik» columns: only a company that uses such a shift gets them.
+        // Every other company's morning file keeps its eight columns exactly — the client sends the hours either way,
+        // and this is the one place that decides whether they are printed.
+        var flexibleCompany = await _reports.UsesFlexibleSchedulesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+
         var title = string.IsNullOrWhiteSpace(request.Title) ? "Davamiyyət" : request.Title;
-        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels, template);
+        var bytes = DayBoardSheet.Build(title, rows, request.ScopeNote, request.BucketLabels, template, flexibleCompany);
 
         var safeDate = string.IsNullOrWhiteSpace(request.Date) ? "gun" : request.Date;
         return File(

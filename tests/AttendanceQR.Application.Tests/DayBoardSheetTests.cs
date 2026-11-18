@@ -40,6 +40,14 @@ public class DayBoardSheetTests
         return new XLWorkbook(new MemoryStream(bytes));
     }
 
+    /// <summary>The same file for a company that uses a «Elastik qrafik» shift.</summary>
+    private static XLWorkbook BuildFlexible(params DayBoardSheet.Row[] rows)
+    {
+        var bytes = DayBoardSheet.Build(
+            "Davamiyyət — 7 sentyabr", rows, "3 ərazi seçilib", BoardWords, template: null, flexibleCompany: true);
+        return new XLWorkbook(new MemoryStream(bytes));
+    }
+
     /// <summary>Finds a row on a sheet by the text in its first column.</summary>
     private static IXLRow? RowStarting(IXLWorksheet ws, string text)
         => ws.RowsUsed().FirstOrDefault(r => r.Cell(1).GetString().StartsWith(text, StringComparison.Ordinal));
@@ -81,6 +89,28 @@ public class DayBoardSheetTests
         Assert.Equal(1, lacin.Cell(trip).GetValue<int>());
         Assert.Equal(1, lacin.Cell(sick).GetValue<int>());
         Assert.Equal(0, lacin.Cell(leave).GetValue<int>());
+    }
+
+    [Fact]
+    public void An_Elastik_column_appears_only_when_somebody_is_in_it()
+    {
+        // A company with no flexible staff gets exactly the summary it always got.
+        using (var plain = Build(Person("Aygün", "Qala Anbar", "present"), Person("Cavid", "Qala Anbar", "dayOff")))
+        {
+            var headers = plain.Worksheet("Xülasə").Row(4).CellsUsed().Select(c => c.GetString()).ToList();
+            Assert.DoesNotContain("Elastik, giriş yoxdur", headers);
+        }
+
+        using var wb = Build(Person("Aygün", "Qala Anbar", "present"), Person("Fidan", "Qala Anbar", "flexNoScan"));
+        var ws = wb.Worksheet("Xülasə");
+        var row = RowStarting(ws, "Qala Anbar")!;
+        var cells = ws.Row(4).CellsUsed().ToList();
+        var flex = cells.Single(c => c.GetString() == "Elastik, giriş yoxdur").Address.ColumnNumber;
+        var dayOff = cells.Single(c => c.GetString() == "İstirahət").Address.ColumnNumber;
+        var absent = cells.Single(c => c.GetString() == "Qayıb").Address.ColumnNumber;
+        Assert.Equal(1, row.Cell(flex).GetValue<int>());
+        Assert.Equal(0, row.Cell(dayOff).GetValue<int>());   // not a day off …
+        Assert.Equal(0, row.Cell(absent).GetValue<int>());   // … and not an absence
     }
 
     [Fact]
@@ -239,5 +269,71 @@ public class DayBoardSheetTests
         Assert.Equal(string.Empty, own.Cell(paper).GetString());
         // The column was inserted BEFORE Status; every cell after it had to move with its header.
         Assert.Equal("Tamamlayıb", borrowed.Cell(status).GetString());
+    }
+
+    [Fact]
+    public void A_flexible_company_s_day_of_several_sessions_prints_the_last_departure_the_hours_and_each_session()
+    {
+        // The client sends «Çıxış» as the LAST session's departure and the hours the server counted; the sheet
+        // adds every session after the columns a reader already knows, and only when somebody has several.
+        using var wb = BuildFlexible(
+            new DayBoardSheet.Row("Elastik İşçi", "", "Ofis", "Tamamlayıb", "09:00", "21:30", "var", "present",
+                Worked: "10:30", Sessions: "09:00–12:00, 13:00–18:00, 19:00–21:30"),
+            new DayBoardSheet.Row("Gecə İşçisi", "", "Ofis", "Tamamlayıb", "09:00", "06:00 (+1)", "var", "present",
+                Worked: "11:00", Sessions: "09:00–12:00, 22:00–06:00 (+1)"),
+            new DayBoardSheet.Row("Sabit İşçi", "", "Ofis", "Tamamlayıb", "09:00", "18:00", "var", "present",
+                Worked: "09:00"));
+
+        var ws = wb.Worksheet("Davamiyyət");
+        var header = RowStarting(ws, "Ad Soyad")!;
+        Assert.Equal("Şəkil", header.Cell(8).GetString());       // the eight known columns stay where they were
+        Assert.Equal("İşlənmiş", header.Cell(9).GetString());
+        Assert.Equal("Sessiyalar", header.Cell(10).GetString());
+
+        var flex = RowStarting(ws, "Elastik İşçi")!;
+        Assert.Equal("21:30", flex.Cell(7).GetString());
+        Assert.Equal("10:30", flex.Cell(9).GetString());
+        Assert.Equal("09:00–12:00, 13:00–18:00, 19:00–21:30", flex.Cell(10).GetString());
+        Assert.Equal("22:00–06:00 (+1)", RowStarting(ws, "Gecə İşçisi")!.Cell(10).GetString().Split(", ")[1]);
+        var plain = RowStarting(ws, "Sabit İşçi")!;
+        Assert.Equal("09:00", plain.Cell(9).GetString());
+        Assert.Equal(string.Empty, plain.Cell(10).GetString());
+    }
+
+    [Fact]
+    public void Nobody_with_several_sessions_means_no_sessions_column()
+    {
+        using var wb = BuildFlexible(Person("Aygün", "Qala Anbar", "present"));
+        var header = RowStarting(wb.Worksheet("Davamiyyət"), "Ad Soyad")!;
+        Assert.Equal("İşlənmiş", header.Cell(9).GetString());
+        Assert.Equal(string.Empty, header.Cell(10).GetString());
+    }
+
+    [Fact]
+    public void A_company_on_fixed_hours_only_gets_the_eight_columns_it_always_got()
+    {
+        // The board sends the hours and the sessions for everybody; a company that has never had a flexible shift
+        // must still receive its morning file exactly as before — no ninth column, no tenth, nothing in them.
+        using var wb = Build(
+            new DayBoardSheet.Row("İkiqat İşçi", "", "Ofis", "Tamamlayıb", "08:00", "20:00", "var", "present",
+                Worked: "08:00", Sessions: "08:00–12:00, 16:00–20:00"),
+            new DayBoardSheet.Row("Sabit İşçi", "", "Ofis", "Tamamlayıb", "09:00", "18:00", "var", "present",
+                Worked: "09:00"));
+
+        var ws = wb.Worksheet("Davamiyyət");
+        var header = RowStarting(ws, "Ad Soyad")!;
+        Assert.Equal(
+            ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"],
+            Enumerable.Range(1, 8).Select(c => header.Cell(c).GetString()));
+        Assert.Equal(8, header.LastCellUsed()!.Address.ColumnNumber);
+        foreach (var name in new[] { "İkiqat İşçi", "Sabit İşçi" })
+        {
+            var row = RowStarting(ws, name)!;
+            Assert.Equal(string.Empty, row.Cell(9).GetString());
+            Assert.Equal(string.Empty, row.Cell(10).GetString());
+        }
+        // The title and the site banner span the eight columns, as they always did.
+        Assert.Contains(ws.MergedRanges, m => m.RangeAddress.ToString() == "A1:H1");
+        Assert.Equal(8, ws.LastColumnUsed()!.ColumnNumber());
     }
 }

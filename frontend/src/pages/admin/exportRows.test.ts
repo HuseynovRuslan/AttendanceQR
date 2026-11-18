@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellTime, exportRow, type ExportableRow, areaOf, sameArea, uniqueAreas, unlistedAreas } from './exportRows'
+import { boardExitOf, cellTime, exitOf, exportRow, hasOpenSession, sessionsText, workedText, type ExportableRow, areaOf, sameArea, uniqueAreas, unlistedAreas } from './exportRows'
 
 // Baku is UTC+4. Every case below is one an adversarial audit of the morning report actually found:
 // a night that read backwards, a carried-over night that read as this morning, a field worker with no
@@ -168,5 +168,111 @@ describe('a company form for «Xülasə»', () => {
     // Choosing fewer areas than the form has lines is fine — the other lines stay blank.
     expect(unlistedAreas(['İDEA'], form)).toEqual([])
     expect(unlistedAreas([], form)).toEqual([])
+  })
+})
+
+// A day worked in several sessions — «Elastik qrafik», or a split-shift crew. Baku is UTC+4.
+describe('a flexible day of several sessions', () => {
+  const three = row({
+    isFlexible: true,
+    checkInAtUtc: '2026-10-05T05:00:00Z', checkOutAtUtc: '2026-10-05T08:00:00Z',        // 09:00–12:00
+    blockSpans: [
+      { inAtUtc: '2026-10-05T05:00:00Z', outAtUtc: '2026-10-05T08:00:00Z' },           // 09:00–12:00
+      { inAtUtc: '2026-10-05T09:00:00Z', outAtUtc: '2026-10-05T14:00:00Z' },           // 13:00–18:00
+      { inAtUtc: '2026-10-05T15:00:00Z', outAtUtc: '2026-10-05T17:30:00Z' },           // 19:00–21:30
+    ],
+    workedMinutes: 630,
+  })
+
+  it('prints the first arrival, the LAST departure, the server hours and every session', () => {
+    const out = exportRow(three, '2026-10-05', 'Tamamlayıb')
+    expect(out.checkIn).toBe('09:00')
+    expect(out.checkOut).toBe('21:30')            // was «12:00» — the first session's exit
+    expect(out.worked).toBe('10:30')              // the breaks are not paid: not 12:30
+    expect(out.sessions).toBe('09:00–12:00, 13:00–18:00, 19:00–21:30')
+  })
+
+  it('stamps a session across midnight with the next day, once', () => {
+    const night = row({
+      isFlexible: true,
+      checkInAtUtc: '2026-10-06T05:00:00Z', checkOutAtUtc: '2026-10-06T08:00:00Z',
+      blockSpans: [
+        { inAtUtc: '2026-10-06T05:00:00Z', outAtUtc: '2026-10-06T08:00:00Z' },         // 09:00–12:00
+        { inAtUtc: '2026-10-06T18:00:00Z', outAtUtc: '2026-10-07T02:00:00Z' },         // 22:00–06:00 (+1)
+      ],
+      workedMinutes: 660,
+    })
+    const out = exportRow(night, '2026-10-06', 'Tamamlayıb')
+    expect(out.checkOut).toBe('06:00 (+1)')
+    expect(out.sessions).toBe('09:00–12:00, 22:00–06:00 (+1)')
+    expect(out.worked).toBe('11:00')
+  })
+
+  it('prints no departure while the last session is open, and never estimates it', () => {
+    const open = row({
+      isFlexible: true,
+      checkInAtUtc: '2026-10-08T05:00:00Z', checkOutAtUtc: '2026-10-08T08:00:00Z',
+      lastCheckOutAtUtc: null,
+      blockSpans: [
+        { inAtUtc: '2026-10-08T05:00:00Z', outAtUtc: '2026-10-08T08:00:00Z' },
+        { inAtUtc: '2026-10-08T09:00:00Z', outAtUtc: null },
+      ],
+      workedMinutes: 180,
+    } as Partial<ExportableRow>)
+    expect(exitOf(open)).toBeNull()               // not the first session's 12:00
+    expect(hasOpenSession(open)).toBe(true)
+    const out = exportRow(open, '2026-10-08', 'İşdə')
+    expect(out.checkOut).toBe('')
+    expect(out.worked).toBe('03:00 + açıq')
+    expect(out.sessions).toBe('09:00–12:00, 13:00–açıq')
+  })
+
+  it('leaves an ordinary one-session day as it was, with its hours added', () => {
+    const plain = row({ checkInAtUtc: '2026-10-05T05:00:00Z', checkOutAtUtc: '2026-10-05T14:00:00Z', workedMinutes: 540 })
+    const out = exportRow(plain, '2026-10-05', 'Tamamlayıb')
+    expect(out.checkOut).toBe('18:00')
+    expect(out.worked).toBe('09:00')
+    expect(out.sessions).toBe('')
+    expect(workedText(row({ checkInAtUtc: '2026-10-05T05:00:00Z', workedMinutes: 0 }))).toBe('açıq')
+    expect(workedText(row({ status: 'Absent', workedMinutes: 0 }))).toBe('')
+    expect(sessionsText(plain, '2026-10-05')).toBe('')
+  })
+})
+
+describe('a FIXED two-block day (ikiqat gün) keeps exactly what main showed', () => {
+  // 08:00–12:00 and 16:00–20:00. The first block was left at 11:00, early, with a reason — and that reason lives on
+  // the FIRST block's record. Owner's decision, 17.11: a fixed shift's board and file do not change in this release.
+  const closed = row({
+    checkInAtUtc: '2026-10-05T04:00:00Z', checkOutAtUtc: '2026-10-05T07:00:00Z',        // 08:00–11:00
+    lastCheckOutAtUtc: '2026-10-05T16:00:00Z',                                          // 20:00
+    earlyDepartureReason: 'Həkimə',
+    blockSpans: [
+      { inAtUtc: '2026-10-05T04:00:00Z', outAtUtc: '2026-10-05T07:00:00Z' },           // 08:00–11:00
+      { inAtUtc: '2026-10-05T12:00:00Z', outAtUtc: '2026-10-05T16:00:00Z' },           // 16:00–20:00
+    ],
+    workedMinutes: 420,
+  })
+
+  it("the file prints the first block's departure with its own early reason, as before", () => {
+    expect(exitOf(closed)).toBe('2026-10-05T07:00:00Z')
+    expect(exportRow(closed, '2026-10-05', 'Tamamlayıb').checkOut).toBe('11:00 (tez: Həkimə)')
+  })
+
+  it("the board shows the last block's departure once there is one, as before", () => {
+    expect(boardExitOf(closed)).toBe('2026-10-05T16:00:00Z')
+  })
+
+  it("while the second block is open the board and the file both show the first block's exit, as before", () => {
+    const open = { ...closed, lastCheckOutAtUtc: null, earlyDepartureReason: null,
+      blockSpans: [closed.blockSpans![0], { inAtUtc: '2026-10-05T12:00:00Z', outAtUtc: null }] }
+    expect(boardExitOf(open)).toBe('2026-10-05T07:00:00Z')
+    expect(exitOf(open)).toBe('2026-10-05T07:00:00Z')
+    expect(hasOpenSession(open)).toBe(true)   // only feeds «İşlənmiş», which a fixed-only company never gets
+  })
+
+  it("the same two blocks on a flexible shift read the last session — the rule is the shift's, not the shape's", () => {
+    const flexible = { ...closed, isFlexible: true, earlyDepartureReason: null }
+    expect(exitOf(flexible)).toBe('2026-10-05T16:00:00Z')
+    expect(boardExitOf(flexible)).toBe('2026-10-05T16:00:00Z')
   })
 })

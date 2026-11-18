@@ -18,7 +18,7 @@ import { HistoryPanel } from './HistoryPanel'
 import { PlanDrawer, type DrawerSeed } from './PlanDrawer'
 import { PreviewSummary } from './PreviewSummary'
 import {
-  bandOf, dayLabel, datesOf, initials, LEAVE_LABEL, rangeLabel, rangeOf, shortRestDays, step, weekday, WEEKDAYS_SHORT, type View,
+  bandOf, dayLabel, datesOf, hoursText, initials, LEAVE_LABEL, rangeLabel, rangeOf, shortRestDays, step, weekday, WEEKDAYS_SHORT, type View,
 } from './planModel'
 import './shiftPlan.css'
 
@@ -500,13 +500,13 @@ function ShiftSelect(props: {
   const { value, shifts, own, placeholder, label, disabled, onChange } = props
   // The shift first: on a phone the end of the text is what gets cut off, and the hours are what matters.
   const ownText = own
-    ? own.working && own.start ? `${[own.shift, `${own.start}–${own.end}`].filter(Boolean).join(' ')} · öz növbəsi` : 'İstirahət günü · öz növbəsi'
+    ? own.working && (own.start || own.flexible) ? `${[own.shift, hoursText(own)].filter(Boolean).join(' ')} · öz növbəsi` : 'İstirahət günü · öz növbəsi'
     : 'Öz növbəsinə qaytar'
   return (
     <select className="sp-select sp-shiftselect" value={value} aria-label={label ?? placeholder} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
       {placeholder && <option value="" disabled>{placeholder}</option>}
       <option value="clear">{ownText}</option>
-      {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.start}–{s.end}</option>)}
+      {shifts.map((s) => <option key={s.id} value={s.id}>{s.name} · {hoursText(s)}</option>)}
       <option value="rest">İstirahət</option>
     </select>
   )
@@ -586,7 +586,7 @@ function Grid(props: {
 function cellLabel(p: PlanEmployee, day: PlanDay): string {
   const what = day.kind === 'rest' || (day.kind === 'off')
     ? 'istirahət'
-    : `${day.shift ?? 'növbə'} ${day.start}–${day.end}${day.kind === 'base' ? ', öz növbəsi' : ', planlı'}`
+    : `${day.shift ?? 'növbə'} ${hoursText(day)}${day.kind === 'base' ? ', öz növbəsi' : ', planlı'}`
   return `${p.name}, ${dayLabel(day.date)}: ${what}${day.leave ? `, ${LEAVE_LABEL[day.leave] ?? day.leave}` : ''}. Dəyişmək üçün açın.`
 }
 
@@ -602,7 +602,7 @@ function Chip({ day, compact }: { day: PlanDay; compact: boolean }) {
       {compact ? (day.shift ? initials(day.shift) : (day.start ?? '').slice(0, 2)) : (
         <>
           {day.shift && <span className="sp-chipname">{day.shift}</span>}
-          <span className="sp-chiptime">{day.start}–{day.end}</span>
+          <span className="sp-chiptime">{hoursText(day)}</span>
         </>
       )}
     </span>
@@ -666,7 +666,7 @@ function CellMenu(props: {
         <button key={s.id} type="button" role="menuitemradio" aria-checked={current === s.id} className="sp-menuitem" onClick={() => onChoose(s.id)}>
           <span className={`sp-band sp-${bandOf(s.start, s.overnight)}`} aria-hidden />
           <span className="sp-menuname">{s.name}</span>
-          <span className="sp-menutime">{s.start}–{s.end}</span>
+          <span className="sp-menutime">{hoursText(s)}</span>
         </button>
       ))}
       <button type="button" role="menuitemradio" aria-checked={current === 'rest'} className="sp-menuitem" onClick={() => onChoose('rest')}>

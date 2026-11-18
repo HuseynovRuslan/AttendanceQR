@@ -44,8 +44,28 @@ public readonly record struct EffectiveShift(
     /// second block, and the scan path behaves exactly as it always has.
     /// </summary>
     TimeOnly? SecondStart = null,
-    TimeOnly? SecondEnd = null)
+    TimeOnly? SecondEnd = null,
+    /// <summary>
+    /// «Elastik qrafik» — see <see cref="Schedule.IsFlexible"/>. When set, the hours above are a whole-day window
+    /// (00:00–23:59, threshold 23:59) and <see cref="IsWorkingDay"/> is false on every date, so anything that
+    /// judges a day against the shift — lateness, early leave, «Qayıb», «Gözlənilir», the start/end reminders —
+    /// finds nothing to judge, even where it has not been taught this flag. What the flag itself adds is the
+    /// scan's session rule (FlexibleScanRules) and the hour norm the reports compare against.
+    /// </summary>
+    bool IsFlexible = false,
+    /// <summary>The flexible shift's optional hour norm, in minutes, per <see cref="NormPeriod"/>; null = none.</summary>
+    int? NormMinutes = null,
+    FlexibleNormPeriod NormPeriod = FlexibleNormPeriod.Day)
 {
+    /// <summary>The window a flexible shift hands out: the whole day, so nothing can fall outside it.</summary>
+    public static readonly TimeOnly FlexibleStart = new(0, 0);
+
+    /// <inheritdoc cref="FlexibleStart"/>
+    public static readonly TimeOnly FlexibleEnd = new(23, 59);
+
+    /// <summary>A threshold no arrival filed under the day can pass: 23 h 59 min after midnight.</summary>
+    public const int FlexibleLateThresholdMinutes = 23 * 60 + 59;
+
     /// <summary>Is this a day worked in two separate stretches? Both ends are needed — one alone
     /// describes nothing, and guessing the other would invent hours nobody agreed to.</summary>
     public bool HasSecondWindow => SecondStart is not null && SecondEnd is not null;
@@ -106,7 +126,17 @@ public readonly record struct EffectiveShift(
     /// taken into account — callers still subtract <c>NonWorkingDay</c> themselves.
     /// </summary>
     public bool IsWorkingDay(DateOnly date)
-        => AttendanceCalculator.IsScheduledWorkingDay(CycleDays, CycleOnDays, CycleAnchor, WorkDaysMask, date);
+        => !IsFlexible
+           && AttendanceCalculator.IsScheduledWorkingDay(CycleDays, CycleOnDays, CycleAnchor, WorkDaysMask, date);
+
+    /// <summary>
+    /// Does a flexible shift's DAILY norm apply on <paramref name="date"/>? The days in the shift's mask, before
+    /// company holidays and leave (callers subtract those, as they do for working days). Always false for a
+    /// fixed shift, for a weekly norm and for no norm.
+    /// </summary>
+    public bool IsNormDay(DateOnly date)
+        => IsFlexible && NormMinutes is > 0 && NormPeriod == FlexibleNormPeriod.Day
+           && AttendanceCalculator.IsWorkingDayOfWeek(WorkDaysMask, date.DayOfWeek);
 
     /// <summary>
     /// Resolves the shift for an employee. <paramref name="schedule"/> is their assigned one, or null
@@ -128,6 +158,18 @@ public readonly record struct EffectiveShift(
         int? employeeCycleDays, int employeeCycleOnDays, DateOnly? employeeCycleAnchor,
         Schedule? schedule, Location location)
     {
+        if (schedule is { IsFlexible: true })
+            return new EffectiveShift(
+                FlexibleStart, FlexibleEnd, FlexibleLateThresholdMinutes,
+                // The mask is kept: on a flexible shift it says which days a DAILY norm applies to — never which
+                // days somebody is due (IsWorkingDay is false for every date). No rotation, no per-day hours and
+                // no second window: there are no hours for any of them to adjust.
+                schedule.WorkDaysMask, CycleDays: null, CycleOnDays: 1, CycleAnchor: null,
+                schedule.Name, DayHoursSpec: null, SecondStart: null, SecondEnd: null,
+                IsFlexible: true,
+                NormMinutes: schedule.FlexibleNormMinutes is > 0 ? schedule.FlexibleNormMinutes : null,
+                NormPeriod: schedule.FlexibleNormPeriod);
+
         if (schedule is not null)
             return new EffectiveShift(
                 schedule.ShiftStart, schedule.ShiftEnd, schedule.LateThresholdMinutes,

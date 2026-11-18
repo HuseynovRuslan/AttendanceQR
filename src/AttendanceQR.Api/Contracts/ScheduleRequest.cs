@@ -24,7 +24,13 @@ public record ScheduleRequest(
     // on every ordinary shift, which is what keeps the second-block scan path out of reach for
     // everybody who does not work a double day — see SplitShiftRules.
     string? SecondShiftStart = null,
-    string? SecondShiftEnd = null);
+    string? SecondShiftEnd = null,
+    // «Elastik qrafik» — no fixed hours; see Schedule.IsFlexible. NULL = UNCHANGED: a client that knows nothing of
+    // the mode must not switch a flexible shift back to fixed hours by saving it. When true the hours above may be
+    // left blank. The norm is optional (null or 0 = «Normasız»); its period is "day" (default) or "week".
+    bool? IsFlexible = null,
+    int? FlexibleNormMinutes = null,
+    string? FlexibleNormPeriod = null);
 
 /// <summary>One day's own hours, in the same "HH:mm" the shift itself uses.</summary>
 public record DayHoursRequest(string Start, string End);

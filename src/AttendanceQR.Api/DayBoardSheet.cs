@@ -60,10 +60,36 @@ public static class DayBoardSheet
         ("rest", "İstirahət (təyin edilmiş)"),
         ("pending", "Növbəsi başlamayıb"),
         ("onboarding", "Aktivləşdirməyib"),
+        // «Elastik qrafik», nobody scanned: 0 hours — not absent, and not a day off either. Printed only when
+        // somebody is in it (see ColumnsFor), so a company with no flexible staff gets the file it always got.
+        (FlexNoScan, "Elastik, giriş yoxdur"),
     ];
 
+    private const string FlexNoScan = "flexNoScan";
+
+    /// <summary>The summary's columns for these people: every standing one, and «Elastik» only when it counts someone.</summary>
+    private static (string Bucket, string Fallback)[] ColumnsFor(List<(string Site, List<Row> People)> groups)
+        => SummaryColumns
+            .Where(c => c.Bucket != FlexNoScan || groups.Any(g => Count(g.People, FlexNoScan) > 0))
+            .ToArray();
+
+    /// <summary>The eight columns every company's morning file has always had — in this order, with these words.</summary>
     private static readonly string[] DetailHeaders =
         ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"];
+
+    /// <summary>
+    /// The hours the server counted for the day — added after the eight, and ONLY for a company that uses a
+    /// «Elastik qrafik» shift. A company on fixed hours only gets exactly the file it always got: its readers, and
+    /// whatever they feed the file into, were never asked to cope with a ninth column (owner's decision, 17.11).
+    /// </summary>
+    private const string WorkedHeader = "İşlənmiş";
+
+    /// <summary>
+    /// Every session of a day worked in more than one — after «İşlənmiş», for the same companies only, and only when
+    /// somebody in the file has such a day. «Giriş 09:00 · Çıxış 18:00» on a day worked 09:00–12:00 and 13:00–18:00
+    /// reads as nine hours; the sessions say where the unpaid hour went.
+    /// </summary>
+    private const string SessionsHeader = "Sessiyalar";
 
     private const string Headcount = "headcount";
 
@@ -128,7 +154,12 @@ public static class DayBoardSheet
         // «Sənəd üzrə» — the employer the paperwork names when it is not this board's company.
         // Blank on nearly every row; the few that are filled answer the question this file used to
         // raise and could not settle: why a name appears on a company's list that does not employ them.
-        string Paper = "");
+        string Paper = "",
+        // The hours the SERVER counted for the day (closed sessions only, the break between sessions unpaid) and
+        // every session when there were several — see ExportDayRow. Printed only for a company that uses a flexible
+        // shift (Build's flexibleCompany). «Çıxış» is the LAST session's departure.
+        string Worked = "",
+        string Sessions = "");
 
     /// <param name="labels">
     /// The board's word for each bucket, keyed by bucket name. Anything missing falls back to
@@ -141,9 +172,15 @@ public static class DayBoardSheet
     /// <paramref name="rows"/> must have a line in it — the caller checks first and answers the client;
     /// this throws rather than drop an area. Only «Xülasə» changes: «Davamiyyət» is the same either way.
     /// </param>
+    /// <param name="flexibleCompany">
+    /// Whether the company uses a «Elastik qrafik» shift
+    /// (<see cref="AttendanceQR.Application.Reporting.IReportQueryService.UsesFlexibleSchedulesAsync"/>).
+    /// Only then does «Davamiyyət» carry «İşlənmiş» and, when needed, «Sessiyalar»; otherwise the rows' hours and
+    /// sessions are not printed at all and the sheet is the eight columns it always was.
+    /// </param>
     public static byte[] Build(
         string title, IReadOnlyList<Row> rows, string? scopeNote,
-        IReadOnlyDictionary<string, string>? labels, DaySummaryTemplate? template = null)
+        IReadOnlyDictionary<string, string>? labels, DaySummaryTemplate? template = null, bool flexibleCompany = false)
     {
         using var wb = new XLWorkbook();
 
@@ -164,7 +201,7 @@ public static class DayBoardSheet
             BuildSummary(wb, title, scopeNote, Label, groups);
         else
             BuildTemplateSummary(wb, template, groups);
-        BuildDetail(wb, title, scopeNote, Label, groups);
+        BuildDetail(wb, title, scopeNote, Label, groups, flexibleCompany);
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
@@ -179,7 +216,8 @@ public static class DayBoardSheet
         List<(string Site, List<Row> People)> groups)
     {
         var ws = wb.Worksheets.Add("Xülasə");
-        var cols = SummaryColumns.Length + 2; // site + headcount + the buckets
+        var columns = ColumnsFor(groups);
+        var cols = columns.Length + 2; // site + headcount + the buckets
 
         ws.Cell(1, 1).Value = title;
         ws.Range(1, 1, 1, cols).Merge();
@@ -197,8 +235,8 @@ public static class DayBoardSheet
         const int headerRow = 4;
         ws.Cell(headerRow, 1).Value = "Ərazi";
         ws.Cell(headerRow, 2).Value = "İşçi sayı";
-        for (var i = 0; i < SummaryColumns.Length; i++)
-            ws.Cell(headerRow, i + 3).Value = label(SummaryColumns[i].Bucket);
+        for (var i = 0; i < columns.Length; i++)
+            ws.Cell(headerRow, i + 3).Value = label(columns[i].Bucket);
 
         var head = ws.Range(headerRow, 1, headerRow, cols);
         head.Style.Font.Bold = true;
@@ -212,8 +250,8 @@ public static class DayBoardSheet
         {
             ws.Cell(r, 1).Value = site;
             ws.Cell(r, 2).Value = people.Count;
-            for (var i = 0; i < SummaryColumns.Length; i++)
-                ws.Cell(r, i + 3).Value = Count(people, SummaryColumns[i].Bucket);
+            for (var i = 0; i < columns.Length; i++)
+                ws.Cell(r, i + 3).Value = Count(people, columns[i].Bucket);
             r++;
         }
 
@@ -221,8 +259,8 @@ public static class DayBoardSheet
         // source — a total that can disagree with its own table is worse than no total.
         ws.Cell(r, 1).Value = "CƏMİ";
         ws.Cell(r, 2).Value = groups.Sum(g => g.People.Count);
-        for (var i = 0; i < SummaryColumns.Length; i++)
-            ws.Cell(r, i + 3).Value = groups.Sum(g => Count(g.People, SummaryColumns[i].Bucket));
+        for (var i = 0; i < columns.Length; i++)
+            ws.Cell(r, i + 3).Value = groups.Sum(g => Count(g.People, columns[i].Bucket));
 
         var total = ws.Range(r, 1, r, cols);
         total.Style.Font.Bold = true;
@@ -255,13 +293,20 @@ public static class DayBoardSheet
                 $"No line in «{template.Name}» for: {string.Join(", ", unlisted)}", nameof(template));
 
         var ws = wb.Worksheets.Add("Xülasə");
-        var cols = TemplateColumns.Length + 2;
+        // The form's own columns, word for word — and, only on a day somebody on «Elastik qrafik» has not scanned,
+        // one more AFTER them. The form has no word for that day: it is neither a rest day nor an absence, and
+        // filing it under either would misreport the person. Appended, so every column of the form keeps its
+        // letter; absent on every day nobody is in it, so the form is the form.
+        var columns = groups.Any(g => Count(g.People, FlexNoScan) > 0)
+            ? [.. TemplateColumns, (FlexNoScan, "Elastik, giriş yoxdur")]
+            : TemplateColumns;
+        var cols = columns.Length + 2;
         const int headerRow = 2;
 
         ws.Cell(headerRow, 1).Value = "№";
         ws.Cell(headerRow, 2).Value = "Ərazi";
-        for (var i = 0; i < TemplateColumns.Length; i++)
-            ws.Cell(headerRow, i + 3).Value = TemplateColumns[i].Header;
+        for (var i = 0; i < columns.Length; i++)
+            ws.Cell(headerRow, i + 3).Value = columns[i].Header;
 
         // Each line's people. A list rather than a lookup by name, so two spellings of one area that
         // the sheet's comparison treats as the same land on the same line instead of the second
@@ -281,15 +326,15 @@ public static class DayBoardSheet
             ws.Cell(r, 2).Value = lines[i].Area;
             if (!lines[i].Filled)
                 continue;
-            for (var c = 0; c < TemplateColumns.Length; c++)
-                ws.Cell(r, c + 3).Value = TemplateValue(lines[i].People, TemplateColumns[c].Source);
+            for (var c = 0; c < columns.Length; c++)
+                ws.Cell(r, c + 3).Value = TemplateValue(lines[i].People, columns[c].Source);
         }
 
         ws.Cell(r, 1).Value = "CƏMİ";
         ws.Range(r, 1, r, 2).Merge();
-        for (var c = 0; c < TemplateColumns.Length; c++)
+        for (var c = 0; c < columns.Length; c++)
         {
-            var source = TemplateColumns[c].Source;
+            var source = columns[c].Source;
             ws.Cell(r, c + 3).Value = lines.Where(l => l.Filled).Sum(l => TemplateValue(l.People, source));
         }
 
@@ -324,10 +369,14 @@ public static class DayBoardSheet
 
     private static void BuildDetail(
         XLWorkbook wb, string title, string? scopeNote, Func<string, string> label,
-        List<(string Site, List<Row> People)> groups)
+        List<(string Site, List<Row> People)> groups, bool flexibleCompany)
     {
         var ws = wb.Worksheets.Add("Davamiyyət");
-        var cols = DetailHeaders.Length;
+        var withSessions = flexibleCompany && groups.Any(g => g.People.Any(p => p.Sessions.Length > 0));
+        string[] headers = !flexibleCompany ? DetailHeaders
+            : withSessions ? [.. DetailHeaders, WorkedHeader, SessionsHeader]
+            : [.. DetailHeaders, WorkedHeader];
+        var cols = headers.Length;
 
         ws.Cell(1, 1).Value = title;
         ws.Range(1, 1, 1, cols).Merge();
@@ -344,7 +393,7 @@ public static class DayBoardSheet
 
         const int headerRow = 4;
         for (var i = 0; i < cols; i++)
-            ws.Cell(headerRow, i + 1).Value = DetailHeaders[i];
+            ws.Cell(headerRow, i + 1).Value = headers[i];
 
         var head = ws.Range(headerRow, 1, headerRow, cols);
         head.Style.Font.Bold = true;
@@ -376,6 +425,10 @@ public static class DayBoardSheet
                 ws.Cell(r, 6).Value = p.CheckIn;
                 ws.Cell(r, 7).Value = p.CheckOut;
                 ws.Cell(r, 8).Value = p.Photo;
+                if (flexibleCompany)
+                    ws.Cell(r, 9).Value = p.Worked;
+                if (withSessions)
+                    ws.Cell(r, 10).Value = p.Sessions;
                 r++;
             }
 
@@ -397,6 +450,10 @@ public static class DayBoardSheet
         ws.Column(5).Width = 11;
         ws.Column(6).Width = 11;
         ws.Column(7).Width = 9;
+        if (flexibleCompany)
+            ws.Column(9).Width = 13;
+        if (withSessions)
+            ws.Column(10).Width = 36;
         ws.SheetView.FreezeRows(headerRow);
     }
 

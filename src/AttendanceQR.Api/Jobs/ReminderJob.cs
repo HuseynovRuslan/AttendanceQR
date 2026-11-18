@@ -182,10 +182,17 @@ public sealed class ReminderJob : BackgroundService
                     var endUtc = ToUtc(endDate, shiftEnd);
                     var openDay = DateOnly.FromDateTime(checkInLocal);
 
+                    // «Elastik qrafik» has no end to remind anybody of — a session may rightly run past midnight. Its
+                    // «çıxış qeyd olunmayıb» clock starts when a scan could no longer close the session
+                    // (FlexibleScanRules.MaxSession after the check-in), not at a shift end it does not have.
+                    if (shift.IsFlexible)
+                        endUtc = checkInUtc + FlexibleScanRules.MaxSession;
+
                     // 2) The shift ends shortly and they are still checked in — the one nudge that can
                     //    still change the outcome, so it goes out BEFORE the end while they can scan.
                     var untilEnd = endUtc - nowUtc;
-                    if (untilEnd > TimeSpan.Zero && untilEnd <= TimeSpan.FromMinutes(_push.CheckoutReminderLeadMinutes))
+                    if (!shift.IsFlexible
+                        && untilEnd > TimeSpan.Zero && untilEnd <= TimeSpan.FromMinutes(_push.CheckoutReminderLeadMinutes))
                     {
                         await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.CheckOutSoon, openDay,
                             "İş vaxtınız bitir",

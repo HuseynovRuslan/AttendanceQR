@@ -113,6 +113,11 @@ public static class ShiftResolver
         WorkCycleDays = null,
         WorkCycleAnchor = null,
         IsRestDay = true,
+        // A rest day on a flexible shift is still flexible: a scan on it is a session like any other, and with an
+        // empty mask no daily norm applies to it.
+        IsFlexible = hours.IsFlexible,
+        FlexibleNormMinutes = hours.FlexibleNormMinutes,
+        FlexibleNormPeriod = hours.FlexibleNormPeriod,
         CreatedAtUtc = hours.CreatedAtUtc,
     };
 
@@ -122,7 +127,11 @@ public static class ShiftResolver
         || before.SecondShiftStart != after.SecondShiftStart || before.SecondShiftEnd != after.SecondShiftEnd
         || before.LateThresholdMinutes != after.LateThresholdMinutes || before.WorkDaysMask != after.WorkDaysMask
         || before.WorkCycleDays != after.WorkCycleDays || before.WorkCycleOnDays != after.WorkCycleOnDays
-        || before.WorkCycleAnchor != after.WorkCycleAnchor || before.DayHours != after.DayHours;
+        || before.WorkCycleAnchor != after.WorkCycleAnchor || before.DayHours != after.DayHours
+        // Fixed ↔ flexible, and the norm a flexible shift is compared against. Kept as a revision like any other
+        // judgement, so switching a company to «Elastik» never re-reads the days it worked on fixed hours.
+        || before.IsFlexible != after.IsFlexible || before.FlexibleNormMinutes != after.FlexibleNormMinutes
+        || before.FlexibleNormPeriod != after.FlexibleNormPeriod;
 
     /// <summary>A detached copy of the fields that judge a day, taken before an edit.</summary>
     public static Schedule Snapshot(Schedule schedule) => new()
@@ -141,6 +150,9 @@ public static class ShiftResolver
         WorkCycleDays = schedule.WorkCycleDays,
         WorkCycleOnDays = schedule.WorkCycleOnDays,
         WorkCycleAnchor = schedule.WorkCycleAnchor,
+        IsFlexible = schedule.IsFlexible,
+        FlexibleNormMinutes = schedule.FlexibleNormMinutes,
+        FlexibleNormPeriod = schedule.FlexibleNormPeriod,
         CreatedAtUtc = schedule.CreatedAtUtc,
     };
 }

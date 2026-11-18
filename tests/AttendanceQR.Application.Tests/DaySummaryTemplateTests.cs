@@ -1,9 +1,14 @@
 using AttendanceQR.Api;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
+using AttendanceQR.Application.Common;
+using AttendanceQR.Application.Reporting;
+using AttendanceQR.Domain.Entities;
+using AttendanceQR.Infrastructure.Persistence;
 using AttendanceQR.Infrastructure.Multitenancy;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace AttendanceQR.Application.Tests;
@@ -168,6 +173,30 @@ public class DaySummaryTemplateTests
     }
 
     [Fact]
+    public void A_flexible_no_scan_day_gets_its_own_column_after_the_form_never_a_rest_day()
+    {
+        var rows = new List<DayBoardSheet.Row>();
+        rows.AddRange(People("Qala Anbar", "dayOff", 2));
+        rows.AddRange(People("Qala Anbar", "flexNoScan", 1));
+
+        using var wb = Build(rows, Form);
+        var ws = wb.Worksheet("Xülasə");
+        var row = LineRow("Qala Anbar");
+
+        Assert.Equal(2, ws.Cell(row, Col("Həftəlik istirahət")).GetValue<int>());   // not folded into rest
+        Assert.Equal(0, ws.Cell(row, Col("Qayıb")).GetValue<int>());                // nor into absence
+        Assert.Equal(3, ws.Cell(row, Col("İşçi sayı")).GetValue<int>());
+        // After the form's last column, so every column of the form keeps its letter.
+        var flex = Headings.Length + 1;
+        Assert.Equal("Elastik, giriş yoxdur", ws.Cell(2, flex).GetString());
+        Assert.Equal(1, ws.Cell(row, flex).GetValue<int>());
+
+        // A day with nobody in it: the form exactly as it was.
+        using var plain = Build(People("Qala Anbar", "dayOff", 2), Form);
+        Assert.DoesNotContain(plain.Worksheet("Xülasə").Row(2).CellsUsed(), c => c.GetString() == "Elastik, giriş yoxdur");
+    }
+
+    [Fact]
     public void CEMI_adds_up_the_lines_that_have_people_and_the_blank_lines_add_nothing()
     {
         var rows = new List<DayBoardSheet.Row>();
@@ -298,12 +327,16 @@ public class DaySummaryTemplateTests
 
     // ─── the endpoint: who may have the form, and what it refuses ───────────────────────────────────
 
-    private static ReportsController Controller(Guid tenant)
+    private static ReportsController Controller(Guid tenant, string? database = null)
     {
         var context = new TenantContext();
         context.Resolve(tenant);
-        // ExportDay and DayTemplates read nothing but the tenant; the other services are never reached.
-        return new ReportsController(null!, null!, null!, context);
+        // ExportDay reads the tenant and asks the report service one thing — whether this company uses a flexible
+        // shift — so it gets a real one over an in-memory database. The exporter and the cache are never reached.
+        var data = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(database ?? $"day-{Guid.NewGuid()}").Options,
+            context);
+        return new ReportsController(new ReportQueryService(data, new AppOptions { TimeZone = "UTC" }), null!, null!, context);
     }
 
     private static ExportDayRequest Request(IEnumerable<string> areas, string? view, string? template)
@@ -315,9 +348,9 @@ public class DaySummaryTemplateTests
         => (result as BadRequestObjectResult)?.Value?.GetType().GetProperty("error")?.GetValue(((BadRequestObjectResult)result).Value) as string;
 
     [Fact]
-    public void The_form_is_printed_for_Baki_Abadliq_when_chosen()
+    public async Task The_form_is_printed_for_Baki_Abadliq_when_chosen()
     {
-        var result = Controller(BakiAbadliq).ExportDay(Request(Branches, "actual", DaySummaryTemplates.DavamiyyetSiyahisi));
+        var result = await Controller(BakiAbadliq).ExportDay(Request(Branches, "actual", DaySummaryTemplates.DavamiyyetSiyahisi));
 
         var file = Assert.IsType<FileContentResult>(result);
         using var wb = new XLWorkbook(new MemoryStream(file.FileContents));
@@ -325,19 +358,19 @@ public class DaySummaryTemplateTests
     }
 
     [Fact]
-    public void Another_company_cannot_have_the_form_by_naming_it()
+    public async Task Another_company_cannot_have_the_form_by_naming_it()
         => Assert.Equal("UnknownTemplate",
-            ErrorOf(Controller(Guid.NewGuid()).ExportDay(Request(Branches, "actual", DaySummaryTemplates.DavamiyyetSiyahisi))));
+            ErrorOf(await Controller(Guid.NewGuid()).ExportDay(Request(Branches, "actual", DaySummaryTemplates.DavamiyyetSiyahisi))));
 
     [Fact]
-    public void The_form_is_only_for_the_branch_view()
+    public async Task The_form_is_only_for_the_branch_view()
         => Assert.Equal("TemplateNeedsActualView",
-            ErrorOf(Controller(BakiAbadliq).ExportDay(Request(Branches, "paper", DaySummaryTemplates.DavamiyyetSiyahisi))));
+            ErrorOf(await Controller(BakiAbadliq).ExportDay(Request(Branches, "paper", DaySummaryTemplates.DavamiyyetSiyahisi))));
 
     [Fact]
-    public void An_export_with_an_area_outside_the_form_is_refused_with_the_area_named()
+    public async Task An_export_with_an_area_outside_the_form_is_refused_with_the_area_named()
     {
-        var result = Controller(BakiAbadliq).ExportDay(
+        var result = await Controller(BakiAbadliq).ExportDay(
             Request(Branches.Append("Ramana Yaşıllıq"), "actual", DaySummaryTemplates.DavamiyyetSiyahisi));
 
         Assert.Equal("AreaNotInTemplate", ErrorOf(result));
@@ -346,9 +379,9 @@ public class DaySummaryTemplateTests
     }
 
     [Fact]
-    public void Without_a_choice_the_export_is_the_standard_one_for_everybody()
+    public async Task Without_a_choice_the_export_is_the_standard_one_for_everybody()
     {
-        var result = Controller(BakiAbadliq).ExportDay(Request(Branches.Append("Ramana Yaşıllıq"), "actual", null));
+        var result = await Controller(BakiAbadliq).ExportDay(Request(Branches.Append("Ramana Yaşıllıq"), "actual", null));
 
         var file = Assert.IsType<FileContentResult>(result);
         using var wb = new XLWorkbook(new MemoryStream(file.FileContents));
@@ -363,5 +396,70 @@ public class DaySummaryTemplateTests
 
         Assert.Single(Assert.IsAssignableFrom<IEnumerable<object>>(mine.Value));
         Assert.Empty(Assert.IsAssignableFrom<IEnumerable<object>>(other.Value));
+    }
+
+    // ─── «İşlənmiş» is a flexible company's column only (owner's decision, 17.11) ───────────────────────────────
+
+    private static async Task<List<string>> DetailHeaderOf(ReportsController controller)
+    {
+        var rows = new List<ExportDayRow>
+        {
+            new("İkiqat İşçi", "Ofis", "Tamamlayıb", "08:00", "20:00", "var", "present",
+                Worked: "08:00", Sessions: "08:00–12:00, 16:00–20:00"),
+            new("Sabit İşçi", "Ofis", "Tamamlayıb", "09:00", "18:00", "var", "present", Worked: "09:00"),
+        };
+        var file = Assert.IsType<FileContentResult>(
+            await controller.ExportDay(new ExportDayRequest("Davamiyyət", "2026-11-17", rows, BucketLabels: BoardWords)));
+        using var wb = new XLWorkbook(new MemoryStream(file.FileContents));
+        var header = wb.Worksheet("Davamiyyət").RowsUsed().First(r => r.Cell(1).GetString() == "Ad Soyad");
+        return header.CellsUsed().Select(c => c.GetString()).ToList();
+    }
+
+    private static async Task AddShift(string database, Guid tenant, bool flexible, Guid? revisionOf = null)
+    {
+        var context = new TenantContext();
+        context.Resolve(tenant);
+        await using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(database).Options, context);
+        db.Schedules.Add(new Schedule
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, Name = flexible ? "Elastik" : "Gündüz",
+            ShiftStart = new TimeOnly(9, 0), ShiftEnd = new TimeOnly(18, 0), WorkDaysMask = 62,
+            IsFlexible = flexible, RevisionOfId = revisionOf,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task The_day_file_has_the_hours_columns_only_for_a_company_that_uses_a_flexible_shift()
+    {
+        var database = $"day-{Guid.NewGuid()}";
+        var company = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        string[] eight = ["Ad Soyad", "Vəzifə", "Ərazi", "Sənəd üzrə", "Status", "Giriş", "Çıxış", "Şəkil"];
+
+        // Fixed hours only: the eight columns it always had, although the rows carry hours and sessions.
+        await AddShift(database, company, flexible: false);
+        Assert.Equal(eight, await DetailHeaderOf(Controller(company, database)));
+
+        // Another company's flexible shift changes nothing here — the query filter keeps the companies apart.
+        await AddShift(database, other, flexible: true);
+        Assert.Equal(eight, await DetailHeaderOf(Controller(company, database)));
+
+        // Its own flexible shift turns them on: the hours, and the sessions because somebody had two.
+        await AddShift(database, company, flexible: true);
+        Assert.Equal([.. eight, "İşlənmiş", "Sessiyalar"], await DetailHeaderOf(Controller(company, database)));
+    }
+
+    [Fact]
+    public async Task A_company_that_switched_its_flexible_shift_back_keeps_the_columns_for_the_days_it_ran_flexible()
+    {
+        // Switching back to fixed hours leaves the flexible version as a revision for the days it was used; a past day
+        // exported again must come out in the shape it was made in.
+        var database = $"day-{Guid.NewGuid()}";
+        var company = Guid.NewGuid();
+        await AddShift(database, company, flexible: true, revisionOf: Guid.NewGuid());
+
+        Assert.Contains("İşlənmiş", await DetailHeaderOf(Controller(company, database)));
     }
 }

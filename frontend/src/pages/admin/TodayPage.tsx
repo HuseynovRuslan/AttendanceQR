@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type SortColumn } from './todayCounts'
-import { areaOf, exportRow, uniqueAreas, unlistedAreas, type AreaView } from './exportRows'
+import { areaOf, boardExitOf, exportRow, uniqueAreas, unlistedAreas, type AreaView } from './exportRows'
 import { formatWorked, workedMinutes } from './todayShift'
 import { TodayRow } from './TodayRow'
 import { useSearchParams } from 'react-router-dom'
@@ -452,7 +452,10 @@ export function TodayPage() {
   // An admin therefore saw «Xəstəlik» on the board, pressed Excel, and got a file saying the same
   // person took annual leave on the same day. Worst of all «Ezamiyyət», which is WORK, exported as
   // leave. The type is already on the row and was simply never read here.
-  const statusLabel = (r: DayAttendanceRow) => dayLabel(r.status, r.leaveType, incompleteLabel)
+  // «Elastik qrafik» with no scan: the same words as its card and its badge — never «Həftəlik istirahət».
+  const statusLabel = (r: DayAttendanceRow) => bucketOf(r) === 'flexNoScan'
+    ? 'Elastik, giriş yoxdur'
+    : dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
   // The areas of the CHOSEN view, gathered from the board's own rows.
@@ -559,6 +562,7 @@ export function TodayPage() {
         permission: STATUS_MAP.Permission.label,
         dayOff: 'Həftəlik istirahət',
         rest: 'İstirahət (təyin edilmiş)',
+        flexNoScan: 'Elastik, giriş yoxdur',
         pending: STATUS_MAP.Pending.label,
         onboarding: STATUS_MAP.Onboarding.label,
       },
@@ -597,6 +601,7 @@ export function TodayPage() {
     { key: 'trip', label: 'Ezamiyyət', n: counts.trip, dot: 'var(--teal)' },
     { key: 'unpaid', label: 'Ödənişsiz', n: counts.unpaid, dot: 'var(--clay)' },
     { key: 'rest', label: 'İstirahət (təyin edilmiş)', n: counts.rest, dot: 'var(--c400)' },
+    { key: 'flexNoScan', label: 'Elastik, giriş yoxdur', n: counts.flexNoScan, dot: 'var(--c400)' },
   ]
   // Inline: the ones that happened today, up to four. A status with nobody in it is still reachable —
   // it is behind «Digər statuslar», so a filter never disappears, it only stops taking up a row.
@@ -963,8 +968,7 @@ export function TodayPage() {
                     // itself would make every row new on every tick. A string that has not changed
                     // lets React skip the row entirely.
                     const worked = cols.worked ? workedMinutes(r, nowMs, isToday) : null
-                    const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc)
-                      && !(r.lastCheckOutAtUtc ?? r.checkOutAtUtc ?? r.fieldCheckOutAtUtc)
+                    const running = isToday && !!(r.checkInAtUtc ?? r.fieldCheckInAtUtc) && !boardExitOf(r)
                     return (
                       <TodayRow
                         key={r.employeeId}

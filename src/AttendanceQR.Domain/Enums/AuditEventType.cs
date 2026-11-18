@@ -117,5 +117,10 @@ public enum AuditEventType
 
     // Somebody's plan changed: which shift, or a rest day, on which days. One row per person per change, naming
     // the days, the shifts and who made it — so «who moved me to nights?» has an answer. See ShiftPlanController.
-    ShiftPlanChanged = 42
+    ShiftPlanChanged = 42,
+
+    // A shift was switched between fixed hours and «Elastik qrafik», or its hour norm changed. Reason holds
+    // the shift, the before and after, and who did it. The revision row keeps the old judgement of past days;
+    // this keeps the fact that somebody changed it.
+    ScheduleModeChanged = 43
 }

@@ -11,6 +11,8 @@ import {
 export interface DayAttendanceRow {
   /** The person corrected this day themselves — only where nobody else could; «öz düzəlişi» on the row. */
   selfCorrected?: boolean
+  /** «Elastik qrafik»: no hours — the schedule cell says «Elastik», and a day with no scan is «Giriş yoxdur». */
+  isFlexible?: boolean
   employeeId: string
   employeeName: string
   locationId: string
@@ -53,6 +55,9 @@ export interface DayAttendanceRow {
   blockSpans?: { inAtUtc: string | null; outAtUtc: string | null }[] | null
   /** When the LAST stretch ended — on a split day the night's departure, not the morning block's. */
   lastCheckOutAtUtc?: string | null
+  /** Minutes worked as the SERVER counts them: closed sessions added up, the breaks between them unpaid, an open
+   *  session not counted yet. The figure the tabel and payroll read — the day's Excel prints this one. */
+  workedMinutes?: number | null
   /** Name of the admin/manager who set THIS record by hand (open-record close, time fix, undo-checkout).
    *  Null for a real scan — the board flags a manually-entered day. */
   manualBy?: string | null
@@ -286,6 +291,10 @@ export interface ExportDayRowInput {
    *  never from the status text, so the workbook cannot disagree with the screen it came from. */
   bucket?: string
   position?: string
+  /** «08:00» / «03:05 + açıq» / «açıq» — the server's own hours for the day (exportRows.workedText). */
+  worked?: string
+  /** «09:00–12:00, 13:00–18:00» — only on a day worked in more than one session. */
+  sessions?: string
 }
 
 // --- «Qayıb yaz» -----------------------------------------------------------
@@ -1737,8 +1746,19 @@ export interface Schedule {
    * appear; everything else follows the shift's own times.
    */
   dayHours: Record<string, { start: string; end: string }>
+  /**
+   * «Elastik qrafik»: nobody on this shift is due at any hour — they come and go when they like, several times a
+   * day, across midnight if they like; the day is the hours actually worked. No lateness, no early leave, no
+   * «Qayıb». The hours above mean nothing then (the server stores 00:00–23:59).
+   */
+  isFlexible?: boolean
+  /** Optional hour norm for a flexible shift, in minutes; null = «Normasız». Comparison only. */
+  flexibleNormMinutes?: number | null
+  /** What the norm is counted over. A daily norm applies on the workDaysMask days. */
+  flexibleNormPeriod?: 'day' | 'week'
 }
 
+/** isFlexible left out (undefined) means «unchanged» on the server — see ScheduleFlexibility. */
 export type ScheduleInput = Omit<Schedule, 'id' | 'isOvernight' | 'locationName'>
 
 /**
@@ -1833,6 +1853,30 @@ export interface TabelRow {
   /** Ezamiyyət, apart from leave: on a trip the person WAS working, just away from a poster. */
   tripDays: number
   workedHours: number
+  /**
+   * «Elastik qrafik»: per day, what to print INSTEAD of the code — hours («8», «7.5»), «0» for no scan, «Açıq» for a
+   * session nobody closed; null where the code stands (a fixed-hours day, a leave, a holiday). Absent for a row with
+   * no flexible day at all.
+   */
+  flexibleCells?: (string | null)[] | null
+  /** A DAILY norm summed over the month's norm days so far — comparison only. Never set for a weekly norm. */
+  normHours?: number | null
+  /** A WEEKLY norm, week by week (Monday–Sunday): the week's whole total against the norm, never divided into days. */
+  normWeeks?: TabelNormWeek[] | null
+  /** The weekly norm in hours, for the «Norma» column. */
+  weeklyNormHours?: number | null
+}
+
+export interface TabelNormWeek {
+  /** Monday and Sunday, ISO dates — the edge weeks reach into the months beside this one. */
+  from: string
+  to: string
+  normHours: number
+  workedHours: number
+  /** The week's Sunday has passed. */
+  finished: boolean
+  /** Leave or a holiday fell in it — the norm is not reduced for it, the reader is told. */
+  hasLeaveOrHoliday: boolean
 }
 
 export interface TabelReport {
@@ -1982,6 +2026,8 @@ export interface HrStatsEmployee {
   attendancePercent: number | null
   onTimePercent: number | null
   today: 'present' | 'late' | 'permission' | 'sick' | 'leave' | 'absent' | 'pending' | 'dayOff' | null
+  /** Days worked on «Elastik qrafik» — outside workedDays and both rates: nobody was due, so there is no rate. */
+  flexibleWorkedDays?: number
 }
 
 export interface HrStatsLocation {

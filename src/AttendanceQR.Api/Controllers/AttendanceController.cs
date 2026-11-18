@@ -186,6 +186,9 @@ public class AttendanceController : ControllerBase
         var location = await _db.Locations.FirstOrDefaultAsync(l => l.Id == employee.LocationId, ct);
         if (location is null) return false;
         var shift = await ResolveShiftAsync(employee, location, today);
+        // «Elastik qrafik»: a finished session never finishes the day — the next scan opens another one.
+        if (shift.IsFlexible)
+            return true;
         return SplitShiftRules.MayOpenSecondBlock(TimeOnly.FromDateTime(nowLocal), shift.HasSecondWindow,
             shift.SecondStart, shift.SecondEnd, blocks.Count, anyOpen: false);
     }
@@ -268,6 +271,7 @@ public class AttendanceController : ControllerBase
         // "your shift is over, don't forget to check out" — the mobile side of the forgotten-checkout
         // problem. Resolved the same way the scan and reports do; null if the location vanished.
         string? shiftEnd = null, shiftStart = null;
+        var isFlexible = false;
         var loc = await _db.Locations.FirstOrDefaultAsync(l => l.Id == profile.LocationId, HttpContext.RequestAborted);
         if (loc is not null)
         {
@@ -280,9 +284,16 @@ public class AttendanceController : ControllerBase
                 profile.WorkCycleAnchor, sched, loc);
             // Today's hours: the app prints these on the check-in card and times the check-out
             // reminder against them, so on a day the crew starts later it must say so.
-            var todayHours = shift.HoursOn(today);
-            shiftStart = todayHours.Start.ToString("HH:mm");
-            shiftEnd = todayHours.End.ToString("HH:mm");
+            // «Elastik qrafik» has no hours to print and no end to remind anybody of: the card says «Elastik», and
+            // with no shiftEnd the app never shows «Növbəniz bitib · çıxışı unutmayın» over a session that may
+            // rightly run past midnight.
+            isFlexible = shift.IsFlexible;
+            if (!isFlexible)
+            {
+                var todayHours = shift.HoursOn(today);
+                shiftStart = todayHours.Start.ToString("HH:mm");
+                shiftEnd = todayHours.End.ToString("HH:mm");
+            }
         }
 
         // Check-ins this month whose photo showed no face. Told to the employee themselves, not only
@@ -324,6 +335,8 @@ public class AttendanceController : ControllerBase
             requireGeofence = CheckInMode.IsFenced(profile.branchFenced, profile.RequireGeofenceOverride),
             profile.locationId,
             shiftStart, shiftEnd,
+            // «Elastik qrafik»: no hours (shiftStart/shiftEnd are null) and a session may run past midnight.
+            isFlexible,
             unverifiedCheckIns = unverified,
             lastCheckInUnverified = lastWasUnverified,
         });
@@ -855,6 +868,12 @@ public class AttendanceController : ControllerBase
         // check-in against one set of hours and its check-out against another.
         var shift = await ResolveShiftAsync(employee, location, today);
 
+        // «Elastik qrafik» has no timetable for the branches below to read: its scan is decided by the session the
+        // person has open, and nothing else. Branching here, before any of the fixed-shift logic, is what keeps that
+        // logic byte-for-byte what it was for every fixed shift. See FlexibleScanRules.
+        if (shift.IsFlexible)
+            return await FlexibleScanAsync(employee, location, shift, today, nowUtc, ip, request, serverNow, qrless);
+
         // A day is a LIST of stretches now, not a row. For everybody but a split-shift crew the list
         // has one entry and every branch below behaves exactly as it did — the open one if there is
         // one, otherwise the last closed one, which for a single-entry day is the same row as before.
@@ -1132,6 +1151,130 @@ public class AttendanceController : ControllerBase
         // Already checked in and out today.
         await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "AlreadyCompleted", ip);
         return Conflict(new { error = "AlreadyCompleted" });
+    }
+
+    /// <summary>
+    /// A scan by somebody on «Elastik qrafik»: close the session they have open, or open a new one — see
+    /// <see cref="FlexibleScanRules"/>. Reuses the ordinary check-in and check-out, so the selfie, the face match, the
+    /// offline de-duplication, the past-day summary rebuild and the audit are exactly the fixed shift's.
+    /// </summary>
+    private async Task<IActionResult> FlexibleScanAsync(
+        Employee employee, Location location, EffectiveShift shift, DateOnly today, DateTime nowUtc, string? ip,
+        ScanRequest request, DateTime serverNow, bool qrless)
+    {
+        // The person's latest open session from the last couple of days; anything older is a forgotten check-out
+        // whatever happens, and stays open for the admin. Voided (fraud) records are not sessions.
+        var open = await _db.AttendanceRecords
+            .Where(r => r.EmployeeId == employee.Id && r.CheckInAtUtc != null && r.CheckOutAtUtc == null
+                        && r.VoidedAtUtc == null && r.AttendanceDate >= today.AddDays(-2))
+            .OrderByDescending(r => r.CheckInAtUtc)
+            .FirstOrDefaultAsync();
+
+        var outcome = FlexibleScanRules.Decide(open?.CheckInAtUtc, open?.AttendanceDate, nowUtc, today);
+
+        // A long session: the end of a long night, or a new arrival after a forgotten check-out. Only the person knows,
+        // so the phone asks and sends the answer back with the same scan (same id, same selfie).
+        var reportedForgotten = false;
+        if (outcome == FlexibleScanRules.Outcome.AskLongSession)
+        {
+            var sameDay = open!.AttendanceDate >= today;
+            var answer = request.LongSession?.Trim().ToLowerInvariant();
+            if (answer == "close")
+                outcome = FlexibleScanRules.Outcome.CheckOut;
+            else if (answer == "new" && !sameDay)
+            {
+                outcome = FlexibleScanRules.Outcome.CheckIn;
+                reportedForgotten = true;
+            }
+            else if (answer == "new")
+            {
+                // One day may hold only one open session, so an arrival cannot be opened beside this morning's
+                // forgotten one — and closing that one at this scan would pay the gap. Neither is guessed: the scan is
+                // refused with its time in the audit (the Problems screen shows it), and the admin puts in the real
+                // exit and the arrival.
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected,
+                    $"FlexibleForgottenToday|{TimeZoneInfo.ConvertTimeFromUtc(open.CheckInAtUtc!.Value, _timeZone):HH:mm}", ip);
+                return Conflict(new { error = "ForgottenCheckOutToday", checkInAtUtc = open.CheckInAtUtc });
+            }
+            else
+            {
+                // Not answered — or an offline replay, which nobody can answer any more. Nothing is written either way:
+                // the open session stays as it is, and the refusal is on the Problems screen with its time.
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected,
+                    request.Offline ? "FlexibleLongSessionOffline" : "FlexibleLongSessionAsked", ip);
+                return Conflict(new
+                {
+                    error = "ConfirmLongSession",
+                    checkInAtUtc = open.CheckInAtUtc,
+                    hours = Math.Round((nowUtc - open.CheckInAtUtc!.Value).TotalHours, 1),
+                    sameDay,
+                });
+            }
+        }
+
+        switch (outcome)
+        {
+            case FlexibleScanRules.Outcome.OutOfOrder:
+                // Only an offline replay can be earlier than a session already on the books. Refused rather than
+                // guessed at: the phone reports it to the Problems screen, and the scan is in the audit log.
+                await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "FlexibleOutOfOrder", ip);
+                return Conflict(new { error = "OutOfOrder" });
+
+            case FlexibleScanRules.Outcome.CheckOut:
+                // The same two guards a fixed shift's check-out has: a double-tap minutes after arriving is not an
+                // exit, and within two hours the phone asks «are you leaving?» first (EarlyCheckOutRules).
+                if (nowUtc - open!.CheckInAtUtc!.Value < TimeSpan.FromMinutes(MinCheckoutMinutes))
+                {
+                    await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected, "TooSoonToCheckOut", ip);
+                    return Conflict(new { error = "TooSoonToCheckOut", minutes = MinCheckoutMinutes });
+                }
+                if (EarlyCheckOutRules.NeedsConfirmation(open.CheckInAtUtc, nowUtc, request.ConfirmEarlyCheckOut))
+                {
+                    await WriteAuditAsync(employee.Id, AuditEventType.CheckOutRejected,
+                        request.Offline ? "OfflineEarlyCheckOutIgnored" : "EarlyCheckOutUnconfirmed", ip);
+                    return Conflict(new
+                    {
+                        error = "ConfirmEarlyCheckOut",
+                        checkInAtUtc = open.CheckInAtUtc,
+                        minutes = EarlyCheckOutRules.ConfirmWithinMinutes,
+                        // The phone says «iş sessiyanız bağlanacaq», not «iş gününüz»: a flexible day is never closed,
+                        // only this one session — another may start in a few minutes.
+                        flexible = true,
+                    });
+                }
+                // Closed against the session's OWN day's shift — the night that began yesterday is yesterday's.
+                var sessionShift = open.AttendanceDate == today
+                    ? shift
+                    : await ResolveShiftAsync(employee, location, open.AttendanceDate);
+                return await CheckOutAsync(open, employee, location, sessionShift, nowUtc, ip,
+                    request.ClientScanId, request.Offline, serverNow);
+
+            default:
+                // A stale session (a forgotten check-out from an earlier day) is left exactly as it is: no exit is
+                // invented for it. It is noted so the audit shows why a second open day exists — and whether the person
+                // said so themselves.
+                if (open is not null)
+                    await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess,
+                        $"{(reportedForgotten ? "FlexibleForgottenReported" : "FlexibleStaleSessionLeftOpen")}|{open.AttendanceDate:yyyy-MM-dd}", ip);
+
+                // The same cool-off every check-in has: a tap a minute after a check-out is the «did it work?» retry,
+                // not a new session. Absolute difference — an offline batch can arrive out of client-time order.
+                var lastCheckOutUtc = await _db.AttendanceRecords
+                    .Where(r => r.EmployeeId == employee.Id && r.CheckOutAtUtc != null)
+                    .OrderByDescending(r => r.CheckOutAtUtc)
+                    .Select(r => r.CheckOutAtUtc)
+                    .FirstOrDefaultAsync();
+                if (lastCheckOutUtc is DateTime co && (nowUtc - co).Duration() < TimeSpan.FromMinutes(MinCheckoutMinutes))
+                {
+                    // Its own answer, not «AlreadyCompleted»: a flexible day is never «completed» — the person may
+                    // start another session in a few minutes, and «Bu gün tamamlanıb» told them they could not.
+                    await WriteAuditAsync(employee.Id, AuditEventType.CheckInRejected, "TooSoonAfterCheckOut", ip);
+                    return Conflict(new { error = "TooSoonAfterCheckOut", minutes = MinCheckoutMinutes });
+                }
+
+                return await CheckInAsync(employee, location, shift, today, nowUtc, ip, request.PhotoBase64,
+                    request.Latitude, request.Longitude, request.ClientScanId, request.Offline, serverNow, qrless: qrless);
+        }
     }
 
     /// <summary>
@@ -1414,7 +1557,9 @@ public class AttendanceController : ControllerBase
             checkOutAtUtc = nowUtc,
             // Tells the app to prompt for an early-departure reason (skippable).
             earlyDeparture = IsEarlyDeparture(
-                shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone)
+                shift.HoursOn(record.AttendanceDate).End, shift.LateThresholdMinutes, nowUtc, _timeZone),
+            // «Elastik qrafik»: the phone's card then does not say «Sabaha qədər!» — another session may start today.
+            flexible = shift.IsFlexible,
         });
     }
 
