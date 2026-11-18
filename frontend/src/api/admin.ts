@@ -841,10 +841,24 @@ export function getEmployees(query: EmployeeQuery = {}) {
  * of the old per-employee device bindings.
  */
 export async function getAllEmployees() {
-  const r = await getEmployees({ page: 1, pageSize: 2000 })
-  const items = r.data && 'items' in r.data ? r.data.items : null
-  return { status: r.status, data: items }
+  // The server hands out at most ROSTER_PAGE rows per request (AdminController.List) and answers a
+  // bigger ask with its default of 25 — so «pageSize: 2000» quietly meant «the first 25 names», and the
+  // shift counts and the equipment picker saw only those. Walk the pages instead. A company of 929 is
+  // five requests of the same cheap list projection.
+  const all: AdminEmployeeRow[] = []
+  for (let page = 1; page <= ROSTER_MAX_PAGES; page++) {
+    const r = await getEmployees({ page, pageSize: ROSTER_PAGE })
+    if (r.status !== 200 || !r.data || !('items' in r.data)) return { status: r.status, data: null }
+    all.push(...r.data.items)
+    if (r.data.items.length < ROSTER_PAGE || all.length >= r.data.total) break
+  }
+  return { status: 200, data: all }
 }
+
+/** The most rows one /api/admin/employees request returns — the server's cap, not a preference. */
+export const ROSTER_PAGE = 200
+/** A stop for the page walk: 200 × 100 is far beyond any company, and a server that kept saying «more» stops here. */
+const ROSTER_MAX_PAGES = 100
 
 /** ONE employee, in full — what the edit form and the profile screen read. */
 export function getEmployee(id: string) {
