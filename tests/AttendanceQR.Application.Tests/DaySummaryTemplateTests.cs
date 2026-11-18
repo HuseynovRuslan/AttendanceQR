@@ -188,12 +188,12 @@ public class DaySummaryTemplateTests
         Assert.Equal(3, ws.Cell(row, Col("İşçi sayı")).GetValue<int>());
         // After the form's last column, so every column of the form keeps its letter.
         var flex = Headings.Length + 1;
-        Assert.Equal("Elastik, giriş yoxdur", ws.Cell(2, flex).GetString());
+        Assert.Equal("Sərbəst qrafik, giriş yoxdur", ws.Cell(2, flex).GetString());
         Assert.Equal(1, ws.Cell(row, flex).GetValue<int>());
 
         // A day with nobody in it: the form exactly as it was.
         using var plain = Build(People("Qala Anbar", "dayOff", 2), Form);
-        Assert.DoesNotContain(plain.Worksheet("Xülasə").Row(2).CellsUsed(), c => c.GetString() == "Elastik, giriş yoxdur");
+        Assert.DoesNotContain(plain.Worksheet("Xülasə").Row(2).CellsUsed(), c => c.GetString() == "Sərbəst qrafik, giriş yoxdur");
     }
 
     [Fact]

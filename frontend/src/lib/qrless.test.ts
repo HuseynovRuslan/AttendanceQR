@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mayPassOutsideFence, qrlessRoute, recallFence, recallQrless, rememberFence, rememberQrless, type KeyValueStore } from './qrless'
+import { mayPassOutsideFence, qrlessRoute, recallFence, recallFreeHours, recallQrless, rememberFence, rememberFreeHours, rememberQrless, type KeyValueStore } from './qrless'
 
 function memoryStore(): KeyValueStore & { map: Map<string, string> } {
   const map = new Map<string, string>()
@@ -93,5 +93,20 @@ describe('the fence switch, as the phone sees it', () => {
     expect(recallFence('a', store)).toBe(false)
     expect(recallFence('b', store)).toBe(true)
     expect(recallFence('c', store)).toBeNull()
+  })
+
+  it('remembers «sərbəst iş qrafiki» per employee, so the offline question can say «sessiyanız»', () => {
+    const map = new Map<string, string>()
+    const store: KeyValueStore = { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) }
+
+    rememberFreeHours('a', true, store)
+    rememberFreeHours('b', false, store)
+    rememberFence('a', true, store)
+
+    expect(recallFreeHours('a', store)).toBe(true)
+    expect(recallFreeHours('b', store)).toBe(false)
+    expect(recallFreeHours('c', store)).toBeNull() // never heard → the question keeps its fixed-hours wording
+    expect(recallFence('a', store)).toBe(true) // a separate fact, untouched
+    expect(recallFreeHours(null, store)).toBeNull()
   })
 })

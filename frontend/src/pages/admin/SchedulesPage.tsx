@@ -415,7 +415,7 @@ function ShiftTemplates() {
               <button type="button" className="seg-btn" aria-pressed={!form.flexible}
                 onClick={() => setForm((f) => ({ ...f, flexible: false }))}>Sabit saatlar</button>
               <button type="button" className="seg-btn" aria-pressed={form.flexible}
-                onClick={() => setForm((f) => ({ ...f, flexible: true }))}>Elastik</button>
+                onClick={() => setForm((f) => ({ ...f, flexible: true }))}>Sərbəst</button>
             </div>
           </div>
 
@@ -601,7 +601,7 @@ function ShiftTemplates() {
                       <td data-label="Saatlar">
                         {s.isFlexible ? (
                           <>
-                            <span className="pill pill-info">Elastik</span>
+                            <span className="pill pill-info">Sərbəst</span>
                             <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 4 }}>{normLabel(s)}</div>
                           </>
                         ) : (<>

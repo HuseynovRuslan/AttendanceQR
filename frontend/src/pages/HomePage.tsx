@@ -248,7 +248,7 @@ export function HomePage() {
           {/* «Elastik qrafik»: no hours to print — the person may come and go at any time. */}
           {profile?.isFlexible && (
             <div className="mt-1 text-base font-semibold text-blue-700">
-              🕐 Növbəniz: Elastik — istənilən saatda
+              🕐 Növbəniz: Sərbəst iş qrafiki — istənilən saatda
             </div>
           )}
         </div>

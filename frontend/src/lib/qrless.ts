@@ -11,6 +11,7 @@
 
 const key = (employeeId: string) => `attendanceqr.qrless.${employeeId}`
 const fenceKey = (employeeId: string) => `attendanceqr.fenced.${employeeId}`
+const freeKey = (employeeId: string) => `attendanceqr.freeHours.${employeeId}`
 
 /** The corner of Storage this module needs — injectable so the rule can be tested without a browser. */
 export interface KeyValueStore {
@@ -110,4 +111,30 @@ export function qrlessRoute(args: {
   // An older server sends branches without ids; the fallback list is the assigned branch itself.
   if (!args.ownLocationId) return 'selfie'
   return args.insideId === args.ownLocationId ? 'selfie' : 'camera'
+}
+
+/**
+ * Is this person on «Sərbəst iş qrafiki» (a shift with no hours)? Remembered from the last profile the phone
+ * saw, for the one place that must know it with no signal: the early check-out question. Offline the server
+ * cannot say, and the question then read «iş gününüz bağlanacaq» to somebody whose day is never closed —
+ * only this session. Wording only: nothing about the scan itself depends on it.
+ */
+export function rememberFreeHours(employeeId: string | null, free: boolean, store: KeyValueStore | null = browserStore()): void {
+  if (!employeeId || !store) return
+  try {
+    store.setItem(freeKey(employeeId), free ? '1' : '0')
+  } catch {
+    // Blocked storage: the next profile load tries again; unknown reads as fixed hours, as it always did.
+  }
+}
+
+/** True / false when the phone has heard; null when it never has. */
+export function recallFreeHours(employeeId: string | null, store: KeyValueStore | null = browserStore()): boolean | null {
+  if (!employeeId || !store) return null
+  try {
+    const v = store.getItem(freeKey(employeeId))
+    return v === '1' ? true : v === '0' ? false : null
+  } catch {
+    return null
+  }
 }

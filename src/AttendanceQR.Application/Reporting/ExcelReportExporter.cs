@@ -475,7 +475,7 @@ public sealed class ExcelReportExporter : IExcelReportExporter
         {
             ws.Cell(lr, 1).Value = "8 / 0 / Açıq";
             ws.Cell(lr, 1).Style.Font.Bold = true;
-            ws.Cell(lr, 2).Value = "Elastik qrafik: işlənmiş saat / giriş yoxdur / çıxış qeyd olunmayıb";
+            ws.Cell(lr, 2).Value = "Sərbəst iş qrafiki: işlənmiş saat / giriş yoxdur / çıxış qeyd olunmayıb";
             lr++;
         }
         foreach (var item in report.Legend)

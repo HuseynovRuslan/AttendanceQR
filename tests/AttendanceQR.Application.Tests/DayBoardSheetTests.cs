@@ -98,14 +98,14 @@ public class DayBoardSheetTests
         using (var plain = Build(Person("Aygün", "Qala Anbar", "present"), Person("Cavid", "Qala Anbar", "dayOff")))
         {
             var headers = plain.Worksheet("Xülasə").Row(4).CellsUsed().Select(c => c.GetString()).ToList();
-            Assert.DoesNotContain("Elastik, giriş yoxdur", headers);
+            Assert.DoesNotContain("Sərbəst qrafik, giriş yoxdur", headers);
         }
 
         using var wb = Build(Person("Aygün", "Qala Anbar", "present"), Person("Fidan", "Qala Anbar", "flexNoScan"));
         var ws = wb.Worksheet("Xülasə");
         var row = RowStarting(ws, "Qala Anbar")!;
         var cells = ws.Row(4).CellsUsed().ToList();
-        var flex = cells.Single(c => c.GetString() == "Elastik, giriş yoxdur").Address.ColumnNumber;
+        var flex = cells.Single(c => c.GetString() == "Sərbəst qrafik, giriş yoxdur").Address.ColumnNumber;
         var dayOff = cells.Single(c => c.GetString() == "İstirahət").Address.ColumnNumber;
         var absent = cells.Single(c => c.GetString() == "Qayıb").Address.ColumnNumber;
         Assert.Equal(1, row.Cell(flex).GetValue<int>());

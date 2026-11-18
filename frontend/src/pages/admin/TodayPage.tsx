@@ -454,7 +454,7 @@ export function TodayPage() {
   // leave. The type is already on the row and was simply never read here.
   // «Elastik qrafik» with no scan: the same words as its card and its badge — never «Həftəlik istirahət».
   const statusLabel = (r: DayAttendanceRow) => bucketOf(r) === 'flexNoScan'
-    ? 'Elastik, giriş yoxdur'
+    ? 'Sərbəst qrafik, giriş yoxdur'
     : dayLabel(r.status, r.leaveType, incompleteLabel)
 
 
@@ -562,7 +562,7 @@ export function TodayPage() {
         permission: STATUS_MAP.Permission.label,
         dayOff: 'Həftəlik istirahət',
         rest: 'İstirahət (təyin edilmiş)',
-        flexNoScan: 'Elastik, giriş yoxdur',
+        flexNoScan: 'Sərbəst qrafik, giriş yoxdur',
         pending: STATUS_MAP.Pending.label,
         onboarding: STATUS_MAP.Onboarding.label,
       },
@@ -601,7 +601,7 @@ export function TodayPage() {
     { key: 'trip', label: 'Ezamiyyət', n: counts.trip, dot: 'var(--teal)' },
     { key: 'unpaid', label: 'Ödənişsiz', n: counts.unpaid, dot: 'var(--clay)' },
     { key: 'rest', label: 'İstirahət (təyin edilmiş)', n: counts.rest, dot: 'var(--c400)' },
-    { key: 'flexNoScan', label: 'Elastik, giriş yoxdur', n: counts.flexNoScan, dot: 'var(--c400)' },
+    { key: 'flexNoScan', label: 'Sərbəst qrafik, giriş yoxdur', n: counts.flexNoScan, dot: 'var(--c400)' },
   ]
   // Inline: the ones that happened today, up to four. A status with nobody in it is still reachable —
   // it is behind «Digər statuslar», so a filter never disappears, it only stops taking up a row.
