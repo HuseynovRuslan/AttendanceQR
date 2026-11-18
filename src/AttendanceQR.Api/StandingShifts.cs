@@ -169,9 +169,9 @@ public static class StandingShifts
     /// <summary>One day's label: a shift with its hours, the rest day, or no plan.</summary>
     /// <summary>«Sərbəst (elastik)» — but «Elastik qrafik» as it is: the mode said twice reads as a typo.</summary>
     public static string FlexibleName(string? name) =>
-        string.IsNullOrWhiteSpace(name) ? "Elastik"
-        : name.Contains("elastik", StringComparison.OrdinalIgnoreCase) ? name
-        : $"{name} (elastik)";
+        string.IsNullOrWhiteSpace(name) ? "Sərbəst iş qrafiki"
+        : name.Contains("sərbəst", StringComparison.OrdinalIgnoreCase) || name.Contains("elastik", StringComparison.OrdinalIgnoreCase) ? name
+        : $"{name} (sərbəst qrafik)";
 
     public static string DayLabel(string? token, IReadOnlyDictionary<Guid, Schedule> schedules)
     {

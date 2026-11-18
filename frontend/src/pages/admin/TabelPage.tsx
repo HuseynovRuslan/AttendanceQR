@@ -182,7 +182,7 @@ export function TabelPage() {
                 <th className="tb-total-col">İş</th>
                 <th className="tb-total-col">Qayıb</th>
                 <th className="tb-total-col">Saat</th>
-                {hasNorm && <th className="tb-total-col" title="Elastik qrafikin saat norması — yalnız müqayisə üçün">Norma</th>}
+                {hasNorm && <th className="tb-total-col" title="Sərbəst iş qrafikinin saat norması — yalnız müqayisə üçün">Norma</th>}
               </tr>
             </thead>
             <tbody>
@@ -203,8 +203,8 @@ export function TabelPage() {
                           key={i}
                           className={`${flexibleCellClass(flex)}${own ? ' tb-self' : ''}`}
                           title={flex === 'Açıq'
-                            ? 'Elastik qrafik — çıxış qeyd olunmayıb, düzəliş gözləyir'
-                            : `Elastik qrafik — ${flex.replace('.', ',')} saat işləyib`}
+                            ? 'Sərbəst iş qrafiki — çıxış qeyd olunmayıb, düzəliş gözləyir'
+                            : `Sərbəst iş qrafiki — ${flex.replace('.', ',')} saat işləyib`}
                           style={flex === 'Açıq' ? { fontSize: 10 } : undefined}
                         >
                           {flex.replace('.', ',')}{own && '*'}
@@ -248,7 +248,7 @@ export function TabelPage() {
           {report.rows.some((r) => r.flexibleCells) && (
             <span className="tb-legend-item">
               <span className="tb-legend-code tb-work">8</span>
-              Elastik qrafik: işlənmiş saat · «0» — giriş yoxdur · «Açıq» — çıxış qeyd olunmayıb
+              Sərbəst iş qrafiki: işlənmiş saat · «0» — giriş yoxdur · «Açıq» — çıxış qeyd olunmayıb
             </span>
           )}
           {report.legend.map((item) => (

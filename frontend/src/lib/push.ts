@@ -137,6 +137,22 @@ export async function isSubscribed(): Promise<boolean> {
  * Asks permission, subscribes, and registers the subscription with the server.
  * Returns why it failed so the UI can say something specific rather than "error".
  */
+let serverPush: Promise<boolean> | null = null
+
+/**
+ * Does this server send web push at all? A copy without push keys (the staging server) answers
+ * `enabled: false`. Then there is nothing to switch on: «Bildirişləri aktiv et» could only hide itself
+ * after the tap and come back on the next reload, forever. Asked once per page load. Anything but a clear
+ * «no» counts as yes — a network blip must never hide the prompt on a server that does send push.
+ */
+export function pushServerEnabled(): Promise<boolean> {
+  if (isNative()) return Promise.resolve(true)
+  serverPush ??= apiRequest<PushKeyInfo>('/api/push/public-key')
+    .then((r) => !(r.status === 200 && r.data && r.data.enabled === false))
+    .catch(() => true)
+  return serverPush
+}
+
 export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'disabled' | 'failed'> {
   if (isNative()) return enablePushNative()
   if (!pushSupported()) return 'unsupported'

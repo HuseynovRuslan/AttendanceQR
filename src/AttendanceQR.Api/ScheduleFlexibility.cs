@@ -68,9 +68,9 @@ public static class ScheduleFlexibility
     public static string Describe(bool flexible, int? normMinutes, FlexibleNormPeriod period)
     {
         if (!flexible) return "Sabit saatlar";
-        if (normMinutes is not int n) return "Elastik (normasız)";
+        if (normMinutes is not int n) return "Sərbəst iş qrafiki (normasız)";
         var hours = (n / 60.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-        return $"Elastik (norma {hours} saat/{(period == FlexibleNormPeriod.Week ? "həftə" : "gün")})";
+        return $"Sərbəst iş qrafiki (norma {hours} saat/{(period == FlexibleNormPeriod.Week ? "həftə" : "gün")})";
     }
 
     /// <summary>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { enablePush, isSubscribed, pushPermission, pushSupported } from '../lib/push'
+import { enablePush, isSubscribed, pushPermission, pushServerEnabled, pushSupported } from '../lib/push'
 import { isStandalone } from '../lib/device'
 
 /**
@@ -32,7 +32,7 @@ export function PushEnablePrompt({
       setBlocked(true)
       return
     }
-    void isSubscribed().then((sub) => setShow(!sub))
+    void Promise.all([isSubscribed(), pushServerEnabled()]).then(([sub, on]) => setShow(on && !sub))
   }, [])
 
   useEffect(() => {

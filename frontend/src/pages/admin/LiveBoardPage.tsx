@@ -26,7 +26,7 @@ const OFF_LABEL: Record<string, string> = { DayOff: 'İş günü deyil', OnLeave
 function offLabel(r: DayAttendanceRow): string {
   if (r.status === 'OnLeave') return leaveVisual(r.leaveType)?.label ?? 'Məzuniyyət'
   // «Elastik qrafik»: there is no work day to not be on — they simply have not come.
-  if (r.status === 'DayOff' && r.isFlexible && !r.leaveType) return 'Elastik, giriş yoxdur'
+  if (r.status === 'DayOff' && r.isFlexible && !r.leaveType) return 'Sərbəst qrafik, giriş yoxdur'
   return OFF_LABEL[r.status] ?? 'Yoxdur'
 }
 

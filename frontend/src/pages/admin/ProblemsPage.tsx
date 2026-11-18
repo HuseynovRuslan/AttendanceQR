@@ -24,10 +24,10 @@ const REASON: Record<string, { label: string; cls: string; blocking?: boolean }>
   // «Elastik qrafik». The question and the retry are not failures; the offline one and «forgot it today» each leave a
   // session for the admin to correct — those two are what this screen exists to surface.
   TooSoonAfterCheckOut: { label: 'Çıxışdan dərhal sonra təkrar skan', cls: 'bg-blue-100 text-blue-700' },
-  FlexibleLongSessionAsked: { label: 'Elastik: uzun sessiya — işçidən soruşuldu', cls: 'bg-sky-100 text-sky-700' },
-  FlexibleLongSessionOffline: { label: 'Elastik: uzun sessiya (oflayn) — çıxışı yoxlayın', cls: 'bg-amber-100 text-amber-700', blocking: true },
-  FlexibleForgottenToday: { label: 'Elastik: bu günün çıxışı unudulub — düzəldin', cls: 'bg-amber-100 text-amber-700', blocking: true },
-  FlexibleOutOfOrder: { label: 'Elastik: köhnə oflayn skan', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  FlexibleLongSessionAsked: { label: 'Sərbəst qrafik: uzun sessiya — işçidən soruşuldu', cls: 'bg-sky-100 text-sky-700' },
+  FlexibleLongSessionOffline: { label: 'Sərbəst qrafik: uzun sessiya (oflayn) — çıxışı yoxlayın', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  FlexibleForgottenToday: { label: 'Sərbəst qrafik: bu günün çıxışı unudulub — düzəldin', cls: 'bg-amber-100 text-amber-700', blocking: true },
+  FlexibleOutOfOrder: { label: 'Sərbəst qrafik: köhnə oflayn skan', cls: 'bg-amber-100 text-amber-700', blocking: true },
   // An offline scan that never became a record. BLOCKING on purpose: the employee tapped, was shown
   // a green "saved" card, and has nothing for that day — so unless someone enters that day by hand
   // they are marked Qayıb for a day they worked. The reason carries the lost DAY after the '|', which

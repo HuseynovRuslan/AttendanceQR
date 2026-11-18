@@ -261,13 +261,15 @@ public class FlexibleScheduleTests
     [Fact]
     public void The_plan_history_names_a_flexible_shift_without_inventing_hours()
     {
-        var flexible = new Schedule { Id = Guid.NewGuid(), Name = "Sərbəst", IsFlexible = true, ShiftStart = new TimeOnly(0, 0), ShiftEnd = new TimeOnly(23, 59) };
+        var flexible = new Schedule { Id = Guid.NewGuid(), Name = "Barmenlər", IsFlexible = true, ShiftStart = new TimeOnly(0, 0), ShiftEnd = new TimeOnly(23, 59) };
         var office = new Schedule { Id = Guid.NewGuid(), Name = "Ofis", ShiftStart = new TimeOnly(9, 0), ShiftEnd = new TimeOnly(18, 0) };
         var catalogue = new Dictionary<Guid, Schedule> { [flexible.Id] = flexible, [office.Id] = office };
 
-        Assert.Equal("Sərbəst (elastik)", StandingShifts.DayLabel(flexible.Id.ToString(), catalogue));
+        Assert.Equal("Barmenlər (sərbəst qrafik)", StandingShifts.DayLabel(flexible.Id.ToString(), catalogue));
         Assert.Equal("Ofis 09:00–18:00", StandingShifts.DayLabel(office.Id.ToString(), catalogue));
-        Assert.Equal("Elastik qrafik", StandingShifts.FlexibleName("Elastik qrafik"));   // not «Elastik qrafik (elastik)»
+        Assert.Equal("Sərbəst iş qrafiki", StandingShifts.FlexibleName("Sərbəst iş qrafiki"));   // not «… (sərbəst qrafik)»
+        Assert.Equal("Elastik", StandingShifts.FlexibleName("Elastik"));   // a shift still named the old way
+        Assert.Equal("Sərbəst iş qrafiki", StandingShifts.FlexibleName(null));
     }
 
     // ─── the scan ───────────────────────────────────────────────────────────────────────────────────
@@ -551,7 +553,7 @@ public class FlexibleScheduleTests
         Assert.True(ShiftResolver.ScheduleOn(office.Id, office.Id, today, all)!.IsFlexible);
 
         var audit = Assert.Single(h.Db.AuditLogs.AsNoTracking().Where(a => a.EventType == AuditEventType.ScheduleModeChanged));
-        Assert.Contains("Sabit saatlar → Elastik (norma 8 saat/gün)", audit.Reason);
+        Assert.Contains("Sabit saatlar → Sərbəst iş qrafiki (norma 8 saat/gün)", audit.Reason);
         Assert.Contains(h.AdminId.ToString(), audit.Reason);
 
         // A client that knows nothing of the mode (the manager's form, an old app) saves the shift: it stays flexible.
@@ -567,7 +569,7 @@ public class FlexibleScheduleTests
         Assert.False(back.IsFlexible);
         Assert.Null(back.FlexibleNormMinutes);
         Assert.Contains(h.Db.AuditLogs.AsNoTracking(), a => a.EventType == AuditEventType.ScheduleModeChanged
-                                                           && a.Reason!.Contains("Elastik (norma 8 saat/gün) → Sabit saatlar"));
+                                                           && a.Reason!.Contains("Sərbəst iş qrafiki (norma 8 saat/gün) → Sabit saatlar"));
     }
 
     [Fact]
