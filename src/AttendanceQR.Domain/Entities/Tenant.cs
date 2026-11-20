@@ -91,9 +91,10 @@ public class Tenant
     public bool SelfCorrectionNeedsApproval { get; set; }
 
     /// <summary>
-    /// When the daily management report goes to this company's Telegram recipients, in the company's
-    /// local time. Null = the scheduled report is OFF (the default for every company): the report is
-    /// opt-in, and an admin can still send one by hand from the screen without switching it on.
+    /// UNUSED since 2026-11-20 — superseded by <see cref="DailyReportRecipient.SendAtLocal"/>. One company-wide
+    /// time could only be set by the company admin, so a structure manager could not schedule the report for
+    /// their own branches. Never set in production; kept only because dropping a column is not an additive
+    /// migration. Do not read it; drop it in a hand-run migration.
     /// </summary>
     public TimeOnly? DailyReportAtLocal { get; set; }
 }

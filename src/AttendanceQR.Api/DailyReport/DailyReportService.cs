@@ -199,24 +199,24 @@ public sealed class DailyReportService
     }
 
     /// <summary>
-    /// The scheduled send for this company: once its time has come (and while still within
-    /// <see cref="SendWindow"/>), one delivery per connected recipient for today — refused by a unique
-    /// index if one already exists, so a restart or two ticks racing never send a report twice.
-    /// Returns how many deliveries were created.
+    /// The scheduled sends for this company: every connected recipient whose own time has come today (and is
+    /// still within <see cref="SendWindow"/>) gets one delivery — refused by a unique index if one already
+    /// exists, so a restart or two ticks racing never send a report twice. Returns how many were created.
     /// </summary>
     public async Task<int> CreateScheduledAsync(CancellationToken ct)
     {
-        var tenant = await _db.Tenants.AsNoTracking().FirstAsync(t => t.Id == _tenant.TenantId, ct);
-        if (tenant.DailyReportAtLocal is not TimeOnly at) return 0;
-
         var nowLocal = NowLocal();
         var today = DateOnly.FromDateTime(nowLocal);
-        var due = today.ToDateTime(at);
-        if (nowLocal < due || nowLocal >= due + SendWindow) return 0;
 
-        var recipients = await _db.DailyReportRecipients
-            .Where(r => r.IsActive && r.TelegramChatId != null)
-            .ToListAsync(ct);
+        var recipients = (await _db.DailyReportRecipients
+                .Where(r => r.IsActive && r.TelegramChatId != null && r.SendAtLocal != null)
+                .ToListAsync(ct))
+            .Where(r =>
+            {
+                var due = today.ToDateTime(r.SendAtLocal!.Value);
+                return nowLocal >= due && nowLocal < due + SendWindow;
+            })
+            .ToList();
         if (recipients.Count == 0) return 0;
         var already = (await _db.DailyReportDeliveries
                 .Where(d => d.ReportDate == today && d.Kind == (int)DeliveryKind.Scheduled)
@@ -276,12 +276,18 @@ public sealed class DailyReportService
         return sent;
     }
 
-    /// <summary>«Hesabatı indi göndər»: a fresh report to every connected recipient (or just one), sent now. Not limited per day.</summary>
-    public async Task<List<SendOutcome>> SendNowAsync(Guid? recipientId, CancellationToken ct)
+    /// <summary>
+    /// «Hesabatı indi göndər»: a fresh report to every connected recipient (or just one), sent now. Not limited
+    /// per day. <paramref name="allowed"/> narrows it to the recipients the caller may see (a structure
+    /// manager's own); null = every recipient of the company.
+    /// </summary>
+    public async Task<List<SendOutcome>> SendNowAsync(Guid? recipientId, IReadOnlySet<Guid>? allowed, CancellationToken ct)
     {
-        var recipients = await _db.DailyReportRecipients
-            .Where(r => r.IsActive && r.TelegramChatId != null && (recipientId == null || r.Id == recipientId))
-            .ToListAsync(ct);
+        var recipients = (await _db.DailyReportRecipients
+                .Where(r => r.IsActive && r.TelegramChatId != null && (recipientId == null || r.Id == recipientId))
+                .ToListAsync(ct))
+            .Where(r => allowed == null || allowed.Contains(r.Id))
+            .ToList();
         var outcomes = new List<SendOutcome>();
         var byScope = new Dictionary<string, DailyReportData>();
         foreach (var r in recipients)
