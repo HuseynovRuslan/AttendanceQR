@@ -22,6 +22,13 @@ public class DailyReportRecipient : ITenantScoped
     /// </summary>
     public string? LocationIds { get; set; }
 
+    /// <summary>
+    /// When this person gets the report every day, in the company's local time. Null = never on its own —
+    /// only when somebody presses «Hesabatı indi göndər». Per recipient (not per company) so whoever adds a
+    /// recipient — a structure manager for their own branches as much as the company admin — decides when.
+    /// </summary>
+    public TimeOnly? SendAtLocal { get; set; }
+
     /// <summary>The Telegram chat bound by pressing «Start» on the link. Null = not connected yet.</summary>
     public long? TelegramChatId { get; set; }
     public DateTime? LinkedAtUtc { get; set; }

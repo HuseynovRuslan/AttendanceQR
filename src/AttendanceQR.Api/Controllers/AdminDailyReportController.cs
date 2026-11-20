@@ -4,29 +4,35 @@ using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting.DailyReport;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
+using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace AttendanceQR.Api.Controllers;
 
-public sealed record DailyReportSettingsRequest(string? Time);
-public sealed record DailyReportRecipientRequest(string Name, List<Guid>? LocationIds);
+/// <param name="Time">"HH:mm" (company local time) to send every day; null or empty = only on «send now».</param>
+public sealed record DailyReportRecipientRequest(string Name, List<Guid>? LocationIds, string? Time = null);
 public sealed record DailyReportSendNowRequest(Guid? RecipientId);
 
 /// <summary>
-/// The company admin's screen for the daily management report: the send time (off by default), the
-/// leadership recipients and which branches each one receives, a one-time «connect» link per recipient,
-/// «send now», and a preview (HTML or PDF) that sends nothing. Company admins only — the report shows
-/// the whole company's figures, and choosing who receives them is a company decision.
+/// The daily management report screen: the leadership recipients, which branches each one receives and at
+/// what time, a one-time «connect» link per recipient, «send now», and a preview (HTML or PDF) that sends
+/// nothing.
+///
+/// The company admin works on the whole company. A structure manager works on the branches they run, and
+/// only there: they choose recipients among their own branches (never «the whole company»), see and touch
+/// only the recipients whose branches all lie inside theirs, and their preview and «send now» cover nothing
+/// else. The report is a view of the branches somebody runs, so it narrows exactly like every other board.
 /// </summary>
 [ApiController]
-[Authorize(Roles = "Admin")]
-// The company's attendance figures, company-wide. Admin-only and not Scoped, so in Enforced mode it stays the
-// Company administrator's (PermissionGateHandler) whatever else a custom role holds.
-[Permission(AccessPermissions.AttendanceView, AtCompany = true)]
+[Authorize(Roles = "Admin,Manager")]
+// Reading (the screen, the preview) is «attendance.view». Everything that sends the figures somewhere or decides who
+// gets them is «notifications.staff_alerts», which a view-only role (Müşahidəçi) does not hold — see each action.
+[Permission(AccessPermissions.AttendanceView)]
 [Route("api/admin/daily-report")]
 public class AdminDailyReportController : ControllerBase
 {
@@ -34,43 +40,64 @@ public class AdminDailyReportController : ControllerBase
     private readonly DailyReportService _service;
     private readonly DailyReportOptions _options;
     private readonly IPdfRenderer _pdf;
-    private readonly ITenantContext _tenant;
 
-    public AdminDailyReportController(AppDbContext db, DailyReportService service, DailyReportOptions options,
-        IPdfRenderer pdf, ITenantContext tenant)
+    public AdminDailyReportController(AppDbContext db, DailyReportService service, DailyReportOptions options, IPdfRenderer pdf)
     {
         _db = db;
         _service = service;
         _options = options;
         _pdf = pdf;
-        _tenant = tenant;
+    }
+
+    /// <summary>Null = the whole company (an admin); otherwise the branches this manager runs (possibly none).</summary>
+    private async Task<HashSet<Guid>?> ManagedAsync(CancellationToken ct) =>
+        User.Role() == EmployeeRole.Admin
+            ? null
+            : (await LocationScopeRules.ManagedLocationIdsAsync(_db, User.EmployeeId(), ct)).ToHashSet();
+
+    /// <summary>
+    /// May this caller see the recipient? An admin, any. A manager, only one with branches named, every one of
+    /// them theirs — a whole-company recipient (no branches) is the admin's.
+    /// </summary>
+    private static bool Visible(DailyReportRecipient r, HashSet<Guid>? managed) =>
+        managed is null || DailyReportService.ParseScope(r.LocationIds) is { } scope && scope.All(managed.Contains);
+
+    private async Task<DailyReportRecipient?> FindVisibleAsync(Guid id, HashSet<Guid>? managed, CancellationToken ct)
+    {
+        var r = await _db.DailyReportRecipients.FirstOrDefaultAsync(x => x.Id == id && x.IsActive, ct);
+        return r is not null && Visible(r, managed) ? r : null;
     }
 
     [HttpGet]
     public async Task<IActionResult> Get()
     {
         var ct = HttpContext.RequestAborted;
-        var tenant = await _db.Tenants.AsNoTracking().FirstAsync(t => t.Id == _tenant.TenantId, ct);
-        var recipients = await _db.DailyReportRecipients.AsNoTracking()
-            .Where(r => r.IsActive)
-            .OrderBy(r => r.CreatedAtUtc)
-            .ToListAsync(ct);
-        var names = recipients.ToDictionary(r => r.Id, r => r.Name);
-        var deliveries = await _db.DailyReportDeliveries.AsNoTracking()
-            .OrderByDescending(d => d.CreatedAtUtc)
-            .Take(30)
-            .Select(d => new { d.Id, d.RecipientId, d.ReportDate, d.Kind, d.Status, d.Attempts, d.LastError, d.CreatedAtUtc, d.SentAtUtc })
-            .ToListAsync(ct);
+        var managed = await ManagedAsync(ct);
+        // Inactive ones too, so a removed recipient's past deliveries still carry its name.
+        var all = (await _db.DailyReportRecipients.AsNoTracking().OrderBy(r => r.CreatedAtUtc).ToListAsync(ct))
+            .Where(r => Visible(r, managed))
+            .ToList();
+        var visibleIds = all.Select(r => r.Id).ToHashSet();
+        var names = all.ToDictionary(r => r.Id, r => r.Name);
+        var deliveries = (await _db.DailyReportDeliveries.AsNoTracking()
+                .OrderByDescending(d => d.CreatedAtUtc)
+                .Take(300)
+                .Select(d => new { d.Id, d.RecipientId, d.ReportDate, d.Kind, d.Status, d.Attempts, d.LastError, d.CreatedAtUtc, d.SentAtUtc })
+                .ToListAsync(ct))
+            .Where(d => visibleIds.Contains(d.RecipientId))
+            .Take(30);
         return Ok(new
         {
-            time = tenant.DailyReportAtLocal?.ToString("HH:mm", CultureInfo.InvariantCulture),
             botConfigured = _options.TelegramConfigured,
             botUsername = _options.TelegramBotUsername.TrimStart('@'),
-            recipients = recipients.Select(r => new
+            // Only the company admin may address a recipient to the whole company.
+            canWholeCompany = managed is null,
+            recipients = all.Where(r => r.IsActive).Select(r => new
             {
                 r.Id,
                 r.Name,
                 locationIds = DailyReportService.ParseScope(r.LocationIds)?.ToList() ?? [],
+                time = r.SendAtLocal?.ToString("HH:mm", CultureInfo.InvariantCulture),
                 linked = r.TelegramChatId != null,
                 r.LinkedAtUtc,
                 linkPending = r.LinkCodeExpiresUtc != null && r.LinkCodeExpiresUtc > DateTime.UtcNow,
@@ -90,93 +117,111 @@ public class AdminDailyReportController : ControllerBase
         });
     }
 
-    [HttpPut("settings")]
-    public async Task<IActionResult> PutSettings([FromBody] DailyReportSettingsRequest request)
-    {
-        TimeOnly? at = null;
-        if (!string.IsNullOrWhiteSpace(request.Time))
-        {
-            if (!TimeOnly.TryParseExact(request.Time.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
-                return BadRequest(new { error = "TimeInvalid" });
-            at = parsed;
-        }
-        var tenant = await _db.Tenants.FirstAsync(t => t.Id == _tenant.TenantId, HttpContext.RequestAborted);
-        tenant.DailyReportAtLocal = at;
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
-        return Ok(new { time = at?.ToString("HH:mm", CultureInfo.InvariantCulture) });
-    }
-
+    [Permission(AccessPermissions.NotificationsStaffAlerts)]
     [HttpPost("recipients")]
     public async Task<IActionResult> CreateRecipient([FromBody] DailyReportRecipientRequest request)
     {
-        var (name, scope, error) = await ValidateAsync(request);
+        var ct = HttpContext.RequestAborted;
+        var (name, scope, time, error) = await ValidateAsync(request, await ManagedAsync(ct), ct);
         if (error is not null) return BadRequest(new { error });
-        var r = new DailyReportRecipient { Name = name!, LocationIds = scope, CreatedByEmployeeId = User.EmployeeId() };
+        var r = new DailyReportRecipient
+        {
+            Name = name!, LocationIds = scope, SendAtLocal = time, CreatedByEmployeeId = User.EmployeeId(),
+        };
         _db.DailyReportRecipients.Add(r);
         var link = _options.TelegramConfigured ? _service.NewConnectLink(r) : null;
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await _db.SaveChangesAsync(ct);
         return Ok(new { r.Id, connectLink = link });
     }
 
+    [Permission(AccessPermissions.NotificationsStaffAlerts)]
     [HttpPut("recipients/{id:guid}")]
     public async Task<IActionResult> UpdateRecipient(Guid id, [FromBody] DailyReportRecipientRequest request)
     {
-        var r = await _db.DailyReportRecipients.FirstOrDefaultAsync(x => x.Id == id && x.IsActive, HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var managed = await ManagedAsync(ct);
+        var r = await FindVisibleAsync(id, managed, ct);
         if (r is null) return NotFound(new { error = "RecipientNotFound" });
-        var (name, scope, error) = await ValidateAsync(request);
+        var (name, scope, time, error) = await ValidateAsync(request, managed, ct);
         if (error is not null) return BadRequest(new { error });
         r.Name = name!;
         r.LocationIds = scope;
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        r.SendAtLocal = time;
+        await _db.SaveChangesAsync(ct);
         return Ok(new { r.Id });
     }
 
     /// <summary>Stops sending to this person and disconnects their chat. Their old links stop opening too.</summary>
+    [Permission(AccessPermissions.NotificationsStaffAlerts)]
     [HttpDelete("recipients/{id:guid}")]
     public async Task<IActionResult> RemoveRecipient(Guid id)
     {
-        var r = await _db.DailyReportRecipients.FirstOrDefaultAsync(x => x.Id == id && x.IsActive, HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var r = await FindVisibleAsync(id, await ManagedAsync(ct), ct);
         if (r is null) return NotFound(new { error = "RecipientNotFound" });
         r.IsActive = false;
         r.TelegramChatId = null;
         r.LinkCodeHash = null;
         r.LinkCodeExpiresUtc = null;
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await _db.SaveChangesAsync(ct);
         return Ok(new { removed = id });
     }
 
     /// <summary>A new one-time «connect» link (48 h). Also how a recipient moves to a new phone: the new chat replaces the old.</summary>
+    [Permission(AccessPermissions.NotificationsStaffAlerts)]
     [HttpPost("recipients/{id:guid}/connect-link")]
     public async Task<IActionResult> ConnectLink(Guid id)
     {
         if (!_options.TelegramConfigured) return BadRequest(new { error = "BotNotConfigured" });
-        var r = await _db.DailyReportRecipients.FirstOrDefaultAsync(x => x.Id == id && x.IsActive, HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var r = await FindVisibleAsync(id, await ManagedAsync(ct), ct);
         if (r is null) return NotFound(new { error = "RecipientNotFound" });
         var link = _service.NewConnectLink(r);
-        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await _db.SaveChangesAsync(ct);
         return Ok(new { connectLink = link });
     }
 
+    [Permission(AccessPermissions.NotificationsStaffAlerts)]
     [HttpPost("send-now")]
     public async Task<IActionResult> SendNow([FromBody] DailyReportSendNowRequest? request)
     {
         if (!_options.TelegramConfigured) return BadRequest(new { error = "BotNotConfigured" });
-        var outcomes = await _service.SendNowAsync(request?.RecipientId, HttpContext.RequestAborted);
+        var ct = HttpContext.RequestAborted;
+        var managed = await ManagedAsync(ct);
+        IReadOnlySet<Guid>? allowed = null;
+        if (managed is not null)
+            allowed = (await _db.DailyReportRecipients.AsNoTracking().Where(r => r.IsActive).ToListAsync(ct))
+                .Where(r => Visible(r, managed)).Select(r => r.Id).ToHashSet();
+        var outcomes = await _service.SendNowAsync(request?.RecipientId, allowed, ct);
         if (outcomes.Count == 0) return BadRequest(new { error = "NoConnectedRecipients" });
         return Ok(new { results = outcomes.Select(o => new { o.RecipientName, o.Sent, o.Error }) });
     }
 
-    /// <summary>Today's report as it would be sent now — nothing is sent, nothing is stored.</summary>
+    /// <summary>
+    /// Today's report as it would be sent now — nothing is sent, nothing is stored. For one recipient, their
+    /// branches; otherwise the caller's own: the whole company for an admin, a manager's branches for a manager.
+    /// </summary>
     [HttpGet("preview")]
     public async Task<IActionResult> Preview([FromQuery] Guid? recipientId, [FromQuery] string? format)
     {
         var ct = HttpContext.RequestAborted;
-        string? scope = null;
+        var managed = await ManagedAsync(ct);
+        string? scope;
         if (recipientId is Guid rid)
         {
-            var r = await _db.DailyReportRecipients.AsNoTracking().FirstOrDefaultAsync(x => x.Id == rid && x.IsActive, ct);
+            var r = await FindVisibleAsync(rid, managed, ct);
             if (r is null) return NotFound(new { error = "RecipientNotFound" });
             scope = r.LocationIds;
+        }
+        else if (managed is null)
+        {
+            scope = null;
+        }
+        else
+        {
+            // An empty scope means «the whole company» to the builder — a manager who runs nothing gets nothing.
+            if (managed.Count == 0) return BadRequest(new { error = "NoBranches" });
+            scope = string.Join(',', managed);
         }
         var data = await _service.BuildDataAsync(scope, ct);
         var html = DailyReportHtml.Render(data);
@@ -188,17 +233,30 @@ public class AdminDailyReportController : ControllerBase
         return Content(html, "text/html; charset=utf-8");
     }
 
-    private async Task<(string? Name, string? Scope, string? Error)> ValidateAsync(DailyReportRecipientRequest request)
+    private async Task<(string? Name, string? Scope, TimeOnly? Time, string? Error)> ValidateAsync(
+        DailyReportRecipientRequest request, HashSet<Guid>? managed, CancellationToken ct)
     {
         var name = request.Name?.Trim();
-        if (string.IsNullOrEmpty(name)) return (null, null, "NameRequired");
-        if (name.Length > 120) return (null, null, "NameTooLong");
+        if (string.IsNullOrEmpty(name)) return (null, null, null, "NameRequired");
+        if (name.Length > 120) return (null, null, null, "NameTooLong");
+
+        TimeOnly? time = null;
+        if (!string.IsNullOrWhiteSpace(request.Time))
+        {
+            if (!TimeOnly.TryParseExact(request.Time.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                return (null, null, null, "TimeInvalid");
+            time = parsed;
+        }
+
         var ids = (request.LocationIds ?? []).Distinct().ToList();
-        if (ids.Count == 0) return (name, null, null);
+        if (ids.Count == 0)
+            // «The whole company» — the company admin's call only.
+            return managed is null ? (name, null, time, null) : (null, null, null, "LocationsRequired");
+        if (managed is not null && !ids.All(managed.Contains)) return (null, null, null, "LocationOutOfScope");
         // Only this company's branches — the filter guarantees it; a foreign id simply does not match.
-        var known = await _db.Locations.Where(l => ids.Contains(l.Id)).Select(l => l.Id).ToListAsync(HttpContext.RequestAborted);
-        if (known.Count != ids.Count) return (null, null, "LocationNotFound");
-        return (name, string.Join(',', known), null);
+        var known = await _db.Locations.Where(l => ids.Contains(l.Id)).Select(l => l.Id).ToListAsync(ct);
+        if (known.Count != ids.Count) return (null, null, null, "LocationNotFound");
+        return (name, string.Join(',', known), time, null);
     }
 }
 

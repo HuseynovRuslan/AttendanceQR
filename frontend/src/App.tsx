@@ -412,7 +412,7 @@ function AppRoutes() {
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
         <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
-        {/* Rəhbərlik hesabatı (Telegram) — company admin only: who receives the company's figures is the company's call. */}
+        {/* Rəhbərlik hesabatı (Telegram) — admin for the company, a structure manager for their own branches. */}
         <Route path="daily-report" element={<PanelPage path="daily-report"><DailyReportPage /></PanelPage>} />
         {/* Corrections somebody made to their own day (the single-admin rule) — read by whoever sees the days. */}
         <Route path="self-corrections" element={<PanelPage path="self-corrections"><SelfCorrectionsPage /></PanelPage>} />

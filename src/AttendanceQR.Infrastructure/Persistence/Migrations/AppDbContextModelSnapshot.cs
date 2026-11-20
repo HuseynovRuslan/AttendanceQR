@@ -785,6 +785,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<TimeOnly?>("SendAtLocal")
+                        .HasColumnType("time without time zone");
+
                     b.Property<long?>("TelegramChatId")
                         .HasColumnType("bigint");
 
