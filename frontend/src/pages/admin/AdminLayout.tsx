@@ -33,6 +33,7 @@ import {
   IconRefresh,
   IconShield,
   IconSun,
+  IconSend,
   IconTable,
   IconPencil,
   IconUser,
@@ -53,6 +54,7 @@ const PAGE_META: Record<string, { title: string; sub: string }> = {
   '/admin/announcements': { title: 'Elanlar', sub: 'Bütün işçilərə bildiriş göndər' },
   '/admin/birthdays': { title: 'Doğum günləri', sub: 'Bu ay doğum günü olan işçilər' },
   '/admin/tabel': { title: 'Aylıq tabel', sub: 'Günlər üzrə davamiyyət cədvəli — çap və Excel' },
+  '/admin/daily-report': { title: 'Rəhbərlik hesabatı', sub: 'Gündəlik davamiyyət xülasəsi Telegram-a — PDF və link' },
   '/admin/my-leaves': { title: 'Məzuniyyət / İcazə', sub: 'Öz işçiləriniz üçün icazə və məzuniyyət' },
   '/admin/positions': { title: 'Vəzifələr', sub: 'İşçi əlavə edərkən seçilən vəzifələrin siyahısı' },
   '/admin/access': { title: 'Səlahiyyətlər', sub: 'Kimə hansı rol, harada — verilən hüquq növbəti açılışdan qüvvədədir' },
@@ -214,6 +216,7 @@ function AdminLayoutFrame() {
       links: [
         { to: '/admin/reports', label: 'Hesabat', Icon: IconChart },
         { to: '/admin/tabel', label: 'Aylıq tabel', Icon: IconTable },
+        { to: '/admin/daily-report', label: 'Rəhbərlik hesabatı', Icon: IconSend },
         { to: '/admin/self-corrections', label: 'Öz düzəlişləri', Icon: IconPencil },
         ...(payrollOn ? [{ to: '/admin/payroll', label: 'Maaş', Icon: IconMoney }] : []),
       ],

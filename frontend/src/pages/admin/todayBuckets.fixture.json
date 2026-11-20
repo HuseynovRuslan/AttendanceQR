@@ -1,0 +1,26 @@
+{
+  "_comment": "One row per case: which column of the day a person lands in. Read by BOTH todayCounts.test.ts (bucketOf) and the backend's TodayBucketsParityTests (TodayBuckets.BucketOf), so the board and the daily leadership report can never count the same day differently. Add a case here when either rule changes.",
+  "cases": [
+    { "status": "OnTime", "bucket": "present" },
+    { "status": "Late", "bucket": "present" },
+    { "status": "Field", "fieldCheckedOut": true, "bucket": "present" },
+    { "status": "Field", "fieldCheckedOut": false, "bucket": "incomplete" },
+    { "status": "Incomplete", "bucket": "incomplete" },
+    { "status": "Absent", "bucket": "absent" },
+    { "status": "Absent", "isFlexible": true, "bucket": "absent" },
+    { "status": "Pending", "bucket": "pending" },
+    { "status": "Onboarding", "bucket": "onboarding" },
+    { "status": "DayOff", "bucket": "dayOff" },
+    { "status": "DayOff", "leaveType": "Rest", "bucket": "rest" },
+    { "status": "DayOff", "isFlexible": true, "bucket": "flexNoScan" },
+    { "status": "DayOff", "isFlexible": true, "leaveType": "Rest", "bucket": "rest" },
+    { "status": "OnLeave", "leaveType": "Vacation", "bucket": "onLeave" },
+    { "status": "OnLeave", "bucket": "onLeave" },
+    { "status": "OnLeave", "leaveType": "Sick", "bucket": "sick" },
+    { "status": "OnLeave", "leaveType": "BusinessTrip", "bucket": "trip" },
+    { "status": "OnLeave", "leaveType": "Unpaid", "bucket": "unpaid" },
+    { "status": "OnLeave", "isFlexible": true, "leaveType": "Sick", "bucket": "sick" },
+    { "status": "Permission", "bucket": "permission" },
+    { "status": "Permission", "leaveType": "Permission", "bucket": "permission" }
+  ]
+}

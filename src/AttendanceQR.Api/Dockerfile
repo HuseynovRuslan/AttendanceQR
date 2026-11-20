@@ -33,6 +33,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Headless Chrome prints the daily management report to PDF — the same HTML page the report link
+# opens, so the PDF is the design, not a copy of it. Ubuntu's own «chromium» package is only a snap
+# shim (no snapd in a container), so Chrome comes from Google's apt repository. fonts-noto-core
+# carries Noto Sans with every Azerbaijani letter (ə, ğ, ı, ö, ş, ç, ü); without a real font the
+# PDF would fall back to boxes. Chrome only runs when a report is built, one at a time.
+RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates curl gnupg     && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub        | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main"        > /etc/apt/sources.list.d/google-chrome.list     && apt-get update     && apt-get install -y --no-install-recommends google-chrome-stable fonts-noto-core     && apt-get purge -y gnupg curl && apt-get autoremove -y     && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app ./
 
 # The official .NET runtime images ship a non-root user "app" (UID 1654) — use it.

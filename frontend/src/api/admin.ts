@@ -268,6 +268,9 @@ export interface AdminLocation {
   qrlessCheckIn: boolean
   /** False = the radius MEASURES instead of refusing: a scan from outside is recorded and mapped. */
   requireGeofence: boolean
+  /** «Ştat» — places the branch is staffed for; the daily report's vacancy = ştat − people on its list.
+   *  Null = not set. On save: a number sets it, 0 clears it, omitted leaves it as it is. */
+  headcount?: number | null
 }
 
 /** Create/update payload — active state is managed separately via setLocationActive. */

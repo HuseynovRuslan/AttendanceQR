@@ -42,6 +42,9 @@ public interface IReportQueryService
     Task<IReadOnlyList<DayAttendanceRow>> GetTodayAttendanceAsync(
         Guid requesterId, EmployeeRole role, DateOnly? date = null, CancellationToken ct = default);
 
+    /// <summary>The whole company's board for a day — the daily management report's source (no requester scoping).</summary>
+    Task<IReadOnlyList<DayAttendanceRow>> GetBoardForCompanyAsync(DateOnly? date = null, CancellationToken ct = default);
+
     /// <summary>
     /// KPI tiles, trend/weekday charts, and a top-5-late list over a date range — the richer
     /// dashboard view. Same scope rules as GetSummaryAsync (built on the same DailySummary rows).
@@ -1580,13 +1583,31 @@ public sealed class ReportQueryService : IReportQueryService
         if (access == ReportAccess.Forbidden)
             return [];
 
+        return await BoardRowsAsync(day, date is null || date == LocalToday(), employees, ct);
+    }
+
+    /// <summary>
+    /// The whole company's board for a day, for a caller that is not a person: the daily management report's
+    /// job. Same population and the same computation as an admin opening the board (everyone active and
+    /// activated, hidden system accounts excluded) — only the requester-based scoping is skipped, because
+    /// the report narrows to its recipient's branches itself.
+    /// </summary>
+    public async Task<IReadOnlyList<DayAttendanceRow>> GetBoardForCompanyAsync(DateOnly? date = null, CancellationToken ct = default)
+    {
+        var day = date ?? LocalToday();
+        var (_, employees) = await ScopedEmployeesAsync(null, Guid.Empty, EmployeeRole.Admin, ct);
+        return await BoardRowsAsync(day, date is null || date == LocalToday(), employees, ct);
+    }
+
+    private async Task<IReadOnlyList<DayAttendanceRow>> BoardRowsAsync(
+        DateOnly day, bool isToday, List<ScopedEmployee> employees, CancellationToken ct)
+    {
         var computed = await ComputeDayLiveAsync(day, employees, ct);
 
         // A night shift is still running when the calendar turns over. Records are keyed by the day
         // the shift STARTED, so at 01:00 someone who scanned in at 21:00 has a record dated yesterday
         // and simply vanished from "today" — the board showed them as absent while they were at work.
         // Only for the live board: a past day must stay exactly what it was.
-        var isToday = date is null || date == LocalToday();
         if (isToday)
             computed = await CarryOverOpenShiftsAsync(day, employees, computed, ct);
 

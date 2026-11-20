@@ -61,6 +61,7 @@ const ServiceSignInPage = lazy(() => import('./pages/ServiceSignInPage').then(m 
 const ExternalSignInPage = lazy(() => import('./pages/ExternalSignInPage').then(m => ({ default: m.ExternalSignInPage })))
 const MyAreaPage = lazy(() => import('./pages/admin/MyAreaPage').then(m => ({ default: m.MyAreaPage })))
 const TabelPage = lazy(() => import('./pages/admin/TabelPage').then(m => ({ default: m.TabelPage })))
+const DailyReportPage = lazy(() => import('./pages/admin/DailyReportPage').then(m => ({ default: m.DailyReportPage })))
 const PositionsPage = lazy(() => import('./pages/admin/PositionsPage').then(m => ({ default: m.PositionsPage })))
 const AccessPage = lazy(() => import('./pages/admin/AccessPage').then(m => ({ default: m.AccessPage })))
 // Change requests — real screens on /api/approvals. Their chunk loads only when somebody opens them.
@@ -411,6 +412,8 @@ function AppRoutes() {
         />
         {/* Admin + Manager — the endpoint scopes a manager to their own branch, same as Hesabat. */}
         <Route path="tabel" element={<PanelPage path="tabel"><TabelPage /></PanelPage>} />
+        {/* Rəhbərlik hesabatı (Telegram) — company admin only: who receives the company's figures is the company's call. */}
+        <Route path="daily-report" element={<PanelPage path="daily-report"><DailyReportPage /></PanelPage>} />
         {/* Corrections somebody made to their own day (the single-admin rule) — read by whoever sees the days. */}
         <Route path="self-corrections" element={<PanelPage path="self-corrections"><SelfCorrectionsPage /></PanelPage>} />
         {/* The manager's own roster screen is retired: since Phase 4 there is one staff list, which reads

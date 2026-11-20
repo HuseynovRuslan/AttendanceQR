@@ -124,6 +124,9 @@ export const PANEL_PAGES: PanelPage[] = [
   // of 2026-10-15): the API behind it admits whoever holds «assignments.view», whatever their role
   // today, so a structure operator makes their own timekeepers. See canOpen.
   { path: 'access', label: 'Səlahiyyətlər', roles: ADMIN, perms: ['assignments.view'] },
+  // The daily leadership report on Telegram: who receives the company's figures, and when, is the company's
+  // decision — and a recipient may get the whole company, so it cannot be narrowed to a manager's branches.
+  { path: 'daily-report', label: 'Rəhbərlik hesabatı', roles: ADMIN, perms: ['attendance.view'] },
   // A holiday changes the payroll divisor for the whole company.
   { path: 'non-working-days', label: 'Qeyri-iş günləri', roles: ADMIN, perms: ['holidays.manage'] },
   { path: 'vote', label: 'Ayın işçisi', roles: ADMIN, perms: ['votes.manage'] },
