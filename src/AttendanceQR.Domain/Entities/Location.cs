@@ -113,4 +113,11 @@ public class Location : ITenantScoped
     /// (TenantId, StructureId), so the database refuses it as well as the code.
     /// </summary>
     public Guid? StructureId { get; set; }
+
+    /// <summary>
+    /// «Ştat» — how many people this branch is MEANT to have (the establishment), as opposed to how many
+    /// it has. Null = not set: the daily management report then shows «—» for the branch's ştat and
+    /// vakant rather than inventing a zero. Typed by the admin on the branch form; nothing derives it.
+    /// </summary>
+    public int? Headcount { get; set; }
 }

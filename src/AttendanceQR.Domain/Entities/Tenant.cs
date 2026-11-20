@@ -89,4 +89,11 @@ public class Tenant
     /// person exists, and every change of it is audited.
     /// </summary>
     public bool SelfCorrectionNeedsApproval { get; set; }
+
+    /// <summary>
+    /// When the daily management report goes to this company's Telegram recipients, in the company's
+    /// local time. Null = the scheduled report is OFF (the default for every company): the report is
+    /// opt-in, and an admin can still send one by hand from the screen without switching it on.
+    /// </summary>
+    public TimeOnly? DailyReportAtLocal { get; set; }
 }

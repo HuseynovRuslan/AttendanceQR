@@ -31,6 +31,8 @@ type FormState = {
   workDaysMask: number
   qrlessCheckIn: boolean
   requireGeofence: boolean
+  /** «Ştat» as typed; empty = not set. */
+  headcount: string
 }
 
 // Index = JS Date.getDay() / .NET DayOfWeek (Sunday=0 ... Saturday=6) — same convention as the
@@ -49,10 +51,12 @@ const EMPTY: FormState = {
   workDaysMask: DEFAULT_WORK_DAYS_MASK,
   qrlessCheckIn: false,
   requireGeofence: true,
+  headcount: '',
 }
 
 const ERRORS: Record<string, string> = {
   NameRequired: 'Ad tələb olunur',
+  HeadcountInvalid: 'Ştat 0 ilə 100 000 arasında olmalıdır',
   LatitudeOutOfRange: 'Enlik yanlışdır (-90 … 90)',
   LongitudeOutOfRange: 'Uzunluq yanlışdır (-180 … 180)',
   RadiusMustBePositive: 'Radius müsbət olmalıdır',
@@ -220,6 +224,7 @@ export function LocationsPage() {
       workDaysMask: l.workDaysMask,
       qrlessCheckIn: l.qrlessCheckIn,
       requireGeofence: l.requireGeofence,
+      headcount: l.headcount ? String(l.headcount) : '',
     })
     setError(null)
     setOk(null)
@@ -242,6 +247,8 @@ export function LocationsPage() {
       workDaysMask: form.workDaysMask,
       qrlessCheckIn: form.qrlessCheckIn,
       requireGeofence: form.requireGeofence,
+      // Empty field = clear it (0); the server keeps null for «not set».
+      headcount: form.headcount.trim() === '' ? 0 : Math.max(0, Math.floor(Number(form.headcount)) || 0),
     }
     const { status, data } = editingId
       ? await updateLocation(editingId, payload)
@@ -435,6 +442,26 @@ export function LocationsPage() {
             <label className="form-label">Gecikmə həddi (dəqiqə)</label>
             <input className="inp" type="number" min="0" required value={form.lateThresholdMinutes} onChange={(e) => set('lateThresholdMinutes', e.target.value)} />
           </div>
+        </div>
+
+        <div className="form-row cols2">
+          <div>
+            <label className="form-label" htmlFor="loc-headcount">Ştat (işçi yeri)</label>
+            <input
+              id="loc-headcount"
+              className="inp"
+              type="number"
+              min="0"
+              max="100000"
+              inputMode="numeric"
+              placeholder="Təyin edilməyib"
+              value={form.headcount}
+              onChange={(e) => set('headcount', e.target.value)}
+            />
+          </div>
+          <p className="muted" style={{ fontSize: 12, alignSelf: 'end', margin: '0 0 8px' }}>
+            Gündəlik rəhbərlik hesabatında vakant yer = ştat − filialdakı işçi sayı. Boş qalsa, vakant göstərilmir.
+          </p>
         </div>
 
         {/* Schedule picker — pick a saved template to fill the hours, or create a new one which then

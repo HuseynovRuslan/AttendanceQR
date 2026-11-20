@@ -99,7 +99,8 @@ public class AdminLocationsController : ControllerBase
             LateThresholdMinutes = request.LateThresholdMinutes,
             WorkDaysMask = request.WorkDaysMask,
             QrlessCheckIn = request.QrlessCheckIn ?? false,
-            RequireGeofence = request.RequireGeofence ?? true
+            RequireGeofence = request.RequireGeofence ?? true,
+            Headcount = request.Headcount is > 0 ? request.Headcount : null
         };
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
@@ -144,6 +145,8 @@ public class AdminLocationsController : ControllerBase
                 location.Id, location.Name, location.RequireGeofence, fence);
             location.RequireGeofence = fence;
         }
+        if (request.Headcount is int headcount)
+            location.Headcount = headcount > 0 ? headcount : null;
         if (request.QrlessCheckIn is bool qrless && qrless != location.QrlessCheckIn)
         {
             // Loud either way: this flips how every person at the branch records their day.
@@ -356,6 +359,7 @@ public class AdminLocationsController : ControllerBase
         workDaysMask = l.WorkDaysMask,
         qrlessCheckIn = l.QrlessCheckIn,
         requireGeofence = l.RequireGeofence,
+        headcount = l.Headcount,
         structureId = l.StructureId
     };
 
@@ -372,6 +376,7 @@ public class AdminLocationsController : ControllerBase
         if (!TimeOnly.TryParse(r.ShiftStart, CultureInfo.InvariantCulture, out start)) { error = "ShiftStartInvalid"; return false; }
         if (!TimeOnly.TryParse(r.ShiftEnd, CultureInfo.InvariantCulture, out end)) { error = "ShiftEndInvalid"; return false; }
         if (r.WorkDaysMask is < 0 or > 127) { error = "WorkDaysMaskInvalid"; return false; }
+        if (r.Headcount is < 0 or > 100_000) { error = "HeadcountInvalid"; return false; }
         return true;
     }
 }

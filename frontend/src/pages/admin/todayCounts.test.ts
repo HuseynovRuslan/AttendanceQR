@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bucketOf, countToday, matchesLeaveCard, sortRows, type TodayLike } from './todayCounts'
+import fixture from './todayBuckets.fixture.json'
 
 /**
  * The board's cards, and the distinction that has now been got wrong twice.
@@ -263,4 +264,22 @@ describe('«Sahədə» günü — çıxış edibsə bitib, etməyibsə hələ i�
     expect(c.incomplete).toBe(1)
     expect(c.present).toBe(2)
   })
+})
+
+// The daily leadership report (Telegram) counts the day on the server with a C# copy of bucketOf —
+// TodayBuckets.BucketOf. Both copies are held to this one fixture (the backend reads the same file in
+// TodayBucketsParityTests), so the report can never say something the board does not.
+describe('bucketOf agrees with the server copy used by the daily report', () => {
+  type Case = { status: string; leaveType?: string; fieldCheckedOut?: boolean; isFlexible?: boolean; bucket: string }
+  for (const c of fixture.cases as Case[]) {
+    it(`${c.status}${c.leaveType ? `/${c.leaveType}` : ''}${c.isFlexible ? ' (elastik)' : ''}${c.fieldCheckedOut !== undefined ? ` field-out=${c.fieldCheckedOut}` : ''} → ${c.bucket}`, () => {
+      const r: TodayLike = {
+        status: c.status,
+        leaveType: c.leaveType,
+        isFlexible: c.isFlexible,
+        fieldCheckOutAtUtc: c.fieldCheckedOut ? '2026-11-20T10:00:00Z' : null,
+      }
+      expect(bucketOf(r)).toBe(c.bucket)
+    })
+  }
 })

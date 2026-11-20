@@ -29,7 +29,12 @@ public record LocationRequest(
     bool? QrlessCheckIn = null,
     // Nullable for the same reason as the field above: an update that does not mention the fence
     // must never be read as "take the fence down".
-    bool? RequireGeofence = null);
+    bool? RequireGeofence = null,
+    // «Ştat» — how many people this branch is staffed for; the daily report's vacancy figure is
+    // ştat minus the people actually on its list. Null = leave as it is (same trap as above),
+    // 0 = clear it. Checked in TryValidate, not with an attribute (a [property: Range] on a record
+    // 500s every request that binds it).
+    int? Headcount = null);
 
 /// <summary>Enable/disable a location without deleting it.</summary>
 public record SetActiveRequest(bool IsActive);
