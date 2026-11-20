@@ -63,6 +63,11 @@ services:
       Rekognition__SecretKey: ""
       Push__PublicKey: ""
       Push__PrivateKey: ""
+      # Daily management report on Telegram — staging has its OWN test bot (a token is polled by one server
+      # only; sharing prod's would steal its «/start» messages). Empty = off.
+      DailyReport__TelegramBotToken: ${DailyReport__TelegramBotToken:-}
+      DailyReport__TelegramBotUsername: ${DailyReport__TelegramBotUsername:-}
+      DailyReport__PublicBaseUrl: ${DailyReport__PublicBaseUrl:-https://api-test.qrlog.az}
       # Change requests (docs/tesdiq-sistemi-faza1.md): the deployment switch is on for staging, so the flow can
       # be accepted here. Nothing changes until an approval area is switched on, structure by structure.
       Approvals__Enabled: ${Approvals__Enabled:-true}

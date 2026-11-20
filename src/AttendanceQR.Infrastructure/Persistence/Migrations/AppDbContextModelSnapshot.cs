@@ -687,6 +687,121 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.ToTable("ChangeRequestEvents", (string)null);
                 });
 
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.DailyReportDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("NextAttemptUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ReportDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("TokenExpiresUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "RecipientId", "ReportDate")
+                        .IsUnique()
+                        .HasFilter("\"Kind\" = 0");
+
+                    b.HasIndex("TenantId", "Status", "NextAttemptUtc");
+
+                    b.ToTable("DailyReportDeliveries", (string)null);
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.DailyReportRecipient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByEmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LinkCodeExpiresUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LinkCodeHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LinkedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LocationIds")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<long?>("TelegramChatId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LinkCodeHash");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.ToTable("DailyReportRecipients", (string)null);
+                });
+
             modelBuilder.Entity("AttendanceQR.Domain.Entities.DailySummary", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1347,6 +1462,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int?>("GeofenceMovedMeters")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Headcount")
                         .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
@@ -2318,6 +2436,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<TimeOnly?>("DailyReportAtLocal")
+                        .HasColumnType("time without time zone");
+
                     b.Property<string>("DisabledFeatures")
                         .HasColumnType("text");
 
@@ -2631,6 +2752,30 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "ChangeRequestId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.DailyReportDelivery", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.DailyReportRecipient", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AttendanceQR.Domain.Entities.DailyReportRecipient", b =>
+                {
+                    b.HasOne("AttendanceQR.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

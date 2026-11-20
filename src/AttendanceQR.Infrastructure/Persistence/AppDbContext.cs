@@ -100,6 +100,8 @@ public class AppDbContext : DbContext
     public DbSet<PendingPhotoUpload> PendingPhotoUploads => Set<PendingPhotoUpload>();
 
     public DbSet<EquipmentRecord> EquipmentRecords => Set<EquipmentRecord>();
+    public DbSet<DailyReportRecipient> DailyReportRecipients => Set<DailyReportRecipient>();
+    public DbSet<DailyReportDelivery> DailyReportDeliveries => Set<DailyReportDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -137,6 +139,7 @@ public class AppDbContext : DbContext
             typeof(EquipmentRecord), typeof(Structure), typeof(AccessRole), typeof(RoleAssignment),
             typeof(AuthzShadowEvent), typeof(PresenceCheck),
             typeof(ChangeRequest), typeof(ChangeRequestEvent), typeof(ApprovalArea), typeof(ApproverSubstitution),
+            typeof(DailyReportRecipient), typeof(DailyReportDelivery),
         };
         foreach (var t in tenantScoped)
         {
@@ -300,6 +303,10 @@ public class AppDbContext : DbContext
 
         // Presence checks — indexes and keys in PresenceCheckConfiguration.
         modelBuilder.Entity<PresenceCheck>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+
+        // Daily management report — recipients and what was sent to them (DailyReportConfiguration).
+        modelBuilder.Entity<DailyReportRecipient>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
+        modelBuilder.Entity<DailyReportDelivery>().HasQueryFilter(e => e.TenantId == CurrentTenantId);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

@@ -68,7 +68,7 @@ describe('who may open what', () => {
     // Not a matter of taste. None of these can be narrowed to one branch: a broadcast has no
     // per-branch audience, a job-title rename rewrites every employee holding it, a holiday moves the
     // payroll divisor for the whole company, and the subscription is one contract.
-    for (const path of ['announcements', 'billing', 'positions', 'non-working-days', 'bulk-invite'])
+    for (const path of ['announcements', 'billing', 'positions', 'non-working-days', 'bulk-invite', 'daily-report'])
       expect(canOpen(path, 'Manager')).toBe(false)
   })
 

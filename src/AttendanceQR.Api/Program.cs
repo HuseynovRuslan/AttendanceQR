@@ -236,6 +236,17 @@ builder.Services.AddScoped<AttendanceQR.Api.Approvals.ApprovalAreaDesk>();
 // works from columns on the request, so a failed push never touches the request itself.
 builder.Services.AddHostedService<ApprovalNotifyWorker>();
 
+// Daily management report on Telegram (PDF + a link to the same page). Inert without a bot token.
+// The "telegram" client's logging is OFF on purpose: the bot token is in every request URL.
+var dailyReportOptions = builder.Configuration.GetSection(DailyReportOptions.SectionName).Get<DailyReportOptions>() ?? new DailyReportOptions();
+builder.Services.AddSingleton(dailyReportOptions);
+builder.Services.AddHttpClient("telegram", c => c.Timeout = TimeSpan.FromSeconds(60)).RemoveAllLoggers();
+builder.Services.AddSingleton<AttendanceQR.Api.DailyReport.ITelegramClient, AttendanceQR.Api.DailyReport.TelegramClient>();
+builder.Services.AddSingleton<AttendanceQR.Api.DailyReport.IPdfRenderer, AttendanceQR.Api.DailyReport.ChromePdfRenderer>();
+builder.Services.AddScoped<AttendanceQR.Api.DailyReport.DailyReportService>();
+builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.DailyReportJob>();
+builder.Services.AddHostedService<AttendanceQR.Api.DailyReport.TelegramUpdatesWorker>();
+
 // JWT bearer authentication (login tokens).
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
           ?? throw new InvalidOperationException("Missing 'Jwt' configuration section.");
@@ -687,7 +698,11 @@ static bool TenantOptional(PathString path) =>
     // request into that company's admin queue, and verify additionally demands a bound device plus a
     // face match. An identifier two companies both use is never guessed at: verify, which hands back a
     // credential, refuses it as ambiguous, and forgot-pin files into each of them instead.
-    || path.StartsWithSegments("/api/auth/forgot-pin");
+    || path.StartsWithSegments("/api/auth/forgot-pin")
+    // The daily report's «open» link (from Telegram) lands on the API host, which names no company; the
+    // link's token names it, and PublicDailyReportController resolves it (active companies only) before
+    // it reads anything. An unparseable or foreign token gets the same 404 page as a wrong secret.
+    || path.StartsWithSegments("/api/public/daily-report");
 
 app.Use(async (context, next) =>
 {
