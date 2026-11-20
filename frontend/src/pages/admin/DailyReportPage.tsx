@@ -458,6 +458,25 @@ export function DailyReportPage() {
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 />
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  disabled={shownLocations.length === 0}
+                  onClick={() => {
+                    // The shown ones (the search narrows them): a structure with two dozen branches is one click.
+                    const allShown = shownLocations.every((l) => picked.has(l.id))
+                    setPicked((prev) => {
+                      const next = new Set(prev)
+                      for (const l of shownLocations) {
+                        if (allShown) next.delete(l.id)
+                        else next.add(l.id)
+                      }
+                      return next
+                    })
+                  }}
+                >
+                  {shownLocations.length > 0 && shownLocations.every((l) => picked.has(l.id)) ? 'Seçimi təmizlə' : 'Hamısını seç'}
+                </button>
                 <span className="muted" style={{ fontSize: 12 }}>{picked.size} seçilib</span>
               </div>
               <div
