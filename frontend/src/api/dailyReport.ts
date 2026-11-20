@@ -1,12 +1,15 @@
 import { API_BASE_URL, apiRequest, getToken } from './client'
 
-// The daily management report on Telegram — company admins only (AdminDailyReportController).
+// The daily management report on Telegram (AdminDailyReportController). A company admin works on the whole
+// company; a structure manager on the branches they run — the server narrows every answer to that.
 
 export interface DailyReportRecipient {
   id: string
   name: string
   /** Empty = the whole company. */
   locationIds: string[]
+  /** "HH:mm" (Baku) — sent every day at this time; null = only when «İndi göndər» is pressed. */
+  time: string | null
   /** A Telegram chat is connected — reports go to it. */
   linked: boolean
   linkedAtUtc: string | null
@@ -27,8 +30,8 @@ export interface DailyReportDelivery {
 }
 
 export interface DailyReportState {
-  /** "HH:mm" (Baku time), or null = the automatic report is off. */
-  time: string | null
+  /** Only the company admin may address a recipient to the whole company; a manager picks among their branches. */
+  canWholeCompany: boolean
   /** False = this server has no bot token: nothing can be sent, the preview still works. */
   botConfigured: boolean
   botUsername: string
@@ -42,24 +45,17 @@ export function getDailyReport() {
   return apiRequest<DailyReportState>('/api/admin/daily-report')
 }
 
-export function saveDailyReportTime(time: string | null) {
-  return apiRequest<{ time: string | null } | ErrorBody>('/api/admin/daily-report/settings', {
-    method: 'PUT',
-    body: { time },
-  })
-}
-
-export function addDailyReportRecipient(name: string, locationIds: string[]) {
+export function addDailyReportRecipient(name: string, locationIds: string[], time: string | null) {
   return apiRequest<{ id: string; connectLink: string | null } | ErrorBody>('/api/admin/daily-report/recipients', {
     method: 'POST',
-    body: { name, locationIds },
+    body: { name, locationIds, time },
   })
 }
 
-export function updateDailyReportRecipient(id: string, name: string, locationIds: string[]) {
+export function updateDailyReportRecipient(id: string, name: string, locationIds: string[], time: string | null) {
   return apiRequest<{ id: string } | ErrorBody>(`/api/admin/daily-report/recipients/${id}`, {
     method: 'PUT',
-    body: { name, locationIds },
+    body: { name, locationIds, time },
   })
 }
 

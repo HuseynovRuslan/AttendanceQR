@@ -159,13 +159,13 @@ public class DailyReportTests
     // ───────────────────────────── sending ─────────────────────────────
 
     [Fact]
-    public async Task A_scheduled_report_goes_once_per_recipient_per_day_and_only_in_its_window()
+    public async Task A_scheduled_report_goes_once_per_recipient_per_day_at_that_recipients_own_time()
     {
         using var w = new World();
-        w.SetTime(new TimeOnly(19, 15));
-        var linked = w.AddRecipient("Direktor", chatId: 111);
-        w.AddRecipient("Hələ qoşulmayıb", chatId: null);
-        w.AddRecipient("Çıxarılıb", chatId: 222, active: false);
+        var linked = w.AddRecipient("Direktor", chatId: 111, at: new TimeOnly(19, 15));
+        var late = w.AddRecipient("Struktur rəhbəri", chatId: 333, at: new TimeOnly(21, 0));
+        w.AddRecipient("Hələ qoşulmayıb", chatId: null, at: new TimeOnly(19, 15));
+        w.AddRecipient("Çıxarılıb", chatId: 222, active: false, at: new TimeOnly(19, 15));
 
         w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 0));
         Assert.Equal(0, await w.Service().CreateScheduledAsync(default));      // not yet
@@ -183,17 +183,28 @@ public class DailyReportTests
         Assert.Equal(linked.Id, delivery.RecipientId);
         Assert.Equal((int)DeliveryStatus.Sent, delivery.Status);
 
-        w.Clock.Local = Day.ToDateTime(new TimeOnly(23, 0));                   // window long gone
+        w.Clock.Local = Day.ToDateTime(new TimeOnly(21, 5));                   // the other one's own time
+        Assert.Equal(1, await w.Service().CreateScheduledAsync(default));
+        Assert.Equal(1, await w.Service().ProcessDueAsync(default));
+        Assert.Equal(333, w.Telegram.Documents.Last().ChatId);
+        Assert.Equal(2, w.Db.DailyReportDeliveries.Count());                   // the 19:15 one did not go twice
+        Assert.Contains(w.Db.DailyReportDeliveries.AsNoTracking(), d => d.RecipientId == late.Id);
+
+        w.Clock.Local = Day.AddDays(1).ToDateTime(new TimeOnly(1, 0));        // both windows long gone
         Assert.Equal(0, await w.Service().CreateScheduledAsync(default));
     }
 
     [Fact]
-    public async Task Nothing_is_scheduled_while_the_company_has_not_switched_it_on()
+    public async Task A_recipient_without_a_time_gets_the_report_only_when_somebody_presses_send()
     {
         using var w = new World();
         w.AddRecipient("Direktor", chatId: 111);
-        w.Clock.Local = Day.ToDateTime(new TimeOnly(18, 30));
-        Assert.Equal(0, await w.Service().CreateScheduledAsync(default));
+        foreach (var hour in new[] { 0, 9, 18, 23 })
+        {
+            w.Clock.Local = Day.ToDateTime(new TimeOnly(hour, 30));
+            Assert.Equal(0, await w.Service().CreateScheduledAsync(default));
+        }
+        Assert.Single(await w.Service().SendNowAsync(null, null, default));
     }
 
     [Fact]
@@ -204,7 +215,7 @@ public class DailyReportTests
         w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
         w.Telegram.Results.Enqueue(new TelegramResult(false, "502: Bad Gateway"));
 
-        var outcome = Assert.Single(await w.Service().SendNowAsync(null, default));
+        var outcome = Assert.Single(await w.Service().SendNowAsync(null, null, default));
         Assert.False(outcome.Sent);
         var d = w.Db.DailyReportDeliveries.AsNoTracking().Single();
         Assert.Equal((int)DeliveryStatus.Pending, d.Status);
@@ -227,7 +238,7 @@ public class DailyReportTests
         w.AddRecipient("Direktor", chatId: 111);
         w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
         w.Telegram.Results.Enqueue(new TelegramResult(false, "429: Too Many Requests", RetryAfterSeconds: 30));
-        await w.Service().SendNowAsync(null, default);
+        await w.Service().SendNowAsync(null, null, default);
         var d = w.Db.DailyReportDeliveries.AsNoTracking().Single();
         Assert.Equal(w.Clock.GetUtcNow().UtcDateTime.AddSeconds(30), d.NextAttemptUtc);
     }
@@ -239,7 +250,7 @@ public class DailyReportTests
         w.AddRecipient("Botu bloklayıb", chatId: 111);
         w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
         w.Telegram.Results.Enqueue(new TelegramResult(false, "403: Forbidden: bot was blocked by the user", Permanent: true));
-        await w.Service().SendNowAsync(null, default);
+        await w.Service().SendNowAsync(null, null, default);
         Assert.Equal((int)DeliveryStatus.Failed, w.Db.DailyReportDeliveries.AsNoTracking().Single().Status);
 
         using var v = new World(maxAttempts: 2);
@@ -247,7 +258,7 @@ public class DailyReportTests
         v.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
         v.Telegram.Results.Enqueue(new TelegramResult(false, "timeout"));
         v.Telegram.Results.Enqueue(new TelegramResult(false, "timeout"));
-        await v.Service().SendNowAsync(null, default);
+        await v.Service().SendNowAsync(null, null, default);
         v.Clock.Local = v.Clock.Local.AddMinutes(5);
         await v.Service().ProcessDueAsync(default);
         var d = v.Db.DailyReportDeliveries.AsNoTracking().Single();
@@ -263,7 +274,7 @@ public class DailyReportTests
         using var w = new World();
         var r = w.AddRecipient("Direktor", chatId: 111);
         w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
-        await w.Service().SendNowAsync(null, default);
+        await w.Service().SendNowAsync(null, null, default);
 
         var url = Assert.Single(w.Telegram.Documents).ButtonUrl;
         const string prefix = "https://api-test.example/api/public/daily-report/";
@@ -302,7 +313,7 @@ public class DailyReportTests
         using var w = new World();
         w.AddRecipient("Direktor", chatId: 111);
         w.Clock.Local = Day.ToDateTime(new TimeOnly(19, 30));
-        await w.Service().SendNowAsync(null, default);
+        await w.Service().SendNowAsync(null, null, default);
         var token = w.Telegram.Documents.Single().ButtonUrl.Split('/').Last();
 
         // Opened on the API host: nothing resolved the company yet.
@@ -371,6 +382,74 @@ public class DailyReportTests
         Assert.DoesNotContain("✅", await w.Service().BindAsync(secret2, 777, default));    // ran out
     }
 
+    // ───────────────────────────── a structure manager ─────────────────────────────
+
+    private static JsonElement Json(IActionResult result) =>
+        JsonSerializer.SerializeToElement(Assert.IsType<OkObjectResult>(result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static string? ErrorOf(IActionResult result) =>
+        JsonSerializer.SerializeToElement(Assert.IsType<BadRequestObjectResult>(result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            .GetProperty("error").GetString();
+
+    [Fact]
+    public async Task A_structure_manager_works_only_on_the_branches_they_run()
+    {
+        using var w = new World();
+        var mine = w.LocationId;
+        var other = w.AddBranch("Başqa struktur");
+        var vuqar = w.AddManager(mine);
+        var whole = w.AddRecipient("Baş direktor", chatId: 1);                     // the admin's: whole company
+        var own = w.AddRecipient("Struktur rəhbəri", chatId: 2, branches: mine);
+        var mixed = w.AddRecipient("Hər ikisi", chatId: 3, branches: [mine, other]);
+        var foreign = w.AddRecipient("Başqasının", chatId: 4, branches: other);
+
+        var screen = w.Screen(vuqar, EmployeeRole.Manager);
+        var state = Json(await screen.Get());
+        Assert.False(state.GetProperty("canWholeCompany").GetBoolean());
+        var seen = state.GetProperty("recipients").EnumerateArray().Select(r => r.GetProperty("name").GetString()).ToList();
+        Assert.Equal(["Struktur rəhbəri"], seen);
+
+        // Never the whole company, never a branch that is not theirs.
+        Assert.Equal("LocationsRequired", ErrorOf(await screen.CreateRecipient(new DailyReportRecipientRequest("X", null))));
+        Assert.Equal("LocationOutOfScope", ErrorOf(await screen.CreateRecipient(new DailyReportRecipientRequest("X", [mine, other]))));
+        Assert.Equal("TimeInvalid", ErrorOf(await screen.CreateRecipient(new DailyReportRecipientRequest("X", [mine], "25:99"))));
+        var created = Json(await screen.CreateRecipient(new DailyReportRecipientRequest("Müavin", [mine], "19:15")));
+        var saved = w.Db.DailyReportRecipients.AsNoTracking().Single(r => r.Id == created.GetProperty("id").GetGuid());
+        Assert.Equal(new TimeOnly(19, 15), saved.SendAtLocal);
+        Assert.Equal(mine.ToString(), saved.LocationIds);
+        Assert.Equal(vuqar, saved.CreatedByEmployeeId);
+
+        // Somebody else's recipients are not there to touch — not even to look at.
+        foreach (var id in new[] { whole.Id, mixed.Id, foreign.Id })
+        {
+            Assert.IsType<NotFoundObjectResult>(await screen.RemoveRecipient(id));
+            Assert.IsType<NotFoundObjectResult>(await screen.ConnectLink(id));
+            Assert.IsType<NotFoundObjectResult>(await screen.Preview(id, null));
+            Assert.IsType<NotFoundObjectResult>(await screen.UpdateRecipient(id, new DailyReportRecipientRequest("X", [mine])));
+        }
+        Assert.True(w.Db.DailyReportRecipients.AsNoTracking().Single(r => r.Id == whole.Id).IsActive);
+
+        // «Send now» reaches their own recipients only.
+        Json(await screen.SendNow(null));
+        Assert.Equal([2L], w.Telegram.Documents.Select(d => d.ChatId).ToList());
+
+        // The admin still sees everybody and may address the whole company.
+        var admin = Json(await w.Screen(Guid.NewGuid(), EmployeeRole.Admin).Get());
+        Assert.True(admin.GetProperty("canWholeCompany").GetBoolean());
+        Assert.Equal(5, admin.GetProperty("recipients").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_manager_who_runs_no_branch_gets_no_report_at_all()
+    {
+        using var w = new World();
+        var nobody = w.AddManager();
+        var screen = w.Screen(nobody, EmployeeRole.Manager);
+        // An empty scope would read as «the whole company» to the builder — it must never get that far.
+        Assert.Equal("NoBranches", ErrorOf(await screen.Preview(null, null)));
+        Assert.Equal(0, Json(await screen.Get()).GetProperty("recipients").GetArrayLength());
+    }
+
     // ───────────────────────────── harness ─────────────────────────────
 
     private sealed class World : IDisposable
@@ -408,16 +487,14 @@ public class DailyReportTests
             return db;
         }
 
-        public void SetTime(TimeOnly at)
+        public DailyReportRecipient AddRecipient(string name, long? chatId, bool active = true, TimeOnly? at = null,
+            params Guid[] branches)
         {
-            var t = Db.Tenants.Single();
-            t.DailyReportAtLocal = at;
-            Db.SaveChanges();
-        }
-
-        public DailyReportRecipient AddRecipient(string name, long? chatId, bool active = true)
-        {
-            var r = new DailyReportRecipient { Name = name, TelegramChatId = chatId, IsActive = active };
+            var r = new DailyReportRecipient
+            {
+                Name = name, TelegramChatId = chatId, IsActive = active, SendAtLocal = at,
+                LocationIds = branches.Length == 0 ? null : string.Join(',', branches),
+            };
             Db.DailyReportRecipients.Add(r);
             Db.SaveChanges();
             Db.ChangeTracker.Clear();
@@ -429,6 +506,40 @@ public class DailyReportTests
         private DailyReportService Service(AppDbContext db, ITenantContext tenant) =>
             new(db, FakeBoard.For(LocationId), Telegram, new FakePdf(), _options, new AppOptions { TimeZone = "Asia/Baku" },
                 tenant, NullLogger<DailyReportService>.Instance, Clock);
+
+        public Guid AddBranch(string name)
+        {
+            var id = Guid.NewGuid();
+            Db.Locations.Add(new Location { Id = id, Name = name, RadiusMeters = 100, IsActive = true });
+            Db.SaveChanges();
+            return id;
+        }
+
+        public Guid AddManager(params Guid[] branches)
+        {
+            var id = Guid.NewGuid();
+            foreach (var b in branches) Db.ManagedLocations.Add(new ManagedLocation { EmployeeId = id, LocationId = b });
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            return id;
+        }
+
+        /// <summary>The admin screen's controller, signed in as <paramref name="who"/> with <paramref name="role"/>.</summary>
+        public AdminDailyReportController Screen(Guid who, EmployeeRole role) =>
+            new(Db, Service(), _options, new FakePdf())
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext
+                    {
+                        User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+                        [
+                            new System.Security.Claims.Claim("sub", who.ToString()),
+                            new System.Security.Claims.Claim("role", role.ToString()),
+                        ], "test")),
+                    },
+                },
+            };
 
         public PublicDailyReportController PublicPage(TenantContext tenant)
         {

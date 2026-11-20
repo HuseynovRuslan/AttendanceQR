@@ -6,7 +6,6 @@ import {
   getDailyReport,
   newDailyReportConnectLink,
   removeDailyReportRecipient,
-  saveDailyReportTime,
   sendDailyReportNow,
   updateDailyReportRecipient,
   type DailyReportRecipient,
@@ -19,6 +18,9 @@ const ERRORS: Record<string, string> = {
   NameRequired: 'Ad tələb olunur',
   NameTooLong: 'Ad çox uzundur',
   LocationNotFound: 'Seçilmiş filial tapılmadı',
+  LocationsRequired: 'Ən azı bir filial seçin',
+  LocationOutOfScope: 'Seçilmiş filiallardan biri sizin sahənizdə deyil',
+  NoBranches: 'Sizə hələ heç bir filial təyin edilməyib',
   TimeInvalid: 'Vaxt yanlışdır (SS:dd)',
   BotNotConfigured: 'Telegram botu bu serverdə qoşulmayıb',
   NoConnectedRecipients: 'Telegram-a qoşulmuş alıcı yoxdur',
@@ -33,7 +35,10 @@ function errorText(data: unknown, fallback: string): string {
   return fallback
 }
 
-/** «Rəhbərlik hesabatı»: the daily attendance summary that goes to leadership on Telegram. Company admins only. */
+/**
+ * «Rəhbərlik hesabatı»: the daily attendance summary that goes to leadership on Telegram. The company admin sets it
+ * up for the whole company; a structure manager for the branches they run — the server decides which.
+ */
 export function DailyReportPage() {
   const [state, setState] = useState<DailyReportState | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -42,14 +47,12 @@ export function DailyReportPage() {
   const [ok, setOk] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  // Schedule
-  const [enabled, setEnabled] = useState(false)
-  const [time, setTime] = useState(DEFAULT_TIME)
-
   // Recipient form (add or edit)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [wholeCompany, setWholeCompany] = useState(true)
+  const [daily, setDaily] = useState(true)
+  const [time, setTime] = useState(DEFAULT_TIME)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
 
@@ -71,10 +74,8 @@ export function DailyReportPage() {
   useEffect(() => {
     void (async () => {
       const [s, locs] = await Promise.all([refresh(), getAdminLocations()])
-      if (s) {
-        setEnabled(s.time !== null)
-        setTime(s.time ?? DEFAULT_TIME)
-      }
+      // A manager cannot address the whole company: their form starts on their own branches.
+      if (s && !s.canWholeCompany) setWholeCompany(false)
       if (locs.status === 200 && Array.isArray(locs.data)) setLocations(locs.data.filter((l) => l.isActive))
     })()
   }, [])
@@ -94,21 +95,12 @@ export function DailyReportPage() {
     setError(message)
   }
 
-  async function onSaveTime(e: FormEvent) {
-    e.preventDefault()
-    setBusy('time')
-    const res = await saveDailyReportTime(enabled ? time : null)
-    setBusy(null)
-    if (res.status === 200) {
-      flash(enabled ? `Hesabat hər gün saat ${time}-da göndəriləcək` : 'Avtomatik göndəriş söndürüldü')
-      await refresh()
-    } else fail(errorText(res.data, 'Yadda saxlanmadı'))
-  }
-
   function resetForm() {
     setEditingId(null)
     setName('')
-    setWholeCompany(true)
+    setWholeCompany(state?.canWholeCompany ?? false)
+    setDaily(true)
+    setTime(DEFAULT_TIME)
     setPicked(new Set())
     setFilter('')
   }
@@ -117,6 +109,8 @@ export function DailyReportPage() {
     setEditingId(r.id)
     setName(r.name)
     setWholeCompany(r.locationIds.length === 0)
+    setDaily(r.time !== null)
+    setTime(r.time ?? DEFAULT_TIME)
     setPicked(new Set(r.locationIds))
     setFilter('')
     setError(null)
@@ -139,9 +133,10 @@ export function DailyReportPage() {
       return
     }
     const ids = wholeCompany ? [] : [...picked]
+    const at = daily ? time : null
     setBusy('recipient')
     if (editingId) {
-      const res = await updateDailyReportRecipient(editingId, name.trim(), ids)
+      const res = await updateDailyReportRecipient(editingId, name.trim(), ids, at)
       setBusy(null)
       if (res.status === 200) {
         flash('Alıcı yeniləndi')
@@ -150,7 +145,7 @@ export function DailyReportPage() {
       } else fail(errorText(res.data, 'Yadda saxlanmadı'))
       return
     }
-    const res = await addDailyReportRecipient(name.trim(), ids)
+    const res = await addDailyReportRecipient(name.trim(), ids, at)
     setBusy(null)
     if (res.status === 200 && res.data && 'id' in res.data) {
       const link = 'connectLink' in res.data ? res.data.connectLink : null
@@ -286,7 +281,8 @@ export function DailyReportPage() {
         <div className="card-title" style={{ marginBottom: 6 }}>Bugünkü hesabat</div>
         <p className="muted" style={{ fontSize: 13, lineHeight: 1.6, margin: '0 0 14px' }}>
           Ştat, işçi sayı, vakant yer, işdə olanlar, istirahət, məzuniyyət, icazə/xəstəlik, ezamiyyət, işə
-          gəlməyənlər və növbəsi hələ başlamayanlar — filial və struktur üzrə. Önizləmə heç kimə göndərilmir.
+          gəlməyənlər və növbəsi hələ başlamayanlar — {state.canWholeCompany ? 'bütün şirkət üzrə' : 'sizin filiallarınız üzrə'},
+          filial və struktur bölgüsü ilə. Önizləmə heç kimə göndərilmir.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" type="button" disabled={busy !== null} onClick={() => void onPreview('html')}>
@@ -306,37 +302,6 @@ export function DailyReportPage() {
           </button>
         </div>
       </div>
-
-      {/* ── Schedule ────────────────────────────────────────────────────────── */}
-      <form className="card card-pad" onSubmit={onSaveTime}>
-        <div className="card-title" style={{ marginBottom: 6 }}>Avtomatik göndəriş</div>
-        <p className="muted" style={{ fontSize: 13, lineHeight: 1.6, margin: '0 0 14px' }}>
-          Hər gün seçilmiş saatda (Bakı vaxtı) qoşulmuş alıcıların hər birinə bir dəfə göndərilir. Göndərilə
-          bilməsə, sistem bir neçə dəfə təkrar cəhd edir.
-        </p>
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: 14, fontWeight: 600, color: 'var(--c900)' }}>
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-            Hər gün göndər
-          </label>
-          <input
-            className="inp"
-            type="time"
-            aria-label="Göndəriş vaxtı"
-            style={{ width: 130 }}
-            disabled={!enabled}
-            required={enabled}
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-          />
-          <button className="btn btn-primary" type="submit" disabled={busy !== null}>
-            <IconCheck /> {busy === 'time' ? 'Yadda saxlanır…' : 'Yadda saxla'}
-          </button>
-          <span className="muted" style={{ fontSize: 12 }}>
-            {state.time ? `İndi: hər gün ${state.time}` : 'İndi: söndürülüb'}
-          </span>
-        </div>
-      </form>
 
       {/* ── The one-time connect link just issued ───────────────────────────── */}
       {connect && (
@@ -362,8 +327,10 @@ export function DailyReportPage() {
       <div className="card card-pad">
         <div className="card-title" style={{ marginBottom: 6 }}>Alıcılar</div>
         <p className="muted" style={{ fontSize: 13, lineHeight: 1.6, margin: '0 0 14px' }}>
-          Hər alıcı ya bütün şirkətin, ya da yalnız seçilmiş filialların hesabatını alır. Alıcını çıxaranda ona
-          göndəriş dayanır və əvvəlki linkləri də açılmır.
+          {state.canWholeCompany
+            ? 'Hər alıcı ya bütün şirkətin, ya da yalnız seçilmiş filialların hesabatını alır, öz vaxtında.'
+            : 'Alıcılar sizin filiallarınızdan seçdiyiniz filialların hesabatını alır, öz vaxtında. Burada yalnız sizin filiallarınıza aid alıcılar görünür.'}{' '}
+          Alıcını çıxaranda ona göndəriş dayanır və əvvəlki linkləri də açılmır.
         </p>
 
         <div className="tbl-wrap tbl-cards" style={{ marginBottom: 18 }}>
@@ -372,6 +339,7 @@ export function DailyReportPage() {
               <tr>
                 <th>Ad</th>
                 <th>Əhatə</th>
+                <th>Vaxt</th>
                 <th>Telegram</th>
                 <th style={{ textAlign: 'right' }}>Əməliyyat</th>
               </tr>
@@ -381,6 +349,7 @@ export function DailyReportPage() {
                 <tr key={r.id}>
                   <td data-label="Ad" style={{ fontWeight: 600 }}>{r.name}</td>
                   <td data-label="Əhatə">{scopeText(r)}</td>
+                  <td data-label="Vaxt" className="mono">{r.time ? `hər gün ${r.time}` : 'yalnız əl ilə'}</td>
                   <td data-label="Telegram">
                     {r.linked ? (
                       <span className="pill pill-ok">Qoşulub</span>
@@ -417,7 +386,7 @@ export function DailyReportPage() {
               ))}
               {state.recipients.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 24 }}>
+                  <td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 24 }}>
                     Hələ alıcı yoxdur — aşağıdan rəhbərlikdən birini əlavə edin
                   </td>
                 </tr>
@@ -444,19 +413,39 @@ export function DailyReportPage() {
               />
             </div>
             <div>
-              <span className="form-label">Əhatə</span>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center', minHeight: 38, flexWrap: 'wrap' }}>
+              <span className="form-label">Göndəriş</span>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', minHeight: 38, flexWrap: 'wrap' }}>
                 <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
-                  <input type="radio" name="dr-scope" checked={wholeCompany} onChange={() => setWholeCompany(true)} />
-                  Bütün şirkət
+                  <input type="checkbox" checked={daily} onChange={(e) => setDaily(e.target.checked)} />
+                  Hər gün avtomatik
                 </label>
-                <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
-                  <input type="radio" name="dr-scope" checked={!wholeCompany} onChange={() => setWholeCompany(false)} />
-                  Seçilmiş filiallar
-                </label>
+                <input
+                  className="inp"
+                  type="time"
+                  aria-label="Göndəriş vaxtı (Bakı)"
+                  style={{ width: 120 }}
+                  disabled={!daily}
+                  required={daily}
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                />
               </div>
             </div>
           </div>
+
+          {state.canWholeCompany && (
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+              <span className="form-label" style={{ margin: 0 }}>Əhatə</span>
+              <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
+                <input type="radio" name="dr-scope" checked={wholeCompany} onChange={() => setWholeCompany(true)} />
+                Bütün şirkət
+              </label>
+              <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}>
+                <input type="radio" name="dr-scope" checked={!wholeCompany} onChange={() => setWholeCompany(false)} />
+                Seçilmiş filiallar
+              </label>
+            </div>
+          )}
 
           {!wholeCompany && (
             <div style={{ marginBottom: 14 }}>

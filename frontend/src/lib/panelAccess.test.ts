@@ -68,14 +68,14 @@ describe('who may open what', () => {
     // Not a matter of taste. None of these can be narrowed to one branch: a broadcast has no
     // per-branch audience, a job-title rename rewrites every employee holding it, a holiday moves the
     // payroll divisor for the whole company, and the subscription is one contract.
-    for (const path of ['announcements', 'billing', 'positions', 'non-working-days', 'bulk-invite', 'daily-report'])
+    for (const path of ['announcements', 'billing', 'positions', 'non-working-days', 'bulk-invite'])
       expect(canOpen(path, 'Manager')).toBe(false)
   })
 
   it('gives a manager the branch-shaped pages', () => {
     // Each of these is a view of the branches they run, narrowed server-side. The employee card is
     // the one the owner asked for: a manager could not open their own people's profile at all.
-    for (const path of ['dashboard', 'today', 'employees/:id', 'open-records', 'payroll', 'locations'])
+    for (const path of ['dashboard', 'today', 'employees/:id', 'open-records', 'payroll', 'locations', 'daily-report'])
       expect(canOpen(path, 'Manager')).toBe(true)
   })
 
