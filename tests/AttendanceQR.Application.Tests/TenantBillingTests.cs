@@ -35,7 +35,7 @@ public class TenantBillingTests
         public Guid AdminId { get; } = Guid.NewGuid();
 
         public Harness(int employees = 12, int locations = 2, DateTime? trialEndsAtUtc = null,
-                       decimal? priceOverride = null)
+                       decimal? priceOverride = null, bool otherCompanyFirst = false)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantA);
@@ -43,6 +43,15 @@ public class TenantBillingTests
                 new DbContextOptionsBuilder<AppDbContext>()
                     .UseInMemoryDatabase($"tenant-billing-{Guid.NewGuid()}").Options,
                 tenant);
+
+            // Another customer's row, stored BEFORE this one — the order a real database is free to hand
+            // rows back in. Its negotiated price must never reach company A's screen.
+            if (otherCompanyFirst)
+                Db.Tenants.Add(new Tenant
+                {
+                    Id = TenantB, Name = "B", Slug = "b", DisplayName = "Şirkət B", IsActive = true,
+                    MonthlyPriceOverride = 999m, TrialEndsAtUtc = DateTime.UtcNow.Date.AddDays(30),
+                });
 
             Db.Tenants.Add(new Tenant
             {
@@ -189,6 +198,28 @@ public class TenantBillingTests
 
         Assert.Single(rows);
         Assert.Equal(52m, Harness.Get(rows[0], "amount"));
+    }
+
+    [Fact]
+    public async Task The_subscription_shown_is_this_company_s_even_when_another_company_s_row_comes_first()
+    {
+        // Tenant carries no query filter — it is the boundary everything else is filtered BY — so the
+        // row must be picked by this company's Id, whatever order the rows are stored in.
+        using var h = new Harness(employees: 12, locations: 2, otherCompanyFirst: true);
+        h.Db.TenantInvoices.Add(new TenantInvoice
+        {
+            TenantId = TenantB, PeriodYear = DateTime.UtcNow.Year, PeriodMonth = DateTime.UtcNow.Month,
+            Amount = 999m, EmployeeCount = 300, IsPaid = false,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var body = await h.LoadAsync();
+        var monthly = Harness.Get(body, "monthly")!;
+
+        Assert.Equal(52m, Harness.Get(monthly, "amount"));
+        Assert.Equal(false, Harness.Get(monthly, "isNegotiated"));
+        Assert.Equal(false, Harness.Get(body, "onTrial"));
+        Assert.Empty(((System.Collections.IEnumerable)Harness.Get(body, "invoices")!).Cast<object>());
     }
 
     [Fact]

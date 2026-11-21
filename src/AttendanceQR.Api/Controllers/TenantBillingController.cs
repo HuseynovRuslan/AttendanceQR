@@ -38,9 +38,9 @@ public class TenantBillingController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
 
-        // The tenant is resolved from the token before any query runs (fail-closed multi-tenancy), so
-        // the filtered DbSet already answers for exactly one company.
-        var tenant = await _db.Tenants.FirstOrDefaultAsync(ct);
+        // By Id, always. Tenant is the one entity with NO query filter — it IS the boundary the others are
+        // filtered by — so an unqualified read is not narrowed to this company by anything.
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == _db.CurrentTenantId, ct);
         if (tenant is null)
             return NotFound(new { error = "TenantNotFound" });
 

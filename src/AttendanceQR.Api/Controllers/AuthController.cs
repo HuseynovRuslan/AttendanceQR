@@ -703,14 +703,31 @@ public partial class AuthController : ControllerBase
         if (employee is null)
             return Unauthorized(new { error = "InvalidToken" });
 
-        if (!_passwordHasher.Verify(employee.PasswordHash, request.CurrentPassword))
-            return Unauthorized(new { error = "InvalidCurrentPassword" });
-
-        // Same rules as activation — a changed password must stay a PIN, and must not be a guess.
+        // The new PIN's shape FIRST, before the current PIN is looked at, so the answer about the new PIN
+        // never depends on the current one.
         if (!PinRules.IsWellFormed(request.NewPassword))
             return BadRequest(new { error = "PinInvalid" });
         if (PinRules.IsTooWeak(request.NewPassword))
             return BadRequest(new { error = "PinTooWeak" });
+
+        // Wrong current PINs are counted per ACCOUNT, the same budget a login has, and a locked account is
+        // answered without running the hash at all.
+        var lockoutKey = $"pinchange:{employee.Id}";
+        if (_lockoutStore.IsLockedOut(lockoutKey))
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+
+        if (!_passwordHasher.Verify(employee.PasswordHash, request.CurrentPassword))
+        {
+            // 400, never 401. The session is fine — the person mistyped their old PIN. Every 401 signs the
+            // device out (client.ts), so a typo on this sheet used to throw the worker to the login screen.
+            var remaining = _lockoutStore.RecordFailure(lockoutKey);
+            if (remaining <= 0)
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+            return BadRequest(new { error = "InvalidCurrentPassword", remaining });
+        }
+        _lockoutStore.RecordSuccess(lockoutKey);
 
         employee.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         employee.MustChangePin = false;
