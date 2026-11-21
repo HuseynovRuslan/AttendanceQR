@@ -40,10 +40,10 @@ public sealed class DailySummaryService : IDailySummaryService
         if (date >= today)
             return 0;
 
-        // Only the system/root accounts in HiddenEmails are excluded; admins/managers who also clock in
-        // (e.g. a director who scans) get summarised like any staff (mirrors the live "today" board).
+        // The same people as the live "today" board (ReportPopulation): admins/managers who also clock in
+        // (e.g. a director who scans) are summarised like any staff; root accounts and panel-only ones are not.
         var employees = await _db.Employees
-            .Where(e => e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())))
+            .Where(ReportPopulation.Members(_hiddenEmails))
             .Select(e => new { e.Id, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor, e.ActivatedAtUtc })
             .ToListAsync(ct);
 

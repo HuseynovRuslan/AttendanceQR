@@ -1023,6 +1023,9 @@ namespace AttendanceQR.Infrastructure.Persistence.Migrations
                     b.Property<bool>("MustChangePin")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("PanelOnly")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("PaperEmployer")
                         .HasColumnType("text");
 
