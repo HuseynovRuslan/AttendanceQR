@@ -735,6 +735,9 @@ export interface AdminEmployeeRow {
   canFieldCheckIn?: boolean
   /** May this account ride on a brigade's shared phone? Off unless an admin grants it. */
   canShareDevice?: boolean
+  /** «Yalnız panel» — runs the panel, is not counted on the board, the tabel or any report. Read-only here:
+   *  the operator sets it, and no form sends it (so no edit can switch it off). */
+  panelOnly?: boolean
   /** The named shift they are on, if any, plus its name for display. */
   scheduleId?: string | null
   scheduleName?: string | null

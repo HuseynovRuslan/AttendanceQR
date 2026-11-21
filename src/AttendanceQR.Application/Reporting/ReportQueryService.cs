@@ -215,8 +215,7 @@ public sealed class ReportQueryService : IReportQueryService
         // context that lives for the whole request it is a hazard too, since a tracked entity shadows
         // what a later query in the same request reads. The reads inside ComputeDayLiveAsync carry it
         // for the same two reasons.
-        var query = _db.Employees.AsNoTracking().Where(e =>
-            e.IsActive && e.ActivatedAtUtc != null && (e.Email == null || !_hiddenEmails.Contains(e.Email.ToLower())));
+        var query = _db.Employees.AsNoTracking().Where(ReportPopulation.Members(_hiddenEmails));
 
         switch (role)
         {

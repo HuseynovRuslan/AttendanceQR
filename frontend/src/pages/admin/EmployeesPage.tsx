@@ -2523,6 +2523,12 @@ ${back}`,
                         Deaktiv
                       </span>
                     )}
+                    {/* Why this person is on the roster but on no board or report. */}
+                    {e.panelOnly && (
+                      <span className="tag" style={{ marginLeft: 8 }} title="Paneli idarə edir — lövhədə, tabeldə və hesabatlarda sayılmır">
+                        Yalnız panel
+                      </span>
+                    )}
                     {/* A fellow manager, or the admin who clocks in at the branch — in a manager's list. */}
                     {isManager && mgr(e).isColleague && (
                       <span className="tag" style={{ marginLeft: 8 }}>{mgr(e).manageable ? 'menecer' : 'həmkar'}</span>

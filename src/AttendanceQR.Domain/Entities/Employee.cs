@@ -192,6 +192,23 @@ public class Employee : ITenantScoped, IHasWorkCycle
     public bool CanShareDevice { get; set; }
 
     /// <summary>
+    /// «Yalnız panel» — an account that exists to run the admin panel, not a member of staff whose
+    /// attendance this company tracks.
+    ///
+    /// The case that asked for it: a site supervisor moved to another company with his whole history
+    /// keeps watching his old site's crew from a manager account there. He clocks in at the company he
+    /// was moved to; in the old one he is nobody's headcount. Without this he stood on that company's
+    /// board, its tabel and its management report as a person who never arrives — «hələ qoşulmayıb»
+    /// every day, one more in «İşçi sayı» — numbers the company reads and pays by.
+    ///
+    /// Read at the two places that decide WHO a report is about, and nowhere else:
+    /// ReportQueryService.ScopedEmployeesAsync (board, tabel, payroll, dashboard, management report)
+    /// and DailySummaryService (the finished day). The account itself is untouched: it signs in, it
+    /// manages its branches, it stays on the «İşçilər» roster. Off by default; set by the operator.
+    /// </summary>
+    public bool PanelOnly { get; set; }
+
+    /// <summary>
     /// This ONE person checks in without a poster, whatever their branch does. Null — the normal
     /// state — means the branch decides (<see cref="Location.QrlessCheckIn"/>).
     ///
