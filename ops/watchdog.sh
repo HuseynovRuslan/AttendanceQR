@@ -120,6 +120,23 @@ else
   resolved backup "backups are running again"
 fi
 
+# ...and a local dump is not the backup that matters. It proves pg_dump ran; it says nothing about the
+# copy off the machine, which is the one a dead disk leaves. backup.sh moves this marker only once R2
+# has accepted the upload, so an upload failing every night (expired token, deleted bucket, R2 down)
+# is caught here within two days instead of during a restore.
+OFFBOX_MARK="$APP_DIR/backups/.last-offbox-ok"
+if [ ! -e "$OFFBOX_MARK" ]; then
+  # Never written: this check is newer than the last upload, which is not the same as an upload
+  # failing. Start the 48h clock rather than alert on the day it ships; from then on it is real.
+  fail "no off-box marker yet — starting the 48h clock (backup.sh moves it after each upload)"
+  echo "seeded by watchdog.sh $(date -Is) — no upload recorded yet" >"$OFFBOX_MARK" || true
+fi
+if [ -z "$(find "$OFFBOX_MARK" -mtime -2 2>/dev/null)" ]; then
+  problem backup-offbox "NO OFF-BOX BACKUP in the last 48h — uploads to R2 are failing; the only copies are on this machine"
+else
+  resolved backup-offbox "off-box backups are reaching R2 again"
+fi
+
 # Silent degradation of the paid/optional pipelines. Neither stops a check-in (by design), which is
 # exactly why nobody would notice: face checks quietly pile up NotChecked, photos quietly burn their
 # retry budget. A burst of failures in the last 15 minutes is a human's problem, not a log line's.

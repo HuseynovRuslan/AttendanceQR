@@ -72,7 +72,9 @@ jobs:
         run: |
           shellcheck --severity=warning ops/prod-deploy-ssh-gate.sh ops/prod-release.sh \
             ops/install-prod-release-gate.sh ops/deploy-prod.sh ops/staging-autodeploy.sh \
-            ops/tests/release-gate.test.sh ops/tests/deploy-prod.test.sh ops/tests/staging-autodeploy.test.sh
+            ops/backup.sh ops/watchdog.sh \
+            ops/tests/release-gate.test.sh ops/tests/deploy-prod.test.sh ops/tests/staging-autodeploy.test.sh \
+            ops/tests/backup-offbox.test.sh
       - name: Gate and approval-proof tests
         run: bash ops/tests/release-gate.test.sh
       - name: deploy-prod.sh failure paths
@@ -80,3 +82,6 @@ jobs:
       # Root on the production host, driven by whoever can push to `staging`.
       - name: staging-autodeploy.sh refusals
         run: bash ops/tests/staging-autodeploy.test.sh
+      # deploy-prod.sh gates on backup.sh; the watchdog is what notices it failing.
+      - name: backup.sh / watchdog.sh off-box checks
+        run: bash ops/tests/backup-offbox.test.sh

@@ -20,13 +20,25 @@ KEEP_REMOTE_DAYS=90   # days kept in R2
 # good backups with garbage — the failure mode that turns "we have backups" into a discovery on the
 # worst possible day.
 MIN_BYTES=20000
+# Written only once R2 has accepted the night's upload. ops/watchdog.sh alerts when it is older than
+# 48h: the local dump proves pg_dump ran, not that a copy ever left the machine.
+OFFBOX_MARK="$WORK_DIR/.last-offbox-ok"
 
 mkdir -p "$WORK_DIR"
+# A dump is the whole database — every employee, phone number, salary and PIN hash — and under the
+# default umask (022) each one landed world-readable. Nothing but root reads them (the upload container
+# and the restore drill both run as root). Set after the mkdir, so a new backups/ directory — which also
+# holds the logs — keeps its ordinary permissions.
+umask 077
+# ...and the dumps written before this line existed, rather than waiting a week for the prune.
+find "$WORK_DIR" -maxdepth 1 -name 'attendanceqr_*.sql.gz' -perm /077 -exec chmod 600 {} + 2>/dev/null || true
 exec >>"$LOG" 2>&1
 echo "--- $(date -Is) backup start"
 
-# shellcheck disable=SC1090
-set -a; . "$ENV_FILE"; set +a
+set -a
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+set +a
 
 # WHERE the backups go, and WITH WHOSE KEYS.
 #
@@ -83,7 +95,12 @@ fi
 echo "dump ok: $(basename "$FILE") (${SIZE} bytes)"
 
 # Off the machine, into the backup bucket (see the credential note above).
-docker run --rm \
+#
+# A failed upload used to end the script right here, under set -e, with the reason in a log nobody
+# opens — while the watchdog checked only the LOCAL dump, which this very run had just written. Night
+# after night could fail to leave the box with every check green. Now a failure is said out loud and
+# still exits non-zero (deploy-prod.sh gates on that), and only a success moves OFFBOX_MARK.
+if ! docker run --rm \
   -e AWS_ACCESS_KEY_ID="$R2_KEY" \
   -e AWS_SECRET_ACCESS_KEY="$R2_SECRET" \
   -e AWS_DEFAULT_REGION=auto \
@@ -92,9 +109,17 @@ docker run --rm \
   s3 cp "/backups/$(basename "$FILE")" \
     "s3://${R2_BUCKET}/db-backups/$(basename "$FILE")" \
     --endpoint-url "https://${R2_ENDPOINT}" \
-    --only-show-errors
+    --only-show-errors; then
+  echo "FAIL: upload of $(basename "$FILE") to r2 failed — this dump exists only on this machine"
+  if [ -x "$APP_DIR/ops/alert.sh" ]; then
+    "$APP_DIR/ops/alert.sh" "backup NOT uploaded to R2 ($(basename "$FILE")) — the only copy is on this machine" || true
+  fi
+  exit 1
+fi
 
 echo "uploaded to r2: db-backups/$(basename "$FILE")"
+# Its age is the signal; the line inside is for a human.
+printf '%s db-backups/%s\n' "$(date -Is)" "$(basename "$FILE")" >"$OFFBOX_MARK"
 
 find "$WORK_DIR" -name 'attendanceqr_*.sql.gz' -mtime +$KEEP_LOCAL -delete
 

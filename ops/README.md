@@ -8,6 +8,11 @@ the watchdog, not scheduled) and `build-landing.sh`, which runs on deploy rather
 Dumps Postgres, checks the dump is real (size + gzip integrity), uploads it to Cloudflare R2 under
 `db-backups/`, prunes local copies after 7 days and remote ones after 90.
 
+The local dumps are written readable by root alone (`umask 077`) — each one is the whole database.
+A failed upload is **alerted** through `alert.sh` and fails the run; a successful one writes
+`backups/.last-offbox-ok`, whose age the watchdog checks. An upload used to fail silently, while the
+watchdog looked only at the local dump that same run had just written.
+
 Before this existed the only copies were two hand-made dumps on the same disk as the database — a
 second copy of the same single point of failure. The database is ~11 MB, so nothing here is clever:
 dump, verify, ship, prune.
@@ -97,6 +102,10 @@ An untested backup is a belief. This is the difference between having backups an
 Checks `/health` (which touches the database, so a running process with unreachable Postgres counts
 as down), restarts a container that has stopped, warns at 85% disk, and warns if no backup has
 appeared in 48 hours — the nightly job failing silently is the likeliest way to lose the safety net.
+It warns separately if no dump has **reached R2** in 48 hours (`backups/.last-offbox-ok`, written by
+`backup.sh` after each upload): a fresh local dump says nothing about the copy a dead disk leaves.
+On the first run after this check shipped, a missing marker starts the 48-hour clock instead of
+alerting.
 
 Everything it finds is **sent to a human** via `alert.sh`. It used to write to
 `backups/watchdog.log` and stop there, which made it a detector with nobody on the other end — the
