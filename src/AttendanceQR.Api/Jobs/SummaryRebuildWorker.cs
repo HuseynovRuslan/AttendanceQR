@@ -52,23 +52,30 @@ public sealed class SummaryRebuildWorker : BackgroundService
                 await SweepPlanNotesAsync(stoppingToken);
 
             foreach (var (tenantId, date) in _queue.TakeSettled(Settle, DateTime.UtcNow))
-            {
-                try
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(tenantId);
-                    var count = await scope.ServiceProvider.GetRequiredService<IDailySummaryService>()
-                        .GenerateForDateAsync(date, stoppingToken);
-                    _logger.LogInformation("SummaryRebuild: {Date} rebuilt for tenant {Tenant} ({Count} rows) after a late scan",
-                        date, tenantId, count);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // Never fatal: the record itself is written, and the day can be rebuilt by hand
-                    // («Günləri yenidən hesabla»). Asking again gives it another turn on the next scan.
-                    _logger.LogError(ex, "SummaryRebuild: {Date} failed for tenant {Tenant}", date, tenantId);
-                }
-            }
+                await RebuildAsync(tenantId, date, stoppingToken);
+        }
+    }
+
+    /// <summary>One requested day. Ends the loop only on shutdown: anything else is logged and forgotten.</summary>
+    internal async Task RebuildAsync(Guid tenantId, DateOnly date, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            scope.ServiceProvider.GetRequiredService<ITenantContext>().Resolve(tenantId);
+            var count = await scope.ServiceProvider.GetRequiredService<IDailySummaryService>()
+                .GenerateForDateAsync(date, ct);
+            _logger.LogInformation("SummaryRebuild: {Date} rebuilt for tenant {Tenant} ({Count} rows) after a late scan",
+                date, tenantId, count);
+        }
+        // A cancellation that is not ours (a timeout surfacing as TaskCanceledException) is a failure like
+        // any other. Letting every OperationCanceledException through used to throw it out of
+        // ExecuteAsync, which ends the worker for good and, under the host's default, the whole API.
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // Never fatal: the record itself is written, and the day can be rebuilt by hand
+            // («Günləri yenidən hesabla»). Asking again gives it another turn on the next scan.
+            _logger.LogError(ex, "SummaryRebuild: {Date} failed for tenant {Tenant}", date, tenantId);
         }
     }
 
@@ -94,7 +101,7 @@ public sealed class SummaryRebuildWorker : BackgroundService
                 _logger.LogInformation("SummaryRebuild: plan days for tenant {Tenant}: {Rebuilt} rebuilt, {Pending} still waiting", tenantId, rebuilt, pending);
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogError(ex, "SummaryRebuild: sweeping the plan's stale days failed; next sweep tries again");
         }

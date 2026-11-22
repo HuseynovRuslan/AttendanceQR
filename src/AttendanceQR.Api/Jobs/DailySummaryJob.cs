@@ -33,7 +33,24 @@ public sealed class DailySummaryJob : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Catch up on any days missed while the server was down.
-        await BackfillAsync(stoppingToken);
+        //
+        // Both calls are guarded here because the company list they start from is read outside their
+        // per-tenant try: one failed read (Postgres restarting) used to throw out of ExecuteAsync, which
+        // ends this job for good — and under the host's default stopped the whole API with it. A failed
+        // night is logged and the next one runs. The day it missed is rebuilt by hand («Günləri yenidən
+        // hesabla»), exactly like a day that a single company's failure already leaves behind.
+        try
+        {
+            await BackfillAsync(stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DailySummaryJob: backfill failed; the nightly run still goes ahead");
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -48,7 +65,18 @@ public sealed class DailySummaryJob : BackgroundService
                 break;
             }
 
-            await GenerateAsync(Yesterday(), stoppingToken);
+            try
+            {
+                await GenerateAsync(Yesterday(), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DailySummaryJob: nightly run failed; the next night tries again");
+            }
         }
     }
 
@@ -108,6 +136,10 @@ public sealed class DailySummaryJob : BackgroundService
 
                 _logger.LogInformation("DailySummaryJob: backfilled {From}..{To} for tenant {Tenant}", start, yesterday, tenantId);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "DailySummaryJob: backfill failed for tenant {Tenant}", tenantId);
@@ -126,6 +158,10 @@ public sealed class DailySummaryJob : BackgroundService
                 var summaries = scope.ServiceProvider.GetRequiredService<IDailySummaryService>();
                 var count = await summaries.GenerateForDateAsync(date, ct);
                 _logger.LogInformation("DailySummaryJob: generated {Count} summaries for {Date} tenant {Tenant}", count, date, tenantId);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {

@@ -54,21 +54,47 @@ public sealed class DataRetentionJob : BackgroundService
                 break;
             }
 
-            await RunOnceAsync(stoppingToken);
+            // Backstop for whatever RunOnceAsync does not keep in itself: an exception out of
+            // ExecuteAsync ends the job for good, and under the host's default it stopped the API too.
+            try
+            {
+                await RunOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DataRetentionJob: run failed; the next night tries again");
+            }
         }
     }
 
-    private async Task RunOnceAsync(CancellationToken ct)
+    internal async Task RunOnceAsync(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
 
         // Per tenant, like every other job: the query filters scope each delete to the resolved
         // tenant, so this never needs (and never gets) IgnoreQueryFilters.
+        //
+        // The company list is read outside the per-tenant try, so it has its own: a database that is
+        // not answering at 01:30 costs one night's pruning — nothing here is urgent — never the process.
         List<Guid> tenantIds;
-        using (var listScope = _scopeFactory.CreateScope())
+        try
         {
+            using var listScope = _scopeFactory.CreateScope();
             var db = listScope.ServiceProvider.GetRequiredService<AppDbContext>();
             tenantIds = await db.Tenants.Select(t => t.Id).ToListAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DataRetentionJob: could not list the companies; skipping tonight's retention");
+            return;
         }
 
         foreach (var tenantId in tenantIds)
@@ -104,6 +130,10 @@ public sealed class DataRetentionJob : BackgroundService
                     _logger.LogInformation(
                         "DataRetentionJob: tenant {Tenant} pruned {Scans} processed scans, {Notifications} notifications, {Audits} audit rows",
                         tenantId, scans, notifications, audits);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
