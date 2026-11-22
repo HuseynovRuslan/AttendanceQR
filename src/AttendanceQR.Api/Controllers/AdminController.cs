@@ -1210,6 +1210,16 @@ public class AdminController : ControllerBase
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
 
+        // A platform operator's row is not a tenant's to edit, by the same reasoning as ResetPin: it sits
+        // inside some company as a normal-looking row, and this endpoint can switch it off, move its login
+        // number or e-mail elsewhere, or demote it — each of which locks the operator out of the console
+        // (login rejects an inactive account; the identifier is half the credential). Refused first, before
+        // any validation can answer differently. The operator editing their OWN row is not that threat and
+        // keeps the self-protection rules below; an impersonation session's "sub" is the customer's admin,
+        // never the operator, so it cannot pass as "own".
+        if (_operatorIds.Contains(employee.Id) && employee.Id != User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
+
         // You cannot lock yourself out. Deleting yourself is already blocked below, but deactivating
         // or demoting yourself was not — and the result is worse: login rejects an inactive account,
         // so the door closes silently and cannot be reopened from inside the tenant. CleanFix's only
@@ -1396,6 +1406,12 @@ public class AdminController : ControllerBase
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
+
+        // Never a platform operator's row (see Update): deleting it deletes the operator's way into the
+        // console along with it, and nothing inside the tenant could put it back. Before the history check,
+        // so the answer is the same whether or not the row has attendance behind it.
+        if (_operatorIds.Contains(employee.Id))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
 
         // Attendance/summary/device-change FKs are Restrict — refuse to delete an employee with
         // history (it would fail at the DB anyway) unless the caller explicitly opts into a

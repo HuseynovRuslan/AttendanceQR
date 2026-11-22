@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
@@ -193,6 +194,89 @@ public class OperatorTakeoverTests
         h.Db.SaveChanges();
 
         AssertForbidden(await h.Admin(h.TenantAdminId).ResetPin(h.OperatorId));
+    }
+
+    // --- editing or deleting the operator's row ------------------------------------------------------
+    //
+    // ResetPin was guarded; the profile edit and the delete beside it were not. Either one locks the operator
+    // out of the console from inside a tenant: an inactive account cannot sign in, a moved number or e-mail
+    // is a credential pointed elsewhere, and a deleted row is gone with the login.
+
+    private EmployeeUpdateRequest Edit(Harness h, Guid id, bool isActive = true, string? phone = null)
+    {
+        // The harness rows have no number; an edit needs a way to sign in (NeedEmailOrPhone), so one is given.
+        var row = h.Row(id);
+        return new EmployeeUpdateRequest(row.FullName + " (redaktə)", row.Email, row.LocationId, row.Role, isActive,
+            PhoneNumber: phone ?? row.PhoneNumber ?? "+994501110000");
+    }
+
+    [Fact]
+    public async Task A_tenant_admin_cannot_switch_a_platform_operator_off()
+    {
+        using var h = new Harness();
+
+        AssertForbidden(await h.Admin(h.TenantAdminId).Update(h.OperatorId, Edit(h, h.OperatorId, isActive: false)));
+
+        Assert.True(h.Row(h.OperatorId).IsActive);
+        Assert.Equal("Operator", h.Row(h.OperatorId).FullName);
+    }
+
+    [Fact]
+    public async Task A_tenant_admin_cannot_move_a_platform_operators_login_number()
+    {
+        using var h = new Harness();
+
+        AssertForbidden(await h.Admin(h.TenantAdminId).Update(h.OperatorId, Edit(h, h.OperatorId, phone: "+994509998877")));
+
+        Assert.Null(h.Row(h.OperatorId).PhoneNumber);
+    }
+
+    [Fact]
+    public async Task A_tenant_admin_cannot_delete_a_platform_operators_row()
+    {
+        using var h = new Harness();
+
+        AssertForbidden(await h.Admin(h.TenantAdminId).Delete(h.OperatorId, force: true));
+
+        Assert.True(h.Db.Employees.IgnoreQueryFilters().AsNoTracking().Any(e => e.Id == h.OperatorId));
+    }
+
+    [Fact]
+    public async Task A_tenant_admin_still_edits_and_deletes_ordinary_staff()
+    {
+        // The guard must not cost the tenant its own roster.
+        using var h = new Harness();
+
+        Assert.IsType<OkObjectResult>(await h.Admin(h.TenantAdminId).Update(h.PlainEmployeeId, Edit(h, h.PlainEmployeeId)));
+        Assert.Equal("İşçi (redaktə)", h.Row(h.PlainEmployeeId).FullName);
+
+        Assert.IsType<OkObjectResult>(await h.Admin(h.TenantAdminId).Delete(h.PlainEmployeeId));
+        Assert.False(h.Db.Employees.IgnoreQueryFilters().AsNoTracking().Any(e => e.Id == h.PlainEmployeeId));
+    }
+
+    [Fact]
+    public async Task The_operator_may_still_correct_their_own_row()
+    {
+        // Not the threat: nobody is taking the operator's account from them. Self-protection still applies
+        // (they cannot switch themselves off), but their own name is theirs to fix.
+        using var h = new Harness();
+
+        Assert.IsType<OkObjectResult>(await h.Admin(h.OperatorId).Update(h.OperatorId, Edit(h, h.OperatorId)));
+        Assert.Equal("Operator (redaktə)", h.Row(h.OperatorId).FullName);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_edit_a_platform_operator_sitting_in_their_branch()
+    {
+        // The manager desk's edit already refused it (ManageableEmployeeAsync, and the permission model's
+        // ManageableEmployee rule in Enforced); pinned here beside the admin door so the two cannot drift.
+        using var h = new Harness(operatorRole: EmployeeRole.Employee);
+        var row = h.Row(h.OperatorId);
+
+        AssertForbidden(await h.Manager().UpdateEmployee(h.OperatorId, new AttendanceQR.Api.Contracts.ManagerEmployeeRequest(
+            "Operator (redaktə)", row.Email, row.PhoneNumber, null, null, row.LocationId, IsActive: false)));
+
+        Assert.True(h.Row(h.OperatorId).IsActive);
     }
 
     // --- the branch manager door ------------------------------------------------------------------
