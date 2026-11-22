@@ -532,6 +532,9 @@ export interface PayrollRow {
   payable: number
   /** Days in the period the person corrected themselves — the accountant sees them before paying. */
   selfCorrectedDays?: number
+  /** The unpaid-leave days the deduction was taken for: unpaidDays counts calendar days, weekends
+   *  included; only the working days among them cost pay. */
+  deductedUnpaidDays?: number
 }
 
 export interface PayrollReport {

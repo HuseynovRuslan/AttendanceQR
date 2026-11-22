@@ -18,9 +18,10 @@ public static class PayrollMath
     /// per day instead of salary/28 — about 22% over, per absence, since 2026-08-31. A trip is a
     /// working day (the person is WORKING, just somewhere with no poster), so it belongs in the
     /// divisor exactly as the comment above the old code always claimed.</param>
-    /// <param name="unpaidDays">Ödənişsiz məzuniyyət. A SUBSET of <paramref name="leaveDays"/>, so it
-    /// stays inside the divisor — an unpaid day is still a scheduled working day — and is deducted
-    /// below alongside the unexcused absences.
+    /// <param name="unpaidDays">Ödənişsiz məzuniyyət, in calendar days. A SUBSET of
+    /// <paramref name="leaveDays"/>, so it stays inside the divisor — an unpaid working day is still a
+    /// scheduled working day — and its working days (less <c>offDayUnpaidDays</c>) are deducted below
+    /// alongside the unexcused absences.
     ///
     /// This parameter did not exist, so unpaid leave was PAID AT FULL SALARY. The word means unpaid.
     /// Found 2026-09-04 by an audit of the leave types; production held 23 such days at one company,
@@ -47,7 +48,15 @@ public static class PayrollMath
         // period, and the day is one — before this existed it arrived inside absentDays and was counted
         // there; taking it out of the absence without putting it back here would have shrunk the
         // divisor and raised everybody's daily rate until the shift began.
-        int pendingDays = 0)
+        int pendingDays = 0,
+        // The part of unpaidDays that fell on days this person was not scheduled to work — the subset
+        // of offDayLeaveDays that is unpaid. Taken OUT of the deduction, exactly as offDayLeaveDays is
+        // taken out of the divisor, and for the same reason: unpaidDays is a reported figure and keeps
+        // counting calendar days, weekends included. Before this existed a fortnight's unpaid leave
+        // (Mon 2 – Sun 15 November) for a Monday-to-Friday worker on 630 was deducted as 14 × 30 = 420:
+        // four of those days were Saturdays and Sundays the person is never paid for, so the deduction
+        // was 120 more than the ten working days, 300, they actually took off.
+        int offDayUnpaidDays = 0)
     {
         var scheduled = workDays + absentDays + leaveDays + permissionDays + tripDays - offDayLeaveDays + pendingDays;
         if (scheduled <= 0)
@@ -55,11 +64,23 @@ public static class PayrollMath
 
         var perDay = Math.Round(salary / scheduled, 2, MidpointRounding.AwayFromZero);
         // Unexcused absence AND unpaid leave. Different facts about a person — one is a no-show, the
-        // other agreed in advance — but the same cost: a day that is not paid for.
-        var deduction = Math.Round(perDay * (absentDays + unpaidDays), 2, MidpointRounding.AwayFromZero);
+        // other agreed in advance — but the same cost: a day that is not paid for. Only the working
+        // days of the unpaid leave: a day off costs nothing whatever leave it falls inside.
+        var unpaid = DeductibleUnpaidDays(unpaidDays, offDayUnpaidDays);
+        var deduction = Math.Round(perDay * (absentDays + unpaid), 2, MidpointRounding.AwayFromZero);
         var payable = salary - deduction;
         return (scheduled, perDay, deduction, payable < 0m ? 0m : payable);
     }
+
+    /// <summary>
+    /// The unpaid-leave days a deduction is taken for: the calendar days less the ones that were not
+    /// working days. One expression, used by <see cref="Compute"/> and by the payroll row that prints
+    /// it, so the figure on the sheet is always the one the money was computed from. Never below zero:
+    /// a row whose off-day count outran its total (a leave record deleted after the night job ran) is
+    /// not a reason to pay somebody extra.
+    /// </summary>
+    public static int DeductibleUnpaidDays(int unpaidDays, int offDayUnpaidDays) =>
+        Math.Max(0, unpaidDays - offDayUnpaidDays);
 
     /// <summary>
     /// Whether <paramref name="date"/> was a working day for the payroll, given the shift that day was

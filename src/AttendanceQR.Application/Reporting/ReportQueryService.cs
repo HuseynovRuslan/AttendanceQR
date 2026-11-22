@@ -1401,7 +1401,14 @@ public sealed class ReportQueryService : IReportQueryService
                     && !IsScheduledDay(x.EmployeeId, x.LocationId, x.Date)),
                 PaperEmployer: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperEmployer,
                 PaperSite: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperSite,
-                PendingDays: g.Count(x => x.Status == DailySummaryStatus.Absent && x.Pending)))
+                PendingDays: g.Count(x => x.Status == DailySummaryStatus.Absent && x.Pending),
+                // The unpaid days inside OffDayLeaveDays: leave beats the day-off rule, so a fortnight
+                // of unpaid leave arrives as fourteen OnLeave days, weekends included — and the payroll
+                // deducted all fourteen, charging for four Saturdays and Sundays nobody is paid for.
+                OffDayUnpaidDays: g.Count(x =>
+                    x.Status == DailySummaryStatus.OnLeave
+                    && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Unpaid)
+                    && !IsScheduledDay(x.EmployeeId, x.LocationId, x.Date))))
             .OrderBy(r => r.EmployeeName)
             .ToList();
 
@@ -1520,7 +1527,7 @@ public sealed class ReportQueryService : IReportQueryService
             if (salary is > 0m)
                 (scheduled, perDay, deduction, payable) = PayrollMath.Compute(
                     salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays,
-                    r.UnpaidDays, r.OffDayLeaveDays, r.PendingDays);
+                    r.UnpaidDays, r.OffDayLeaveDays, r.PendingDays, r.OffDayUnpaidDays);
             else
                 scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays
                             - r.OffDayLeaveDays + r.PendingDays;
@@ -1530,7 +1537,8 @@ public sealed class ReportQueryService : IReportQueryService
                 scheduled, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.OvertimeHours,
                 perDay, deduction, payable, r.EarlyLeaveHours, r.EarlyArriveHours,
                 r.VacationDays, r.SickDays, r.UnpaidDays, r.RestDays, r.TripDays,
-                selfDays.GetValueOrDefault(r.EmployeeId));
+                selfDays.GetValueOrDefault(r.EmployeeId),
+                PayrollMath.DeductibleUnpaidDays(r.UnpaidDays, r.OffDayUnpaidDays));
         })
         .OrderBy(r => r.EmployeeName)
         .ToList();

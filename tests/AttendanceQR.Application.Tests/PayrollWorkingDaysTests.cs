@@ -293,6 +293,106 @@ public class PayrollWorkingDaysTests
         Assert.Equal(50.00m, row.Deduction);
     }
 
+    // ─── P1: unpaid leave is deducted for its working days, not its calendar days ──────────────────
+
+    [Fact]
+    public async Task A_fortnights_unpaid_leave_deducts_its_ten_working_days_not_fourteen()
+    {
+        // The audit's case. «Ödənişsiz məzuniyyət» Monday 2 – Sunday 15 November for a Monday-to-Friday
+        // worker on 630. Leave beats the day-off rule, so all fourteen days arrive OnLeave and UnpaidDays is
+        // 14 — and the payroll deducted 14 × 30 = 420. Four of those were Saturdays and Sundays this person is
+        // never paid for: ten working days were taken off, and 10 × 30 = 300 is the deduction.
+        //
+        // 21 weekdays in November (11 worked + 10 unpaid) → 630/21 = 30 a day.
+        using var h = new Harness();
+        var id = h.Person("Ödənişsiz", 630m);
+        h.Leave(id, Nov(2), Nov(15), LeaveType.Unpaid);
+        h.Month(id, d =>
+            d >= Nov(2) && d <= Nov(15) ? DailySummaryStatus.OnLeave
+            : IsWeekend(d) ? DailySummaryStatus.DayOff
+            : DailySummaryStatus.OnTime);
+
+        var row = await h.PayrollOf(id);
+
+        Assert.Equal(21, row.ScheduledDays);
+        Assert.Equal(30.00m, row.PerDay);
+        Assert.Equal(300.00m, row.Deduction);
+        Assert.Equal(330.00m, row.Payable);
+        // The reported figures keep their meaning: fourteen calendar days of leave, as every report says…
+        Assert.Equal(14, row.UnpaidDays);
+        Assert.Equal(14, row.LeaveDays);
+        Assert.Equal(11, row.WorkDays);
+        // …and the ten the money was taken for travel beside them.
+        Assert.Equal(10, row.DeductedUnpaidDays);
+    }
+
+    [Fact]
+    public async Task The_summary_report_still_counts_unpaid_leave_in_calendar_days()
+    {
+        // The same person on the attendance report (Hesabatlar), which prints UnpaidDays and LeaveDays as they
+        // were: 14 days of leave is 14 days, weekends included. Only the payroll's deduction changed.
+        using var h = new Harness();
+        var id = h.Person("Ödənişsiz", 630m);
+        h.Leave(id, Nov(2), Nov(15), LeaveType.Unpaid);
+        h.Month(id, d =>
+            d >= Nov(2) && d <= Nov(15) ? DailySummaryStatus.OnLeave
+            : IsWeekend(d) ? DailySummaryStatus.DayOff
+            : DailySummaryStatus.OnTime);
+
+        var (_, report) = await h.Reports.GetSummaryAsync(From, To, null, h.AdminId, EmployeeRole.Admin);
+
+        var row = Assert.Single(report!.Rows, r => r.EmployeeId == id);
+        Assert.Equal(14, row.UnpaidDays);
+        Assert.Equal(14, row.LeaveDays);
+        Assert.Equal(4, row.OffDayUnpaidDays);
+        Assert.Equal(14, report.Totals.UnpaidDays);
+    }
+
+    [Fact]
+    public void The_arithmetic_deducts_only_the_working_days_of_an_unpaid_leave()
+    {
+        // The same figures straight into PayrollMath: 11 worked + 14 unpaid − 4 off-days = 21 in the divisor,
+        // and 14 − 4 = 10 days deducted.
+        var pay = PayrollMath.Compute(
+            salary: 630m, workDays: 11, absentDays: 0, leaveDays: 14, permissionDays: 0, tripDays: 0,
+            unpaidDays: 14, offDayLeaveDays: 4, offDayUnpaidDays: 4);
+
+        Assert.Equal(21, pay.Scheduled);
+        Assert.Equal(30.00m, pay.PerDay);
+        Assert.Equal(300.00m, pay.Deduction);
+        Assert.Equal(330.00m, pay.Payable);
+        Assert.Equal(10, PayrollMath.DeductibleUnpaidDays(14, 4));
+        Assert.Equal(0, PayrollMath.DeductibleUnpaidDays(2, 3));   // never pays somebody extra
+    }
+
+    [Fact]
+    public void The_payroll_sheet_says_how_many_unpaid_days_were_deducted_when_it_differs()
+    {
+        // «Ödənişsiz 14», «Günlük 30», «Çıxılan 300» on one line reads as a sum that does not add up. The sheet
+        // carries the ten beside the fourteen — in a column of its own after the fixed ones, and only when some
+        // line needs it, so every other month's file keeps the layout the accountant copies from.
+        PayrollRow Line(string name, int unpaid, int deducted) => new(
+            Guid.NewGuid(), name, "Ofis", 630m, 21, 11, 0, unpaid, 0, 0, 30m, deducted * 30m, 630m - deducted * 30m,
+            UnpaidDays: unpaid, DeductedUnpaidDays: deducted);
+        PayrollReport Report(params PayrollRow[] rows) =>
+            new(From, To, "Hamısı", rows, rows.Sum(x => x.MonthlySalary ?? 0m), rows.Sum(x => x.Deduction), rows.Sum(x => x.Payable));
+
+        using (var book = new ClosedXML.Excel.XLWorkbook(new MemoryStream(
+                   new ExcelReportExporter().BuildPayroll(Report(Line("Həftəsonlu", 14, 10), Line("Heç nə", 0, 0))))))
+        {
+            var ws = book.Worksheet(1);
+            Assert.Equal("Ödənişsiz", ws.Cell(5, 9).GetString());
+            Assert.Equal("Ödənişsiz (iş günü)", ws.Cell(5, 19).GetString());
+            Assert.Equal(14, ws.Cell(6, 9).GetValue<int>());
+            Assert.Equal(10, ws.Cell(6, 19).GetValue<int>());
+            Assert.True(ws.Cell(7, 19).IsEmpty());   // no unpaid leave: nothing to explain
+        }
+
+        using (var book = new ClosedXML.Excel.XLWorkbook(new MemoryStream(
+                   new ExcelReportExporter().BuildPayroll(Report(Line("Həftə içi", 3, 3))))))
+            Assert.True(book.Worksheet(1).Cell(5, 19).IsEmpty());
+    }
+
     // ─── the one place the payroll cannot ask the summary verbatim ────────────────────────────────
 
     private static readonly Location Weekdays = new()

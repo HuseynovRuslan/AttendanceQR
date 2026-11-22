@@ -106,8 +106,8 @@ export function PayrollPage() {
           </button>
         </div>
         <p style={{ fontSize: 12, color: 'var(--c500)', marginTop: 10, marginBottom: 0 }}>
-          Ödəniləcək = aylıq maaş − gündəlik maaş × (icazəsiz qayıb + ödənişsiz məzuniyyət). Əlavə
-          saatlar Excel faylında ayrıca göstərilir, pula çevrilmir.
+          Ödəniləcək = aylıq maaş − gündəlik maaş × (icazəsiz qayıb + ödənişsiz məzuniyyətin iş
+          günləri). Əlavə saatlar Excel faylında ayrıca göstərilir, pula çevrilmir.
         </p>
       </div>
 
@@ -169,7 +169,17 @@ export function PayrollPage() {
                   </td>
                   <td data-label="Məzuniyyət" className="num mono">{r.vacationDays ?? r.leaveDays}</td>
                   <td data-label="Xəstəlik" className="num mono">{r.sickDays ?? 0}</td>
-                  <td data-label="Ödənişsiz" className="num mono">{r.unpaidDays ?? 0}</td>
+                  <td data-label="Ödənişsiz" className="num mono">
+                    {r.unpaidDays ?? 0}
+                    {/* The count stays in calendar days, as on every report; only the working days among
+                        them are deducted. Said beside it when the two differ, or «14» next to a deduction
+                        for 10 days reads as a sum that does not add up. */}
+                    {r.deductedUnpaidDays != null && r.deductedUnpaidDays !== (r.unpaidDays ?? 0) && (
+                      <span className="muted" style={{ fontSize: 11 }} title="Maaşdan yalnız iş günlərinə düşən ödənişsiz məzuniyyət çıxılır">
+                        {' '}({r.deductedUnpaidDays} iş günü)
+                      </span>
+                    )}
+                  </td>
                   <td data-label="İstirahət" className="num mono">{r.restDays ?? 0}</td>
                   <td data-label="Ezamiyyət" className="num mono">{r.tripDays}</td>
                   <td data-label="İcazə" className="num mono">{r.permissionDays}</td>
