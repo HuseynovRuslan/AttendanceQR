@@ -465,9 +465,10 @@ public partial class AuthController : ControllerBase
         var known = candidates.Any(c => c.ActivatedAtUtc is not null);
 
         // Charged only on a miss — the same rule the reset endpoint uses, for the same reason: an
-        // enumeration probe is all misses, an employee's own number is not.
+        // enumeration probe is all misses, an employee's own number is not. Atomically, onto the count as
+        // it stands now (see forgot-pin below).
         if (!known)
-            _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+            CacheCounter.TryTake(_cache, throttleKey, MaxForgotPinPerWindow, ForgotPinWindow);
 
         return Ok(new { known });
     }
@@ -497,8 +498,10 @@ public partial class AuthController : ControllerBase
         // The throttle is charged HERE, only when the identifier named nobody. Someone cycling numbers
         // to find out which exist gets nothing but misses and still runs into the cap; the employee who
         // typed their own number does not spend a budget that, behind the proxy, everyone shares.
+        // Added to the counter as it stands NOW, not to the `seen` read before the lookup: across that
+        // await every concurrent miss wrote its own seen + 1 over the others, and a burst counted once.
         if (targets.Count == 0)
-            _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+            CacheCounter.TryTake(_cache, throttleKey, MaxForgotPinPerWindow, ForgotPinWindow);
 
         // Unlike verify below, this hands back no credential — it only files a plea into an admin queue
         // and a human identifies their own employee out of band. So an identifier that two companies
@@ -584,11 +587,11 @@ public partial class AuthController : ControllerBase
         // every probe is a failure, so the cap still bounds enumeration and face brute-forcing, while
         // someone who actually clears the face check cannot drain a bucket the platform shares. What
         // bounds an attacker fishing for one good photo of one victim is the per-ACCOUNT cap below, and
-        // that one is unaffected by this.
+        // that one is unaffected by this. Through CacheCounter, like every other per-IP charge: a bare
+        // read-then-set here could overwrite a unit a concurrent miss had just added.
         IActionResult Miss()
         {
-            _cache.Set(throttleKey, (_cache.TryGetValue(throttleKey, out int charged) ? charged : 0) + 1,
-                ForgotPinWindow);
+            CacheCounter.TryTake(_cache, throttleKey, MaxForgotPinPerWindow, ForgotPinWindow);
             return Ok(new { verified = false });
         }
 
