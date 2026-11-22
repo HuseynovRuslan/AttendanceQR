@@ -11,7 +11,7 @@ payroll and announcements.
 ## Stack
 
 - **Backend** — .NET 10, ASP.NET Core, EF Core + Npgsql. Migrations apply themselves at startup.
-- **Frontend** — React 19 + Vite + TypeScript. Employee screens use Tailwind; the admin panel uses
+- **Frontend** — React 18 + Vite + TypeScript. Employee screens use Tailwind; the admin panel uses
   the semantic classes in `frontend/src/theme.css`.
 - **Infra** — Docker Compose on one VM, Caddy for TLS, Cloudflare R2 for photos, AWS Rekognition for
   face matching, Web Push for notifications.
@@ -68,7 +68,7 @@ laptops on another — and nobody goes looking for a wrong link. Unlinked rows s
 admin links them by hand.
 
 **Change requests are switched on twice, and never company-wide.** `Approvals__Enabled` (production's compose file
-says `"false"`) and then an `ApprovalArea` per structure or branch, made by a Company administrator. A branch in no
+says `"true"`) and then an `ApprovalArea` per structure or branch, made by a Company administrator. A branch in no
 structure is never in an area. Inside an area a direct change is refused to anybody who does not hold
 `requests.decide` there, read from the permission model in every AuthzMode, so a Legacy Manager role is not a way
 around it. Adding a person goes through `NewEmployee` on both paths, the desk and an approved request. See
@@ -84,11 +84,14 @@ poster; a free-text position input — job titles come from the `JobPositions` c
 ## Working on it
 
     docker compose up --build          # local: frontend 8081, backend 8080, postgres 15432
-    dotnet test                        # 134 backend tests
+    dotnet test                        # ~1860 backend tests
     cd frontend && npm run build       # typecheck + build
     cd frontend && npm run e2e         # role E2E suite against test.qrlog.az — see frontend/e2e/README.md
 
 Push to `staging` and it deploys itself to https://test.qrlog.az within a couple of minutes.
+The staging cron builds the branch's code but takes `docker-compose.staging.yml` and `.env.staging` from the
+production checkout (`/opt/attendanceqr`), and refuses to deploy if the branch's compose file differs — so a
+staging compose change (including a new `environment:` entry) ships through `main` and a production deploy first.
 Production is deployed by hand from `main`, and **never between 07:30–09:30 or 17:00–19:00** — those
 are the scan peaks, and a mistake there means nobody can clock in.
 
