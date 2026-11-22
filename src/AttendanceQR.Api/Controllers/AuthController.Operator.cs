@@ -2,6 +2,7 @@ using AttendanceQR.Api.Contracts;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -22,17 +23,23 @@ public partial class AuthController
     [HttpPost("operator-login")]
     public async Task<IActionResult> OperatorLogin([FromBody] LoginRequest request, [FromServices] AppOptions options)
     {
+        // Both budgets are spent on the way in, atomically — the same reserve-then-verify as app-login,
+        // because this is the one door where a burst of parallel guesses would open every company at once.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var ipKey = $"oplogin-ip:{ip}";
-        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxOperatorLoginFailPerIp)
+        if (!CacheCounter.TryTake(_cache, ipKey, MaxOperatorLoginFailPerIp, OperatorLoginIpWindow))
             return StatusCode(StatusCodes.Status429TooManyRequests,
                 new { error = "TooManyAttempts", minutes = (int)OperatorLoginIpWindow.TotalMinutes });
 
         var identifier = request.Email?.Trim() ?? string.Empty;
         var lockoutKey = $"oplogin:{LoginIdentity.LockoutKey(Guid.Empty, identifier)}";
-        if (_lockoutStore.IsLockedOut(lockoutKey))
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+        {
+            CacheCounter.GiveBack(_cache, ipKey, 1, OperatorLoginIpWindow);
             return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+        }
 
         var phone = PhoneNumbers.Normalize(identifier);
         var decoy = _decoyHash ??= _passwordHasher.Hash("decoy-password-for-timing-parity");
@@ -72,15 +79,16 @@ public partial class AuthController
 
         if (matched is null || matches != 1 || !isOperator)
         {
-            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, OperatorLoginIpWindow);
-            var remaining = _lockoutStore.RecordFailure(lockoutKey);
-            if (remaining <= 0)
+            if (attempt.Remaining <= 0)
                 return StatusCode(StatusCodes.Status429TooManyRequests,
-                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
-            return Unauthorized(new { error = "InvalidCredentials", remaining });
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining = attempt.Remaining });
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
+        // Only the unit this attempt took. Operator logins never paid failures back, and a cap of 20 that
+        // forgave would be a cap a patient sprayer could keep topping up with one real account.
+        CacheCounter.GiveBack(_cache, ipKey, 1, OperatorLoginIpWindow);
         return Ok(new { token = _jwtService.GenerateToken(matched), employeeId = matched.Id });
     }
 }

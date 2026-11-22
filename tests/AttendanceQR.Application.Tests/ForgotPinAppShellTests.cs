@@ -188,9 +188,8 @@ public class ForgotPinAppShellTests
     internal sealed class RecordingLockout : ILoginLockoutStore
     {
         public List<string> Cleared { get; } = new();
-        public int LockoutMinutes => 15;
+        public LoginAttempt BeginAttempt(string key) => new(true, 5, 0);
         public bool IsLockedOut(string key) => false;
-        public int RecordFailure(string key) => 5;
         public void RecordSuccess(string key) => Cleared.Add(key);
     }
 

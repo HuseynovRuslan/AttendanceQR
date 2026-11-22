@@ -123,9 +123,8 @@ public class OperatorTakeoverTests
 
     private sealed class StubLockout : ILoginLockoutStore
     {
-        public int LockoutMinutes => 15;
+        public LoginAttempt BeginAttempt(string key) => new(true, 5, 0);
         public bool IsLockedOut(string key) => false;
-        public int RecordFailure(string key) => 5;
         public void RecordSuccess(string key) { }
     }
 

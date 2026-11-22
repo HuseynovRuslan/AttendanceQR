@@ -185,21 +185,28 @@ public partial class AuthController : ControllerBase
     [HttpPost("app-login")]
     public async Task<IActionResult> AppLogin([FromBody] LoginRequest request)
     {
-        // Per-IP failure cap, checked BEFORE any DB/PBKDF2 work: bounds identifier-rotation spray and
+        // Per-IP failure cap, spent BEFORE any DB/PBKDF2 work: bounds identifier-rotation spray and
         // the CPU cost of the cross-tenant verify from a single source. Over the cap → 429, no work.
+        // Taken atomically on the way in (see CacheCounter); a success gives it back below.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var ipKey = $"applogin-ip:{ip}";
-        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxAppLoginFailPerIp)
+        if (!CacheCounter.TryTake(_cache, ipKey, MaxAppLoginFailPerIp, AppLoginIpWindow))
             return StatusCode(StatusCodes.Status429TooManyRequests,
                 new { error = "TooManyAttempts", minutes = (int)AppLoginIpWindow.TotalMinutes });
 
         var identifier = request.Email?.Trim() ?? string.Empty;
         // Tenant-less lockout: this endpoint spans every company, so the brute-force budget is per
-        // identifier only (a distinct namespace from the per-tenant web login lockout).
+        // identifier only (a distinct namespace from the per-tenant web login lockout). The attempt is
+        // spent here, before the verify, so parallel guesses cannot all slip past an unlocked check.
         var lockoutKey = $"applogin:{LoginIdentity.LockoutKey(Guid.Empty, identifier)}";
-        if (_lockoutStore.IsLockedOut(lockoutKey))
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+        {
+            // A locked door is not a failed guess — the IP is not charged for knocking on it.
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
             return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+        }
 
         var phone = PhoneNumbers.Normalize(identifier);
         var decoy = _decoyHash ??= _passwordHasher.Hash("decoy-password-for-timing-parity");
@@ -235,21 +242,18 @@ public partial class AuthController : ControllerBase
 
         if (matched is null || matches != 1)
         {
-            // Count this failure against the per-IP cap (successes don't count, so a legit user is
-            // never throttled — only a stream of failures from one source is).
-            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, AppLoginIpWindow);
-            var remaining = _lockoutStore.RecordFailure(lockoutKey);
-            if (remaining <= 0)
+            // Both budgets were already spent on the way in; a failure just keeps what it took (successes
+            // give theirs back, so a legit user is never throttled — only a stream of failures is).
+            if (attempt.Remaining <= 0)
                 return StatusCode(StatusCodes.Status429TooManyRequests,
-                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
-            return Unauthorized(new { error = "InvalidCredentials", remaining });
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining = attempt.Remaining });
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
-        // A success pays one failure back: a shared NAT with real users on it self-heals instead of
-        // creeping toward the cap on typos alone.
-        if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
-            _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
+        // The unit this attempt took, plus one failure paid back: a shared NAT with real users on it
+        // self-heals instead of creeping toward the cap on typos alone.
+        CacheCounter.GiveBack(_cache, ipKey, 2, AppLoginIpWindow);
         await CloseMootPinRequestsAsync(matched.Id);
         return Ok(new { token = _jwtService.GenerateToken(matched), employeeId = matched.Id });
     }
@@ -293,21 +297,29 @@ public partial class AuthController : ControllerBase
         // bounds guessing at ONE account — it does nothing against the attack that actually works
         // here: spraying a single obvious PIN across every phone number in the company. Each
         // identifier gets its own fresh budget, so 114 employees is 114 free attempts and no lockout
-        // ever trips. This is the cap that costs. Same window and namespace shape as app-login.
+        // ever trips. This is the cap that costs. Same window and namespace shape as app-login, and
+        // like it, taken atomically on the way in and given back by a success.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var ipKey = $"login-ip:{ip}";
-        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxAppLoginFailPerIp)
+        if (!CacheCounter.TryTake(_cache, ipKey, MaxAppLoginFailPerIp, AppLoginIpWindow))
             return StatusCode(StatusCodes.Status429TooManyRequests,
                 new { error = "TooManyAttempts", minutes = (int)AppLoginIpWindow.TotalMinutes });
 
         // A 4-digit PIN is only 10,000 combinations — without this, an unthrottled attacker could
-        // exhaust the whole space in seconds. Checked before touching the DB/hasher, so the key has
+        // exhaust the whole space in seconds. Spent before touching the DB/hasher, so the key has
         // to be derived from the input alone — LoginIdentity canonicalizes it the same way the
-        // account lookup below does, so every spelling of one number spends ONE budget.
+        // account lookup below does, so every spelling of one number spends ONE budget. Spent, not
+        // merely checked: a check here and a write after the PBKDF2 let every request in flight at
+        // once through the same unlocked door.
         var lockoutKey = LoginIdentity.LockoutKey(_db.CurrentTenantId, request.Email);
-        if (_lockoutStore.IsLockedOut(lockoutKey))
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+        {
+            // A locked door is not a failed guess — the IP is not charged for knocking on it.
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
             return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+        }
 
         // The identifier field carries an email OR a phone number — match either.
         var identifier = request.Email?.Trim() ?? string.Empty;
@@ -332,20 +344,17 @@ public partial class AuthController : ControllerBase
         // cool-off, instead of being surprised by it.
         if (!canLogin)
         {
-            // Only failures count, so a real employee signing in normally is never throttled — the
-            // cap only bites a stream of failures from one source.
-            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, AppLoginIpWindow);
-            var remaining = _lockoutStore.RecordFailure(lockoutKey);
-            if (remaining <= 0)
+            // Only failures keep what they spent, so a real employee signing in normally is never
+            // throttled — the caps only bite a stream of failures from one source.
+            if (attempt.Remaining <= 0)
                 return StatusCode(StatusCodes.Status429TooManyRequests,
-                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
-            return Unauthorized(new { error = "InvalidCredentials", remaining });
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining = attempt.Remaining });
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
-        // Same NAT self-healing as app-login: a success pays one failure back.
-        if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
-            _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
+        // Same NAT self-healing as app-login: the unit this attempt took, plus one failure paid back.
+        CacheCounter.GiveBack(_cache, ipKey, 2, AppLoginIpWindow);
         await CloseMootPinRequestsAsync(employee!.Id);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
@@ -664,9 +673,9 @@ public partial class AuthController : ControllerBase
         if (employee.PhoneNumber is not null)
             _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.PhoneNumber)}");
         // And pay one failure back into the per-IP budget, exactly as a successful app-login does.
-        var appLoginIpKey = $"applogin-ip:{ip}";
-        if (_cache.TryGetValue(appLoginIpKey, out int appIpFails) && appIpFails > 0)
-            _cache.Set(appLoginIpKey, appIpFails - 1, AppLoginIpWindow);
+        // Through CacheCounter like app-login's own writes: a plain read-then-set here could overwrite a
+        // unit app-login had just taken under its lock.
+        CacheCounter.GiveBack(_cache, $"applogin-ip:{ip}", 1, AppLoginIpWindow);
 
         // Out-of-band alert so a fraudulent self-service reset is visible to the real employee straight
         // away, even though this same call just logged them out. Best-effort — never fail the reset if
