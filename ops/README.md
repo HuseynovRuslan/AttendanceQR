@@ -209,9 +209,29 @@ building and starting had in fact worked. Nothing reported a problem until someo
 
 ## Deploying to staging
 
-    cd /opt/attendanceqr
-    git pull
-    docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+Push to the `staging` branch. `ops/staging-autodeploy.sh` (root cron, every 2 minutes, on the
+production host) fetches it into its own clone at `/opt/qrlog-staging`, moves to it and rebuilds. Its
+log is `/opt/attendanceqr/backups/staging-deploy.log`.
+
+**The compose file does not come from the branch.** The deploy runs with
+`/opt/attendanceqr/docker-compose.staging.yml` — the production checkout's copy, which only changes
+through a reviewed, gated production deploy of `main`. The compose file decides what a container may
+do to the host (bind mounts, `privileged`, `network_mode: host`, the docker socket), and this runs as
+root on the production machine: taken from the branch, anyone who could push to `staging` could have
+read production's `.env` and its database volume. The code, the Dockerfiles and the build contexts
+still come from the branch.
+
+**So a change to `docker-compose.staging.yml` ships through the production checkout:** merge it to
+`main`, deploy production, and have the `staging` branch carry the identical file (merge `main` into
+it). Until the branch's copy is byte-for-byte the pinned one, every push to `staging` is **refused** —
+logged once per commit, alerted through `alert.sh` — and staging stays on the commit it was running.
+That holds both ways: after `main` changes the file, staging pushes are refused until they carry it.
+
+By hand, it is the same command the script runs:
+
+    cd /opt/qrlog-staging
+    docker compose -p qrlog-staging -f /opt/attendanceqr/docker-compose.staging.yml \
+      --project-directory /opt/qrlog-staging --env-file /opt/qrlog-staging/.env.staging up -d --build
 
 Then open https://test.qrlog.az and check the change. Log in with the seeded admin from
 `.env.staging` (`TenantSeed__AdminPhone` / `TenantSeed__AdminPin`).
