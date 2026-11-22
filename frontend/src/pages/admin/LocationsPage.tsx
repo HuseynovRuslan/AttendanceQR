@@ -19,6 +19,8 @@ import { IconCheck, IconMapPin, IconQr, IconTrash, IconX } from '../../component
 import { LocationMapPicker } from '../../components/LocationMapPicker'
 import { listFailureText } from '../../lib/listFailure'
 import { shiftParenLabel } from '../../lib/shiftLabel'
+import { parseCount } from '../../lib/numberInput'
+import { FieldError } from '../../components/FieldError'
 
 type FormState = {
   name: string
@@ -96,6 +98,8 @@ export function LocationsPage() {
   const [form, setForm] = useState<FormState>(EMPTY)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** «Ştat» as typed could not be read as a count — shown under the field; the save does not go out. */
+  const [headcountError, setHeadcountError] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -197,6 +201,7 @@ export function LocationsPage() {
     setSelectedScheduleId('')
     setNewSchedule({ open: false, name: '', start: '22:00', end: '06:00' })
     setError(null)
+    setHeadcountError(null)
     setOk(null)
     setShowForm(true)
   }
@@ -205,6 +210,7 @@ export function LocationsPage() {
     setEditingId(null)
     setForm(EMPTY)
     setSelectedScheduleId('')
+    setHeadcountError(null)
     setShowForm(false)
   }
 
@@ -227,6 +233,7 @@ export function LocationsPage() {
       headcount: l.headcount ? String(l.headcount) : '',
     })
     setError(null)
+    setHeadcountError(null)
     setOk(null)
     setShowForm(true)
   }
@@ -235,6 +242,16 @@ export function LocationsPage() {
     e.preventDefault()
     setError(null)
     setOk(null)
+    // Empty = clear it (sent as 0; the server keeps null for «not set»). Anything typed must read as a
+    // whole count, or the save stops here: «1 200» or «12,5» in the old number field came through as ""
+    // or NaN, both became 0, and the branch's headcount was wiped by a save that said «Yeniləndi».
+    const headcountText = form.headcount.trim()
+    const headcount = headcountText ? parseCount(headcountText) : 0
+    if (headcount === null || headcount > 100_000) {
+      setHeadcountError(headcount === null ? 'Ştatı tam ədədlə yazın, məsələn: 12' : ERRORS.HeadcountInvalid)
+      document.getElementById('loc-headcount')?.focus()
+      return
+    }
     setSaving(true)
     const payload: LocationInput = {
       name: form.name.trim(),
@@ -247,8 +264,7 @@ export function LocationsPage() {
       workDaysMask: form.workDaysMask,
       qrlessCheckIn: form.qrlessCheckIn,
       requireGeofence: form.requireGeofence,
-      // Empty field = clear it (0); the server keeps null for «not set».
-      headcount: form.headcount.trim() === '' ? 0 : Math.max(0, Math.floor(Number(form.headcount)) || 0),
+      headcount,
     }
     const { status, data } = editingId
       ? await updateLocation(editingId, payload)
@@ -447,17 +463,24 @@ export function LocationsPage() {
         <div className="form-row cols2">
           <div>
             <label className="form-label" htmlFor="loc-headcount">Ştat (işçi yeri)</label>
+            {/* Text, not type="number" — see lib/numberInput: a number field reports "" for «1 200», and
+                an empty headcount means «clear it». */}
             <input
               id="loc-headcount"
               className="inp"
-              type="number"
-              min="0"
-              max="100000"
+              type="text"
               inputMode="numeric"
+              autoComplete="off"
               placeholder="Təyin edilməyib"
               value={form.headcount}
-              onChange={(e) => set('headcount', e.target.value)}
+              onChange={(e) => {
+                set('headcount', e.target.value)
+                setHeadcountError(null)
+              }}
+              aria-invalid={headcountError ? true : undefined}
+              aria-describedby={headcountError ? 'loc-headcount-err' : undefined}
             />
+            <FieldError id="loc-headcount-err" message={headcountError} />
           </div>
           <p className="muted" style={{ fontSize: 12, alignSelf: 'end', margin: '0 0 8px' }}>
             Gündəlik rəhbərlik hesabatında vakant yer = ştat − filialdakı işçi sayı. Boş qalsa, vakant göstərilmir.

@@ -1,4 +1,5 @@
 import { formatNumber } from './numberFormat'
+import { ungroup } from './numberInput'
 
 /**
  * Parse a user-typed AZN amount to a non-negative number, or null when it is empty or ambiguous.
@@ -7,9 +8,14 @@ import { formatNumber } from './numberFormat'
  * rejects a fat-finger like "1.2.3" AND a thousands-formatted "1.250" (which a naive Number() would read
  * as 1.25 — a silent 1000× under-price). Callers must treat null as an error, never as "clear" or 0, so a
  * mistyped price surfaces instead of silently wiping or zeroing a bill.
+ *
+ * Thousands SPACES are accepted («1 200», «1 250,50» — the way formatMoney prints it), because a space is
+ * never a decimal point and cannot be misread; a space anywhere else («850 5») is refused like any typo.
  */
 export function parseMoney(raw: string): number | null {
-  const s = raw.trim().replace(',', '.')
+  const grouped = ungroup(raw)
+  if (grouped === null) return null
+  const s = grouped.replace(',', '.')
   if (!s) return null
   if (!/^\d+(\.\d{1,2})?$/.test(s)) return null
   const n = Number(s)

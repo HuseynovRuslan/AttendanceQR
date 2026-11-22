@@ -12,8 +12,8 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "@capacitor/android": "^8.4.2",
-    "@capacitor/core": "^8.4.2",
+    "@capacitor/android": "^8.4.3",
+    "@capacitor/core": "^8.4.3",
     "@capacitor/push-notifications": "^8.1.2",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^4.2.1",
@@ -22,10 +22,10 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.4.2",
+    "@capacitor/cli": "^8.4.3",
     "@playwright/test": "1.56.1",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/dom": "10.4.2",

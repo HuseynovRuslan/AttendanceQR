@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseMoney, moneyInputFilter } from './money'
+import { formatMoney, parseMoney, moneyInputFilter } from './money'
 
 // parseMoney guards the two operator money inputs (plan price override + "Ödənildi" amount). The whole
 // point is that a mistyped price fails LOUDLY (null → the caller shows an error) instead of silently
@@ -25,6 +25,21 @@ describe('parseMoney', () => {
     expect(parseMoney('1.234,50')).toBeNull()
     expect(parseMoney('abc')).toBeNull()
     expect(parseMoney('-5')).toBeNull()
+  })
+
+  it('reads thousands spaces the way an accountant here writes them', () => {
+    // «1 200» is how this app itself prints a salary. In a type="number" field it read as "" — and the
+    // employee form then saved «no salary» and said it had saved.
+    expect(parseMoney('1 200')).toBe(1200)
+    expect(parseMoney('1 250,50')).toBe(1250.5)
+    expect(parseMoney('12 500')).toBe(12500)
+    expect(parseMoney(formatMoney(1250).replace(/\s*₼$/, ''))).toBe(1250) // no-break space, copied back in
+  })
+
+  it('refuses a space that is not a thousands separator', () => {
+    expect(parseMoney('850 5')).toBeNull() // not 8505
+    expect(parseMoney('1 20')).toBeNull()
+    expect(parseMoney('12 34,5')).toBeNull()
   })
 })
 

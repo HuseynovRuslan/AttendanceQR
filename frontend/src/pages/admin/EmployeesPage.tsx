@@ -68,6 +68,8 @@ import { listFailureText } from '../../lib/listFailure'
 import { roleOptionName } from '../../lib/roleNames'
 import { useRoleLabels } from '../../lib/useRoleLabels'
 import { FREE_MODE, shiftOptionLabel } from '../../lib/shiftLabel'
+import { parseMoney } from '../../lib/money'
+import { FieldError } from '../../components/FieldError'
 import {
   IconAlert, IconCalendar, IconCheck, IconChevronDown, IconChevronLeft, IconChevronRight, IconColumns,
   IconKey, IconMapPin, IconPhone, IconRefresh, IconSearch, IconSend, IconTrash, IconUserX, IconUsers, IconX,
@@ -401,6 +403,9 @@ export function EmployeesPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY)
   const [error, setError] = useState<string | null>(null)
+  /** The salary as typed could not be read — shown under the field, and the save does not go out. */
+  const [salaryError, setSalaryError] = useState<string | null>(null)
+  const salaryRef = useRef<HTMLInputElement>(null)
   // Editing your own row: the two fields that can lock you out are read-only there.
   const { employeeId: myId } = useAuth()
   const isSelf = editingId !== null && editingId === myId
@@ -611,6 +616,7 @@ export function EmployeesPage() {
     setAddMode('single')
     setForm({ ...EMPTY, locationId: addable[0]?.id ?? '' })
     setError(null)
+    setSalaryError(null)
     setOk(null)
     setLink(null)
     setShowForm(true)
@@ -668,6 +674,7 @@ export function EmployeesPage() {
       scheduleId: e.scheduleId ?? '',
     })
     setError(null)
+    setSalaryError(null)
     setOk(null)
     setLink(null)
     setShowForm(true)
@@ -727,6 +734,7 @@ export function EmployeesPage() {
     setEditingId(null)
     setMgrEditing(null)
     setError(null)
+    setSalaryError(null)
   }
 
   async function onSubmit(e: FormEvent) {
@@ -735,6 +743,17 @@ export function EmployeesPage() {
     setOk(null)
     if (!form.phoneNumber.trim() && !form.email.trim()) {
       setError('Telefon nömrəsi və ya email lazımdır')
+      return
+    }
+    // Empty = «no salary» on purpose (the person stays out of payroll). Anything typed must READ as an
+    // amount, or the save stops here: sending null for «850,5» is exactly how a salary used to vanish —
+    // the number field reported "" for it, the server stored «not set», and the form said it had saved.
+    // A manager never sees the field and never sends a salary, so there is nothing of theirs to check.
+    const salaryText = form.monthlySalary.trim()
+    const salary = salaryText ? parseMoney(salaryText) : null
+    if (!isManager && salaryText && salary === null) {
+      setSalaryError('Maaş yanlış yazılıb. Məsələn: 850, 850,50 və ya 1 200')
+      salaryRef.current?.focus()
       return
     }
     setSaving(true)
@@ -755,7 +774,7 @@ export function EmployeesPage() {
       paperSite: form.paperSite.trim() || null,
       birthYear: form.birthYear ? Number(form.birthYear) : null,
       birthDate: form.birthDate || null,
-      monthlySalary: form.monthlySalary.trim() ? Number(form.monthlySalary) : null,
+      monthlySalary: salary,
       photoExempt: form.photoExempt,
       canFieldCheckIn: form.canFieldCheckIn,
       canShareDevice: form.canShareDevice,
@@ -1846,17 +1865,28 @@ ${back}`,
           {!isManager && <>
           <div className="form-row cols2">
             <div>
-              <label className="form-label">Aylıq maaş (AZN)</label>
+              <label className="form-label" htmlFor="emp-salary">Aylıq maaş (AZN)</label>
+              {/* Text, not type="number": a number field reports "" for «850,5» or «1 200» in Safari,
+                  Firefox and an English Chrome, and an empty salary is a valid answer — so a mistyped one
+                  was saved as «none» without a word. As text it is read by parseMoney on save, and a
+                  value it cannot read is refused out loud. */}
               <input
+                id="emp-salary"
+                ref={salaryRef}
                 className="inp"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
                 inputMode="decimal"
+                autoComplete="off"
                 value={form.monthlySalary}
-                onChange={(e) => set('monthlySalary', e.target.value)}
+                onChange={(e) => {
+                  set('monthlySalary', e.target.value)
+                  setSalaryError(null)
+                }}
                 placeholder="məs. 800"
+                aria-invalid={salaryError ? true : undefined}
+                aria-describedby={salaryError ? 'emp-salary-err' : undefined}
               />
+              <FieldError id="emp-salary-err" message={salaryError} />
             </div>
             <div />
           </div>

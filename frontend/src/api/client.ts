@@ -91,11 +91,30 @@ export function exitImpersonation(): void {
 }
 
 // --- 401 handling ----------------------------------------------------------
-// AuthContext registers a handler so an expired/invalid token bounces to /login.
+// AuthContext registers a handler so an expired/invalid token bounces to /login. It is HANDED the token
+// the refused request carried — the one that just proved dead — rather than reading the active slot for
+// itself: clearToken() has emptied that slot by the time the handler runs, so it used to find null, and
+// the dead account was never dropped from the crew phone's saved profiles. The holder then saw a row that
+// looked like a way in, and found out it was not standing at the poster.
 
-let onUnauthorized: (() => void) | null = null
+let onUnauthorized: ((deadToken: string | null) => void) | null = null
 
-export function setUnauthorizedHandler(handler: () => void): void {
+/**
+ * A 401 the server sends on a token it has just ACCEPTED. There is one: «PIN-i dəyiş» posts the current
+ * PIN, and a wrong one comes back as 401 InvalidCurrentPassword. Bounced like a dead session, a worker
+ * unsure of their PIN who guessed wrong was signed out — and, since the handler drops the dead token's
+ * saved profile, left on /login with no row to tap and only the PIN they could not remember to get back
+ * in with, the day's check-in included. The sheet shows «Cari PIN yanlışdır» instead.
+ *
+ * Named, not inferred from the endpoint: change-password's OTHER 401 (InvalidToken — the account behind
+ * the token is gone) is a dead session like any other. Anything this does not name, a 401 with no body
+ * or one that cannot be read included, still ends the session.
+ */
+function answeredOnGoodToken(data: unknown): boolean {
+  return (data as { error?: unknown } | null)?.error === 'InvalidCurrentPassword'
+}
+
+export function setUnauthorizedHandler(handler: (deadToken: string | null) => void): void {
   onUnauthorized = handler
 }
 
@@ -140,10 +159,9 @@ export async function apiRequest<T = unknown>(
   const { method = 'GET', body, auth = true, timeoutMs, token: asToken, headers: extra } = options
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
-  if (auth) {
-    const token = asToken ?? getToken()
-    if (token) headers.Authorization = `Bearer ${token}`
-  }
+  // Kept, not just sent: a 401 has to be able to say WHICH token the server refused.
+  const sentToken = auth ? asToken ?? getToken() : null
+  if (sentToken) headers.Authorization = `Bearer ${sentToken}`
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
@@ -155,15 +173,28 @@ export async function apiRequest<T = unknown>(
       : undefined,
   })
 
-  // Only bounce to login for authenticated calls — a 401 from login itself means bad credentials —
-  // and never for a call deliberately made as another saved profile (see RequestOptions.token).
-  if (res.status === 401 && auth && asToken === undefined) {
-    clearToken()
-    onUnauthorized?.()
+  // Read before the 401 decision below, because one 401 is only told apart from a dead session by its
+  // body. A body that cannot be parsed still bounces first and throws after, exactly as it did when the
+  // bounce ran before the read.
+  const text = await res.text()
+  let data: unknown = null
+  let unreadable: { error: unknown } | null = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch (error) {
+      unreadable = { error }
+    }
   }
 
-  const text = await res.text()
-  const data = text ? JSON.parse(text) : null
+  // Only bounce to login for authenticated calls — a 401 from login itself means bad credentials —
+  // never for a call deliberately made as another saved profile (see RequestOptions.token), and never
+  // for a 401 that is about what was typed rather than who is asking (see answeredOnGoodToken).
+  if (res.status === 401 && auth && asToken === undefined && !answeredOnGoodToken(data)) {
+    clearToken()
+    onUnauthorized?.(sentToken)
+  }
+  if (unreadable) throw unreadable.error
 
   if (auth && asToken === undefined && impersonationLost(res.status, data)) {
     const info = getImpersonation()
