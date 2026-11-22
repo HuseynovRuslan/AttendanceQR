@@ -75,8 +75,10 @@ public sealed class DeviceChangeService : IDeviceChangeService
         {
             var used = await DeviceBindingAllowance.UsedAsync(_db, r.EmployeeId, now, ct);
             var recent = await DeviceBindingAllowance.RecentNewDevicesAsync(_db, r.EmployeeId, now, ct);
+            // Display ids only — the fingerprints stay here (see DeviceDisplayId).
             result.Add(new PendingDeviceChangeDto(
-                r.Id, r.EmployeeId, r.FullName, r.Current, r.NewDeviceFingerprint, r.RequestedAtUtc,
+                r.Id, r.EmployeeId, r.FullName,
+                DeviceDisplayId.OfOrNull(r.Current), DeviceDisplayId.Of(r.NewDeviceFingerprint), r.RequestedAtUtc,
                 recent, used >= _options.MaxBindsPer30Days));
         }
 

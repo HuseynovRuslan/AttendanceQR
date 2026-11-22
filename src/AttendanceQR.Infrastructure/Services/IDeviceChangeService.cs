@@ -18,6 +18,10 @@ public enum ReviewDeviceChangeOutcome
 public sealed record RequestDeviceChangeResult(RequestDeviceChangeOutcome Outcome, Guid? RequestId);
 
 /// <summary>A pending request enriched for admin review — requester name and current vs new device.</summary>
+/// <param name="CurrentDeviceId">The phone the employee is bound to now, as a <see cref="DeviceDisplayId"/> —
+/// never the fingerprint itself, which this DTO goes out to every reviewer as.</param>
+/// <param name="NewDeviceId">The phone they asked for, as a display id. The raw value is what an approval
+/// turns into a binding, so showing it would hand reviewers a binding before it existed.</param>
 /// <param name="RecentNewDevices">New devices the employee arrived with in the last thirty days,
 /// adopted or approved — see <see cref="DeviceBindingAllowance.RecentNewDevicesAsync"/>.</param>
 /// <param name="AutoBindLimitReached">The poster has stopped adopting new devices for this employee —
@@ -27,8 +31,8 @@ public sealed record PendingDeviceChangeDto(
     Guid RequestId,
     Guid EmployeeId,
     string EmployeeName,
-    string? CurrentDeviceFingerprint,
-    string NewDeviceFingerprint,
+    string? CurrentDeviceId,
+    string NewDeviceId,
     DateTime RequestedAtUtc,
     int RecentNewDevices,
     bool AutoBindLimitReached);

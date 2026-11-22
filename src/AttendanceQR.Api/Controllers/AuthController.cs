@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -558,8 +559,19 @@ public partial class AuthController : ControllerBase
     // device already bound to that account — so a stray photo of an employee is not enough on its own
     // (you also need their bound phone). On success a fresh temp PIN is returned on the spot; on ANY
     // failure the response is a uniform { verified: false } and the client offers the admin-queue path.
+    //
+    // NEVER for an admin, a manager or a platform operator. Both factors are within reach of people other
+    // than the account's owner: the reference photo is served to whoever may see that person's check-ins,
+    // a reference photo sent back as the "selfie" matches itself at ~100, and the device binding was a raw
+    // value every admin, and every manager over the branch, could read off the device screens (they show
+    // an opaque id now, but a value read once stays known). For a plain employee that is a reset of
+    // somebody's scan screen; for a privileged account it is a takeover of the panel (and, for an operator,
+    // of every company). Those accounts go through the admin queue (forgot-pin), where a person recognises
+    // them.
+    // Refused through the same Miss() as everything else, so the answer does not say who is privileged.
     [HttpPost("forgot-pin/verify")]
-    public async Task<IActionResult> ForgotPinVerify([FromBody] ForgotPinVerifyRequest request)
+    public async Task<IActionResult> ForgotPinVerify(
+        [FromBody] ForgotPinVerifyRequest request, [FromServices] AppOptions options)
     {
         // Same per-IP throttle as forgot-pin: bounds brute-forcing the face check and enumeration.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -598,6 +610,11 @@ public partial class AuthController : ControllerBase
         if (employee is not { ActivatedAtUtc: not null }
             || !_faceMatch.Enabled
             || string.IsNullOrEmpty(employee.ReferencePhotoKey))
+            return Miss();
+
+        // Self-service is for plain staff only — see the note above the action. An explicit allowlist of
+        // the one role, so a role added later is refused here rather than let in.
+        if (employee.Role != EmployeeRole.Employee || options.SuperAdminIdList().Contains(employee.Id))
             return Miss();
 
         var deviceBound = await _db.DeviceBindings
