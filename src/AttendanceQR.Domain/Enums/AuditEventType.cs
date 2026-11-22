@@ -122,5 +122,11 @@ public enum AuditEventType
     // A shift was switched between fixed hours and «Elastik qrafik», or its hour norm changed. Reason holds
     // the shift, the before and after, and who did it. The revision row keeps the old judgement of past days;
     // this keeps the fact that somebody changed it.
-    ScheduleModeChanged = 43
+    ScheduleModeChanged = 43,
+
+    // Somebody's face-match reference photo was set or cleared — by the employee at first sign-in, or cleared by
+    // an admin (one person, or everyone at once). The reference is what every check-in selfie is judged
+    // against, so replacing it is replacing whose face counts as this person's; the row says who did it and when.
+    // Stored as an int like every other value here, so it needs no migration.
+    ReferencePhotoChanged = 44
 }

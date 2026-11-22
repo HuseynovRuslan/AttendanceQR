@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -185,32 +186,49 @@ public partial class AuthController : ControllerBase
     [HttpPost("app-login")]
     public async Task<IActionResult> AppLogin([FromBody] LoginRequest request)
     {
-        // Per-IP failure cap, checked BEFORE any DB/PBKDF2 work: bounds identifier-rotation spray and
+        // Per-IP failure cap, spent BEFORE any DB/PBKDF2 work: bounds identifier-rotation spray and
         // the CPU cost of the cross-tenant verify from a single source. Over the cap → 429, no work.
+        // Taken atomically on the way in (see CacheCounter); a success gives it back below.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var ipKey = $"applogin-ip:{ip}";
-        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxAppLoginFailPerIp)
+        if (!CacheCounter.TryTake(_cache, ipKey, MaxAppLoginFailPerIp, AppLoginIpWindow))
             return StatusCode(StatusCodes.Status429TooManyRequests,
                 new { error = "TooManyAttempts", minutes = (int)AppLoginIpWindow.TotalMinutes });
 
         var identifier = request.Email?.Trim() ?? string.Empty;
         // Tenant-less lockout: this endpoint spans every company, so the brute-force budget is per
-        // identifier only (a distinct namespace from the per-tenant web login lockout).
-        var lockoutKey = $"applogin:{LoginIdentity.LockoutKey(Guid.Empty, identifier)}";
-        if (_lockoutStore.IsLockedOut(lockoutKey))
+        // identifier only (a distinct namespace from the per-tenant web login lockout). The attempt is
+        // spent here, before the verify, so parallel guesses cannot all slip past an unlocked check.
+        var lockoutKey = LoginIdentity.AppLoginKey(identifier);
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+        {
+            // A locked door is not a failed guess — the IP is not charged for knocking on it.
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
             return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+        }
 
         var phone = PhoneNumbers.Normalize(identifier);
         var decoy = _decoyHash ??= _passwordHasher.Hash("decoy-password-for-timing-parity");
 
         // Candidates across every tenant. Matched on the same email/phone columns the web login uses, so
         // it's a handful of rows at most (usually zero or one).
-        var candidates = identifier.Length == 0
-            ? new List<Employee>()
-            : await _db.Employees.IgnoreQueryFilters()
-                .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
-                .ToListAsync();
+        List<Employee> candidates;
+        try
+        {
+            candidates = identifier.Length == 0
+                ? new List<Employee>()
+                : await _db.Employees.IgnoreQueryFilters()
+                    .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
+                    .ToListAsync();
+        }
+        catch
+        {
+            // No PIN was checked — the IP's unit goes back (see Login: one bucket for the whole platform).
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
+            throw;
+        }
 
         // Verify against each candidate (and a decoy when there are none) so timing doesn't leak whether
         // the identifier exists. A login succeeds only if EXACTLY ONE active, activated account's PIN
@@ -235,21 +253,18 @@ public partial class AuthController : ControllerBase
 
         if (matched is null || matches != 1)
         {
-            // Count this failure against the per-IP cap (successes don't count, so a legit user is
-            // never throttled — only a stream of failures from one source is).
-            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, AppLoginIpWindow);
-            var remaining = _lockoutStore.RecordFailure(lockoutKey);
-            if (remaining <= 0)
+            // Both budgets were already spent on the way in; a failure just keeps what it took (successes
+            // give theirs back, so a legit user is never throttled — only a stream of failures is).
+            if (attempt.Remaining <= 0)
                 return StatusCode(StatusCodes.Status429TooManyRequests,
-                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
-            return Unauthorized(new { error = "InvalidCredentials", remaining });
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining = attempt.Remaining });
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
-        // A success pays one failure back: a shared NAT with real users on it self-heals instead of
-        // creeping toward the cap on typos alone.
-        if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
-            _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
+        // The unit this attempt took, plus one failure paid back: a shared NAT with real users on it
+        // self-heals instead of creeping toward the cap on typos alone.
+        CacheCounter.GiveBack(_cache, ipKey, 2, AppLoginIpWindow);
         await CloseMootPinRequestsAsync(matched.Id);
         return Ok(new { token = _jwtService.GenerateToken(matched), employeeId = matched.Id });
     }
@@ -293,27 +308,47 @@ public partial class AuthController : ControllerBase
         // bounds guessing at ONE account — it does nothing against the attack that actually works
         // here: spraying a single obvious PIN across every phone number in the company. Each
         // identifier gets its own fresh budget, so 114 employees is 114 free attempts and no lockout
-        // ever trips. This is the cap that costs. Same window and namespace shape as app-login.
+        // ever trips. This is the cap that costs. Same window and namespace shape as app-login, and
+        // like it, taken atomically on the way in and given back by a success.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var ipKey = $"login-ip:{ip}";
-        if ((_cache.TryGetValue(ipKey, out int ipFails) ? ipFails : 0) >= MaxAppLoginFailPerIp)
+        if (!CacheCounter.TryTake(_cache, ipKey, MaxAppLoginFailPerIp, AppLoginIpWindow))
             return StatusCode(StatusCodes.Status429TooManyRequests,
                 new { error = "TooManyAttempts", minutes = (int)AppLoginIpWindow.TotalMinutes });
 
         // A 4-digit PIN is only 10,000 combinations — without this, an unthrottled attacker could
-        // exhaust the whole space in seconds. Checked before touching the DB/hasher, so the key has
+        // exhaust the whole space in seconds. Spent before touching the DB/hasher, so the key has
         // to be derived from the input alone — LoginIdentity canonicalizes it the same way the
-        // account lookup below does, so every spelling of one number spends ONE budget.
+        // account lookup below does, so every spelling of one number spends ONE budget. Spent, not
+        // merely checked: a check here and a write after the PBKDF2 let every request in flight at
+        // once through the same unlocked door.
         var lockoutKey = LoginIdentity.LockoutKey(_db.CurrentTenantId, request.Email);
-        if (_lockoutStore.IsLockedOut(lockoutKey))
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+        {
+            // A locked door is not a failed guess — the IP is not charged for knocking on it.
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
             return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+        }
 
         // The identifier field carries an email OR a phone number — match either.
         var identifier = request.Email?.Trim() ?? string.Empty;
         var phone = PhoneNumbers.Normalize(identifier);
-        var employee = await _db.Employees.FirstOrDefaultAsync(e =>
-            e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+        Employee? employee;
+        try
+        {
+            employee = await _db.Employees.FirstOrDefaultAsync(e =>
+                e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+        }
+        catch
+        {
+            // The database failed, not the caller: no PIN was checked, so the IP's unit goes back. Behind
+            // Caddy that bucket is the whole platform's, and a database blip at the morning peak would
+            // otherwise fill it with the 500s and answer every login «Çox sayda cəhd» for 15 minutes after.
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
+            throw;
+        }
 
         // Always perform a verification — against a decoy hash when the account is unknown or
         // has no password yet — so timing doesn't leak account existence (email enumeration).
@@ -332,20 +367,17 @@ public partial class AuthController : ControllerBase
         // cool-off, instead of being surprised by it.
         if (!canLogin)
         {
-            // Only failures count, so a real employee signing in normally is never throttled — the
-            // cap only bites a stream of failures from one source.
-            _cache.Set(ipKey, (_cache.TryGetValue(ipKey, out int f) ? f : 0) + 1, AppLoginIpWindow);
-            var remaining = _lockoutStore.RecordFailure(lockoutKey);
-            if (remaining <= 0)
+            // Only failures keep what they spent, so a real employee signing in normally is never
+            // throttled — the caps only bite a stream of failures from one source.
+            if (attempt.Remaining <= 0)
                 return StatusCode(StatusCodes.Status429TooManyRequests,
-                    new { error = "TooManyAttempts", minutes = _lockoutStore.LockoutMinutes });
-            return Unauthorized(new { error = "InvalidCredentials", remaining });
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+            return Unauthorized(new { error = "InvalidCredentials", remaining = attempt.Remaining });
         }
 
         _lockoutStore.RecordSuccess(lockoutKey);
-        // Same NAT self-healing as app-login: a success pays one failure back.
-        if (_cache.TryGetValue(ipKey, out int paid) && paid > 0)
-            _cache.Set(ipKey, paid - 1, AppLoginIpWindow);
+        // Same NAT self-healing as app-login: the unit this attempt took, plus one failure paid back.
+        CacheCounter.GiveBack(_cache, ipKey, 2, AppLoginIpWindow);
         await CloseMootPinRequestsAsync(employee!.Id);
         return Ok(new { token = _jwtService.GenerateToken(employee!) });
     }
@@ -455,9 +487,10 @@ public partial class AuthController : ControllerBase
         var known = candidates.Any(c => c.ActivatedAtUtc is not null);
 
         // Charged only on a miss — the same rule the reset endpoint uses, for the same reason: an
-        // enumeration probe is all misses, an employee's own number is not.
+        // enumeration probe is all misses, an employee's own number is not. Atomically, onto the count as
+        // it stands now (see forgot-pin below).
         if (!known)
-            _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+            CacheCounter.TryTake(_cache, throttleKey, MaxForgotPinPerWindow, ForgotPinWindow);
 
         return Ok(new { known });
     }
@@ -487,8 +520,10 @@ public partial class AuthController : ControllerBase
         // The throttle is charged HERE, only when the identifier named nobody. Someone cycling numbers
         // to find out which exist gets nothing but misses and still runs into the cap; the employee who
         // typed their own number does not spend a budget that, behind the proxy, everyone shares.
+        // Added to the counter as it stands NOW, not to the `seen` read before the lookup: across that
+        // await every concurrent miss wrote its own seen + 1 over the others, and a burst counted once.
         if (targets.Count == 0)
-            _cache.Set(throttleKey, seen + 1, ForgotPinWindow);
+            CacheCounter.TryTake(_cache, throttleKey, MaxForgotPinPerWindow, ForgotPinWindow);
 
         // Unlike verify below, this hands back no credential — it only files a plea into an admin queue
         // and a human identifies their own employee out of band. So an identifier that two companies
@@ -549,8 +584,19 @@ public partial class AuthController : ControllerBase
     // device already bound to that account — so a stray photo of an employee is not enough on its own
     // (you also need their bound phone). On success a fresh temp PIN is returned on the spot; on ANY
     // failure the response is a uniform { verified: false } and the client offers the admin-queue path.
+    //
+    // NEVER for an admin, a manager or a platform operator. Both factors are within reach of people other
+    // than the account's owner: the reference photo is served to whoever may see that person's check-ins,
+    // a reference photo sent back as the "selfie" matches itself at ~100, and the device binding was a raw
+    // value every admin, and every manager over the branch, could read off the device screens (they show
+    // an opaque id now, but a value read once stays known). For a plain employee that is a reset of
+    // somebody's scan screen; for a privileged account it is a takeover of the panel (and, for an operator,
+    // of every company). Those accounts go through the admin queue (forgot-pin), where a person recognises
+    // them.
+    // Refused through the same Miss() as everything else, so the answer does not say who is privileged.
     [HttpPost("forgot-pin/verify")]
-    public async Task<IActionResult> ForgotPinVerify([FromBody] ForgotPinVerifyRequest request)
+    public async Task<IActionResult> ForgotPinVerify(
+        [FromBody] ForgotPinVerifyRequest request, [FromServices] AppOptions options)
     {
         // Same per-IP throttle as forgot-pin: bounds brute-forcing the face check and enumeration.
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -563,11 +609,11 @@ public partial class AuthController : ControllerBase
         // every probe is a failure, so the cap still bounds enumeration and face brute-forcing, while
         // someone who actually clears the face check cannot drain a bucket the platform shares. What
         // bounds an attacker fishing for one good photo of one victim is the per-ACCOUNT cap below, and
-        // that one is unaffected by this.
+        // that one is unaffected by this. Through CacheCounter, like every other per-IP charge: a bare
+        // read-then-set here could overwrite a unit a concurrent miss had just added.
         IActionResult Miss()
         {
-            _cache.Set(throttleKey, (_cache.TryGetValue(throttleKey, out int charged) ? charged : 0) + 1,
-                ForgotPinWindow);
+            CacheCounter.TryTake(_cache, throttleKey, MaxForgotPinPerWindow, ForgotPinWindow);
             return Ok(new { verified = false });
         }
 
@@ -596,15 +642,32 @@ public partial class AuthController : ControllerBase
         if (!deviceBound)
             return Miss();
 
+        // Self-service is for plain staff only — see the note above the action. An explicit allowlist of
+        // the one role, so a role added later is refused here rather than let in. Asked AFTER the device
+        // query, not before it: refused first, a privileged account answered one database round-trip
+        // sooner than a plain one whose device did not match, and that difference alone said which
+        // accounts are privileged. Now only somebody already holding the bound device could time it.
+        if (employee.Role != EmployeeRole.Employee || options.SuperAdminIdList().Contains(employee.Id))
+            return Miss();
+
+        // The selfie is decoded before any attempt is spent: a payload that is not an image is not a
+        // guess at anybody's face.
+        var selfie = DecodeImage(request.PhotoBase64);
+        if (selfie.Length is 0 or > 4 * 1024 * 1024)
+            return Miss();
+
         // Per-account face-attempt cap (independent of IP, which an attacker can rotate): someone
         // holding the bound device must not get unlimited tries to fish for a photo/angle that clears
         // the bar. Over the cap, the self-service path is closed for a while and they use the admin queue.
         // Keyed on the ACCOUNT's tenant, so the cap follows the employee whether they came in through
         // their company subdomain or through the tenant-less app shell — otherwise the app shell would
         // hand the same account a second, independent budget of face attempts.
+        //
+        // Spent on the way IN, atomically, for the same reason as the PIN lockout: read before the compare
+        // and written after it, every request that arrived while the first ones were at Rekognition saw the
+        // count unchanged — a shared brigade phone firing ten at once got ten faces past a cap of five.
         var faceLockKey = $"pinverify:{employee.TenantId:N}:{employee.Id:N}";
-        var fails = _cache.TryGetValue(faceLockKey, out int f) ? f : 0;
-        if (fails >= MaxFaceVerifyFailuresPerAccount)
+        if (!CacheCounter.TryTake(_cache, faceLockKey, MaxFaceVerifyFailuresPerAccount, FaceVerifyLockWindow))
             return Miss();
 
         // Face match — the second factor. Any problem (no face, mismatch, crowd, storage/AWS error) is a
@@ -613,25 +676,22 @@ public partial class AuthController : ControllerBase
         try
         {
             var refBytes = await _photoStorage.GetBytesAsync(employee.ReferencePhotoKey, HttpContext.RequestAborted);
-            var selfie = DecodeImage(request.PhotoBase64);
-            if (selfie.Length is 0 or > 4 * 1024 * 1024)
-                return Miss();
             outcome = await _faceMatch.CompareAsync(refBytes, selfie, HttpContext.RequestAborted);
         }
         catch (Exception ex)
         {
+            // Our failure, not a guess: nothing was compared, so the attempt goes back — as it always did,
+            // when the cap was only ever charged by a near-miss.
+            CacheCounter.GiveBack(_cache, faceLockKey, 1, FaceVerifyLockWindow);
             _logger.LogWarning(ex, "Forgot-pin verify: face compare failed for {EmployeeId}", employee.Id);
             return Miss();
         }
 
         // A single clear face whose similarity clears the HIGH self-service bar (NOT the advisory 85 the
-        // check-in flag uses — this is a real auth factor). A near-miss counts against the per-account cap.
+        // check-in flag uses — this is a real auth factor). A near-miss keeps the attempt it took.
         if (outcome.Status != FaceMatchStatus.Ok || outcome.Score < ForgotPinFaceThreshold)
-        {
-            _cache.Set(faceLockKey, fails + 1, FaceVerifyLockWindow);
             return Miss();
-        }
-        _cache.Remove(faceLockKey); // a genuine match clears the failure counter
+        CacheCounter.Clear(_cache, faceLockKey); // a genuine match clears the failure counter
 
         // Both factors passed — reset the PIN and hand it back, same reset an admin ResetPin does.
         var pin = PinRules.Generate();
@@ -647,26 +707,18 @@ public partial class AuthController : ControllerBase
         });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
-        // The account's own company — the lockout keys must match the ones Login/app-login spend, and
-        // an app-shell caller has no ambient tenant to read.
-        var tenantId = employee.TenantId;
-        _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-        if (employee.PhoneNumber is not null)
-            _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
-
-        // ...and the tenant-less namespace app-login gates on, which is a DIFFERENT key (Guid.Empty).
-        // Arriving here already locked out is the normal case, not the rare one: mistyping a PIN eight
-        // times is exactly what makes someone open "PIN-i unutdum". Without this they read the fresh PIN
-        // off the screen, tap "Girişə keç", and the app answers "Çox sayda cəhd" — and their natural
-        // reaction is to run the whole recovery flow again. Proving a face match is a strictly stronger
-        // success signal than the PIN entry that clears the keys above, so it clears these too.
-        _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.Email)}");
-        if (employee.PhoneNumber is not null)
-            _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.PhoneNumber)}");
+        // Every lockout the account is under — its company's keys and the tenant-less ones app-login gates
+        // on (LoginLockouts builds them from the account's own TenantId; an app-shell caller has no ambient
+        // tenant to read). Arriving here already locked out is the normal case, not the rare one: mistyping
+        // a PIN eight times is exactly what makes someone open "PIN-i unutdum". Without this they read the
+        // fresh PIN off the screen, tap "Girişə keç", and the app answers "Çox sayda cəhd" — and their
+        // natural reaction is to run the whole recovery flow again. Proving a face match is a strictly
+        // stronger success signal than the PIN entry that would have cleared them anyway.
+        LoginLockouts.ClearFor(_lockoutStore, employee);
         // And pay one failure back into the per-IP budget, exactly as a successful app-login does.
-        var appLoginIpKey = $"applogin-ip:{ip}";
-        if (_cache.TryGetValue(appLoginIpKey, out int appIpFails) && appIpFails > 0)
-            _cache.Set(appLoginIpKey, appIpFails - 1, AppLoginIpWindow);
+        // Through CacheCounter like app-login's own writes: a plain read-then-set here could overwrite a
+        // unit app-login had just taken under its lock.
+        CacheCounter.GiveBack(_cache, $"applogin-ip:{ip}", 1, AppLoginIpWindow);
 
         // Out-of-band alert so a fraudulent self-service reset is visible to the real employee straight
         // away, even though this same call just logged them out. Best-effort — never fail the reset if
@@ -703,8 +755,26 @@ public partial class AuthController : ControllerBase
         if (employee is null)
             return Unauthorized(new { error = "InvalidToken" });
 
+        // The current PIN is a guess like any login, and here nothing else limited it: a stolen session
+        // could walk all 10,000 PINs from inside the app, then set its own and keep the account. Same store,
+        // same budget and escalation as login, spent before the verify — but keyed on the ACCOUNT, because
+        // the caller is already signed in and the session's identifier is the employee id, not a number.
+        // A separate namespace from the login keys, so a real employee's typos here never lock them out of
+        // signing in (and the other way round).
+        var lockoutKey = $"changepin:{employee.Id:N}";
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+
         if (!_passwordHasher.Verify(employee.PasswordHash, request.CurrentPassword))
+        {
+            if (attempt.Remaining <= 0)
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
             return Unauthorized(new { error = "InvalidCurrentPassword" });
+        }
+        _lockoutStore.RecordSuccess(lockoutKey);
 
         // Same rules as activation — a changed password must stay a PIN, and must not be a guess.
         if (!PinRules.IsWellFormed(request.NewPassword))

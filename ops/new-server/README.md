@@ -24,12 +24,15 @@ Yoxlama: `ssh -i ~/.ssh/qrlog_vps_l deploy@<YENİ_IP> 'docker ps && sudo ufw sta
     cd /opt/qrlog-staging
 - `.env.staging` köhnə serverdən **əl ilə** köçürülür (`scp`), repo-ya heç vaxt düşmür. Bu fürsətdə
   staging sirlərini YENİ dəyərlərlə yazmaq olar (staging prod-la heç nə bölüşmür).
+  Yeri klonun içi deyil, `/opt/attendanceqr/.env.staging`-dir (`chmod 600`): cron-dakı
+  `staging-autodeploy.sh` onu yalnız oradan oxuyur, çünki klonu `staging` branch-inə push edən yazır
+  (bax `ops/README.md`, «Deploying to staging»). Aşağıdakı əl əmrlərində də `--env-file` bu yola baxsın.
 - Caddy: `ops/new-server/Caddyfile.staging-internal` → `Caddyfile` kimi (tls internal — LE sertifikatı
   DNS dəyişməmiş alınmır). Compose-a staging üçün ayrıca caddy servisi lazımdır: köhnə serverdə Caddy
   prod stack-in içindədir; yeni hostda staging-i sınayarkən `docker-compose.staging.yml`-ə müvəqqəti
   `caddy` servisi əlavə edilir (prod compose-dakı blokun kopyası, Caddyfile yolu yuxarıdakı fayl).
 - Qaldırma (limitlərlə):
-      docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml --env-file .env.staging up -d --build
+      docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml --env-file /opt/attendanceqr/.env.staging up -d --build
 - Staging DB: boş başlayır (miqrasiyalar startup-da). Yük-test tenantı lazımdırsa `/root/lt/seed.sql`
   köhnə serverdən köçürülüb tətbiq edilir.
 

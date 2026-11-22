@@ -1,9 +1,11 @@
 using System.Security.Claims;
+using System.Text.Json;
 using AttendanceQR.Api.Controllers;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
+using AttendanceQR.Infrastructure.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -281,7 +283,7 @@ public class DeviceBindingManagerScopeTests
 
         var device = Assert.Single(Rows(await f.Manager.Shared()));
 
-        Assert.Equal(BrigadePhone, Prop<string>(device, "fingerprint"));
+        Assert.Equal(DeviceDisplayId.Of(BrigadePhone), Prop<string>(device, "deviceId"));
         Assert.Equal(2, Prop<int>(device, "accountCount"));
         var people = AccountsOn(device);
         Assert.Contains(f.MyWorkerId, people);
@@ -310,7 +312,7 @@ public class DeviceBindingManagerScopeTests
         // answers for, over a phone that manager was never told about.
         using var f = new Fixture();
 
-        var counts = Counts(await f.Manager.RevokeDevice(BrigadePhone));
+        var counts = Counts(await f.Manager.RevokeDevice(f.BrigadeMineId));
 
         Assert.Equal(2, counts.Revoked);
         Assert.Equal(1, counts.Skipped);    // so the screen can say the handset still carries somebody
@@ -326,7 +328,7 @@ public class DeviceBindingManagerScopeTests
         // stolen handset stays half-bound until two managers happen to both act on it.
         using var f = new Fixture();
 
-        var counts = Counts(await f.Admin.RevokeDevice(BrigadePhone));
+        var counts = Counts(await f.Admin.RevokeDevice(f.BrigadeMineId));
 
         Assert.Equal(3, counts.Revoked);
         Assert.Equal(0, counts.Skipped);
@@ -340,7 +342,7 @@ public class DeviceBindingManagerScopeTests
         // account it detached went on clocking in on that handset while the device list said it was gone.
         using var f = new Fixture();
 
-        await f.Admin.RevokeDevice(BrigadePhone);
+        await f.Admin.RevokeDevice(f.BrigadeMineId);
 
         Assert.False(f.Binding(f.BrigadeMineId).IsActive);
         Assert.False(f.Binding(f.BrigadeSecondId).IsActive);
@@ -350,11 +352,12 @@ public class DeviceBindingManagerScopeTests
     [Fact]
     public async Task Revoke_all_on_a_handset_carrying_nobody_of_theirs_is_refused()
     {
-        // Revoke-all is addressed by fingerprint rather than by a row from the caller's own list, so
-        // scope has to be re-decided here and cannot be inferred from how the screen was reached.
+        // Revoke-all is addressed by ANY binding on the handset rather than by a row from the caller's
+        // own list, so scope has to be re-decided here and cannot be inferred from how the screen was
+        // reached.
         using var f = new Fixture();
 
-        AssertForbidden(await f.Manager.RevokeDevice(OtherBranchPhone));
+        AssertForbidden(await f.Manager.RevokeDevice(f.OtherBranchBindingId));
 
         Assert.True(f.StillBound(f.OtherBranchBindingId));
     }
@@ -367,7 +370,7 @@ public class DeviceBindingManagerScopeTests
         // handset would contradict the log the day somebody reads it.
         using var f = new Fixture();
 
-        await f.Manager.RevokeDevice(BrigadePhone);
+        await f.Manager.RevokeDevice(f.BrigadeMineId);
 
         var audited = f.Db.AuditLogs.AsNoTracking()
             .Where(a => a.EventType == AuditEventType.DeviceBindingRevoked)
@@ -379,5 +382,63 @@ public class DeviceBindingManagerScopeTests
         Assert.Contains(f.MyWorkerId, audited);
         Assert.Contains(f.MySecondWorkerId, audited);
         Assert.DoesNotContain(f.OtherWorkerId, audited);
+    }
+
+    // --- the fingerprint never leaves the server -----------------------------------------------------
+
+    private static readonly string[] EveryFingerprint =
+        ["oz-telefonu", "admin-telefonu", OtherBranchPhone, BrigadePhone];
+
+    [Fact]
+    public async Task Neither_device_list_hands_out_a_fingerprint()
+    {
+        // The fingerprint is what the scan and the forgot-PIN reset trust as "this person's phone". Handed
+        // to every admin and every branch manager, it was half of a PIN reset for anybody on the list —
+        // including the same-branch admin a manager may see but must never reach. The screens get a short
+        // display id; nothing they show needs more.
+        using var f = new Fixture();
+
+        foreach (var result in new[] { await f.Admin.List(), await f.Admin.Shared(), await f.Manager.List(), await f.Manager.Shared() })
+        {
+            var json = JsonSerializer.Serialize(Assert.IsType<OkObjectResult>(result).Value);
+            foreach (var fingerprint in EveryFingerprint)
+                Assert.DoesNotContain(fingerprint, json);
+        }
+    }
+
+    [Fact]
+    public async Task The_display_id_still_tells_devices_apart_and_groups_one_handset()
+    {
+        using var f = new Fixture();
+
+        var rows = Rows(await f.Admin.List());
+        string IdOf(Guid binding) => Prop<string>(rows.Single(r => Prop<Guid>(r, "id") == binding), "deviceId");
+
+        Assert.Equal(8, IdOf(f.SoloBindingId).Length);
+        Assert.Equal(IdOf(f.BrigadeMineId), IdOf(f.BrigadeOtherBranchId));   // one handset, one id
+        Assert.NotEqual(IdOf(f.SoloBindingId), IdOf(f.BrigadeMineId));       // the same worker's other phone
+    }
+
+    [Fact]
+    public async Task Revoke_all_named_by_another_branchs_binding_still_detaches_only_the_managers_people()
+    {
+        // The binding only names the handset; who comes off it is decided afterwards, per account, exactly as
+        // before. A manager holding the id of a binding they may not act on gains nothing by sending it.
+        using var f = new Fixture();
+
+        var counts = Counts(await f.Manager.RevokeDevice(f.BrigadeOtherBranchId));
+
+        Assert.Equal((2, 1), counts);
+        Assert.True(f.StillBound(f.BrigadeOtherBranchId));
+    }
+
+    [Fact]
+    public async Task Revoke_all_without_a_known_binding_changes_nothing()
+    {
+        using var f = new Fixture();
+
+        Assert.IsType<NotFoundObjectResult>(await f.Admin.RevokeDevice(Guid.NewGuid()));
+        Assert.IsType<BadRequestObjectResult>(await f.Admin.RevokeDevice(null));
+        Assert.True(f.StillBound(f.BrigadeMineId));
     }
 }

@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using AttendanceQR.Api;
 using AttendanceQR.Api.Contracts;
 using AttendanceQR.Api.Controllers;
+using AttendanceQR.Application.Common;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
 using AttendanceQR.Infrastructure.Multitenancy;
@@ -164,6 +165,13 @@ public class ForgotPinAppShellTests
             return db.Employees.IgnoreQueryFilters().AsNoTracking().Single(e => e.Id == id);
         }
 
+        public void SetRole(Guid id, EmployeeRole role)
+        {
+            using var db = Context(TenantA);
+            db.Employees.IgnoreQueryFilters().Single(e => e.Id == id).Role = role;
+            db.SaveChanges();
+        }
+
         public void Dispose()
         {
             foreach (var db in _contexts)
@@ -188,9 +196,8 @@ public class ForgotPinAppShellTests
     internal sealed class RecordingLockout : ILoginLockoutStore
     {
         public List<string> Cleared { get; } = new();
-        public int LockoutMinutes => 15;
+        public LoginAttempt BeginAttempt(string key) => new(true, 5, 0);
         public bool IsLockedOut(string key) => false;
-        public int RecordFailure(string key) => 5;
         public void RecordSuccess(string key) => Cleared.Add(key);
     }
 
@@ -234,6 +241,9 @@ public class ForgotPinAppShellTests
 
     private static readonly byte[] Selfie = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10 };
     private static string SelfieBase64 => Convert.ToBase64String(Selfie);
+
+    /// <summary>The platform-operator allowlist, empty — the deployment every test but the operator one runs in.</summary>
+    private static readonly AppOptions NoOperators = new();
 
     // --- the premise these tests rest on -----------------------------------------------------------
 
@@ -302,7 +312,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness(sharedBActive: false);
 
         var result = Assert.IsType<OkObjectResult>(await h.AppShell().ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.SharedPhone, Harness.Fingerprint, SelfieBase64)));
+            new ForgotPinVerifyRequest(Harness.SharedPhone, Harness.Fingerprint, SelfieBase64), NoOperators));
         Assert.Contains("verified = True", result.Value!.ToString());
 
         Assert.NotEqual("hashed:1234", h.Row(h.SharedAId).PasswordHash);
@@ -437,7 +447,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         var result = Assert.IsType<OkObjectResult>(await h.AppShell().ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64)));
+            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64), NoOperators));
         Assert.Contains("verified = True", result.Value!.ToString());
 
         var alice = h.Row(h.AliceId);
@@ -456,7 +466,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         var result = Assert.IsType<OkObjectResult>(await h.AppShell().ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.SharedPhone, Harness.Fingerprint, SelfieBase64)));
+            new ForgotPinVerifyRequest(Harness.SharedPhone, Harness.Fingerprint, SelfieBase64), NoOperators));
         Assert.Equal("{ verified = False }", result.Value!.ToString());
 
         Assert.Equal("hashed:1234", h.Row(h.SharedAId).PasswordHash);
@@ -470,7 +480,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         var result = Assert.IsType<OkObjectResult>(await h.AppShell().ForgotPinVerify(
-            new ForgotPinVerifyRequest("994705559999", Harness.Fingerprint, SelfieBase64)));
+            new ForgotPinVerifyRequest("994705559999", Harness.Fingerprint, SelfieBase64), NoOperators));
         Assert.Equal("{ verified = False }", result.Value!.ToString());
         Assert.Empty(h.AuditLogs());
     }
@@ -482,7 +492,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         var result = Assert.IsType<OkObjectResult>(await h.AppShell().ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.AlicePhone, "some-other-phone", SelfieBase64)));
+            new ForgotPinVerifyRequest(Harness.AlicePhone, "some-other-phone", SelfieBase64), NoOperators));
         Assert.Equal("{ verified = False }", result.Value!.ToString());
         Assert.Equal("hashed:1234", h.Row(h.AliceId).PasswordHash);
     }
@@ -494,7 +504,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         var result = Assert.IsType<OkObjectResult>(await h.AppShell(faceScore: 94).ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64)));
+            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64), NoOperators));
         Assert.Equal("{ verified = False }", result.Value!.ToString());
         Assert.Equal("hashed:1234", h.Row(h.AliceId).PasswordHash);
     }
@@ -508,10 +518,68 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         await h.AppShell().ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64));
+            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64), NoOperators);
 
         Assert.Contains($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, Harness.AlicePhone)}", h.Lockout.Cleared);
         Assert.Contains(LoginIdentity.LockoutKey(TenantA, Harness.AlicePhone), h.Lockout.Cleared);
+    }
+
+    // --- self-service is for plain staff only --------------------------------------------------------
+
+    [Theory]
+    [InlineData(EmployeeRole.Admin)]
+    [InlineData(EmployeeRole.Manager)]
+    public async Task A_privileged_account_cannot_reset_its_pin_by_face(EmployeeRole role)
+    {
+        // Both factors are within others' reach: the reference photo is served to whoever sees that person's
+        // check-ins (and sent back as the "selfie" it matches itself), and the device binding was readable off
+        // the device screens. Bound device + a face score of 99 — every factor present — and still no.
+        using var h = new Harness();
+        h.SetRole(h.AliceId, role);
+
+        var refused = Assert.IsType<OkObjectResult>(await h.Subdomain(TenantA).ForgotPinVerify(
+            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64), NoOperators));
+        var unknown = Assert.IsType<OkObjectResult>(await h.Subdomain(TenantA).ForgotPinVerify(
+            new ForgotPinVerifyRequest("994705559999", Harness.Fingerprint, SelfieBase64), NoOperators));
+
+        // The same false a stranger gets — the answer must not say who is privileged.
+        Assert.Equal("{ verified = False }", refused.Value!.ToString());
+        Assert.Equal(unknown.Value!.ToString(), refused.Value!.ToString());
+        Assert.Equal("hashed:1234", h.Row(h.AliceId).PasswordHash);
+        Assert.Empty(h.AuditLogs());
+        Assert.Empty(h.Lockout.Cleared);
+    }
+
+    [Fact]
+    public async Task A_platform_operator_cannot_reset_its_pin_by_face_whatever_its_role_reads()
+    {
+        // An operator's row can sit inside a company as an ordinary Employee — the role gate alone would let
+        // it through, and this PIN opens the operator console over every company.
+        using var h = new Harness();
+        var operators = new AppOptions { SuperAdminEmployeeIds = h.AliceId.ToString() };
+
+        var result = Assert.IsType<OkObjectResult>(await h.AppShell().ForgotPinVerify(
+            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64), operators));
+
+        Assert.Equal("{ verified = False }", result.Value!.ToString());
+        Assert.Equal("hashed:1234", h.Row(h.AliceId).PasswordHash);
+        Assert.Empty(h.AuditLogs());
+    }
+
+    [Theory]
+    [InlineData(EmployeeRole.Admin)]
+    [InlineData(EmployeeRole.Manager)]
+    public async Task A_privileged_account_still_reaches_the_admin_queue(EmployeeRole role)
+    {
+        // The way back for them is a person who recognises them — the queue the screen offers after a no.
+        using var h = new Harness();
+        h.SetRole(h.AliceId, role);
+
+        AssertGenericOk(await h.Subdomain(TenantA).ForgotPin(new ForgotPinRequest(Harness.AlicePhone)));
+
+        var filed = Assert.Single(h.AllResetRequests());
+        Assert.Equal(h.AliceId, filed.EmployeeId);
+        Assert.Equal(PinResetStatus.Pending, filed.Status);
     }
 
     [Fact]
@@ -520,7 +588,7 @@ public class ForgotPinAppShellTests
         using var h = new Harness();
 
         var result = Assert.IsType<OkObjectResult>(await h.Subdomain(TenantA).ForgotPinVerify(
-            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64)));
+            new ForgotPinVerifyRequest(Harness.AlicePhone, Harness.Fingerprint, SelfieBase64), NoOperators));
         Assert.Contains("verified = True", result.Value!.ToString());
         Assert.NotEqual("hashed:1234", h.Row(h.AliceId).PasswordHash);
         Assert.Equal(TenantA, Assert.Single(h.AuditLogs()).TenantId);

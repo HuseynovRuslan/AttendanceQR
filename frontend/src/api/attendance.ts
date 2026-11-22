@@ -218,7 +218,8 @@ export function getMyAvatar(token?: string) {
 }
 
 /** POST /api/attendance/me/reference-photo — set the caller's own face-audit reference selfie. Used by
- * the first-login flow for temp-PIN accounts (which never took an activation selfie). */
+ * the first-login flow for temp-PIN accounts (which never took an activation selfie). Only where there is
+ * no reference yet: otherwise 409 `{ error: 'ReferencePhotoAlreadySet' }`, which callers treat as done. */
 export function setMyReferencePhoto(photoBase64: string) {
   return apiRequest<{ ok: boolean } | { error: string }>('/api/attendance/me/reference-photo', {
     method: 'POST',

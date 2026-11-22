@@ -438,6 +438,15 @@ public class AdminController : ControllerBase
 
         employee.ReferencePhotoKey = null;
         employee.ReferencePhotoTakenAtUtc = null;
+        // Clearing a reference is what lets the next face in (me/reference-photo only sets an empty one), so
+        // it is on the record against the person whose reference it was, naming who cleared it.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = employee.Id,
+            EventType = AuditEventType.ReferencePhotoChanged,
+            Reason = $"Referans şəkli admin tərəfindən silindi ({User.EmployeeId()})",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(new { id = employee.Id });
     }
@@ -456,6 +465,15 @@ public class AdminController : ControllerBase
             e.ReferencePhotoKey = null;
             e.ReferencePhotoTakenAtUtc = null;
         }
+        // One row for the batch, against the admin who did it — the same shape as BulkPinReset: it answers
+        // "why does nobody's face match any more" with a name, a time and a count.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = User.EmployeeId(),
+            EventType = AuditEventType.ReferencePhotoChanged,
+            Reason = $"Toplu: {employees.Count} nəfərin referans şəkli silindi",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(new { reset = employees.Count });
     }
@@ -1192,6 +1210,16 @@ public class AdminController : ControllerBase
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
 
+        // A platform operator's row is not a tenant's to edit, by the same reasoning as ResetPin: it sits
+        // inside some company as a normal-looking row, and this endpoint can switch it off, move its login
+        // number or e-mail elsewhere, or demote it — each of which locks the operator out of the console
+        // (login rejects an inactive account; the identifier is half the credential). Refused first, before
+        // any validation can answer differently. The operator editing their OWN row is not that threat and
+        // keeps the self-protection rules below; an impersonation session's "sub" is the customer's admin,
+        // never the operator, so it cannot pass as "own".
+        if (_operatorIds.Contains(employee.Id) && employee.Id != User.EmployeeId())
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
+
         // You cannot lock yourself out. Deleting yourself is already blocked below, but deactivating
         // or demoting yourself was not — and the result is worse: login rejects an inactive account,
         // so the door closes silently and cannot be reopened from inside the tenant. CleanFix's only
@@ -1378,6 +1406,12 @@ public class AdminController : ControllerBase
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);
         if (employee is null)
             return NotFound(new { error = "EmployeeNotFound" });
+
+        // Never a platform operator's row (see Update): deleting it deletes the operator's way into the
+        // console along with it, and nothing inside the tenant could put it back. Before the history check,
+        // so the answer is the same whether or not the row has attendance behind it.
+        if (_operatorIds.Contains(employee.Id))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "CannotManageOperator" });
 
         // Attendance/summary/device-change FKs are Restrict — refuse to delete an employee with
         // history (it would fail at the DB anyway) unless the caller explicitly opts into a
@@ -1570,13 +1604,10 @@ public class AdminController : ControllerBase
         employee.TokenVersion++;         // kill any session still holding the old PIN's token
         await _db.SaveChangesAsync();
 
-        // Clear the lockout for both identifiers they can log in with. No longer needs to guess at
-        // spellings ("0"+phone, +994…): LoginIdentity collapses every spelling of a number onto one
-        // key, which is the same key Login would have locked.
-        var tenantId = _db.CurrentTenantId;
-        _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-        if (employee.PhoneNumber is not null)
-            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+        // Clear every lockout they can be under — both identifiers, in the company's login and in
+        // app-login, which is the one the app uses. No longer needs to guess at spellings ("0"+phone,
+        // +994…): LoginIdentity collapses every spelling of a number onto one key, the one Login locked.
+        LoginLockouts.ClearFor(_lockout, employee);
 
         return Ok(new { tempPin = pin });
     }
@@ -1766,7 +1797,6 @@ public class AdminController : ControllerBase
 
         var issued = new List<object>();
         var skipped = new List<object>();
-        var tenantId = _db.CurrentTenantId;
 
         foreach (var employee in employees)
         {
@@ -1803,9 +1833,7 @@ public class AdminController : ControllerBase
             employee.MustChangePin = true;
             employee.TokenVersion++;
 
-            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-            if (employee.PhoneNumber is not null)
-                _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+            LoginLockouts.ClearFor(_lockout, employee);
 
             issued.Add(new
             {

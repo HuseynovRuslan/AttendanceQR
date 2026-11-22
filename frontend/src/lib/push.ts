@@ -4,9 +4,11 @@
 // Platform reality worth knowing: on iOS this works ONLY on iOS 16.4+ AND only when the PWA has been
 // added to the home screen (in Safari's normal browser tab there is no PushManager at all). Android
 // and desktop Chrome work either way. `pushSupported()` reflects exactly that.
-import { apiRequest } from '../api/client'
+import { apiRequest, getImpersonation, getToken } from '../api/client'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
+import { isOperatorHost } from './host'
+import { decodeJwt } from './jwt'
 
 export interface PushKeyInfo {
   enabled: boolean
@@ -25,18 +27,160 @@ const FCM_TOKEN_KEY = 'attendanceqr.fcmToken'
 let nativePerm: NotificationPermission = 'default'
 let nativeInited = false
 
+// ── Whose subscription this is ───────────────────────────────────────────────
+// A browser (or the app) holds ONE push subscription for this site, whoever happens to be signed in, and
+// the server files an endpoint under whichever account posted it last (PushController re-points it). So
+// «this browser is subscribed» is not «this account is»: on a crew phone, worker A turned notifications
+// on, worker B signed in on the same phone and was shown them as already on — B never registered, and A
+// went on receiving the pushes meant for B's phone while B got none, «çıxışı unutdunuz» included.
+//
+// So the device remembers which account it last registered the subscription for, and when somebody else
+// is signed in it re-posts the subscription it already has, as them. No new permission is asked for:
+// the browser's permission and subscription are the device's and stay as they are; only the server's
+// note of whose they are changes. Done on login, on a profile switch (a full reload) and on app start —
+// see AuthProvider — and whenever a screen asks isSubscribed().
+const OWNER_KEY = 'attendanceqr.pushOwner'
+
+function readOwner(): string | null {
+  try {
+    return localStorage.getItem(OWNER_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeOwner(employeeId: string | null): void {
+  try {
+    if (employeeId) localStorage.setItem(OWNER_KEY, employeeId)
+    else localStorage.removeItem(OWNER_KEY)
+  } catch {
+    /* private mode — it is simply re-posted next time, which is harmless */
+  }
+}
+
+/**
+ * The account the subscription should be filed under right now — or null when it is not ours to move.
+ * Not during a support or view session: the operator's own browser would be handed to the admin whose
+ * seat they borrow, and that admin's notifications would arrive on the operator's machine. Not on the
+ * operator console either (a cross-tenant token), and not on a temporary PIN, which the server refuses
+ * everything but «set your PIN» until it is changed — the fresh token that follows is claimed instead.
+ */
+function claimant(): string | null {
+  try {
+    const token = getToken()
+    if (!token || getImpersonation() || isOperatorHost()) return null
+    const claims = decodeJwt(token)
+    if (!claims?.sub || claims.mcp === '1') return null
+    return claims.sub
+  } catch {
+    return null // storage refused outright: nothing we can attribute, so nothing to move
+  }
+}
+
+let claiming: { account: string; done: Promise<boolean> } | null = null
+
+/** File this device's existing subscription under `account`. True when the server now has it there. */
+function claimFor(account: string): Promise<boolean> {
+  if (readOwner() === account) return Promise.resolve(true)
+  if (claiming?.account === account) return claiming.done
+  const done = (isNative() ? claimNative(account) : claimWeb(account)).catch(() => false)
+  const entry = { account, done }
+  claiming = entry
+  void done.then(() => {
+    if (claiming === entry) claiming = null
+  })
+  return done
+}
+
+async function claimWeb(account: string): Promise<boolean> {
+  if (!pushSupported() || Notification.permission !== 'granted') return false
+  const reg = await activeRegistration()
+  if (!reg) return false
+  const sub = await reg.pushManager.getSubscription()
+  if (!sub) return false
+  const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } }
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false
+  // The request is signed with whatever token is active when it goes out. If somebody else signed in
+  // while the worker was being found, this one is theirs to make, not ours.
+  if (claimant() !== account) return false
+  const res = await apiRequest('/api/push/subscribe', {
+    method: 'POST',
+    body: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+    timeoutMs: 8000,
+  })
+  if (res.status !== 200) return false
+  writeOwner(account)
+  return true
+}
+
+async function claimNative(account: string): Promise<boolean> {
+  const perm = await PushNotifications.checkPermissions()
+  if (perm.receive !== 'granted') return false
+  let token: string | null = null
+  try {
+    token = localStorage.getItem(FCM_TOKEN_KEY)
+  } catch {
+    /* private mode */
+  }
+  if (!token) {
+    // No token yet: ask FCM for it. The 'registration' listener posts it for whoever is signed in then.
+    await PushNotifications.register()
+    return false
+  }
+  if (claimant() !== account) return false
+  const res = await apiRequest('/api/push/register-native', { method: 'POST', body: { token }, timeoutMs: 8000 })
+  if (res.status !== 200) return false
+  writeOwner(account)
+  return true
+}
+
+/**
+ * Make sure the server sends this device's notifications to whoever is signed in on it now. A no-op when
+ * it already does, when there is no subscription, or when nobody (or an operator) is signed in. Never
+ * prompts, never throws and never needs awaiting — a failure is retried on the next login, app start or
+ * isSubscribed(), and nothing else waits on it.
+ */
+export function syncPushOwner(): Promise<void> {
+  try {
+    const account = claimant()
+    if (!account || !pushSupported()) return Promise.resolve()
+    return claimFor(account).then(
+      () => undefined,
+      () => undefined,
+    )
+  } catch {
+    return Promise.resolve()
+  }
+}
+
 /** Wire the native push listeners ONCE: forward the token to the server, and open a notification's
  *  deep-link when tapped. Also refreshes the token when permission is already granted (rotation). */
 export function initNativePush(): void {
   if (!isNative() || nativeInited) return
   nativeInited = true
   void PushNotifications.addListener('registration', (t) => {
-    void apiRequest('/api/push/register-native', { method: 'POST', body: { token: t.value } })
+    let previous: string | null = null
     try {
+      previous = localStorage.getItem(FCM_TOKEN_KEY)
       localStorage.setItem(FCM_TOKEN_KEY, t.value)
     } catch {
       /* private mode */
     }
+    // The owner note describes the token the server was given. One FCM has rotated is filed under nobody
+    // yet, so the note goes: otherwise the worker it named would sign in, find their own account there,
+    // and post nothing — and the server would go on pushing to a token FCM has retired. The same token
+    // handed back on an ordinary app start keeps the note.
+    if (t.value !== previous) writeOwner(null)
+    // Filed under whoever is signed in as it goes out, and remembered as theirs — see «Whose subscription
+    // this is». Nobody signed in (the app opened on the login screen): nothing to file it under yet; the
+    // token is kept, and syncPushOwner posts it once somebody signs in.
+    const account = claimant()
+    if (!account) return
+    void apiRequest('/api/push/register-native', { method: 'POST', body: { token: t.value } })
+      .then((r) => {
+        if (r.status === 200 && claimant() === account) writeOwner(account)
+      })
+      .catch(() => {})
   })
   void PushNotifications.addListener('registrationError', () => {})
   void PushNotifications.addListener('pushNotificationActionPerformed', (a) => {
@@ -112,25 +256,33 @@ async function activeRegistration(timeoutMs = 3000): Promise<ServiceWorkerRegist
   }
 }
 
-/** True when this browser already has a live subscription registered. Never hangs: when the worker
- *  isn't up we answer "not subscribed", so the prompt is shown rather than silently swallowed. */
+/** True when this device has a live subscription AND it is registered for the account signed in now.
+ *  A subscription filed under somebody else (a crew phone) is re-posted for this account first — no
+ *  prompt — and only a failed re-post answers false, so the screen offers to turn it on rather than
+ *  showing it on. Never hangs: when the worker isn't up we answer "not subscribed", so the prompt is
+ *  shown rather than silently swallowed. */
 export async function isSubscribed(): Promise<boolean> {
   if (isNative()) {
     try {
       const granted = (await PushNotifications.checkPermissions()).receive === 'granted'
       nativePerm = granted ? 'granted' : nativePerm
-      return granted
+      if (!granted) return false
     } catch {
       return false
     }
+    const account = claimant()
+    return account ? claimFor(account) : true
   }
   const reg = await activeRegistration()
   if (!reg) return false
   try {
-    return (await reg.pushManager.getSubscription()) !== null
+    if ((await reg.pushManager.getSubscription()) === null) return false
   } catch {
     return false
   }
+  // Signed in as nobody we track (an operator, a support session): the browser's answer is all there is.
+  const account = claimant()
+  return account ? claimFor(account) : true
 }
 
 /**
@@ -179,11 +331,14 @@ export async function enablePush(): Promise<'ok' | 'unsupported' | 'denied' | 'd
     const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } }
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return 'failed'
 
+    const account = claimant()
     const res = await apiRequest('/api/push/subscribe', {
       method: 'POST',
       body: { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
     })
-    return res.status === 200 ? 'ok' : 'failed'
+    if (res.status !== 200) return 'failed'
+    if (account) writeOwner(account)
+    return 'ok'
   } catch {
     return 'failed'
   }
@@ -251,6 +406,7 @@ export async function disablePush(): Promise<boolean> {
       const token = localStorage.getItem(FCM_TOKEN_KEY)
       if (token) await apiRequest('/api/push/unregister-native', { method: 'POST', body: { token } })
       localStorage.removeItem(FCM_TOKEN_KEY)
+      writeOwner(null)
       nativePerm = 'default'
       return true
     } catch {
@@ -265,6 +421,7 @@ export async function disablePush(): Promise<boolean> {
     if (!sub) return true
     const endpoint = sub.endpoint
     await sub.unsubscribe()
+    writeOwner(null)
     await apiRequest('/api/push/unsubscribe', { method: 'POST', body: { endpoint } })
     return true
   } catch {

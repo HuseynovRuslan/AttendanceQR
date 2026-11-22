@@ -92,9 +92,8 @@ public class PinQueueOperatorGuardTests
 
     private sealed class Lockout : ILoginLockoutStore
     {
-        public int LockoutMinutes => 15;
+        public LoginAttempt BeginAttempt(string key) => new(true, 4, 0);
         public bool IsLockedOut(string key) => false;
-        public int RecordFailure(string key) => 4;
         public void RecordSuccess(string key) { }
     }
 

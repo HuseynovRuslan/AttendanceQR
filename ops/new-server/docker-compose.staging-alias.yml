@@ -5,7 +5,7 @@
 # network that name must resolve to staging's backend, or nginx refuses to start whenever production's
 # backend is stopped (as it is, deliberately, until cutover T+11).
 #   docker compose -f docker-compose.staging.yml -f docker-compose.limits.staging.yml \
-#                  -f ops/new-server/docker-compose.staging-alias.yml --env-file .env.staging up -d
+#                  -f ops/new-server/docker-compose.staging-alias.yml --env-file /opt/attendanceqr/.env.staging up -d
 services:
   stg-backend:
     networks:

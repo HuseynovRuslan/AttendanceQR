@@ -359,6 +359,29 @@ public class DeviceRefusalTests
         Assert.Equal(1, pending.RecentNewDevices);
     }
 
+    [Fact]
+    public async Task A_pending_request_names_both_phones_by_display_id_never_by_fingerprint()
+    {
+        // The requested fingerprint is what approval turns into a binding; the current one is a binding
+        // already. Either, read off the review queue, is half of a PIN reset for the person on that row.
+        using var h = new Harness();
+        h.AutoBound("ctx-current", 2, asOf: DateTime.UtcNow);
+        h.Db.DeviceChangeRequests.Add(new DeviceChangeRequest
+        {
+            TenantId = TenantId, EmployeeId = h.EmployeeId, NewDeviceFingerprint = "ctx-new",
+            Status = DeviceChangeStatus.Pending, RequestedAtUtc = DateTime.UtcNow,
+        });
+        h.Db.SaveChanges();
+
+        var pending = Assert.Single(await new DeviceChangeService(h.Db, new DeviceBindingOptions()).GetPendingAsync());
+
+        Assert.Equal(DeviceDisplayId.Of("ctx-current"), pending.CurrentDeviceId);
+        Assert.Equal(DeviceDisplayId.Of("ctx-new"), pending.NewDeviceId);
+        var json = System.Text.Json.JsonSerializer.Serialize(pending);
+        Assert.DoesNotContain("ctx-current", json);
+        Assert.DoesNotContain("ctx-new", json);
+    }
+
     // --- the manager hears about it -------------------------------------------
 
     private sealed class CapturingQueue : IStaffAlertQueue

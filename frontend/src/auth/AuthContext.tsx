@@ -11,6 +11,7 @@ import { clearToken, getToken, setToken, setUnauthorizedHandler } from '../api/c
 import { decodeJwt, roleHome, type Role } from '../lib/jwt'
 import { listProfiles, rememberCurrent, removeProfile, type SavedProfile } from '../lib/profiles'
 import { getMyProfile } from '../api/attendance'
+import { syncPushOwner } from '../lib/push'
 
 interface AuthState {
   token: string | null
@@ -42,18 +43,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // A 401 from any authenticated call clears the session and returns to login.
-    setUnauthorizedHandler(() => {
+    setUnauthorizedHandler((dead) => {
       // The active token just proved to be dead — its PIN was reset, or an admin retired the session.
       // Leaving it in the saved list would offer the holder a row that looks like a way in and is not,
       // and on a crew phone they would find that out standing at the poster. Drop it; the OTHER saved
-      // profiles are untouched and still work.
-      const dead = getToken()
+      // profiles are untouched and still work. The client hands over the refused token: the active slot
+      // is already empty here, and reading getToken() instead (as this did) always found null.
       const sub = dead ? decodeJwt(dead)?.sub : null
       if (sub) removeProfile(sub)
       setTokenState(null)
       navigate('/login', { replace: true })
     })
   }, [navigate])
+
+  // The device's notifications go to whoever is signed in on it — on a crew phone that changes several
+  // times a morning. Runs on app start, after a login (the token changes) and after a profile switch (a
+  // full reload, so app start again). Fire-and-forget: it never prompts, never throws, and nothing — not
+  // the login, not the scan — waits for it. See «Whose subscription this is» in lib/push.
+  useEffect(() => {
+    if (token) void syncPushOwner()
+  }, [token])
 
   const value = useMemo<AuthState>(() => {
     const claims = token ? decodeJwt(token) : null

@@ -123,6 +123,15 @@ builder.Services.AddSingleton<IAmazonRekognition>(sp =>
 });
 builder.Services.AddScoped<IFaceMatchService, RekognitionFaceMatchService>();
 builder.Services.AddSingleton<IFaceMatchQueue, FaceMatchQueue>();
+
+// A background job that throws out of ExecuteAsync stops only itself — never the host. The default
+// (StopHost) let one failed tick of a report or a retention sweep, e.g. a Postgres restart at the 08:00
+// scan peak, shut the whole API down, and with it every check-in. Each job keeps its own failures in
+// (log, wait, try again); this is the backstop for one that does not. The host still logs a dead job
+// as an error ("BackgroundService failed").
+builder.Services.Configure<HostOptions>(o =>
+    o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
 // Check-in selfies upload out-of-band (bounded queue + worker) — a scan response never waits on R2.
 builder.Services.AddSingleton<IPhotoUploadQueue, PhotoUploadQueue>();
 builder.Services.AddHostedService<PhotoUploadWorker>();

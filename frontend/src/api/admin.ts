@@ -532,6 +532,9 @@ export interface PayrollRow {
   payable: number
   /** Days in the period the person corrected themselves — the accountant sees them before paying. */
   selfCorrectedDays?: number
+  /** The unpaid-leave days the deduction was taken for: unpaidDays counts calendar days, weekends
+   *  included; only the working days among them cost pay. */
+  deductedUnpaidDays?: number
 }
 
 export interface PayrollReport {
@@ -1164,8 +1167,10 @@ export interface PendingDeviceChange {
   requestId: string
   employeeId: string
   employeeName: string
-  currentDeviceFingerprint: string | null
-  newDeviceFingerprint: string
+  /** The phone they are bound to now and the one they ask for — short display ids, never the device
+   *  fingerprints themselves (those are what the scan trusts, so they stay on the server). */
+  currentDeviceId: string | null
+  newDeviceId: string
   requestedAtUtc: string
   /** New devices this person arrived with in the last 30 days, adopted at a poster or approved. */
   recentNewDevices: number
@@ -1225,7 +1230,8 @@ export interface DeviceBinding {
   employeeId: string
   employeeName: string
   deviceLabel: string | null
-  deviceFingerprint: string
+  /** A short display id for the handset (8 hex digits) — not the fingerprint, which never leaves the server. */
+  deviceId: string
   /** How the binding came to exist — "AutoBind" is the one worth a second look. */
   boundVia: 'Activation' | 'AutoBind' | 'AdminApproval'
   boundAtUtc: string
@@ -1241,7 +1247,8 @@ export function getDeviceBindings() {
 /** A handset carrying more than one employee — a brigade's shared phone. Invisible until now: every
  *  device limit is per EMPLOYEE, so nothing bounded or displayed how many accounts one phone held. */
 export interface SharedDevice {
-  fingerprint: string
+  /** A short display id for the handset — one per phone, so it is also the row's key. */
+  deviceId: string
   label: string | null
   accountCount: number
   lastSeenAtUtc: string | null
@@ -1262,10 +1269,11 @@ export function getSharedDevices() {
 }
 
 /** Revoke every account on one handset — the answer to a lost brigade phone. Does NOT sign anyone
- *  out; it stops that device scanning and leaves every account exactly as it was. */
-export function revokeSharedDevice(fingerprint: string) {
+ *  out; it stops that device scanning and leaves every account exactly as it was. The handset is named
+ *  by any one of its bindings: the screen never holds its fingerprint. */
+export function revokeSharedDevice(bindingId: string) {
   return apiRequest<{ revoked: number } | { error: string }>(
-    `/api/admin/device-bindings/device/revoke-all?fingerprint=${encodeURIComponent(fingerprint)}`,
+    `/api/admin/device-bindings/device/revoke-all?bindingId=${encodeURIComponent(bindingId)}`,
     { method: 'POST' },
   )
 }
