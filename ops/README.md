@@ -190,8 +190,10 @@ the database.
 
 ## Restoring for real
 
-    gunzip -c backups/attendanceqr_YYYYMMDD_HHMMSS.sql.gz \
+    sudo gunzip -c backups/attendanceqr_YYYYMMDD_HHMMSS.sql.gz \
       | docker exec -i attendanceqr-db-1 psql -U attendanceqr -d attendanceqr
+
+`sudo` because the dumps are root-only (see `backup.sh` above); as root, drop it.
 
 The dumps are taken with `--clean --if-exists`, so this replaces the current contents. Stop the
 backend first unless you intend it to be writing during the restore.
@@ -222,13 +224,30 @@ Push to the `staging` branch. `ops/staging-autodeploy.sh` (root cron, every 2 mi
 production host) fetches it into its own clone at `/opt/qrlog-staging`, moves to it and rebuilds. Its
 log is `/opt/attendanceqr/backups/staging-deploy.log`.
 
-**The compose file does not come from the branch.** The deploy runs with
-`/opt/attendanceqr/docker-compose.staging.yml` — the production checkout's copy, which only changes
-through a reviewed, gated production deploy of `main`. The compose file decides what a container may
-do to the host (bind mounts, `privileged`, `network_mode: host`, the docker socket), and this runs as
-root on the production machine: taken from the branch, anyone who could push to `staging` could have
-read production's `.env` and its database volume. The code, the Dockerfiles and the build contexts
-still come from the branch.
+**Only the code comes from the branch.** This runs as root on the production machine, and the clone
+at `/opt/qrlog-staging` is written by whoever can push to `staging` — so nothing the deploy *trusts*
+is read from it:
+
+- **The compose file** is `/opt/attendanceqr/docker-compose.staging.yml` — the production checkout's
+  copy, which only changes through a reviewed, gated production deploy of `main`. The compose file
+  decides what a container may do to the host (bind mounts, `privileged`, `network_mode: host`, the
+  docker socket): taken from the branch, anyone who could push to `staging` could have read
+  production's `.env` and its database volume.
+- **The env file** is `/opt/attendanceqr/.env.staging`, next to production's `.env` and kept like it
+  (`chmod 600`, never in git). It used to live in the clone, untracked — and `git reset --hard`
+  replaces an untracked file with whatever the branch commits at that path. A branch that left the
+  compose file alone but committed `.env.staging` as a symlink to `/opt/attendanceqr/.env` handed
+  production's JWT key, QR secret, R2 keys and database password to a container running that
+  branch's code.
+- **Symlinks:** a commit that tracks one is refused, and the clone checks links out as plain files
+  regardless (`core.symlinks=false`). The repository has none; a link is the one way a file in the
+  clone can point the build at a host path.
+- **The script itself:** the cron line runs `/opt/attendanceqr/ops/staging-autodeploy.sh`, the
+  production checkout's copy (as in `ops/new-server/cron.attendanceqr.template`) — **never**
+  `/opt/qrlog-staging/ops/…`. The branch's copy is the branch's to write; running it would make every
+  check above the pusher's own choice.
+
+The Dockerfiles and the build contexts still come from the branch — that is the code being tested.
 
 **So a change to `docker-compose.staging.yml` ships through the production checkout:** merge it to
 `main`, deploy production, and have the `staging` branch carry the identical file (merge `main` into
@@ -236,14 +255,28 @@ it). Until the branch's copy is byte-for-byte the pinned one, every push to `sta
 logged once per commit, alerted through `alert.sh` — and staging stays on the commit it was running.
 That holds both ways: after `main` changes the file, staging pushes are refused until they carry it.
 
-By hand, it is the same command the script runs:
+A commit that tracks a symlink or a `.env.staging`, or arrives while `/opt/attendanceqr/.env.staging`
+is missing (or is itself a link), is refused like a compose change: logged and alerted once, and the
+clone stays where it was.
+
+**Moving the env file, once,** on a host set up before this — until then every push is refused with
+an alert naming the path. As root, check that the clone's copy is a plain file the branch does not
+track, then move it; a refused push leaves the clone, and the file in it, untouched.
+
+    cd /opt/qrlog-staging
+    test ! -L .env.staging && ! git ls-files --error-unmatch .env.staging >/dev/null 2>&1 \
+      && mv .env.staging /opt/attendanceqr/.env.staging \
+      && chown --reference=/opt/attendanceqr/.env /opt/attendanceqr/.env.staging \
+      && chmod 600 /opt/attendanceqr/.env.staging
+
+By hand, it is the same command the script runs (as root, or whoever owns the env file):
 
     cd /opt/qrlog-staging
     docker compose -p qrlog-staging -f /opt/attendanceqr/docker-compose.staging.yml \
-      --project-directory /opt/qrlog-staging --env-file /opt/qrlog-staging/.env.staging up -d --build
+      --project-directory /opt/qrlog-staging --env-file /opt/attendanceqr/.env.staging up -d --build
 
 Then open https://test.qrlog.az and check the change. Log in with the seeded admin from
-`.env.staging` (`TenantSeed__AdminPhone` / `TenantSeed__AdminPin`).
+`/opt/attendanceqr/.env.staging` (`TenantSeed__AdminPhone` / `TenantSeed__AdminPin`).
 
 ## Then production
 
