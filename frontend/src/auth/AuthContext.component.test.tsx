@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider, useAuth } from './AuthContext'
+import { apiRequest } from '../api/client'
+import { listProfiles, saveProfile } from '../lib/profiles'
 
 /**
  * The session holder, in a browser-like DOM. What is under test is what it does AROUND the token: on a
@@ -27,7 +29,13 @@ const WORKER_B = jwt({ sub: 'B', role: 'Employee' })
 let auth: ReturnType<typeof useAuth> | null = null
 function Probe() {
   auth = useAuth()
-  return <div data-testid="who">{auth.employeeId ?? '-'}</div>
+  const { pathname } = useLocation()
+  return (
+    <>
+      <div data-testid="who">{auth.employeeId ?? '-'}</div>
+      <div data-testid="at">{pathname}</div>
+    </>
+  )
 }
 
 function renderAuth() {
@@ -66,5 +74,28 @@ describe('notifications follow whoever is signed in', () => {
 
     expect(screen.getByTestId('who').textContent).toBe('B')
     expect(push.syncs).toBe(1)
+  })
+})
+
+describe('a token the server refuses', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('drops that account from the crew phone’s saved profiles — and only that one', async () => {
+    // The handler read the active slot after it had been emptied, found nothing, and left the dead
+    // account in the switcher: a row that looks like a way in, discovered at the poster.
+    saveProfile({ employeeId: 'A', name: 'Aynur', token: WORKER_A, addedAtMs: 1 })
+    saveProfile({ employeeId: 'B', name: 'Bəxtiyar', token: WORKER_B, addedAtMs: 2 })
+    localStorage.setItem('attendanceqr.jwt', WORKER_A)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 401, text: async () => '' })))
+    renderAuth()
+    await act(async () => {})
+
+    await act(async () => {
+      await apiRequest('/api/attendance/today')
+    })
+
+    expect(listProfiles().map((p) => p.employeeId)).toEqual(['B'])
+    expect(screen.getByTestId('who').textContent).toBe('-')
+    expect(screen.getByTestId('at').textContent).toBe('/login')
   })
 })

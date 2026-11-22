@@ -43,12 +43,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // A 401 from any authenticated call clears the session and returns to login.
-    setUnauthorizedHandler(() => {
+    setUnauthorizedHandler((dead) => {
       // The active token just proved to be dead — its PIN was reset, or an admin retired the session.
       // Leaving it in the saved list would offer the holder a row that looks like a way in and is not,
       // and on a crew phone they would find that out standing at the poster. Drop it; the OTHER saved
-      // profiles are untouched and still work.
-      const dead = getToken()
+      // profiles are untouched and still work. The client hands over the refused token: the active slot
+      // is already empty here, and reading getToken() instead (as this did) always found null.
       const sub = dead ? decodeJwt(dead)?.sub : null
       if (sub) removeProfile(sub)
       setTokenState(null)

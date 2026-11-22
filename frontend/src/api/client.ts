@@ -91,11 +91,15 @@ export function exitImpersonation(): void {
 }
 
 // --- 401 handling ----------------------------------------------------------
-// AuthContext registers a handler so an expired/invalid token bounces to /login.
+// AuthContext registers a handler so an expired/invalid token bounces to /login. It is HANDED the token
+// the refused request carried — the one that just proved dead — rather than reading the active slot for
+// itself: clearToken() has emptied that slot by the time the handler runs, so it used to find null, and
+// the dead account was never dropped from the crew phone's saved profiles. The holder then saw a row that
+// looked like a way in, and found out it was not standing at the poster.
 
-let onUnauthorized: (() => void) | null = null
+let onUnauthorized: ((deadToken: string | null) => void) | null = null
 
-export function setUnauthorizedHandler(handler: () => void): void {
+export function setUnauthorizedHandler(handler: (deadToken: string | null) => void): void {
   onUnauthorized = handler
 }
 
@@ -140,10 +144,9 @@ export async function apiRequest<T = unknown>(
   const { method = 'GET', body, auth = true, timeoutMs, token: asToken, headers: extra } = options
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
-  if (auth) {
-    const token = asToken ?? getToken()
-    if (token) headers.Authorization = `Bearer ${token}`
-  }
+  // Kept, not just sent: a 401 has to be able to say WHICH token the server refused.
+  const sentToken = auth ? asToken ?? getToken() : null
+  if (sentToken) headers.Authorization = `Bearer ${sentToken}`
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
@@ -159,7 +162,7 @@ export async function apiRequest<T = unknown>(
   // and never for a call deliberately made as another saved profile (see RequestOptions.token).
   if (res.status === 401 && auth && asToken === undefined) {
     clearToken()
-    onUnauthorized?.()
+    onUnauthorized?.(sentToken)
   }
 
   const text = await res.text()
