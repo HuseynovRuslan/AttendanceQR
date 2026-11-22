@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider, useAuth } from './AuthContext'
 import { apiRequest } from '../api/client'
+import { changePassword } from '../api/auth'
 import { listProfiles, saveProfile } from '../lib/profiles'
 
 /**
@@ -97,5 +98,32 @@ describe('a token the server refuses', () => {
     expect(listProfiles().map((p) => p.employeeId)).toEqual(['B'])
     expect(screen.getByTestId('who').textContent).toBe('-')
     expect(screen.getByTestId('at').textContent).toBe('/login')
+  })
+
+  it('is not a wrong CURRENT PIN in «PIN-i dəyiş» — that session, and its saved row, stay', async () => {
+    // change-password answers 401 InvalidCurrentPassword on a perfectly good token. Read as a dead
+    // session it signed the worker out AND dropped their saved row, so somebody unsure of their PIN who
+    // guessed wrong was left on /login with nothing to tap — needing the very PIN they could not
+    // remember to record the day's check-in.
+    saveProfile({ employeeId: 'A', name: 'Aynur', token: WORKER_A, addedAtMs: 1 })
+    localStorage.setItem('attendanceqr.jwt', WORKER_A)
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      status: 401,
+      text: async () => JSON.stringify({ error: 'InvalidCurrentPassword' }),
+    })))
+    renderAuth()
+    await act(async () => {})
+
+    let answer: Awaited<ReturnType<typeof changePassword>> | null = null
+    await act(async () => {
+      answer = await changePassword('1111', '4826')
+    })
+
+    // The sheet still gets the code it turns into «Cari PIN yanlışdır».
+    expect(answer!.data).toEqual({ error: 'InvalidCurrentPassword' })
+    expect(listProfiles().map((p) => p.employeeId)).toEqual(['A'])
+    expect(localStorage.getItem('attendanceqr.jwt')).toBe(WORKER_A)
+    expect(screen.getByTestId('who').textContent).toBe('A')
+    expect(screen.getByTestId('at').textContent).toBe('/')
   })
 })

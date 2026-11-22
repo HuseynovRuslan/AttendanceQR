@@ -99,6 +99,21 @@ export function exitImpersonation(): void {
 
 let onUnauthorized: ((deadToken: string | null) => void) | null = null
 
+/**
+ * A 401 the server sends on a token it has just ACCEPTED. There is one: «PIN-i dəyiş» posts the current
+ * PIN, and a wrong one comes back as 401 InvalidCurrentPassword. Bounced like a dead session, a worker
+ * unsure of their PIN who guessed wrong was signed out — and, since the handler drops the dead token's
+ * saved profile, left on /login with no row to tap and only the PIN they could not remember to get back
+ * in with, the day's check-in included. The sheet shows «Cari PIN yanlışdır» instead.
+ *
+ * Named, not inferred from the endpoint: change-password's OTHER 401 (InvalidToken — the account behind
+ * the token is gone) is a dead session like any other. Anything this does not name, a 401 with no body
+ * or one that cannot be read included, still ends the session.
+ */
+function answeredOnGoodToken(data: unknown): boolean {
+  return (data as { error?: unknown } | null)?.error === 'InvalidCurrentPassword'
+}
+
 export function setUnauthorizedHandler(handler: (deadToken: string | null) => void): void {
   onUnauthorized = handler
 }
@@ -158,15 +173,28 @@ export async function apiRequest<T = unknown>(
       : undefined,
   })
 
+  // Read before the 401 decision below, because one 401 is only told apart from a dead session by its
+  // body. A body that cannot be parsed still bounces first and throws after, exactly as it did when the
+  // bounce ran before the read.
+  const text = await res.text()
+  let data: unknown = null
+  let unreadable: { error: unknown } | null = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch (error) {
+      unreadable = { error }
+    }
+  }
+
   // Only bounce to login for authenticated calls — a 401 from login itself means bad credentials —
-  // and never for a call deliberately made as another saved profile (see RequestOptions.token).
-  if (res.status === 401 && auth && asToken === undefined) {
+  // never for a call deliberately made as another saved profile (see RequestOptions.token), and never
+  // for a 401 that is about what was typed rather than who is asking (see answeredOnGoodToken).
+  if (res.status === 401 && auth && asToken === undefined && !answeredOnGoodToken(data)) {
     clearToken()
     onUnauthorized?.(sentToken)
   }
-
-  const text = await res.text()
-  const data = text ? JSON.parse(text) : null
+  if (unreadable) throw unreadable.error
 
   if (auth && asToken === undefined && impersonationLost(res.status, data)) {
     const info = getImpersonation()
