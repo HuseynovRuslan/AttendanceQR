@@ -1,4 +1,7 @@
+using System.Linq.Expressions;
+using AttendanceQR.Api.Controllers;
 using AttendanceQR.Application.Common;
+using AttendanceQR.Domain.Entities;
 using AttendanceQR.Infrastructure.Multitenancy;
 using AttendanceQR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -8,18 +11,33 @@ namespace AttendanceQR.Api.Jobs;
 /// <summary>
 /// Nightly retention for the three ledger tables every scan writes to and nothing ever pruned:
 /// ProcessedScans, EmployeeNotifications, AuditLogs. At 2000 employees they grow ~5M rows/year
-/// combined; their useful lives are 18 hours, ~a season, and ~a year respectively. Same plain
-/// BackgroundService + local-timezone timer pattern as <see cref="DailySummaryJob"/>; runs at 01:30
-/// local, after the 00:30 summaries and the 01:00 photo cleanup.
+/// combined; their useful lives are the offline trust window (thirty days), ~a season, and ~a year
+/// respectively. Same plain BackgroundService + local-timezone timer pattern as
+/// <see cref="DailySummaryJob"/>; runs at 01:30 local, after the 00:30 summaries and the 01:00 photo
+/// cleanup.
 ///
 /// AttendanceRecords and DailySummaries are deliberately NOT here — they are the attendance ledger
 /// itself (pay disputes, tabel history) and are never aged out.
 /// </summary>
 public sealed class DataRetentionJob : BackgroundService
 {
-    // ProcessedScans exist only to deduplicate replayed offline scans, and the offline trust window
-    // is 18 hours — a week is 9x that; nothing older can ever be replayed.
-    private const int ProcessedScanDays = 7;
+    // ProcessedScans exist only to deduplicate replayed offline scans, so a marker has to outlive every
+    // replay the scan endpoint still accepts — and it accepts one for as long as the scan's own
+    // timestamp is inside AttendanceController.OfflineTrustWindowHours. This was a fixed seven days,
+    // written when that window was 18 hours; the window grew to thirty days and this did not, so a
+    // phone replaying its queue after day seven had the same check-in or check-out recorded twice.
+    // Derived from the constant now, so the two cannot drift apart again. The week on top covers a
+    // phone clock running fast (the scan allows ten minutes) many times over; at ~114 people that is a
+    // few thousand rows per company, on an index the delete already uses.
+    internal static readonly TimeSpan ProcessedScanRetention =
+        TimeSpan.FromHours(AttendanceController.OfflineTrustWindowHours) + TimeSpan.FromDays(7);
+
+    /// <summary>The markers no replay can need any more. One predicate for the delete and its test.</summary>
+    internal static Expression<Func<ProcessedScan, bool>> ExpiredProcessedScans(DateTime nowUtc)
+    {
+        var cutoff = nowUtc - ProcessedScanRetention;
+        return p => p.ProcessedAtUtc < cutoff;
+    }
 
     // Reminders/nudges an employee has long since seen (the bell shows a handful of recent ones).
     private const int EmployeeNotificationDays = 90;
@@ -106,7 +124,7 @@ public sealed class DataRetentionJob : BackgroundService
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
                 var scans = await db.ProcessedScans
-                    .Where(p => p.ProcessedAtUtc < now.AddDays(-ProcessedScanDays))
+                    .Where(ExpiredProcessedScans(now))
                     .ExecuteDeleteAsync(ct);
                 var notifications = await db.EmployeeNotifications
                     .Where(n => n.CreatedAtUtc < now.AddDays(-EmployeeNotificationDays))
