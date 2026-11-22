@@ -308,6 +308,43 @@ describe('the native app (FCM)', () => {
     expect(localStorage.getItem(OWNER)).toBe('A')
   })
 
+  it('a token FCM rotates while nobody is signed in still reaches the server once the same worker signs in', async () => {
+    // The note still said A — it described the OLD token — so A's next sign-in saw its own account there
+    // and posted nothing: the server went on pushing to a token FCM had retired.
+    const push = await import('./push')
+    localStorage.setItem('attendanceqr.fcmToken', 'fcm-1')
+    localStorage.setItem(OWNER, 'A')
+    push.initNativePush()
+    await Promise.resolve()
+
+    cap.listeners.registration({ value: 'fcm-4' })
+    await Promise.resolve()
+    expect(calls.filter((c) => c.path === '/api/push/register-native')).toEqual([])
+
+    signedIn(WORKER_A)
+    await push.syncPushOwner()
+
+    const posts = calls.filter((c) => c.path === '/api/push/register-native')
+    expect(posts.map((c) => c.body)).toEqual([{ token: 'fcm-4' }])
+    expect(posts[0].auth).toBe(`Bearer ${WORKER_A}`)
+    expect(localStorage.getItem(OWNER)).toBe('A')
+  })
+
+  it('the same token handed back on app start leaves the note alone — nothing to re-post', async () => {
+    const push = await import('./push')
+    localStorage.setItem('attendanceqr.fcmToken', 'fcm-1')
+    localStorage.setItem(OWNER, 'A')
+    push.initNativePush()
+    await Promise.resolve()
+
+    cap.listeners.registration({ value: 'fcm-1' })
+    signedIn(WORKER_A)
+    await push.syncPushOwner()
+
+    expect(calls.filter((c) => c.path === '/api/push/register-native')).toEqual([])
+    expect(localStorage.getItem(OWNER)).toBe('A')
+  })
+
   it('isSubscribed answers for the worker signed in, not just for the OS permission', async () => {
     const push = await import('./push')
     localStorage.setItem('attendanceqr.fcmToken', 'fcm-1')

@@ -159,11 +159,18 @@ export function initNativePush(): void {
   if (!isNative() || nativeInited) return
   nativeInited = true
   void PushNotifications.addListener('registration', (t) => {
+    let previous: string | null = null
     try {
+      previous = localStorage.getItem(FCM_TOKEN_KEY)
       localStorage.setItem(FCM_TOKEN_KEY, t.value)
     } catch {
       /* private mode */
     }
+    // The owner note describes the token the server was given. One FCM has rotated is filed under nobody
+    // yet, so the note goes: otherwise the worker it named would sign in, find their own account there,
+    // and post nothing — and the server would go on pushing to a token FCM has retired. The same token
+    // handed back on an ordinary app start keeps the note.
+    if (t.value !== previous) writeOwner(null)
     // Filed under whoever is signed in as it goes out, and remembered as theirs — see «Whose subscription
     // this is». Nobody signed in (the app opened on the login screen): nothing to file it under yet; the
     // token is kept, and syncPushOwner posts it once somebody signs in.
