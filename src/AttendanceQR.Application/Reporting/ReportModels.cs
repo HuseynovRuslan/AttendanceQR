@@ -66,7 +66,18 @@ public sealed record EmployeeReportRow(
     // yet — today, or yesterday for the minutes a late-night grace runs past midnight. NOT in
     // AbsentDays, so nothing is deducted for them; added back into the payroll's count of working
     // days (PayrollMath), so the daily rate does not move while a shift has not started.
-    int PendingDays = 0);
+    int PendingDays = 0,
+    // The part of UnpaidDays that fell on days this person was NOT scheduled to work — the weekends
+    // inside a fortnight of «Ödənişsiz məzuniyyət». Like OffDayLeaveDays, not a figure anyone reads:
+    // UnpaidDays keeps counting calendar days («14 gün ödənişsiz» is 14 days), and this is what the
+    // payroll takes back off it before deducting, because a Sunday was never going to be paid for
+    // in the first place. See PayrollMath.DeductibleUnpaidDays.
+    int OffDayUnpaidDays = 0,
+    // Days worked (inside WorkDays) that were not working days for this person — an extra Saturday, a
+    // bayram they came in on. WorkDays keeps counting them: they were worked, and «Gəlib» says so. Not a
+    // figure anyone reads either: the payroll takes them out of its divisor, where they only lowered the
+    // daily rate. See PayrollMath.Compute.
+    int OffDayWorkedDays = 0);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(
@@ -165,7 +176,12 @@ public sealed record PayrollRow(
     // explicitly rather than computed, or the sheet would print that residue under «Ezamiyyət».
     int TripDays = 0,
     /// <summary>Days in the period the person corrected themselves — the accountant sees them before paying.</summary>
-    int SelfCorrectedDays = 0);
+    int SelfCorrectedDays = 0,
+    // The unpaid-leave days the deduction was actually taken for: UnpaidDays less the ones that were
+    // not working days for this person. UnpaidDays above stays a count of calendar days, as every
+    // other report prints it; this is carried beside it so «Ödənişsiz 14» next to a deduction for 10
+    // days can be read on the sheet instead of looking like a sum that does not add up.
+    int DeductedUnpaidDays = 0);
 
 /// <summary>The payroll report payload, shared by the JSON and Excel endpoints.</summary>
 public sealed record PayrollReport(

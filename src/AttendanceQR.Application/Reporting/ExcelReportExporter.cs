@@ -345,11 +345,14 @@ public sealed class ExcelReportExporter : IExcelReportExporter
             r++;
         }
 
+        // Columns that appear only when a row needs them, after the fixed ones, in this order.
+        var nextCol = PayrollHeaders.Length + 1;
+
         // Days a person corrected themselves (the single-admin rule): a column of its own, after the rest, and
         // only when there is one — every other sheet keeps the layout the accountants copy from.
         if (report.Rows.Any(x => x.SelfCorrectedDays > 0))
         {
-            var col = PayrollHeaders.Length + 1;
+            var col = nextCol++;
             var head = ws.Cell(headerRow, col);
             head.Value = "Öz düzəlişi (gün)";
             head.Style.Font.Bold = true;
@@ -363,6 +366,28 @@ public sealed class ExcelReportExporter : IExcelReportExporter
                     ws.Cell(line, col).Value = row.SelfCorrectedDays;
                     ws.Cell(line, col).Style.Fill.BackgroundColor = XLColor.LightPink;
                 }
+                ws.Cell(line, col).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                line++;
+            }
+        }
+
+        // «Ödənişsiz» counts calendar days, weekends included, as on every other report — but only the
+        // working days among them are deducted. Where the two differ the sheet says so, or «Ödənişsiz 14»
+        // beside «Günlük 30» and «Çıxılan 300» reads as an arithmetic mistake for the accountant to "fix".
+        // Only then: a sheet where nobody's unpaid leave crossed a day off keeps its layout.
+        if (report.Rows.Any(x => x.DeductedUnpaidDays != x.UnpaidDays))
+        {
+            var col = nextCol++;
+            var head = ws.Cell(headerRow, col);
+            head.Value = "Ödənişsiz (iş günü)";
+            head.Style.Font.Bold = true;
+            head.Style.Fill.BackgroundColor = XLColor.LightGray;
+            head.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            var line = headerRow + 1;
+            foreach (var row in report.Rows)
+            {
+                if (row.UnpaidDays > 0)
+                    ws.Cell(line, col).Value = row.DeductedUnpaidDays;
                 ws.Cell(line, col).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
                 line++;
             }
