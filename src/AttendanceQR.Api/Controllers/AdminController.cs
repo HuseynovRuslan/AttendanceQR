@@ -438,6 +438,15 @@ public class AdminController : ControllerBase
 
         employee.ReferencePhotoKey = null;
         employee.ReferencePhotoTakenAtUtc = null;
+        // Clearing a reference is what lets the next face in (me/reference-photo only sets an empty one), so
+        // it is on the record against the person whose reference it was, naming who cleared it.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = employee.Id,
+            EventType = AuditEventType.ReferencePhotoChanged,
+            Reason = $"Referans şəkli admin tərəfindən silindi ({User.EmployeeId()})",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(new { id = employee.Id });
     }
@@ -456,6 +465,15 @@ public class AdminController : ControllerBase
             e.ReferencePhotoKey = null;
             e.ReferencePhotoTakenAtUtc = null;
         }
+        // One row for the batch, against the admin who did it — the same shape as BulkPinReset: it answers
+        // "why does nobody's face match any more" with a name, a time and a count.
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = User.EmployeeId(),
+            EventType = AuditEventType.ReferencePhotoChanged,
+            Reason = $"Toplu: {employees.Count} nəfərin referans şəkli silindi",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
         return Ok(new { reset = employees.Count });
     }

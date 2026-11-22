@@ -143,9 +143,13 @@ export function SetPinPage() {
   async function saveAndFinish() {
     if (!photo) return
     setSaving(true)
-    // Best-effort: a storage hiccup shouldn't trap the employee — the reference still auto-seeds from
-    // their first check-in if this fails.
-    await setMyReferencePhoto(photo).catch(() => {})
+    // Best-effort, and never a wall between anybody and their first sign-in. Whatever comes back, the
+    // next stop is home:
+    //  • a storage hiccup — the reference still auto-seeds from their first check-in;
+    //  • 409 ReferencePhotoAlreadySet — the server only sets a reference where there is none (an existing
+    //    one is replaced by an admin clearing it, never from here), so one is already in place, perhaps
+    //    from a check-in a moment ago or a double tap. Nothing is left to do on this screen.
+    await setMyReferencePhoto(photo).catch(() => null)
     setSaving(false)
     goHome()
   }
