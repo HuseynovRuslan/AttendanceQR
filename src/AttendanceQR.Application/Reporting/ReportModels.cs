@@ -72,7 +72,12 @@ public sealed record EmployeeReportRow(
     // UnpaidDays keeps counting calendar days («14 gün ödənişsiz» is 14 days), and this is what the
     // payroll takes back off it before deducting, because a Sunday was never going to be paid for
     // in the first place. See PayrollMath.DeductibleUnpaidDays.
-    int OffDayUnpaidDays = 0);
+    int OffDayUnpaidDays = 0,
+    // Days worked (inside WorkDays) that were not working days for this person — an extra Saturday, a
+    // bayram they came in on. WorkDays keeps counting them: they were worked, and «Gəlib» says so. Not a
+    // figure anyone reads either: the payroll takes them out of its divisor, where they only lowered the
+    // daily rate. See PayrollMath.Compute.
+    int OffDayWorkedDays = 0);
 
 /// <summary>Column totals across all rows.</summary>
 public sealed record ReportTotals(

@@ -393,6 +393,74 @@ public class PayrollWorkingDaysTests
             Assert.True(book.Worksheet(1).Cell(5, 19).IsEmpty());
     }
 
+    // ─── P2: a day worked off the schedule does not lower anybody's daily rate ─────────────────────
+
+    /// <summary>Monday–Friday, salary as given: every weekday worked except Wed 4 and Thu 12 (absent), and
+    /// all four Saturdays of November (7, 14, 21, 28) worked as extra days.</summary>
+    private static Guid ExtraSaturdays(Harness h, decimal? salary)
+    {
+        var id = h.Person("Şənbə", salary ?? 0m);
+        if (salary is null)
+        {
+            h.Db.Employees.Local.Single(e => e.Id == id).MonthlySalary = null;
+            h.Db.SaveChanges();
+        }
+        h.Month(id, d =>
+            d.DayOfWeek == DayOfWeek.Saturday ? DailySummaryStatus.OnTime
+            : d.DayOfWeek == DayOfWeek.Sunday ? DailySummaryStatus.DayOff
+            : d == Nov(4) || d == Nov(12) ? DailySummaryStatus.Absent
+            : DailySummaryStatus.OnTime);
+        return id;
+    }
+
+    [Fact]
+    public async Task Extra_saturdays_worked_do_not_cheapen_the_absences_of_the_same_month()
+    {
+        // The audit's case. A Monday-to-Friday worker on 840: 19 weekdays worked, 2 missed, and four Saturdays
+        // given on top. The Saturdays went into the divisor through WorkDays — 25 "working days", 33.60 a day,
+        // 67.20 for the two absences. November had 21 working days for this person: 40 a day, 80.
+        using var h = new Harness();
+        var id = ExtraSaturdays(h, 840m);
+
+        var row = await h.PayrollOf(id);
+
+        Assert.Equal(21, row.ScheduledDays);
+        Assert.Equal(40.00m, row.PerDay);
+        Assert.Equal(80.00m, row.Deduction);
+        Assert.Equal(760.00m, row.Payable);
+        // «Gəlib» still says what happened: 23 days at work, the Saturdays included.
+        Assert.Equal(23, row.WorkDays);
+        Assert.Equal(2, row.AbsentDays);
+    }
+
+    [Fact]
+    public async Task Somebody_with_no_salary_set_gets_the_same_working_days()
+    {
+        // The «İş günü» of a line with no salary was a second copy of the divisor's formula. It must say 21 as
+        // well — a column that changes meaning with the salary cell beside it is no column at all.
+        using var h = new Harness();
+        var id = ExtraSaturdays(h, null);
+
+        var row = await h.PayrollOf(id);
+
+        Assert.Null(row.MonthlySalary);
+        Assert.Equal(21, row.ScheduledDays);
+        Assert.Equal(23, row.WorkDays);
+    }
+
+    [Fact]
+    public void The_arithmetic_leaves_worked_days_off_out_of_the_divisor()
+    {
+        var pay = PayrollMath.Compute(
+            salary: 840m, workDays: 23, absentDays: 2, leaveDays: 0, permissionDays: 0, tripDays: 0,
+            offDayWorkedDays: 4);
+
+        Assert.Equal(21, pay.Scheduled);
+        Assert.Equal(40.00m, pay.PerDay);
+        Assert.Equal(80.00m, pay.Deduction);
+        Assert.Equal(21, PayrollMath.ScheduledDays(23, 2, 0, 0, 0, offDayWorkedDays: 4));
+    }
+
     // ─── the one place the payroll cannot ask the summary verbatim ────────────────────────────────
 
     private static readonly Location Weekdays = new()

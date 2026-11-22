@@ -1392,10 +1392,10 @@ public sealed class ReportQueryService : IReportQueryService
                 // be added into it: a rest day is not leave, and folding it into the payroll's
                 // divisor would change what people are paid.
                 RestDays: g.Count(x => x.Status == DailySummaryStatus.DayOff && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Rest)),
-                // Leave/permission/trip days that were not working days for this person. Only these
-                // three statuses can land on a non-working day: an approved leave overrides the
-                // day-off rule, while OnTime/Late/Incomplete/Absent are only ever assigned on days
-                // the person was scheduled.
+                // Leave/permission/trip days that were not working days for this person: an approved
+                // leave overrides the day-off rule, so a holiday over a weekend arrives as OnLeave on
+                // the Saturday and the Sunday. (Worked days can land on a day off too — see
+                // OffDayWorkedDays below. This comment used to say they could not.)
                 OffDayLeaveDays: g.Count(x =>
                     x.Status is DailySummaryStatus.OnLeave or DailySummaryStatus.Permission
                     && !IsScheduledDay(x.EmployeeId, x.LocationId, x.Date)),
@@ -1408,6 +1408,13 @@ public sealed class ReportQueryService : IReportQueryService
                 OffDayUnpaidDays: g.Count(x =>
                     x.Status == DailySummaryStatus.OnLeave
                     && IsLeaveOfType(x.EmployeeId, x.Date, LeaveType.Unpaid)
+                    && !IsScheduledDay(x.EmployeeId, x.LocationId, x.Date)),
+                // Days WORKED that were not working days for this person — a scan on a Saturday off, a
+                // bayram somebody came in on. The summary writes them OnTime (or Incomplete): a scan is
+                // never thrown away, and nothing is late on a day nobody was due. They stay in WorkDays,
+                // which is what «Gəlib» prints; the payroll takes them back out of its divisor.
+                OffDayWorkedDays: g.Count(x =>
+                    x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete
                     && !IsScheduledDay(x.EmployeeId, x.LocationId, x.Date))))
             .OrderBy(r => r.EmployeeName)
             .ToList();
@@ -1527,10 +1534,11 @@ public sealed class ReportQueryService : IReportQueryService
             if (salary is > 0m)
                 (scheduled, perDay, deduction, payable) = PayrollMath.Compute(
                     salary.Value, r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays,
-                    r.UnpaidDays, r.OffDayLeaveDays, r.PendingDays, r.OffDayUnpaidDays);
+                    r.UnpaidDays, r.OffDayLeaveDays, r.PendingDays, r.OffDayUnpaidDays, r.OffDayWorkedDays);
             else
-                scheduled = r.WorkDays + r.AbsentDays + r.LeaveDays + r.PermissionDays + r.TripDays
-                            - r.OffDayLeaveDays + r.PendingDays;
+                scheduled = PayrollMath.ScheduledDays(
+                    r.WorkDays, r.AbsentDays, r.LeaveDays, r.PermissionDays, r.TripDays,
+                    r.OffDayLeaveDays, r.PendingDays, r.OffDayWorkedDays);
 
             return new PayrollRow(
                 r.EmployeeId, r.EmployeeName, r.LocationName, salary,

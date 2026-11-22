@@ -56,9 +56,18 @@ public static class PayrollMath
         // (Mon 2 – Sun 15 November) for a Monday-to-Friday worker on 630 was deducted as 14 × 30 = 420:
         // four of those days were Saturdays and Sundays the person is never paid for, so the deduction
         // was 120 more than the ten working days, 300, they actually took off.
-        int offDayUnpaidDays = 0)
+        int offDayUnpaidDays = 0,
+        // Days WORKED on a day this person was not scheduled to work — an extra Saturday, a bayram they
+        // came in on. They arrive inside workDays, which is a reported figure («Gəlib 23») and keeps
+        // counting them; the divisor must not. Left in, every extra day lowered the daily rate and so
+        // cheapened every absence the same month: a Monday-to-Friday worker on 840 who came in on four
+        // Saturdays and missed two weekdays was docked 2 × 840/25 = 67.20 instead of 2 × 840/21 = 80 —
+        // and the more extra days somebody gave, the less their absences cost, which is backwards for
+        // the person who did not give any.
+        int offDayWorkedDays = 0)
     {
-        var scheduled = workDays + absentDays + leaveDays + permissionDays + tripDays - offDayLeaveDays + pendingDays;
+        var scheduled = ScheduledDays(
+            workDays, absentDays, leaveDays, permissionDays, tripDays, offDayLeaveDays, pendingDays, offDayWorkedDays);
         if (scheduled <= 0)
             return (0, 0m, 0m, salary);   // salary set but no working day fell in the period
 
@@ -71,6 +80,19 @@ public static class PayrollMath
         var payable = salary - deduction;
         return (scheduled, perDay, deduction, payable < 0m ? 0m : payable);
     }
+
+    /// <summary>
+    /// The working days in the period — the divisor of the daily rate, printed as «İş günü». Every day the
+    /// summary gave a working-day status, less the ones of them that were not working days for this person.
+    ///
+    /// One expression, read by <see cref="Compute"/> and by the payroll line of somebody with no salary
+    /// set (who still gets an «İş günü» figure). It was written out twice, and a term added to one copy and
+    /// not the other is precisely how the trip-day divisor went wrong.
+    /// </summary>
+    public static int ScheduledDays(
+        int workDays, int absentDays, int leaveDays, int permissionDays, int tripDays,
+        int offDayLeaveDays = 0, int pendingDays = 0, int offDayWorkedDays = 0) =>
+        workDays - offDayWorkedDays + absentDays + leaveDays + permissionDays + tripDays - offDayLeaveDays + pendingDays;
 
     /// <summary>
     /// The unpaid-leave days a deduction is taken for: the calendar days less the ones that were not
