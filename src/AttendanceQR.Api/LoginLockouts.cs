@@ -4,9 +4,9 @@ using AttendanceQR.Infrastructure.Security;
 namespace AttendanceQR.Api;
 
 /// <summary>
-/// Lifts every login lockout an account can be under. Called by every path that hands somebody a new
-/// PIN: the admin card and the bulk reset, the «PIN-i unutdum» queue, the manager desk, the platform
-/// console's support reset, and the self-service face reset.
+/// Lifts every login lockout an account can be under. Called by every path that resets an existing
+/// person's PIN: the admin card and the bulk reset, the «PIN-i unutdum» queue, the manager desk, the
+/// platform console's support reset, and the self-service face reset.
 ///
 /// One account is locked under up to FOUR keys: its email and its phone, each in the company's own
 /// namespace (the subdomain login) and in the tenant-less one (app-login, which is what the Android app
