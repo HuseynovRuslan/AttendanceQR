@@ -11,6 +11,7 @@ import { clearToken, getToken, setToken, setUnauthorizedHandler } from '../api/c
 import { decodeJwt, roleHome, type Role } from '../lib/jwt'
 import { listProfiles, rememberCurrent, removeProfile, type SavedProfile } from '../lib/profiles'
 import { getMyProfile } from '../api/attendance'
+import { syncPushOwner } from '../lib/push'
 
 interface AuthState {
   token: string | null
@@ -54,6 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       navigate('/login', { replace: true })
     })
   }, [navigate])
+
+  // The device's notifications go to whoever is signed in on it — on a crew phone that changes several
+  // times a morning. Runs on app start, after a login (the token changes) and after a profile switch (a
+  // full reload, so app start again). Fire-and-forget: it never prompts, never throws, and nothing — not
+  // the login, not the scan — waits for it. See «Whose subscription this is» in lib/push.
+  useEffect(() => {
+    if (token) void syncPushOwner()
+  }, [token])
 
   const value = useMemo<AuthState>(() => {
     const claims = token ? decodeJwt(token) : null
