@@ -489,6 +489,8 @@ src/AttendanceQR.Api/appsettings.Development.json
 
 # Docker Compose local env
 /.env
+# Staging's secrets, kept next to production's .env in the production checkout (ops/README.md)
+/.env.staging
 .coolify-tmp/
 
 # SSH askpass helper — holds the server password, must never be committed

@@ -36,7 +36,18 @@ public sealed class DailyReportJob : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunOnceAsync(stoppingToken);
+            // RunOnceAsync keeps its own failures in; this is the backstop for whatever it misses. An
+            // exception out of ExecuteAsync ends the job for good, and under the host's default it ended
+            // the whole process — every check-in with it — over one failed minute of daily reports.
+            try
+            {
+                await RunOnceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DailyReportJob: tick failed; the next one tries again");
+            }
             try { await Task.Delay(Tick, stoppingToken); } catch (OperationCanceledException) { break; }
         }
     }
@@ -44,10 +55,20 @@ public sealed class DailyReportJob : BackgroundService
     public async Task RunOnceAsync(CancellationToken ct)
     {
         List<Guid> tenantIds;
-        using (var scope = _scopes.CreateScope())
+        try
         {
+            using var scope = _scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             tenantIds = await db.Tenants.Where(t => t.IsActive).Select(t => t.Id).ToListAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            // The database is not answering (a Postgres restart, a full disk). Skipping the minute loses
+            // nothing: a scheduled report is still created on any later tick inside its SendWindow, and
+            // one waiting to be sent is still waiting.
+            _logger.LogError(ex, "DailyReportJob: could not list the companies; skipping this tick");
+            return;
         }
 
         foreach (var tenantId in tenantIds)
