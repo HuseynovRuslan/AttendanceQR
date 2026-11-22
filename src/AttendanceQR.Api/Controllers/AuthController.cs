@@ -214,11 +214,21 @@ public partial class AuthController : ControllerBase
 
         // Candidates across every tenant. Matched on the same email/phone columns the web login uses, so
         // it's a handful of rows at most (usually zero or one).
-        var candidates = identifier.Length == 0
-            ? new List<Employee>()
-            : await _db.Employees.IgnoreQueryFilters()
-                .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
-                .ToListAsync();
+        List<Employee> candidates;
+        try
+        {
+            candidates = identifier.Length == 0
+                ? new List<Employee>()
+                : await _db.Employees.IgnoreQueryFilters()
+                    .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
+                    .ToListAsync();
+        }
+        catch
+        {
+            // No PIN was checked — the IP's unit goes back (see Login: one bucket for the whole platform).
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
+            throw;
+        }
 
         // Verify against each candidate (and a decoy when there are none) so timing doesn't leak whether
         // the identifier exists. A login succeeds only if EXACTLY ONE active, activated account's PIN
@@ -325,8 +335,20 @@ public partial class AuthController : ControllerBase
         // The identifier field carries an email OR a phone number — match either.
         var identifier = request.Email?.Trim() ?? string.Empty;
         var phone = PhoneNumbers.Normalize(identifier);
-        var employee = await _db.Employees.FirstOrDefaultAsync(e =>
-            e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+        Employee? employee;
+        try
+        {
+            employee = await _db.Employees.FirstOrDefaultAsync(e =>
+                e.Email == identifier || (phone != null && e.PhoneNumber == phone));
+        }
+        catch
+        {
+            // The database failed, not the caller: no PIN was checked, so the IP's unit goes back. Behind
+            // Caddy that bucket is the whole platform's, and a database blip at the morning peak would
+            // otherwise fill it with the 500s and answer every login «Çox sayda cəhd» for 15 minutes after.
+            CacheCounter.GiveBack(_cache, ipKey, 1, AppLoginIpWindow);
+            throw;
+        }
 
         // Always perform a verification — against a decoy hash when the account is unknown or
         // has no password yet — so timing doesn't leak account existence (email enumeration).

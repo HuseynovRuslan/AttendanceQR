@@ -45,11 +45,21 @@ public partial class AuthController
         var decoy = _decoyHash ??= _passwordHasher.Hash("decoy-password-for-timing-parity");
 
         // Candidates across every tenant — same email/phone columns the web login matches on.
-        var candidates = identifier.Length == 0
-            ? new List<Employee>()
-            : await _db.Employees.IgnoreQueryFilters()
-                .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
-                .ToListAsync();
+        List<Employee> candidates;
+        try
+        {
+            candidates = identifier.Length == 0
+                ? new List<Employee>()
+                : await _db.Employees.IgnoreQueryFilters()
+                    .Where(e => e.Email == identifier || (phone != null && e.PhoneNumber == phone))
+                    .ToListAsync();
+        }
+        catch
+        {
+            // No PIN was checked — the IP's unit goes back, as in Login.
+            CacheCounter.GiveBack(_cache, ipKey, 1, OperatorLoginIpWindow);
+            throw;
+        }
 
         // Verify against each candidate (or a decoy when there are none) so timing never leaks account
         // existence. Success needs EXACTLY ONE active, activated, PIN-matching account.
