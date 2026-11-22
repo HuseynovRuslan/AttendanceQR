@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { enablePush, isSubscribed, markPushGateShown, pushPermission, pushServerEnabled, pushSupported } from '../lib/push'
 import { isStandalone } from '../lib/device'
+
+/**
+ * How long the gate may spend finding out whether it has anything to ask. The answer needs the service
+ * worker and a request to the server; on a weak signal at the poster either can take as long as it likes,
+ * and while it does the scanner sits behind a blank overlay. Past this the gate steps aside unasked.
+ */
+export const PUSH_GATE_CHECK_MS = 5000
 
 /**
  * The "turn notifications on" step shown before a check-in. Scanning is the only time employees open
@@ -8,30 +15,59 @@ import { isStandalone } from '../lib/device'
  * becomes a wall: at most once a day, only before a check-IN (never on the way out), and only for the
  * first few days (see shouldShowPushGate). After that the soft in-card prompt carries on alone.
  *
- * It offers no "later" on the ask itself — but it is not a hard block, and cannot be: on iPhone in a
- * Safari tab the push APIs do not exist, and a browser that was once refused will never prompt again.
- * Gating the scan on something those people physically cannot do would stop them recording attendance,
- * which matters far more than a notification.
+ * It is never a block, and cannot be (CLAUDE.md: a check-in is never blocked by anything optional, not by
+ * notifications). On iPhone in a Safari tab the push APIs do not exist, a browser once refused never
+ * prompts again, and a subscription can simply fail on a bad connection — so the ask leads with turning
+ * them on, but «Sonra» is always beside it, and stays pressable while an attempt is still running. It
+ * used to offer only «Aktiv et və davam et»: when that failed it said «Yenidən cəhd edin» and nothing
+ * else, and the one way to record the day was the button that had just failed.
  */
 export function PushGate({ onDone }: { onDone: () => void }) {
   const [state, setState] = useState<'checking' | 'ask' | 'install' | 'blocked'>('checking')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Held in a ref so the check below runs once per gate: ScanPage hands a fresh arrow on every render,
+  // and a check keyed on it started over — time-box and all — each time the page re-rendered.
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
+  // Once the employee is on their way to the scanner, nothing that finishes late may call them back.
+  const finished = useRef(false)
+  const finish = useCallback(() => {
+    if (finished.current) return
+    finished.current = true
+    onDoneRef.current()
+  }, [])
 
   useEffect(() => {
-    let cancelled = false
+    let settled = false
+    const settle = () => {
+      if (settled) return false
+      settled = true
+      clearTimeout(timer)
+      return true
+    }
+    // Not knowing in time is an answer too: the scan, not a blank screen.
+    const timer = setTimeout(() => {
+      if (settle()) finish()
+    }, PUSH_GATE_CHECK_MS)
     void (async () => {
-      // Already on — nothing to ask, and it must not cost them a tap.
-      if (pushSupported() && pushPermission() !== 'denied' && (await isSubscribed())) {
-        if (!cancelled) onDone()
+      try {
+        // Already on — nothing to ask, and it must not cost them a tap.
+        if (pushSupported() && pushPermission() !== 'denied' && (await isSubscribed())) {
+          if (settle()) finish()
+          return
+        }
+        // A server that sends no push has nothing to ask for — not even once a day.
+        if (pushSupported() && !(await pushServerEnabled())) {
+          if (settle()) finish()
+          return
+        }
+      } catch {
+        // A check that throws has said nothing — go to the scan.
+        if (settle()) finish()
         return
       }
-      // A server that sends no push has nothing to ask for — not even once a day.
-      if (pushSupported() && !(await pushServerEnabled())) {
-        if (!cancelled) onDone()
-        return
-      }
-      if (cancelled) return
+      if (!settle()) return
       // From here the gate is genuinely shown, so it counts against today's one allowance.
       markPushGateShown()
       if (!pushSupported()) {
@@ -44,18 +80,22 @@ export function PushGate({ onDone }: { onDone: () => void }) {
       }
     })()
     return () => {
-      cancelled = true
+      settle()
     }
-  }, [onDone])
+  }, [finish])
 
   async function turnOn() {
     setBusy(true)
     setError(null)
-    const r = await enablePush()
+    // enablePush asks the server for its key before anything else, outside its own try — a dropped
+    // connection rejects instead of answering 'failed', and the button would have stayed «Aktivləşdirilir…».
+    const r = await enablePush().catch(() => 'failed' as const)
+    // They pressed «Sonra» while this was running and are at the scanner already.
+    if (finished.current) return
     setBusy(false)
-    if (r === 'ok') onDone()
+    if (r === 'ok') finish()
     else if (r === 'denied') setState('blocked')
-    else if (r === 'disabled' || r === 'unsupported') onDone()
+    else if (r === 'disabled' || r === 'unsupported') finish()
     else setError('Alınmadı. Yenidən cəhd edin.')
   }
 
@@ -80,6 +120,14 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             {busy ? 'Aktivləşdirilir…' : 'Aktiv et və davam et'}
           </button>
           {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
+          {/* Quieter than the ask, never disabled: the way to the scanner must not depend on the very
+              thing that may be failing. */}
+          <button
+            onClick={finish}
+            className="mt-2 w-full rounded-xl py-3 text-sm font-semibold text-slate-300 hover:text-white"
+          >
+            Sonra
+          </button>
         </>
       )}
 
@@ -90,7 +138,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             Brauzer səhifəsində bildiriş dəstəklənmir. Aşağıdakı <b>Paylaş</b> düyməsi →
             <b> «Ana ekrana əlavə et»</b> seçin və proqramı oradan açın — bildirişlər işləyəcək.
           </p>
-          <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
+          <button onClick={finish} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
           </button>
         </>
@@ -103,7 +151,7 @@ export function PushGate({ onDone }: { onDone: () => void }) {
             Bildirişlərə icazə bloklanıb. Elanları və xatırlatmaları almaq üçün brauzer
             parametrlərindən bu sayta bildiriş icazəsi verin.
           </p>
-          <button onClick={onDone} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
+          <button onClick={finish} className="mt-5 w-full rounded-xl bg-slate-700 py-3 font-semibold">
             Davam et
           </button>
         </>
