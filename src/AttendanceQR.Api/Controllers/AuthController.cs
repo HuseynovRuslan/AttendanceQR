@@ -612,14 +612,23 @@ public partial class AuthController : ControllerBase
             || string.IsNullOrEmpty(employee.ReferencePhotoKey))
             return Miss();
 
-        // Self-service is for plain staff only — see the note above the action. An explicit allowlist of
-        // the one role, so a role added later is refused here rather than let in.
-        if (employee.Role != EmployeeRole.Employee || options.SuperAdminIdList().Contains(employee.Id))
-            return Miss();
-
         var deviceBound = await _db.DeviceBindings
             .AnyAsync(b => b.EmployeeId == employee.Id && b.IsActive && b.DeviceFingerprint == fingerprint);
         if (!deviceBound)
+            return Miss();
+
+        // Self-service is for plain staff only — see the note above the action. An explicit allowlist of
+        // the one role, so a role added later is refused here rather than let in. Asked AFTER the device
+        // query, not before it: refused first, a privileged account answered one database round-trip
+        // sooner than a plain one whose device did not match, and that difference alone said which
+        // accounts are privileged. Now only somebody already holding the bound device could time it.
+        if (employee.Role != EmployeeRole.Employee || options.SuperAdminIdList().Contains(employee.Id))
+            return Miss();
+
+        // The selfie is decoded before any attempt is spent: a payload that is not an image is not a
+        // guess at anybody's face.
+        var selfie = DecodeImage(request.PhotoBase64);
+        if (selfie.Length is 0 or > 4 * 1024 * 1024)
             return Miss();
 
         // Per-account face-attempt cap (independent of IP, which an attacker can rotate): someone
@@ -628,9 +637,12 @@ public partial class AuthController : ControllerBase
         // Keyed on the ACCOUNT's tenant, so the cap follows the employee whether they came in through
         // their company subdomain or through the tenant-less app shell — otherwise the app shell would
         // hand the same account a second, independent budget of face attempts.
+        //
+        // Spent on the way IN, atomically, for the same reason as the PIN lockout: read before the compare
+        // and written after it, every request that arrived while the first ones were at Rekognition saw the
+        // count unchanged — a shared brigade phone firing ten at once got ten faces past a cap of five.
         var faceLockKey = $"pinverify:{employee.TenantId:N}:{employee.Id:N}";
-        var fails = _cache.TryGetValue(faceLockKey, out int f) ? f : 0;
-        if (fails >= MaxFaceVerifyFailuresPerAccount)
+        if (!CacheCounter.TryTake(_cache, faceLockKey, MaxFaceVerifyFailuresPerAccount, FaceVerifyLockWindow))
             return Miss();
 
         // Face match — the second factor. Any problem (no face, mismatch, crowd, storage/AWS error) is a
@@ -639,25 +651,22 @@ public partial class AuthController : ControllerBase
         try
         {
             var refBytes = await _photoStorage.GetBytesAsync(employee.ReferencePhotoKey, HttpContext.RequestAborted);
-            var selfie = DecodeImage(request.PhotoBase64);
-            if (selfie.Length is 0 or > 4 * 1024 * 1024)
-                return Miss();
             outcome = await _faceMatch.CompareAsync(refBytes, selfie, HttpContext.RequestAborted);
         }
         catch (Exception ex)
         {
+            // Our failure, not a guess: nothing was compared, so the attempt goes back — as it always did,
+            // when the cap was only ever charged by a near-miss.
+            CacheCounter.GiveBack(_cache, faceLockKey, 1, FaceVerifyLockWindow);
             _logger.LogWarning(ex, "Forgot-pin verify: face compare failed for {EmployeeId}", employee.Id);
             return Miss();
         }
 
         // A single clear face whose similarity clears the HIGH self-service bar (NOT the advisory 85 the
-        // check-in flag uses — this is a real auth factor). A near-miss counts against the per-account cap.
+        // check-in flag uses — this is a real auth factor). A near-miss keeps the attempt it took.
         if (outcome.Status != FaceMatchStatus.Ok || outcome.Score < ForgotPinFaceThreshold)
-        {
-            _cache.Set(faceLockKey, fails + 1, FaceVerifyLockWindow);
             return Miss();
-        }
-        _cache.Remove(faceLockKey); // a genuine match clears the failure counter
+        CacheCounter.Clear(_cache, faceLockKey); // a genuine match clears the failure counter
 
         // Both factors passed — reset the PIN and hand it back, same reset an admin ResetPin does.
         var pin = PinRules.Generate();

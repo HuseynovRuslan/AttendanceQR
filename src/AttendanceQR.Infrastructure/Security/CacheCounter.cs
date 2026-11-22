@@ -43,4 +43,14 @@ public static class CacheCounter
                 cache.Set(key, Math.Max(0, value - units), window);
         }
     }
+
+    /// <summary>
+    /// Forget the counter. Under the same lock as the rest: a bare Remove could land between another
+    /// request's read and its write in <see cref="TryTake"/>, and that write would bring the count back.
+    /// </summary>
+    public static void Clear(IMemoryCache cache, string key)
+    {
+        lock (Gate)
+            cache.Remove(key);
+    }
 }
