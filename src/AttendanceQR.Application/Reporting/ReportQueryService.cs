@@ -1246,6 +1246,8 @@ public sealed class ReportQueryService : IReportQueryService
                 // The row's OWN location, not the employee's current one: a day belongs to wherever
                 // they were working that day, and this report is history.
                 LocationName = locationNames.GetValueOrDefault(r.LocationId, string.Empty),
+                // …and its id, which is the branch the day was judged against (see IsScheduledDay).
+                r.LocationId,
                 r.Status,
                 r.Pending,
                 // Carried so an Ezamiyyət day can be told from an annual-leave one below; both arrive
@@ -1284,10 +1286,22 @@ public sealed class ReportQueryService : IReportQueryService
 
         // Was this person scheduled to work on this date at all?
         //
-        // AttendanceCalculator.IsScheduledWorkingDay is the ONE place that decides it — a rotation
-        // (WorkCycleDays) if they have one, otherwise their location's 7-day WorkDaysMask — and
-        // holidays (NonWorkingDay) apply on top of either. Asked here for exactly one purpose: to
-        // take the weekends and bayrams that fall INSIDE a leave back out of the payroll's divisor.
+        // Answered EXACTLY the way the nightly summary answered it when it wrote the day
+        // (DailySummaryService.GenerateForDateAsync, and ComputeDayLiveAsync for today): the shift
+        // ShiftOverrideMap.ScheduleFor hands back for that person on that date — the day's plan row
+        // (a planned shift, a cover, the company's «İstirahət»), else the standing rotation's step
+        // (a «rest» step included), else their own shift, each as it stood on that date (revisions) —
+        // resolved by EffectiveShift against the branch the day was recorded at, minus that branch's
+        // holidays. Asked here to take the days that were not working days back out of the payroll.
+        //
+        // It used to be decided here on its own, from the employee's cycle fields and the branch's
+        // CURRENT WorkDaysMask — so a person on a named 7-day shift at a Monday-to-Friday branch had
+        // every Saturday and Sunday of a holiday taken out of their divisor as "not a working day",
+        // which the summary itself had never said: those days were working days for them. With 30
+        // working days and 4 of them dropped, each absence cost 900/26 = 34.62 instead of 900/30 = 30.
+        // Same story for a rotation's rest steps, a planned «İstirahət» and a shift edited mid-month:
+        // every one of them is already decided in one place, and a second opinion here is how the
+        // board and the payroll come to disagree about the same day.
         var reportEmployeeIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
         var scheduleOf = (await _db.Employees
                 .Where(e => reportEmployeeIds.Contains(e.Id))
@@ -1295,28 +1309,38 @@ public sealed class ReportQueryService : IReportQueryService
                 // report must not grow a second query to print two mostly-null columns.
                 .Select(e => new
                 {
-                    e.Id, e.LocationId, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                    e.Id, e.LocationId, e.ScheduleId, e.WorkStart, e.WorkEnd,
+                    e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
                     e.PaperEmployer, e.PaperSite,
                 })
                 .ToListAsync(ct))
             .ToDictionary(e => e.Id);
-        var maskOf = await _db.Locations
-            .Select(l => new { l.Id, l.WorkDaysMask })
-            .ToDictionaryAsync(x => x.Id, x => x.WorkDaysMask, ct);
-        var holidays = await _db.NonWorkingDays
-            .Where(n => n.Date >= from && n.Date <= to)
-            .Select(n => new { n.Date, n.LocationId })
-            .ToListAsync(ct);
+        // A handful of rows per tenant — loaded whole, as the summary job loads them.
+        var locationOf = await _db.Locations.AsNoTracking().ToDictionaryAsync(l => l.Id, ct);
+        var payrollSchedules = await _db.Schedules.AsNoTracking().ToDictionaryAsync(s => s.Id, ct);
+        // The period's plan rows and standing shifts in one query, not one per row.
+        var payrollOverrides = await ShiftOverrideMap.LoadAsync(_db, from, to, reportEmployeeIds, ct);
+        var holidays = (await _db.NonWorkingDays
+                .Where(n => n.Date >= from && n.Date <= to)
+                .Select(n => new { n.Date, n.LocationId })
+                .ToListAsync(ct))
+            .Select(n => (n.Date, n.LocationId))
+            .ToHashSet();
 
-        bool IsScheduledDay(Guid employeeId, DateOnly date)
+        bool IsScheduledDay(Guid employeeId, Guid dayLocationId, DateOnly date)
         {
             if (!scheduleOf.TryGetValue(employeeId, out var e)) return true;   // unknown → assume it counted
-            // A holiday for the whole company, or for this person's location.
-            if (holidays.Any(h => h.Date == date && (h.LocationId == null || h.LocationId == e.LocationId)))
-                return false;
-            return AttendanceCalculator.IsScheduledWorkingDay(
-                e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
-                maskOf.GetValueOrDefault(e.LocationId, 126), date);
+            // The branch the day was recorded at is the one the summary judged it against; the
+            // person's current branch only if that one has gone.
+            if (!locationOf.TryGetValue(dayLocationId, out var location)
+                && !locationOf.TryGetValue(e.LocationId, out location))
+                return true;
+            var shift = EffectiveShift.Resolve(
+                e.WorkStart, e.WorkEnd, e.WorkCycleDays, e.WorkCycleOnDays, e.WorkCycleAnchor,
+                payrollOverrides.ScheduleFor(e.Id, date, e.ScheduleId, payrollSchedules), location);
+            // A holiday for the whole company, or for this day's branch.
+            var holiday = holidays.Contains((date, null)) || holidays.Contains((date, location.Id));
+            return PayrollMath.IsWorkingDay(shift, date, holiday);
         }
 
         bool OnTrip(Guid employeeId, DateOnly date) =>
@@ -1374,7 +1398,7 @@ public sealed class ReportQueryService : IReportQueryService
                 // the person was scheduled.
                 OffDayLeaveDays: g.Count(x =>
                     x.Status is DailySummaryStatus.OnLeave or DailySummaryStatus.Permission
-                    && !IsScheduledDay(x.EmployeeId, x.Date)),
+                    && !IsScheduledDay(x.EmployeeId, x.LocationId, x.Date)),
                 PaperEmployer: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperEmployer,
                 PaperSite: scheduleOf.GetValueOrDefault(g.Key.EmployeeId)?.PaperSite,
                 PendingDays: g.Count(x => x.Status == DailySummaryStatus.Absent && x.Pending)))

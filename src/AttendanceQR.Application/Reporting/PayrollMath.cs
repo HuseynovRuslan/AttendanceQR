@@ -60,4 +60,31 @@ public static class PayrollMath
         var payable = salary - deduction;
         return (scheduled, perDay, deduction, payable < 0m ? 0m : payable);
     }
+
+    /// <summary>
+    /// Whether <paramref name="date"/> was a working day for the payroll, given the shift that day was
+    /// resolved to (ShiftOverrideMap.ScheduleFor → EffectiveShift.Resolve — the summary job's own
+    /// resolution) and whether it was a holiday at the day's branch.
+    ///
+    /// For a fixed shift it is the summary's question verbatim: <see cref="EffectiveShift.IsWorkingDay"/>
+    /// and no holiday — the same answer that made the day «Qayıb» or «İstirahət» in the first place, so
+    /// the payroll cannot count a day as due that the board never did, or the other way round.
+    ///
+    /// A FLEXIBLE shift is the one place it cannot be verbatim. «Elastik qrafik» answers false for every
+    /// date on purpose (nobody on it is ever due, so nothing can ever be late or absent) — and taken
+    /// literally that would leave such a person with no working day at all, which PayrollMath reads as
+    /// "nothing to deduct": their unpaid leave would be paid in full, the exact bug
+    /// <see cref="Compute"/>'s unpaidDays exists to stop. So for a flexible shift the payroll falls back
+    /// to the shift's own working week, the days in its WorkDaysMask — the same days a daily norm
+    /// applies on (<see cref="EffectiveShift.IsNormDay"/>). A plan's «İstirahət» on a flexible shift has
+    /// an empty mask and so still reads as a day off.
+    /// </summary>
+    public static bool IsWorkingDay(EffectiveShift shift, DateOnly date, bool isHoliday)
+    {
+        if (isHoliday)
+            return false;
+        if (!shift.IsFlexible)
+            return shift.IsWorkingDay(date);
+        return AttendanceCalculator.IsWorkingDayOfWeek(shift.WorkDaysMask, date.DayOfWeek);
+    }
 }
