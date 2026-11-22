@@ -344,7 +344,15 @@ public class AttendanceController : ControllerBase
 
     // POST /api/attendance/me/reference-photo — the caller sets their OWN reference selfie (the
     // face-audit baseline). Used by the first-login flow for temp-PIN accounts, which never took an
-    // activation selfie; overwrites any existing reference.
+    // activation selfie.
+    //
+    // Only where there is NO reference yet. It used to overwrite unconditionally, with nothing written
+    // down — so anybody holding a session for a moment could put their own face in as this person's: every
+    // later check-in selfie would be judged against the wrong face, and the forgot-PIN face check with it.
+    // A reference that is wrong is cleared by an admin (reset-reference-photo), which is audited, and the
+    // next set — here or from the first check-in — fills it again. A refusal is 409
+    // ReferencePhotoAlreadySet, which the first-login screen reads as "nothing to do": it never stands
+    // between anybody and their first sign-in.
     [HttpPost("me/reference-photo")]
     public async Task<IActionResult> SetMyReferencePhoto([FromBody] ReferencePhotoRequest request)
     {
@@ -354,6 +362,9 @@ public class AttendanceController : ControllerBase
         if (employee is null)
             return Unauthorized(new { error = "InvalidToken" });
 
+        if (!string.IsNullOrEmpty(employee.ReferencePhotoKey))
+            return Conflict(new { error = "ReferencePhotoAlreadySet" });
+
         var bytes = DecodeImage(request.PhotoBase64);
         if (bytes.Length is <= 0 or > 2 * 1024 * 1024)
             return BadRequest(new { error = "InvalidPhoto" });
@@ -361,6 +372,15 @@ public class AttendanceController : ControllerBase
         var ct = HttpContext.RequestAborted;
         employee.ReferencePhotoKey = await _photoStorage.UploadReferencePhotoAsync(employee.Id, bytes, ct);
         employee.ReferencePhotoTakenAtUtc = DateTime.UtcNow;
+        _db.AuditLogs.Add(new AuditLog
+        {
+            EmployeeId = employee.Id,
+            EventType = AuditEventType.ReferencePhotoChanged,
+            Reason = User.IsImpersonating()
+                ? $"Referans şəkli dəstək sessiyasında təyin edildi ({User.FindFirst("imp")?.Value})"
+                : "Referans şəkli işçinin özü tərəfindən təyin edildi",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await _db.SaveChangesAsync(ct);
         return Ok(new { ok = true });
     }

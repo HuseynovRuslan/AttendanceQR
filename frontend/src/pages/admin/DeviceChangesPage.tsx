@@ -89,8 +89,8 @@ export function DeviceChangesPage() {
                     <IconPhone /> <EmployeeLink id={r.employeeId} name={r.employeeName} />
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--c500)', marginTop: 4 }}>
-                    Köhnə: <span className="mono">{r.currentDeviceFingerprint ?? '—'}</span> → Yeni:{' '}
-                    <span className="mono">{r.newDeviceFingerprint}</span>
+                    Köhnə: <span className="mono">{r.currentDeviceId ?? '—'}</span> → Yeni:{' '}
+                    <span className="mono">{r.newDeviceId}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c400)', marginTop: 2 }}>
                     {fmtFullDateTime(r.requestedAtUtc)}
@@ -163,8 +163,11 @@ function SharedDevices() {
 ` +
       'Telefon itibsə bunu edin. Heç kim hesabdan ÇIXMIR — yalnız bu telefondan skan bağlanır.'))
       return
-    setBusy(d.fingerprint)
-    const { status } = await revokeSharedDevice(d.fingerprint)
+    // Any one binding names the handset — the server finds the rest.
+    const anyBinding = d.employees[0]?.bindingId
+    if (!anyBinding) return
+    setBusy(d.deviceId)
+    const { status } = await revokeSharedDevice(anyBinding)
     setBusy(null)
     if (status === 200) void load()
     else setError('Ləğv edilmədi')
@@ -190,14 +193,14 @@ function SharedDevices() {
       )}
 
       {(devices ?? []).map((d) => (
-        <div key={d.fingerprint} className="card card-pad" style={{ marginBottom: 10 }}>
+        <div key={d.deviceId} className="card card-pad" style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <div>
               <span style={{ fontWeight: 700 }}>{d.label ?? 'Naməlum cihaz'}</span>
               <span className="badge b-sick" style={{ marginLeft: 8 }}>{d.accountCount} hesab</span>
             </div>
             {mayRevoke && (
-              <button className="btn btn-sm" disabled={busy === d.fingerprint} onClick={() => void revokeAll(d)}>
+              <button className="btn btn-sm" disabled={busy === d.deviceId} onClick={() => void revokeAll(d)}>
                 Telefon itib — hamısını ayır
               </button>
             )}

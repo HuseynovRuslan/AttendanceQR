@@ -125,9 +125,8 @@ public class ManagerScreenScopeTests
 
     private sealed class Lockout : ILoginLockoutStore
     {
-        public int LockoutMinutes => 5;
+        public LoginAttempt BeginAttempt(string key) => new(true, 5, 0);
         public bool IsLockedOut(string key) => false;
-        public int RecordFailure(string key) => 5;
         public void RecordSuccess(string key) { }
     }
 

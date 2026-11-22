@@ -166,11 +166,10 @@ public class AdminPinResetController : ControllerBase
         });
         await _db.SaveChangesAsync(ct);
 
-        // Clear the lockout for both identifiers, same key Login would have locked on.
-        var tenantId = _db.CurrentTenantId;
-        _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-        if (employee.PhoneNumber is not null)
-            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+        // Clear every lockout the person is under — the company's login and app-login both. Locking
+        // themselves out in the app is the usual reason anybody files this request, so a reset that left
+        // the app's lock in place handed them a PIN the app would not take for up to an hour.
+        LoginLockouts.ClearFor(_lockout, employee);
 
         return Ok(new { tempPin = pin });
     }

@@ -42,6 +42,10 @@ public class AdminDeviceBindingController : ControllerBase
 
     // GET /api/admin/device-bindings — every active binding, newest first, so a freshly adopted
     // device is at the top where an admin will actually see it.
+    //
+    // The fingerprint itself never leaves the server, from here or anywhere: it is the value the scan
+    // and the forgot-PIN reset trust as "this person's phone", so handing it to every admin and branch
+    // manager handed them that phone. The screen gets DeviceDisplayId instead — see there.
     [Permission(AccessPermissions.DevicesView)]
     [HttpGet]
     public async Task<IActionResult> List()
@@ -55,17 +59,28 @@ public class AdminDeviceBindingController : ControllerBase
             orderby d.BoundAtUtc descending
             select new
             {
-                id = d.Id,
-                employeeId = e.Id,
-                employeeName = e.FullName,
-                deviceLabel = d.DeviceLabel,
-                deviceFingerprint = d.DeviceFingerprint,
-                boundVia = d.BoundVia.ToString(),
-                boundAtUtc = d.BoundAtUtc,
-                lastSeenAtUtc = d.LastSeenAtUtc
+                d.Id,
+                EmployeeId = e.Id,
+                e.FullName,
+                d.DeviceLabel,
+                d.DeviceFingerprint,
+                d.BoundVia,
+                d.BoundAtUtc,
+                d.LastSeenAtUtc,
             }).ToListAsync(HttpContext.RequestAborted);
 
-        return Ok(rows);
+        // Hashed here, in memory — SHA-256 does not translate to SQL.
+        return Ok(rows.Select(r => new
+        {
+            id = r.Id,
+            employeeId = r.EmployeeId,
+            employeeName = r.FullName,
+            deviceLabel = r.DeviceLabel,
+            deviceId = DeviceDisplayId.Of(r.DeviceFingerprint),
+            boundVia = r.BoundVia.ToString(),
+            boundAtUtc = r.BoundAtUtc,
+            lastSeenAtUtc = r.LastSeenAtUtc,
+        }).ToList());
     }
 
     /// <summary>
@@ -99,6 +114,7 @@ public class AdminDeviceBindingController : ControllerBase
                 bindingId = d.Id, employeeId = e.Id, e.FullName, e.Position, e.CanShareDevice,
             }).ToListAsync(ct);
 
+        // Grouped on the real fingerprint; only its display id goes out (see List).
         var devices = rows
             .GroupBy(r => r.DeviceFingerprint)
             .Where(g => g.Select(r => r.employeeId).Distinct().Count() > 1)
@@ -106,7 +122,7 @@ public class AdminDeviceBindingController : ControllerBase
             .OrderByDescending(g => g.Select(r => r.employeeId).Distinct().Count())
             .Select(g => new
             {
-                fingerprint = g.Key,
+                deviceId = DeviceDisplayId.Of(g.Key),
                 // The label comes from the user agent, so every binding on one handset agrees; taking
                 // the first is not a guess.
                 label = g.First().DeviceLabel,
@@ -142,15 +158,26 @@ public class AdminDeviceBindingController : ControllerBase
     /// This does NOT sign anyone out. Bumping TokenVersion would, and mass sign-out is the one thing
     /// this product does not do: the people on a shared phone are the people who cannot re-enter a PIN.
     /// Revoking the bindings stops that handset scanning while every account stays exactly as it was.
+    ///
+    /// The handset is named by any ONE of its bindings (the shared list carries each account's bindingId),
+    /// not by its fingerprint, which the screens no longer receive. Resolving it here, inside the tenant's
+    /// filter, means nothing is decided on a value the client could only have learnt by leaking it.
     /// </summary>
     [Permission(AccessPermissions.DevicesRevoke)]
     [HttpPost("device/revoke-all")]
-    public async Task<IActionResult> RevokeDevice([FromQuery] string fingerprint)
+    public async Task<IActionResult> RevokeDevice([FromQuery] Guid? bindingId)
     {
-        if (string.IsNullOrWhiteSpace(fingerprint))
-            return BadRequest(new { error = "FingerprintRequired" });
+        if (bindingId is null || bindingId == Guid.Empty)
+            return BadRequest(new { error = "BindingRequired" });
 
         var ct = HttpContext.RequestAborted;
+        var fingerprint = await _db.DeviceBindings
+            .Where(d => d.Id == bindingId.Value)
+            .Select(d => d.DeviceFingerprint)
+            .FirstOrDefaultAsync(ct);
+        if (fingerprint is null)
+            return NotFound(new { error = "DeviceNotFound" });
+
         var bindings = await _db.DeviceBindings
             .Where(d => d.DeviceFingerprint == fingerprint && d.RevokedAtUtc == null)
             .ToListAsync(ct);

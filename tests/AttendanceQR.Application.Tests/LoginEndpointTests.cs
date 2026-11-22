@@ -106,21 +106,24 @@ public class LoginEndpointTests
         }
     }
 
-    /// <summary>A lockout store a test can put into any state, unlike the real one's internal timers.</summary>
+    /// <summary>A lockout store a test can put into any state, unlike the real one's internal timers.
+    /// <see cref="Attempts"/> are the attempts the endpoint spent BEFORE verifying; a locked key spends
+    /// none. A success shows up in <see cref="Successes"/>, which is what gives a spent attempt back.</summary>
     private sealed class ConfigurableLockout : ILoginLockoutStore
     {
         public bool Locked { get; set; }
         public int RemainingOnFailure { get; set; } = 4;
-        public List<string> Failures { get; } = new();
+        public List<string> Attempts { get; } = new();
         public List<string> Successes { get; } = new();
 
-        public int LockoutMinutes => 15;
-        public bool IsLockedOut(string key) => Locked;
-        public int RecordFailure(string key)
+        public LoginAttempt BeginAttempt(string key)
         {
-            Failures.Add(key);
-            return RemainingOnFailure;
+            if (Locked)
+                return new LoginAttempt(false, 0, 15);
+            Attempts.Add(key);
+            return new LoginAttempt(true, RemainingOnFailure, RemainingOnFailure <= 0 ? 15 : 0);
         }
+        public bool IsLockedOut(string key) => Locked;
         public void RecordSuccess(string key) => Successes.Add(key);
     }
 
@@ -207,10 +210,12 @@ public class LoginEndpointTests
     [Fact]
     public async Task A_successful_login_clears_the_lockout_budget()
     {
+        // The attempt is spent before the PIN is checked (so parallel guesses cannot share one unlocked
+        // look); a right PIN must then hand it back — one attempt in, one success clearing it.
         using var h = new Harness();
         await h.Login("+994501234567", RightPin);
+        Assert.Single(h.Lockout.Attempts);
         Assert.Single(h.Lockout.Successes);
-        Assert.Empty(h.Lockout.Failures);
     }
 
     // --- every refusal looks the same --------------------------------------------
@@ -223,7 +228,8 @@ public class LoginEndpointTests
 
         Assert.Equal(StatusCodes.Status401Unauthorized, status);
         Assert.Equal("InvalidCredentials", error);
-        Assert.Single(h.Lockout.Failures);
+        Assert.Single(h.Lockout.Attempts);
+        Assert.Empty(h.Lockout.Successes);   // nothing gives the spent attempt back
     }
 
     [Fact]
@@ -281,7 +287,8 @@ public class LoginEndpointTests
 
         Assert.Equal(StatusCodes.Status429TooManyRequests, status);
         Assert.Equal("TooManyAttempts", error);
-        Assert.Empty(h.Lockout.Failures);   // a locked door is not a failed attempt
+        Assert.Empty(h.Lockout.Attempts);   // a locked door is not a failed attempt
+        Assert.Empty(h.Lockout.Successes);  // ...and a right PIN behind it is not checked, so not a success
     }
 
     [Fact]
@@ -307,7 +314,7 @@ public class LoginEndpointTests
         Assert.Equal(StatusCodes.Status429TooManyRequests, status);
         Assert.Equal("TooManyAttempts", error);
         // Not even the lockout store was consulted — that is the point of checking the IP first.
-        Assert.Empty(h.Lockout.Failures);
+        Assert.Empty(h.Lockout.Attempts);
         Assert.Empty(h.Lockout.Successes);
     }
 
