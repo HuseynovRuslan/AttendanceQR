@@ -48,14 +48,19 @@ export function PinChangeSheet({ onClose }: { onClose: () => void }) {
         return
       }
       const code = data && 'error' in data ? data.error : ''
+      // The current PIN is rate-limited like a sign-in: after 8 wrong tries the server stops checking it
+      // for a while and says for how long.
+      const minutes = data && 'minutes' in data && data.minutes ? data.minutes : 5
       setError(
-        code === 'InvalidCurrentPassword'
-          ? 'Cari PIN yanlışdır'
-          : code === 'PinInvalid'
-            ? 'Yeni PIN düz 4 rəqəm olmalıdır'
-            : code === 'PinTooWeak'
-              ? 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir'
-              : 'PIN dəyişdirilmədi',
+        code === 'TooManyAttempts'
+          ? `Çox sayda yanlış cəhd — ${minutes} dəqiqə sonra yenidən cəhd edin`
+          : code === 'InvalidCurrentPassword'
+            ? 'Cari PIN yanlışdır'
+            : code === 'PinInvalid'
+              ? 'Yeni PIN düz 4 rəqəm olmalıdır'
+              : code === 'PinTooWeak'
+                ? 'Bu PIN çox sadədir — 1234, 0000, 1212 kimi PIN-lər qəbul edilmir'
+                : 'PIN dəyişdirilmədi',
       )
     } catch {
       setError('Serverə qoşulmaq mümkün olmadı')

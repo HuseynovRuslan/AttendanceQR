@@ -712,8 +712,26 @@ public partial class AuthController : ControllerBase
         if (employee is null)
             return Unauthorized(new { error = "InvalidToken" });
 
+        // The current PIN is a guess like any login, and here nothing else limited it: a stolen session
+        // could walk all 10,000 PINs from inside the app, then set its own and keep the account. Same store,
+        // same budget and escalation as login, spent before the verify — but keyed on the ACCOUNT, because
+        // the caller is already signed in and the session's identifier is the employee id, not a number.
+        // A separate namespace from the login keys, so a real employee's typos here never lock them out of
+        // signing in (and the other way round).
+        var lockoutKey = $"changepin:{employee.Id:N}";
+        var attempt = _lockoutStore.BeginAttempt(lockoutKey);
+        if (!attempt.Allowed)
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
+
         if (!_passwordHasher.Verify(employee.PasswordHash, request.CurrentPassword))
+        {
+            if (attempt.Remaining <= 0)
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    new { error = "TooManyAttempts", minutes = attempt.LockoutMinutes });
             return Unauthorized(new { error = "InvalidCurrentPassword" });
+        }
+        _lockoutStore.RecordSuccess(lockoutKey);
 
         // Same rules as activation — a changed password must stay a PIN, and must not be a guess.
         if (!PinRules.IsWellFormed(request.NewPassword))
