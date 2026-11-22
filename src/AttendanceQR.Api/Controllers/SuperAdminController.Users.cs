@@ -80,6 +80,13 @@ public partial class SuperAdminController
         emp.TokenVersion++; // "log out everywhere" — the old token stops validating immediately.
         await _db.SaveChangesAsync(ct);
 
+        // ...and every login lockout lifted, in the person's OWN company and in app-login. Somebody who
+        // reaches platform support has usually locked themselves out first; a PIN they cannot use until
+        // the lock runs out (up to an hour) is not help. Keyed on emp.TenantId by LoginLockouts — this
+        // console's ambient tenant is the operator's company, not the customer's.
+        if (_lockout is not null)
+            LoginLockouts.ClearFor(_lockout, emp);
+
         await AuditForUserAsync("UserPinReset", emp.TenantId, $"{emp.FullName} ({emp.PhoneNumber})", ct);
         return Ok(new { id = emp.Id, tempPin = pin });
     }

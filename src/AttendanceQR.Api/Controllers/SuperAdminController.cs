@@ -39,10 +39,13 @@ public partial class SuperAdminController : ControllerBase
     private readonly AppOptions _appOptions;
     private readonly IPhotoStorageService? _photoStorage;
     private readonly ILogger<SuperAdminController>? _logger;
+    private readonly ILoginLockoutStore? _lockout;
 
     /// <param name="photoStorage">Only the tenant delete needs it, and only to clean the bucket after
     /// the rows are gone. Optional so the console's other twenty endpoints — and their tests — do not
     /// have to know about object storage; DI always supplies it in the running app.</param>
+    /// <param name="lockout">Only the support PIN reset needs it, to lift the person's login lockouts.
+    /// Optional for the same reason; DI always supplies it.</param>
     public SuperAdminController(
         AppDbContext db,
         ITenantContext tenant,
@@ -50,7 +53,8 @@ public partial class SuperAdminController : ControllerBase
         IJwtService jwt,
         AppOptions options,
         IPhotoStorageService? photoStorage = null,
-        ILogger<SuperAdminController>? logger = null)
+        ILogger<SuperAdminController>? logger = null,
+        ILoginLockoutStore? lockout = null)
     {
         _db = db;
         _tenant = tenant;
@@ -60,6 +64,7 @@ public partial class SuperAdminController : ControllerBase
         _appOptions = options;
         _photoStorage = photoStorage;
         _logger = logger;
+        _lockout = lockout;
     }
 
     // An impersonation token carries sub = the impersonated TENANT admin, not the operator. If that admin

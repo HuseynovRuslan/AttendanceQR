@@ -47,11 +47,14 @@ public class ManagerController : ControllerBase
     private readonly Guid[] _operatorIds;
     // The approval flow's deployment switch. Null (the tests that build this desk by hand) reads as off.
     private readonly ApprovalOptions? _approvals;
+    // Only reset-pin needs it, to lift the lockouts of the person it hands a new PIN to. Optional for the
+    // same reason as the switch above — the desk's other tests never touch a PIN; DI always supplies it.
+    private readonly ILoginLockoutStore? _lockout;
 
     private readonly TimeZoneInfo _zone;
 
     public ManagerController(AppDbContext db, IPasswordHasher passwordHasher, IDailySummaryService dailySummaryService,
-        AppOptions appOptions, ApprovalOptions? approvals = null)
+        AppOptions appOptions, ApprovalOptions? approvals = null, ILoginLockoutStore? lockout = null)
     {
         _db = db;
         _passwordHasher = passwordHasher;
@@ -59,6 +62,7 @@ public class ManagerController : ControllerBase
         _operatorIds = appOptions.SuperAdminIdList();
         _zone = ScheduleRevisions.Zone(appOptions.TimeZone);
         _approvals = approvals;
+        _lockout = lockout;
     }
 
     private Guid M15() => User.EmployeeId();
@@ -905,6 +909,13 @@ public class ManagerController : ControllerBase
         employee.TokenVersion++; // any existing session stops working — a reset should end old logins
         await AuditCredentialChangeAsync(employee, "PIN sıfırlandı");
         await _db.SaveChangesAsync(ct);
+
+        // A new PIN the person cannot use yet is no help: this desk cleared no lockout at all, so somebody
+        // who had locked themselves out — the usual reason they came to the manager — stood there with the
+        // fresh PIN until the lock ran out, up to an hour now that repeat locks grow. Same clearing as
+        // every other reset (LoginLockouts).
+        if (_lockout is not null)
+            LoginLockouts.ClearFor(_lockout, employee);
 
         return Ok(new { id = employee.Id, tempPin });
     }

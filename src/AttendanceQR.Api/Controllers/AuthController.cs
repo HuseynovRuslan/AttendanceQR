@@ -199,7 +199,7 @@ public partial class AuthController : ControllerBase
         // Tenant-less lockout: this endpoint spans every company, so the brute-force budget is per
         // identifier only (a distinct namespace from the per-tenant web login lockout). The attempt is
         // spent here, before the verify, so parallel guesses cannot all slip past an unlocked check.
-        var lockoutKey = $"applogin:{LoginIdentity.LockoutKey(Guid.Empty, identifier)}";
+        var lockoutKey = LoginIdentity.AppLoginKey(identifier);
         var attempt = _lockoutStore.BeginAttempt(lockoutKey);
         if (!attempt.Allowed)
         {
@@ -673,22 +673,14 @@ public partial class AuthController : ControllerBase
         });
         await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
-        // The account's own company — the lockout keys must match the ones Login/app-login spend, and
-        // an app-shell caller has no ambient tenant to read.
-        var tenantId = employee.TenantId;
-        _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-        if (employee.PhoneNumber is not null)
-            _lockoutStore.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
-
-        // ...and the tenant-less namespace app-login gates on, which is a DIFFERENT key (Guid.Empty).
-        // Arriving here already locked out is the normal case, not the rare one: mistyping a PIN eight
-        // times is exactly what makes someone open "PIN-i unutdum". Without this they read the fresh PIN
-        // off the screen, tap "Girişə keç", and the app answers "Çox sayda cəhd" — and their natural
-        // reaction is to run the whole recovery flow again. Proving a face match is a strictly stronger
-        // success signal than the PIN entry that clears the keys above, so it clears these too.
-        _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.Email)}");
-        if (employee.PhoneNumber is not null)
-            _lockoutStore.RecordSuccess($"applogin:{LoginIdentity.LockoutKey(Guid.Empty, employee.PhoneNumber)}");
+        // Every lockout the account is under — its company's keys and the tenant-less ones app-login gates
+        // on (LoginLockouts builds them from the account's own TenantId; an app-shell caller has no ambient
+        // tenant to read). Arriving here already locked out is the normal case, not the rare one: mistyping
+        // a PIN eight times is exactly what makes someone open "PIN-i unutdum". Without this they read the
+        // fresh PIN off the screen, tap "Girişə keç", and the app answers "Çox sayda cəhd" — and their
+        // natural reaction is to run the whole recovery flow again. Proving a face match is a strictly
+        // stronger success signal than the PIN entry that would have cleared them anyway.
+        LoginLockouts.ClearFor(_lockoutStore, employee);
         // And pay one failure back into the per-IP budget, exactly as a successful app-login does.
         // Through CacheCounter like app-login's own writes: a plain read-then-set here could overwrite a
         // unit app-login had just taken under its lock.

@@ -23,4 +23,13 @@ public static class LoginIdentity
         var canonical = PhoneNumbers.Normalize(raw) ?? raw.ToLowerInvariant();
         return $"{tenantId:N}:{canonical}";
     }
+
+    /// <summary>
+    /// The key app-login (the native app and app.qrlog.az, which have no company subdomain) spends from.
+    /// Its own namespace: app-login looks across every company, so it cannot use the per-tenant key, and
+    /// the two budgets must not be one. Built here, once, because anything that clears a lockout has to
+    /// arrive at exactly the string app-login spent — a clearer that spelled it by hand and drifted would
+    /// clear nothing and say nothing.
+    /// </summary>
+    public static string AppLoginKey(string? identifier) => $"applogin:{LockoutKey(Guid.Empty, identifier)}";
 }

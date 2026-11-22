@@ -1604,13 +1604,10 @@ public class AdminController : ControllerBase
         employee.TokenVersion++;         // kill any session still holding the old PIN's token
         await _db.SaveChangesAsync();
 
-        // Clear the lockout for both identifiers they can log in with. No longer needs to guess at
-        // spellings ("0"+phone, +994…): LoginIdentity collapses every spelling of a number onto one
-        // key, which is the same key Login would have locked.
-        var tenantId = _db.CurrentTenantId;
-        _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-        if (employee.PhoneNumber is not null)
-            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+        // Clear every lockout they can be under — both identifiers, in the company's login and in
+        // app-login, which is the one the app uses. No longer needs to guess at spellings ("0"+phone,
+        // +994…): LoginIdentity collapses every spelling of a number onto one key, the one Login locked.
+        LoginLockouts.ClearFor(_lockout, employee);
 
         return Ok(new { tempPin = pin });
     }
@@ -1800,7 +1797,6 @@ public class AdminController : ControllerBase
 
         var issued = new List<object>();
         var skipped = new List<object>();
-        var tenantId = _db.CurrentTenantId;
 
         foreach (var employee in employees)
         {
@@ -1837,9 +1833,7 @@ public class AdminController : ControllerBase
             employee.MustChangePin = true;
             employee.TokenVersion++;
 
-            _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.Email));
-            if (employee.PhoneNumber is not null)
-                _lockout.RecordSuccess(LoginIdentity.LockoutKey(tenantId, employee.PhoneNumber));
+            LoginLockouts.ClearFor(_lockout, employee);
 
             issued.Add(new
             {
