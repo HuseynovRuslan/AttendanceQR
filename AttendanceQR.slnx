@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AttendanceQR.Application.Tests/AttendanceQR.Application.Tests.csproj" />
+    <Project Path="tests/AttendanceQR.IntegrationTests/AttendanceQR.IntegrationTests.csproj" />
   </Folder>
 </Solution>
