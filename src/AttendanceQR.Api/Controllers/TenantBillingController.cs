@@ -38,9 +38,13 @@ public class TenantBillingController : ControllerBase
     {
         var ct = HttpContext.RequestAborted;
 
-        // The tenant is resolved from the token before any query runs (fail-closed multi-tenancy), so
-        // the filtered DbSet already answers for exactly one company.
-        var tenant = await _db.Tenants.FirstOrDefaultAsync(ct);
+        // Tenants and TenantInvoices are the platform's own registry and carry NO query filter, so the
+        // fail-closed tenant filter does not narrow them: the company has to be named explicitly. An
+        // unordered read here used to return whichever company PostgreSQL happened to store first, and
+        // every other company's admin was shown that company's plan, price and invoices (SEC-01).
+        // CurrentTenantId comes from the token and throws when unresolved, so this stays fail-closed.
+        var tenantId = _db.CurrentTenantId;
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null)
             return NotFound(new { error = "TenantNotFound" });
 
@@ -59,7 +63,7 @@ public class TenantBillingController : ControllerBase
 
         var since = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-HistoryMonths);
         var invoices = await _db.TenantInvoices
-            .Where(i => i.TenantId == tenant.Id)
+            .Where(i => i.TenantId == tenantId)
             .OrderByDescending(i => i.PeriodYear).ThenByDescending(i => i.PeriodMonth)
             .Select(i => new
             {

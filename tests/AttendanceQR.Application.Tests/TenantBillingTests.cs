@@ -35,7 +35,7 @@ public class TenantBillingTests
         public Guid AdminId { get; } = Guid.NewGuid();
 
         public Harness(int employees = 12, int locations = 2, DateTime? trialEndsAtUtc = null,
-                       decimal? priceOverride = null)
+                       decimal? priceOverride = null, bool foreignTenantFirst = false)
         {
             var tenant = new TenantContext();
             tenant.Resolve(TenantA);
@@ -43,6 +43,16 @@ public class TenantBillingTests
                 new DbContextOptionsBuilder<AppDbContext>()
                     .UseInMemoryDatabase($"tenant-billing-{Guid.NewGuid()}").Options,
                 tenant);
+
+            // Another company's registry row stored BEFORE this one — the arrangement an unordered read
+            // of the (unfiltered) Tenants table answers with the wrong company (SEC-01).
+            if (foreignTenantFirst)
+                Db.Tenants.Add(new Tenant
+                {
+                    Id = TenantB, Name = "B", Slug = "b", DisplayName = "Şirkət B", IsActive = true,
+                    Plan = "Enterprise", MonthlyPriceOverride = 999m,
+                    TrialEndsAtUtc = DateTime.UtcNow.Date.AddDays(30),
+                });
 
             Db.Tenants.Add(new Tenant
             {
@@ -189,6 +199,31 @@ public class TenantBillingTests
 
         Assert.Single(rows);
         Assert.Equal(52m, Harness.Get(rows[0], "amount"));
+    }
+
+    [Fact]
+    public async Task Another_company_stored_first_is_never_the_one_shown()
+    {
+        // SEC-01. Tenants and TenantInvoices are the platform's registry and carry NO query filter, so the
+        // company has to be named in the query. The read used to be an unordered "first row", which answered
+        // with whichever company was stored first: its plan, its negotiated price, its demo and its invoices.
+        // The PostgreSQL twin of this test (BillingIsolationDbTests) also covers update-driven row moves.
+        using var h = new Harness(employees: 12, locations: 2, priceOverride: 52m, foreignTenantFirst: true);
+        h.Db.TenantInvoices.Add(new TenantInvoice
+        {
+            TenantId = TenantB, PeriodYear = DateTime.UtcNow.Year, PeriodMonth = DateTime.UtcNow.Month,
+            Amount = 999m, EmployeeCount = 300, IsPaid = true, Note = "B-ONLY",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var body = await h.LoadAsync();
+        var monthly = Harness.Get(body, "monthly")!;
+
+        Assert.Equal(52m, Harness.Get(monthly, "amount"));
+        Assert.Null(Harness.Get(body, "plan"));
+        Assert.Equal(false, Harness.Get(body, "onTrial"));
+        var invoices = ((System.Collections.IEnumerable)Harness.Get(body, "invoices")!).Cast<object>();
+        Assert.Empty(invoices);
     }
 
     [Fact]
