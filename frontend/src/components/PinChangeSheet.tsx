@@ -48,9 +48,15 @@ export function PinChangeSheet({ onClose }: { onClose: () => void }) {
         return
       }
       const code = data && 'error' in data ? data.error : ''
+      // The server counts wrong current PINs per account (like a login) and says how many are left.
+      const extra = (data ?? {}) as { remaining?: number; minutes?: number }
       setError(
         code === 'InvalidCurrentPassword'
-          ? 'Cari PIN yanlışdır'
+          ? typeof extra.remaining === 'number'
+            ? `Cari PIN yanlışdır — ${extra.remaining} cəhdiniz qaldı`
+            : 'Cari PIN yanlışdır'
+          : code === 'TooManyAttempts'
+            ? `Çox səhv cəhd oldu — ${extra.minutes ?? 5} dəqiqə sonra yenidən yoxlayın`
           : code === 'PinInvalid'
             ? 'Yeni PIN düz 4 rəqəm olmalıdır'
             : code === 'PinTooWeak'
