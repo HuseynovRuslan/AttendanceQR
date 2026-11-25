@@ -123,6 +123,16 @@ public class VoteController : ControllerBase
         if (campaign.ExcludedPositions.Contains(candidate.Position ?? ""))
             return BadRequest(new { error = "CandidateNotEligible" });
 
+        // The ballot and its count are ONE write. They used to be two saves: the ballot committed on its
+        // own, then the tally was read, bumped and saved. Two colleagues voting for the same person in the
+        // same moment — the opening push brings a whole branch in at once — both read "no tally yet", both
+        // inserted one, and the second hit the unique index with a 500 AFTER its ballot was already in: the
+        // vote was never counted and the retry said «Bu ay artıq səs vermisiniz». With a tally row already
+        // there, the two read-modify-writes wrote the same N+1 and one vote vanished without any error.
+        // Now a failure anywhere rolls the ballot back too, and the count is one atomic statement.
+        // (In-memory tests have no transactions; there the two steps simply run in order.)
+        await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(ct) : null;
+
         // The ballot goes in FIRST: its unique (period, voter) index is what makes the vote single-use,
         // and if it loses that race nothing is tallied.
         var ballot = _db.MonthlyVoteBallots.Add(new MonthlyVoteBallot { Period = period, VoterEmployeeId = employeeId });
@@ -136,26 +146,53 @@ public class VoteController : ControllerBase
             return Conflict(new { error = "AlreadyVoted" });
         }
 
-        var tally = await _db.MonthlyVoteTallies
-            .FirstOrDefaultAsync(t => t.Period == period && t.CandidateEmployeeId == candidate.Id, ct);
-        if (tally is null)
-        {
-            _db.MonthlyVoteTallies.Add(new MonthlyVoteTally
-            {
-                Period = period,
-                LocationId = me.LocationId,
-                CandidateEmployeeId = candidate.Id,
-                Votes = 1,
-            });
-        }
-        else
-        {
-            tally.Votes++;
-        }
-        await _db.SaveChangesAsync(ct);
+        await CountVoteAsync(period, me.LocationId, candidate.Id, ct);
+        if (tx is not null)
+            await tx.CommitAsync(ct);
 
         return Ok(new { ok = true });
     }
+
+    /// <summary>
+    /// One more vote for the candidate. On Postgres a single INSERT … ON CONFLICT … DO UPDATE: the first vote
+    /// creates the row, every later one adds 1 to whatever the row holds at that instant, and two at once
+    /// queue on the row lock instead of overwriting each other. The branch is the voter's — the candidate's
+    /// own, since a candidate must be from the voter's branch — and is set when the row is created.
+    /// The in-memory provider runs no SQL, so the tests take the plain read-and-add path.
+    /// </summary>
+    private async Task CountVoteAsync(DateOnly period, Guid locationId, Guid candidateId, CancellationToken ct)
+    {
+        if (_db.Database.IsRelational())
+        {
+            // TenantId is written explicitly: raw SQL bypasses the save-time stamping. CurrentTenantId throws when
+            // no company is resolved, so this can never count a vote under the wrong one.
+            await _db.Database.ExecuteSqlInterpolatedAsync(TallyUpsert(_db.CurrentTenantId, period, locationId, candidateId), ct);
+            return;
+        }
+
+        var tally = await _db.MonthlyVoteTallies
+            .FirstOrDefaultAsync(t => t.Period == period && t.CandidateEmployeeId == candidateId, ct);
+        if (tally is null)
+            _db.MonthlyVoteTallies.Add(new MonthlyVoteTally
+            {
+                Period = period,
+                LocationId = locationId,
+                CandidateEmployeeId = candidateId,
+                Votes = 1,
+            });
+        else
+            tally.Votes++;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>The count as one statement. Its conflict target must be exactly the tally's unique index, or
+    /// Postgres refuses every vote — VoteTallyTests holds it to the model.</summary>
+    internal static FormattableString TallyUpsert(Guid tenantId, DateOnly period, Guid locationId, Guid candidateId) => $"""
+        INSERT INTO "MonthlyVoteTallies" ("Id", "TenantId", "Period", "LocationId", "CandidateEmployeeId", "Votes")
+        VALUES ({Guid.NewGuid()}, {tenantId}, {period}, {locationId}, {candidateId}, 1)
+        ON CONFLICT ("TenantId", "Period", "CandidateEmployeeId")
+        DO UPDATE SET "Votes" = "MonthlyVoteTallies"."Votes" + 1
+        """;
 
     /// <summary>Results. While voting is open only the total turnout is returned — publishing a running
     /// scoreboard turns the last day into a bandwagon.</summary>
