@@ -1342,7 +1342,14 @@ public sealed class ReportQueryService : IReportQueryService
             .Select(g => new EmployeeReportRow(
                 g.Key.EmployeeId,
                 g.Key.FullName,
-                g.Select(x => x.LocationName).First(),
+                // One label for a person whose days may sit under two branches (moved mid-period): the branch
+                // of their LATEST day in the range — where the period left them. It was the first row's,
+                // and the rows come from DailySummaries in no order: Postgres returns them as the plan and
+                // the table's layout fall, and every rebuild of a day moves its row. So the same month's
+                // export put a moved person under the old branch in one download and the new one in the
+                // next, and the summary Excel's per-branch subtotals (grouped on this label) and the payroll
+                // (which copies it) moved with them.
+                g.OrderByDescending(x => x.Date).ThenBy(x => x.LocationName, StringComparer.Ordinal).First().LocationName,
                 WorkDays: g.Count(x => x.Status is DailySummaryStatus.OnTime or DailySummaryStatus.Late or DailySummaryStatus.Incomplete),
                 LateCount: g.Count(x => x.Status == DailySummaryStatus.Late),
                 // «Gözlənilir» is not an absence (PendingRule) — counted apart, so the payroll can keep it
