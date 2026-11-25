@@ -48,6 +48,10 @@ services:
       # the three accounts it lists have been sitting in every branch's board ever since, and two of
       # them had quietly accumulated fifty-odd Qayıb days apiece by 2026-09-08.
       App__HiddenEmails: ${App__HiddenEmails:-}
+      # Out of those, the accounts that are still COUNTED in attendance (board, tabel, hours, payroll,
+      # management report, nightly summaries) while staying out of the lists — a real person who clocks
+      # in at a branch with an account an operator also uses. Empty = none, as before.
+      App__HiddenEmailsCountedInReports: ${App__HiddenEmailsCountedInReports:-}
       # "QRLog ilə davam et" in Kitabxana 2.0 (book.qrlog.az): the secret it signs sign-in
       # confirmations with, and the tenants whose employees that quiz is for. Both empty by default,
       # which leaves the feature off - /api/kitabxana/sign-in answers NotConfigured rather than

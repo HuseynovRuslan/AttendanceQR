@@ -121,7 +121,9 @@ public sealed class ReportQueryService : IReportQueryService
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
-        _hiddenEmails = options.HiddenEmailList();
+        // Hidden accounts minus the ones still counted in attendance (AppOptions.HiddenEmailsCountedInReports) —
+        // the same list DailySummaryService uses. The staff and access LISTS keep the full HiddenEmails.
+        _hiddenEmails = options.ReportHiddenEmailList();
         _clock = clock ?? TimeProvider.System;
     }
 
@@ -204,7 +206,8 @@ public sealed class ReportQueryService : IReportQueryService
         Guid? locationId, Guid requesterId, EmployeeRole role, CancellationToken ct)
     {
         // For an ADMIN, admins/managers who also clock in ARE included (e.g. a director who scans);
-        // only the system/root accounts in HiddenEmails are left out. Same rule as the nightly job.
+        // only the system/root accounts in HiddenEmails are left out — less the ones listed in
+        // HiddenEmailsCountedInReports, who clock in like anyone. Same rule as the nightly job.
         // A MANAGER sees everyone at the branches they manage, including other managers and an admin
         // who clocks in there. It used to stop at Role==Employee, which made a two-manager site report
         // a headcount short by one with nothing on screen to explain it. Acting on those people is a

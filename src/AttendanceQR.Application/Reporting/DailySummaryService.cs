@@ -26,7 +26,8 @@ public sealed class DailySummaryService : IDailySummaryService
     {
         _db = db;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(options.TimeZone);
-        _hiddenEmails = options.HiddenEmailList();
+        // Hidden accounts minus the ones still counted in attendance — the same list ReportQueryService uses.
+        _hiddenEmails = options.ReportHiddenEmailList();
     }
 
     public async Task<int> GenerateForDateAsync(DateOnly date, CancellationToken ct = default)
