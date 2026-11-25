@@ -301,6 +301,10 @@ public partial class SuperAdminController : ControllerBase
                 MustChangePin = true,
             };
             _db.Employees.Add(firstAdmin);
+            // The company's first admin is a role given; its row goes into the new company's own log, in this save.
+            RoleChangeAudit.Add(_db, User, HttpContext.Connection.RemoteIpAddress?.ToString(), tenant.Id, firstAdmin.Id,
+                RoleChangeAudit.Actions.Created, fromRole: null, fromBranches: [], toRole: EmployeeRole.Admin, toBranches: [],
+                RoleChangeAudit.Via.OperatorTenantCreate);
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
             return firstAdmin;
         });

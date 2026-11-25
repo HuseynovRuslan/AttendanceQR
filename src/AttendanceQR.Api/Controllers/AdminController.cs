@@ -522,6 +522,7 @@ public class AdminController : ControllerBase
         _db.Employees.Add(employee!);
         await RegisterPositionsAsync();
         ApprovalGate.RecordDirect(_db, approval, User.EmployeeId(), employee!, DateTime.UtcNow);
+        AuditCreatedWithRole(employee!, RoleChangeAudit.Via.AdminInvite);
         await _db.SaveChangesAsync();
         // A new Admin or Manager holds their role in the permission model from the first request.
         await AccessSeeder.ReconcileAfterWriteAsync(_db, employee!.TenantId, _logger, HttpContext.RequestAborted);
@@ -629,6 +630,7 @@ public class AdminController : ControllerBase
             }
 
             _db.Employees.Add(employee!);
+            AuditCreatedWithRole(employee!, RoleChangeAudit.Via.AdminBulkInvite);
             created.Add(new
             {
                 employeeId = employee!.Id,
@@ -689,6 +691,7 @@ public class AdminController : ControllerBase
             }
 
             _db.Employees.Add(employee!);
+            AuditCreatedWithRole(employee!, RoleChangeAudit.Via.AdminBulkImport);
             created.Add(new
             {
                 employeeId = employee!.Id,
@@ -1247,6 +1250,13 @@ public class AdminController : ControllerBase
         if (identifierChanged && ImpersonationRefusal(employee) is { } identifierRefusal)
             return identifierRefusal;
 
+        // The role and branches as they stand, for the audit row below (RoleChangeAudit).
+        var roleBefore = employee.Role;
+        var branchesBefore = await _db.ManagedLocations
+            .Where(m => m.EmployeeId == employee.Id)
+            .Select(m => m.LocationId)
+            .ToListAsync(HttpContext.RequestAborted);
+
         // A token carries the role and never expires, and nothing re-checks it per request — so
         // changing either of these has to invalidate the sessions already issued. Without this a
         // demoted admin keeps the admin panel and a deactivated employee keeps scanning, both for as
@@ -1291,6 +1301,11 @@ public class AdminController : ControllerBase
         if (scopeError is not null)
             return BadRequest(new { error = scopeError });
 
+        // Who changed whose role, from what to what, and how — written by the same save as the change.
+        RoleChangeAudit.AddIfChanged(_db, User, ClientIp(), employee.TenantId, employee.Id,
+            roleBefore, branchesBefore, employee.Role, RoleChangeAudit.PendingBranches(_db, employee.Id),
+            RoleChangeAudit.Via.AdminEmployeeEdit);
+
         await _db.SaveChangesAsync();
         // A changed role or set of managed branches reaches the permission model now, not at the next start.
         await AccessSeeder.ReconcileAfterWriteAsync(_db, employee.TenantId, _logger, HttpContext.RequestAborted);
@@ -1299,6 +1314,22 @@ public class AdminController : ControllerBase
 
     /// <summary>Whitespace and empty are the same as "not set" — a blank box must not become a value.</summary>
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>The caller's address, as every other audit row here records it.</summary>
+    private string? ClientIp() => HttpContext.Connection.RemoteIpAddress?.ToString();
+
+    /// <summary>
+    /// A new account that starts above Employee is a role given, and is audited like one (RoleChangeAudit).
+    /// Added to the context, not saved: the caller's save writes the account and its row together. Plain staff
+    /// are not a role change and write nothing.
+    /// </summary>
+    private void AuditCreatedWithRole(Employee employee, string via)
+    {
+        if (employee.Role == EmployeeRole.Employee)
+            return;
+        RoleChangeAudit.Add(_db, User, ClientIp(), _db.CurrentTenantId, employee.Id, RoleChangeAudit.Actions.Created,
+            fromRole: null, fromBranches: [], toRole: employee.Role, toBranches: [], via);
+    }
 
     /// <summary>
     /// Sets which branches a Manager may see in the reports. Null → leave alone; a list → replace.

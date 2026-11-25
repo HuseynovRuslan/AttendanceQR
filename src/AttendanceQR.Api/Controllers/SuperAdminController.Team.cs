@@ -103,6 +103,8 @@ public partial class SuperAdminController
             return BadRequest(new { error = "CannotRemoveLastFullOperator" });
 
         var profile = await _db.OperatorProfiles.FirstOrDefaultAsync(p => p.EmployeeId == employeeId, ct);
+        // An allowlisted operator with no profile row is Full (the default) — so that is what they were.
+        var before = profile?.Role ?? OperatorRoleType.Full;
         if (profile is null)
         {
             profile = new OperatorProfile { EmployeeId = employeeId };
@@ -110,14 +112,17 @@ public partial class SuperAdminController
         }
         profile.Role = role;
         profile.UpdatedAtUtc = DateTime.UtcNow;
-        // The lock serializes writers, so the unique-index insert race the old try/catch caught can no
-        // longer happen — one writer holds the lock while the other waits.
-        await _db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
 
+        // The audit row is written by the same save, inside the same transaction: a role change without its
+        // row, or a row for a change that rolled back, cannot happen. It used to be written after the commit.
+        // AuditAsync saves the context, which carries the profile change with it. The lock serializes
+        // writers, so the unique-index insert race the old try/catch caught can no longer happen.
         var name = await _db.Employees.IgnoreQueryFilters()
             .Where(e => e.Id == employeeId).Select(e => e.FullName).FirstOrDefaultAsync(ct) ?? employeeId.ToString();
-        await AuditAsync("OperatorRoleChanged", null, null, $"{name} → {role}", ct);
+        await AuditAsync("OperatorRoleChanged", null, null,
+            $"{name} ({employeeId}): {before} → {role} · PUT /api/super/team/{{id}}/role · Operator konsolu › Komanda", ct);
+        await tx.CommitAsync(ct);
+
         return Ok(new { employeeId, role = role.ToString() });
     }
 }
