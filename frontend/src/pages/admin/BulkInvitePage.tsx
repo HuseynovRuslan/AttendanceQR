@@ -23,6 +23,8 @@ const ERROR_AZ: Record<string, string> = {
   PhoneAlreadyExists: 'Bu nömrə artıq mövcuddur',
   EmailAlreadyExists: 'Bu email artıq mövcuddur',
   LocationNotFound: 'Bu adda filial yoxdur — adı dəqiq yazın və ya boş buraxın',
+  // Two active branches share the name; the server refuses to guess which one was meant.
+  LocationAmbiguous: 'Bu adda bir neçə aktiv filial var — birinin adını dəyişin və ya xananı boş buraxıb filialı yuxarıdan seçin',
   RoleNotRecognised: 'Rol tanınmadı — İşçi / Menecer / Admin yazın və ya boş buraxın',
 }
 
