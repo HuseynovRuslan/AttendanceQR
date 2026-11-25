@@ -36,9 +36,9 @@ public class SelfCorrectionTests
         public Task RecordAsync(AppDbContext db, ShadowRecord record, CancellationToken ct) => Task.CompletedTask;
     }
 
-    private static AppDbContext Db(AccessWorld w) =>
+    private static AppDbContext Db(AccessWorld w, Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor? interceptor = null) =>
         w.Context(AccessWorld.TenantA, new AuthzObserver(new NoSink(), new MemoryCache(new MemoryCacheOptions()),
-            NullLogger<AuthzObserver>.Instance, new OperatorAllowlist(new HashSet<Guid> { w.Operator })));
+            NullLogger<AuthzObserver>.Instance, new OperatorAllowlist(new HashSet<Guid> { w.Operator })), interceptor);
 
     private static ControllerContext As(Guid who, string role, bool impersonating = false)
     {
@@ -314,6 +314,121 @@ public class SelfCorrectionTests
         using var check = w.Context(AccessWorld.TenantA);
         Assert.Equal(At(18), check.AttendanceRecords.AsNoTracking().Single(r => r.Id == record).CheckOutAtUtc);
         Assert.Equal(SelfCorrection.MissedCheckout, check.AttendanceSelfCorrections.AsNoTracking().Single().Kind);
+    }
+
+    // ─────────────────────────── a day in two stretches ───────────────────────────
+    //
+    // A split shift's second block, a night after a morning, «Elastik qrafik» sessions: one day, two rows, the
+    // earlier closed and the later open. Undoing the earlier one's check-out would leave the person checked in
+    // twice, which IX_AttendanceRecords_OneOpenPerDay forbids — on Postgres the UPDATE failed with a 23505 that
+    // nothing caught (a bare 500). The in-memory store enforces no index, so these pin the question asked first
+    // and, with an interceptor standing in for the database, the 23505 answered as the same refusal.
+
+    [Fact]
+    public async Task Undoing_a_check_out_while_a_later_stretch_of_the_day_is_open_is_refused_with_the_reason()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        var morning = await RecordAsync(w, w.E1, At(7), At(11));
+        var night = await RecordAsync(w, w.E1, At(22), null);
+
+        using (var db = Db(w))
+        {
+            var refused = Assert.IsType<ConflictObjectResult>(
+                await Desk(db, w.Admin1).ClearCheckOut(morning, new AttendanceCorrectionRequest("Səhv skan")));
+            Assert.Equal("AnotherBlockOpen", ErrorOf(refused));
+        }
+        using (var check = w.Context(AccessWorld.TenantA))
+        {
+            Assert.Equal(At(11), check.AttendanceRecords.AsNoTracking().Single(r => r.Id == morning).CheckOutAtUtc);
+            Assert.DoesNotContain(check.AuditLogs.AsNoTracking().ToList(), a => a.EventType == AuditEventType.RecordEditedByAdmin);
+        }
+
+        // Once the later stretch is closed, the same undo goes through.
+        using (var db = w.Context(AccessWorld.TenantA))
+        {
+            db.AttendanceRecords.Single(r => r.Id == night).CheckOutAtUtc = At(23, 30);
+            await db.SaveChangesAsync();
+        }
+        using (var db = Db(w))
+            Assert.IsType<OkObjectResult>(await Desk(db, w.Admin1).ClearCheckOut(morning, new AttendanceCorrectionRequest("Səhv skan")));
+        Assert.Null(w.Context(AccessWorld.TenantA).AttendanceRecords.AsNoTracking().Single(r => r.Id == morning).CheckOutAtUtc);
+    }
+
+    [Fact]
+    public async Task A_later_stretch_opened_between_the_question_and_the_save_is_still_a_409_not_a_500()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        var morning = await RecordAsync(w, w.E1, At(7), At(11));
+
+        // Nothing else is open when the controller asks; the "database" then refuses the save as Postgres
+        // would if a scan had opened the later stretch in between.
+        using var db = Db(w, new SecondOpenStretchRefused());
+        var refused = Assert.IsType<ConflictObjectResult>(
+            await Desk(db, w.Admin1).ClearCheckOut(morning, new AttendanceCorrectionRequest("Səhv skan")));
+        Assert.Equal("AnotherBlockOpen", ErrorOf(refused));
+    }
+
+    [Fact]
+    public async Task An_approved_undo_waits_while_a_later_stretch_is_open_and_the_request_stays_undecided()
+    {
+        using var w = new AccessWorld();
+        await w.ReconcileAndLoadAsync();
+        await AloneAsync(w);
+        var owner = await OwnerApproverAsync(w);
+        var morning = await RecordAsync(w, w.Admin1, At(7), At(11));
+
+        using (var db = Db(w))
+            Assert.IsType<OkObjectResult>(await Desk(db, w.Admin1).SetSelfCorrectionSetting(new SelfCorrectionSettingRequest(true)));
+        using (var db = Db(w))
+            Assert.IsType<AcceptedResult>(await Desk(db, w.Admin1).ClearCheckOut(morning, new AttendanceCorrectionRequest("Səhv skan")));
+        var waiting = w.Context(AccessWorld.TenantA).AttendanceSelfCorrections.AsNoTracking().Single(c => c.AwaitsApproval);
+
+        // Meanwhile the night stretch opens.
+        await RecordAsync(w, w.Admin1, At(22), null);
+
+        using (var db = Db(w))
+            Assert.Equal("AnotherBlockOpen", ErrorOf(await Desk(db, owner, "Employee")
+                .DecideSelfCorrection(waiting.Id, new SelfCorrectionDecisionRequest(true, "Doğrudur"))));
+        using (var check = w.Context(AccessWorld.TenantA))
+        {
+            Assert.Equal(At(11), check.AttendanceRecords.AsNoTracking().Single(r => r.Id == morning).CheckOutAtUtc);
+            Assert.False(check.AttendanceSelfCorrections.AsNoTracking().Any(c => c.DecisionForId == waiting.Id));
+        }
+
+        // A new request is refused at once rather than filed to fail later.
+        using (var db = Db(w))
+            Assert.Equal("AnotherBlockOpen", ErrorOf(await Desk(db, w.Admin1).ClearCheckOut(morning, new AttendanceCorrectionRequest("Yenə"))));
+
+        // The night closes; then the approval's own save is refused by the "database", as it would be if the
+        // night had re-opened in between — the same 409, and still nothing decided.
+        using (var db = w.Context(AccessWorld.TenantA))
+        {
+            db.AttendanceRecords.Single(r => r.EmployeeId == w.Admin1 && r.Id != morning).CheckOutAtUtc = At(23);
+            await db.SaveChangesAsync();
+        }
+        using (var db = Db(w, new SecondOpenStretchRefused()))
+            Assert.Equal("AnotherBlockOpen", ErrorOf(await Desk(db, owner, "Employee")
+                .DecideSelfCorrection(waiting.Id, new SelfCorrectionDecisionRequest(true, "Doğrudur"))));
+        Assert.False(w.Context(AccessWorld.TenantA).AttendanceSelfCorrections.AsNoTracking().Any(c => c.DecisionForId == waiting.Id));
+    }
+
+    /// <summary>Postgres' answer to a day with two open stretches, which the in-memory store would never give:
+    /// any save that re-opens a record fails with the 23505 of IX_AttendanceRecords_OneOpenPerDay.</summary>
+    private sealed class SecondOpenStretchRefused : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken ct = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<AttendanceRecord>()
+                .Any(e => e.State == EntityState.Modified && e.Entity.CheckOutAtUtc == null))
+                throw new DbUpdateException("simulated: a second open stretch",
+                    new Npgsql.PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR",
+                        Npgsql.PostgresErrorCodes.UniqueViolation, constraintName: "IX_AttendanceRecords_OneOpenPerDay"));
+            return ValueTask.FromResult(result);
+        }
     }
 
     // ─────────────────────────── stubs ───────────────────────────
