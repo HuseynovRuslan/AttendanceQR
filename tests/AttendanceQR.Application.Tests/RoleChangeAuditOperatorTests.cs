@@ -81,9 +81,16 @@ public class RoleChangeAuditOperatorTests
             };
         }
 
-        public List<AuditLog> Rows() => Db.AuditLogs.IgnoreQueryFilters().AsNoTracking()
-            .Where(a => a.EventType == AuditEventType.EmployeeRoleChanged)
-            .ToList();
+        /// <summary>The role-change rows, each checked against its column (Postgres enforces it; in-memory does not).</summary>
+        public List<AuditLog> Rows()
+        {
+            var rows = Db.AuditLogs.IgnoreQueryFilters().AsNoTracking()
+                .Where(a => a.EventType == AuditEventType.EmployeeRoleChanged)
+                .ToList();
+            var max = RoleChangeAudit.MaxReasonLength(Db);
+            Assert.All(rows, r => Assert.True(r.Reason!.Length <= max, $"Reason is {r.Reason!.Length} characters; the column takes {max}"));
+            return rows;
+        }
 
         public void Dispose() => Db.Dispose();
     }
