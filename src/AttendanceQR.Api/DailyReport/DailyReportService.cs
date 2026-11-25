@@ -31,6 +31,13 @@ public sealed class DailyReportService
     private static readonly TimeSpan[] Backoff =
         [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(30)];
     private static readonly TimeSpan ConnectLinkLife = TimeSpan.FromHours(48);
+
+    /// <summary>
+    /// How long a delivery being sent is kept away from everybody else. One send is a Chrome render (capped, one
+    /// at a time per process) and a Telegram upload (60 s timeout), so this is many times the longest real one;
+    /// it only matters again if the process dies mid-send, and then the job picks the row up once it runs out.
+    /// </summary>
+    internal static readonly TimeSpan SendLease = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly AppDbContext _db;
@@ -120,13 +127,14 @@ public sealed class DailyReportService
 
     // ───────────────────────────── sending ─────────────────────────────
 
-    private DailyReportDelivery NewDelivery(DailyReportRecipient r, DailyReportData data, DeliveryKind kind) => new()
+    private DailyReportDelivery NewDelivery(DailyReportRecipient r, DailyReportData data, DeliveryKind kind,
+        DateTime? nextAttemptUtc = null) => new()
     {
         RecipientId = r.Id,
         ReportDate = data.Date,
         Kind = (int)kind,
         Status = (int)DeliveryStatus.Pending,
-        NextAttemptUtc = NowUtc(),
+        NextAttemptUtc = nextAttemptUtc ?? NowUtc(),
         SnapshotJson = JsonSerializer.Serialize(data, Json),
         TokenHash = "pending",
         TokenExpiresUtc = NowUtc(),
@@ -271,9 +279,57 @@ public sealed class DailyReportService
                 await _db.SaveChangesAsync(ct);
                 continue;
             }
+            if (!await ClaimAsync(d, now, ct))
+                continue;   // somebody else is sending it, or already has
             if ((await SendAsync(d, r, ct)).Sent) sent++;
         }
         return sent;
+    }
+
+    /// <summary>
+    /// Takes a delivery for this attempt, or learns that somebody else already has.
+    ///
+    /// Nothing used to claim a row before sending it. «Hesabatı indi göndər» committed its delivery as Pending
+    /// and due, then spent seconds rendering and uploading; a job tick landing in those seconds loaded the same
+    /// row and sent it again. Leadership got the PDF twice, each attempt minted its own link secret, the later
+    /// save won, and the button in one of the two messages opened «Hesabat tapılmadı». The manual path now
+    /// creates its row already held (<see cref="SendNowAsync"/>); this is the job's side, and it also covers two
+    /// job loops overlapping — a deploy, a second instance.
+    ///
+    /// One conditional UPDATE moves the next attempt past <see cref="SendLease"/>, matched only while the row is
+    /// still Pending and due as of <paramref name="now"/>. Only the caller whose UPDATE matched sends. A failure
+    /// afterwards writes its own backoff over the lease, as before.
+    /// </summary>
+    private async Task<bool> ClaimAsync(DailyReportDelivery d, DateTime now, CancellationToken ct)
+    {
+        var heldUntil = now + SendLease;
+        int claimed;
+        if (_db.Database.IsRelational())
+        {
+            claimed = await _db.DailyReportDeliveries
+                .Where(x => x.Id == d.Id && x.Status == (int)DeliveryStatus.Pending && x.NextAttemptUtc <= now)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.NextAttemptUtc, heldUntil), ct);
+            if (claimed == 1)
+            {
+                // The UPDATE went round the change tracker: bring the tracked copy in step without marking it dirty.
+                var next = _db.Entry(d).Property(x => x.NextAttemptUtc);
+                next.CurrentValue = heldUntil;
+                next.OriginalValue = heldUntil;
+            }
+        }
+        else
+        {
+            // The in-memory provider has no ExecuteUpdate. The same question against the stored row (not the
+            // tracked copy, which may be stale) and the same write; not atomic, but the tests run one step at a time.
+            claimed = await _db.DailyReportDeliveries.AsNoTracking()
+                .CountAsync(x => x.Id == d.Id && x.Status == (int)DeliveryStatus.Pending && x.NextAttemptUtc <= now, ct);
+            if (claimed == 1)
+            {
+                d.NextAttemptUtc = heldUntil;
+                await _db.SaveChangesAsync(ct);
+            }
+        }
+        return claimed == 1;
     }
 
     /// <summary>
@@ -295,7 +351,10 @@ public sealed class DailyReportService
             var key = r.LocationIds ?? string.Empty;
             if (!byScope.TryGetValue(key, out var data))
                 byScope[key] = data = await BuildDataAsync(r.LocationIds, ct);
-            var d = NewDelivery(r, data, DeliveryKind.Manual);
+            // Born held: committed here, sent a few seconds later, and in between the job must not take it for a
+            // Pending row that is due (see ClaimAsync). A failed send replaces the lease with its own backoff, so
+            // retries still go through the job exactly as before.
+            var d = NewDelivery(r, data, DeliveryKind.Manual, nextAttemptUtc: NowUtc() + SendLease);
             _db.DailyReportDeliveries.Add(d);
             await _db.SaveChangesAsync(ct);
             outcomes.Add(await SendAsync(d, r, ct));
