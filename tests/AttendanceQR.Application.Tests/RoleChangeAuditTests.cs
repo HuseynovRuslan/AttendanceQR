@@ -88,7 +88,7 @@ public class RoleChangeAuditTests
             };
         }
 
-        private Guid Branch(string name)
+        public Guid Branch(string name)
         {
             var location = new Location
             {
@@ -124,9 +124,17 @@ public class RoleChangeAuditTests
                 PhoneNumber: e.PhoneNumber, ManagedLocationIds: managed);
         }
 
-        public List<AuditLog> Rows() => Db.AuditLogs.AsNoTracking()
-            .Where(a => a.EventType == AuditEventType.EmployeeRoleChanged)
-            .ToList();
+        /// <summary>The role-change rows — each checked against the column it is stored in. The in-memory database
+        /// does not enforce varchar lengths; Postgres does, and a row too long fails the role change with it.</summary>
+        public List<AuditLog> Rows()
+        {
+            var rows = Db.AuditLogs.AsNoTracking()
+                .Where(a => a.EventType == AuditEventType.EmployeeRoleChanged)
+                .ToList();
+            var max = RoleChangeAudit.MaxReasonLength(Db);
+            Assert.All(rows, r => Assert.True(r.Reason!.Length <= max, $"Reason is {r.Reason!.Length} characters; the column takes {max}"));
+            return rows;
+        }
 
         public EmployeeRole RoleOf(Guid id) => Db.Employees.AsNoTracking().Single(e => e.Id == id).Role;
 
@@ -150,11 +158,16 @@ public class RoleChangeAuditTests
     private static List<string> Templates(JsonElement side) =>
         side.GetProperty("grants").EnumerateArray().Select(g => g.GetProperty("template").GetString()!).ToList();
 
-    private static List<Guid> Branches(JsonElement side, string template) =>
+    private static int? BranchCount(JsonElement side, string template) =>
         side.GetProperty("grants").EnumerateArray()
             .Where(g => g.GetProperty("template").GetString() == template)
-            .SelectMany(g => g.GetProperty("branches").EnumerateArray().Select(b => b.GetGuid()))
-            .ToList();
+            .Select(g => g.GetProperty("branchCount").ValueKind == JsonValueKind.Null ? (int?)null : g.GetProperty("branchCount").GetInt32())
+            .FirstOrDefault();
+
+    private static List<Guid> Ids(JsonElement body, string property) =>
+        body.GetProperty(property).ValueKind == JsonValueKind.Null
+            ? []
+            : body.GetProperty(property).EnumerateArray().Select(b => b.GetGuid()).ToList();
 
     // --- the employee form ---------------------------------------------------------------
 
@@ -184,10 +197,9 @@ public class RoleChangeAuditTests
         Assert.Empty(Templates(body.GetProperty("from")));
         Assert.Equal("Admin", body.GetProperty("to").GetProperty("role").GetString());
         Assert.Equal(new[] { AccessRoleTemplates.CompanyAdmin }, Templates(body.GetProperty("to")));
-        var permissions = body.GetProperty("to").GetProperty("grants")[0].GetProperty("permissions")
-            .EnumerateArray().Select(p => p.GetString()).ToList();
-        Assert.Equal(AccessRoleTemplates.CompanyAdminTemplate.Permissions.Count, permissions.Count);
-        Assert.Contains(AccessPermissions.EmployeesUpdate, permissions);
+        Assert.Equal(AccessRoleTemplates.CompanyAdminTemplate.Permissions.Distinct().Count(),
+            body.GetProperty("to").GetProperty("grants")[0].GetProperty("permissionCount").GetInt32());
+        Assert.Equal("company", body.GetProperty("to").GetProperty("grants")[0].GetProperty("scope").GetString());
     }
 
     [Fact]
@@ -202,8 +214,10 @@ public class RoleChangeAuditTests
         var body = Body(Assert.Single(w.Rows()));
         Assert.Equal("Manager", body.GetProperty("from").GetProperty("role").GetString());
         Assert.Equal("Manager", body.GetProperty("to").GetProperty("role").GetString());
-        Assert.Equal(new[] { w.BranchA }, Branches(body.GetProperty("from"), AccessRoleTemplates.LegacyManager));
-        Assert.Equal(new[] { w.BranchA, w.BranchB }.Order(), Branches(body.GetProperty("to"), AccessRoleTemplates.LegacyManager));
+        Assert.Equal(1, BranchCount(body.GetProperty("from"), AccessRoleTemplates.LegacyManager));
+        Assert.Equal(2, BranchCount(body.GetProperty("to"), AccessRoleTemplates.LegacyManager));
+        Assert.Equal(new[] { w.BranchB }, Ids(body, "branchesAdded"));
+        Assert.Empty(Ids(body, "branchesRemoved"));
         Assert.Contains(AccessRoleTemplates.PinHelper, Templates(body.GetProperty("to")));
     }
 
@@ -216,7 +230,8 @@ public class RoleChangeAuditTests
         await w.Admin.Update(manager, w.Edit(manager, EmployeeRole.Employee));
 
         var body = Body(Assert.Single(w.Rows()));
-        Assert.Equal(2, Branches(body.GetProperty("from"), AccessRoleTemplates.LegacyManager).Count);
+        Assert.Equal(2, BranchCount(body.GetProperty("from"), AccessRoleTemplates.LegacyManager));
+        Assert.Equal(new[] { w.BranchA, w.BranchB }.Order(), Ids(body, "branchesRemoved"));
         Assert.Equal("Employee", body.GetProperty("to").GetProperty("role").GetString());
         Assert.Empty(Templates(body.GetProperty("to")));
     }
@@ -264,6 +279,59 @@ public class RoleChangeAuditTests
         Assert.Empty(w.Rows());           // nothing reached the store before the caller saves
         w.Db.SaveChanges();
         Assert.Single(w.Rows());
+    }
+
+    // --- the row must fit its column ------------------------------------------------------
+
+    [Fact]
+    public async Task A_manager_of_many_branches_made_admin_in_a_support_session_still_saves_and_fits()
+    {
+        var operatorId = Guid.NewGuid();
+        using var w = new World(operatorBehind: operatorId);
+        var many = Enumerable.Range(1, 60).Select(i => w.Branch($"Park {i}")).ToArray();
+        w.Db.SaveChanges();
+        var manager = w.Person(EmployeeRole.Manager, many);
+
+        // 60 → 61 branches: the added one is named; then demoted to plain staff: 61 branches go at once.
+        var grown = await w.Admin.Update(manager, w.Edit(manager, EmployeeRole.Manager, [.. many, w.BranchA]));
+        var demoted = await w.Admin.Update(manager, w.Edit(manager, EmployeeRole.Employee));
+
+        Assert.IsType<OkObjectResult>(grown);
+        Assert.IsType<OkObjectResult>(demoted);
+        Assert.Equal(EmployeeRole.Employee, w.RoleOf(manager));
+        var rows = w.Rows().OrderBy(r => r.CreatedAtUtc).ToList();   // Rows() asserts both fit
+        Assert.Equal(2, rows.Count);
+
+        var growth = Body(rows[0]);
+        Assert.Equal(new[] { w.BranchA }, Ids(growth, "branchesAdded"));
+        Assert.Equal(61, BranchCount(growth.GetProperty("to"), AccessRoleTemplates.LegacyManager));
+
+        var demotion = Body(rows[1]);
+        Assert.True(demotion.GetProperty("branchesOmitted").GetBoolean());   // 61 ids do not fit; the count does
+        Assert.Equal(61, BranchCount(demotion.GetProperty("from"), AccessRoleTemplates.LegacyManager));
+        Assert.Equal(operatorId, demotion.GetProperty("operator").GetGuid());
+    }
+
+    [Fact]
+    public void Every_shape_of_row_fits_the_column()
+    {
+        using var w = new World();
+        var max = RoleChangeAudit.MaxReasonLength(w.Db);
+        var hundred = Enumerable.Range(0, 100).Select(_ => Guid.NewGuid()).ToList();
+
+        foreach (var via in new[]
+                 {
+                     RoleChangeAudit.Via.AdminEmployeeEdit, RoleChangeAudit.Via.AdminInvite, RoleChangeAudit.Via.AdminBulkInvite,
+                     RoleChangeAudit.Via.AdminBulkImport, RoleChangeAudit.Via.OperatorTenantCreate, RoleChangeAudit.Via.OperatorTenantAdmin,
+                 })
+        {
+            var json = RoleChangeAudit.Serialize(max, RoleChangeAudit.Actions.Changed, Guid.NewGuid(), Guid.NewGuid(),
+                Guid.NewGuid(), Guid.NewGuid(), via,
+                RoleChangeAudit.Describe(EmployeeRole.Manager, hundred), RoleChangeAudit.Describe(EmployeeRole.Admin, []),
+                [], hundred);
+            Assert.True(json.Length <= max, $"{json.Length} > {max} for {via}");
+            Assert.Equal("Admin", JsonDocument.Parse(json).RootElement.GetProperty("to").GetProperty("role").GetString());
+        }
     }
 
     // --- a support session ---------------------------------------------------------------

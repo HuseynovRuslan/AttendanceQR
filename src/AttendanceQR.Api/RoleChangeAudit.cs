@@ -27,7 +27,7 @@ namespace AttendanceQR.Api;
 /// own SaveChanges writes it together with the change, so there is never a role change without its row nor
 /// a row for a change that failed.</para>
 ///
-/// <para><b>Never a secret.</b> Only ids, role and permission names, branch ids and the route. No PIN, hash,
+/// <para><b>Never a secret.</b> Only ids, role and template names, counts, branch ids and the route. No PIN, hash,
 /// token, phone number or e-mail: the builder is never handed one, so it cannot write one.</para>
 /// </summary>
 public static class RoleChangeAudit
@@ -59,20 +59,33 @@ public static class RoleChangeAudit
     }
 
     /// <summary>One permission-model role the account holds because of its Employee.Role — the same rows
-    /// AccessSeeder mirrors it into, with the permissions the code gives that role.</summary>
-    public sealed record Grant(string Template, string Scope, IReadOnlyList<Guid> Branches, IReadOnlyList<string> Permissions);
+    /// AccessSeeder mirrors it into. The three are locked templates defined by the code, so the key names their
+    /// permissions exactly; the count is written beside it, and a manager's grant carries how many branches it
+    /// reaches. Which branches changed is <see cref="Entry.BranchesAdded"/> / <see cref="Entry.BranchesRemoved"/>.</summary>
+    public sealed record Grant(string Template, string Scope, int PermissionCount, int? BranchCount);
 
     /// <summary>The account's role and the access it gives. A null role means there was no account yet.</summary>
     public sealed record Side(string? Role, IReadOnlyList<Grant> Grants);
 
     public sealed record Entry(
-        int V, string Action, Guid Tenant, Guid Target, Guid? By, Guid? Operator, string Via, Side From, Side To);
+        int V, string Action, Guid Tenant, Guid Target, Guid? By, Guid? Operator, string Via, Side From, Side To,
+        IReadOnlyList<Guid>? BranchesAdded, IReadOnlyList<Guid>? BranchesRemoved, bool BranchesOmitted);
 
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
+
+    /// <summary>
+    /// The longest Reason the column takes (AuditLogConfiguration: 1000). A row that does not fit fails the WHOLE
+    /// save it rides in — the role change with it — so the row is built to fit, with the limit read from the model
+    /// so a later change of the column is followed here. The first version wrote every permission and branch in
+    /// full and so refused every role change on Postgres; the in-memory test database does not enforce lengths,
+    /// which is why the tests now check it themselves.
+    /// </summary>
+    public static int MaxReasonLength(AppDbContext db) =>
+        db.Model.FindEntityType(typeof(AuditLog))?.FindProperty(nameof(AuditLog.Reason))?.GetMaxLength() ?? 1000;
 
     /// <summary>
     /// The access an Employee.Role gives, as AccessSeeder writes it: an Admin holds Company administrator over
@@ -84,15 +97,15 @@ public static class RoleChangeAudit
         null => new Side(null, []),
         EmployeeRole.Admin => new Side(nameof(EmployeeRole.Admin),
         [
-            new Grant(AccessRoleTemplates.CompanyAdmin, "company", [],
-                Sorted(AccessRoleTemplates.CompanyAdminTemplate.Permissions)),
+            new Grant(AccessRoleTemplates.CompanyAdmin, "company",
+                AccessRoleTemplates.CompanyAdminTemplate.Permissions.Distinct().Count(), null),
         ]),
         EmployeeRole.Manager => new Side(nameof(EmployeeRole.Manager),
         [
-            new Grant(AccessRoleTemplates.LegacyManager, "branch", branches.Distinct().Order().ToList(),
-                Sorted(AccessRoleTemplates.LegacyManagerTemplate.Permissions)),
-            new Grant(AccessRoleTemplates.PinHelper, "company", [],
-                Sorted(AccessRoleTemplates.PinHelperTemplate.Permissions)),
+            new Grant(AccessRoleTemplates.LegacyManager, "branch",
+                AccessRoleTemplates.LegacyManagerTemplate.Permissions.Distinct().Count(), branches.Distinct().Count()),
+            new Grant(AccessRoleTemplates.PinHelper, "company",
+                AccessRoleTemplates.PinHelperTemplate.Permissions.Distinct().Count(), null),
         ]),
         _ => new Side(nameof(EmployeeRole.Employee), []),
     };
@@ -124,27 +137,46 @@ public static class RoleChangeAudit
         EmployeeRole? fromRole, IEnumerable<Guid> fromBranches, EmployeeRole toRole, IEnumerable<Guid> toBranches,
         string via)
     {
-        var entry = new Entry(
-            V: 1,
-            Action: action,
-            Tenant: tenantId,
-            Target: targetId,
-            By: ActorOf(user),
-            Operator: OperatorBehind(user),
-            Via: via,
-            From: Describe(fromRole, fromBranches),
-            To: Describe(toRole, toBranches));
+        // A branch counts only while the person is a manager: an Admin or Employee holds no branch grant.
+        var heldBefore = fromRole == EmployeeRole.Manager ? fromBranches.Distinct().ToList() : [];
+        var heldAfter = toRole == EmployeeRole.Manager ? toBranches.Distinct().ToList() : [];
 
         var row = new AuditLog
         {
             TenantId = tenantId,
             EmployeeId = targetId,
             EventType = AuditEventType.EmployeeRoleChanged,
-            Reason = JsonSerializer.Serialize(entry, Json),
+            Reason = Serialize(MaxReasonLength(db), action, tenantId, targetId, ActorOf(user), OperatorBehind(user), via,
+                Describe(fromRole, heldBefore), Describe(toRole, heldAfter),
+                heldAfter.Except(heldBefore).Order().ToList(), heldBefore.Except(heldAfter).Order().ToList()),
             IpAddress = ip,
         };
         db.AuditLogs.Add(row);
         return row;
+    }
+
+    /// <summary>
+    /// The row as JSON, shortened until it fits <paramref name="max"/>: first the branch ids go (their counts stay, and
+    /// BranchesOmitted says so), then the screen half of «via» (the route stays). Who, whom, the roles and the grants
+    /// are always kept — a few hundred characters at most.
+    /// </summary>
+    public static string Serialize(
+        int max, string action, Guid tenant, Guid target, Guid? by, Guid? op, string via, Side from, Side to,
+        IReadOnlyList<Guid> added, IReadOnlyList<Guid> removed)
+    {
+        var full = JsonSerializer.Serialize(
+            new Entry(2, action, tenant, target, by, op, via, from, to, added, removed, false), Json);
+        if (full.Length <= max)
+            return full;
+
+        var withoutBranches = JsonSerializer.Serialize(
+            new Entry(2, action, tenant, target, by, op, via, from, to, null, null, true), Json);
+        if (withoutBranches.Length <= max)
+            return withoutBranches;
+
+        var route = via.Split(" · ")[0];
+        return JsonSerializer.Serialize(
+            new Entry(2, action, tenant, target, by, op, route, from, to, null, null, true), Json);
     }
 
     /// <summary><see cref="Add"/> when <see cref="Changed"/> says something did; otherwise nothing.</summary>
@@ -164,7 +196,4 @@ public static class RoleChangeAudit
     /// <summary>The operator behind a support session (the token's "imp" claim), or null outside one.</summary>
     private static Guid? OperatorBehind(ClaimsPrincipal user)
         => Guid.TryParse(user.FindFirstValue("imp"), out var id) ? id : null;
-
-    private static List<string> Sorted(IEnumerable<string> permissions)
-        => permissions.Distinct().Order(StringComparer.Ordinal).ToList();
 }
