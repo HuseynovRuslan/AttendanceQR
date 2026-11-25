@@ -1,3 +1,4 @@
+using AttendanceQR.Api.Approvals;
 using AttendanceQR.Application.Common;
 using AttendanceQR.Application.Reporting;
 using AttendanceQR.Domain.Entities;
@@ -18,9 +19,10 @@ namespace AttendanceQR.Api.Jobs;
 ///                      evening: people routinely scan out well past their nominal end, so an evening
 ///                      message accused the hardest workers of forgetting.
 ///
-/// Each send is recorded as an <see cref="EmployeeNotification"/>, which does double duty: its unique
-/// (employee, type, day) index is the dedupe — a 5-minute sweep can't nag twice — and the rows are the
-/// employee's in-app notification list, since a push banner is gone the moment it's swiped away.
+/// Each send is recorded as an <see cref="EmployeeNotification"/>, which does double duty: one row per
+/// (employee, type, day) is what stops a 5-minute sweep nagging twice — each sweep skips the reminders already
+/// on record, and the unique index behind them catches two sweeps racing — and the rows are the employee's
+/// in-app notification list, since a push banner is gone the moment it's swiped away.
 ///
 /// Nothing is ever auto-closed, and no reason is ever asked. Days off (WorkDaysMask / NonWorkingDay)
 /// are skipped so nobody is told to come to work on their rest day.
@@ -46,18 +48,25 @@ public sealed class ReminderJob : BackgroundService
     private static readonly TimeOnly MissedWindowFrom = new(9, 0);
     private static readonly TimeOnly MissedWindowTo = new(10, 0);
 
+    /// <summary>The unique (company, employee, type, day) index on EmployeeNotifications — the guard against two
+    /// sweeps sending the same reminder at once. Its 23505 is the one refusal SendAsync expects.</summary>
+    internal const string OneReminderIndex = "IX_EmployeeNotifications_TenantId_EmployeeId_Type_RelatedDate";
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PushOptions _push;
     private readonly TimeZoneInfo _timeZone;
     private readonly ILogger<ReminderJob> _logger;
+    private readonly TimeProvider _clock;
 
     public ReminderJob(
-        IServiceScopeFactory scopeFactory, PushOptions push, AppOptions appOptions, ILogger<ReminderJob> logger)
+        IServiceScopeFactory scopeFactory, PushOptions push, AppOptions appOptions, ILogger<ReminderJob> logger,
+        TimeProvider? clock = null)
     {
         _scopeFactory = scopeFactory;
         _push = push;
         _timeZone = TimeZoneInfo.FindSystemTimeZoneById(appOptions.TimeZone);
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,7 +104,8 @@ public sealed class ReminderJob : BackgroundService
         return await db.Tenants.Where(t => t.IsActive).Select(t => t.Id).ToListAsync(ct);
     }
 
-    private async Task SweepAsync(CancellationToken ct)
+    /// <summary>One sweep over every active company. Internal so a test can run one at a pinned clock.</summary>
+    internal async Task SweepAsync(CancellationToken ct)
     {
         foreach (var tenantId in await ActiveTenantIdsAsync(ct))
         {
@@ -106,7 +116,7 @@ public sealed class ReminderJob : BackgroundService
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var notifier = scope.ServiceProvider.GetRequiredService<IPushNotifier>();
 
-                var nowUtc = DateTime.UtcNow;
+                var nowUtc = _clock.GetUtcNow().UtcDateTime;
                 var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, _timeZone);
                 // One day for everything here: the shift, the holidays and the record. It used to
                 // resolve the shift by the company day and look the record up by the UTC day, which
@@ -131,6 +141,21 @@ public sealed class ReminderJob : BackgroundService
                 var holidays = await db.NonWorkingDays
                     .Where(d => d.Date == todayLocal)
                     .ToListAsync(ct);
+
+                // The reminders already on record for the days this sweep can name — today's check-in, and the
+                // open day behind a check-out nudge, which is today or yesterday (a day further back for margin).
+                // Each is skipped before any INSERT. The sweep used to insert every time a reminder's condition
+                // still held and leave the unique index to refuse the repeat: the 10-minute windows span two
+                // 5-minute sweeps and the 09:00-10:00 missed-checkout hour twelve, so that was ~930 refused
+                // INSERTs a day — 99.7% of every database error the application raised, each with two error-level
+                // stack traces in the backend log, burying the failures that mattered.
+                var recordedFrom = todayLocal.AddDays(-2);
+                var onRecord = (await db.EmployeeNotifications
+                        .Where(n => n.RelatedDate >= recordedFrom)
+                        .Select(n => new { n.EmployeeId, n.Type, n.RelatedDate })
+                        .ToListAsync(ct))
+                    .Select(n => (n.EmployeeId, n.Type, n.RelatedDate))
+                    .ToHashSet();
 
                 foreach (var employee in employees)
                 {
@@ -163,7 +188,7 @@ public sealed class ReminderJob : BackgroundService
                         var until = startUtc - nowUtc;
                         if (until > TimeSpan.Zero && until <= TimeSpan.FromMinutes(_push.CheckInReminderLeadMinutes))
                         {
-                            await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.CheckInSoon, todayLocal,
+                            await SendAsync(db, notifier, onRecord, employee.Id, EmployeeNotificationType.CheckInSoon, todayLocal,
                                 "İş vaxtınız başlayır",
                                 location.QrlessCheckIn
                                     ? $"{_push.CheckInReminderLeadMinutes} dəqiqəyə növbəniz başlayır. Gələndə ana ekranda «Giriş et»ə toxunmağı unutmayın."
@@ -194,7 +219,7 @@ public sealed class ReminderJob : BackgroundService
                     if (!shift.IsFlexible
                         && untilEnd > TimeSpan.Zero && untilEnd <= TimeSpan.FromMinutes(_push.CheckoutReminderLeadMinutes))
                     {
-                        await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.CheckOutSoon, openDay,
+                        await SendAsync(db, notifier, onRecord, employee.Id, EmployeeNotificationType.CheckOutSoon, openDay,
                             "İş vaxtınız bitir",
                             location.QrlessCheckIn
                                 ? $"{_push.CheckoutReminderLeadMinutes} dəqiqəyə növbəniz bitir. «Çıxış et»ə toxunmağı unutmayın — yoxsa bu gün 0 saat sayılacaq."
@@ -209,7 +234,7 @@ public sealed class ReminderJob : BackgroundService
                         && nowLocal.TimeOfDay >= MissedWindowFrom.ToTimeSpan()
                         && nowLocal.TimeOfDay < MissedWindowTo.ToTimeSpan())
                     {
-                        await SendAsync(db, notifier, employee.Id, EmployeeNotificationType.MissedCheckOut, openDay,
+                        await SendAsync(db, notifier, onRecord, employee.Id, EmployeeNotificationType.MissedCheckOut, openDay,
                             "Çıxış qeyd olunmayıb",
                             $"{openDay:dd.MM.yyyy} tarixində çıxışınız qeyd olunmayıb — həmin gün 0 saat sayılır. " +
                             "Düzəldilməsi üçün rəhbərinizlə əlaqə saxlayın.",
@@ -227,12 +252,17 @@ public sealed class ReminderJob : BackgroundService
     private DateTime ToUtc(DateOnly localDate, TimeOnly localTime)
         => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localDate.ToDateTime(localTime), DateTimeKind.Unspecified), _timeZone);
 
-    /// <summary>Writes the notification row first — the unique index is the dedupe — and only pushes if
-    /// the insert won, so a concurrent sweep can never send the same reminder twice.</summary>
+    /// <summary>Writes the notification row first and only pushes if the insert went in, so the same reminder
+    /// never reaches a phone twice. One already on record is skipped without a write; the unique index stays as
+    /// the guard for two sweeps inserting the same one at the same moment.</summary>
     private async Task SendAsync(
-        AppDbContext db, IPushNotifier notifier, Guid employeeId, EmployeeNotificationType type,
-        DateOnly relatedDate, string title, string body, CancellationToken ct)
+        AppDbContext db, IPushNotifier notifier, HashSet<(Guid, EmployeeNotificationType, DateOnly)> onRecord,
+        Guid employeeId, EmployeeNotificationType type, DateOnly relatedDate, string title, string body, CancellationToken ct)
     {
+        var key = (employeeId, type, relatedDate);
+        if (onRecord.Contains(key))
+            return;   // sent by an earlier sweep
+
         var row = new EmployeeNotification
         {
             EmployeeId = employeeId,
@@ -245,10 +275,24 @@ public sealed class ReminderJob : BackgroundService
         try
         {
             await db.SaveChangesAsync(ct);
+            onRecord.Add(key);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (ChangeRequestDesk.UniqueViolation(ex) == OneReminderIndex)
         {
-            entry.State = EntityState.Detached;   // already sent today — nothing to do
+            // Another sweep inserted it between this one's read and this write (two instances overlapping
+            // during a deploy): that one pushed it.
+            entry.State = EntityState.Detached;
+            onRecord.Add(key);
+            return;
+        }
+        catch (DbUpdateException ex)
+        {
+            // Anything else is a real failure, and it used to be swallowed here as "already sent" with nothing in
+            // the application's own log. Detached so the rest of the sweep's saves do not retry it; the next
+            // sweep tries again while the reminder's window is still open.
+            entry.State = EntityState.Detached;
+            _logger.LogError(ex, "ReminderJob: could not record {Type} for employee {Employee} on {Date}",
+                type, employeeId, relatedDate);
             return;
         }
 
