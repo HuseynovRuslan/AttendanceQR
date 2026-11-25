@@ -80,6 +80,11 @@ public partial class SuperAdminController
                 // Nothing can be holding a session for an account nobody could sign in as, but the
                 // bump costs a byte and means the same code is safe if this is ever pointed at one.
                 unclaimed.TokenVersion++;
+                // The role does not change, but the admin account now belongs to a person — who got it is
+                // exactly what the audit is for.
+                RoleChangeAudit.Add(_db, User, HttpContext.Connection.RemoteIpAddress?.ToString(), tenant.Id, unclaimed.Id,
+                    RoleChangeAudit.Actions.Claimed, fromRole: EmployeeRole.Admin, fromBranches: [],
+                    toRole: EmployeeRole.Admin, toBranches: [], RoleChangeAudit.Via.OperatorTenantAdmin);
                 await _db.SaveChangesAsync(ct);
                 return (Conflict: false, Employee: unclaimed, Created: false);
             }
@@ -108,6 +113,9 @@ public partial class SuperAdminController
                 MustChangePin = true,
             };
             _db.Employees.Add(admin);
+            RoleChangeAudit.Add(_db, User, HttpContext.Connection.RemoteIpAddress?.ToString(), tenant.Id, admin.Id,
+                RoleChangeAudit.Actions.Created, fromRole: null, fromBranches: [], toRole: EmployeeRole.Admin, toBranches: [],
+                RoleChangeAudit.Via.OperatorTenantAdmin);
             await _db.SaveChangesAsync(ct);
             return (Conflict: false, Employee: admin, Created: true);
         });

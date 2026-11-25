@@ -122,5 +122,12 @@ public enum AuditEventType
     // A shift was switched between fixed hours and «Elastik qrafik», or its hour norm changed. Reason holds
     // the shift, the before and after, and who did it. The revision row keeps the old judgement of past days;
     // this keeps the fact that somebody changed it.
-    ScheduleModeChanged = 43
+    ScheduleModeChanged = 43,
+
+    // Somebody's role (Employee / Manager / Admin) changed, a manager's branches did, or an account was created
+    // or handed over holding a role above Employee. Written against the person whose role it is, in the same
+    // save as the change. Reason is JSON: who did it (and the operator behind a support session), the role and
+    // the access it gave before and after, and the route and screen it came through — never a PIN, token,
+    // phone or e-mail. See RoleChangeAudit.
+    EmployeeRoleChanged = 44
 }
