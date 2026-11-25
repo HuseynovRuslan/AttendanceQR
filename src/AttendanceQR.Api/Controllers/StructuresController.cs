@@ -1,4 +1,6 @@
+using System.Linq.Expressions;
 using AttendanceQR.Api.Contracts;
+using AttendanceQR.Domain;
 using AttendanceQR.Domain.Access;
 using AttendanceQR.Domain.Entities;
 using AttendanceQR.Domain.Enums;
@@ -192,11 +194,24 @@ public class StructuresController : ControllerBase
     private static string? NameProblem(string name) =>
         name.Length == 0 ? "NameRequired" : name.Length > MaxNameLength ? "NameTooLong" : null;
 
-    private Task<bool> NameTakenAsync(string name, Guid? exceptId, CancellationToken ct)
+    private Task<bool> NameTakenAsync(string name, Guid? exceptId, CancellationToken ct) =>
+        _db.Structures.AnyAsync(SameLiveName(name, exceptId), ct);
+
+    /// <summary>
+    /// A live structure, other than <paramref name="exceptId"/>, whose name is <paramref name="name"/> in
+    /// another case. Compared through SearchText.Fold on BOTH sides, which the database runs as
+    /// lower(translate()). It used to lower the typed name in .NET and the stored one in Postgres, and the two
+    /// disagree about Azerbaijani: .NET's invariant casing leaves «İ» as it is, Postgres turns it into 'i'. So
+    /// a typed name with a capital «İ» could never match anything, and «İnzibati Şöbə» could be created beside
+    /// a live «İnzibati şöbə» — the unique index is case-sensitive and lets it through. The in-memory tests could
+    /// not see it: there .NET lowered both sides the same way. The search rule also reads «I», «ı», «İ» and «i»
+    /// as one letter, so «IT şöbəsi» and «İT şöbəsi» are one name too — two units told apart only by the dot on
+    /// an i are not two units anybody means.
+    /// </summary>
+    internal static Expression<Func<Structure, bool>> SameLiveName(string name, Guid? exceptId)
     {
-        var lowered = name.ToLower();
-        return _db.Structures.AnyAsync(s =>
-            s.ArchivedAtUtc == null && s.Id != exceptId && s.Name.ToLower() == lowered, ct);
+        var folded = SearchText.Fold(name);
+        return s => s.ArchivedAtUtc == null && s.Id != exceptId && SearchText.Fold(s.Name) == folded;
     }
 
     private void Audit(AuditEventType type, string reason) =>
