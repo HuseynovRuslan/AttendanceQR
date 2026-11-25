@@ -21,7 +21,35 @@ public sealed class AppOptions
     public string HiddenEmails { get; set; } = string.Empty;
 
     /// <summary>Parsed, lowercased list of hidden emails (from the comma-separated HiddenEmails).</summary>
-    public string[] HiddenEmailList() => HiddenEmails
+    public string[] HiddenEmailList() => ParseEmails(HiddenEmails);
+
+    /// <summary>
+    /// Comma-separated emails, out of <see cref="HiddenEmails"/>, of accounts that are still COUNTED in attendance:
+    /// the today board, the tabel, hours, payroll, the dashboard, the management report and the nightly day
+    /// summaries. They stay out of the lists — the «İşçilər» roster, «Giriş və rollar», the operator's paper
+    /// roster — exactly as before.
+    ///
+    /// For a real person who clocks in at a branch, whose account must still not sit in other admins' lists: a
+    /// company account an operator also signs into the console with. Listed, it would be one click away from an
+    /// admin's edit form. Hidden from reports, the managers of the branch they work at cannot see that they came.
+    ///
+    /// An address here that is not also in HiddenEmails changes nothing — that account is counted already.
+    /// Empty = every hidden account is left out of reports too, as it always was.
+    /// </summary>
+    public string HiddenEmailsCountedInReports { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The accounts the reports leave out: <see cref="HiddenEmails"/> minus <see cref="HiddenEmailsCountedInReports"/>.
+    /// One answer for the live reports (ReportQueryService) and the nightly summaries (DailySummaryService), so a
+    /// day never counts somebody on one side of midnight and not on the other.
+    /// </summary>
+    public string[] ReportHiddenEmailList()
+    {
+        var counted = ParseEmails(HiddenEmailsCountedInReports).ToHashSet();
+        return HiddenEmailList().Where(e => !counted.Contains(e)).ToArray();
+    }
+
+    private static string[] ParseEmails(string csv) => csv
         .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
         .Select(x => x.ToLowerInvariant())
         .ToArray();
