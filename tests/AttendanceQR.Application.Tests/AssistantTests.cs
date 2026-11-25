@@ -156,6 +156,89 @@ public class AssistantTests
         Assert.Contains("DeviceMismatch", toolMsg.Content);
     }
 
+    // --- today's status on a day of more than one stretch -----------------------
+    //
+    // A split shift, a return after a field visit or a flexible schedule's next session puts a second row on
+    // the same day. The tool used to take whichever row the database returned first — unordered, and voided
+    // rows included. The in-memory provider returns rows in the order they were added, so each test below adds
+    // the row that must NOT be the answer first: that is the order the old query answered with here, and one
+    // Postgres is free to answer with too.
+
+    private static DateOnly BakuToday => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Baku));
+
+    private static string Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, Baku).ToString("dd.MM.yyyy HH:mm");
+
+    private static AttendanceRecord Stretch(Harness h, DateTime checkIn, DateTime? checkOut, DateTime? voidedAt = null) => new()
+    {
+        TenantId = TenantId, EmployeeId = h.Me, LocationId = Guid.NewGuid(), AttendanceDate = BakuToday,
+        CheckInAtUtc = checkIn, CheckOutAtUtc = checkOut, VoidedAtUtc = voidedAt,
+    };
+
+    private static async Task<string> TodayStatus(Harness h) =>
+        JsonSerializer.Serialize(await new AssistantDataService(h.Db, Baku).TodayStatusAsync(h.Me, default));
+
+    [Fact]
+    public async Task Today_is_the_open_stretch_not_the_closed_one_before_it()
+    {
+        using var h = new Harness();
+        var now = DateTime.UtcNow;
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-9), now.AddHours(-5)));
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-1), checkOut: null));
+        await h.Db.SaveChangesAsync();
+
+        var status = await TodayStatus(h);
+
+        // Still at work: open, with the second stretch's check-in — never «gün tamamlanıb» with the morning's times.
+        Assert.Contains("\"cixis\":null", status);
+        Assert.Contains($"\"giris\":\"{Local(now.AddHours(-1))}\"", status);
+    }
+
+    [Fact]
+    public async Task With_every_stretch_closed_today_is_the_latest_one()
+    {
+        using var h = new Harness();
+        var now = DateTime.UtcNow;
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-9), now.AddHours(-5)));
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-3), now.AddHours(-1)));
+        await h.Db.SaveChangesAsync();
+
+        var status = await TodayStatus(h);
+
+        Assert.Contains($"\"giris\":\"{Local(now.AddHours(-3))}\"", status);
+        Assert.Contains($"\"cixis\":\"{Local(now.AddHours(-1))}\"", status);
+    }
+
+    [Fact]
+    public async Task A_voided_check_in_is_not_reported_as_a_check_in()
+    {
+        using var h = new Harness();
+        var now = DateTime.UtcNow;
+        // Open, so the open-first order alone would pick it: only the void filter keeps it out.
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-1), checkOut: null, voidedAt: now));
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-9), now.AddHours(-5)));
+        await h.Db.SaveChangesAsync();
+
+        var status = await TodayStatus(h);
+
+        Assert.Contains($"\"giris\":\"{Local(now.AddHours(-9))}\"", status);
+        Assert.DoesNotContain("\"cixis\":null", status);
+    }
+
+    [Fact]
+    public async Task A_day_whose_only_check_in_was_voided_has_no_check_in()
+    {
+        using var h = new Harness();
+        var now = DateTime.UtcNow;
+        h.Db.AttendanceRecords.Add(Stretch(h, now.AddHours(-2), checkOut: null, voidedAt: now));
+        await h.Db.SaveChangesAsync();
+
+        var status = await TodayStatus(h);
+
+        // The «no check-in yet» answer — the same day the board shows as Qayıb.
+        Assert.Contains("\"bugun\"", status);
+        Assert.DoesNotContain("\"giris\"", status);
+    }
+
     // --- voice ----------------------------------------------------------------
 
     [Fact]
