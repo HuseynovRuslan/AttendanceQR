@@ -1337,7 +1337,15 @@ public class AttendanceController : ControllerBase
         // queue here (one insert); the R2 upload itself runs in PhotoUploadWorker with retries,
         // because 2000 phones at shift start must never wait on object storage for a scan that is
         // already committed — and a deploy or crash must never lose an accepted selfie.
-        var photoAccepted = await TryQueueCheckInPhotoAsync(employee, record, photoBase64);
+        //
+        // Held back in one case: a QR-less check-in by somebody with no reference photo yet. The worker makes THIS
+        // photo the reference, and the face check below is what says whether it is fit to be one — so the worker is
+        // only told once that check has written its verdict (ReleaseHeldPhotoAsync). Told at once, as before, it
+        // loaded the record milliseconds after the scan, long before the verdict, and seeded the reference from a
+        // ceiling or a crowd anyway.
+        var holdForFaceCheck = qrless && _faceMatch.Enabled && string.IsNullOrEmpty(employee.ReferencePhotoKey);
+        var pendingPhoto = await TryQueueCheckInPhotoAsync(employee, record, photoBase64, holdForFaceCheck);
+        var photoAccepted = pendingPhoto is not null;
 
         // With no poster there was no walk to a fixed point, so the selfie is the only anchor left —
         // and an anchor nobody sees does not hold. On a QR-less check-in the face is compared NOW and
@@ -1351,6 +1359,8 @@ public class AttendanceController : ControllerBase
         int? faceScore = null;
         if (qrless)
             (faceVerdict, faceScore) = await CompareFaceNowAsync(employee, record, photoAccepted ? photoBase64 : null);
+        if (holdForFaceCheck && pendingPhoto is not null)
+            await ReleaseHeldPhotoAsync(pendingPhoto);
 
         // "Qrless" in the audit row is what distinguishes this check-in later — no poster was read.
         await WriteAuditAsync(employee.Id, AuditEventType.CheckInSuccess, qrless ? "Qrless" : null, ip);
@@ -1511,14 +1521,21 @@ public class AttendanceController : ControllerBase
     // over, and the cap is what keeps a week-long outage from eating the disk.
     private const int MaxPendingPhotos = 4000;
 
+    // How long a held photo (see CheckInAsync) waits if the request never releases it — a crash or a deploy in the
+    // middle of the face check. Comfortably past FaceCheckBudget, so by then the verdict is written or never will be;
+    // the poller then uploads it like any other row.
+    private static readonly TimeSpan HeldPhotoGrace = TimeSpan.FromSeconds(30);
+
     // Validates the check-in selfie and persists it to the DURABLE upload queue (PendingPhotoUploads);
     // PhotoUploadWorker uploads it with retry/backoff, seeds the reference selfie when none exists
     // yet, and queues the face match. Never throws: any failure is logged and swallowed so check-in
-    // still succeeds. Returns whether the photo was accepted (= safely persisted, not yet uploaded).
-    private async Task<bool> TryQueueCheckInPhotoAsync(Employee employee, AttendanceRecord record, string? photoBase64)
+    // still succeeds. Returns the queued row when the photo was accepted (= safely persisted, not yet
+    // uploaded), null otherwise. A held photo is queued but not yet handed to the worker.
+    private async Task<PendingPhotoUpload?> TryQueueCheckInPhotoAsync(
+        Employee employee, AttendanceRecord record, string? photoBase64, bool hold)
     {
         if (string.IsNullOrWhiteSpace(photoBase64))
-            return false;
+            return null;
 
         try
         {
@@ -1528,7 +1545,7 @@ public class AttendanceController : ControllerBase
             {
                 _logger.LogWarning(
                     "Photo audit: skipping check-in photo for employee {EmployeeId} (decoded {Bytes} bytes)", employee.Id, bytes.Length);
-                return false;
+                return null;
             }
 
             // Disk guard: past the cap the NEW photo is refused (counted + logged, never silent).
@@ -1539,7 +1556,7 @@ public class AttendanceController : ControllerBase
                 _logger.LogWarning(
                     "Photo audit: durable queue at cap ({Cap}), dropping check-in photo for record {RecordId}",
                     MaxPendingPhotos, record.Id);
-                return false;
+                return null;
             }
 
             var pending = new PendingPhotoUpload
@@ -1547,7 +1564,7 @@ public class AttendanceController : ControllerBase
                 RecordId = record.Id,
                 EmployeeId = employee.Id,
                 Bytes = bytes,
-                NextAttemptUtc = DateTime.UtcNow,
+                NextAttemptUtc = hold ? DateTime.UtcNow + HeldPhotoGrace : DateTime.UtcNow,
             };
             _db.PendingPhotoUploads.Add(pending);
             await _db.SaveChangesAsync();
@@ -1556,14 +1573,33 @@ public class AttendanceController : ControllerBase
 
             // The worker has no request to resolve a tenant from, so hand it the one this record was
             // just written under. Losing the hint costs one poll interval, nothing more.
-            _photoQueue.HintReady(new PhotoUploadHint(_db.CurrentTenantId, pending.Id));
-            return true;
+            if (!hold)
+                _photoQueue.HintReady(new PhotoUploadHint(_db.CurrentTenantId, pending.Id));
+            return pending;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
                 "Photo audit: failed to queue check-in photo for employee {EmployeeId}, record {RecordId}", employee.Id, record.Id);
-            return false;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Hands a held photo to the worker once the face check has written its verdict. Never throws: if this fails the
+    /// row is still safe in the table, and the poller uploads it once its held time has passed.
+    /// </summary>
+    private async Task ReleaseHeldPhotoAsync(PendingPhotoUpload pending)
+    {
+        try
+        {
+            pending.NextAttemptUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            _photoQueue.HintReady(new PhotoUploadHint(_db.CurrentTenantId, pending.Id));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Photo audit: held photo {PendingId} not released; the poller will take it", pending.Id);
         }
     }
 
